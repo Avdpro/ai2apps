@@ -1,0 +1,15 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const ctx={window:{},document:{documentElement:{lang:'en'}},structuredClone,console};
+vm.createContext(ctx);vm.runInContext(fs.readFileSync(__dirname+'/../ai2apps/web/static/js/imagine_studio.js','utf8'),ctx);
+const a=ctx.window.imagineStudioApp();a.miniAppId='ai2apps.imagine.upscale-image';a.icons=()=>{};
+a.models=[{id:'generation',operations:['image_generation'],source:'local'},{id:'sol/standard',operations:['image_upscaling'],source:'local'}];a.modelId='sol/standard';
+assert.equal(a.requiredOperation,'image_upscaling');assert.equal(a.compatibleModels.length,1);
+assert.equal(a.canGenerate,false);a.referenceFiles=[{name:'input.png'}];assert.equal(a.canGenerate,true);
+a.referenceDimensions=[{width:513,height:341}];assert.equal(a.upscaleDimensions,'513×341 → 1026×682');
+assert.equal(a.capabilityRequest('install').capability,'image.upscaling');
+assert.deepEqual(Array.from(a.capabilityRequest('install').requirements.outputFormats),['png']);
+a.upscaleSeed=-1;assert.equal(a.canGenerate,false);a.upscaleSeed=4294967296;assert.equal(a.canGenerate,false);a.upscaleSeed=0.5;assert.equal(a.canGenerate,false);a.upscaleSeed=0;
+a.upscalePrompt='x'.repeat(2049);assert.equal(a.canGenerate,false);a.upscalePrompt='';
+assert.equal(a.upscaleCustomPrompt,false);a.modelId='sol/ltx23-custom-prompt';assert.equal(a.upscaleCustomPrompt,true);
+a.setLocale('zh');assert.equal(a.currentMiniApp.name,'放大图片');
+console.log('Image upscaling capability, dimensions, limits, setup and i18n: passed');

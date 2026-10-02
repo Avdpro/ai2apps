@@ -31,7 +31,12 @@ from ai2apps.model_providers import (
     resolve_package_model,
 )
 from ai2apps.storage.database import PlatformDatabase
-from ai2apps.worker_resources import MIB, estimate_request_transient_bytes
+from ai2apps.worker_resources import (
+    MIB,
+    estimate_request_transient_bytes,
+    image_upscaling_resource_payload,
+    video_upscaling_resource_payload,
+)
 from ai2apps.worker_scheduler import WorkloadClass
 
 
@@ -406,6 +411,24 @@ class ModelInvocationService:
                 "operation_not_supported", f"Model does not support {operation}"
             )
         body = {**dict(payload), "model": model.upstream_id}
+        if operation == "image_upscaling":
+            source = (files or {}).get("image")
+            try:
+                body = await asyncio.to_thread(
+                    image_upscaling_resource_payload, body,
+                    None if source is None else source[1],
+                )
+            except (ValueError, OSError) as exc:
+                raise ModelInvocationError("invalid_image", str(exc)) from exc
+        if operation == "video_upscaling":
+            source = (files or {}).get("video")
+            try:
+                body = await asyncio.to_thread(
+                    video_upscaling_resource_payload, body,
+                    None if source is None else source[1],
+                )
+            except (ValueError, OSError) as exc:
+                raise ModelInvocationError("invalid_video", str(exc)) from exc
         scheduler = getattr(self.runtime, "worker_scheduler", None)
         lease = None
         failed = True

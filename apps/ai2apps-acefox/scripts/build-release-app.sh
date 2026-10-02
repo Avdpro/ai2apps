@@ -179,6 +179,7 @@ fi
 swift build --configuration release --package-path "${PROJECT_DIR}" --product ai2apps-helper
 swift build --configuration release --package-path "${PROJECT_DIR}" --product ai2apps-launcher
 swift build --configuration release --package-path "${PROJECT_DIR}" --product ai2apps-updater
+swift build --configuration release --package-path "${PROJECT_DIR}" --product ai2apps-person-mask
 BUILD_BIN=$(swift build --configuration release --package-path "${PROJECT_DIR}" --show-bin-path)
 
 STAGING_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/ai2apps-release-app.XXXXXX")
@@ -316,6 +317,8 @@ if [[ ${SANDBOX_MODE} == 1 ]]; then
 fi
 RUNTIME_ROOT=${HELPER_APP}/Contents/Resources/AI2AppsLocal
 mkdir -p "${RUNTIME_ROOT}/Python" "${RUNTIME_ROOT}/app" "${RUNTIME_ROOT}/bin"
+cp "${BUILD_BIN}/ai2apps-person-mask" "${RUNTIME_ROOT}/bin/ai2apps-person-mask"
+chmod 755 "${RUNTIME_ROOT}/bin/ai2apps-person-mask"
 ditto "${RUNTIME_LAYERS}/cpython-3.11" "${RUNTIME_ROOT}/Python/cpython-3.11"
 ditto "${RUNTIME_LAYERS}/${FRAMEWORK_LAYER}" "${RUNTIME_ROOT}/Python/${FRAMEWORK_LAYER}"
 if [[ -d ${RUNTIME_LAYERS}/__venvstacks__ ]]; then
@@ -327,6 +330,7 @@ find "${RUNTIME_ROOT}/Python" -type f \( -name '*.pyc' -o -name '*.pyo' \) -dele
 find "${RUNTIME_ROOT}/Python" -type d -name __pycache__ -empty -delete
 rsync -a \
   --exclude='__pycache__' --exclude='*.pyc' --exclude='tests' --exclude='.git' \
+  --exclude='.build' --exclude='.pytest_cache' --exclude='.ruff_cache' \
   --exclude='custom_kernels/*/csrc' \
   "${REPO_ROOT}/ai2apps/" "${RUNTIME_ROOT}/app/ai2apps/"
 OMLX_PROFILE_EXCLUDES=()

@@ -33,6 +33,7 @@ def test_optional_provider_stacks_and_generic_package():
         LITE,
         PRO,
         "ai2apps.model.echomimic-v3-mlx/default",
+        "ai2apps.model.avtr1-mlx/default",
     ]
     js = (source / "web/avatar.js").read_text()
     assert "flashhead" not in js.lower() and "echomimic" not in js.lower()

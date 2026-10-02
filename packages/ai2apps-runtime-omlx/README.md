@@ -146,3 +146,14 @@ completed Decode steps; the first token sampled from Prefill logits is excluded.
 The Host now reports macOS physical footprint in addition to legacy RSS and
 Chat uses the footprint for Worker memory, so Metal unified allocations are no
 longer omitted from DeepSeek V4.1's displayed current and sampled peak memory.
+
+Version 1.8.6 adds the `video_segmentation` Model Worker operation and the
+`video-segmentation` Runtime capability. It reuses the existing MLX, NumPy,
+SciPy, Pillow, PyAV, Metal, and video-codec layers; no new native dependency is
+added. This is the minimum Runtime required by the SAM 2.1 Video Cutout MLX
+Package.
+
+
+## Runtime 1.8.7
+
+Adds the dedicated `video_upscaling` Model Worker operation at `/v1/videos/upscalings` and its bounded capability schema. Native dependencies are unchanged from 1.8.6. Host model catalog support requires the corresponding Desktop source update.

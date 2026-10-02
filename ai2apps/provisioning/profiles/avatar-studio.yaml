@@ -100,6 +100,33 @@ capabilities:
         provider:
           package_id: ai2apps/model-echomimic-v3-mlx
           service_key: ai2apps.model.echomimic-v3-mlx
-          version: '>=0.1.1,<1.0.0'
+          version: '>=0.1.2,<1.0.0'
         checkpoint:
           model_id: ai2apps.model.echomimic-v3-mlx/default
+    - id: apple-metal-avtr1
+      label: AVTR-1 MLX
+      description: 照片与音轨驱动，支持保留原图尺寸。
+      priority: 60
+      device:
+        os:
+        - macos
+        architectures:
+        - arm64
+        accelerator:
+          vendor: apple
+          api: metal
+          unified_memory_gib:
+            minimum: 16
+      recommendation_memory_gib:
+        minimum: 16
+      stack:
+        runtime:
+          package_id: ai2apps/runtime-omlx
+          service_key: ai2apps.runtime.omlx
+          version: '>=1.8.5,<2.0.0'
+        provider:
+          package_id: ai2apps/model-avtr1-mlx
+          service_key: ai2apps.model.avtr1-mlx
+          version: '>=0.1.0,<1.0.0'
+        checkpoint:
+          model_id: ai2apps.model.avtr1-mlx/default

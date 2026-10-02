@@ -1,0 +1,99 @@
+{
+  "status": "published_and_anonymously_verified",
+  "package_id": "ai2apps/model-sol-refiner-mlx",
+  "version": "0.1.1",
+  "publication": {
+    "submission_id": "b7e7ddcb-cb81-4e0c-9838-ffe92ffe70f3",
+    "submitted": {
+      "id": "b7e7ddcb-cb81-4e0c-9838-ffe92ffe70f3",
+      "status": "verified",
+      "publisherId": "229d6350-cd0e-408a-9905-41367385ae5c",
+      "publisherKeyId": "8afc0a51-f7f8-4fef-b3d0-8d30abe2a5bc",
+      "packageId": "ai2apps/model-sol-refiner-mlx",
+      "packageVersion": "0.1.1",
+      "artifactSha256": "b1f8d016f7451a0778c9f5bed49c94e40e0476c47ea2db7908b1bc67853ee23e",
+      "artifactSize": 94987,
+      "createdAt": "2026-10-01T18:28:16.872Z",
+      "releaseStatus": "candidate",
+      "latestReview": null
+    },
+    "review_requested": {
+      "id": "b7e7ddcb-cb81-4e0c-9838-ffe92ffe70f3",
+      "status": "verified",
+      "publisherId": "229d6350-cd0e-408a-9905-41367385ae5c",
+      "publisherKeyId": "8afc0a51-f7f8-4fef-b3d0-8d30abe2a5bc",
+      "packageId": "ai2apps/model-sol-refiner-mlx",
+      "packageVersion": "0.1.1",
+      "artifactSha256": "b1f8d016f7451a0778c9f5bed49c94e40e0476c47ea2db7908b1bc67853ee23e",
+      "artifactSize": 94987,
+      "createdAt": "2026-10-01T18:28:16.872Z",
+      "releaseStatus": "review_pending",
+      "latestReview": null
+    },
+    "reviewed": {
+      "id": "b7e7ddcb-cb81-4e0c-9838-ffe92ffe70f3",
+      "status": "verified",
+      "publisherId": "229d6350-cd0e-408a-9905-41367385ae5c",
+      "publisherKeyId": "8afc0a51-f7f8-4fef-b3d0-8d30abe2a5bc",
+      "packageId": "ai2apps/model-sol-refiner-mlx",
+      "packageVersion": "0.1.1",
+      "artifactSha256": "b1f8d016f7451a0778c9f5bed49c94e40e0476c47ea2db7908b1bc67853ee23e",
+      "artifactSize": 94987,
+      "createdAt": "2026-10-01T18:28:16.872Z",
+      "releaseStatus": "approved",
+      "latestReview": {
+        "id": "10a784e7-262b-4381-b38a-1de8bd6ecba1",
+        "decision": "approved",
+        "note": "SoL-Refiner MLX 0.1.1 removes artificial input edge limits and uses adaptive 9/17/25/33/41-frame windows. 165 tests passed. Exact signed managed-service installation verified 3840x2160 17-frame output with audio, custom prompts, cancellation, restart and uninstall on Runtime 1.8.7. Same published checkpoint Distributions; no weight download needed for existing users. Requires updated Desktop Host for resource_limited/null pixel capability parsing and media-derived memory reservations. This Package publication does not deploy the Host. 4K probe MLX peak 14.07 GiB; timings are load-dependent and no general image/temporal-quality claim is made. Installer license consent remains enforced.",
+        "createdAt": "2026-10-01T18:28:17.081Z"
+      }
+    },
+    "published": {
+      "submission": {
+        "id": "b7e7ddcb-cb81-4e0c-9838-ffe92ffe70f3",
+        "status": "verified",
+        "publisherId": "229d6350-cd0e-408a-9905-41367385ae5c",
+        "publisherKeyId": "8afc0a51-f7f8-4fef-b3d0-8d30abe2a5bc",
+        "packageId": "ai2apps/model-sol-refiner-mlx",
+        "packageVersion": "0.1.1",
+        "artifactSha256": "b1f8d016f7451a0778c9f5bed49c94e40e0476c47ea2db7908b1bc67853ee23e",
+        "artifactSize": 94987,
+        "createdAt": "2026-10-01T18:28:16.872Z",
+        "releaseStatus": "published",
+        "latestReview": {
+          "id": "10a784e7-262b-4381-b38a-1de8bd6ecba1",
+          "decision": "approved",
+          "note": "SoL-Refiner MLX 0.1.1 removes artificial input edge limits and uses adaptive 9/17/25/33/41-frame windows. 165 tests passed. Exact signed managed-service installation verified 3840x2160 17-frame output with audio, custom prompts, cancellation, restart and uninstall on Runtime 1.8.7. Same published checkpoint Distributions; no weight download needed for existing users. Requires updated Desktop Host for resource_limited/null pixel capability parsing and media-derived memory reservations. This Package publication does not deploy the Host. 4K probe MLX peak 14.07 GiB; timings are load-dependent and no general image/temporal-quality claim is made. Installer license consent remains enforced.",
+          "createdAt": "2026-10-01T18:28:17.081Z"
+        }
+      },
+      "repositoryMetadataVersion": 239
+    }
+  },
+  "anonymous_verification": {
+    "status": "published",
+    "version": "0.1.1",
+    "repositoryMetadataVersion": 239,
+    "sha256": "b1f8d016f7451a0778c9f5bed49c94e40e0476c47ea2db7908b1bc67853ee23e",
+    "size": 94987,
+    "sources": [
+      {
+        "id": "src_cloud_b1f8d016f7451a0778c9f5be",
+        "url": "https://coder.ai2apps.com/v1/registry/packages/ai2apps/model-sol-refiner-mlx/versions/0.1.1/artifact",
+        "kind": "cloud"
+      }
+    ]
+  },
+  "discover_verification": {
+    "instance": "dev",
+    "visible_version": "0.1.1",
+    "publisher": "AI2Apps",
+    "package_id": "ai2apps/model-sol-refiner-mlx",
+    "result": "Package card and details visible in Discover"
+  },
+  "validation_receipt": "ai2apps-sol-refiner-0.1.1-validation-2026-10-02.json",
+  "host_release": "Still pending: resource_limited/null pixel contract and geometry-based reservations must ship in Desktop Host. This publication only updates the model Package.",
+  "runtime": "1.8.7 unchanged",
+  "weights": "Existing default/custom published Distributions reused.",
+  "submission_status_check": "Installation-session list-only lacks active user session; publish response releaseStatus and anonymous trusted Registry confirm published."
+}

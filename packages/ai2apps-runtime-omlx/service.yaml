@@ -1,65 +1,69 @@
 schema: ai2apps.service/v1
 id: ai2apps.runtime.omlx
 name: AI2Apps oMLX Runtime
-description: Official signed MLX/oMLX execution Runtime for isolated AI2Apps Model Workers.
-version: 1.8.5
-
+description: Official signed MLX/oMLX execution Runtime for isolated AI2Apps Model
+  Workers.
+version: 1.8.8
 publisher:
   id: ai2apps
-
 runtime:
   mode: process
   protocol: ai2apps-inference-runtime/v1
   role: inference_provider
   descriptor: META/runtime-manifest.json
-
 capabilities:
-  - mlx
-  - model-worker-v1
-  - model-stream-codec-v1
-  - cached-moe
-  - ssd-checkpoint-v1
-  - vlm
-  - nvfp4
-  - metal
-  - audio-stt
-  - audio-tts
-  - audio-processing
-  - audio-detailed-transcription-v1
-  - audio-reference-input-v1
-  - audio-voice-training-v1
-  - text-punctuation
-  - onnx
-  - audio-codecs
-  - fish-s2
-  - cosyvoice3
-  - voxcpm2
-  - indextts25
-  - video-generation
-  - video-codecs
-  - image-generation
-  - image-edit
-  - flux2-klein
-  - z-image
-
+- mlx
+- model-worker-v1
+- model-stream-codec-v1
+- cached-moe
+- ssd-checkpoint-v1
+- vlm
+- nvfp4
+- metal
+- audio-stt
+- audio-tts
+- audio-processing
+- audio-detailed-transcription-v1
+- audio-reference-input-v1
+- audio-voice-training-v1
+- text-punctuation
+- onnx
+- audio-codecs
+- fish-s2
+- cosyvoice3
+- voxcpm2
+- indextts25
+- video-generation
+- video-segmentation
+- video-upscaling
+- video-codecs
+- image-generation
+- image-edit
+- flux2-klein
+- z-image
+- image-upscaling
 requires:
   services: []
-
 permissions:
-  network: {outbound: false}
-
+  network:
+    outbound: false
 compatibility:
-  os: [macos]
-  architectures: [arm64]
-  minimum_os_version: "26.2"
-
+  os:
+  - macos
+  architectures:
+  - arm64
+  minimum_os_version: '26.2'
 variants:
-  - id: darwin-arm64
-    priority: 100
-    compatibility: {os: [macos], architectures: [arm64], minimum_os_version: "26.2"}
-    files:
-      - variants/darwin-arm64/AI2AppsOmlxRuntime.dmg
-
+- id: darwin-arm64
+  priority: 100
+  compatibility:
+    os:
+    - macos
+    architectures:
+    - arm64
+    minimum_os_version: '26.2'
+  files:
+  - variants/darwin-arm64/AI2AppsOmlxRuntime.dmg
 health: {}
 restart: {}
 tools: []

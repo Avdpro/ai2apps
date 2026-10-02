@@ -1,0 +1,25 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "ai2apps-model-sol-refiner-mlx-0.1.3",
+  "documentNamespace": "https://ai2apps.com/spdx/model-sol-refiner-mlx/0.1.3",
+  "creationInfo": {
+    "creators": [
+      "Organization: AI2Apps"
+    ],
+    "created": "2026-10-01T00:00:00Z"
+  },
+  "packages": [
+    {
+      "name": "sol-refiner-mlx",
+      "SPDXID": "SPDXRef-SoLRefiner",
+      "versionInfo": "0.1.3",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "copyrightText": "NOASSERTION"
+    }
+  ]
+}

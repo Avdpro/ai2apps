@@ -1,0 +1,242 @@
+{
+  "status": "published_cloud_verified",
+  "source_commit": "fa377dcb62875d5c82fc8177afd4277cd2357db9",
+  "source_note": "isolated published 1.8.6 Runtime source plus video upscaling Worker contract; dirty working-tree changes recorded in Desktop ledger",
+  "publication": {
+    "submission_id": "3a99d586-f18f-4398-8321-34f10bb4be60",
+    "submitted": {
+      "id": "3a99d586-f18f-4398-8321-34f10bb4be60",
+      "status": "verified",
+      "publisherId": "229d6350-cd0e-408a-9905-41367385ae5c",
+      "publisherKeyId": "8afc0a51-f7f8-4fef-b3d0-8d30abe2a5bc",
+      "packageId": "ai2apps/runtime-omlx",
+      "packageVersion": "1.8.7",
+      "artifactSha256": "dc92a440fe28bbfe42b31b80f1d4499c2eebea4d78971d4a42b6f61adbf4d51b",
+      "artifactSize": 382715271,
+      "createdAt": "2026-10-01T14:21:23.739Z",
+      "releaseStatus": "candidate",
+      "latestReview": null
+    },
+    "review_requested": {
+      "id": "3a99d586-f18f-4398-8321-34f10bb4be60",
+      "status": "verified",
+      "publisherId": "229d6350-cd0e-408a-9905-41367385ae5c",
+      "publisherKeyId": "8afc0a51-f7f8-4fef-b3d0-8d30abe2a5bc",
+      "packageId": "ai2apps/runtime-omlx",
+      "packageVersion": "1.8.7",
+      "artifactSha256": "dc92a440fe28bbfe42b31b80f1d4499c2eebea4d78971d4a42b6f61adbf4d51b",
+      "artifactSize": 382715271,
+      "createdAt": "2026-10-01T14:21:23.739Z",
+      "releaseStatus": "review_pending",
+      "latestReview": null
+    },
+    "reviewed": {
+      "id": "3a99d586-f18f-4398-8321-34f10bb4be60",
+      "status": "verified",
+      "publisherId": "229d6350-cd0e-408a-9905-41367385ae5c",
+      "publisherKeyId": "8afc0a51-f7f8-4fef-b3d0-8d30abe2a5bc",
+      "packageId": "ai2apps/runtime-omlx",
+      "packageVersion": "1.8.7",
+      "artifactSha256": "dc92a440fe28bbfe42b31b80f1d4499c2eebea4d78971d4a42b6f61adbf4d51b",
+      "artifactSize": 382715271,
+      "createdAt": "2026-10-01T14:21:23.739Z",
+      "releaseStatus": "approved",
+      "latestReview": {
+        "id": "78f6081d-f675-43c6-9a4b-6f563b5f891b",
+        "decision": "approved",
+        "note": "Runtime 1.8.7 adds the dedicated video_upscaling Worker operation and capability contract without new native dependencies. Apple notarization 885629ab-4107-40cd-9647-14530ac263d8 Accepted; staple and Gatekeeper passed. Registered Publisher fingerprint verified. 49 focused tests, adapter harness, actual Runtime Python 3.11/MLX 9-frame and 65-frame upscaling (65 frames retained at 1024x1024), and exact signed-artifact isolated install with FlashHead Worker running and 1.8.7 dependency lock passed. Host model catalog support is tracked separately for Desktop release.",
+        "createdAt": "2026-10-01T14:21:23.982Z"
+      }
+    },
+    "published": {
+      "submission": {
+        "id": "3a99d586-f18f-4398-8321-34f10bb4be60",
+        "status": "verified",
+        "publisherId": "229d6350-cd0e-408a-9905-41367385ae5c",
+        "publisherKeyId": "8afc0a51-f7f8-4fef-b3d0-8d30abe2a5bc",
+        "packageId": "ai2apps/runtime-omlx",
+        "packageVersion": "1.8.7",
+        "artifactSha256": "dc92a440fe28bbfe42b31b80f1d4499c2eebea4d78971d4a42b6f61adbf4d51b",
+        "artifactSize": 382715271,
+        "createdAt": "2026-10-01T14:21:23.739Z",
+        "releaseStatus": "published",
+        "latestReview": {
+          "id": "78f6081d-f675-43c6-9a4b-6f563b5f891b",
+          "decision": "approved",
+          "note": "Runtime 1.8.7 adds the dedicated video_upscaling Worker operation and capability contract without new native dependencies. Apple notarization 885629ab-4107-40cd-9647-14530ac263d8 Accepted; staple and Gatekeeper passed. Registered Publisher fingerprint verified. 49 focused tests, adapter harness, actual Runtime Python 3.11/MLX 9-frame and 65-frame upscaling (65 frames retained at 1024x1024), and exact signed-artifact isolated install with FlashHead Worker running and 1.8.7 dependency lock passed. Host model catalog support is tracked separately for Desktop release.",
+          "createdAt": "2026-10-01T14:21:23.982Z"
+        }
+      },
+      "repositoryMetadataVersion": 237
+    }
+  },
+  "public_verification": {
+    "status": "published",
+    "version": "1.8.7",
+    "repositoryMetadataVersion": 237,
+    "sha256": "dc92a440fe28bbfe42b31b80f1d4499c2eebea4d78971d4a42b6f61adbf4d51b",
+    "size": 382715271,
+    "sources": [
+      {
+        "id": "src_cloud_dc92a440fe28bbfe42b31b80",
+        "url": "https://coder.ai2apps.com/v1/registry/packages/ai2apps/runtime-omlx/versions/1.8.7/artifact",
+        "kind": "cloud"
+      }
+    ]
+  },
+  "installed_smoke": {
+    "runtime": {
+      "service": "ai2apps.runtime.omlx",
+      "version": "1.8.7",
+      "digest": "sha256:dc92a440fe28bbfe42b31b80f1d4499c2eebea4d78971d4a42b6f61adbf4d51b",
+      "root": "/private/tmp/ai2apps-sol-runtime187-install-smoke/platform/packages/inference-runtimes/ai2apps.runtime.omlx/1.8.7/dc92a440fe28bbfe42b31b80f1d4499c2eebea4d78971d4a42b6f61adbf4d51b",
+      "python": "/private/tmp/ai2apps-sol-runtime187-install-smoke/platform/packages/inference-runtimes/ai2apps.runtime.omlx/1.8.7/dc92a440fe28bbfe42b31b80f1d4499c2eebea4d78971d4a42b6f61adbf4d51b/Contents/Resources/Runtime/Python/cpython-3.11/bin/python3.11"
+    },
+    "model": {
+      "service": "ai2apps.model.flashhead-mlx",
+      "version": "0.1.0",
+      "digest": "sha256:9441a6f06dc0a3175f858be678e8eb13d53993fed4ba2c946a220d666a051e69",
+      "status": "running",
+      "endpoint": "http://127.0.0.1:54569"
+    },
+    "locks": [
+      {
+        "dependency": "ai2apps.runtime.omlx",
+        "version": "1.8.7",
+        "digest": "sha256:dc92a440fe28bbfe42b31b80f1d4499c2eebea4d78971d4a42b6f61adbf4d51b"
+      }
+    ],
+    "checkpoints": []
+  },
+  "notarization": {
+    "id": "885629ab-4107-40cd-9647-14530ac263d8",
+    "status": "Accepted",
+    "staple": true,
+    "gatekeeper": "Notarized Developer ID"
+  },
+  "external_sources": {
+    "github": {
+      "result": {
+        "revision": 2,
+        "source": {
+          "id": "src_579f51f8-0162-4d05-9cd7-91860c189f58",
+          "kind": "github",
+          "url": "https://github.com/Avdpro/ai2apps/releases/download/package-runtime-omlx-v1.8.7/ai2apps-runtime-omlx-1.8.7-production.ai2service",
+          "label": "GitHub Release package-runtime-omlx-v1.8.7",
+          "status": "pending_approval",
+          "createdBy": "b8696bee-d730-46b6-848c-e41f1f96a0b4",
+          "createdAt": "2026-10-01T14:30:46.384Z",
+          "activatedBy": null,
+          "activatedAt": null,
+          "disabledBy": null,
+          "disabledAt": null,
+          "validation": {
+            "id": "val_ecbdf939-2c64-4204-a3cd-81f2e9490889",
+            "status": "passed",
+            "validatedAt": "2026-10-01T14:30:56.297Z",
+            "sha256": "dc92a440fe28bbfe42b31b80f1d4499c2eebea4d78971d4a42b6f61adbf4d51b",
+            "size": 382715271,
+            "rangeSupported": true,
+            "pieceManifestMatched": true,
+            "validationDigest": "cb22763ef63f0eee91c30f21e3266d03639a954768e97fad8516b17cfe518ec9",
+            "rangeReceipt": {
+              "policyVersion": "package-single-range-v2",
+              "rangeCompatibility": "standard",
+              "observedOriginHosts": [
+                "github.com",
+                "release-assets.githubusercontent.com"
+              ],
+              "pieceManifestDigest": "7434d4cce4324a320cc607053dd92165ae70c6a592962f4575951c53c5288e06",
+              "rangeTransportModes": [
+                "http-206"
+              ],
+              "rangeResponseCountByMode": {
+                "http-206": 49,
+                "http-200-content-range": 0
+              }
+            },
+            "failureCode": null,
+            "failureMessage": null
+          }
+        }
+      },
+      "etag": "\"sources-2\""
+    },
+    "github_local_verification": {
+      "kind": "github",
+      "url": "https://github.com/Avdpro/ai2apps/releases/download/package-runtime-omlx-v1.8.7/ai2apps-runtime-omlx-1.8.7-production.ai2service",
+      "size": 382715271,
+      "sha256": "dc92a440fe28bbfe42b31b80f1d4499c2eebea4d78971d4a42b6f61adbf4d51b",
+      "ranges": [
+        {
+          "status": 206,
+          "contentRange": "bytes 0-1023/382715271",
+          "bytesMatch": true
+        },
+        {
+          "status": 206,
+          "contentRange": "bytes 191357635-191358658/382715271",
+          "bytesMatch": true
+        },
+        {
+          "status": 206,
+          "contentRange": "bytes 382714247-382715270/382715271",
+          "bytesMatch": true
+        },
+        {
+          "status": 206,
+          "contentRange": "bytes 0-0/382715271",
+          "bytesMatch": true
+        }
+      ],
+      "strictRange206": true
+    },
+    "modelscope_local_verification": {
+      "kind": "modelscope",
+      "url": "https://modelscope.cn/models/ai2apps/desktop-releases/resolve/d8a08533da31b4fda250e8097f7e0a92bda95690/ai2apps-runtime-omlx-1.8.7-production.ai2service",
+      "size": 382715271,
+      "sha256": "dc92a440fe28bbfe42b31b80f1d4499c2eebea4d78971d4a42b6f61adbf4d51b",
+      "ranges": [
+        {
+          "status": 200,
+          "contentRange": "bytes 0-1023/382715271",
+          "bytesMatch": true
+        },
+        {
+          "status": 200,
+          "contentRange": "bytes 191357635-191358658/382715271",
+          "bytesMatch": true
+        },
+        {
+          "status": 200,
+          "contentRange": "bytes 382714247-382715270/382715271",
+          "bytesMatch": true
+        },
+        {
+          "status": 200,
+          "contentRange": "bytes 0-0/382715271",
+          "bytesMatch": true
+        }
+      ],
+      "strictRange206": false
+    },
+    "activation_status": "Cloud remains the active verified source. GitHub passed Cloud preflight and awaits a different reviewer per runbook 9.3. ModelScope bytes match but its Range responses are HTTP 200 with correct Content-Range; not registered because current runbook 9.2 requires HTTP 206."
+  },
+  "model_package": "SoL-Refiner 0.1.0 not yet published; full dual checkpoint download in progress",
+  "runtime187_gpu_smoke": {
+    "kind": "video_upscaling",
+    "frames": 9,
+    "fps": "25",
+    "width": 256,
+    "height": 256,
+    "scale": 2,
+    "audio_preserved": false,
+    "window_frames": 41,
+    "overlap_frames": 17,
+    "blend_frames": 2,
+    "elapsed_seconds": 6.131057041930035,
+    "decoded_frames": 9,
+    "python": "3.11.10 (main, Oct 16 2024, 08:56:36) [Clang 18.1.8 ]",
+    "runtime": "/tmp/ai2apps-sol-runtime187-install-smoke/platform/packages/inference-runtimes/ai2apps.runtime.omlx/1.8.7/dc92a440fe28bbfe42b31b80f1d4499c2eebea4d78971d4a42b6f61adbf4d51b/Contents/Resources/Runtime"
+  }
+}

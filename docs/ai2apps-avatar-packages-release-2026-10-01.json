@@ -1,0 +1,212 @@
+{
+  "sourceCommit": "fa377dcb62875d5c82fc8177afd4277cd2357db9",
+  "sourceState": "plus task working-tree changes",
+  "packages": [
+    {
+      "artifact": "/Users/avdpropang/sdk/omlx-moe-cache/packages/ai2apps-model-avtr1-mlx/dist/0.1.0/ai2apps-model-avtr1-mlx-0.1.0.ai2service",
+      "envelope": "/Users/avdpropang/sdk/omlx-moe-cache/packages/ai2apps-model-avtr1-mlx/dist/0.1.0/ai2apps-model-avtr1-mlx-0.1.0.ai2service.envelope.json",
+      "packageId": "ai2apps/model-avtr1-mlx",
+      "version": "0.1.0",
+      "sha256": "f19538e23806f9467eb9267b43250b31e8a3d450c17ce2ec2f38a92bacad3c8c",
+      "size": 85815,
+      "submissionId": "a012495c-6c71-42c1-ac9b-cf5b2091a516",
+      "repositoryVersion": 229,
+      "status": "published"
+    },
+    {
+      "artifact": "/Users/avdpropang/sdk/omlx-moe-cache/packages/ai2apps-model-echomimic-v3-mlx/dist/0.1.2/ai2apps-model-echomimic-v3-mlx-0.1.2.ai2service",
+      "envelope": "/Users/avdpropang/sdk/omlx-moe-cache/packages/ai2apps-model-echomimic-v3-mlx/dist/0.1.2/ai2apps-model-echomimic-v3-mlx-0.1.2.ai2service.envelope.json",
+      "packageId": "ai2apps/model-echomimic-v3-mlx",
+      "version": "0.1.2",
+      "sha256": "d6dc3a0640be29796951d3ca24cc3406802daa163a35108f6907502ebe63aae9",
+      "size": 104492,
+      "submissionId": "5441e376-a879-45e3-907c-1a73603945a5",
+      "repositoryVersion": 230,
+      "status": "published"
+    },
+    {
+      "artifact": "/Users/avdpropang/sdk/omlx-moe-cache/packages/ai2apps-avatar-studio-suite/dist/0.1.2/ai2apps-avatar-studio-suite-0.1.2.ai2app",
+      "envelope": "/Users/avdpropang/sdk/omlx-moe-cache/packages/ai2apps-avatar-studio-suite/dist/0.1.2/ai2apps-avatar-studio-suite-0.1.2.ai2app.envelope.json",
+      "packageId": "ai2apps/avatar-studio-suite",
+      "version": "0.1.2",
+      "sha256": "e4eedfa2daaeb6a02e947f136cfc4153a3394a9824935f682a759fcff9721a9f",
+      "size": 12043,
+      "submissionId": "ef5d0111-ba5f-44be-ab04-86edae6148d7",
+      "repositoryVersion": 232,
+      "status": "published"
+    }
+  ],
+  "avtrDistribution": {
+    "indexVersion": 96,
+    "distributionId": "dist_ai2apps_avtr1_mlx_57bfb656_v1",
+    "manifestDigest": "sha256:1893a36b5f2440ba19a91a37d86c51e1afdd6ff192606093c01d130f76799b4c",
+    "recordCount": 66,
+    "publisherId": "229d6350-cd0e-408a-9905-41367385ae5c",
+    "publisherKeyId": "8afc0a51-f7f8-4fef-b3d0-8d30abe2a5bc",
+    "envelopeExactJson": true
+  },
+  "avtrManagedService": {
+    "runtime": {
+      "service": "ai2apps.runtime.omlx",
+      "version": "1.8.5",
+      "digest": "sha256:56997274091b7c7df8d7823c26767c7111eb53539ff400e361220b0f0fec7c97",
+      "root": "/private/tmp/ai2apps-avtr1-release/installed-platform/platform/packages/inference-runtimes/ai2apps.runtime.omlx/1.8.5/56997274091b7c7df8d7823c26767c7111eb53539ff400e361220b0f0fec7c97",
+      "python": "/private/tmp/ai2apps-avtr1-release/installed-platform/platform/packages/inference-runtimes/ai2apps.runtime.omlx/1.8.5/56997274091b7c7df8d7823c26767c7111eb53539ff400e361220b0f0fec7c97/Contents/Resources/Runtime/Python/cpython-3.11/bin/python3.11"
+    },
+    "model": {
+      "service": "ai2apps.model.avtr1-mlx",
+      "version": "0.1.0",
+      "digest": "sha256:f19538e23806f9467eb9267b43250b31e8a3d450c17ce2ec2f38a92bacad3c8c",
+      "status": "running",
+      "endpoint": "http://127.0.0.1:51135"
+    },
+    "locks": [
+      {
+        "dependency": "ai2apps.runtime.omlx",
+        "version": "1.8.5",
+        "digest": "sha256:56997274091b7c7df8d7823c26767c7111eb53539ff400e361220b0f0fec7c97"
+      }
+    ],
+    "checkpoints": [
+      {
+        "distribution": "dist_ai2apps_avtr1_mlx_57bfb656_v1",
+        "snapshot": "/private/tmp/ai2apps-avtr1-release/installed-hub/models--Avdpro--AVTR-1-MLX/distributions/c3278655c9335d1ee9cbd934202f00ca181d9e884a16928cc770d0eccf03d9d3"
+      }
+    ],
+    "process_audio": [
+      {
+        "model": "AVTR-1-MLX",
+        "audio": "/tmp/avtr-worker-validation/speech.wav",
+        "profile": "fast",
+        "result": {
+          "model": "AVTR-1-MLX",
+          "status": 200,
+          "bytes": 76834,
+          "seconds": 20.453211166895926,
+          "output": "/tmp/ai2apps-avtr1-release/installed-avtr.mp4"
+        }
+      }
+    ]
+  },
+  "avtrLifecycle": {
+    "stop": true,
+    "restart": true,
+    "uninstall": true,
+    "result": {
+      "checkpointCleanup": {
+        "requested": false
+      }
+    }
+  },
+  "echoManagedService": {
+    "runtime": {
+      "service": "ai2apps.runtime.omlx",
+      "version": "1.8.5",
+      "digest": "sha256:56997274091b7c7df8d7823c26767c7111eb53539ff400e361220b0f0fec7c97",
+      "root": "/private/tmp/ai2apps-echo012-release/installed-platform/platform/packages/inference-runtimes/ai2apps.runtime.omlx/1.8.5/56997274091b7c7df8d7823c26767c7111eb53539ff400e361220b0f0fec7c97",
+      "python": "/private/tmp/ai2apps-echo012-release/installed-platform/platform/packages/inference-runtimes/ai2apps.runtime.omlx/1.8.5/56997274091b7c7df8d7823c26767c7111eb53539ff400e361220b0f0fec7c97/Contents/Resources/Runtime/Python/cpython-3.11/bin/python3.11"
+    },
+    "model": {
+      "service": "ai2apps.model.echomimic-v3-mlx",
+      "version": "0.1.2",
+      "digest": "sha256:d6dc3a0640be29796951d3ca24cc3406802daa163a35108f6907502ebe63aae9",
+      "status": "running",
+      "endpoint": "http://127.0.0.1:51953"
+    },
+    "locks": [
+      {
+        "dependency": "ai2apps.runtime.omlx",
+        "version": "1.8.5",
+        "digest": "sha256:56997274091b7c7df8d7823c26767c7111eb53539ff400e361220b0f0fec7c97"
+      }
+    ],
+    "checkpoints": [
+      {
+        "distribution": "dist_ai2apps_echomimic_v3_mlx_c04fb474_v1",
+        "snapshot": "/private/tmp/ai2apps-echo012-release/installed-hub/models--Avdpro--EchoMimicV3-MLX/distributions/05c15d36227b497dec6a70eba2e59344108c3d1204f741396e54cf0d70eeb930"
+      }
+    ],
+    "process_audio": [
+      {
+        "model": "Avdpro/EchoMimicV3-MLX",
+        "audio": "/tmp/avatar-all-model-validation/echo.wav",
+        "profile": "fast",
+        "result": {
+          "model": "Avdpro/EchoMimicV3-MLX",
+          "status": 200,
+          "bytes": 132062,
+          "seconds": 173.17329087504186,
+          "output": "/tmp/ai2apps-echo012-release/installed-echo.mp4"
+        }
+      }
+    ]
+  },
+  "echoLifecycle": {
+    "stop": true,
+    "restart": true,
+    "uninstall": true,
+    "result": {
+      "checkpointCleanup": {
+        "requested": false
+      }
+    }
+  },
+  "supersededPackages": [
+    {
+      "artifact": "/Users/avdpropang/sdk/omlx-moe-cache/packages/ai2apps-avatar-studio-suite/dist/0.1.1/ai2apps-avatar-studio-suite-0.1.1.ai2app",
+      "envelope": "/Users/avdpropang/sdk/omlx-moe-cache/packages/ai2apps-avatar-studio-suite/dist/0.1.1/ai2apps-avatar-studio-suite-0.1.1.ai2app.envelope.json",
+      "packageId": "ai2apps/avatar-studio-suite",
+      "version": "0.1.1",
+      "sha256": "ec296887e3562c3a9ce8d0bb67a2794c77e53d7c0a3857f4f50ba0e6f6325f70",
+      "size": 12043,
+      "submissionId": "644d457d-ebcc-46d3-8661-3dacbcf8e769",
+      "repositoryVersion": 231,
+      "status": "published",
+      "reason": "minimum AI2Apps contract incorrectly required 0.1.1; replaced by 0.1.2"
+    }
+  ],
+  "anonymousPublicVerification": [
+    {
+      "package": "model-avtr1-mlx",
+      "version": "0.1.0",
+      "sha256": "f19538e23806f9467eb9267b43250b31e8a3d450c17ce2ec2f38a92bacad3c8c",
+      "repositoryVersion": 232,
+      "exactBytes": true,
+      "modelInstall": {
+        "models": [
+          {
+            "id": "ai2apps.model.avtr1-mlx/default",
+            "label": "AVTR-1 MLX",
+            "recommended": true
+          }
+        ],
+        "serviceKey": "ai2apps.model.avtr1-mlx"
+      }
+    },
+    {
+      "package": "model-echomimic-v3-mlx",
+      "version": "0.1.2",
+      "sha256": "d6dc3a0640be29796951d3ca24cc3406802daa163a35108f6907502ebe63aae9",
+      "repositoryVersion": 232,
+      "exactBytes": true,
+      "modelInstall": {
+        "models": [
+          {
+            "id": "ai2apps.model.echomimic-v3-mlx/default",
+            "label": "EchoMimic V3 MLX",
+            "recommended": true
+          }
+        ],
+        "serviceKey": "ai2apps.model.echomimic-v3-mlx"
+      }
+    },
+    {
+      "package": "avatar-studio-suite",
+      "version": "0.1.2",
+      "sha256": "e4eedfa2daaeb6a02e947f136cfc4153a3394a9824935f682a759fcff9721a9f",
+      "repositoryVersion": 232,
+      "exactBytes": true,
+      "modelInstall": null
+    }
+  ]
+}

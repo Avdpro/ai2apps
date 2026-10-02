@@ -37,3 +37,4 @@
 .studio-mini-favorite:focus-visible{outline:2px solid #78716c;border-radius:5px}
 .vs-mini-app-card.planned{position:relative}
 .vs-mini-app-card.planned::after{content:'−';position:absolute;right:9px;color:#78716c;font-size:15px}
+.vs-composer-dynamic-mask{position:absolute!important;width:1px!important;height:1px!important;opacity:0!important;pointer-events:none!important}

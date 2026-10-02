@@ -23,15 +23,18 @@ def test_runtime_manifests_are_synchronized_for_video():
         service["version"]
         == package["package"]["version"]
         == descriptor["version"]
-        == "1.8.5"
+        == "1.8.8"
     )
     for capability in (
         "video-generation",
+        "video-segmentation",
+        "video-upscaling",
         "video-codecs",
         "audio-codecs",
         "voxcpm2",
         "indextts25",
         "z-image",
+        "image-upscaling",
     ):
         assert capability in service["capabilities"]
         assert capability in descriptor["capabilities"]

@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {"id": "ai2apps/model-sam21-mlx", "type": "service", "version": "0.1.0", "displayName": "SAM 2.1 Video Cutout MLX", "description": "Prompted person and object mask tracking for video on Apple Silicon."},
+  "compatibility": {"ai2apps": ">=0.1.0 <2.0.0", "platforms": ["darwin"], "architectures": ["arm64"], "minimumOsVersion": "26.2"},
+  "entrypoints": [{"name": "model-worker", "kind": "service", "path": "service.yaml"}],
+  "permissions": [
+    {"capability": "model-weights.huggingface-cache.read", "reason": "Read the pinned SAM 2.1 Small MLX checkpoint.", "required": true},
+    {"capability": "accelerator.metal", "reason": "Run video segmentation with MLX on Apple GPU.", "required": true}
+  ],
+  "dependencies": [{"packageId": "ai2apps/runtime-omlx", "version": ">=1.8.6 <2.0.0", "optional": false}],
+  "files": [],
+  "sbom": {"format": "spdx-json-2.3", "path": "META/sbom.spdx.json"},
+  "discovery": {"kind": "model", "categories": ["video"], "tasks": ["video-segmentation", "object-tracking", "video-mask"]},
+  "modelProfile": {"sizeBytes": 184302864, "minimumMemoryBytes": 17179869184, "scores": {"speed": 4, "capability": 4}, "benchmark": {"label": "Standard Model Worker harness and mask-video encode/readback smoke; publisher rating", "device": "Apple Silicon"}},
+  "modelInstall": {
+    "serviceKey": "ai2apps.model.sam21-mlx",
+    "models": [
+      {
+        "id": "ai2apps.model.sam21-mlx/small",
+        "label": "SAM 2.1 Hiera Small MLX",
+        "recommended": true
+      }
+    ]
+  }
+}

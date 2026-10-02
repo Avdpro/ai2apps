@@ -32,7 +32,9 @@ CHECKPOINT_SCHEMA = "ai2apps.echomimic-mlx-checkpoint/v1"
 
 
 class EchoMimicAdapter:
-    def __init__(self, context: Any, *, pipeline_factory: Callable[..., Any] | None = None) -> None:
+    def __init__(
+        self, context: Any, *, pipeline_factory: Callable[..., Any] | None = None
+    ) -> None:
         self.context = context
         self._pipeline_factory = pipeline_factory or AvatarPipeline.from_pretrained
         self._checkpoint: Path | None = None
@@ -114,21 +116,56 @@ class EchoMimicAdapter:
     @staticmethod
     def _inputs(request: ModelWorkerRequest) -> tuple[Path, Path, str, dict[str, Any]]:
         payload = dict(request.payload)
+        for field in ("inputs", "parameters", "reference_parts"):
+            if isinstance(payload.get(field), str):
+                payload[field] = json.loads(payload[field])
         inputs = payload.get("inputs", {})
         parameters = payload.get("parameters", payload)
         if not isinstance(inputs, dict) or not isinstance(parameters, dict):
             raise ValueError("inputs and parameters must be objects")
-        image_name = inputs.get("reference_image", {}).get("part_name", "image") \
-            if isinstance(inputs.get("reference_image", {}), dict) else "image"
-        audio_name = inputs.get("driving_audio", {}).get("part_name", "audio") \
-            if isinstance(inputs.get("driving_audio", {}), dict) else "audio"
+        references = payload.get("reference_parts", [])
+        if references:
+            if (
+                not isinstance(references, list)
+                or len(references) != 1
+                or not isinstance(references[0], dict)
+                or references[0].get("kind") != "image"
+                or not isinstance(references[0].get("part_name"), str)
+                or "reference_image" in inputs
+            ):
+                raise ValueError("Expected exactly one unambiguous reference image")
+            inputs = {
+                **inputs,
+                "reference_image": {"part_name": references[0]["part_name"]},
+            }
+        image_name = (
+            inputs.get("reference_image", {}).get("part_name", "image")
+            if isinstance(inputs.get("reference_image", {}), dict)
+            else "image"
+        )
+        audio_name = (
+            inputs.get("driving_audio", {}).get("part_name", "audio")
+            if isinstance(inputs.get("driving_audio", {}), dict)
+            else "audio"
+        )
         image = request.part(str(image_name))
         audio = request.part(str(audio_name))
-        if image.media_type not in {"image/png", "image/jpeg", "image/webp", "application/octet-stream"}:
+        if image.media_type not in {
+            "image/png",
+            "image/jpeg",
+            "image/webp",
+            "application/octet-stream",
+        }:
             raise ValueError("reference_image must be PNG, JPEG, or WebP")
-        if audio.media_type not in {"audio/wav", "audio/x-wav", "application/octet-stream"}:
+        if audio.media_type not in {
+            "audio/wav",
+            "audio/x-wav",
+            "application/octet-stream",
+        }:
             raise ValueError("driving_audio must be a 16 kHz WAV")
-        prompt = str(inputs.get("prompt", payload.get("prompt", "A person is speaking."))).strip()
+        prompt = str(
+            inputs.get("prompt", payload.get("prompt", "A person is speaking."))
+        ).strip()
         return image.path, audio.path, prompt or "A person is speaking.", parameters
 
     async def invoke(self, request: ModelWorkerRequest):
@@ -158,14 +195,21 @@ class EchoMimicAdapter:
             else:
                 long_video = long_value
             if (width, height) not in {(512, 512), (768, 768)} or fps != 25:
-                raise ValueError("EchoMimic supports only 512/768 square video at 25 FPS")
+                raise ValueError(
+                    "EchoMimic supports only 512/768 square video at 25 FPS"
+                )
             if preset not in {"exact", "fast"} or not isinstance(long_video, bool):
                 raise ValueError("preset or long parameter is invalid")
             if long_video and preset == "fast":
                 raise ValueError("long video currently requires exact preset")
             generation = GenerationRequest(
-                str(image), str(audio), prompt=prompt, width=width, height=height,
-                fps=fps, seed=seed,
+                str(image),
+                str(audio),
+                prompt=prompt,
+                width=width,
+                height=height,
+                fps=fps,
+                seed=seed,
                 teacache_threshold=0.15 if preset == "fast" else 0.0,
                 teacache_skip_start_steps=2 if preset == "fast" else 5,
                 use_fused_norms=preset == "fast",
@@ -197,7 +241,8 @@ class EchoMimicAdapter:
 
         output = request.output_root / f"echomimic-{request.request_id}.mp4"
         checkpoint = (
-            self.context.data_root / "checkpoints"
+            self.context.data_root
+            / "checkpoints"
             / hashlib.sha256(request.request_id.encode()).hexdigest()[:24]
             / "denoise.safetensors"
         )

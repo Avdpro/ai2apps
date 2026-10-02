@@ -1,0 +1,124 @@
+{
+  "status": "published_and_anonymously_verified",
+  "recorded_at": "2026-10-01T18:57:33.458717+00:00",
+  "source_commit": "fa377dcb62875d5c82fc8177afd4277cd2357db9",
+  "source_note": "Candidate includes documented uncommitted implementation changes; signed digest is exact release identity.",
+  "package_id": "ai2apps/runtime-omlx",
+  "version": "1.8.8",
+  "publication": {
+    "submission_id": "83ba0f57-f26f-4cc7-acfe-0d00af3a24a4",
+    "submitted": {
+      "id": "83ba0f57-f26f-4cc7-acfe-0d00af3a24a4",
+      "status": "verified",
+      "publisherId": "229d6350-cd0e-408a-9905-41367385ae5c",
+      "publisherKeyId": "8afc0a51-f7f8-4fef-b3d0-8d30abe2a5bc",
+      "packageId": "ai2apps/runtime-omlx",
+      "packageVersion": "1.8.8",
+      "artifactSha256": "28aa0b680a3897388fde3177ecee1e2cfc35eea9feb44a6593b1523d1159c511",
+      "artifactSize": 381476889,
+      "createdAt": "2026-10-01T18:54:09.767Z",
+      "releaseStatus": "candidate",
+      "latestReview": null
+    },
+    "review_requested": {
+      "id": "83ba0f57-f26f-4cc7-acfe-0d00af3a24a4",
+      "status": "verified",
+      "publisherId": "229d6350-cd0e-408a-9905-41367385ae5c",
+      "publisherKeyId": "8afc0a51-f7f8-4fef-b3d0-8d30abe2a5bc",
+      "packageId": "ai2apps/runtime-omlx",
+      "packageVersion": "1.8.8",
+      "artifactSha256": "28aa0b680a3897388fde3177ecee1e2cfc35eea9feb44a6593b1523d1159c511",
+      "artifactSize": 381476889,
+      "createdAt": "2026-10-01T18:54:09.767Z",
+      "releaseStatus": "review_pending",
+      "latestReview": null
+    },
+    "reviewed": {
+      "id": "83ba0f57-f26f-4cc7-acfe-0d00af3a24a4",
+      "status": "verified",
+      "publisherId": "229d6350-cd0e-408a-9905-41367385ae5c",
+      "publisherKeyId": "8afc0a51-f7f8-4fef-b3d0-8d30abe2a5bc",
+      "packageId": "ai2apps/runtime-omlx",
+      "packageVersion": "1.8.8",
+      "artifactSha256": "28aa0b680a3897388fde3177ecee1e2cfc35eea9feb44a6593b1523d1159c511",
+      "artifactSize": 381476889,
+      "createdAt": "2026-10-01T18:54:09.767Z",
+      "releaseStatus": "approved",
+      "latestReview": {
+        "id": "3f1c6ded-31ee-4cf6-80a2-5af2984e7686",
+        "decision": "approved",
+        "note": "Runtime 1.8.8 adds native image_upscaling Worker route. Developer ID, Apple notarization, staple and Gatekeeper passed. Exact signed managed installation with SoL 0.1.2 verified 4K RGBA PNG, custom-prompt PNG, video/audio regression, cancellation, restart and uninstall. 174 related tests passed. Cloud-only initial distribution exception: external mirrors require immutable upload, Range validation and independent activation review; retain Cloud fallback and add verified mirrors separately. Desktop Host changes are not deployed by this Runtime publication.",
+        "createdAt": "2026-10-01T18:54:10.052Z"
+      }
+    },
+    "published": {
+      "submission": {
+        "id": "83ba0f57-f26f-4cc7-acfe-0d00af3a24a4",
+        "status": "verified",
+        "publisherId": "229d6350-cd0e-408a-9905-41367385ae5c",
+        "publisherKeyId": "8afc0a51-f7f8-4fef-b3d0-8d30abe2a5bc",
+        "packageId": "ai2apps/runtime-omlx",
+        "packageVersion": "1.8.8",
+        "artifactSha256": "28aa0b680a3897388fde3177ecee1e2cfc35eea9feb44a6593b1523d1159c511",
+        "artifactSize": 381476889,
+        "createdAt": "2026-10-01T18:54:09.767Z",
+        "releaseStatus": "published",
+        "latestReview": {
+          "id": "3f1c6ded-31ee-4cf6-80a2-5af2984e7686",
+          "decision": "approved",
+          "note": "Runtime 1.8.8 adds native image_upscaling Worker route. Developer ID, Apple notarization, staple and Gatekeeper passed. Exact signed managed installation with SoL 0.1.2 verified 4K RGBA PNG, custom-prompt PNG, video/audio regression, cancellation, restart and uninstall. 174 related tests passed. Cloud-only initial distribution exception: external mirrors require immutable upload, Range validation and independent activation review; retain Cloud fallback and add verified mirrors separately. Desktop Host changes are not deployed by this Runtime publication.",
+          "createdAt": "2026-10-01T18:54:10.052Z"
+        }
+      },
+      "repositoryMetadataVersion": 240
+    }
+  },
+  "anonymous_verification": {
+    "status": "published",
+    "version": "1.8.8",
+    "repositoryMetadataVersion": 240,
+    "sha256": "28aa0b680a3897388fde3177ecee1e2cfc35eea9feb44a6593b1523d1159c511",
+    "size": 381476889,
+    "sources": [
+      {
+        "id": "src_cloud_28aa0b680a3897388fde3177",
+        "url": "https://coder.ai2apps.com/v1/registry/packages/ai2apps/runtime-omlx/versions/1.8.8/artifact",
+        "kind": "cloud"
+      }
+    ]
+  },
+  "submission_status_check": {
+    "id": "83ba0f57-f26f-4cc7-acfe-0d00af3a24a4",
+    "status": "verified",
+    "publisherId": "229d6350-cd0e-408a-9905-41367385ae5c",
+    "publisherKeyId": "8afc0a51-f7f8-4fef-b3d0-8d30abe2a5bc",
+    "packageId": "ai2apps/runtime-omlx",
+    "packageVersion": "1.8.8",
+    "artifactSha256": "28aa0b680a3897388fde3177ecee1e2cfc35eea9feb44a6593b1523d1159c511",
+    "artifactSize": 381476889,
+    "createdAt": "2026-10-01T18:54:09.767Z",
+    "releaseStatus": "published",
+    "latestReview": {
+      "id": "3f1c6ded-31ee-4cf6-80a2-5af2984e7686",
+      "decision": "approved",
+      "note": "Runtime 1.8.8 adds native image_upscaling Worker route. Developer ID, Apple notarization, staple and Gatekeeper passed. Exact signed managed installation with SoL 0.1.2 verified 4K RGBA PNG, custom-prompt PNG, video/audio regression, cancellation, restart and uninstall. 174 related tests passed. Cloud-only initial distribution exception: external mirrors require immutable upload, Range validation and independent activation review; retain Cloud fallback and add verified mirrors separately. Desktop Host changes are not deployed by this Runtime publication.",
+      "createdAt": "2026-10-01T18:54:10.052Z"
+    }
+  },
+  "discover_verification": {
+    "instance": "dev",
+    "visible_version": "1.8.8",
+    "publisher": "AI2Apps",
+    "result": "Visible in refreshed Discover"
+  },
+  "validation_receipt": "ai2apps-sol-refiner-0.1.2-validation-2026-10-02.json",
+  "host_release": "Desktop Host capability discovery, resource planning and ACPF changes remain pending. Mini-App bridge/UI integration is separate.",
+  "weights": "Existing default/custom published Distributions reused; no new weights uploaded.",
+  "authorization": "Dev live session used through standard publication script only for these two versions. Grant closed after publication verification.",
+  "distribution_exception": {
+    "active": "Cloud only",
+    "reason": "External immutable mirrors have not completed upload, full byte/Range verification and independent source activation review for this version.",
+    "followup": "Upload identical 381476889-byte signed artifact to fixed GitHub/ModelScope revisions; verify complete SHA-256/pieces and all required ranges; register and request independent activation review. Retain verified Cloud source.",
+    "second_mac": "No separate Mac available in this session; native Gatekeeper and signed-install inference verified on current supported Mac only."
+  }
+}

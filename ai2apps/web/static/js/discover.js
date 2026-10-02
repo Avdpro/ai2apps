@@ -660,6 +660,16 @@
                 const cloud = this.cloudVersion(item);
                 return Boolean(local && cloud && compareVersions(cloud, local) > 0);
             },
+            showUpgrade(item) {
+                return this.hasUpgrade(item) && (this.tab === 'installed' || !this.isModel(item));
+            },
+            async upgrade(item) {
+                const target = this.catalogItem(item?.packageId);
+                if (!target || !this.hasUpgrade(item)) return;
+                // Upgrade the Package itself; existing checkpoints remain in place.
+                // Not every model Package declares the optional model-install plan.
+                return this.install(target, false, true);
+            },
             localVersionLabel(item) { return tr('discover.version.local', { version: this.localVersion(item) || '—' }); },
             cloudVersionLabel(item) { return tr('discover.version.cloud', { version: this.cloudVersion(item) || '—' }); },
             open(item) {
@@ -848,7 +858,7 @@
                 const item = this.installDialog?.item;
                 const approve = this.installDialog?.status === 'awaiting_review' || this.installDialog?.error?.code === 'audit_review_required';
                 this.installDialog = null;
-                if (item) await this.install(item, approve);
+                if (item) await this.install(item, approve, true);
             },
             requiredDependency() {
                 return this.installDialog?.error?.details?.dependency || null;

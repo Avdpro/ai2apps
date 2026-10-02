@@ -47,17 +47,21 @@ OPERATIONS = {
     "responses": "/v1/responses",
     "image_generation": "/v1/images/generations",
     "image_edit": "/v1/images/edits",
+    "image_upscaling": "/v1/images/upscalings",
     "audio_transcription": "/v1/audio/transcriptions",
     "audio_detailed_transcription": "/v1/audio/transcriptions/detailed",
     "audio_speech": "/v1/audio/speech",
     "audio_process": "/v1/audio/process",
     "audio_voice_training": "/v1/audio/voices/train",
     "video_generation": "/v1/videos/generations",
+    "video_segmentation": "/v1/videos/segmentations",
+    "video_upscaling": "/v1/videos/upscalings",
 }
 MAX_JSON_BYTES = 32 * 1024 * 1024
 MAX_MULTIPART_FILE_BYTES = 100 * 1024 * 1024
 MAX_MEDIA_INPUT_BYTES = 1024 * 1024 * 1024
 LONG_AUDIO_OPERATIONS = {"audio_transcription", "audio_detailed_transcription", "audio_process"}
+LONG_MEDIA_OPERATIONS = LONG_AUDIO_OPERATIONS | {"video_segmentation", "video_upscaling"}
 MAX_MULTIPART_FIELD_BYTES = 64 * 1024
 # Video reference models such as MiniMax H3 Ref2VA accept up to twelve
 # ordered media inputs.  Keep the transport limit aligned with the public
@@ -129,7 +133,7 @@ async def _multipart_payload(
     root: Path,
 ) -> tuple[dict[str, Any], dict[str, ModelWorkerPart], Path]:
     payload: dict[str, Any] = {}
-    request_file_limit = (MAX_MEDIA_INPUT_BYTES if operation in LONG_AUDIO_OPERATIONS else MAX_MULTIPART_FILE_BYTES)
+    request_file_limit = (MAX_MEDIA_INPUT_BYTES if operation in LONG_MEDIA_OPERATIONS else MAX_MULTIPART_FILE_BYTES)
     parts: dict[str, ModelWorkerPart] = {}
     try:
         async with request.form(

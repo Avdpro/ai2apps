@@ -43,6 +43,7 @@ HELPER_APP=${APP}/Contents/Library/LoginItems/AI2AppsHelper.app
 [[ -s ${HELPER_APP}/Contents/Resources/menubar-logo-ready.svg ]] || \
   fail "Helper is missing its update-ready menu bar SVG logo"
 RUNTIME_ROOT=${HELPER_APP}/Contents/Resources/AI2AppsLocal
+[[ -x ${RUNTIME_ROOT}/bin/ai2apps-person-mask ]] || fail "missing Apple Vision person-mask tool"
 SHELL_APP=${APP}/Contents/Applications/AI2Apps.app
 for name_key in CFBundleName CFBundleDisplayName; do
   [[ $(/usr/libexec/PlistBuddy -c "Print :${name_key}" "${SHELL_APP}/Contents/Info.plist") == AI2Apps ]] || \
@@ -233,6 +234,7 @@ else
     PYTHONHOME="${CPYTHON}" \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONNOUSERSITE=1 \
+    PYTHONSAFEPATH=1 \
     PYTHONPATH="${RUNTIME_ROOT}/app:${FRAMEWORK_SITE}" \
     PATH="${CPYTHON}/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
     "${CPYTHON}/bin/python3" -c \

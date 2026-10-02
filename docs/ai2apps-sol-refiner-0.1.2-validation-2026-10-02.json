@@ -1,0 +1,150 @@
+{
+  "date": "2026-10-02",
+  "status": "validated_signed_candidates_not_published",
+  "model": {
+    "package": "ai2apps/model-sol-refiner-mlx",
+    "version": "0.1.2",
+    "sha256": "c3b9a51f5f1fb57c9e135f86a4babb79d7a2280329687117c972ab8f55a3d7ee",
+    "bytes": 97083
+  },
+  "runtime": {
+    "artifact": "/Users/avdpropang/sdk/omlx-moe-cache/packages/ai2apps-runtime-omlx/dist/ai2apps-runtime-omlx-1.8.8-production.ai2service",
+    "packageId": "ai2apps/runtime-omlx",
+    "version": "1.8.8",
+    "sha256": "28aa0b680a3897388fde3177ecee1e2cfc35eea9feb44a6593b1523d1159c511",
+    "size": 381476889,
+    "envelope": "/Users/avdpropang/sdk/omlx-moe-cache/packages/ai2apps-runtime-omlx/dist/ai2apps-runtime-omlx-1.8.8-production.ai2service.envelope.json"
+  },
+  "notarization": {
+    "message": "Processing complete",
+    "id": "d64b0161-10e5-477f-bc36-0dd6b93aa502",
+    "status": "Accepted"
+  },
+  "gatekeeper": "/Users/avdpropang/sdk/omlx-moe-cache/ai2apps/.build/sol-refiner/release/AI2Apps-oMLX-Runtime-1.8.8.dmg: accepted\nsource=Notarized Developer ID",
+  "tests": {
+    "prior_suite_passed": 173,
+    "image_suite_including_new_host_test_passed": 9,
+    "unique_passed": 174,
+    "new_host_test": "Actual EXIF-oriented dimensions replace client hints before memory admission"
+  },
+  "image_probe": {
+    "kind": "image_upscaling",
+    "width": 1026,
+    "height": 682,
+    "scale": 2,
+    "output_format": "png",
+    "color_space": "sRGB",
+    "alpha_preserved": true,
+    "seconds": 4.493505666963756,
+    "mlx_peak_bytes": 1560858016
+  },
+  "image_4k_probe": {
+    "kind": "image_upscaling",
+    "width": 3840,
+    "height": 2160,
+    "scale": 2,
+    "output_format": "png",
+    "color_space": "sRGB",
+    "alpha_preserved": true,
+    "seconds": 12.828979791840538,
+    "mlx_peak_bytes": 3209624030
+  },
+  "signed_installation": {
+    "runtime": {
+      "service": "ai2apps.runtime.omlx",
+      "version": "1.8.8",
+      "digest": "sha256:28aa0b680a3897388fde3177ecee1e2cfc35eea9feb44a6593b1523d1159c511",
+      "root": "/private/tmp/ai2apps-sol-model010-smoke/platform-012/platform/packages/inference-runtimes/ai2apps.runtime.omlx/1.8.8/28aa0b680a3897388fde3177ecee1e2cfc35eea9feb44a6593b1523d1159c511",
+      "python": "/private/tmp/ai2apps-sol-model010-smoke/platform-012/platform/packages/inference-runtimes/ai2apps.runtime.omlx/1.8.8/28aa0b680a3897388fde3177ecee1e2cfc35eea9feb44a6593b1523d1159c511/Contents/Resources/Runtime/Python/cpython-3.11/bin/python3.11"
+    },
+    "model": {
+      "service": "ai2apps.model.sol-refiner-mlx",
+      "version": "0.1.2",
+      "digest": "sha256:c3b9a51f5f1fb57c9e135f86a4babb79d7a2280329687117c972ab8f55a3d7ee",
+      "status": "running",
+      "endpoint": "http://127.0.0.1:56054"
+    },
+    "locks": [
+      {
+        "dependency": "ai2apps.runtime.omlx",
+        "version": "1.8.8",
+        "digest": "sha256:28aa0b680a3897388fde3177ecee1e2cfc35eea9feb44a6593b1523d1159c511"
+      }
+    ],
+    "checkpoints": [
+      {
+        "model": "ai2apps.model.sol-refiner-mlx/ltx23-custom-prompt",
+        "distribution": "dist_ai2apps_sol_refiner_mlx_custom_v1",
+        "snapshot": "/private/tmp/ai2apps-sol-model010-smoke/hub/models--Avdpro--SoL-Refiner-LTX-2.3-MLX-BF16/distributions/706bff8606790f2bd821a91c467999605319996486bb4c5b4577aa6d2cfb8bc0",
+        "developer_fixture": true,
+        "installer_without_consent": "blocked_before_and_after_cache",
+        "consent_record_created": false
+      },
+      {
+        "model": "ai2apps.model.sol-refiner-mlx/ltx23-one-step",
+        "distribution": "dist_ai2apps_sol_refiner_mlx_default_v1",
+        "snapshot": "/private/tmp/ai2apps-sol-model010-smoke/hub/models--Avdpro--SoL-Refiner-LTX-2.3-MLX-BF16/distributions/8eb7105dc24f31271993cca30bdb62a62a8c5bc96ed064d13ae9e62e0e82c79a",
+        "developer_fixture": true,
+        "installer_without_consent": "blocked_before_and_after_cache",
+        "consent_record_created": false
+      }
+    ],
+    "media_upscaling": [
+      {
+        "model": "ai2apps.model.sol-refiner-mlx/ltx23-one-step",
+        "audio": "/Users/avdpropang/sdk/omlx-moe-cache/ai2apps/.build/sol-refiner/image-4k-input.png",
+        "profile": "image",
+        "result": {
+          "http_status": 200,
+          "width": 3840,
+          "height": 2160,
+          "alpha_exact": true,
+          "seconds": 27.681074582971632,
+          "output": "/Users/avdpropang/sdk/omlx-moe-cache/ai2apps/.build/sol-refiner/signed-012-4k-output.png"
+        }
+      },
+      {
+        "model": "ai2apps.model.sol-refiner-mlx/ltx23-custom-prompt",
+        "audio": "/Users/avdpropang/sdk/omlx-moe-cache/ai2apps/.build/sol-refiner/image-probe-input.png",
+        "profile": "image",
+        "result": {
+          "http_status": 200,
+          "width": 1026,
+          "height": 682,
+          "alpha_exact": true,
+          "seconds": 5.7530511249788105,
+          "output": "/Users/avdpropang/sdk/omlx-moe-cache/ai2apps/.build/sol-refiner/signed-012-custom-output.png"
+        }
+      },
+      {
+        "model": "ai2apps.model.sol-refiner-mlx/ltx23-one-step",
+        "audio": "/Users/avdpropang/sdk/omlx-moe-cache/ai2apps/.build/sol-refiner/signed-smoke-input-audio.mp4",
+        "profile": "video",
+        "result": {
+          "http_status": 200,
+          "frames": 9,
+          "width": 256,
+          "height": 256,
+          "audio_present": true,
+          "seconds": 1.7036847500130534,
+          "output": "/Users/avdpropang/sdk/omlx-moe-cache/ai2apps/.build/sol-refiner/signed-012-video-output.mp4"
+        }
+      }
+    ]
+  },
+  "lifecycle": {
+    "restart_health": 200,
+    "cancel_status": 499,
+    "cancel_seconds": 1.0507934580091387,
+    "stopped": true,
+    "started_again": true,
+    "uninstalled": true
+  },
+  "weights": "Unchanged published distributions; isolated developer fixtures; no installer consent fabricated",
+  "limitations": [
+    "Desktop Host update and Mini-App bridge/UI integration still pending",
+    "Timings depend on concurrent load; MLX peak is not process RSS",
+    "Public Registry publication pending authenticated session; no Cookie accessed for these versions",
+    "MS complete weight readback remains deferred from previous publication; no new weights uploaded"
+  ]
+}

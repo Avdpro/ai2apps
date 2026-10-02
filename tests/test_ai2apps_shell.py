@@ -1591,7 +1591,8 @@ def test_discover_compares_local_and_cloud_versions_for_upgrades():
     assert "compareVersions(cloud, local) > 0" in script
     assert "localVersionLabel(item)" in source
     assert "cloudVersionLabel(item)" in source
-    assert "isInstalled(item.packageId)&&hasUpgrade(item)" in source
+    assert 'x-show="showUpgrade(item)"' in source
+    assert "showUpgrade(item)" in script
     assert "discover.action.upgrade" in source
     assert "isInstalled(item.packageId)&&!hasUpgrade(item)" in source
     assert "isModelReady(item)" in source

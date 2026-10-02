@@ -255,7 +255,7 @@ def test_imagine_studio_uses_cloud_and_local_image_models_with_capability_aware_
     assert "window.confirm" in script
     assert "上传到 AI2Apps Cloud 图像模型处理" in script
     assert "每次发送图片前都会请求确认" in script
-    assert "localDisclosure" in script and "usingLocalModel?'localDisclosure':'cloudDisclosure'" in template
+    assert "localDisclosure" in script and "(isUpscaleMode||usingLocalModel)?'localDisclosure':'cloudDisclosure'" in template
     assert "selectedModel.source === 'cloud'" in script
     assert "configureLocalModel" in script and "tr(configuringLocal?'configuringLocal':'configureLocal')" in template
     assert '<option value="__install_more__"' in template
@@ -268,7 +268,7 @@ def test_imagine_studio_uses_cloud_and_local_image_models_with_capability_aware_
     assert "window.AI2AppsCapabilities.ensure" in script
     assert "completionPolicy: 'configure_only'" in script
     assert "globalThis.crypto?.randomUUID?.()" in script
-    assert "capability: this.requiredOperation === 'image_edit' ? 'image.edit' : 'image.generation'" in script
+    assert "capability: this.isUpscaleMode ? 'image.upscaling' : this.requiredOperation === 'image_edit' ? 'image.edit' : 'image.generation'" in script
     assert "requirements: { operations: [this.requiredOperation]" in script
     assert "capability_provisioning.js" in template
     assert "加入 Gallery" in script and "tr('addGallery')" in template
@@ -409,6 +409,47 @@ def test_imagine_studio_durable_run_step_artifact_and_draft_api(tmp_path, monkey
     client = TestClient(app)
     headers = {"X-AI2Apps-App-Instance": app_instance_id}
 
+    calls = []
+    class UpscaleInvocation:
+        def model(self, model_id):
+            return SimpleNamespace(capabilities=["image_upscaling"] if model_id == "sol" else [], display_name="SoL")
+
+        async def invoke_background_to_file(self, model_id, operation, payload, output, **kwargs):
+            assert operation == "image_upscaling"
+            assert payload == {"parameters": {"scale": 2, "seed": 7}}
+            assert kwargs["context"].app_instance_id == app_instance_id
+            assert not kwargs["cancel_requested"]()
+            with Image.open(kwargs["files"]["image"][1]) as source:
+                assert source.size == (13, 9)
+                source.resize((26, 18)).save(output)
+            calls.append(model_id)
+
+    runtime.model_invocations = UpscaleInvocation()
+    upscale = client.post("/imagine-studio/runs", headers=headers, json={
+        "miniAppId": "ai2apps.imagine.upscale-image", "title": "Upscale", "input": {},
+    }).json()
+    source = BytesIO()
+    Image.new("RGBA", (13, 9), (12, 34, 56, 78)).save(source, format="PNG")
+    upscale_url = f"/imagine-studio/runs/{upscale['id']}/upscale"
+    uploaded = {"image": ("source.png", source.getvalue(), "image/png")}
+    assert client.post(upscale_url, headers=headers, files=uploaded, data={"model_id": "wrong"}).status_code == 400
+    assert client.post(upscale_url, headers=headers, files=uploaded, data={"model_id": "sol", "seed": -1}).status_code == 422
+    assert client.post(upscale_url, headers=headers, files=uploaded, data={"model_id": "sol", "seed": 7}).status_code == 202
+    assert calls == ["sol"]
+    assert client.post(upscale_url, headers=headers, files=uploaded, data={"model_id": "sol"}).status_code == 409
+    completed = client.get("/imagine-studio/runs", headers=headers).json()["items"][0]
+    assert completed["status"] == "succeeded"
+    assert completed["artifacts"][0]["metadata"]["size"] == "26x18"
+    client.delete(f"/imagine-studio/runs/{upscale['id']}", headers=headers)
+    interrupted = client.post("/imagine-studio/runs", headers=headers, json={
+        "miniAppId": "ai2apps.imagine.upscale-image", "title": "Interrupted", "input": {},
+    }).json()
+    client.patch(f"/imagine-studio/runs/{interrupted['id']}", headers=headers, json={"status": "running", "progress": 0})
+    recovered = client.get("/imagine-studio/runs", headers=headers).json()["items"][0]
+    assert recovered["status"] == "failed"
+    assert recovered["error"]["code"] == "host_restarted"
+    client.delete(f"/imagine-studio/runs/{interrupted['id']}", headers=headers)
+
     mini_apps = client.get("/imagine-studio/mini-apps").json()["items"]
     assert [item["id"] for item in mini_apps] == [
         "ai2apps.imagine.text-to-image",
@@ -422,6 +463,7 @@ def test_imagine_studio_durable_run_step_artifact_and_draft_api(tmp_path, monkey
         "ai2apps.imagine.portrait",
         "ai2apps.imagine.extract-items",
         "ai2apps.imagine.try-on",
+        "ai2apps.imagine.upscale-image",
     ]
     draft_url = "/imagine-studio/drafts/ai2apps.imagine.text-to-image"
     portrait_draft_url = "/imagine-studio/drafts/ai2apps.imagine.portrait"

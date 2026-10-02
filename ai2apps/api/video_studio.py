@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import json
 import os
 import shutil
+import subprocess
+import sys
 import uuid
 from contextlib import suppress
 from pathlib import Path
@@ -32,6 +35,7 @@ from ai2apps.config import DEFAULT_COMPOSER_IMPORT_LIMIT_BYTES
 from ai2apps.gallery import GalleryError, GalleryRepository
 from ai2apps.identity import RequestPrincipal
 from ai2apps.model_identity import build_model_identity
+from ai2apps.model_invocation import ModelInvocationContext
 from ai2apps.model_providers import list_package_models
 from ai2apps.studio import (
     StudioMiniAppRegistry,
@@ -60,12 +64,14 @@ APP_ID = "ai2apps.video-studio"
 STUDIO_ID = APP_ID
 EXTRACT_AUDIO_ID = "ai2apps.video.extract-audio"
 COMPOSER_ID = "ai2apps.video.composer"
+UPSCALING_ID = "ai2apps.video.upscaling"
 MINI_APPS = (
     {"schema": "ai2apps.mini-app/v1", "id": "ai2apps.video.text-to-video", "version": "1.0.0", "kind": "clip", "mode": "t2v", "icon": "type", "entry": {"kind": "host-adapter", "adapter": "text-to-video"}, "ui": {"minimum_width": 520, "drop_targets": [{"id": "prompt", "accepts": ["text"]}]}, "placements": [{"studio": STUDIO_ID, "category": "create", "order": 10}], "inputs": [{"id": "prompt", "kind": "text", "required": True}], "outputs": [{"id": "video", "kind": "video", "final": True}], "executor": {"pipelines": ["ai2apps.pipeline.video-generation"]}, "requirements": {"capabilities": ["video.generation"]}},
     {"schema": "ai2apps.mini-app/v1", "id": "ai2apps.video.image-to-video", "version": "1.0.0", "kind": "clip", "mode": "i2v", "icon": "image", "entry": {"kind": "host-adapter", "adapter": "image-to-video"}, "ui": {"minimum_width": 520, "drop_targets": [{"id": "first_frame", "accepts": ["image"]}]}, "placements": [{"studio": STUDIO_ID, "category": "create", "order": 20}], "inputs": [{"id": "first_frame", "kind": "image", "required": True}], "outputs": [{"id": "video", "kind": "video", "final": True}], "executor": {"pipelines": ["ai2apps.pipeline.video-generation"]}, "requirements": {"capabilities": ["video.generation"]}},
     {"schema": "ai2apps.mini-app/v1", "id": "ai2apps.video.reference-to-video", "version": "1.0.0", "kind": "clip", "mode": "r2v", "icon": "scan-search", "entry": {"kind": "host-adapter", "adapter": "reference-to-video"}, "ui": {"minimum_width": 520, "drop_targets": [{"id": "references", "accepts": ["image", "video", "audio"]}]}, "placements": [{"studio": STUDIO_ID, "category": "create", "order": 30}], "inputs": [{"id": "references", "kind": "asset-list", "required": True}], "outputs": [{"id": "video", "kind": "video", "final": True}], "executor": {"pipelines": ["ai2apps.pipeline.video-generation"]}, "requirements": {"capabilities": ["video.reference_generation"]}},
     {"schema": "ai2apps.mini-app/v1", "id": COMPOSER_ID, "version": "0.2.0", "kind": "project", "mode": "composer", "icon": "panels-top-left", "entry": {"kind": "host-adapter", "adapter": "video-composer"}, "ui": {"minimum_width": 760, "drop_targets": [{"id": "timeline", "accepts": ["image", "video", "audio"]}]}, "placements": [{"studio": STUDIO_ID, "category": "edit", "order": 35}], "inputs": [{"id": "sources", "kind": "asset-list", "required": False}], "outputs": [{"id": "video", "kind": "video", "media_types": ["video/mp4"], "final": True}], "executor": {"pipelines": ["ai2apps.pipeline.video-composition"]}, "requirements": {"capabilities": ["media.video.compose"]}},
     {"schema": "ai2apps.mini-app/v1", "id": EXTRACT_AUDIO_ID, "version": "1.0.0", "kind": "clip", "mode": "x2a", "icon": "audio-lines", "entry": {"kind": "host-adapter", "adapter": "extract-audio"}, "ui": {"minimum_width": 520, "drop_targets": [{"id": "video", "accepts": ["video"]}]}, "placements": [{"studio": STUDIO_ID, "category": "edit", "order": 40}], "inputs": [{"id": "video", "kind": "video", "required": True}], "outputs": [{"id": "audio", "kind": "audio", "media_types": ["audio/wav"], "final": True}], "executor": {"pipelines": ["ai2apps.pipeline.media-extraction"]}, "requirements": {"capabilities": ["media.audio_decode"]}},
+    {"schema": "ai2apps.mini-app/v1", "id": UPSCALING_ID, "version": "1.0.0", "kind": "clip", "mode": "upscale", "icon": "scan-search", "entry": {"kind": "host-adapter", "adapter": "video-upscaling"}, "ui": {"minimum_width": 520, "drop_targets": [{"id": "video", "accepts": ["video"]}]}, "placements": [{"studio": STUDIO_ID, "category": "edit", "order": 45}], "inputs": [{"id": "video", "kind": "video", "required": True}], "outputs": [{"id": "video", "kind": "video", "media_types": ["video/mp4"], "final": True}], "executor": {"operation": "video_upscaling"}, "requirements": {"capabilities": ["video.upscaling"]}},
 )
 MINI_APP_BY_ID = {item["id"]: item for item in MINI_APPS}
 
@@ -127,6 +133,20 @@ class ComposerRenderRequest(BaseModel):
 
     project: ComposerProject
     output_name: str | None = Field(default=None, alias="outputName", max_length=255)
+
+
+class ComposerPersonMaskRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    source_id: str = Field(alias="sourceId", min_length=7, max_length=100)
+    model_id: str = Field(
+        default="apple.vision/person-segmentation", alias="modelId", max_length=255
+    )
+    prompt_frame: int = Field(default=0, alias="promptFrame", ge=0, le=100_000)
+    prompt_x: float | None = Field(default=None, alias="promptX", ge=0, le=16384)
+    prompt_y: float | None = Field(default=None, alias="promptY", ge=0, le=16384)
+    threshold: float = Field(default=0.5, ge=0.05, le=0.95)
+    feather: float = Field(default=1.5, ge=0, le=8)
 
 
 class ComposerProjectDocument(BaseModel):
@@ -254,6 +274,53 @@ def create_video_studio_router(
             raise HTTPException(status_code=503, detail="Composer media storage is not ready")
         return ComposerSourceStore(paths.artifacts_path / "video-composer-sources")
 
+    def apple_person_mask_tool() -> Path | None:
+        configured = os.environ.get("AI2APPS_NATIVE_TOOLS_ROOT", "").strip()
+        candidates = []
+        if configured:
+            candidates.append(Path(configured) / "ai2apps-person-mask")
+        executable = Path(sys.executable).resolve()
+        candidates.extend(
+            parent / "bin" / "ai2apps-person-mask" for parent in executable.parents
+        )
+        located = shutil.which("ai2apps-person-mask")
+        if located:
+            candidates.append(Path(located))
+        return next(
+            (candidate for candidate in candidates if candidate.is_file() and os.access(candidate, os.X_OK)),
+            None,
+        )
+
+    def composer_mask_models() -> list[dict[str, Any]]:
+        items = [
+            {
+                "id": "apple.vision/person-segmentation",
+                "displayName": "Apple Vision · Person Segmentation",
+                "provider": "apple-system",
+                "ready": apple_person_mask_tool() is not None,
+                "builtIn": True,
+                "promptTypes": [],
+                "softMasks": True,
+            }
+        ]
+        for model in list_package_models(runtime_provider()):
+            capabilities = model.video_segmentation_capabilities or {}
+            if model.model_type != "video_segmentation" or "video_segmentation" not in model.capabilities:
+                continue
+            items.append(
+                {
+                    "id": model.id,
+                    "displayName": model.display_name,
+                    "provider": "package",
+                    "ready": bool(model.checkpoint_ready),
+                    "builtIn": False,
+                    "promptTypes": list(capabilities.get("prompt_types") or []),
+                    "softMasks": bool(capabilities.get("soft_masks", False)),
+                    "maximumSeconds": capabilities.get("maximum_seconds"),
+                }
+            )
+        return items
+
     def composer_error(error: ComposerError):
         raise HTTPException(
             status_code=error.status_code,
@@ -287,6 +354,79 @@ def create_video_studio_router(
         return StudioMiniAppRegistry(manager).list(
             STUDIO_ID, builtins=MINI_APPS, principal=principal
         )
+
+    def upscaling_runtime(principal: RequestPrincipal, app_instance_id: str):
+        runtime = runtime_provider()
+        if runtime is None or getattr(runtime, "extension_manager", None) is None:
+            raise HTTPException(status_code=503, detail="Video Studio is not ready")
+        authorize_app_instance(runtime, principal, app_instance_id)
+        entry = runtime.extension_manager.instance_entry(app_instance_id, principal=principal)
+        if entry.get("app_key") != APP_ID:
+            raise HTTPException(status_code=404, detail="Video Studio was not found")
+        return runtime
+
+    def upscaling_error(error):
+        raise HTTPException(status_code=error.status_code,
+                            detail={"code": error.code, "message": str(error)}) from error
+
+    @router.get("/upscaling/models")
+    def upscaling_models(app_instance_id: str = Header(alias="X-AI2Apps-App-Instance"),
+                         principal: RequestPrincipal = principal_dependency):
+        from ai2apps.studio.upscaling import models_for_builtin
+
+        return models_for_builtin(upscaling_runtime(principal, app_instance_id))
+
+    @router.get("/upscaling/jobs")
+    def upscaling_jobs(app_instance_id: str = Header(alias="X-AI2Apps-App-Instance"),
+                       principal: RequestPrincipal = principal_dependency):
+        from ai2apps.studio.upscaling import jobs_for_builtin
+
+        runtime = upscaling_runtime(principal, app_instance_id)
+        return jobs_for_builtin(runtime, scope(principal, app_instance_id))
+
+    @router.post("/upscaling/jobs", status_code=202)
+    async def create_upscaling_job(
+        file: Annotated[UploadFile, File()],
+        model_id: Annotated[str, Form()],
+        app_instance_id: str = Header(alias="X-AI2Apps-App-Instance"),
+        principal: RequestPrincipal = principal_dependency,
+        seed: Annotated[int, Form()] = 0,
+        prompt: Annotated[str, Form()] = "",
+    ):
+        from ai2apps.studio.capability_broker import StudioCapabilityError
+        from ai2apps.studio.upscaling import MAX_UPLOAD_BYTES, start_builtin_job
+
+        runtime = upscaling_runtime(principal, app_instance_id)
+        content = await file.read(MAX_UPLOAD_BYTES + 1)
+        try:
+            return await start_builtin_job(
+                runtime, scope(principal, app_instance_id), principal,
+                content=content, filename=file.filename or "video.mp4",
+                media_type=file.content_type or "application/octet-stream",
+                model_id=model_id, seed=seed, prompt=prompt,
+            )
+        except StudioCapabilityError as error:
+            upscaling_error(error)
+        except StudioRepositoryError as error:
+            studio_error(error)
+
+    @router.post("/upscaling/jobs/{job_id}/{action}")
+    async def change_upscaling_job(
+        job_id: str, action: Literal["cancel", "retry"],
+        app_instance_id: str = Header(alias="X-AI2Apps-App-Instance"),
+        principal: RequestPrincipal = principal_dependency,
+    ):
+        from ai2apps.studio.capability_broker import StudioCapabilityError
+        from ai2apps.studio.upscaling import mutate_builtin_job
+
+        runtime = upscaling_runtime(principal, app_instance_id)
+        try:
+            return await mutate_builtin_job(runtime, scope(principal, app_instance_id),
+                                            principal, job_id, action)
+        except StudioCapabilityError as error:
+            upscaling_error(error)
+        except StudioRepositoryError as error:
+            studio_error(error)
 
     @router.get("/studio-drafts/{mini_app_id:path}")
     def get_studio_draft(
@@ -456,6 +596,136 @@ def create_video_studio_router(
             return composer_error(error)
         finally:
             await file.close()
+
+    @router.get("/composer/mask-models")
+    def list_composer_mask_models(
+        app_instance_id: str = Header(alias="X-AI2Apps-App-Instance"),
+        principal: RequestPrincipal = principal_dependency,
+    ):
+        studio(principal, app_instance_id)
+        return {"items": composer_mask_models(), "defaultModelId": "apple.vision/person-segmentation"}
+
+    @router.post("/composer/person-masks", status_code=201)
+    async def create_composer_person_mask(
+        request: ComposerPersonMaskRequest,
+        app_instance_id: str = Header(alias="X-AI2Apps-App-Instance"),
+        principal: RequestPrincipal = principal_dependency,
+    ):
+        studio(principal, app_instance_id)
+        try:
+            source_record, source_path = composer_sources().get(
+                request.source_id,
+                actor_id=principal.actor_user_id,
+                installation_id=principal.installation_id,
+                app_instance_id=app_instance_id,
+            )
+        except ComposerError as error:
+            return composer_error(error)
+        if not source_record.get("hasVideo"):
+            raise HTTPException(status_code=422, detail="Dynamic person cutout requires a video source")
+
+        output_name = f"{Path(source_record['name']).stem} · person-mask.mp4"
+        if request.model_id == "apple.vision/person-segmentation":
+            tool = apple_person_mask_tool()
+            if tool is None:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Apple Vision person segmentation is not available in this Desktop build",
+                )
+            runtime = runtime_provider()
+            paths = None if runtime is None else getattr(runtime.config, "paths", None)
+            if paths is None:
+                raise HTTPException(status_code=503, detail="Composer work storage is unavailable")
+            work_root = paths.artifacts_path / "video-composer-person-mask" / uuid.uuid4().hex
+            work_root.mkdir(parents=True, exist_ok=True, mode=0o700)
+            output = work_root / "person-mask.mp4"
+            try:
+                def run_apple_mask() -> None:
+                    completed = subprocess.run(
+                        [str(tool), "--input", str(source_path), "--output", str(output)],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                        timeout=1800,
+                        check=False,
+                    )
+                    if completed.returncode or not output.is_file() or output.stat().st_size <= 0:
+                        message = completed.stderr.strip()[-1000:] or "Apple Vision person segmentation failed"
+                        raise ComposerError("person_mask_failed", message)
+
+                await asyncio.to_thread(run_apple_mask)
+                with output.open("rb") as stream:
+                    imported = composer_sources().import_stream(
+                        stream,
+                        actor_id=principal.actor_user_id,
+                        installation_id=principal.installation_id,
+                        app_instance_id=app_instance_id,
+                        display_name=output_name,
+                        media_type="video/mp4",
+                        max_bytes=DEFAULT_COMPOSER_IMPORT_LIMIT_BYTES,
+                    )
+            except ComposerError as error:
+                return composer_error(error)
+            finally:
+                shutil.rmtree(work_root, ignore_errors=True)
+        else:
+            runtime = runtime_provider()
+            invocations = None if runtime is None else getattr(runtime, "model_invocations", None)
+            model = None if invocations is None else invocations.model(request.model_id)
+            if (
+                model is None
+                or model.model_type != "video_segmentation"
+                or "video_segmentation" not in model.capabilities
+            ):
+                raise HTTPException(status_code=404, detail="The selected cutout model is unavailable")
+            capabilities = model.video_segmentation_capabilities or {}
+            prompt_types = set(capabilities.get("prompt_types") or [])
+            points = []
+            if "point" in prompt_types:
+                if request.prompt_x is None or request.prompt_y is None:
+                    raise HTTPException(status_code=422, detail="This cutout model requires a person point")
+                points = [{"x": request.prompt_x, "y": request.prompt_y, "label": 1}]
+            request_id = f"composer-person-mask-{uuid.uuid4().hex}"
+            context = ModelInvocationContext.from_principal(
+                principal,
+                session_id=f"video-composer:{request_id}",
+                app_instance_id=app_instance_id,
+                consumer_app_id=COMPOSER_ID,
+            )
+            try:
+                content = await asyncio.to_thread(source_path.read_bytes)
+                response = await invocations.invoke_foreground_multipart(
+                    model.id,
+                    "video_segmentation",
+                    data={
+                        "parameters": json.dumps(
+                            {
+                                "prompt_frame": request.prompt_frame,
+                                "points": points,
+                                "threshold": request.threshold,
+                                "feather": request.feather,
+                            }
+                        )
+                    },
+                    files={"video": (source_record["name"], content, source_record["mediaType"])},
+                    request_id=request_id,
+                    context=context,
+                )
+                if response.status_code >= 400:
+                    detail = response.body.decode("utf-8", errors="replace")[-1000:]
+                    raise HTTPException(status_code=response.status_code, detail=detail)
+                imported = composer_sources().import_stream(
+                    io.BytesIO(response.body),
+                    actor_id=principal.actor_user_id,
+                    installation_id=principal.installation_id,
+                    app_instance_id=app_instance_id,
+                    display_name=output_name,
+                    media_type=response.media_type or "video/mp4",
+                    max_bytes=DEFAULT_COMPOSER_IMPORT_LIMIT_BYTES,
+                )
+            except ComposerError as error:
+                return composer_error(error)
+        return {"source": imported, "modelId": request.model_id, "maskKind": "person"}
 
     def composer_document_sources(
         source_ids: list[str],
@@ -692,10 +962,23 @@ def create_video_studio_router(
         except ComposerError as error:
             return composer_error(error)
         for clip in request.project.clips:
-            if clip.mask_source_id and not resolved[clip.mask_source_id][0].get("hasImage"):
+            if (
+                clip.mask_source_id
+                and clip.mask_kind == "image"
+                and not resolved[clip.mask_source_id][0].get("hasImage")
+            ):
                 raise HTTPException(
                     status_code=422,
                     detail=f"Clip {clip.name!r} mask must be an image",
+                )
+            if (
+                clip.mask_source_id
+                and clip.mask_kind == "person"
+                and not resolved[clip.mask_source_id][0].get("hasVideo")
+            ):
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Clip {clip.name!r} dynamic mask must be a video",
                 )
             if clip.layer_type != "media" or not clip.source_id:
                 continue

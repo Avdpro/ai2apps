@@ -41,7 +41,7 @@
   function modelChanged() {
     const model = selected();
     options($('preset'), model?.presets || [], model?.defaults.preset);
-    options($('resolution'), (model?.resolutions || []).map(id => ({id,label:id.replace('x',' × ')})), model?.defaults.resolution);
+    options($('resolution'), (model?.resolutions || []).map(id => ({id,label:id === 'source' ? '保留原图尺寸' : id.replace('x',' × ')})), model?.defaults.resolution);
     $('model-limits').textContent = model ? `音频最短 ${Math.max(0.001,model.minimumSeconds)} 秒，最长 ${model.maximumSeconds || 600} 秒。${model.ready ? '' : '请先完成该模型的配置。'}` : '请通过配置模型安装一个数字人模型。';
     state();
   }

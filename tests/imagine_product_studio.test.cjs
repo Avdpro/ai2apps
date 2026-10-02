@@ -6,7 +6,7 @@ vm.createContext(ctx);
 vm.runInContext(fs.readFileSync(__dirname+'/../ai2apps/web/static/js/imagine_studio.js','utf8'), ctx);
 const app = ctx.window.imagineStudioApp();
 assert.deepEqual(Array.from(app.filteredMiniApps, item => item.id.split('.').pop()), [
-  'text-to-image', 'image-edit', 'adjust-image', 'style-transfer',
+  'text-to-image', 'image-edit', 'adjust-image', 'upscale-image', 'style-transfer',
   'reference-creation', 'sticker-workshop', 'portrait', 'extract-items', 'try-on', 'group-photo', 'product-poster',
   'character-design', 'comic-storyboard',
 ]);

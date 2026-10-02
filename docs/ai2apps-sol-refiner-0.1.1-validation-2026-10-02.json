@@ -1,0 +1,132 @@
+{
+  "status": "signed_candidate_validated_not_published",
+  "version": "0.1.1",
+  "source_commit": "fa377dcb62875d5c82fc8177afd4277cd2357db9",
+  "source_state": "uncommitted changes; no release commit created",
+  "artifact": "/Users/avdpropang/sdk/omlx-moe-cache/packages/ai2apps-model-sol-refiner-mlx/dist/ai2apps-model-sol-refiner-mlx-0.1.1.ai2service",
+  "sha256": "b1f8d016f7451a0778c9f5bed49c94e40e0476c47ea2db7908b1bc67853ee23e",
+  "size": 94987,
+  "tests": {
+    "passed": 165,
+    "command": ".venv/bin/python -m pytest tests/test_sol_refiner_package.py tests/test_ai2apps_worker_resources.py tests/test_ai2apps_worker_scheduler.py tests/test_ai2apps_model_providers.py tests/test_ai2apps_model_worker.py -q"
+  },
+  "runtime": "1.8.7 unchanged",
+  "weights": "same published default/custom Distributions; no weight change",
+  "host_requirement": "resource_limited/null pixel contract, actual upload geometry probing and adaptive-window memory reservations require Desktop release",
+  "benchmarks": {
+    "17-1920x1080": {
+      "kind": "video_upscaling",
+      "frames": 17,
+      "fps": "25",
+      "width": 3840,
+      "height": 2160,
+      "scale": 2,
+      "audio_preserved": false,
+      "window_frames": 9,
+      "overlap_frames": 1,
+      "blend_frames": 1,
+      "mlx_peak_bytes": 15105311254,
+      "elapsed_seconds": 103.53150679077953,
+      "decoded_frames": 17,
+      "python": "3.11.10 (main, Oct 16 2024, 08:56:36) [Clang 18.1.8 ]",
+      "runtime": "/tmp/ai2apps-sol-runtime187-install-smoke/platform/packages/inference-runtimes/ai2apps.runtime.omlx/1.8.7/dc92a440fe28bbfe42b31b80f1d4499c2eebea4d78971d4a42b6f61adbf4d51b/Contents/Resources/Runtime"
+    },
+    "65-1024x1024": {
+      "kind": "video_upscaling",
+      "frames": 65,
+      "fps": "25",
+      "width": 2048,
+      "height": 2048,
+      "scale": 2,
+      "audio_preserved": false,
+      "window_frames": 17,
+      "overlap_frames": 9,
+      "blend_frames": 2,
+      "mlx_peak_bytes": 14003192342,
+      "elapsed_seconds": 325.4517403750215,
+      "decoded_frames": 65,
+      "python": "3.11.10 (main, Oct 16 2024, 08:56:36) [Clang 18.1.8 ]",
+      "runtime": "/tmp/ai2apps-sol-runtime187-install-smoke/platform/packages/inference-runtimes/ai2apps.runtime.omlx/1.8.7/dc92a440fe28bbfe42b31b80f1d4499c2eebea4d78971d4a42b6f61adbf4d51b/Contents/Resources/Runtime"
+    }
+  },
+  "benchmark_limitations": "One resized portrait input, execution/geometry/frame count validation only. Timings can be affected by concurrent processes; no stable performance or general temporal-quality claim. MLX peak is not total process/system memory.",
+  "signed_installed_qa": {
+    "runtime": {
+      "service": "ai2apps.runtime.omlx",
+      "version": "1.8.7",
+      "digest": "sha256:dc92a440fe28bbfe42b31b80f1d4499c2eebea4d78971d4a42b6f61adbf4d51b",
+      "root": "/private/tmp/ai2apps-sol-model010-smoke/platform-011/platform/packages/inference-runtimes/ai2apps.runtime.omlx/1.8.7/dc92a440fe28bbfe42b31b80f1d4499c2eebea4d78971d4a42b6f61adbf4d51b",
+      "python": "/private/tmp/ai2apps-sol-model010-smoke/platform-011/platform/packages/inference-runtimes/ai2apps.runtime.omlx/1.8.7/dc92a440fe28bbfe42b31b80f1d4499c2eebea4d78971d4a42b6f61adbf4d51b/Contents/Resources/Runtime/Python/cpython-3.11/bin/python3.11"
+    },
+    "model": {
+      "service": "ai2apps.model.sol-refiner-mlx",
+      "version": "0.1.1",
+      "digest": "sha256:b1f8d016f7451a0778c9f5bed49c94e40e0476c47ea2db7908b1bc67853ee23e",
+      "status": "running",
+      "endpoint": "http://127.0.0.1:54006"
+    },
+    "locks": [
+      {
+        "dependency": "ai2apps.runtime.omlx",
+        "version": "1.8.7",
+        "digest": "sha256:dc92a440fe28bbfe42b31b80f1d4499c2eebea4d78971d4a42b6f61adbf4d51b"
+      }
+    ],
+    "checkpoints": [
+      {
+        "model": "ai2apps.model.sol-refiner-mlx/ltx23-custom-prompt",
+        "distribution": "dist_ai2apps_sol_refiner_mlx_custom_v1",
+        "snapshot": "/private/tmp/ai2apps-sol-model010-smoke/hub/models--Avdpro--SoL-Refiner-LTX-2.3-MLX-BF16/distributions/706bff8606790f2bd821a91c467999605319996486bb4c5b4577aa6d2cfb8bc0",
+        "developer_fixture": true,
+        "installer_without_consent": "blocked_before_and_after_cache",
+        "consent_record_created": false
+      },
+      {
+        "model": "ai2apps.model.sol-refiner-mlx/ltx23-one-step",
+        "distribution": "dist_ai2apps_sol_refiner_mlx_default_v1",
+        "snapshot": "/private/tmp/ai2apps-sol-model010-smoke/hub/models--Avdpro--SoL-Refiner-LTX-2.3-MLX-BF16/distributions/8eb7105dc24f31271993cca30bdb62a62a8c5bc96ed064d13ae9e62e0e82c79a",
+        "developer_fixture": true,
+        "installer_without_consent": "blocked_before_and_after_cache",
+        "consent_record_created": false
+      }
+    ],
+    "video_upscaling": [
+      {
+        "model": "ai2apps.model.sol-refiner-mlx/ltx23-one-step",
+        "audio": "/Users/avdpropang/sdk/omlx-moe-cache/ai2apps/.build/sol-refiner/highres-input-audio.mp4",
+        "profile": "upscale",
+        "result": {
+          "http_status": 200,
+          "frames": 17,
+          "width": 3840,
+          "height": 2160,
+          "audio_present": true,
+          "seconds": 141.52333187498152,
+          "output": "/Users/avdpropang/sdk/omlx-moe-cache/ai2apps/.build/sol-refiner/signed-011-4k-output.mp4"
+        }
+      },
+      {
+        "model": "ai2apps.model.sol-refiner-mlx/ltx23-custom-prompt",
+        "audio": "/Users/avdpropang/sdk/omlx-moe-cache/ai2apps/.build/sol-refiner/signed-smoke-input-audio.mp4",
+        "profile": "upscale",
+        "result": {
+          "http_status": 200,
+          "frames": 9,
+          "width": 256,
+          "height": 256,
+          "audio_present": true,
+          "seconds": 10.163728290935978,
+          "output": "/Users/avdpropang/sdk/omlx-moe-cache/ai2apps/.build/sol-refiner/signed-011-custom-output.mp4"
+        }
+      }
+    ]
+  },
+  "lifecycle": {
+    "restart_health": 200,
+    "cancel_status": 499,
+    "cancel_seconds": 0.002380958991125226,
+    "stopped": true,
+    "started_again": true,
+    "uninstalled": true
+  }
+}

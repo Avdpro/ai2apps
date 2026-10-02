@@ -34,9 +34,10 @@ from ai2apps.api.ownership import authorize_app_instance
 from ai2apps.cloud_gateway import request_cloud_image
 from ai2apps.gallery import GalleryRepository
 from ai2apps.identity import RequestPrincipal
-from ai2apps.model_providers import list_package_models
 from ai2apps.images import ImagineStudioHistoryError, ImagineStudioHistoryRepository
 from ai2apps.images.history import MAX_HISTORY_ITEMS, MAX_IMAGE_BYTES
+from ai2apps.model_invocation import ModelInvocationContext
+from ai2apps.model_providers import list_package_models
 from ai2apps.studio import (
     StudioMiniAppRegistry,
     StudioRepository,
@@ -58,6 +59,7 @@ MINI_APPS = (
     {"id": "ai2apps.imagine.extract-items", "version": "1.0.0", "kind": "clip", "category": "create", "icon": "scissors", "source": "official", "entry": {"kind": "host-adapter", "adapter": "extract-items"}, "inputs": ["image", "text"], "outputs": ["image"]},
 )
 MINI_APPS += ({"id": "ai2apps.imagine.try-on", "version": "1.0.0", "kind": "clip", "category": "create", "icon": "shirt", "source": "official", "entry": {"kind": "host-adapter", "adapter": "try-on"}, "inputs": ["image", "text"], "outputs": ["image"]},)
+MINI_APPS += ({"id": "ai2apps.imagine.upscale-image", "version": "1.0.0", "kind": "clip", "category": "edit", "icon": "scan", "source": "official", "entry": {"kind": "host-adapter", "adapter": "upscale-image"}, "inputs": ["image"], "outputs": ["image"]},)
 MINI_APP_BY_ID = {item["id"]: item for item in MINI_APPS}
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
 
@@ -167,6 +169,7 @@ def create_imagine_studio_router(
     principal_dependency = Depends(principal_provider)
     chunk_uploads: dict[tuple[str, str, str, str], dict[str, Any]] = {}
     batch_uploads: dict[tuple[str, str, str, str], dict[str, Any]] = {}
+    active_upscales: set[str] = set()
 
     def history(principal: RequestPrincipal, app_instance_id: str) -> ImagineStudioHistoryRepository:
         runtime = runtime_provider()
@@ -253,7 +256,7 @@ def create_imagine_studio_router(
         # or Worker authorization headers in the browser response.
         data = []
         for model in list_package_models(runtime_provider()):
-            if model.model_type != "image_generation" or model.metadata.get("internal"):
+            if (model.model_type != "image_generation" and "image_upscaling" not in model.capabilities) or model.metadata.get("internal"):
                 continue
             data.append({
                 "id": model.id,
@@ -264,6 +267,9 @@ def create_imagine_studio_router(
                 "is_hidden": not model.checkpoint_ready,
                 "capabilities": list(model.capabilities),
                 "image_capabilities": model.image_capabilities,
+                "image_upscaling_capabilities": getattr(
+                    model, "image_upscaling_capabilities", None
+                ),
             })
         return {"data": data}
 
@@ -327,6 +333,7 @@ def create_imagine_studio_router(
             "portrait": "ai2apps.imagine.portrait",
             "extract-items": "ai2apps.imagine.extract-items",
             "try-on": "ai2apps.imagine.try-on",
+            "upscale-image": "ai2apps.imagine.upscale-image",
         }
         for record in history(principal, app_instance_id).list(
             actor_id=principal.actor_user_id, installation_id=principal.installation_id,
@@ -342,9 +349,15 @@ def create_imagine_studio_router(
                 created_at=record["createdAt"], metadata={"historyResultId": record["id"], "legacyPipelineId": record["pipelineId"], "modelId": record["modelId"]},
                 **scoped_kwargs(principal, app_instance_id),
             )
-        return {"items": list(repository.list_runs(
+        items = list(repository.list_runs(
             limit=limit, **scoped_kwargs(principal, app_instance_id)
-        ))}
+        ))
+        for index, item in enumerate(items):
+            if item["miniAppId"] == "ai2apps.imagine.upscale-image" and item["status"] == "running" and item["id"] not in active_upscales:
+                items[index] = repository.update_run(item["id"], status="failed", progress=100,
+                    detail="Interrupted", error={"code": "host_restarted", "message": "Image upscaling was interrupted by a Host restart. Please retry."},
+                    **scoped_kwargs(principal, app_instance_id))
+        return {"items": items}
 
     @router.delete('/runs/{run_id}', status_code=204)
     def delete_run(run_id: str, app_instance_id: str = Header(alias='X-AI2Apps-App-Instance'), principal: RequestPrincipal = principal_dependency):
@@ -399,6 +412,95 @@ def create_imagine_studio_router(
             )
         except StudioRepositoryError as error:
             return studio_error(error)
+
+    @router.post("/runs/{run_id}/upscale", status_code=202)
+    async def upscale_run(
+        run_id: str,
+        background_tasks: BackgroundTasks,
+        image: Annotated[UploadFile, File()],
+        model_id: Annotated[str, Form()],
+        seed: Annotated[int, Form(ge=0, le=4294967295)] = 0,
+        prompt: Annotated[str, Form(max_length=2048)] = "",
+        app_instance_id: str = Header(alias="X-AI2Apps-App-Instance"),
+        principal: RequestPrincipal = principal_dependency,
+    ):
+        runtime = runtime_provider()
+        repository = studio(principal, app_instance_id)
+        history_repository = history(principal, app_instance_id)
+        scope = scoped_kwargs(principal, app_instance_id)
+        try:
+            run = repository.get_run(run_id, **scope)
+        except StudioRepositoryError as error:
+            return studio_error(error)
+        if run["miniAppId"] != "ai2apps.imagine.upscale-image" or run["status"] != "queued":
+            raise HTTPException(409, "Image upscale Run is not queued")
+        model = runtime.model_invocations.model(model_id)
+        if model is None or "image_upscaling" not in model.capabilities:
+            raise HTTPException(400, "Model does not support image_upscaling")
+        data = await image.read(MAX_IMAGE_BYTES + 1)
+        if not data or len(data) > MAX_IMAGE_BYTES:
+            raise HTTPException(413, "Image exceeds the upload limit")
+        media_type = next((kind for kind in ("image/png", "image/jpeg", "image/webp") if _matches_image_media_type(data, kind)), None)
+        if media_type is None:
+            raise HTTPException(415, "PNG, JPEG or WebP image required")
+        context = ModelInvocationContext.from_principal(principal, session_id=f"imagine:{run_id}", app_instance_id=app_instance_id, consumer_app_id=APP_ID)
+        parameters = {"scale": 2, "seed": seed}
+        if prompt.strip():
+            parameters["prompt"] = prompt.strip()
+        # Reserve the Run before scheduling: a repeated submission cannot start
+        # a second Worker invocation. Source paths never come from the browser.
+        active_upscales.add(run_id)
+        try:
+            repository.update_run(run_id, status="running", progress=0, detail="Upscaling image 2×", **scope)
+        except Exception:
+            active_upscales.discard(run_id)
+            raise
+
+        async def upscale_in_background():
+            def cancelled():
+                try:
+                    return repository.get_run(run_id, **scope)["status"] == "cancelled"
+                except StudioRepositoryError:
+                    return True
+            try:
+                with tempfile.TemporaryDirectory(prefix="imagine-upscale-") as directory:
+                    source = Path(directory) / ("input." + media_type.split("/")[1])
+                    output = Path(directory) / "output.png"
+                    source.write_bytes(data)
+                    await runtime.model_invocations.invoke_background_to_file(
+                        model_id, "image_upscaling", {"parameters": parameters}, output,
+                        files={"image": (source.name, source, media_type)},
+                        request_id=f"imagine-upscale-{run_id}", cancel_requested=cancelled,
+                        context=context,
+                    )
+                    if cancelled():
+                        return
+                    from PIL import Image
+                    with Image.open(output) as result:
+                        size = f"{result.width}x{result.height}"
+                    record = history_repository.create(
+                        actor_id=principal.actor_user_id, installation_id=principal.installation_id,
+                        app_instance_id=app_instance_id,
+                        metadata={"pipelineId": "upscale-image", "miniAppId": run["miniAppId"], "runId": run_id,
+                                  "title": run["title"], "prompt": prompt, "modelId": model_id,
+                                  "modelLabel": model.display_name[:120], "size": size, "quality": "auto",
+                                  "format": "png", "filename": f"imagine-upscale-{run_id[-8:]}.png"},
+                        data=output.read_bytes(),
+                    )
+                    result = public(record, app_instance_id)
+                    repository.create_artifact(run_id, kind="image", name=record["filename"], media_type=record["mediaType"],
+                        preview_url=result["contentUrl"], download_url=result["downloadUrl"], source_id=record["id"],
+                        metadata={"historyResultId": record["id"], "miniAppId": run["miniAppId"], "modelId": model_id, "size": size, "format": "png", "scale": 2}, **scope)
+                    repository.update_run(run_id, status="succeeded", progress=100, detail="Completed", **scope)
+            except Exception as error:
+                if not cancelled():
+                    with suppress(StudioRepositoryError):
+                        repository.update_run(run_id, status="failed", progress=100, detail="Failed",
+                            error={"code": "image_upscaling_failed", "message": str(error)[:1000]}, **scope)
+            finally:
+                active_upscales.discard(run_id)
+        background_tasks.add_task(upscale_in_background)
+        return repository.get_run(run_id, **scope)
 
     @router.post("/runs/{run_id}/execute", status_code=202)
     async def execute_run(

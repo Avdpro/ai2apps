@@ -1,0 +1,167 @@
+schema: ai2apps.service/v1
+id: ai2apps.model.sol-refiner-mlx
+name: SoL-Refiner Image & Video Upscaler MLX
+description: '2x image and video upscaling with shared BF16 weights. PNG/JPEG/WebP
+  images return PNG with alpha; videos preserve audio. Standard: 28.71 GB; Custom
+  Prompts: 57.04 GB total.'
+version: 0.1.3
+publisher:
+  id: ai2apps
+license:
+  name: Apache License 2.0
+  id: Apache-2.0
+  path: LICENSE
+attribution:
+  notice: META/NOTICE.md
+  source: https://github.com/NVlabs/Sana/tree/sol-engine/models/sol-refiner
+  checkpoint: https://huggingface.co/Efficient-Large-Model/SoL-Refiner-LTX-2.3-One-Step
+runtime:
+  mode: process
+  protocol: ai2apps-model-worker/v1
+  provider: ai2apps.runtime.omlx
+  adapter: src/worker_adapter.py:create_adapter
+models:
+- id: ai2apps.model.sol-refiner-mlx/ltx23-one-step
+  display_name: Standard Upscaling / 标准放大 - 28.71 GB
+  model_type: video_upscaling
+  upstream_id: ai2apps-sol-refiner-default
+  capabilities:
+  - video_upscaling
+  - image_upscaling
+  weights:
+    provider: huggingface
+    repo_id: Avdpro/SoL-Refiner-LTX-2.3-MLX-BF16
+    revision: 751edf5618ccfb8b9e6cae557de9071694cb6ec7
+    preparation:
+      recipe: native
+    distribution_id: dist_ai2apps_sol_refiner_mlx_default_v1
+  metadata:
+    family: sol-refiner-ltx23
+    estimated_resident_bytes: 1073741824
+    precision: bfloat16
+    prompt_mode: fixed_default
+  video_upscaling_capabilities:
+    schema: ai2apps.video-upscaling-capabilities/v1
+    operations:
+    - video_upscaling
+    scale_factors:
+    - 2
+    maximum_output_pixels: null
+    maximum_frames: 1500
+    maximum_seconds: 60
+    output_formats:
+    - mp4
+    preserves_frame_count: true
+    preserves_audio: true
+    segmented: false
+    temporal_policy: whole_clip
+    prompt_required: false
+    resolution_policy: resource_limited
+  image_upscaling_capabilities:
+    schema: ai2apps.image-upscaling-capabilities/v1
+    operations:
+    - image_upscaling
+    scale_factors:
+    - 2
+    input_formats:
+    - png
+    - jpeg
+    - webp
+    output_formats:
+    - png
+    maximum_output_pixels: null
+    resolution_policy: resource_limited
+    preserves_alpha: true
+    applies_exif_orientation: true
+    prompt_required: false
+- id: ai2apps.model.sol-refiner-mlx/ltx23-custom-prompt
+  display_name: Custom Prompts / 自定义提示词 - 57.04 GB; +28.33 GB after Standard
+  model_type: video_upscaling
+  upstream_id: ai2apps-sol-refiner-custom
+  capabilities:
+  - video_upscaling
+  - image_upscaling
+  weights:
+    provider: huggingface
+    repo_id: Avdpro/SoL-Refiner-LTX-2.3-MLX-BF16
+    revision: 751edf5618ccfb8b9e6cae557de9071694cb6ec7
+    preparation:
+      recipe: native
+    distribution_id: dist_ai2apps_sol_refiner_mlx_custom_v1
+  metadata:
+    family: sol-refiner-ltx23
+    estimated_resident_bytes: 1073741824
+    precision: bfloat16
+    prompt_mode: custom
+  video_upscaling_capabilities:
+    schema: ai2apps.video-upscaling-capabilities/v1
+    operations:
+    - video_upscaling
+    scale_factors:
+    - 2
+    maximum_output_pixels: null
+    maximum_frames: 1500
+    maximum_seconds: 60
+    output_formats:
+    - mp4
+    preserves_frame_count: true
+    preserves_audio: true
+    segmented: false
+    temporal_policy: whole_clip
+    prompt_required: false
+    resolution_policy: resource_limited
+  image_upscaling_capabilities:
+    schema: ai2apps.image-upscaling-capabilities/v1
+    operations:
+    - image_upscaling
+    scale_factors:
+    - 2
+    input_formats:
+    - png
+    - jpeg
+    - webp
+    output_formats:
+    - png
+    maximum_output_pixels: null
+    resolution_policy: resource_limited
+    preserves_alpha: true
+    applies_exif_orientation: true
+    prompt_required: false
+capabilities:
+- video-upscaling
+- image-upscaling
+requires:
+  services:
+  - id: ai2apps.runtime.omlx
+    version: '>=1.8.8,<2.0.0'
+    optional: false
+    capabilities:
+    - mlx
+    - model-worker-v1
+    - metal
+    - video-upscaling
+    - video-codecs
+    - image-upscaling
+  python: '>=3.11,<3.14'
+permissions:
+  network:
+    outbound: false
+  model_weights:
+    huggingface_cache: read
+    reason: Read the pinned SoL-Refiner LTX-2.3 checkpoint.
+  accelerator:
+    metal: true
+    reason: Run video refinement on Apple GPU.
+compatibility:
+  os:
+  - macos
+  architectures:
+  - arm64
+  minimum_os_version: '26.2'
+health:
+  path: /health
+  startup_timeout_seconds: 120
+restart:
+  max_attempts: 2
+  base_delay_seconds: 1
+tools: []

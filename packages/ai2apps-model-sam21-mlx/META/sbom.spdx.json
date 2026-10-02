@@ -1,0 +1,12 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "ai2apps.model.sam21-mlx-0.1.0",
+  "documentNamespace": "https://ai2apps.com/spdx/ai2apps.model.sam21-mlx/0.1.0",
+  "packages": [
+    {"name": "AI2Apps SAM 2.1 Video Cutout MLX", "SPDXID": "SPDXRef-AI2AppsSAM21MLX", "versionInfo": "0.1.0", "downloadLocation": "NOASSERTION", "licenseConcluded": "Apache-2.0", "licenseDeclared": "Apache-2.0", "copyrightText": "NOASSERTION"},
+    {"name": "sam2.1_mlx", "SPDXID": "SPDXRef-SAM21MLX", "versionInfo": "036f2d02a9069871fd2bf47109ff3b522cd222c4", "downloadLocation": "https://github.com/eisneim/sam2.1_mlx", "licenseConcluded": "Apache-2.0", "licenseDeclared": "Apache-2.0", "copyrightText": "NOASSERTION"},
+    {"name": "Meta SAM 2", "SPDXID": "SPDXRef-MetaSAM2", "downloadLocation": "https://github.com/facebookresearch/sam2", "licenseConcluded": "Apache-2.0", "licenseDeclared": "Apache-2.0", "copyrightText": "Copyright (c) Meta Platforms, Inc. and affiliates"}
+  ]
+}

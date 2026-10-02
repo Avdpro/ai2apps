@@ -38,6 +38,7 @@ fi
 swift build --package-path "${PROJECT_DIR}" --product ai2apps-helper
 swift build --package-path "${PROJECT_DIR}" --product ai2apps-launcher
 swift build --package-path "${PROJECT_DIR}" --product ai2apps-updater
+swift build --package-path "${PROJECT_DIR}" --product ai2apps-person-mask
 
 BUILD_BIN=$(swift build --package-path "${PROJECT_DIR}" --show-bin-path)
 STAGING_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/ai2apps-dev-app.XXXXXX")
@@ -127,7 +128,9 @@ plutil -create xml1 "${HELPER_APP}/Contents/Info.plist"
 RUNTIME_ROOT="${HELPER_APP}/Contents/Resources/AI2AppsLocal"
 mkdir -p "${RUNTIME_ROOT}/bin"
 cp "${LOCAL_EXECUTABLE}" "${RUNTIME_ROOT}/bin/omlx"
+cp "${BUILD_BIN}/ai2apps-person-mask" "${RUNTIME_ROOT}/bin/ai2apps-person-mask"
 chmod 755 "${RUNTIME_ROOT}/bin/omlx"
+chmod 755 "${RUNTIME_ROOT}/bin/ai2apps-person-mask"
 
 INFO_PLIST="${APP}/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier ${PRODUCT_IDENTIFIER}" "${INFO_PLIST}"

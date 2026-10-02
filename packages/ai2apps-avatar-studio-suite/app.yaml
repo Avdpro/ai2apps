@@ -1,7 +1,7 @@
 schema: ai2apps.app/v1
 id: ai2apps.avatar-studio-suite
 name: Avatar Studio Suite
-version: 0.1.0
+version: 0.1.2
 description: Create talking portrait videos locally.
 publisher: {id: ai2apps}
 instances: {mode: singleton, scope: user}
@@ -13,7 +13,7 @@ mini_apps:
   - schema: ai2apps.mini-app/v1
     id: ai2apps.avatar.photo-speaking
     name: Talking Portrait
-    version: 0.1.0
+    version: 0.1.2
     kind: clip
     icon: user-round
     description: Animate a portrait with speech using a compatible local avatar model.

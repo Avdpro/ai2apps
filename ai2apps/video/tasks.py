@@ -217,6 +217,12 @@ class VideoTaskManager:
         ):
             if effective.get(key) is None and defaults.get(key) is not None:
                 effective[key] = defaults[key]
+        avatar_mode = effective.get("avatar_output_mode")
+        if avatar_mode is not None and (
+            not isinstance(avatar_mode, str) or avatar_mode not in {"source", "crop"}
+            or "avatar_video" not in getattr(model, "capabilities", ())
+        ):
+            raise VideoGenerationError("unsupported_parameter", "avatar_output_mode is unsupported")
         resolution = str(effective.get("resolution") or "")
         if "x" in resolution:
             try:
@@ -667,6 +673,7 @@ class VideoTaskManager:
         task_root = self.root / task_id
         output = task_root / "result.mp4"
         body = dict(request)
+        avatar_mode = body.pop("avatar_output_mode", "crop")
         files = {
             item["part_name"]: (
                 item["filename"],
@@ -696,6 +703,29 @@ class VideoTaskManager:
                 consumer_app_id="ai2apps.video-studio",
             )
         )
+        canvas = None
+        if avatar_mode == "source":
+            from ai2apps.avatar.composition import prepare_portrait
+
+            references = [p for p in body.get("reference_parts", []) if p.get("kind") == "image"]
+            if len(references) != 1 or "audio" not in files:
+                raise VideoGenerationError("invalid_content", "Source canvas requires one portrait and driving audio")
+            part_name = references[0]["part_name"]
+            crop_path = task_root / "avatar-crop.png"
+            canvas = await asyncio.to_thread(
+                prepare_portrait, files[part_name][1], crop_path,
+                (int(body["width"]), int(body["height"])),
+            )
+            files[part_name] = (crop_path.name, crop_path, "image/png")
+
+        def worker_progress(value):
+            if canvas is not None and isinstance(value, dict):
+                value = dict(value)
+                percent = value.get("percent")
+                if isinstance(percent, (int, float)):
+                    value["percent"] = max(0, min(100, percent)) * 0.9
+            self._update(task_id, progress=value)
+
         await invocations.invoke_background_to_file(
             model.id,
             "video_generation",
@@ -704,7 +734,7 @@ class VideoTaskManager:
             files=files,
             request_id=task_id,
             cancel_requested=cancelled,
-            progress=lambda value: self._update(task_id, progress=value),
+            progress=worker_progress,
             on_admitted=lambda: self._update(
                 task_id,
                 status="running",
@@ -713,6 +743,36 @@ class VideoTaskManager:
             ),
             **({"context": context} if context is not None else {}),
         )
+        if canvas is not None:
+            import threading
+
+            from ai2apps.avatar.video_composition import compose_video
+
+            stopped = threading.Event()
+            def check():
+                if stopped.is_set() or cancelled():
+                    raise VideoGenerationError("generation_cancelled", "Avatar composition cancelled")
+            def progress(current, total):
+                self._update(task_id, progress={"phase": "composition", "current": current, "total": total,
+                                               "percent": 90 + min(9, 9 * current / max(total, 1))})
+            work = asyncio.create_task(asyncio.to_thread(
+                compose_video, output, task_root / "source-result.mp4", canvas,
+                check=check, progress=progress,
+            ))
+            try:
+                output = await asyncio.shield(work)
+            except asyncio.CancelledError:
+                stopped.set()
+                while not work.done():
+                    try:
+                        await asyncio.shield(work)
+                    except asyncio.CancelledError:
+                        continue
+                    except Exception:
+                        break
+                if not work.cancelled():
+                    work.exception()
+                raise
         return output
 
     def _materialize_artifact(self, task_id: str, model: PackageModel, output: Path):

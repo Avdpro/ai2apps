@@ -3,7 +3,7 @@
   "package": {
     "id": "ai2apps/avatar-studio-suite",
     "type": "app",
-    "version": "0.1.0",
+    "version": "0.1.2",
     "displayName": "Avatar Studio Suite",
     "description": "Local talking portrait Mini-App."
   },

@@ -131,6 +131,15 @@ class ComposerClip(BaseModel):
     reveal_speed: float = Field(default=12, alias="revealSpeed", ge=0.1, le=200)
     audio_enabled: bool = Field(default=True, alias="audioEnabled")
     mask_source_id: str | None = Field(default=None, alias="maskSourceId", max_length=100)
+    mask_kind: Literal["image", "person"] = Field(default="image", alias="maskKind")
+    mask_model_id: str = Field(
+        default="apple.vision/person-segmentation", alias="maskModelId", max_length=255
+    )
+    mask_prompt_frame: int = Field(default=0, alias="maskPromptFrame", ge=0, le=100_000)
+    mask_prompt_x: float | None = Field(default=None, alias="maskPromptX", ge=0, le=16384)
+    mask_prompt_y: float | None = Field(default=None, alias="maskPromptY", ge=0, le=16384)
+    mask_threshold: float = Field(default=0.5, alias="maskThreshold", ge=0.05, le=0.95)
+    mask_feather: float = Field(default=1.5, alias="maskFeather", ge=0, le=32)
     crop_left: float = Field(default=0, alias="cropLeft", ge=0, le=95)
     crop_top: float = Field(default=0, alias="cropTop", ge=0, le=95)
     crop_right: float = Field(default=0, alias="cropRight", ge=0, le=95)
@@ -151,7 +160,7 @@ class ComposerClip(BaseModel):
         if self.layer_type == "media" and not self.source_id:
             raise ValueError("media clips require a source")
         if self.layer_type != "media" and self.mask_source_id:
-            raise ValueError("special layers cannot use an image mask")
+            raise ValueError("special layers cannot use a media mask")
         if self.crop_left + self.crop_right >= 100:
             raise ValueError("horizontal crop must leave part of the source visible")
         if self.crop_top + self.crop_bottom >= 100:
@@ -959,6 +968,13 @@ def _render_with_pyav(
                 if has_alpha
                 else ImageOps.grayscale(mask.convert("RGB"))
             )
+    mask_readers = {
+        clip.id: _VideoReader(sources[clip.mask_source_id][1], clip.source_start)
+        for clip in visual_clips
+        if clip.mask_kind == "person"
+        and clip.mask_source_id
+        and sources[clip.mask_source_id][0].get("hasVideo")
+    }
     audio_samples = _mix_audio(project, sources)
     try:
         with av.open(str(destination), "w", format="mp4") as container:
@@ -1005,10 +1021,10 @@ def _render_with_pyav(
                         continue
                     if not clip.source_id:
                         continue
+                    source_time = clip.source_start + local_time * clip.speed
                     if sources[clip.source_id][0].get("hasImage"):
                         image = still_images[clip.source_id].copy()
                     else:
-                        source_time = clip.source_start + local_time * clip.speed
                         frame = readers[clip.id].at(source_time)
                         if frame is None:
                             continue
@@ -1016,6 +1032,13 @@ def _render_with_pyav(
                     box_width = visual_state["width"] or image.width
                     box_height = visual_state["height"] or image.height
                     source_image = image
+                    dynamic_mask = None
+                    if clip.id in mask_readers:
+                        mask_frame = mask_readers[clip.id].at(source_time)
+                        if mask_frame is not None:
+                            dynamic_mask = Image.fromarray(
+                                mask_frame.to_ndarray(format="gray"), "L"
+                            ).resize(source_image.size, Image.Resampling.BILINEAR)
                     cropped_image = _crop_image_to_visible_region(
                         source_image, clip, visual_state
                     )
@@ -1033,11 +1056,28 @@ def _render_with_pyav(
                     )
                     layer_alpha = ImageChops.multiply(layer_alpha, crop_alpha)
                     crop_alpha.close()
-                    if clip.mask_source_id:
+                    if dynamic_mask is not None:
+                        cropped_mask = _crop_image_to_visible_region(
+                            dynamic_mask, clip, visual_state
+                        )
+                        placed_mask, _ = _place_cropped_image_in_visual_box(
+                            cropped_mask.convert("RGBA"),
+                            box_width,
+                            box_height,
+                            float(visual_state["crop_scale"]),
+                        )
+                        mask_alpha = ImageOps.grayscale(placed_mask)
+                        layer_alpha = ImageChops.multiply(layer_alpha, mask_alpha)
+                        mask_alpha.close()
+                        placed_mask.close()
+                        cropped_mask.close()
+                        dynamic_mask.close()
+                    elif clip.mask_source_id and clip.mask_kind == "image":
                         mask_alpha = mask_images[clip.mask_source_id].resize(
                             image.size, Image.Resampling.BILINEAR
                         )
                         layer_alpha = ImageChops.multiply(layer_alpha, mask_alpha)
+                        mask_alpha.close()
                     alpha = visual_state["opacity"]
                     if alpha < 1:
                         layer_alpha = layer_alpha.point(
@@ -1079,6 +1119,8 @@ def _render_with_pyav(
         raise ComposerError("render_failed", f"Composition rendering failed: {error}") from error
     finally:
         for reader in readers.values():
+            reader.close()
+        for reader in mask_readers.values():
             reader.close()
         for image in still_images.values():
             image.close()

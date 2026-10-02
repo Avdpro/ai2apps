@@ -664,6 +664,51 @@ def test_composer_masks_use_luminance_without_alpha_and_alpha_when_present(tmp_p
     assert frames[2].mean() > 200, "opaque alpha wins even when the mask RGB channels are black"
 
 
+def test_composer_dynamic_person_mask_tracks_video_frames(tmp_path):
+    source_path = tmp_path / "person.mp4"
+    mask_path = tmp_path / "person-mask.mp4"
+    media_file(source_path, color=240)
+    with av.open(str(mask_path), "w", format="mp4") as container:
+        stream = container.add_stream("libx264", rate=12)
+        stream.width = stream.height = 32
+        stream.pix_fmt = "yuv420p"
+        for index in range(12):
+            pixels = np.zeros((32, 32, 3), dtype=np.uint8)
+            if index < 6:
+                pixels[:, 16:] = 255
+            else:
+                pixels[:, :16] = 255
+            for packet in stream.encode(av.VideoFrame.from_ndarray(pixels, format="rgb24")):
+                container.mux(packet)
+        for packet in stream.encode():
+            container.mux(packet)
+
+    store = ComposerSourceStore(tmp_path / "dynamic-mask-sources")
+    scope = {"actor_id": "owner", "installation_id": "installation", "app_instance_id": "appi_composer"}
+    source = store.register(source_path, media_type="video/mp4", **scope)
+    mask = store.register(mask_path, media_type="video/mp4", **scope)
+    composition = ComposerProject.model_validate({
+        "title": "Dynamic person mask",
+        "settings": {"width": 64, "height": 64, "fps": 12, "background": "#000000"},
+        "tracks": [{"id": "v1", "kind": "video", "name": "Video 1", "order": 0}],
+        "clips": [{
+            "id": "person", "sourceId": source["id"], "maskSourceId": mask["id"],
+            "maskKind": "person", "maskModelId": "apple.vision/person-segmentation",
+            "trackId": "v1", "name": "Person", "start": 0, "duration": 1,
+            "width": 64, "height": 64, "cropScale": 2,
+        }],
+    })
+    records = {item["id"]: store.get(item["id"], **scope) for item in (source, mask)}
+    output = tmp_path / "dynamic-person-mask.mp4"
+    import asyncio
+
+    asyncio.run(render_composition(composition, records, output))
+    with av.open(str(output)) as rendered:
+        frames = [frame.to_ndarray(format="rgb24") for frame in rendered.decode(video=0)]
+    assert frames[1][:, :24].mean() < 30 and frames[1][:, 40:].mean() > 180
+    assert frames[8][:, :24].mean() > 180 and frames[8][:, 40:].mean() < 30
+
+
 def test_video_composer_api_registers_source_and_materializes_artifact(tmp_path):
     database = PlatformDatabase(tmp_path / "platform.sqlite3")
     database.initialize()
@@ -705,6 +750,11 @@ def test_video_composer_api_registers_source_and_materializes_artifact(tmp_path)
     app.include_router(create_video_studio_router(lambda: runtime, lambda: principal))
     client = TestClient(app)
     headers = {"X-AI2Apps-App-Instance": app_instance_id}
+
+    mask_models = client.get("/video-studio/composer/mask-models", headers=headers)
+    assert mask_models.status_code == 200
+    assert mask_models.json()["defaultModelId"] == "apple.vision/person-segmentation"
+    assert mask_models.json()["items"][0]["builtIn"] is True
 
     source = client.post(
         "/video-studio/composer/sources",
@@ -887,6 +937,9 @@ def test_video_composer_surface_exposes_timeline_preview_and_chat_editing():
     assert "importComposerMask" in template and "composerPreviewMaskStyle" in script
     assert "maskSourceId" in script and "mask-mode:${mode}" in script
     assert "video_studio.composer.mask_none" in template and "composerMaskSources" in template
+    assert "generateComposerPersonMask" in script and "composer/mask-models" in script
+    assert "video_studio.composer.mask_person" in template and "data-mask-clip-id" in template
+    assert "apple.vision/person-segmentation" in script
     assert "composerCropFrameStyle" in script and "composerCropMediaStyle" in script
     assert "composerCropFrameGeometry" in script and "--media-frame-width" in script
     assert ":has(.vs-composer-media-frame)" in stylesheet

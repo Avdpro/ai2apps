@@ -6,6 +6,7 @@
     const TASKS_API = '/v1/videos/generations';
     const APP_ID = 'ai2apps.video-studio';
     const INSTALL_MORE_MODEL_ID = '__install_more__';
+    const UPSCALING_INSTALL_MODEL_ID = '__install_upscaling_model__';
     const terminal = new Set(['succeeded', 'failed', 'cancelled', 'expired']);
     const SHELL_STATE_KEY = 'ai2apps-video-studio-shell-v1';
     const GALLERY_MINI_FALLBACK_URL = '/admin/app-content/ai2apps.gallery?surface=mini';
@@ -15,6 +16,7 @@
         Object.freeze({ id: 'ai2apps.video.reference-to-video', mode: 'r2v', key: 'video_studio.mini_app.r2v', icon: 'scan-search' }),
         Object.freeze({ id: 'ai2apps.video.composer', mode: 'composer', key: 'video_studio.mini_app.composer', icon: 'panels-top-left' }),
         Object.freeze({ id: 'ai2apps.video.extract-audio', mode: 'x2a', key: 'video_studio.mini_app.x2a', icon: 'audio-lines' }),
+        Object.freeze({ id: 'ai2apps.video.upscaling', mode: 'upscale', key: 'video_studio.mini_app.upscale', icon: 'scan-search' }),
     ]);
     const COMPOSER_CLIP_COLORS = Object.freeze(['#2563eb', '#7c3aed', '#db2777', '#ea580c', '#059669', '#0891b2', '#4f46e5', '#65a30d']);
     const COMPOSER_MIN_SPEED = .25;
@@ -100,7 +102,7 @@
 
     window.videoStudioApp = function () { return {
         refreshing: false, refreshRequestId: 0, submitting: false, batchSubmitting: false, polling: false, joining: false, addingToGallery: false, galleryAdded: false, retryingTaskId: '', modelInstallBusy: false,
-        notice: '', noticeTone: 'error', noticeTimer: null, providers: [], modelId: '', tasks: [], selectedTaskId: '', audioRuns: [], selectedAudioRunId: '', packageRuns: [],
+        notice: '', noticeTone: 'error', noticeTimer: null, providers: [], modelId: '', tasks: [], selectedTaskId: '', audioRuns: [], selectedAudioRunId: '', upscalingRuns: [], selectedUpscalingRunId: '', upscalingModels: [], upscalingModelId: '', upscalingFile: null, upscalingSeed: 0, upscalingPrompt: '', upscalingSubmitting: false, upscalingInstalling: false, packageRuns: [],
         dismissed: [], pollTimer: null, mode: 't2v', prompt: '', resolution: '512x512', duration: 5,
         preset: 'strict', steps: 20, seed: 42, label: '', firstFile: null, lastFile: null,
         firstPreview: '', lastPreview: '', referenceImages: [], referenceVideos: [], referenceAudios: [], referenceOrder: [],
@@ -112,7 +114,7 @@
         chatController: null, chatMiniUrl: '', packageChatBridge: null,
         galleryActiveCollectionId: 'recent', galleryActiveCollectionName: 'Recent', galleryMessageHandler: null, galleryAddedTimer: null,
         extractAsset: null, extractOutputName: '', extractImporting: false, extractSubmitting: false, localAudioSources: {}, addingAudioToGallery: false, audioGalleryAdded: false,
-        composerProject: newComposerProject(), composerSources: [], composerDocumentPath: '', composerDocumentSaving: false, composerRuns: [], selectedComposerRunId: '', composerSelectedClipId: '', composerSelectedClipIds: [], composerSelectedKeyframeId: '', composerSelectedTrackId: '', composerTrackMenuOpen: false, composerTrackMenuStep: 'type', composerTrackInsertSide: 'after', composerItemMenuOpen: false, composerDropTrackId: '', composerScale: 42, composerPlayhead: 0, composerPlayheadSnapped: false, composerPlaying: false, composerRaf: 0, composerHistory: [], composerFuture: [], composerEditSnapshot: null, composerImporting: false, composerMaskImporting: false, composerFreezeBusy: false, composerRendering: false, composerSaveTimer: 0, composerCropWheelTimer: 0, composerCropWheelEditing: false, composerChatText: '', composerChatLog: [], composerChatBusy: false, composerChatModels: [], composerChatModelId: '', composerKeyHandler: null, composerHoverTip: { text: '', left: 0, top: 0 }, addingComposerToGallery: false, composerGalleryAdded: false,
+        composerProject: newComposerProject(), composerSources: [], composerDocumentPath: '', composerDocumentSaving: false, composerRuns: [], selectedComposerRunId: '', composerSelectedClipId: '', composerSelectedClipIds: [], composerSelectedKeyframeId: '', composerSelectedTrackId: '', composerTrackMenuOpen: false, composerTrackMenuStep: 'type', composerTrackInsertSide: 'after', composerItemMenuOpen: false, composerDropTrackId: '', composerScale: 42, composerPlayhead: 0, composerPlayheadSnapped: false, composerPlaying: false, composerRaf: 0, composerHistory: [], composerFuture: [], composerEditSnapshot: null, composerImporting: false, composerMaskImporting: false, composerPersonMaskBusy: false, composerMaskModels: [], composerFreezeBusy: false, composerRendering: false, composerSaveTimer: 0, composerCropWheelTimer: 0, composerCropWheelEditing: false, composerChatText: '', composerChatLog: [], composerChatBusy: false, composerChatModels: [], composerChatModelId: '', composerKeyHandler: null, composerHoverTip: { text: '', left: 0, top: 0 }, addingComposerToGallery: false, composerGalleryAdded: false,
         tr,
         get miniApps() { return [...MINI_APPS, ...this.packageMiniApps].map(localizedMiniApp); },
         get selectedProvider() { return this.providers.find(item => item.id === this.modelId) || null; },
@@ -120,8 +122,12 @@
         get miniAppChatEnabled() { return Boolean(window.AI2AppsMiniAppChat && this.currentMiniApp && (this.currentMiniApp.source !== 'package' || this.currentMiniApp.chat?.enabled === true)); },
         get isAudioExtractor() { return !this.packageMiniAppId && this.mode === 'x2a'; },
         get isComposer() { return !this.packageMiniAppId && this.mode === 'composer'; },
-        get isLocalVideoTool() { return this.isAudioExtractor || this.isComposer; },
-        get currentMiniAppReady() { return this.packageMiniAppId ? this.miniAppReady(this.currentMiniApp) : (this.isLocalVideoTool || Boolean(this.selectedProvider?.ready)); },
+        get isUpscaler() { return !this.packageMiniAppId && this.mode === 'upscale'; },
+        get isLocalVideoTool() { return this.isAudioExtractor || this.isComposer || this.isUpscaler; },
+        get selectedUpscalingModel() { return this.upscalingModels.find(item => item.id === this.upscalingModelId) || null; },
+        get activeUpscalingRun() { return this.upscalingRuns.find(run => run.id === this.selectedUpscalingRunId) || this.upscalingRuns[0] || null; },
+        get activeUpscalingArtifact() { return this.activeUpscalingRun?.artifacts?.find(item => item.kind === 'video' && item.final) || null; },
+        get currentMiniAppReady() { return this.packageMiniAppId ? this.miniAppReady(this.currentMiniApp) : (this.isUpscaler ? Boolean(this.selectedUpscalingModel?.ready) : this.isLocalVideoTool || Boolean(this.selectedProvider?.ready)); },
         get modeProviders() {
             const wantsReference = this.mode === 'r2v';
             if (this.isLocalVideoTool) return [];
@@ -144,6 +150,8 @@
         get canGenerate() {
             if (this.isAudioExtractor) return Boolean(this.extractAsset?.id || this.extractAsset?.nativePath);
             if (this.isComposer) return this.composerProject.clips.length > 0;
+            if (this.isUpscaler) return Boolean(this.upscalingFile && this.selectedUpscalingModel?.ready
+                && !this.upscalingRuns.some(run => !terminal.has(run.status)));
             if (!this.prompt.trim()) return false;
             if (this.mode === 'i2v') return Boolean(this.firstFile);
             if (this.mode === 'r2v') return Boolean(this.referenceImages.length || this.referenceVideos.length);
@@ -160,6 +168,7 @@
         },
         get activePackageArtifact() { return this.activePackageRun?.artifacts?.find(item => item.kind === 'video' && item.final) || null; },
         get activeVideoUrl() {
+            if (this.isUpscaler) return this.activeUpscalingArtifact?.downloadUrl || '';
             if (this.packageMiniAppId) {
                 const liveUrl = this.packageOutputMiniAppId === this.packageMiniAppId ? this.packageOutputUrl : '';
                 return liveUrl || this.activePackageArtifact?.downloadUrl || '';
@@ -235,7 +244,7 @@
             this.restoreMiniAppDraft(this.mode);
             if (restoredModelId) this.modelId = restoredModelId;
             if (this.mode === 'x2a') await this.loadExtractorDraft();
-            if (this.mode === 'composer') { await this.loadComposerProject(); await this.loadComposerChatModels(); }
+            if (this.mode === 'composer') { await this.loadComposerProject(); await this.loadComposerMaskModels(); await this.loadComposerChatModels(); }
             this.applyResponsiveDefaults();
             this.resizeHandler = () => this.applyResponsiveDefaults(false);
             window.addEventListener('resize', this.resizeHandler);
@@ -454,6 +463,7 @@
         miniAppForTask(task) { return this.miniAppForMode(task?.metadata?.mode || 't2v'); },
         miniAppReady(miniApp) {
             if (miniApp?.source === 'package') return this.packageMiniAppReadiness[miniApp.id] === true;
+            if (miniApp?.mode === 'upscale') return this.upscalingModels.some(item => item.ready);
             if (['x2a', 'composer'].includes(miniApp?.mode)) return true;
             const wantsReference = miniApp?.mode === 'r2v';
             return this.providers.some(item => item.ready && Boolean(item.capabilities?.includes('reference_to_video')) === wantsReference);
@@ -482,7 +492,7 @@
             const miniApp = this.currentMiniApp;
             if (!miniApp || this.currentMiniAppReady || this.packageMiniAppSetupBusy) return;
             if (miniApp.source !== 'package') {
-                try { await this.ensureVideoCapability('configure-generation'); }
+                try { if (this.isUpscaler) await this.installUpscalingModel(); else await this.ensureVideoCapability('configure-generation'); }
                 catch (error) { this.fail(error); }
                 return;
             }
@@ -703,7 +713,9 @@
             const parsed = new URL(String(url || ''), window.location.origin);
             const match = parsed.pathname.match(/^\/v1\/platform\/sessions\/([^/]+)\/artifacts\/([^/]+)\/download$/);
             if (parsed.origin !== window.location.origin || !match) throw new Error(tr('video_studio.error.artifact_invalid'));
-            const rawName = this.packageOutputUrl === url ? 'subtitled-video.mp4' : (task ? this.taskTitle(task) : tr('video_studio.joined_video'));
+            const rawName = this.isUpscaler && this.activeUpscalingArtifact?.downloadUrl === url
+                ? `${String(this.activeUpscalingRun?.input?.sourceName || 'video').replace(/\.[^.]+$/, '')}-upscaled.mp4`
+                : this.packageOutputUrl === url ? 'subtitled-video.mp4' : (task ? this.taskTitle(task) : tr('video_studio.joined_video'));
             const generatedVideo = tr('video_studio.generated_video');
             const safeName = String(rawName || generatedVideo).replace(/[\\/:*?"<>|]/g, '-').slice(0, 120) || generatedVideo;
             return {
@@ -726,7 +738,7 @@
             if (!this.activeVideoUrl || this.addingToGallery) return;
             this.addingToGallery = true; this.galleryAdded = false;
             try {
-                const reference = this.artifactReference(this.activeVideoUrl, (this.joinedVideoUrl || this.packageOutputUrl) ? null : this.activeTask);
+                const reference = this.artifactReference(this.activeVideoUrl, (this.isUpscaler || this.joinedVideoUrl || this.packageOutputUrl) ? null : this.activeTask);
                 await responsePayload(await fetch(
                     `/v1/platform/gallery/assets/import-artifact/${encodeURIComponent(reference.sessionId)}/${encodeURIComponent(reference.artifactId)}`,
                     {
@@ -764,6 +776,7 @@
                 if (localFile) {
                     if (this.mode === 'composer') { await this.importComposerFiles([localFile]); return; }
                     if (this.mode === 'x2a') { await this.importExtractFile(localFile); return; }
+                    if (this.mode === 'upscale') { this.selectUpscalingFile(localFile); return; }
                     await this.routeDroppedFile(localFile, imageSlot);
                     return;
                 }
@@ -793,6 +806,7 @@
         },
         async routeDroppedFile(file, imageSlot = '') {
             const type = String(file.type || '').toLowerCase();
+            if (this.mode === 'upscale') { this.selectUpscalingFile(file); return; }
             if (this.mode === 'composer' && /^(image|video|audio)\//.test(type)) {
                 await this.importComposerFiles([file]);
                 return;
@@ -854,7 +868,9 @@
                 this.tasks = tasks.data || [];
                 this.audioRuns = (runs.items || []).filter(run => run.miniAppId === 'ai2apps.video.extract-audio');
                 this.composerRuns = (runs.items || []).filter(run => run.miniAppId === 'ai2apps.video.composer');
-                this.packageRuns = (runs.items || []).filter(run => !['ai2apps.video.extract-audio', 'ai2apps.video.composer'].includes(run.miniAppId));
+                this.upscalingRuns = (runs.items || []).filter(run => run.miniAppId === 'ai2apps.video.upscaling');
+                this.packageRuns = (runs.items || []).filter(run => !['ai2apps.video.extract-audio', 'ai2apps.video.composer', 'ai2apps.video.upscaling'].includes(run.miniAppId));
+                void this.loadUpscalingModels().catch(() => {});
                 let selectedProviderChanged = false;
                 if (!this.isLocalVideoTool && !this.modeProviders.some(item => item.id === this.modelId && item.ready)) {
                     const probe = await window.AI2AppsCapabilities?.probe(this.capabilityRequest('probe', ''));
@@ -866,6 +882,7 @@
                 if (!this.tasks.some(task => task.id === this.selectedTaskId)) this.selectedTaskId = this.tasks.find(task => task.status === 'succeeded')?.id || this.tasks[0]?.id || '';
                 if (!this.audioRuns.some(run => run.id === this.selectedAudioRunId)) this.selectedAudioRunId = this.audioRuns[0]?.id || '';
                 if (!this.composerRuns.some(run => run.id === this.selectedComposerRunId)) this.selectedComposerRunId = this.composerRuns[0]?.id || '';
+                if (!this.upscalingRuns.some(run => run.id === this.selectedUpscalingRunId)) this.selectedUpscalingRunId = this.upscalingRuns[0]?.id || '';
                 this.persistShellState();
                 this.syncModelSelectValue();
                 this.icons();
@@ -876,7 +893,7 @@
             }
         },
         async poll() {
-            if (this.polling || this.refreshing || (!this.tasks.some(task => !terminal.has(task.status)) && !this.audioRuns.some(run => !terminal.has(run.status)) && !this.composerRuns.some(run => !terminal.has(run.status)) && !this.packageRuns.some(run => !terminal.has(run.status)))) return;
+            if (this.polling || this.refreshing || (!this.tasks.some(task => !terminal.has(task.status)) && !this.audioRuns.some(run => !terminal.has(run.status)) && !this.composerRuns.some(run => !terminal.has(run.status)) && !this.upscalingRuns.some(run => !terminal.has(run.status)) && !this.packageRuns.some(run => !terminal.has(run.status)))) return;
             this.polling = true;
             try {
                 const [tasksResponse, runsResponse] = await Promise.all([
@@ -887,7 +904,8 @@
                 const runs = (await responsePayload(runsResponse)).items || [];
                 this.audioRuns = runs.filter(run => run.miniAppId === 'ai2apps.video.extract-audio');
                 this.composerRuns = runs.filter(run => run.miniAppId === 'ai2apps.video.composer');
-                this.packageRuns = runs.filter(run => !['ai2apps.video.extract-audio', 'ai2apps.video.composer'].includes(run.miniAppId));
+                this.upscalingRuns = runs.filter(run => run.miniAppId === 'ai2apps.video.upscaling');
+                this.packageRuns = runs.filter(run => !['ai2apps.video.extract-audio', 'ai2apps.video.composer', 'ai2apps.video.upscaling'].includes(run.miniAppId));
                 this.icons();
             } catch (error) { this.fail(error); } finally { this.polling = false; }
         },
@@ -963,8 +981,10 @@
             }
             if (mode === 'x2a') {
                 await this.loadExtractorDraft();
+            } else if (mode === 'upscale') {
+                await this.loadUpscalingModels();
             } else if (mode === 'composer') {
-                await this.loadComposerProject(); await this.loadComposerChatModels();
+                await this.loadComposerProject(); await this.loadComposerMaskModels(); await this.loadComposerChatModels();
             } else if (!this.modeProviders.some(item => item.id === this.modelId)) {
                 this.modelId = this.modeProviders.find(item => item.ready)?.id || this.modeProviders[0]?.id || '';
             }
@@ -981,6 +1001,8 @@
         },
         composerSource(sourceId) { return this.composerSources.find(source => source.id === sourceId) || null; },
         composerMaskSources() { return this.composerSources.filter(source => source.hasImage); },
+        composerMaskModel(modelId) { return this.composerMaskModels.find(model => model.id === modelId) || null; },
+        composerMaskNeedsPoint(clip = this.composerSelectedClip) { return Boolean(this.composerMaskModel(clip?.maskModelId)?.promptTypes?.includes('point')); },
         composerCompatibleSources(clip) {
             if (clip?.layerType && clip.layerType !== 'media') return [];
             const current = this.composerSource(clip?.sourceId); if (!current) return [];
@@ -1199,6 +1221,37 @@
             const mask = this.composerSource(clip.maskSourceId); if (!mask?.hasImage) return '';
             const url = this.composerSourceUrl(mask.id), mode = mask.hasAlpha ? 'alpha' : 'luminance';
             return `mask-image:url(${url});mask-size:100% 100%;mask-repeat:no-repeat;mask-mode:${mode};-webkit-mask-image:url(${url});-webkit-mask-size:100% 100%;-webkit-mask-repeat:no-repeat`;
+        },
+        clearComposerDynamicMask(clipId) {
+            if (!clipId) return;
+            document.querySelectorAll(`video[data-clip-id="${CSS.escape(clipId)}"]`).forEach(sourceVideo => {
+                const frame = sourceVideo.closest('.vs-composer-media-frame');
+                if (!frame) return;
+                ['maskImage','webkitMaskImage','maskSize','webkitMaskSize','maskPosition','webkitMaskPosition','maskRepeat','webkitMaskRepeat','maskMode'].forEach(property => { frame.style[property] = ''; });
+            });
+        },
+        updateComposerDynamicMask(maskVideo) {
+            if (!maskVideo?.videoWidth || !maskVideo?.videoHeight) return;
+            const clipId = maskVideo.dataset.maskClipId, clip = this.composerProject.clips.find(item => item.id === clipId);
+            if (!clip || clip.maskKind !== 'person') return;
+            const frame = maskVideo.closest('.vs-composer-media-frame');
+            const sourceVideo = frame?.querySelector(`video[data-clip-id="${CSS.escape(clipId)}"]`);
+            if (!frame || !sourceVideo) return;
+            const canvas = document.createElement('canvas');
+            canvas.width = maskVideo.videoWidth; canvas.height = maskVideo.videoHeight;
+            const context = canvas.getContext('2d', { alpha: false }); if (!context) return;
+            try {
+                context.drawImage(maskVideo, 0, 0, canvas.width, canvas.height);
+                const url = `url(${canvas.toDataURL('image/jpeg', .82)})`;
+                const frameRect = frame.getBoundingClientRect(), sourceRect = sourceVideo.getBoundingClientRect();
+                const size = `${sourceRect.width}px ${sourceRect.height}px`;
+                const position = `${sourceRect.left-frameRect.left}px ${sourceRect.top-frameRect.top}px`;
+                frame.style.maskImage = url; frame.style.webkitMaskImage = url;
+                frame.style.maskSize = size; frame.style.webkitMaskSize = size;
+                frame.style.maskPosition = position; frame.style.webkitMaskPosition = position;
+                frame.style.maskRepeat = 'no-repeat'; frame.style.webkitMaskRepeat = 'no-repeat';
+                frame.style.maskMode = 'luminance';
+            } catch (_) {}
         },
         composerCropInsetsForViewport(state, width, height, source) {
             const cropLeft = Math.max(0, Math.min(95, Number(state.cropLeft)||0));
@@ -1454,6 +1507,11 @@
                         if (!clip.color) clip.color = COMPOSER_CLIP_COLORS[index % COMPOSER_CLIP_COLORS.length];
                         if (typeof clip.groupId !== 'string') clip.groupId = null;
                         if (typeof clip.maskSourceId !== 'string') clip.maskSourceId = null;
+                        if (!['image','person'].includes(clip.maskKind)) clip.maskKind = 'image';
+                        if (!clip.maskModelId) clip.maskModelId = 'apple.vision/person-segmentation';
+                        if (!Number.isFinite(Number(clip.maskPromptFrame))) clip.maskPromptFrame = 0;
+                        if (!Number.isFinite(Number(clip.maskThreshold))) clip.maskThreshold = .5;
+                        if (!Number.isFinite(Number(clip.maskFeather))) clip.maskFeather = 1.5;
                     });
                     this.normalizeComposerTimeline();
                 }
@@ -1465,6 +1523,14 @@
                     if (interimManagedPath) this.scheduleComposerSave();
                 }
             } catch (error) { this.fail(error); }
+        },
+        async loadComposerMaskModels() {
+            try {
+                const payload = await responsePayload(await fetch(`${STUDIO_API}/composer/mask-models`, {
+                    credentials: 'same-origin', headers: this.draftHeaders(),
+                }));
+                this.composerMaskModels = payload.items || [];
+            } catch (error) { this.composerMaskModels = []; this.fail(error); }
         },
         composerProjectFileName() {
             const stem = String(this.composerProject.title || 'Untitled composition').trim().replace(/[\\/:*?"<>|]/g, '-').replace(/^\.+|\.+$/g, '').slice(0, 120) || 'Untitled composition';
@@ -1624,7 +1690,7 @@
                 const clip = this.composerProject.clips.find(item => item.id === clipId); if (!clip) return;
                 this.composerPushHistory();
                 if (!this.composerSources.some(item => item.id === source.id)) this.composerSources.push(source);
-                clip.maskSourceId = source.id;
+                clip.maskKind = 'image'; clip.maskSourceId = source.id;
                 this.composerChanged();
             } catch (error) { this.fail(error); } finally {
                 this.composerMaskImporting = false;
@@ -1635,7 +1701,39 @@
         setComposerMask(sourceId) {
             const clip = this.composerSelectedClip; if (!clip) return;
             if (sourceId && !this.composerSource(sourceId)?.hasImage) return;
-            this.composerPushHistory(); clip.maskSourceId = sourceId || null; this.composerChanged();
+            this.composerPushHistory(); clip.maskKind = 'image'; clip.maskSourceId = sourceId || null; this.composerChanged();
+        },
+        setComposerMaskKind(kind) {
+            const clip = this.composerSelectedClip; if (!clip || !['none','image','person'].includes(kind)) return;
+            this.composerPushHistory();
+            if (clip.maskKind === 'person' && kind !== 'person') this.clearComposerDynamicMask(clip.id);
+            if (kind === 'none') { clip.maskSourceId = null; clip.maskKind = 'image'; }
+            else { if (clip.maskKind !== kind) clip.maskSourceId = null; clip.maskKind = kind; if (kind === 'person' && !clip.maskModelId) clip.maskModelId = 'apple.vision/person-segmentation'; }
+            this.composerChanged();
+        },
+        async generateComposerPersonMask() {
+            const selected = this.composerSelectedClip, source = this.composerSource(selected?.sourceId);
+            if (!selected || !source?.hasVideo || this.composerPersonMaskBusy) return;
+            this.composerPersonMaskBusy = true; this.icons();
+            try {
+                const payload = await responsePayload(await fetch(`${STUDIO_API}/composer/person-masks`, {
+                    method: 'POST', credentials: 'same-origin', headers: { ...this.draftHeaders(), 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        sourceId: selected.sourceId, modelId: selected.maskModelId || 'apple.vision/person-segmentation',
+                        promptFrame: Math.max(0, Math.round(Number(selected.maskPromptFrame)||0)),
+                        promptX: selected.maskPromptX === null || selected.maskPromptX === undefined ? null : Number(selected.maskPromptX),
+                        promptY: selected.maskPromptY === null || selected.maskPromptY === undefined ? null : Number(selected.maskPromptY),
+                        threshold: Number(selected.maskThreshold)||.5, feather: Number(selected.maskFeather)||0,
+                    }),
+                }));
+                const clip = this.composerProject.clips.find(item => item.id === selected.id); if (!clip) return;
+                this.composerPushHistory();
+                if (!this.composerSources.some(item => item.id === payload.source.id)) this.composerSources.push(payload.source);
+                clip.maskKind = 'person'; clip.maskSourceId = payload.source.id;
+                this.composerChanged(); this.syncComposerPreview();
+                this.success(tr('video_studio.success.person_mask_generated'));
+            } catch (error) { this.fail(error); }
+            finally { this.composerPersonMaskBusy = false; this.icons(); }
         },
         setComposerCropInset(side, value) {
             const clip = this.composerSelectedClip;
@@ -1769,7 +1867,8 @@
                 width: visual ? Math.round((source.width || settings.width) * scale) : null,
                 height: visual ? Math.round((source.height || settings.height) * scale) : null,
                 opacity: 1, scale: 1, audioEnabled: true, groupId: null,
-                maskSourceId: null,
+                maskSourceId: null, maskKind: 'image', maskModelId: 'apple.vision/person-segmentation',
+                maskPromptFrame: 0, maskPromptX: null, maskPromptY: null, maskThreshold: .5, maskFeather: 1.5,
                 cropLeft: 0, cropTop: 0, cropRight: 0, cropBottom: 0,
                 cropShape: 'rectangle', cropCornerRadius: 32, cropFeather: 0, cropScale: scale, cropViewportVersion: 2,
                 color: COMPOSER_CLIP_COLORS[this.composerProject.clips.length % COMPOSER_CLIP_COLORS.length],
@@ -1792,6 +1891,8 @@
                 y: layerType === 'text' ? Math.round(settings.height / 2) : Math.round(settings.height * .25),
                 width: Math.round(settings.width * .5), height: Math.round(settings.height * (layerType === 'text' ? .18 : .5)),
                 opacity: 1, scale: 1, audioEnabled: false, groupId: null, maskSourceId: null,
+                maskKind: 'image', maskModelId: 'apple.vision/person-segmentation', maskPromptFrame: 0,
+                maskPromptX: null, maskPromptY: null, maskThreshold: .5, maskFeather: 1.5,
                 color: layerType === 'spotlight' ? '#334155' : '#9333ea', keyframes: [],
                 spotlightShape: 'rounded', dimOpacity: .65, feather: 24, cornerRadius: 32,
                 text: tr('video_studio.composer.text_default'), fontSize: 64, textColor: '#ffffff', textAnchor: 'center', reveal: false, revealSpeed: 12,
@@ -2082,7 +2183,11 @@
                     volume: 0, fadeIn: 0, fadeOut: 0, x: Math.round(visual.x), y: Math.round(visual.y),
                     width: Math.max(16, Math.round(visual.width)), height: Math.max(16, Math.round(visual.height)),
                     opacity: Math.max(0, Math.min(1, visual.opacity)), scale: visual.scale, audioEnabled: false, groupId: null,
-                    maskSourceId: clip.maskSourceId || null,
+                    maskSourceId: clip.maskSourceId || null, maskKind: clip.maskKind || 'image',
+                    maskModelId: clip.maskModelId || 'apple.vision/person-segmentation',
+                    maskPromptFrame: clip.maskPromptFrame || 0, maskPromptX: clip.maskPromptX ?? null,
+                    maskPromptY: clip.maskPromptY ?? null, maskThreshold: clip.maskThreshold || .5,
+                    maskFeather: clip.maskFeather ?? 1.5,
                     cropLeft: visual.cropLeft, cropTop: visual.cropTop, cropRight: visual.cropRight, cropBottom: visual.cropBottom,
                     cropShape: visual.cropShape, cropCornerRadius: Math.round(visual.cropCornerRadius), cropFeather: Math.round(visual.cropFeather), cropScale: visual.cropScale,
                     color: COMPOSER_CLIP_COLORS[this.composerProject.clips.length % COMPOSER_CLIP_COLORS.length], keyframes: [],
@@ -2506,6 +2611,14 @@
                     if (Math.abs((media.currentTime || 0) - target) > .2) media.currentTime = target;
                     if (this.composerPlaying && active) media.play().catch(() => {}); else media.pause();
                 });
+                document.querySelectorAll('.vs-composer-stage video[data-mask-clip-id]').forEach(media => {
+                    const clip = this.composerProject.clips.find(item => item.id === media.dataset.maskClipId); if (!clip) return;
+                    const active = this.composerClipActiveAtPlayhead(clip);
+                    const target = clip.sourceStart + Math.max(0, this.composerPlayhead - clip.start) * clip.speed;
+                    media.playbackRate = clip.speed;
+                    if (Math.abs((media.currentTime || 0) - target) > .04) media.currentTime = target;
+                    if (this.composerPlaying && active) media.play().catch(() => {}); else { media.pause(); this.updateComposerDynamicMask(media); }
+                });
             });
         },
         toggleComposerPreview() {
@@ -2684,6 +2797,89 @@
                 const summaries = this.applyComposerOperations(operations);
                 this.composerChatLog.push({ text, result: summaries.join(' · ') }); this.composerChatText = '';
             } catch (error) { this.fail(error); } finally { this.composerChatBusy = false; this.icons(); }
+        },
+
+        async loadUpscalingModels() {
+            const result = await responsePayload(await fetch(`${STUDIO_API}/upscaling/models`, {
+                credentials: 'same-origin', headers: this.draftHeaders(), cache: 'no-store',
+            }));
+            this.upscalingModels = result.items || [];
+            if (!this.upscalingModels.some(item => item.id === this.upscalingModelId)) {
+                this.upscalingModelId = this.upscalingModels.find(item => item.ready)?.id || this.upscalingModels[0]?.id || '';
+            }
+            this.icons();
+        },
+        selectUpscalingFile(file) {
+            if (!file || !file.size || file.size > 1024 * 1024 * 1024 ||
+                !(String(file.type).startsWith('video/') ||
+                  ((!file.type || file.type === 'application/octet-stream') && /\.(mp4|mov|m4v|mkv|webm|avi)$/i.test(file.name)))) {
+                throw new Error(tr('video_studio.upscale.invalid_file'));
+            }
+            this.upscalingFile = file;
+            this.icons();
+        },
+        chooseUpscalingFile(event) {
+            try { if (event.target.files?.[0]) this.selectUpscalingFile(event.target.files[0]); }
+            catch (error) { this.fail(error); }
+        },
+        onUpscalingModelSelect(select) {
+            if (select.value === UPSCALING_INSTALL_MODEL_ID) {
+                select.value = this.upscalingModelId || '';
+                void this.installUpscalingModel();
+            } else if (this.upscalingModels.some(item => item.id === select.value)) {
+                this.upscalingModelId = select.value;
+                this.icons();
+            }
+        },
+        async installUpscalingModel() {
+            if (this.upscalingInstalling) return;
+            const previous = this.upscalingModelId;
+            this.upscalingInstalling = true;
+            try {
+                const result = await window.AI2AppsCapabilities.ensure({
+                    appId: APP_ID, capability: 'video.upscaling', actionId: 'install-video-upscaling-model',
+                    requirements: { operations: ['video_upscaling'], outputFormats: ['mp4'] },
+                    intent: { returnTo: `/apps/${APP_ID}`, completionPolicy: 'configure_only' },
+                }, { installMore: true });
+                await this.loadUpscalingModels();
+                if (result?.outcome === 'configured') {
+                    this.upscalingModelId = this.upscalingModels.find(item => item.id === previous && item.ready)?.id
+                        || this.upscalingModels.find(item => item.ready)?.id || previous;
+                } else this.upscalingModelId = previous;
+                if (result?.outcome === 'configured') this.success(tr('video_studio.success.models_refreshed'));
+            } catch (error) { this.upscalingModelId = previous; this.fail(error); }
+            finally { this.upscalingInstalling = false; this.icons(); }
+        },
+        async startUpscaling() {
+            if (this.upscalingSubmitting || !this.canGenerate) return;
+            const seed = Number(this.upscalingSeed);
+            if (!Number.isInteger(seed) || seed < 0 || seed > 0xFFFFFFFF) { this.fail(new Error(tr('video_studio.upscale.invalid_seed'))); return; }
+            this.upscalingSubmitting = true;
+            try {
+                const form = new FormData();
+                form.append('file', this.upscalingFile, this.upscalingFile.name);
+                form.append('model_id', this.upscalingModelId);
+                form.append('seed', String(seed));
+                form.append('prompt', this.selectedUpscalingModel?.customPrompt ? this.upscalingPrompt.trim() : '');
+                const job = await responsePayload(await fetch(`${STUDIO_API}/upscaling/jobs`, {
+                    method: 'POST', credentials: 'same-origin', headers: this.draftHeaders(), body: form,
+                }));
+                this.selectedUpscalingRunId = job.id;
+                this.rightCollapsed = false;
+                await this.refresh();
+                this.success(tr('video_studio.upscale.started'));
+            } catch (error) { this.fail(error); }
+            finally { this.upscalingSubmitting = false; this.icons(); }
+        },
+        async changeUpscalingJob(run, action) {
+            if (!run?.id) return;
+            try {
+                const job = await responsePayload(await fetch(`${STUDIO_API}/upscaling/jobs/${encodeURIComponent(run.id)}/${action}`, {
+                    method: 'POST', credentials: 'same-origin', headers: this.draftHeaders(),
+                }));
+                if (action === 'retry') this.selectedUpscalingRunId = job.id;
+                await this.refresh();
+            } catch (error) { this.fail(error); }
         },
 
         async extractAudio(retryOf = null) {

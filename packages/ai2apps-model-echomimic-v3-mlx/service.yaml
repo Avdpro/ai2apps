@@ -2,7 +2,7 @@ schema: ai2apps.service/v1
 id: ai2apps.model.echomimic-v3-mlx
 name: EchoMimic V3 MLX
 description: Local reference-image and driving-audio avatar video generation on Apple Silicon.
-version: 0.1.1
+version: 0.1.2
 publisher: {id: ai2apps}
 license: {name: Apache License 2.0, id: Apache-2.0, path: LICENSE}
 attribution:

@@ -1,0 +1,36 @@
+{
+  "schema": "ai2apps.checkpoint-build/v1",
+  "distributionId": "dist_ai2apps_sam21_hiera_small_mlx_1b7b9882_v1",
+  "modelId": "ai2apps.model.sam21-mlx/small",
+  "repoId": "eisneim/sam2.1_mlx",
+  "revision": "1b7b98828e383e3d64025b615aff049b1face026",
+  "format": "safetensors",
+  "quantization": "native-mlx",
+  "pieceSize": 8388608,
+  "license": {
+    "id": "Apache-2.0",
+    "name": "Apache License 2.0",
+    "termsUrl": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+    "termsHash": "sha256:0f581a45a6c8adf29376d894ec05e5df519bdb484bbfb83705e0314a3e516686",
+    "usagePolicy": "license_terms",
+    "accessPolicy": "public",
+    "redistributionPolicy": "allowed"
+  },
+  "includePatterns": [
+    "sam2.1_hiera_small.safetensors"
+  ],
+  "sourceRepositories": [
+    {
+      "type": "huggingface",
+      "repoId": "eisneim/sam2.1_mlx",
+      "revision": "1b7b98828e383e3d64025b615aff049b1face026",
+      "access": "public_anonymous"
+    },
+    {
+      "type": "modelscope",
+      "repoId": "ai2apps/SAM2.1-Hiera-Small-MLX",
+      "revision": "5717d4e02f95c3bad4a784748b6830b10277aba7",
+      "access": "public_anonymous"
+    }
+  ]
+}

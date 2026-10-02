@@ -1,9 +1,50 @@
 # AI2Apps Desktop 下一版 Release 台账
 
+### NXR-RELEASE-014-2257-20261002：Desktop 0.1.3 Build 2257
+
+- 状态：`preparing`。生产基线为 0.1.2 / Build 2256；本次产品版本提升为 0.1.3，Build 严格递增为 2257，rollout ID 固定为 `build2257-test`。
+- 拟纳入：Discover 已安装 Package 升级入口；Runtime 1.8.8 与 SoL 0.1.3 所需的 Host capability/资源调度；Imagine Studio 内置图片 2× 放大；Video Studio 内置视频 2× 放大、长片分段拼合与音轨保留；SAM 2.1/Apple Vision 动态人物蒙版；原生 `ai2apps-person-mask` 工具与 Release 包体/导入路径加固。
+- 明确延期：Encore、AVTR-1、MuseTalk、InfiniteTalk、Ex-Omni 研究代码、parity 测试与个人参考音频均不纳入 Desktop 制品或本次 Release commit。
+- 发布门禁：从最新 `origin/main` 建立独立 clean worktree；修复多个 Package 顶层 `worker_adapter` 的测试模块串线后，重跑 Python/Node/Swift 回归、四实例构建验证、Developer ID 签名、Apple 公证、GitHub/ModelScope 同字节双源及 Cloud 0%→100% 验收。
+- 源码门禁结果：最终完整 Python 为 10437 passed、68 skipped、74 deselected；全部 16 个 Node 测试文件、Swift 77 项 Swift Testing + 2 项 XCTest、限定 Ruff 和 `git diff --check` 通过。
+
+### NXR-DISCOVER-INSTALLED-UPGRADE-20261002：已安装模型升级入口
+
+- 补充修复：实机 SoL-Refiner 升级误走可选的 model-install-plan，返回未声明安装计划。升级现在显式使用 Package 安装操作，保留现有 Checkpoint；审核批准/重试同样保持 Package 流程，不再退回模型档位选择。
+
+- 状态：`implemented`。Discover 已安装列表为存在较新服务器版本的模型 Package 显示“升级”，保留详情与卸载；复用现有多语言和安装流程。升级明确传入服务器目录版本及兼容性信息，避免使用本地旧版本。
+- Node 回归覆盖模型、服务、App、智能体的新版本入口、相同/旧版本及目录缺失不升级，并保持发现页模型操作不重复。仅静态 JS/模板变更，App-Dev 刷新即可生效，不需要重建或发布 Package。
+
+### NXR-SOL-WHOLE-CLIP-20261002：SoL 全片精修与分块解码
+
+- 状态：`package_published`。SoL 0.1.3改为全片 VAE 编码、潜空间放大与一次 DiT，仅 VAE 解码分块；修复 DiT RMSNorm 仿射与 GELU/SiLU、Upsampler SiLU 的 BF16 中间舍入差别。沿用 Runtime 1.8.8 和现有权重。
+- Host 内存接纳按真实帧数增长；Worker 在模型载入前复查可用内存，不足时明确拒绝。新版 capability 禁止 Host 独立分段精修。需要未来 Desktop 纳入 Host 资源估计与 Studio 编排修改。
+- 189 项相关回归通过。你的 124 帧 512×288 视频输出 1024×576，24 fps/音轨保留，41.30 秒；MLX peak 4.78 GiB、采样 physical footprint peak 6.22 GiB。签名候选在 Runtime 1.8.8 安装通过：4K RGBA/自定义提示词图片、124 帧视频、取消 499、restart/stop/start/uninstall；未代替用户接受模型许可。
+- Package 0.1.3 已发布：submission `7b820804-645d-4126-9820-6b89c03203c1`，Repository Snapshot 242；公开完整下载与签名验证一致。Desktop Host 尚未发布。权重不变。杯子周期性形状跳变改善，但原杯纹理仍被模型重建成篮状纹理；不声称无失真。详见 `docs/ai2apps-sol-refiner-0.1.3-validation-2026-10-02.json`。
+
+### NXR-VIDEO-UPSCALING-MINIAPP-20261002：Video Studio 内置视频放大 Mini-App 与长视频叠帧拼合
+
+- 状态：`in_progress`。按用户后续决定改为 Video Studio 内置的“放大视频” Mini-App，不再需要独立 App Package；Video Studio 模型菜单提供“安装模型…”，通过 `video.upscaling` ACPF 安装 SoL-Refiner 标准或自定义提示词模型，固定 2×。结果进入 Video Studio 现有预览与输出。
+- Host 使用后台持久 Studio Run 调度放大、进度轮询、取消与冻结输入重试。长输入按原帧时间轴分成有界重叠片段，对对应重叠帧交叉融合，校验最终帧数和 2× 尺寸，复用原压缩音轨；片段长度与重叠帧数按分辨率限制 Host 内存。单段合规视频直接交 Worker。输入暂限 CFR 1–60 fps、每边至少 32 像素、最长 1 小时/108000 帧和 1 GiB；按所选已安装模型能力区分旧版 512 上限与新版 `resource_limited`（无固定上限，仍受资源和编码器限制），不声称无缝画质与真实模型性能已验收。
+- Host Python、Video Studio UI 和 ACPF Profile 须纳入未来 Desktop；不发布独立 App Package。需在固定 App-Dev 环境完成真实模型长片段接缝、音画同步、取消/重试验收。当前合成媒体的帧数、尺寸、音轨与内置 Mini-App/ACPF 契约定向测试通过；无 Metal 会话未做真实 SoL-Refiner 推理。
+
+### NXR-SAM21-VIDEO-CUTOUT-20261001：动态视频抠像模型 Package 与 Worker 协议
+
+- 状态：`package_published`。`ai2apps/model-sam21-mlx` 0.1.0、依赖的 `ai2apps/runtime-omlx` 1.8.6 及 Hiera Small Checkpoint Distribution 均已正式发布。Package 固定权重 revision，支持单对象正/负点提示、向前视频跟踪、软边缘灰度 MP4 蒙版；权重不进入 Package，MVP 限制为 450 帧、最高 1920×1080。
+- 新增独立 `video_segmentation` Model Worker operation、`video_segmentation` model type 与严格 capability schema；Runtime 候选从 1.8.5 提升为 1.8.6，并声明 `video-segmentation`，复用现有 MLX/NumPy/SciPy/Pillow/PyAV/视频编码层，不新增 OpenCV 或其它原生依赖。Host 与 Runtime 必须同时升级，旧 Runtime/Package 机制保持兼容。
+- Package 包含固定上游源码/权重提交、Apache-2.0、NOTICE、SBOM、纯 Python OpenCV 最小兼容层和 Sandbox-safe Worker Adapter。当前 75 项 Provider/Worker/资源/capability 回归、Ruff、diff check 与标准 Model Worker harness `--check` 通过；软蒙版 MP4 编码/回读通过。无 Metal 的终端测试仅产生已知 atexit 警告，不计为推理验收。
+- 正式回执：Checkpoint Distribution `dist_ai2apps_sam21_hiera_small_mlx_1b7b9882_v1` 使用 HF/ModelScope 双端完整下载验证，Index 97；Runtime 1.8.6 submission `e2bf34a2-8fdf-447e-81c6-9e747c3a49ad`，Cloud/GitHub/ModelScope 三源 active；模型 submission `7894c594-7325-4d7b-9acc-dede4de87c0d`，Repository metadata 236。精确签名 Runtime + SAM Package 已在独立实例安装，Worker `running`，依赖锁精确指向 1.8.6；公开 Registry 回读确认两份归档和 envelope 与本地完全一致。真实权重视频推理和 Composer 动态蒙版 UI 接入仍作为下一阶段 Desktop 验收，不在本次 Package 发布结论中宣称完成。
+
 ### NXR-AVTR1-MLX-20261001：授权权重与完整推理移植
 
-- 状态：`in_progress`。用户已同意 AVTR-1 协议，固定 revision `4c9bd5550f2617d0409ac602f75378502f675731` 的 TorchScript 已成功下载。开始原生 MLX 编码器、运动模型和渲染链验证，使用开发缓存，未更改生产 Runtime 或发布 Package。
-- 原有三维采样算子保留，后续真实权重数值与成片验收待记录。
+- 第二轮优化 `verified`：默认 2 帧解码批次，GPU uint8 转换与下一批预取，有界异步 FFmpeg 直出 H.264/AAC；快速模式同素材生成循环 23.75 s（10.53 fps），文件就绪 23.98 s，MLX peak 4.97 GiB，无回退。5 帧模式 24.17 s / 7.76 GiB，不设默认。
+- 2/5 帧批量与逐帧对齐、尾批次和坏帧回退通过；编码帧序/同步异步一致性/错误原子性/线程与进程清理 3 项集成测试通过。三维布局、通道补齐、稀疏采样未证明明显提速，实验实现已移除。仍未纳入生产 Runtime / Model Service。
+
+- 渲染优化已验证：融合 Metal 采样、等价 mask 卷积、肖像固定子图缓存、NHWC 解码、静音 HuBERT 缓存。默认 FP32 模式生成 10 秒视频 31.85 s；可选缩放 FP16 解码模式 25.86 s（较原版 39.01 s 快 1.51×），MLX peak 4.41 GiB，250 帧无非有限值回退。
+- 新增 12 组姿态逐像素对齐、源缓存切换回归和模式选择；高精度最大误差 1.37e-4，快速模式 PSNR 56.55–62.97 dB。快速模式仍为可选，未做多肖像长视频和最终 Runtime 验收。
+- 状态：`prototype_verified`，不纳入当前 Desktop 发版。用户授权权重已下载，完整 MLX 音频、运动和渲染链生成 10 秒 512²/25 fps 视频；开发入口、固定资产摘要及转换/对齐脚本已保存。
+- M5 Max / 128 GiB：生成循环 39.01 秒（6.41 fps），MLX peak 5.53 GiB；18 项真实权重数值对齐和 12 组采样回归通过。独立入口未导入 Torch/ONNX Runtime；抽帧与音画轨道检查通过。
+- 仍需渲染优化、正式共享依赖、Model Service/Worker/安装和最终 Runtime 验收；本轮未变更生产 Runtime、Desktop 构建或发布 Package。详见 `packages/ai2apps-model-avtr1-mlx/README.md`。
 
 
 ### NXR-RELEASE-013-2256-20261001：Desktop 0.1.2 Build 2256
@@ -4583,3 +4624,168 @@ Runtime profile、安装行为或发布流程的工作，都必须在完成该�
 - 旧工程缺少新字段时自动使用四边 0%、矩形、0 像素羽化的兼容默认值；新导入素材和插入静帧会初始化或继承完整裁剪状态。
 - 需要进入 App 的文件：`ai2apps/video/composer.py`、`ai2apps/web/templates/system_apps/video_studio.html`、`ai2apps/web/static/js/video_studio.js`、`ai2apps/web/static/css/video_composer.css`、中英文 i18n 及 Composer 回归测试。
 - 验证：Composer 15 项回归通过（覆盖源区域裁取、裁剪关键帧插值/离散形状切换、空结束帧继承、椭圆/圆角形状与向内羽化像素、绝对裁剪缩放与超出窗口的透明像素），JavaScript 语法、Ruff、双语 JSON 和 diff 检查通过。固定 Dev Local 已重启至 `64606` 并打开 Video Composer；已恢复原工程并选中 `DeepSeek.mov` 目视确认顶层橙色布局外框、右下手柄和迁移后的取景画面正常显示；Cmd/Ctrl 不再触发取消选中、真实 DOM 外框、旧裁剪窗口迁移、右/下边界重算和裁剪缩放输入均由静态契约测试覆盖。
+
+### NXR-AVATAR-SOURCE-CANVAS-20261001：原图尺寸数字人视频
+
+- 状态：`prototype_verified`，不纳入当前 Desktop 发版。新增 `ai2apps/avatar/composition.py` 通用原图回贴组件，按裁剪逆变换在原画布预乘颜色插值与边缘融合；首个接入为 AVTR 开发入口。模型仍以 512×512 推理，输出保留原图宽高；不包含人物抠像。正式模型 Package 与 Mini-App 尚未接入本变更。
+- 原图输出为默认，可选 `--output-mode crop` 保留 512²；编码器支持任意宽高，偶数使用 4:2:0，奇数使用保留精确尺寸的 4:4:4（播放器兼容性较少）。仅逐帧提交全画布，队列有界。
+- 5 项画布/真实编码回归与原有 3 项编码回归、Ruff 通过；真实权重生成横幅 1920×1080 与竖幅 1080×1920 各 2 秒/50 帧，耗时 4.91/5.09 秒，其中回贴 0.168/0.227 秒，无回退。音画轨道、尺寸、帧数和抽帧目视检查通过；详细限制与复现见 AVTR README。
+
+- 2026-10-01 Alpha 读取修复：AVTR 预处理先应用 EXIF，再使用原图 Alpha 合成 RGB（默认黑底），避免直接丢弃透明度暴露白色边缘；修正角落人物样片的素材合成。6 项画布/Alpha/编码回归与 Ruff 通过；重新生成 1920×1080、2 秒样片，生成 4.87 秒、无回退，抽帧确认明显白色轮廓已消除。
+
+### NXR-AVATAR-CONTROLS-NEXT：数字人转头、注视与情绪控制
+
+- 状态：`planned`，用户已确认作为下一版内容；目前仅完成计划，不是已实现或当前 Desktop 发布候选。
+- 范围：优先 AVTR 的小幅姿态、注视目标、表情通道与情绪预设；通用能力协商、Mini-App 时间轨道及 Composer 目标对接。摄像头用户追踪作为独立实时实验，达到性能门槛才开放。
+- 计划与验收：`docs/ai2apps-avatar-controls-next-version-plan.md`，包括 M0–M5、坐标/时间语义、口型保护、真实权重测试和安装发布门槛。
+- 依赖：现有裁剪/回贴 Host 改动先完成 Desktop 交付；初期复用现有 Runtime，不预先新增专用 Runtime。不得将本条与已验证回贴功能的发布状态混淆。
+
+### NXR-AVATAR-PACKAGE-CANVAS-20261001：通用回贴与 AVTR Model Worker
+
+- 状态：`ready`。Host 通用裁剪/回贴实现与验证完成，待纳入 Desktop Release；三个相关 Package 已正式发布，不能将此等同于生产 Host 已升级。
+- 范围：Host 使用系统 Vision + Pillow 定位和裁剪，处理原图尺寸、EXIF/Alpha、视频回贴与音轨；Mini-App 默认 source 分辨率。覆盖 AVTR、FlashHead Lite/Pro、EchoMimic。AVTR 0.1.0 依赖现有 Runtime >=1.8.5，无 OpenCV/ONNX/另一个模型 Package 源码依赖；EchoMimic 0.1.2 修复通用 multipart 引用并补齐签名安装/发现声明；Avatar Suite 0.1.2 增加原图尺寸标签并修复最低 Package 契约版本声明。
+- 验证：44 项 Python 回归、6 项独立画布回归、两组前端测试通过。四个模型均完成真实 Runtime 的 1920×1080 偏置人像生成/回贴。AVTR 与 EchoMimic 正式签名字节完成独立 Managed Service 安装、权重校验、真实推理、停止/重启/卸载；Suite 完成签名兼容制品安装。
+- 发布：AVTR 0.1.0 / EchoMimic 0.1.2 / Avatar Studio Suite 0.1.2 已发布；Repository Snapshot 232，AVTR Distribution Index 96，HF/MS 两端完整下载 SHA-256 验证。无需新增 Runtime。Suite 按标准手册省略可选 miniApps catalog 投影，完整签名 app.yaml 保留。
+- 回执：`docs/ai2apps-avatar-packages-release-2026-10-01.md` 与同名 JSON。Host 源码需随 Desktop Build 交付，App-Dev 的 Python 热挂载环境需重启 Local 才生效。
+
+
+## SoL-Refiner 独立 MLX 原型（2026-10-01）
+
+- 状态：`ready`（独立研究原型），尚未纳入 Desktop/Runtime 发布候选。
+- 范围：`experiments/sol_refiner_mlx/`；独立虚拟环境、官方 LTX-2.3 One-Step 权重加载、视频 Transformer、Gemma 文本条件、VAE、latent 上采样与单步推理。
+- 用户要求：先独立实现，不依赖当前 Runtime。没有修改 Runtime 依赖、App Bundle、Worker 或生产服务。
+- 发布边界：未来接入 Package/Video Studio 时再评估 Runtime 与 Desktop 变更；当前实验不可作为已验证的生产能力。
+
+- SoL 原型验证（2026-10-01）：13 项跨框架数值测试通过；真实权重 VAE 编码/解码/上采样 BF16 相对 L2 误差 0.80%/0.91%/1.41%。干净推理环境确认没有 Torch、Diffusers、ltx_core_mlx、omlx、ai2apps。M5 Max 128 GiB 完成 33 帧、25 fps、512²→1024²，推理 15.48 秒，MLX 峰值分配 25.91 GiB。尚未验证 CUDA 端到端画质等价、4K 或长视频；产物无音轨。独立源码放在仓库根 experiments 下，不进入 ai2apps App 热挂载源码。
+
+- SoL 优化（2026-10-01，`ready` 独立实验）：默认 Gemma/DiT 逐层释放，完整新提示词流程 kernel physical footprint 从 26.33 GiB 降至 7.00 GiB（约 -73%）；重复完整/缓存条件输出均与保留权重基线 MP4 SHA-256 一致。新增 macOS 内核历史峰值记录、`--retain-weights` 对照及可选 `--vae-decode-conv conv2d` 时间分块解码。快速解码未裁剪像素相对 L2 差异 0.81%，保持实验选项；耗时重复测量漂移明显，不承诺稳定提速。19 项数值/分块边界回归、Ruff 通过，结果和复现命令存于 `experiments/sol_refiner_mlx/results/optimization-benchmarks.json`；不涉及 Runtime 或 Desktop 制品。
+- SoL 长度与分段测试（2026-10-01）：33/65/129 帧放大到 1024²，kernel footprint 7.09/11.92/22.60 GiB，耗时 13.25/26.75/57.53 秒；33 帧复测 14.69 秒。65 帧拆成两个 41 帧窗口、重叠 17 帧并在中间两帧融合，单段峰值约 8.55 GiB、总推理 37.82 秒；仅完成单个人像短片探针，未实现生产流式分段或普适时序质量认证。记录见 `experiments/sol_refiner_mlx/results/length-and-segmentation.json`；无 Runtime/Desktop 产品改动。
+
+
+## NXR-VIDEO-UPSCALING-SOL-20261001
+
+- Status: Runtime 1.8.7 and SoL model Package 0.1.0 published and anonymously verified; Host Desktop integration remains in_progress.
+- Integration handoff (2026-10-02): `docs/ai2apps-sol-refiner-video-upscaling-integration.md` documents the published Worker contract, Host background file invocation, model profiles, and pending Video App/Mini-App bridge, ACPF and task/output integration. Later release updates below supersede the original candidate gates.
+- Scope: separate `video_upscaling` model type and `/v1/videos/upscalings` Model Worker operation; SoL-Refiner MLX 0.1.0 candidate with bounded overlapping video windows and audio passthrough.
+- Host changes: model catalog validation, operation routing, and resource budgets. These require evaluation for the next Desktop release; a Runtime upgrade alone does not update the installed Host catalog.
+- Runtime: 1.8.7 published and anonymously verified; exact signed package installed with FlashHead Worker running. Receipt: `docs/ai2apps-runtime-1.8.7-release-2026-10-01.json`. External mirror activation remains pending.
+- Validation: 49 unit/contract tests and standard adapter harness passed. Runtime dependency GPU runs passed for 9 and 65 frames; the 65-frame 512-to-1024 run retained all frames in 34.69 seconds. Signed model managed-service invocation and checkpoint Distribution/full dual download remain pending.
+
+- SoL release gates: full dual checkpoint validation precedes Distribution/model publication. LTX/Gemma terms are presented by ACPF and Discover at checkpoint installation; only the installing user may confirm. Publisher acceptance is not a publication gate, and release QA must not manufacture a real user consent record. Runtime GitHub source awaits independent activation review; ModelScope mirror returns HTTP 200 Content-Range and has not been registered under the current strict-206 runbook.
+
+- Model adapter follow-up: queued cancellation and stop now prevent queued GPU work from starting; 26 model Package tests pass. Signed installed inference/lifecycle script is optional QA requiring an actual consenting installer; it is not a request for publisher acceptance on behalf of downstream users. Five focused conditional-license tests pass, covering manifest binding, consent before checkpoint IO, and provisioning consent persistence.
+
+- NXR-VIDEO-UPSCALING-SOL-20261001 update: implementing a recommended 28.71 GB fixed-default profile and optional custom-prompt profile sharing video tensor hashes (about 28.33 GB additional text). Blank prompts use the default; unsupported custom prompts fail with an install instruction rather than being ignored. Derived checkpoint upload, signed Distribution, package installation QA and publication remain in progress.
+
+- Compact SoL progress: 31 Package tests, 6 cache/consent tests and two-profile adapter harness pass. Standard-only 65-frame 512-to-1024 segmented GPU run preserves 65 frames (34.46 s under concurrent load). HF derived weights are uploaded at 751edf5618ccfb8b9e6cae557de9071694cb6ec7 and all remote sizes/digests verified. ModelScope upload/full dual readback and signed installed QA/publication are still pending. No installer consent has been fabricated.
+
+
+## Encore MLX 数字人原型（2026-10-02）
+
+- ID: `NXR-ENCORE-MLX-A2V`
+- Status: `in_progress`; 实验组件，不能纳入可用模型或生产 Package。
+- Scope: `ai2apps/experiments/encore_mlx/`。上游固定为 `shaohua-pan/Encore@1790b0e7f69b0ded811de36104651c366dd79686`，保留上游许可证。复用 LTX 实现经验，补齐音视频 Transformer block、双向交叉注意力、split RoPE、文本 AdaLN、门控及 Encore 紧凑路由偏置。
+- Validation: 官方未修改 PyTorch CPU block 对照 MLX Metal，12 组随机小尺寸 FP32/BF16 视频/音频结果通过；FP32 相对 L2 最大约 1.55e-7，BF16 最大约 0.00506。覆盖有无路由、相同/不同模态头数、每 token timestep。严格 FP32 对照需 `MLX_ENABLE_TF32=0`。结果和命令见 `block-parity.json`、`source-lock.json`。
+- 权重只读取固定 revision 的公开 safetensors 头部；Encore routing_table 实际存储为 `[6144]`。尚未下载模型 payload、执行真实权重推理或测量整模型性能。
+- Remaining: 权重映射/LoRA、音频编码、完整条件与 RoPE、Res2s 采样、单段真实推理、跨段封装、Package/Host 接入。现阶段没有 Runtime/Cloud/生产制品变更。
+
+
+## Video Composer 动态人物扣像（2026-10-02）
+
+- ID: `NXR-VIDEO-COMPOSER-PERSON-MASK`
+- Status: `ready`; not published.
+- Composer Clip 蒙版扩展为静态蒙版图和动态人物扣像两类；项目保存扣像模型、提示帧/点、阈值、羽化和生成后的逐帧蒙版素材。预览与 PyAV 导出按源素材时间（含 `sourceStart` 和播放速率）同步灰度视频蒙版。
+- 默认模型为内置 `apple.vision/person-segmentation`。Desktop Runtime 新增签名分发的 `ai2apps-person-mask` Swift 工具，使用 Apple Vision `VNGeneratePersonSegmentationRequest` 逐帧生成软灰度 MP4 蒙版；App、Helper、Shell 身份不变。
+- 可选模型从 Package 模型目录的 `video_segmentation` 能力动态发现。已存在的 `ai2apps.model.sam21-mlx/small` 自动出现，并通过标准 Model Invocation 边界调用；其点提示、阈值和羽化参数由 Composer UI/项目保存。未来同能力 Package 无需新增 Composer 专用模型 ID 分支。
+- Packaging: `build-release-app.sh` / `build-dev-app.sh` 构建并放置原生工具，`verify-release-app.sh` 强制检查工具存在；App-Shell 开发环境仍必须使用固定 `build-app-dev-environment.sh` 流程。
+- Packaging hardening: Runtime 源码装配现在明确排除 `ai2apps/.build`、`.pytest_cache` 和 `.ruff_cache`；本次检查发现 `.build` 为约 195 GB 的本地缓存，若不排除会被错误复制进 Desktop App。该目录仍保留在工作区，没有删除用户缓存。
+- Verification hardening: 非沙箱 Runtime 的嵌入 Python 健康检查启用 `PYTHONSAFEPATH=1`，避免从任意调用方当前目录导入同名模块（本次从 `ai2apps/` 调用时，项目的 `secrets` 包会遮蔽标准库 `secrets`）。
+- Validation: Swift 工具 product 编译通过；Composer、Video Studio 和 video-segmentation capability 共 30 项测试通过，其中覆盖动态视频蒙版跨帧变化。固定 `AI2Apps-app-dev.app` 已按专用流程完成重建和替换，`com.ai2apps.desktop.appdev` / `app-dev` / Cloud Runtime 身份、原生工具可执行性、完整深度签名和新 Local 启动均通过验证。当前机器处于锁屏状态，无法补做真人素材的可视化 UI 验收；系统 Vision 在锁屏下对合成测试源返回不可解码，因此该项不作为代码与制品就绪的阻塞，但正式 Desktop 发布前仍应使用真实人物视频完成一次 Apple Vision 与 SAM 2.1 的预览/导出人工验收。
+
+### Encore 实权重组件验证与测速（2026-10-02，NXR-ENCORE-MLX-A2V）
+
+- 新增原始权重映射与 BF16 Encore LoRA 融合；按固定 revision 的 Range 下载首层和音频编码器切片，保留提取摘要，不声称整 checkpoint 摘要验证。
+- 真实首层权重对照官方 Torch block：视频相对 L2 0.006806、音频 0.008004；输入仍为合成 hidden states，不是实际生成视频。
+- Apple M5 Max / 128 GiB，首层 BF16 热运行中位数：1088 视频 token + 190 音频 token 为 0.06260s；4352 + 190 为 0.23604s。MLX 峰值分别约 2.57/3.81 GB。这是单层、单次前向结果，不能作为整模型时延、整模型内存或出片速度。报告 `ai2apps/experiments/encore_mlx/block-benchmark.json`。
+- 已实现 causal audio encoder（log-mel 到 latent），真实权重 FP32 对照依据上游公式转写的 Torch functional reference，33/34 帧相对 L2 < 4.51e-7；505 mel 帧编码热运行约 0.013s。尚未完成波形预处理验证，也未使用官方完整音频类作为参考（现有 Torch 2.14.1 无匹配 torchaudio 包）。
+- 未生成 Encore 视频样片；画质、口型和端到端速度均未验证。剩余完整 Transformer 条件/输入输出、音频文本连接器、Res2s/引导采样及视频流水线。保持 in_progress，禁止将组件计时作为产品性能发布。
+
+### Encore 完整 A2V 流水线接入中（2026-10-02，NXR-ENCORE-MLX-A2V）
+
+- 已增加完整 48 层 Transformer、原权重 VAE 映射、双模态文本 connector、波形 log-mel、两阶段 Res2s 和 CLI 流水线；此时尚未完成完整权重推理，不可标记 ready。
+- 时间/位置条件检查 8 项通过；RoPE 官方对照最大差为 0。Res2s 使用官方原始函数体、受控零噪声比较，最终 BF16 输出相对 L2 为 0。
+- 正在下载固定版本原始 Encore/LTX 权重并准备出片。用户要求持续推进到数字人可用再确认；不得把组件通过或 MP4 编码成功作为完成验收。
+
+### Encore real-video acceptance in progress (2026-10-02, NXR-ENCORE-MLX-A2V)
+
+- Pinned full Encore/LTX/distilled/upscaler payloads downloaded; independent full SHA-256 audit remains pending. Supersedes the earlier header-only state.
+- Real MLX two-stage outputs: M5 Max 128 GiB, 512x512, 49 frames in 77.56s (text cache hit); 121 frames in 149.69s (includes 4.86s text encoding). MLX peak about 48.31GB. Driving audio preserved.
+- Quality gate FAILED: unrelated confetti/background graphics recur across portraits, prompts and seeds; mouth motion sometimes insufficient. Successful MP4 encoding is not avatar acceptance. Do not publish this candidate.
+- Real fused-weight conditioning vs official Torch: relative L2 <=0.00548; first block through output head 0.01339. Text conditioning is under further investigation.
+- Worker contract: multipart, cancellation, controlled output, validation; 3 tests pass. Removed runtime imports from sibling SoL experiment source; reused LTX/Gemma primitives include provenance hashes. Actual Worker/Host end-to-end acceptance remains pending.
+- Status remains in_progress. No Package, Runtime, Cloud or production publication.
+
+- 2026-10-02: User explicitly authorized publishing compact SoL profiles without waiting for first full ModelScope readback. Release uses the standard metadata_verified builder: pinned HF local bytes plus verified remote HF hashes and authoritative MS file sizes/SHA-256. Full MS readback is incomplete and is not claimed. Package signature, installed sandbox QA, inference and installer consent checks remain required.
+
+- Compact SoL metadata verification completed: default 28,705,240,872 bytes (22 files), custom 57,037,306,792 bytes. Both signed Distributions submitted and review requested. Default submission 56d23428-d732-4354-baaf-f7af806cfbb7; custom submission 0ea3933b-3b56-4d50-b7f5-9db71fd4aeac. Cloud approval requires renewed administrator verification; no Distribution/model publication has occurred. Resume these IDs, never resubmit. Dev Account Security administrator form identified for user handoff; no password accessed.
+
+- NXR-VIDEO-UPSCALING-SOL-20261001: both compact Distributions are published and anonymously verified. Signed installed QA caught a progress protocol mismatch; corrected the Package engine to emit phase/current/total. Model publication remains pending repeated signed installed QA.
+
+- SoL-Refiner MLX 0.1.0 compact dual-profile Package and both Distributions published and anonymously verified. Signed installed QA covered both profiles, audio, cancellation, restart and uninstall using isolated developer fixtures; production installer consent remains required. See docs/ai2apps-sol-refiner-0.1.0-release-2026-10-01.json. Host catalog changes still require the next Desktop release.
+
+### Encore / existing SoL cross-check (2026-10-02, NXR-ENCORE-MLX-A2V)
+
+- Supersedes earlier pending details: all four full checkpoint SHA-256 values verified against pinned official LFS metadata; Worker unit checks now 12 passing. Native PyAV audio mux validated. Actual Worker/Host acceptance still pending.
+- Official Torch Transformer substituted into stage two reproduces particles using shared native-fused weights/conditioning/sampler; this does not rule out shared pipeline errors. Original upsampler FP32 relative L2 3.04e-6; official speech encoder FP32 1.43e-6, BF16 0.02835. HQ artifacts also occur at 1024 square.
+- User requested comparison with existing successful LTX upscaling. Same Encore portrait-tight first-stage output passed through unchanged SoL one-step inference: 49 frames, 512 square, 8.267s for SoL, excluding Encore stage one and initial decode. Five sampled frames show no prior confetti; blinking and mouth motion retained. This is diagnostic evidence, not lip-sync acceptance or total avatar latency.
+- SoL differs in specialized weights, AdaIN, sigma 0.725, single denoise and isolated video modality. Official Encore has no AdaIN; do not blindly copy this operation into its official path. Report: ai2apps/experiments/encore_mlx/sol-cross-check.json. Local audiovisual sample: ai2apps/.build/encore/sol-cross-check/avatar.mp4.
+- Status remains in_progress; next checks are full temporal/lip-sync acceptance and remaining Encore stage-two conditioning/fusion/sampler differences. No public release or Cloud change.
+
+- NXR-VIDEO-UPSCALING-SOL-20261001 (2026-10-02, in_progress): preparing unpublished SoL Package 0.1.1 with no artificial input edge limit, adaptive latent-aligned temporal windows, and resource_limited/null pixel capability contract. Host catalog and geometry-based resource reservations must ship with the next Desktop. 0.1.0 remains the published version; weights/Distribution IDs are unchanged. Real 4K and window-boundary tests are pending.
+
+- NXR-VIDEO-UPSCALING-SOL-20261001 (2026-10-02, implementation ready; Desktop/package publication pending): 0.1.1 signed candidate `b1f8d016f7451a0778c9f5bed49c94e40e0476c47ea2db7908b1bc67853ee23e`, 94,987 bytes. 165 relevant tests passed. 4K 17-frame execution preserved all frames (MLX peak 14.07 GiB); signed managed installation additionally verified 4K with audio, custom prompts, cancellation, restart and uninstall. 65-frame 2K adaptive run peaked at 13.04 GiB, took 325.45 seconds with concurrent load; do not claim a speedup. See `docs/ai2apps-sol-refiner-0.1.1-validation-2026-10-02.json`. Candidate keeps Runtime 1.8.7 and existing weights; new Host null-limit parsing and media-derived resource reservations must ship together. No Cookie accessed and no 0.1.1 Cloud submission created in this turn.
+
+- NXR-VIDEO-UPSCALING-SOL-20261001 (2026-10-02): SoL-Refiner MLX 0.1.1 published with user-authorized Dev session. Submission `b7e7ddcb-cb81-4e0c-9838-ffe92ffe70f3`; SHA-256 `b1f8d016f7451a0778c9f5bed49c94e40e0476c47ea2db7908b1bc67853ee23e`; 94,987 bytes. Anonymous Registry metadata v239 download and signature verified; Dev Discover card/details show 0.1.1 and Publisher AI2Apps. Exact signed-artifact installation QA was completed before publication. Host/Desktop changes remain pending; Runtime 1.8.7 and weight Distributions unchanged. Receipt: `docs/ai2apps-sol-refiner-0.1.1-release-2026-10-02.json`.
+
+### Encore lip-sync rejection and controlled probes (2026-10-02, NXR-ENCORE-MLX-A2V)
+
+- User explicitly rejected lip synchronization. SoL-cleaned visual frames are not avatar acceptance. Status remains in_progress and quality_failed; no default model changes or publication.
+- Added local research probes: ai2apps/experiments/encore_mlx/probe_audio_drive.py and measure_mouth.swift. Five matched 121-frame/24fps first-stage cases completed (native output 256 square): speech, silence, guidance 3->9, exact transcript, clean audio modality sigma=0. All remain almost closed-mouth and fail usable speech motion. Last three are diagnostic experiments, not new defaults.
+- Same-seed speech/silence pixel MAE 1.7416/255, no identical frames: some audio dependence exists, but it does not produce usable speaking motion. Vision inner-lip geometry is only a gross-opening diagnostic, not a phonetic sync score.
+- Audio mux audit: both streams start at zero and last 5.041667s; best source/AAC waveform lag zero, correlation 0.999586. Do not offset audio to conceal this generation failure.
+- Report: ai2apps/experiments/encore_mlx/lipsync-investigation.json. Probe Python passes Ruff fatal-error checks; Swift measurement compiled and ran on all 121 frames of all five samples. Concurrent local inference makes these runs unsuitable as performance benchmarks.
+- Remaining: official Gemma QAT repository access/equivalence, complete original first-stage condition comparison, full native/reference prediction comparison on actual inference inputs, then phonetic and Worker/source-canvas acceptance. Core default inference, App, Runtime and Cloud are unchanged this turn.
+
+- NXR-IMAGE-UPSCALING-SOL-20261002 (in_progress): add image_upscaling as a distinct core operation, direct PNG/JPEG/WebP pixels to PNG with orientation/color handling and preserved resized alpha, shared SoL weights. Model Package 0.1.2 and Runtime worker-route update are being prepared; Host model discovery, resource reservation and ACPF profile will be updated. No image-support release has been published yet.
+
+### Official Gemma QAT verified; prior text-weight hypothesis excluded (2026-10-02, NXR-ENCORE-MLX-A2V)
+
+- User confirmed repository access. Downloaded google/gemma-3-12b-it-qat-q4_0-unquantized at 68f7ee4fbd59087436ada77ed2d62f373fdd4482; all five original shards pass official LFS SHA-256 checks. No upload/publication.
+- All 626 language_model.model.* tensors actually used by text encoding are exactly equal to the previously reused pinned SoL text weights. Four actual positive/negative video/audio conditions are elementwise equal. Different shard digests arose from file layout; they did not prove different used parameters.
+- Official-directory 121-frame/24fps/512-square run completed. Complete stage-one latent is also elementwise equal to the prior matched speech case. Final video still contains confetti-like artifacts and fails lip-sync acceptance. Therefore missing/different Gemma QAT weights do not explain this sample's failure.
+- Added explicit --gemma/--output overrides to the research probe; Ruff fatal-error checks pass. Report: ai2apps/experiments/encore_mlx/gemma-qat-verification.json. Local output: ai2apps/.build/encore/qat-121/avatar.mp4. Observed full time 162.46s, peak MLX 48.31GB; diagnostic run, not a release benchmark.
+- Supersedes prior Gemma-access blocker. Continue complete official first-stage condition/native prediction checks and audio-motion debugging. Status in_progress/quality_failed; no App/Runtime/Cloud release or production default changes.
+
+- NXR-IMAGE-UPSCALING-SOL-20261002（2026-10-02 续）：图片核心 operation、模型目录能力验证、Host 根据真实图片尺寸/EXIF 的资源预留、Imagine/Video ACPF profiles 已实现；173 项相关测试通过。原生图片探针 513×341→1026×682 为 4.49 秒/1.45 GiB MLX 峰值，1920×1080→3840×2160 为 12.83 秒/2.99 GiB，两项 RGBA alpha 均精确符合 Lanczos 放大。SoL 0.1.2 已签名（SHA-256 c3b9a51f5f1fb57c9e135f86a4babb79d7a2280329687117c972ab8f55a3d7ee）；Runtime 1.8.8 已签名、公证及 Gatekeeper 验证（SHA-256 28aa0b680a3897388fde3177ecee1e2cfc35eea9feb44a6593b1523d1159c511）。正在最终签名安装验收；两个候选尚未发布，Host 仍待 Desktop Release。原权重 Distribution 不变。新增 `docs/ai2apps-sol-refiner-image-upscaling-integration.md`，App/Mini-App bridge/UI 对接不属于已完成范围。
+
+- NXR-IMAGE-UPSCALING-SOL-20261002（验收完成，发布待认证）：Runtime 1.8.8 + SoL 0.1.2 最终签名安装成功。标准版 4K RGBA PNG、自定义提示词 1026×682 RGBA PNG、9 帧 256×256 含音轨 MP4 均 HTTP 200；两种图片 alpha 精确符合 Lanczos。取消 HTTP 499（约 1.05 秒）、重启、停启、卸载通过。新增 Host EXIF/防伪造尺寸调度测试通过，累计 174 项相关测试。回执 `docs/ai2apps-sol-refiner-0.1.2-validation-2026-10-02.json`。Installation session 返回 active user session required；本次未读取 Cookie、未创建 submission，等待 Runtime 1.8.8 与模型 0.1.2 的精确 Dev 会话授权。Host/Desktop 和 Mini-App 接入仍待后续发布/验收。
+
+- NXR-IMAGE-UPSCALING-SOL-20261002（Package published / Desktop pending）：用户明确授权后，通过标准 Dev live 发布链先发布 Runtime 1.8.8（submission `83ba0f57-f26f-4cc7-acfe-0d00af3a24a4`，Snapshot 240），匿名完整下载/验签后发布 SoL 0.1.2（submission `729d5ffb-6820-4cb4-90c3-c997264dd621`，Snapshot 241）。最终 list-only 两者均 published；Dev Discover 显示两个准确版本。最终字节与已通过真实签名安装/图片视频推理的候选完全一致。回执 `docs/ai2apps-runtime-1.8.8-release-2026-10-02.json`、`docs/ai2apps-sol-refiner-0.1.2-release-2026-10-02.json`。Runtime 暂用已验证 Cloud 单源，镜像验证和独立激活补齐计划、无第二台 Mac 验证限制已记录。模型权重不变。本次精确 Dev Cookie 授权已结束；Host 核心能力/ACPF 仍需 Desktop 纳入，Mini-App bridge/UI 仍需接入，不声称已部署客户端。
+
+
+### Encore official CPU reference (2026-10-02, NXR-ENCORE-MLX-A2V)
+
+- Added research-only run_official_cpu.py, pinned dependency list and explicit official-cpu-fp32.patch. Uses upstream commit 1790b0e7f69b0ded811de36104651c366dd79686, original checkpoints, official loader/fusion, Gemma, torchaudio, VAE, Res2s and video encoding; no native MLX inference imported. Latest remote HEAD could not be verified due network timeout.
+- CPU BF16 matrix benchmark was 8.24s versus FP32 0.00965s for the tested shape. The complete reference uses FP32 compatibility edits and CUDA synchronization no-op. This is not an unmodified CUDA/BF16 reproduction. First FP32 attempt exposed mixed dtype in the upstream sampler/loader; compatibility patch now casts the full Transformer and sampler state consistently.
+- Structural audit: all 4,186 expected Transformer tensors present with matching shapes, 1,344 Encore LoRA A/B pairs matched. No missing tensor found; structural checks do not establish release quality.
+- Actual official CPU prompt contexts versus native BF16 relative L2 0.0040-0.0071. Actual official image conditions re-encoded with mapped MLX FP32 VAE agree within 4.4e-6 relative L2; audio encoder 1.35e-6 and log-mel 8.19e-7. Reports are ai2apps/experiments/encore_mlx/official-cpu-{context,input}-parity.json.
+- Full official CPU reference completed: 49 frames, 512-square, 24fps, 1695.37s total, 100 model forwards, exit 0. Official final decoding and MP4 audio mux completed. All 49 final frames inspected in a contact sheet: no obvious prior confetti, but lips remain mostly closed; quality still fails. First-stage official latent viewed through native decoder also has mostly closed lips. Mouth-opening proxy ranges stage1 0.0423-0.0771, final 0.0713-0.1013; not phonetic alignment scores.
+- Additional native BF16 run with same source image/stereo audio/prompt/negative prompt/seed number/size/frames/steps/strengths completed in 80.31s, peak MLX 48.31GB, and visibly reproduces confetti. Precision, preprocessing, RNG and fusion differ, so no isolated numeric root cause claimed. Next separate official A2V mouth-motion/configuration investigation from native second-stage divergence.
+- Receipt: ai2apps/experiments/encore_mlx/official-cpu-reference.json. CPU clip: ai2apps/.build/encore/official-cpu-fp32-49-v2/avatar.mp4; matched-input native: ai2apps/.build/encore/native-cpu-matched-49/avatar.mp4. Ruff fatal-error checks pass. Status remains in_progress/quality_failed. No production defaults, App, Runtime or Cloud changed; no Package published.
+
+### Imagine Studio built-in Upscale Image (2026-10-02, NXR-IMAGINE-UPSCALE)
+
+- Added bilingual built-in `ai2apps.imagine.upscale-image`, after Adjust Image. One shared image Slot accepts file/Gallery/Output drag; native 2× PNG output, seed and optional custom-model prompt, source/output dimension preview. No Mini-App Package installation required; models use existing `image.upscaling` ACPF (Runtime >=1.8.8, SoL >=0.1.2).
+- Host-owned scoped multipart Run endpoint invokes `image_upscaling` through ModelInvocationContext and native-file background invocation. Model catalog includes this capability even for video-primary SoL. Reuses shared history/Artifact/Output/Gallery; does not expose Worker URLs or tokens. Duplicate queued submissions rejected, cancellation uses invocation callback, orphaned running tasks after Host restart become retryable failures.
+- Verification: 14 Imagine Studio Python tests pass, including fake invocation at 13×9→26×18, model/seed validation, shared artifact persistence, duplicate rejection and restart recovery. Node upscaling, i18n, cross-Mini-App Output drop, Product Studio ordering and submitted-prompt tests pass. Python exit emitted existing headless Metal teardown warning (exit 0). No real SoL inference or native UI acceptance performed this turn.
+- Status: implemented, App-Dev Local restart and live UI/inference acceptance pending. Python Host change needs Local restart; no bundle rebuild or Package/Cloud publication performed. Include Host/UI/help in future Desktop candidate.

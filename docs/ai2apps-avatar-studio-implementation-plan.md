@@ -1,6 +1,8 @@
 # AI2Apps 数字人 Package 技术方案与实现计划
 
-更新日期：2026-10-01。状态：FlashHead 模型 0.1.0 已发布；恢复独立数字人 Mini-App 的开发与实机验收。
+更新日期：2026-10-01。当前发布基线与验收见 [数字人 Package 发布回执](ai2apps-avatar-packages-release-2026-10-01.md)；下文保留模型移植阶段的设计记录。
+
+下一版已确定加入转头/注视和表情/情绪控制，执行计划见 [数字人下一版控制能力计划](ai2apps-avatar-controls-next-version-plan.md)。
 
 后续接入以 [通用数字人能力接口 v1](ai2apps-avatar-capability-contract-v1.md) 为设计依据：App 表达人像、驱动和结果要求，Host 负责能力协商、Provider 选择与模型参数映射。该接口的单人照片离线生成子集已在 Host 与 Mini-App 开发实现，完整公共 API 仍为设计稿。
 

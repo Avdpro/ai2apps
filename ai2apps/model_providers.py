@@ -8,6 +8,7 @@ role routing independent from the provider implementation.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from collections.abc import Mapping
@@ -31,6 +32,10 @@ from ai2apps.model_worker.image_capabilities import (
     default_image_capabilities,
     validate_image_capabilities,
 )
+from ai2apps.model_worker.image_upscaling_capabilities import (
+    ImageUpscalingCapabilitiesError,
+    validate_image_upscaling_capabilities,
+)
 from ai2apps.model_worker.reasoning_capabilities import (
     ReasoningCapabilitiesError,
     validate_reasoning_capabilities,
@@ -39,9 +44,23 @@ from ai2apps.model_worker.video_capabilities import (
     VideoCapabilitiesError,
     validate_video_capabilities,
 )
+from ai2apps.model_worker.video_segmentation_capabilities import (
+    VideoSegmentationCapabilitiesError,
+    validate_video_segmentation_capabilities,
+)
+from ai2apps.model_worker.video_upscaling_capabilities import (
+    VideoUpscalingCapabilitiesError,
+    validate_video_upscaling_capabilities,
+)
 from ai2apps.services import ServiceInstanceStatus, ServiceStatus
 from ai2apps.video_policy import is_temporarily_disabled_video_model
-from ai2apps.worker_resources import GIB, MIB, estimate_request_transient_bytes
+from ai2apps.worker_resources import (
+    GIB,
+    MIB,
+    estimate_request_transient_bytes,
+    image_upscaling_resource_payload,
+    video_upscaling_resource_payload,
+)
 from ai2apps.worker_scheduler import SchedulerLease, WorkerJobScheduler, WorkloadClass
 
 MODEL_TYPES = frozenset(
@@ -49,11 +68,14 @@ MODEL_TYPES = frozenset(
         "llm",
         "vlm",
         "image_generation",
+        "image_upscaling",
         "audio_stt",
         "audio_tts",
         "audio_processing",
         "audio_detailed_transcription",
         "video_generation",
+        "video_segmentation",
+        "video_upscaling",
         "embedding",
     }
 )
@@ -64,6 +86,7 @@ DEFAULT_CAPABILITIES: dict[str, tuple[str, ...]] = {
     "llm": ("work", "conversation"),
     "vlm": ("work", "conversation", "image_recognition"),
     "image_generation": ("image_generation",),
+    "image_upscaling": ("image_upscaling",),
     "audio_stt": ("speech_recognition",),
     "audio_tts": ("speech_generation",),
     "audio_processing": ("audio_processing",),
@@ -72,6 +95,8 @@ DEFAULT_CAPABILITIES: dict[str, tuple[str, ...]] = {
         "word_timestamps",
     ),
     "video_generation": ("video_generation",),
+    "video_segmentation": ("video_segmentation", "object_tracking", "mask_video"),
+    "video_upscaling": ("video_upscaling",),
     "embedding": ("text_embeddings",),
 }
 
@@ -80,12 +105,15 @@ DEFAULT_PATHS = {
     "responses": "/v1/responses",
     "image_generation": "/v1/images/generations",
     "image_edit": "/v1/images/edits",
+    "image_upscaling": "/v1/images/upscalings",
     "audio_transcription": "/v1/audio/transcriptions",
     "audio_speech": "/v1/audio/speech",
     "audio_process": "/v1/audio/process",
     "audio_voice_training": "/v1/audio/voices/train",
     "audio_detailed_transcription": "/v1/audio/transcriptions/detailed",
     "video_generation": "/v1/videos/generations",
+    "video_segmentation": "/v1/videos/segmentations",
+    "video_upscaling": "/v1/videos/upscalings",
     "embeddings": "/v1/embeddings",
 }
 
@@ -285,6 +313,36 @@ def validate_package_models(
                 raise ModelProviderContractError(
                     f"models[{index}].video_capabilities is invalid: {exc}"
                 ) from exc
+        video_segmentation_capabilities = None
+        if model_type == "video_segmentation":
+            try:
+                video_segmentation_capabilities = validate_video_segmentation_capabilities(
+                    raw.get("video_segmentation_capabilities")
+                )
+            except VideoSegmentationCapabilitiesError as exc:
+                raise ModelProviderContractError(
+                    f"models[{index}].video_segmentation_capabilities is invalid: {exc}"
+                ) from exc
+        video_upscaling_capabilities = None
+        if model_type == "video_upscaling":
+            try:
+                video_upscaling_capabilities = validate_video_upscaling_capabilities(
+                    raw.get("video_upscaling_capabilities")
+                )
+            except VideoUpscalingCapabilitiesError as exc:
+                raise ModelProviderContractError(
+                    f"models[{index}].video_upscaling_capabilities is invalid: {exc}"
+                ) from exc
+        image_upscaling_capabilities = None
+        if model_type == "image_upscaling" or "image_upscaling" in capabilities:
+            try:
+                image_upscaling_capabilities = validate_image_upscaling_capabilities(
+                    raw.get("image_upscaling_capabilities")
+                )
+            except ImageUpscalingCapabilitiesError as exc:
+                raise ModelProviderContractError(
+                    f"models[{index}].image_upscaling_capabilities is invalid: {exc}"
+                ) from exc
         image_capabilities = None
         if model_type == "image_generation":
             try:
@@ -328,6 +386,9 @@ def validate_package_models(
                 "weights": weights,
                 "audio_capabilities": audio_capabilities,
                 "video_capabilities": video_capabilities,
+                "video_segmentation_capabilities": video_segmentation_capabilities,
+                "video_upscaling_capabilities": video_upscaling_capabilities,
+                "image_upscaling_capabilities": image_upscaling_capabilities,
                 "image_capabilities": image_capabilities,
                 "metadata": metadata,
             }
@@ -351,6 +412,9 @@ class PackageModel:
     service_key: str
     provider_key: str
     endpoint: str | None
+    video_segmentation_capabilities: Mapping[str, Any] | None = None
+    video_upscaling_capabilities: Mapping[str, Any] | None = None
+    image_upscaling_capabilities: Mapping[str, Any] | None = None
     checkpoint_ready: bool = True
     weights: Mapping[str, Any] | None = None
     internal_headers: Mapping[str, str] | None = None
@@ -393,6 +457,11 @@ class PackageModel:
             "worker_running": self.endpoint is not None,
             "audio_capabilities": dict(self.audio_capabilities or {}),
             "video_capabilities": dict(self.video_capabilities or {}),
+            "video_segmentation_capabilities": dict(
+                self.video_segmentation_capabilities or {}
+            ),
+            "video_upscaling_capabilities": dict(self.video_upscaling_capabilities or {}),
+            "image_upscaling_capabilities": dict(self.image_upscaling_capabilities or {}),
             "image_capabilities": dict(self.image_capabilities or {}),
             "reasoning": dict(self.metadata.get("reasoning") or {}),
         }, source="package", provider_id=self.inference_provider_key or self.provider_key,
@@ -502,6 +571,22 @@ def list_package_models(runtime: Any | None) -> tuple[PackageModel, ...]:
                         if isinstance(raw.get("image_capabilities"), dict)
                         else None
                     ),
+                    video_segmentation_capabilities=(
+                        dict(raw["video_segmentation_capabilities"])
+                        if isinstance(
+                            raw.get("video_segmentation_capabilities"), dict
+                        )
+                        else None
+                    ),
+                    image_upscaling_capabilities=(
+                        dict(raw["image_upscaling_capabilities"])
+                        if isinstance(raw.get("image_upscaling_capabilities"), dict) else None
+                    ),
+                    video_upscaling_capabilities=(
+                        dict(raw["video_upscaling_capabilities"])
+                        if isinstance(raw.get("video_upscaling_capabilities"), dict)
+                        else None
+                    ),
                     service_key=service.service_key,
                     provider_key=instance.provider_key,
                     endpoint=(
@@ -580,6 +665,9 @@ def estimate_model_resident_bytes(
         "vlm": 3 * GIB,
         "image_generation": 2 * GIB,
         "video_generation": 4 * GIB,
+        "video_segmentation": 3 * GIB,
+        "video_upscaling": 12 * GIB,
+        "image_upscaling": 4 * GIB,
         "audio_stt": 1 * GIB,
         "audio_tts": 1 * GIB,
         "audio_processing": 1 * GIB,
@@ -1101,6 +1189,26 @@ async def proxy_package_multipart(
         )
     fields = {key: str(value) for key, value in data.items() if value is not None}
     fields["model"] = model.upstream_id
+    if operation == "image_upscaling":
+        source = files.get("image")
+        try:
+            fields = await asyncio.to_thread(
+                image_upscaling_resource_payload, fields,
+                None if source is None else source[1],
+            )
+        except (ValueError, OSError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        fields = {key: str(value) for key, value in fields.items()}
+    if operation == "video_upscaling":
+        source = files.get("video")
+        try:
+            fields = await asyncio.to_thread(
+                video_upscaling_resource_payload, fields,
+                None if source is None else source[1],
+            )
+        except (ValueError, OSError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        fields = {key: str(value) for key, value in fields.items()}
     lease: SchedulerLease | None = None
     if model.scheduler is not None:
         try:

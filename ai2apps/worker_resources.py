@@ -150,6 +150,68 @@ def _geometry_bytes(value: Any, *, bytes_per_pixel: int) -> int:
     return width * height * bytes_per_pixel
 
 
+def video_upscaling_resource_payload(payload, source):
+    """Probe Host-controlled media; never trust client-supplied memory geometry."""
+    import io
+
+    import av
+
+    result = dict(payload)
+    for key in ("_video_input_width", "_video_input_height", "_video_input_frames"):
+        result.pop(key, None)
+    if source is None:
+        raise ValueError("Video upscaling requires a video upload")
+    with av.open(
+        io.BytesIO(source) if isinstance(source, bytes) else str(source)
+    ) as media:
+        if not media.streams.video:
+            raise ValueError("Input has no video stream")
+        video = media.streams.video[0]
+        result.update(
+            _video_input_width=video.codec_context.width,
+            _video_input_height=video.codec_context.height,
+            _video_input_frames=sum(1 for _ in media.decode(video)),
+        )
+    return result
+
+
+def image_upscaling_resource_payload(payload, source):
+    """Read dimensions from the authorized uploaded image before admission."""
+    import io
+
+    from PIL import Image
+
+    result = dict(payload)
+    result.pop("_image_input_width", None)
+    result.pop("_image_input_height", None)
+    if source is None:
+        raise ValueError("Image upscaling requires an image upload")
+    with Image.open(
+        io.BytesIO(source) if isinstance(source, bytes) else source
+    ) as image:
+        width, height = image.size
+        if image.getexif().get(274) in {5, 6, 7, 8}:
+            width, height = height, width
+        result.update(_image_input_width=width, _image_input_height=height)
+    return result
+
+
+def video_upscaling_transient_bytes(payload):
+    width = _positive_int(payload.get("_video_input_width"))
+    height = _positive_int(payload.get("_video_input_height"))
+    if not width or not height:
+        return 24 * GIB
+    pixels = ((width + 31) // 32 * 32) * ((height + 31) // 32 * 32)
+    # Whole-clip encode/DiT and bounded decode; include padding to 8k+1 frames.
+    window = next((n for n in (41, 33, 25, 17, 9) if pixels * n <= 41 * 768**2), 9)
+    frames = _positive_int(payload.get("_video_input_frames")) or 1500
+    temporal = 1 + ((frames - 1 + 7) // 8) * 8
+    # Conservative allowance for MLX intermediates, CPU frames and fixed weights.
+    return max(
+        12 * GIB, 2 * GIB + pixels * max(min(window, temporal) * 1000, temporal * 300)
+    )
+
+
 def estimate_request_transient_bytes(
     operation: str,
     payload: Mapping[str, Any],
@@ -177,6 +239,18 @@ def estimate_request_transient_bytes(
         )
         frames = min(2048, _positive_int(payload.get("frames")) or 81)
         return max(4 * GIB, geometry * min(frames, 32) + safe_file_bytes * 6)
+    if operation == "image_upscaling":
+        width = _positive_int(payload.get("_image_input_width")) or 0
+        height = _positive_int(payload.get("_image_input_height")) or 0
+        pixels = ((width + 31) // 32 * 32) * ((height + 31) // 32 * 32)
+        return max(8 * GIB, 2 * GIB + pixels * 1000, safe_file_bytes * 4)
+    if operation == "video_upscaling":
+        return max(video_upscaling_transient_bytes(payload), safe_file_bytes * 4)
+    if operation == "video_segmentation":
+        geometry = _geometry_bytes(
+            payload.get("resolution", payload.get("size")), bytes_per_pixel=32
+        )
+        return max(3 * GIB, geometry * 16 + safe_file_bytes * 4)
     if operation in {"audio_transcription", "audio_speech", "audio_process"}:
         return max(512 * MIB, safe_file_bytes * 6)
     if operation == "audio_voice_training":

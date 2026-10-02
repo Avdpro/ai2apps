@@ -44,12 +44,12 @@ def describe_model(model, *, ready):
         "presets": [
             {"id": p["id"], "label": p["display_name"]} for p in contract["presets"]
         ],
-        "resolutions": list(contract["geometry"]["resolutions"]),
+        "resolutions": ["source", *contract["geometry"]["resolutions"]],
         "minimumSeconds": contract["duration"]["minimum_seconds"],
         "maximumSeconds": contract["duration"]["maximum_seconds"],
         "defaults": {
             "preset": contract["defaults"]["preset"],
-            "resolution": contract["defaults"]["resolution"],
+            "resolution": "source",
         },
     }
 
@@ -58,7 +58,10 @@ def plan_portrait(model, *, preset, resolution, duration):
     """Validate and freeze executable settings before enqueueing a render."""
     contract = model.video_capabilities
     preset = preset or contract["defaults"]["preset"]
-    resolution = resolution or contract["defaults"]["resolution"]
+    resolution = resolution or "source"
+    source_canvas = resolution == "source"
+    if source_canvas:
+        resolution = contract["defaults"]["resolution"]
     if preset not in {p["id"] for p in contract["presets"]}:
         raise ValueError("所选模型不支持此生成模式")
     if resolution not in contract["geometry"]["resolutions"]:
@@ -70,4 +73,9 @@ def plan_portrait(model, *, preset, resolution, duration):
         raise ValueError(
             f"音频时长须在 {bounds['minimum_seconds']:g} 至 {maximum:g} 秒之间"
         )
-    return {"model": model.id, "preset": preset, "resolution": resolution}
+    return {
+        "model": model.id,
+        "preset": preset,
+        "resolution": resolution,
+        "avatar_output_mode": "source" if source_canvas else "crop",
+    }

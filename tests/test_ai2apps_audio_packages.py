@@ -304,9 +304,9 @@ def test_runtime_builder_preserves_audio_capabilities():
     builder = (ROOT / "scripts" / "build_omlx_runtime_package.py").read_text(
         encoding="utf-8"
     )
-    runtime_manifest = (ROOT / "packages/ai2apps-runtime-omlx/service.yaml").read_text(
-        encoding="utf-8"
-    )
+    runtime_manifest_path = ROOT / "packages/ai2apps-runtime-omlx/service.yaml"
+    runtime_manifest = runtime_manifest_path.read_text(encoding="utf-8")
+    runtime_capabilities = set(yaml.safe_load(runtime_manifest)["capabilities"])
     for capability in (
         "audio-stt",
         "audio-tts",
@@ -315,7 +315,7 @@ def test_runtime_builder_preserves_audio_capabilities():
         "fish-s2",
         "cosyvoice3",
     ):
-        assert f"  - {capability}" in runtime_manifest
+        assert capability in runtime_capabilities
     assert 'list(manifest.get("capabilities", []))' in builder
     assert '"av==18.0.0"' in (ROOT / "pyproject.toml").read_text()
     assert '"AI2AppsOmlxRuntime.dmg"' in builder

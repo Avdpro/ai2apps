@@ -1,0 +1,118 @@
+{
+  "status": "published_and_anonymously_verified",
+  "recorded_at": "2026-10-01T18:57:33.459686+00:00",
+  "source_commit": "fa377dcb62875d5c82fc8177afd4277cd2357db9",
+  "source_note": "Candidate includes documented uncommitted implementation changes; signed digest is exact release identity.",
+  "package_id": "ai2apps/model-sol-refiner-mlx",
+  "version": "0.1.2",
+  "publication": {
+    "submission_id": "729d5ffb-6820-4cb4-90c3-c997264dd621",
+    "submitted": {
+      "id": "729d5ffb-6820-4cb4-90c3-c997264dd621",
+      "status": "verified",
+      "publisherId": "229d6350-cd0e-408a-9905-41367385ae5c",
+      "publisherKeyId": "8afc0a51-f7f8-4fef-b3d0-8d30abe2a5bc",
+      "packageId": "ai2apps/model-sol-refiner-mlx",
+      "packageVersion": "0.1.2",
+      "artifactSha256": "c3b9a51f5f1fb57c9e135f86a4babb79d7a2280329687117c972ab8f55a3d7ee",
+      "artifactSize": 97083,
+      "createdAt": "2026-10-01T18:56:06.011Z",
+      "releaseStatus": "candidate",
+      "latestReview": null
+    },
+    "review_requested": {
+      "id": "729d5ffb-6820-4cb4-90c3-c997264dd621",
+      "status": "verified",
+      "publisherId": "229d6350-cd0e-408a-9905-41367385ae5c",
+      "publisherKeyId": "8afc0a51-f7f8-4fef-b3d0-8d30abe2a5bc",
+      "packageId": "ai2apps/model-sol-refiner-mlx",
+      "packageVersion": "0.1.2",
+      "artifactSha256": "c3b9a51f5f1fb57c9e135f86a4babb79d7a2280329687117c972ab8f55a3d7ee",
+      "artifactSize": 97083,
+      "createdAt": "2026-10-01T18:56:06.011Z",
+      "releaseStatus": "review_pending",
+      "latestReview": null
+    },
+    "reviewed": {
+      "id": "729d5ffb-6820-4cb4-90c3-c997264dd621",
+      "status": "verified",
+      "publisherId": "229d6350-cd0e-408a-9905-41367385ae5c",
+      "publisherKeyId": "8afc0a51-f7f8-4fef-b3d0-8d30abe2a5bc",
+      "packageId": "ai2apps/model-sol-refiner-mlx",
+      "packageVersion": "0.1.2",
+      "artifactSha256": "c3b9a51f5f1fb57c9e135f86a4babb79d7a2280329687117c972ab8f55a3d7ee",
+      "artifactSize": 97083,
+      "createdAt": "2026-10-01T18:56:06.011Z",
+      "releaseStatus": "approved",
+      "latestReview": {
+        "id": "31e1ca7c-497e-41fb-9d3c-bf719fb03568",
+        "decision": "approved",
+        "note": "SoL 0.1.2 adds independent image_upscaling core operation: direct single-frame PNG/JPEG/WebP to 2x PNG, EXIF orientation, supported ICC to sRGB, resized alpha preserved. Existing published weights and model IDs reused. Runtime 1.8.8 already published and anonymously downloaded with trusted signature verification. 174 related tests and exact signed managed install passed: standard 4K RGBA, custom-prompt RGBA, video/audio regression, cancellation/restart/uninstall. Installer license consent remains enforced. Desktop Host capability discovery, resource planning and ACPF changes still need Desktop release; Mini-App bridge/UI integration is separate.",
+        "createdAt": "2026-10-01T18:56:06.290Z"
+      }
+    },
+    "published": {
+      "submission": {
+        "id": "729d5ffb-6820-4cb4-90c3-c997264dd621",
+        "status": "verified",
+        "publisherId": "229d6350-cd0e-408a-9905-41367385ae5c",
+        "publisherKeyId": "8afc0a51-f7f8-4fef-b3d0-8d30abe2a5bc",
+        "packageId": "ai2apps/model-sol-refiner-mlx",
+        "packageVersion": "0.1.2",
+        "artifactSha256": "c3b9a51f5f1fb57c9e135f86a4babb79d7a2280329687117c972ab8f55a3d7ee",
+        "artifactSize": 97083,
+        "createdAt": "2026-10-01T18:56:06.011Z",
+        "releaseStatus": "published",
+        "latestReview": {
+          "id": "31e1ca7c-497e-41fb-9d3c-bf719fb03568",
+          "decision": "approved",
+          "note": "SoL 0.1.2 adds independent image_upscaling core operation: direct single-frame PNG/JPEG/WebP to 2x PNG, EXIF orientation, supported ICC to sRGB, resized alpha preserved. Existing published weights and model IDs reused. Runtime 1.8.8 already published and anonymously downloaded with trusted signature verification. 174 related tests and exact signed managed install passed: standard 4K RGBA, custom-prompt RGBA, video/audio regression, cancellation/restart/uninstall. Installer license consent remains enforced. Desktop Host capability discovery, resource planning and ACPF changes still need Desktop release; Mini-App bridge/UI integration is separate.",
+          "createdAt": "2026-10-01T18:56:06.290Z"
+        }
+      },
+      "repositoryMetadataVersion": 241
+    }
+  },
+  "anonymous_verification": {
+    "status": "published",
+    "version": "0.1.2",
+    "repositoryMetadataVersion": 241,
+    "sha256": "c3b9a51f5f1fb57c9e135f86a4babb79d7a2280329687117c972ab8f55a3d7ee",
+    "size": 97083,
+    "sources": [
+      {
+        "id": "src_cloud_c3b9a51f5f1fb57c9e135f86",
+        "url": "https://coder.ai2apps.com/v1/registry/packages/ai2apps/model-sol-refiner-mlx/versions/0.1.2/artifact",
+        "kind": "cloud"
+      }
+    ]
+  },
+  "submission_status_check": {
+    "id": "729d5ffb-6820-4cb4-90c3-c997264dd621",
+    "status": "verified",
+    "publisherId": "229d6350-cd0e-408a-9905-41367385ae5c",
+    "publisherKeyId": "8afc0a51-f7f8-4fef-b3d0-8d30abe2a5bc",
+    "packageId": "ai2apps/model-sol-refiner-mlx",
+    "packageVersion": "0.1.2",
+    "artifactSha256": "c3b9a51f5f1fb57c9e135f86a4babb79d7a2280329687117c972ab8f55a3d7ee",
+    "artifactSize": 97083,
+    "createdAt": "2026-10-01T18:56:06.011Z",
+    "releaseStatus": "published",
+    "latestReview": {
+      "id": "31e1ca7c-497e-41fb-9d3c-bf719fb03568",
+      "decision": "approved",
+      "note": "SoL 0.1.2 adds independent image_upscaling core operation: direct single-frame PNG/JPEG/WebP to 2x PNG, EXIF orientation, supported ICC to sRGB, resized alpha preserved. Existing published weights and model IDs reused. Runtime 1.8.8 already published and anonymously downloaded with trusted signature verification. 174 related tests and exact signed managed install passed: standard 4K RGBA, custom-prompt RGBA, video/audio regression, cancellation/restart/uninstall. Installer license consent remains enforced. Desktop Host capability discovery, resource planning and ACPF changes still need Desktop release; Mini-App bridge/UI integration is separate.",
+      "createdAt": "2026-10-01T18:56:06.290Z"
+    }
+  },
+  "discover_verification": {
+    "instance": "dev",
+    "visible_version": "0.1.2",
+    "publisher": "AI2Apps",
+    "result": "Visible in refreshed Discover"
+  },
+  "validation_receipt": "ai2apps-sol-refiner-0.1.2-validation-2026-10-02.json",
+  "host_release": "Desktop Host capability discovery, resource planning and ACPF changes remain pending. Mini-App bridge/UI integration is separate.",
+  "weights": "Existing default/custom published Distributions reused; no new weights uploaded.",
+  "authorization": "Dev live session used through standard publication script only for these two versions. Grant closed after publication verification."
+}

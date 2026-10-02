@@ -2,8 +2,8 @@
   "spdxVersion": "SPDX-2.3",
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
-  "name": "ai2apps-avatar-studio-suite-0.1.0",
-  "documentNamespace": "https://ai2apps.com/spdx/avatar-studio-suite/0.1.0",
+  "name": "ai2apps-avatar-studio-suite-0.1.2",
+  "documentNamespace": "https://ai2apps.com/spdx/avatar-studio-suite/0.1.2",
   "creationInfo": {
     "created": "2026-09-30T00:00:00Z",
     "creators": [
@@ -14,7 +14,7 @@
     {
       "name": "Avatar Studio Suite",
       "SPDXID": "SPDXRef-Package",
-      "versionInfo": "0.1.0",
+      "versionInfo": "0.1.2",
       "downloadLocation": "NOASSERTION",
       "filesAnalyzed": false,
       "licenseConcluded": "MIT",

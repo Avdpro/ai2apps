@@ -1,0 +1,8 @@
+{
+  "schema": "ai2apps.source-lock/v1",
+  "sources": [
+    {"name": "sam2.1_mlx", "url": "https://github.com/eisneim/sam2.1_mlx", "revision": "036f2d02a9069871fd2bf47109ff3b522cd222c4", "license": "Apache-2.0"},
+    {"name": "SAM 2", "url": "https://github.com/facebookresearch/sam2", "license": "Apache-2.0"},
+    {"name": "sam2.1_hiera_small.safetensors", "url": "https://huggingface.co/eisneim/sam2.1_mlx", "revision": "1b7b98828e383e3d64025b615aff049b1face026", "license": "Apache-2.0"}
+  ]
+}

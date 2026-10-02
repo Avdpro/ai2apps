@@ -1,0 +1,54 @@
+schema: ai2apps.capability-profiles/v1
+app_id: ai2apps.video-studio
+version: 1
+capabilities:
+  video.upscaling:
+    trigger: on_action
+    presentation:
+      eyebrow: AI2APPS CAPABILITY SETUP
+      title: 配置视频 2× 放大
+      description: 安装 SoL-Refiner 模型和权重，长视频由 Video Studio 分段处理。
+      icon: scan-search
+      confirm_label: 下载并配置
+      ready_label: 视频放大已配置
+      steps:
+        runtime: 配置推理 Runtime
+        provider: 安装视频放大模型
+        checkpoint: 下载模型权重
+        verify: 验证视频放大服务
+    requirements:
+      operations: [video_upscaling]
+      output_formats: [mp4]
+    profiles:
+      - id: apple-metal-sol-refiner-standard
+        label: SoL-Refiner 标准 2×
+        description: 默认推荐；无需自定义提示词。
+        priority: 200
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator:
+            vendor: apple
+            api: metal
+            unified_memory_gib: {minimum: 24}
+        recommendation_memory_gib: {minimum: 24}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.8.7,<2.0.0"}
+          provider: {package_id: ai2apps/model-sol-refiner-mlx, service_key: ai2apps.model.sol-refiner-mlx, version: ">=0.1.0,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.sol-refiner-mlx/ltx23-one-step}
+      - id: apple-metal-sol-refiner-custom
+        label: SoL-Refiner 自定义提示词 2×
+        description: 需要自定义放大提示词时选择。
+        priority: 100
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator:
+            vendor: apple
+            api: metal
+            unified_memory_gib: {minimum: 24}
+        recommendation_memory_gib: {minimum: 24}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.8.7,<2.0.0"}
+          provider: {package_id: ai2apps/model-sol-refiner-mlx, service_key: ai2apps.model.sol-refiner-mlx, version: ">=0.1.0,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.sol-refiner-mlx/ltx23-custom-prompt}

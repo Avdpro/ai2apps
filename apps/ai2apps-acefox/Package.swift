@@ -13,6 +13,7 @@ let package = Package(
         .executable(name: "ai2apps-helper", targets: ["AI2AppsHelper"]),
         .executable(name: "ai2apps-launcher", targets: ["AI2AppsLauncher"]),
         .executable(name: "ai2apps-updater", targets: ["AI2AppsUpdater"]),
+        .executable(name: "ai2apps-person-mask", targets: ["AI2AppsPersonMask"]),
     ],
     targets: [
         .target(name: "AI2AppsContracts"),
@@ -45,6 +46,7 @@ let package = Package(
             name: "AI2AppsUpdater",
             dependencies: ["AI2AppsUpdateCore"]
         ),
+        .executableTarget(name: "AI2AppsPersonMask"),
         .testTarget(
             name: "AI2AppsContractsTests",
             dependencies: ["AI2AppsContracts"]

@@ -298,7 +298,9 @@ async def generate_avatar(
                 "videoTaskId": task["id"],
                 "modelId": model.id,
                 "preset": plan["preset"],
-                "resolution": plan["resolution"],
+                "resolution": "source"
+                if plan["avatar_output_mode"] == "source"
+                else plan["resolution"],
             },
         )
         return _job(run)
