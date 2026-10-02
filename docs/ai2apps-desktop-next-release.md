@@ -2,11 +2,12 @@
 
 ### NXR-RELEASE-014-2257-20261002：Desktop 0.1.3 Build 2257
 
-- 状态：`preparing`。生产基线为 0.1.2 / Build 2256；本次产品版本提升为 0.1.3，Build 严格递增为 2257，rollout ID 固定为 `build2257-test`。
-- 拟纳入：Discover 已安装 Package 升级入口；Runtime 1.8.8 与 SoL 0.1.3 所需的 Host capability/资源调度；Imagine Studio 内置图片 2× 放大；Video Studio 内置视频 2× 放大、长片分段拼合与音轨保留；SAM 2.1/Apple Vision 动态人物蒙版；原生 `ai2apps-person-mask` 工具与 Release 包体/导入路径加固。
+- 状态：`released_pending_target_mac`。2026-10-02 已从生产 0.1.2 / Build 2256 先以 0% 原子登记，再使用不变的 `build2257-test` 扩到 100%；最终生产清单摘要为 `13b983e758483c30ebfd0e422ff5fe289e426f06526a2b469704fb610de7861e`。目标 Mac 的发现、断点下载、安装、首次启动和旧备份清理仍待端到端验收。
+- 已纳入：Discover 已安装 Package 升级入口；Runtime 1.8.8 与 SoL 0.1.3 所需的 Host capability/资源调度；Imagine Studio 内置图片 2× 放大；Video Studio 内置视频 2× 放大、长片分段拼合与音轨保留；SAM 2.1/Apple Vision 动态人物蒙版；原生 `ai2apps-person-mask` 工具与 Release 包体/导入路径加固。
 - 明确延期：Encore、AVTR-1、MuseTalk、InfiniteTalk、Ex-Omni 研究代码、parity 测试与个人参考音频均不纳入 Desktop 制品或本次 Release commit。
-- 发布门禁：从最新 `origin/main` 建立独立 clean worktree；修复多个 Package 顶层 `worker_adapter` 的测试模块串线后，重跑 Python/Node/Swift 回归、四实例构建验证、Developer ID 签名、Apple 公证、GitHub/ModelScope 同字节双源及 Cloud 0%→100% 验收。
+- 发布门禁：从最新 `origin/main` 建立独立 clean worktree；修复多个 Package 顶层 `worker_adapter` 的测试模块串线后，重跑 Python/Node/Swift 回归、正式 Release 构建验证、Developer ID 签名、Apple 公证、GitHub/ModelScope 同字节双源及 Cloud 0%→100% 验收。
 - 源码门禁结果：最终完整 Python 为 10437 passed、68 skipped、74 deselected；全部 16 个 Node 测试文件、Swift 77 项 Swift Testing + 2 项 XCTest、限定 Ruff 和 `git diff --check` 通过。
+- 发布门禁结果：源码提交 `f7dacc9c06550ac2bbba85d849ffe819aa88f243` 已推送 `main`；Developer ID、公证/staple/Gatekeeper、GitHub/ModelScope 同字节双源、Cloud 双源预检和 0%→100% 两阶段生产验收均通过。Apple submission 为 `6efb70b8-d9fa-4562-bdca-6803941e1621`，ModelScope immutable revision 为 `26d04b3dd2b107446a2a05603b3cffe49cc02b49`。正式回执：`docs/ai2apps-desktop-0.1.3-build2257-release-2026-10-02.md`。
 
 ### NXR-DISCOVER-INSTALLED-UPGRADE-20261002：已安装模型升级入口
 
