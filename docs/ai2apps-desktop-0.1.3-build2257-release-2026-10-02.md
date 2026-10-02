@@ -86,9 +86,15 @@ Dev Cookie。
 - 限定 Ruff 与 `git diff --check` 通过。
 - GitHub `main` 已推送源码提交，正式 App/DMG 已签名、公证并完成双源与生产发布。
 
+GitHub Release 触发的 Homebrew formula 工作流通过，并把 formula 更新为
+`0.1.3-build2257`。另外两个工作流沿用既有失败模式：PyPI 工作流因 Desktop tag
+`v0.1.3-build2257` 不等于 Python Package 版本 `0.1.3`，在版本门禁处按设计停止；CI 的
+Python 3.11/3.12/3.13 runner 均未安装 `av`，在测试收集阶段报
+`ModuleNotFoundError: No module named 'av'`。本地完整环境回归通过；这两项不改变已经签名并
+按摘要发布的 Desktop 工件，但工作流 tag 过滤和 CI 依赖仍应单独修复。
+
 ## 尚未声称完成
 
 - 未配齐中国电信、中国联通、中国移动及海外四网络独立探针。
 - 尚未在低于 2257 的目标 Mac 上完成发现更新、断点下载、安装、首次启动，以及成功启动后
   清理 `AI2Apps.previous.app` 的端到端验收；Cloud 访问或清单探针不能替代这项验收。
-
