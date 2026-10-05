@@ -54,13 +54,16 @@
     }
 
     function localizedMiniApp(miniApp) {
-        if (miniApp.source === 'package') return {
-            ...miniApp, mode: `package:${miniApp.id}`, icon: miniApp.icon || 'blocks',
-            name: miniApp.name || miniApp.title || miniApp.id,
-            summary: miniApp.summary || miniApp.description || miniApp.provider?.name || 'Installed Package',
-            description: miniApp.description || miniApp.summary || miniApp.provider?.name || '',
-            actionTitle: miniApp.name || miniApp.title || miniApp.id, runLabel: miniApp.name || miniApp.id,
+        if (miniApp.source === 'package') {
+            const localized = window.AI2AppsStudioMiniApps?.localize(miniApp, document.documentElement.lang) || miniApp;
+            return {
+            ...localized, mode: `package:${miniApp.id}`, icon: miniApp.icon || 'blocks',
+            name: localized.name || localized.title || miniApp.id,
+            summary: localized.summary || localized.description || localized.provider?.name || 'Installed Package',
+            description: localized.description || localized.summary || localized.provider?.name || '',
+            actionTitle: localized.name || localized.title || miniApp.id, runLabel: localized.name || miniApp.id,
         };
+        }
         return {
             ...miniApp,
             name: tr(`${miniApp.key}.name`), summary: tr(`${miniApp.key}.summary`),

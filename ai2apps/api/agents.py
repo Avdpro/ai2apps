@@ -37,6 +37,11 @@ from ai2apps.identity import RequestPrincipal
 from ai2apps.platform_runtime import PlatformRuntime
 
 
+class SessionMemoryCompactRequest(BaseModel):
+    model: str = Field(min_length=1)
+    idempotency_key: str | None = None
+
+
 class AgentDefinitionResponse(BaseModel):
     id: str
     agent_key: str
@@ -177,6 +182,7 @@ class AgentRunResponse(BaseModel):
     status_line: StatusLineResponse
     steps: list[RunStepResponse]
     interactions: list[InteractionResponse]
+    plan: dict[str, Any] = Field(default_factory=lambda: {"revision": 0, "items": []})
     event_stream_url: str
 
 
@@ -298,6 +304,7 @@ def _run_response(runtime: PlatformRuntime, run: AgentRunRecord) -> AgentRunResp
         started_at=run.started_at,
         finished_at=run.finished_at,
         status_line=StatusLineResponse.from_record(status),
+        plan=runtime.agents.get_plan(run.id),
         steps=[RunStepResponse.from_record(step) for step in steps],
         interactions=[
             InteractionResponse.from_record(interaction) for interaction in interactions
@@ -476,6 +483,28 @@ def create_agent_router(
                 code="invalid_agent_run_filter",
                 message=str(error),
             )
+
+    @router.post(
+        "/sessions/{session_id}/memory/compact",
+        response_model=AgentRunResponse, status_code=202,
+        dependencies=[session_access],
+    )
+    def compact_memory(session_id: str, request: SessionMemoryCompactRequest):
+        runtime = _runtime_or_error(runtime_provider)
+        if isinstance(runtime, JSONResponse):
+            return runtime
+        try:
+            run, _ = runtime.agents.create_run(
+                session_id=session_id, agent_key="ai2apps.general-agent",
+                input={"model":request.model, "prompt":"Compact conversation memory", "memory_only":True, "tools":[]},
+                idempotency_key=request.idempotency_key,
+            )
+            runtime.agent_runtime.wake()
+            return _run_response(runtime, run)
+        except RepositoryError as error:
+            return repository_error_response(error)
+        except ValueError as error:
+            return platform_error_response(status_code=422, code="invalid_memory_request", message=str(error))
 
     @router.post(
         "/sessions/{session_id}/agent-runs",

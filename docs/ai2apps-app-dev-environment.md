@@ -76,6 +76,11 @@ open apps/ai2apps-acefox/.build/AI2Apps-app-dev.app
 
 ## 日常开发循环
 
+所有实例的 Helper 均提供“准备录屏 / Prepare for Screen Recording”：打开当前实例的
+Shell，将窗口调整为 1600×900 并移至可用屏幕左上角，不开始录制。该功能通过公共
+`apply-screen-recording-shell.py` 打包，适用于 Dev、App-Dev、Test 和 Release；无需
+Development 标记或源码热挂载。一次性命令只由相同 instance ID 的 Shell 消费。
+
 App-Dev Helper 在“重置数据…”下提供“启动测试环境”。它启动受信任源码根中的
 `ai2apps-test-system/bin/ai2apps-test select --no-open`，并在 App-Dev AI 浏览器的固定
 Test Center 容器中打开页面。启动后菜单变为“停止测试”；停止先取消当前测试并等待收尾，

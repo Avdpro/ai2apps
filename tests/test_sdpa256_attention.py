@@ -85,8 +85,8 @@ def test_flash_sdpa256_memory_is_sub_quadratic():
 # --- route gate ----------------------------------------------------------
 
 
-def test_should_route_gate():
-    from omlx.patches import sdpa256_attention as sdpa256
+def test_should_route_gate(_sdpa256_provider_reset):
+    sdpa256 = _sdpa256_provider_reset
 
     q, k, _ = _qkv(2048, 16384)  # 256, prefill, long
     assert sdpa256._should_route(q, k, None, "causal", None) is True

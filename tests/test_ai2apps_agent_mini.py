@@ -37,8 +37,9 @@ def test_agent_mini_uses_transparent_bidi_and_durable_agent_runs():
     client = (ROOT / "ai2apps/web/static/js/browser_bidi_client.js").read_text()
     mini = (ROOT / "ai2apps/web/static/js/agent_mini.js").read_text()
 
-    assert "agent.mini.run_mode" in template
-    assert "agent.mini.build_mode" in template
+    assert 'class="agent-mode"' not in template
+    assert "agent-builder-model" in template
+    assert "agent-editor-close" in template
     assert "agent-page-title" not in template
     assert "agent-page-domain" not in template
     assert "agent.mini.pick" in mini
@@ -72,7 +73,7 @@ def test_agent_mini_checks_explicit_interaction_policy_before_target_lookup():
     mini = (ROOT / "ai2apps/web/static/js/agent_mini.js").read_text()
 
     policy_check = "const requestedPolicy = interactionPolicy(step, null);"
-    target_lookup = "const target = await bidi.findTarget(intent(step));"
+    target_lookup = "const target = await bidi.findTarget(intent(step),"
     interaction_branch = mini.index(
         "} else if (['click', 'delete', 'hover', 'input'].includes(op)) {"
     )

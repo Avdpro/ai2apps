@@ -75,6 +75,7 @@ def test_database_bootstrap_creates_current_platform_schema(tmp_path):
         "tool_descriptors",
         "tool_invocations",
         "agent_concurrency_groups",
+        "agent_deferred_waits",
         "agent_compile_generations",
         "agent_definitions",
         "agent_drafts",
@@ -119,6 +120,8 @@ def test_database_bootstrap_creates_current_platform_schema(tmp_path):
         "capability_requests",
         "coder_projects",
         "coder_threads",
+        "coding_model_reservations",
+        "coding_subagents",
         "document_blobs",
         "attachments",
         "document_blocks",
@@ -277,6 +280,8 @@ def test_database_bootstrap_creates_current_platform_schema(tmp_path):
         (75, "readaloud_dialogue_output"),
         (76, "readaloud_cast_role"),
         (77, "readaloud_project_asr"),
+        (78, "coding_subagent_cooperation"),
+        (79, "native_coding_executor_upgrade"),
     ]
     assert all(row[2].endswith("Z") for row in ledger)
 
@@ -909,6 +914,7 @@ def test_fastapi_lifespan_starts_and_stops_platform_runtime(tmp_path):
                 "ai2apps.model-runtime",
                 "ai2apps.process",
                 "ai2apps.agent-runtime",
+                "ai2apps.app-development",
                 "ai2apps.browser",
                 "ai2apps.terminal",
                 "ai2apps.web-research",

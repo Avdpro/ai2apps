@@ -79,6 +79,16 @@ This small privileged binding is the only browser-window responsibility that
 may remain in Firefox UI code. It must not extract DOM, run Readability,
 capture screenshots, or implement interaction commands.
 
+## Native Sidebar user actions
+
+The Sidebar toolbar menu provides panel refresh and user-initiated site-data
+clearing. Site-data clearing is native Firefox privacy UI, not a browser
+control API: it reads the selected HTTP(S) URI, shows the schemeless site in a
+confirmation, and invokes Firefox ClearDataService for cookies, site storage
+and caches in the current Profile. Internal pages disable the action. It is
+not callable by a Mini-Entry, Agent, Gateway method, or JSWindowActor message.
+DOM inspection, page interaction and automation continue to use BiDi only.
+
 ## Shared client SDK
 
 AI2Apps provides optional helpers on top of the full BiDi connection:

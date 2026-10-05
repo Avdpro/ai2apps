@@ -1765,6 +1765,70 @@ async def test_provisioner_startup_resumes_approved_restart_session(tmp_path) ->
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("app_id", ["ai2apps.discover", "ai2apps.video-studio"])
+async def test_runtime_restart_continues_persisted_component_install(tmp_path, app_id):
+    """Run the real orchestrator across epochs; fake only package/checkpoint I/O."""
+    database = PlatformDatabase(tmp_path / "platform.sqlite3")
+    database.initialize()
+    repository = ProvisioningSessionRepository(database)
+    plan = {"stack": {"components": [
+        {"kind": "package", "phase": "runtime", "package_id": "ai2apps/runtime-test"},
+        {"kind": "package", "phase": "provider", "package_id": "ai2apps/model-test"},
+        {"kind": "checkpoint", "modelId": "test-model"},
+    ]}}
+    session = repository.create(
+        actor_id="local", installation_id="local", app_instance_id="appi_test",
+        app_id=app_id, capability="model.package.install", action_id="install:test",
+        status="installing_runtime", profile_id="test", request_fingerprint="9" * 64,
+        plan=plan, intent={"returnTo": f"/apps/{app_id}", "resumeToken": "opaque-test"},
+    )
+    before = CapabilityProvisioner(runtime=SimpleNamespace(), repository=repository)
+    calls = []
+
+    async def stage_runtime(_session_id, component, _phase, **_kwargs):
+        calls.append(component["package_id"])
+        return False
+
+    before._install_package = stage_runtime
+    await before._run(session["id"])
+    waiting = repository.get(session["id"])
+    assert waiting["status"] == "awaiting_restart"
+    assert calls == ["ai2apps/runtime-test"]
+    await before.resume_if_possible(session["id"])
+    assert not before._runners  # Same Local epoch must not replay installation.
+    await before.shutdown()
+
+    # A new Local process reads the same durable session without any Shell input.
+    after = CapabilityProvisioner(
+        runtime=SimpleNamespace(),
+        repository=ProvisioningSessionRepository(PlatformDatabase(tmp_path / "platform.sqlite3")),
+    )
+    async def active_package(_session_id, component, _phase, **_kwargs):
+        calls.append(component["package_id"])
+        return True
+
+    async def checkpoint(_session_id, component):
+        calls.append(component["modelId"])
+
+    async def verify(_session):
+        calls.append("verify")
+
+    after._install_package = active_package
+    after._install_component_checkpoint = checkpoint
+    after._start_verification_services = verify
+    after.resolve_plan_ready = lambda _plan: {"serviceKey": "test-ready"}
+    await after.startup()
+    await asyncio.gather(*tuple(after._runners.values()))
+    completed = after.repository.get(session["id"])
+    assert completed["status"] == "ready"
+    assert completed["intent"] == waiting["intent"]
+    assert calls == ["ai2apps/runtime-test", "ai2apps/runtime-test",
+                     "ai2apps/model-test", "test-model", "verify"]
+    assert after.repository.list_returnable()[0]["id"] == session["id"]
+    await after.shutdown()
+
+
+@pytest.mark.asyncio
 async def test_confirmed_acpf_plan_scopes_audit_approval_to_selected_release(
     tmp_path,
 ) -> None:

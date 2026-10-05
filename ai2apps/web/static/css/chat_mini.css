@@ -12,3 +12,6 @@
 .chat-mini-model{display:grid;gap:5px;margin-top:10px;color:var(--cm-muted);font-size:10px;font-weight:700}
 .chat-mini-model>span{padding-left:1px;text-transform:uppercase;letter-spacing:.06em}
 .chat-mini-model select{display:block;width:100%;max-width:none;color:var(--cm-ink)}
+
+/* Host-controlled Mini-Entry actions must honor the HTML hidden state. */
+.chat-mini [hidden]{display:none!important}

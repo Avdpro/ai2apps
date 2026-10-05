@@ -70,12 +70,15 @@ class ProcessManager:
         broker: BrokerAuthority | None = None,
         secrets: SecretProvider | None = None,
         session_limit: int = DEFAULT_SESSION_PROCESS_LIMIT,
+        trusted_runtime_roots: tuple[Path, ...] = (),
     ) -> None:
         if session_limit <= 0:
             raise ValueError("session_limit must be positive")
         self.repository = ProcessRepository(database, events)
         self.workspace = workspace
-        self.sandbox = sandbox or default_sandbox_adapter()
+        self.run_workspace_resolver = None
+        self.trusted_runtime_roots = tuple(root.resolve() for root in trusted_runtime_roots)
+        self.sandbox = sandbox or default_sandbox_adapter(self.trusted_runtime_roots)
         self.broker = broker or BrokerAuthority()
         self.secrets = secrets
         self.session_limit = session_limit
@@ -231,9 +234,8 @@ class ProcessManager:
             result[key] = resolved
         return result
 
-    @staticmethod
     def _resolve_executable(
-        argv: tuple[str, ...], environment: Mapping[str, str], workspace: Path
+        self, argv: tuple[str, ...], environment: Mapping[str, str], workspace: Path
     ) -> tuple[str, ...]:
         executable = argv[0]
         if "/" not in executable:
@@ -253,6 +255,7 @@ class ProcessManager:
                 Path("/opt/homebrew"),
                 Path("/usr/local"),
                 workspace.resolve(),
+                *self.trusted_runtime_roots,
             )
         )
         if not allowed:
@@ -312,7 +315,19 @@ class ProcessManager:
         self.workspace.ensure_sandbox(session_id)
         workspace = self.workspace._root(session_id).resolve(strict=True)
         temporary = self.workspace._temporary_root(session_id).resolve(strict=True)
-        process_cwd = self.workspace._resolve(session_id, cwd)
+        if self.run_workspace_resolver is not None and run_id:
+            resolved = self.run_workspace_resolver(session_id, run_id)
+            if resolved is not None:
+                workspace, temporary = resolved
+                workspace = workspace.resolve(strict=True)
+                temporary.mkdir(parents=True, exist_ok=True)
+                temporary = temporary.resolve(strict=True)
+                from ai2apps.app_development.core import safe_path
+                process_cwd = workspace if cwd == "." else safe_path(workspace, cwd)
+            else:
+                process_cwd = self.workspace._resolve(session_id, cwd)
+        else:
+            process_cwd = self.workspace._resolve(session_id, cwd)
         if not process_cwd.is_dir():
             raise ProcessServiceError(
                 "invalid_cwd", "cwd must be a workspace directory"

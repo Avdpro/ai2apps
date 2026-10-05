@@ -12,11 +12,12 @@ from urllib.parse import urlparse
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError, ValidationError
 
-COMPILER_VERSION = "ai2apps-site-agent-p1.1/1"
+COMPILER_VERSION = "ai2apps-site-agent-p1.2/1"
 POLICY_VERSION = "ai2apps-web-action-policy-p1/1"
 TERMINALS = frozenset({"done", "failed", "pause"})
 OUTCOMES = (
     "success",
+    "skipped",
     "not_found",
     "retryable_error",
     "needs_user",
@@ -29,6 +30,7 @@ OPERATIONS = frozenset(
         "page_access",
         "inspect",
         "extract_list",
+        "read_results",
         "ai.classify",
         "ai.extract",
         "ai.transform",
@@ -116,7 +118,7 @@ def _parsed_transitions(description: str) -> dict[str, str]:
 
 def _effect(operation: str) -> str:
     if operation in {
-        "inspect", "extract_list", "complete", "ai.classify", "ai.extract",
+        "inspect", "extract_list", "read_results", "complete", "ai.classify", "ai.extract",
         "ai.transform", "approval",
     }:
         return "read"
@@ -272,6 +274,19 @@ def _compile_single_source(source: dict[str, Any]) -> CompileResult:
                     "path": f"steps.{index}.arguments.url",
                     "code": "open_url_required",
                 })
+        when = step.get("when")
+        if when is not None and (not isinstance(when, dict) or
+                set(when) != {"input", "equals"} or
+                when.get("input") not in (source.get("inputs") or {}).get("properties", {}) or
+                (source.get("inputs") or {}).get("properties", {}).get(when.get("input"), {}).get("type") != "boolean" or
+                not isinstance(when.get("equals"), bool)):
+            errors.append({"path": f"steps.{index}.when", "code": "invalid_condition"})
+        if operation == "read_results":
+            if not isinstance(arguments.get("from_step"), str) or arguments["from_step"] not in names[:index]:
+                errors.append({"path": f"steps.{index}.arguments.from_step", "code": "prior_result_required"})
+            limit = arguments.get("limit", 3)
+            if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 5:
+                errors.append({"path": f"steps.{index}.arguments.limit", "code": "read_limit_invalid"})
         transitions = step.get("on")
         transitions = dict(transitions) if isinstance(transitions, dict) else {}
         transitions = {**_parsed_transitions(description), **transitions}
@@ -330,6 +345,7 @@ def _compile_single_source(source: dict[str, Any]) -> CompileResult:
                 "effect": effect,
                 "target": _target_hint(step),
                 "arguments": arguments,
+                **({"when": dict(when)} if isinstance(when, dict) else {}),
                 **(
                     {"ai": dict(step["ai"])}
                     if operation.startswith("ai.")

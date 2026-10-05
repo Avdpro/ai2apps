@@ -175,6 +175,64 @@ same-origin 子资源和 mount-scoped Host Capability Broker 请求，以便 CSS
 `AI2APPS_ALLOW_DEVELOPMENT_RUNTIME=1`，已安装 Package 与生产 Bundle 不会继承。发布验收必须
 重新在严格 opaque-origin sandbox 下完成，不得把开发策略当成正式 Package 的运行依赖。
 
+### Package Mini-App 名称与界面本地化（必选）
+
+非内置 Mini-App 不能只提供英文名称，也不能只本地化所属 Package。下面三层元数据用途不同，
+必须分别声明：
+
+- `ai2apps.json.package.localizations`：Discover、安装和 Package 生命周期界面中的 Package 名称；
+- `app.yaml.localizations`：Provider App 自身的名称、说明和可选导航分类；
+- `app.yaml.mini_apps[].localizations`：Studio 左栏、当前 Mini-App 标题和详情中的每个 Mini-App
+  名称与说明。
+
+每个 `mini_apps[]` 保留必需的英文 `name`/`description` 作为兼容旧 Host 和不支持语言的回退，
+并在自己的 `localizations` 中至少覆盖产品当前支持的语言。不要把翻译后的名称写进 `id`、
+placement、Capability、Entry 路径或持久化数据。
+
+```yaml
+mini_apps:
+  - schema: ai2apps.mini-app/v1
+    id: example.media.detailed-transcription
+    name: Detailed Transcription
+    description: Create timestamped transcripts and identify speakers.
+    localizations:
+      zh-CN:
+        name: 详细转写
+        description: 生成带时间戳的文本记录并识别说话人。
+      zh-TW:
+        name: 詳細轉寫
+        description: 產生帶時間戳的文字記錄並識別說話人。
+    entry:
+      kind: sandbox
+      resource: web/transcription.html
+    placements:
+      - studio: ai2apps.readaloud
+        category: transcription
+        order: 30
+```
+
+Locale 使用 BCP-47 风格标签。Host 按“精确 locale → 兼容区域/脚本 → language-only → 英文基础
+字段”回退；通用 `zh` 默认尝试 `zh-CN`，`zh-HK`、`zh-MO` 和 `zh-Hant` 可回退到 `zh-TW`。
+旧 Package 没有 `localizations` 时继续显示基础英文，不能因此阻断发现或挂载。
+
+Studio 共享 mount 客户端会把当前 Host locale 放入 mount context、Entry URL 的 `locale` 参数和
+连接消息。Package Entry 应以 Host locale 为准并以英文回退，不得只读取 `navigator.language`，
+更不得读取 Host Cookie、Storage 或用户内容猜测语言。页面标题、可见文字、按钮、字段、选项、
+placeholder、状态、错误、空状态、动态添加的行以及 accessible name 必须使用同一语言；用户输入、
+字幕正文、Character 名、文件名、模型名、Capability ID 和文件格式保持原值。
+
+App-Dev 验收至少包含：
+
+1. 在中文 Host 中确认 Studio 左栏名称、说明、当前 Mini-App 标题和 Entry 内部 UI 均为中文；
+2. 在英文 Host 中确认同一 mount 完整回退为英文，不显示翻译 key；
+3. 修改 `app.yaml.mini_apps[].localizations` 后重新读取目录并重新挂载，确认无需重新打包安装；
+4. 检查初始、加载、成功、失败和动态新增控件，不能只检查首屏静态标题；
+5. 自动化测试固定 locale，同时断言 manifest 元数据和渲染后的可访问名称。
+
+完整字段和回退合同见
+[AI2Apps localized metadata v1](ai2apps-localized-metadata-v1.md#studio-mini-app-metadata) 与
+[Studio Mini-App Package Contract v1](ai2apps-studio-mini-app-package-contract-v1.md#localization-contract)。
+
 Studio 中的依赖状态必须使用共享 Mini-App mount Capability Probe，不能用“已发现”“已挂载”或
 “页面加载成功”代替。`Setup required` 必须是按钮：点击后由共享 Studio Mini-App Client 使用
 当前 Studio AppInstance 启动 ACPF。Mini-App 只声明语义 Capability；具体 Runtime、Package、
@@ -268,5 +326,7 @@ Video Studio 是当前参考实现：服务端验证 Desktop Shell 的 HttpOnly 
 - [ ] 初始、加载、错误、展开/折叠、运行/停止、动态添加/删除后，名称和状态均正确。
 - [ ] 至少检查中文、英文和键盘 Tab/Enter/Space 操作；隐藏面板不残留可聚焦的操作入口。
 - [ ] 在固定 App-Dev 中完成实际 App/Mini-App 挂载的渲染检查；报告区分静态检查与实机验收。
+- [ ] Package 自身、Provider App 和每个 `mini_apps[]` 的本地化元数据分别存在；中文与英文
+  Studio 左栏、当前标题、动态 UI 和 accessible name 均已在真实 mount 中检查。
 
 当前源码的已确认缺口见 [2026-09-09 可访问名称审查](ai2apps-accessible-name-audit-2026-09-09.md)。

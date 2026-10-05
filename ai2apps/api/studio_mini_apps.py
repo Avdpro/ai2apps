@@ -309,6 +309,12 @@ def _publish_video_studio_output(
     return {"downloadUrl": output_url, "runId": run["id"], "filename": filename}
 
 
+class SubtitleRefinementRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    segments: list[dict[str, Any]] = Field(min_length=1, max_length=10000)
+    rules: str = Field(default="", max_length=8000)
+
+
 class StudioTextExportRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     filename: str = Field(
@@ -737,6 +743,18 @@ def create_studio_mini_app_router(
             media_type=media_type,
         )
         return {"downloadUrl": url, "filename": body.filename}
+
+    @router.post("/{studio_id}/mini-app-mounts/{mount_id}/subtitle-refinement")
+    async def refine_subtitle_text(studio_id: str, mount_id: str, body: SubtitleRefinementRequest,
+                                   request: Request, principal: RequestPrincipal = principal_dependency):
+        runtime, _ = manager()
+        try:
+            return await StudioCapabilityBroker(runtime).refine_subtitles(
+                studio_id, mount_id, principal=principal, request=request,
+                segments=body.segments, rules=body.rules,
+            )
+        except StudioCapabilityError as error:
+            raise capability_error(error) from error
 
     @router.post(
         "/{studio_id}/mini-app-mounts/{mount_id}/capabilities/{capability}/invoke"

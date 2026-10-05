@@ -37,8 +37,14 @@ class ProcessSandboxAdapter(Protocol):
 class MacOSSandboxAdapter:
     name = "macos-seatbelt"
 
-    def __init__(self, sandbox_exec: str = "/usr/bin/sandbox-exec") -> None:
+    def __init__(
+        self,
+        sandbox_exec: str = "/usr/bin/sandbox-exec",
+        *,
+        trusted_runtime_roots: tuple[Path, ...] = (),
+    ) -> None:
         self.sandbox_exec = sandbox_exec
+        self.trusted_runtime_roots = trusted_runtime_roots
 
     def wrap(self, argv, workspace, temporary, cwd, *, network_enabled):
         if not Path(self.sandbox_exec).is_file():
@@ -59,6 +65,7 @@ class MacOSSandboxAdapter:
             Path("/dev"),
             Path("/opt/homebrew"),
             Path("/usr/local"),
+            *self.trusted_runtime_roots,
         ]
         lines = [
             "(version 1)",
@@ -86,8 +93,14 @@ class MacOSSandboxAdapter:
 class LinuxBubblewrapAdapter:
     name = "linux-bubblewrap"
 
-    def __init__(self, executable: str | None = None) -> None:
+    def __init__(
+        self,
+        executable: str | None = None,
+        *,
+        trusted_runtime_roots: tuple[Path, ...] = (),
+    ) -> None:
         self.executable = executable or shutil.which("bwrap")
+        self.trusted_runtime_roots = trusted_runtime_roots
 
     def wrap(self, argv, workspace, temporary, cwd, *, network_enabled):
         if self.executable is None:
@@ -108,6 +121,12 @@ class LinuxBubblewrapAdapter:
         for root in ("/usr", "/bin", "/sbin", "/lib", "/lib64", "/etc"):
             if Path(root).exists():
                 command.extend(("--ro-bind", root, root))
+        for root in self.trusted_runtime_roots:
+            if root.exists() and not any(
+                root.is_relative_to(Path(base))
+                for base in ("/usr", "/bin", "/sbin", "/lib", "/lib64", "/etc")
+            ):
+                command.extend(("--ro-bind", str(root), str(root)))
         command.extend(
             (
                 "--dev",
@@ -140,12 +159,14 @@ class TestSandboxAdapter:
         return SandboxLaunch(tuple(argv), cwd, self.name, True)
 
 
-def default_sandbox_adapter() -> ProcessSandboxAdapter:
+def default_sandbox_adapter(
+    trusted_runtime_roots: tuple[Path, ...] = (),
+) -> ProcessSandboxAdapter:
     system = platform.system()
     if system == "Darwin":
-        return MacOSSandboxAdapter()
+        return MacOSSandboxAdapter(trusted_runtime_roots=trusted_runtime_roots)
     if system == "Linux":
-        return LinuxBubblewrapAdapter()
+        return LinuxBubblewrapAdapter(trusted_runtime_roots=trusted_runtime_roots)
     raise ProcessServiceError(
         "sandbox_unavailable", f"No enforced Process sandbox for {system}"
     )

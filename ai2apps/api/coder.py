@@ -5,7 +5,7 @@ from __future__ import annotations
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
 from ai2apps.api.health import PlatformRuntimeProvider
@@ -14,9 +14,15 @@ from ai2apps.api.identity import (
     require_app_capability,
     resolve_request_principal,
 )
+from ai2apps.app_development.core import DraftError
+from ai2apps.app_development.preview import document as preview_document
+from ai2apps.app_development.subagents.contracts import SubagentError
 from ai2apps.apps.access import APP_CODER_USE
 from ai2apps.coder import CoderError
+from ai2apps.coder.project import ProjectSourceError
+from ai2apps.core import ResourceNotFoundError
 from ai2apps.identity import RequestPrincipal
+from ai2apps.processes.models import ProcessServiceError
 
 
 class ProjectCreateRequest(BaseModel):
@@ -42,6 +48,20 @@ class ForkRequest(BaseModel):
 class ProjectFileWriteRequest(BaseModel):
     path: str = Field(min_length=1, max_length=4096)
     content: str
+
+
+class DevelopmentTaskRequest(BaseModel):
+    prompt: str = Field(min_length=1, max_length=32768)
+    model: str = Field(min_length=1, max_length=256)
+    task_id: str | None = None
+
+
+class DraftApplyRequest(BaseModel):
+    revision: str = Field(min_length=64, max_length=64)
+
+
+class DraftResponseRequest(BaseModel):
+    response: dict
 
 
 class DevSessionCreateRequest(BaseModel):
@@ -314,6 +334,132 @@ def create_coder_router(
             )
         except CoderError as error:
             _raise(error)
+
+    def development():
+        runtime = runtime_provider()
+        if runtime is None or runtime.app_development is None:
+            raise HTTPException(status_code=503, detail={"code": "development_unavailable"})
+        return runtime.app_development
+
+    def development_error(error):
+        raise HTTPException(
+            status_code=404 if error.code in {"task_not_found", "project_not_found"} else 409,
+            detail={"code": error.code, "message": str(error)},
+        ) from error
+
+    @router.get("/projects/{project_id}/tasks/latest")
+    def latest_development_task(project_id: str, principal: RequestPrincipal = principal_dependency):
+        try:
+            return development().latest_task(project_id, principal)
+        except (DraftError, CoderError) as error:
+            development_error(error)
+
+    @router.post("/projects/{project_id}/tasks", status_code=201)
+    def start_development(project_id: str, request: DevelopmentTaskRequest,
+                          principal: RequestPrincipal = principal_dependency):
+        try:
+            return development().start(project_id, request.prompt, request.model, principal,
+                                       task_id=request.task_id)
+        except (DraftError, CoderError, ProjectSourceError) as error:
+            development_error(error)
+
+    @router.get("/tasks/{task_id}")
+    def development_status(task_id: str, principal: RequestPrincipal = principal_dependency):
+        try:
+            return development().status(task_id, principal)
+        except (DraftError, CoderError, ProjectSourceError) as error:
+            development_error(error)
+
+    @router.post("/tasks/{task_id}/stop")
+    def stop_development(task_id: str, principal: RequestPrincipal = principal_dependency):
+        try:
+            return development().stop(task_id, principal)
+        except (DraftError, CoderError, ProjectSourceError) as error:
+            development_error(error)
+
+    @router.post("/tasks/{task_id}/interactions/{interaction_id}")
+    def respond_development(task_id: str, interaction_id: str, request: DraftResponseRequest,
+                            principal: RequestPrincipal = principal_dependency):
+        try:
+            return development().respond(task_id, interaction_id, request.response, principal)
+        except (DraftError, CoderError, ProjectSourceError) as error:
+            development_error(error)
+
+    @router.post("/tasks/{task_id}/children/{child_run_id}/cancel")
+    def cancel_development_child(task_id: str, child_run_id: str,
+                                 principal: RequestPrincipal = principal_dependency):
+        manager = development()
+        try:
+            manager._task(task_id, principal)
+            binding = manager.cooperation.binding(child_run_id)
+            if not binding or binding['task_id'] != task_id:
+                raise SubagentError('child_not_found', 'Child not found in this task.')
+            return manager.cooperation.cancel(binding['root_run_id'], child_run_id)
+        except (DraftError, CoderError, SubagentError) as error:
+            development_error(error)
+
+    @router.get("/tasks/{task_id}/children/{child_run_id}/logs/{process_id}")
+    async def development_child_logs(task_id: str, child_run_id: str, process_id: str,
+                                     after: int = Query(default=0, ge=0),
+                                     principal: RequestPrincipal = principal_dependency):
+        manager = development()
+        try:
+            manager._task(task_id, principal)
+            binding = manager.cooperation.binding(child_run_id)
+            if not binding or binding['task_id'] != task_id:
+                raise SubagentError('child_not_found', 'Child not found in this task.')
+            context = manager.runtime.tools.context_for_session(caller_id='coder:child-logs',session_id=task_id,trace_id=child_run_id)
+            return await manager.command_status(task_id,process_id,after,1,context)
+        except (ProcessServiceError, ResourceNotFoundError) as error:
+            raise HTTPException(status_code=404, detail={"code": "child_process_not_found", "message": "Child process not found."}) from error
+        except (DraftError,CoderError,SubagentError) as error:
+            development_error(error)
+
+    @router.get("/tasks/{task_id}/changes")
+    def development_changes(task_id: str, principal: RequestPrincipal = principal_dependency):
+        try:
+            return development().review(task_id, principal)
+        except (DraftError, CoderError, ProjectSourceError) as error:
+            development_error(error)
+
+    @router.post("/tasks/{task_id}/apply")
+    def apply_development(task_id: str, request: DraftApplyRequest,
+                          principal: RequestPrincipal = principal_dependency):
+        try:
+            return development().apply(task_id, request.revision, principal)
+        except (DraftError, CoderError, ProjectSourceError) as error:
+            development_error(error)
+
+    @router.get("/tasks/{task_id}/preview/{component_id}")
+    def development_preview(task_id: str, component_id: str,
+                            principal: RequestPrincipal = principal_dependency):
+        try:
+            draft = development().draft(task_id, principal)
+            from ai2apps.coder.project import SourceProject
+            component = SourceProject(draft.workspace).component(component_id)
+            resource = component.manifest.get("entry", {}).get("resource")
+            if not isinstance(resource, str):
+                raise DraftError("not_previewable", "Component has no HTML entry.")
+            development().resource(task_id, component_id, resource, principal)
+        except (DraftError, CoderError, ProjectSourceError) as error:
+            development_error(error)
+        return RedirectResponse(
+            f"/v1/platform/coder/tasks/{quote(task_id, safe='')}/resources/"
+            f"{quote(component_id, safe='')}/{quote(resource, safe='/')}",
+            status_code=307, headers={"Cache-Control": "no-store"},
+        )
+
+    @router.get("/tasks/{task_id}/resources/{component_id}/{resource:path}")
+    def development_resource(task_id: str, component_id: str, resource: str,
+                             principal: RequestPrincipal = principal_dependency):
+        try:
+            path = development().resource(task_id, component_id, resource, principal)
+            if path.suffix.lower() in {".html", ".htm"}:
+                content = preview_document(path, resource, lambda relative: development().resource(task_id, component_id, relative, principal))
+                return HTMLResponse(content, headers=_preview_headers(entry=True))
+        except (DraftError, CoderError, ProjectSourceError) as error:
+            development_error(error)
+        return FileResponse(path, headers=_preview_headers(entry=path.suffix.lower() in {".html", ".htm"}))
 
     @router.get("/dev-sessions/{session_id}/preview")
     def preview(

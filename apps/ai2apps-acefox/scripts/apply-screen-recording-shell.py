@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-"""Apply App-Dev-only native Shell behavior to an AceFox shell.mjs source."""
+"""Apply standard, instance-bound recording preparation to the packaged Shell."""
 
 from __future__ import annotations
 
 import argparse
+import subprocess
+import tempfile
+import zipfile
 from pathlib import Path
 
 
@@ -63,7 +66,6 @@ def transform(source: str) -> str:
 ''',
         '''  const prepareScreenRecordingWindow = async () => {
     if (
-      instanceID !== "app-dev" ||
       screenRecordingWindowBusy ||
       !(await IOUtils.exists(screenRecordingWindowCommandPath))
     ) {
@@ -77,10 +79,10 @@ def transform(source: str) -> str:
       });
       if (
         command?.version !== 1 ||
-        command?.instance_id !== "app-dev" ||
+        command?.instance_id !== instanceID ||
         command?.command !== "prepare-screen-recording"
       ) {
-        console.error("Rejected invalid App-Dev screen recording command");
+        console.error("Rejected invalid screen recording command");
         return;
       }
       const baseWindow = window.docShell.treeOwner
@@ -97,7 +99,7 @@ def transform(source: str) -> str:
       );
       focusAI2AppsWindow(window);
     } catch (error) {
-      console.error("Could not prepare App-Dev screen recording window", error);
+      console.error("Could not prepare screen recording window", error);
       await IOUtils.remove(screenRecordingWindowCommandPath, {
         ignoreAbsent: true,
       });
@@ -154,12 +156,27 @@ def transform(source: str) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("source", type=Path)
-    parser.add_argument("destination", type=Path)
+    parser.add_argument("source", type=Path, nargs="?")
+    parser.add_argument("destination", type=Path, nargs="?")
+    parser.add_argument("--archive", type=Path)
     args = parser.parse_args()
-
-    transformed = transform(args.source.read_text(encoding="utf-8"))
-    args.destination.write_text(transformed, encoding="utf-8")
+    if args.archive:
+        if args.source or args.destination:
+            parser.error("--archive cannot be combined with source/destination")
+        resource = "chrome/browser/content/browser/ai2apps/shell.mjs"
+        with zipfile.ZipFile(args.archive) as archive:
+            source = archive.read(resource).decode("utf-8")
+        transformed = transform(source)
+        with tempfile.TemporaryDirectory(prefix="ai2apps-recording-") as directory:
+            target = Path(directory) / resource
+            target.parent.mkdir(parents=True)
+            target.write_text(transformed, encoding="utf-8")
+            subprocess.run(["/usr/bin/zip", "-q", "-X", str(args.archive.resolve()), resource],
+                           cwd=directory, check=True)
+    else:
+        if not args.source or not args.destination:
+            parser.error("source and destination are required")
+        args.destination.write_text(transform(args.source.read_text(encoding="utf-8")), encoding="utf-8")
 
 
 if __name__ == "__main__":

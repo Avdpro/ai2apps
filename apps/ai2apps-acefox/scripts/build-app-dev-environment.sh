@@ -18,7 +18,6 @@ APP_ICON_UPPER_COLOR='#E2D5F8'
 
 ACEFOX_APP=${ACEFOX_APP:-${SDK_ROOT}/moz/acefox-firefox-153/obj-aarch64-apple-darwin/dist/firefox/Acefox.app}
 ACEFOX_SHELL_SOURCE=${ACEFOX_SHELL_SOURCE:-${SDK_ROOT}/moz/acefox-firefox-153/browser/components/ai2apps/content/shell.mjs}
-ACEFOX_SHELL_TRANSFORM=${SCRIPT_DIR}/apply-app-dev-shell-overrides.py
 RUNTIME_LAYERS=${RUNTIME_LAYERS:-${REPO_ROOT}/packaging/_export}
 
 fail() {
@@ -28,7 +27,6 @@ fail() {
 
 [[ -d ${ACEFOX_APP} ]] || fail "AceFox App not found: ${ACEFOX_APP}"
 [[ -f ${ACEFOX_SHELL_SOURCE} ]] || fail "AceFox Shell source not found: ${ACEFOX_SHELL_SOURCE}"
-[[ -f ${ACEFOX_SHELL_TRANSFORM} ]] || fail "App-Dev Shell transform not found: ${ACEFOX_SHELL_TRANSFORM}"
 [[ -d ${RUNTIME_LAYERS}/cpython-3.11 ]] || \
   fail "embedded Runtime export not found; run .venv/bin/python packaging/build.py --venvstacks-only"
 [[ -d ${RUNTIME_LAYERS}/framework-control-plane ]] || \
@@ -54,7 +52,6 @@ DEVELOPMENT_SOURCE_ROOT=${REPO_ROOT} \
 MENUBAR_ICON_BADGE=app-dev \
 ALLOW_INSTANCE_DATA_RESET=1 \
 ACEFOX_SHELL_SOURCE=${ACEFOX_SHELL_SOURCE} \
-ACEFOX_SHELL_TRANSFORM=${ACEFOX_SHELL_TRANSFORM} \
 SHELL_TITLE_PREFIX=${APP_DISPLAY_NAME} \
 SIGN_IDENTITY=- \
 SANDBOX_MODE=0 \

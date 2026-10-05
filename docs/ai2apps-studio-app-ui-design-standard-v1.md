@@ -1036,6 +1036,8 @@ Capability Broker 共享一个“视频提取音频”Pipeline，且没有 Mini-
 - [ ] 源码挂载未创建正式 Package Store 安装记录，非 Development Runtime 不发现该源码；
 - [ ] 跨 Studio Mini-App 只安装一次，不复制 Package、版本、权限或业务实现；
 - [ ] 多 Mini-App Package 具有可验证的 Component Graph 和原子安装/升级语义；
+- [ ] Package、Provider App 与每个 `mini_apps[]` 分别声明本地化名称；中文/英文 Host 中的
+  Studio 列表、当前标题、Entry 动态 UI 与 accessible name 均已在真实 mount 验证；
 - [ ] 共享业务能力使用版本化 `provides`/`requirements`，不通过 Mini-App 互调或私有代码导入；
 - [ ] `private`/`package`/`public` 可见性和跨 Package 信任边界通过校验；
 - [ ] Capability 调用经 Host Broker，并记录调用方、Provider、Package 版本、Studio/mount 和 Artifact；

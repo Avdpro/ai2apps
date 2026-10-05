@@ -51,6 +51,7 @@ def test_system_app_catalog_covers_legacy_omlx_surfaces():
         "ai2apps.terminal",
         "ai2apps.coder",
         "ai2apps.benchmark",
+        "ai2apps.todo",
     }
     assert all(app["singleton"] for app in admin_routes.SYSTEM_APPS)
 
@@ -70,6 +71,7 @@ def test_default_dock_contains_core_creation_apps():
         "ai2apps.readaloud",
         "ai2apps.video-studio",
         "ai2apps.imagine-studio",
+        "ai2apps.todo",
     }
     manifests = {manifest["id"]: manifest for manifest in SYSTEM_APP_MANIFESTS}
     assert manifests["ai2apps.readaloud"]["name"] == "Voice Studio"
@@ -159,6 +161,7 @@ def test_installed_package_sandbox_csp_remains_strict():
 
     assert "allow-same-origin" not in policy
     assert "connect-src 'none'" in policy
+    assert "media-src blob:" in policy
 
 
 def test_desktop_home_renders_shell_without_launching_dashboard():
@@ -258,7 +261,7 @@ def test_desktop_shell_auto_allows_only_chat_microphone_requests():
         repository_root / "apps/ai2apps-acefox/entitlements/launcher.plist"
     ).read_text()
 
-    assert "record.appId === 'ai2apps.general-chat'" in shell_script
+    assert "['ai2apps.general-chat', 'ai2apps.video-studio'].includes(record.appId)" in shell_script
     assert "clipboard-read; clipboard-write; microphone" in shell_script
     assert 'user_pref("permissions.default.microphone", 1);' in browser_launcher
     assert 'user_pref("permissions.default.microphone", 1);' in app_launcher
@@ -1042,6 +1045,7 @@ def test_member_shell_exposes_only_member_apps_and_no_system_control():
         "ai2apps.readaloud",
         "ai2apps.video-studio",
         "ai2apps.imagine-studio",
+        "ai2apps.todo",
     }
     assert context["can_manage_system"] is False
 

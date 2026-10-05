@@ -1,6 +1,9 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
+const template = fs.readFileSync(__dirname+'/../ai2apps/web/templates/system_apps/imagine_studio.html','utf8');
+assert.equal((template.match(/<select x-model="size"/g) || []).length, 1, 'Keep one shared canvas-size selector');
+assert.ok(!template.includes("tr('portraitRatio')"), 'Portrait must not repeat the shared size selector');
 const ctx = {window: {}, document: {documentElement: {lang:'en'}}, structuredClone, console, URL};
 vm.createContext(ctx);
 vm.runInContext(fs.readFileSync(__dirname+'/../ai2apps/web/static/js/imagine_studio.js','utf8'), ctx);

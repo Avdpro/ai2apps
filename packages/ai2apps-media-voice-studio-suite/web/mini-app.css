@@ -279,3 +279,5 @@ h2 { font-size: 17px; letter-spacing: -.025em; }
 
 .transcript-row textarea { width: 100%; min-height: 72px; resize: vertical; font: inherit; line-height: 1.6; padding: 8px; }
 .transcript-meta select { width: 100%; min-width: 0; font-size: 11px; }
+
+.subtitle-correction{margin:12px 0;padding:14px}.subtitle-correction summary{cursor:pointer;font-weight:600}.subtitle-correction>select,.subtitle-correction>input,.subtitle-correction>textarea{display:block;width:100%;box-sizing:border-box;margin:10px 0}.correction-review{max-height:420px;overflow:auto}.correction-review p{white-space:pre-wrap;overflow-wrap:anywhere}

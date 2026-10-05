@@ -1,6 +1,10 @@
 (async function () {
   'use strict';
 
+  const i18n = window.AI2AppsMediaVoiceI18n;
+  const locale = i18n?.normalize(new URLSearchParams(location.search).get('locale') || navigator.language) || 'en';
+  const ui = value => i18n?.translate(locale, value) ?? value;
+
   // The opaque Package frame never fetches authenticated resources or reads
   // browser storage. Only the immediate Studio Host can supply this port.
   let sequence = 0;
@@ -8,7 +12,7 @@
   let activeProgressHandler = null;
   const pending = new Map();
   const connected = new Promise((resolve, reject) => {
-    const timer = setTimeout(() => { window.removeEventListener('message', accept); reject(new Error('Studio Host 通道不可用，请更新 App 后重新打开。')); }, 15000);
+    const timer = setTimeout(() => { window.removeEventListener('message', accept); reject(new Error(ui('Studio Host 通道不可用，请更新 App 后重新打开。'))); }, 15000);
     function accept(event) {
       if (event.source !== window.parent || event.data?.type !== 'ai2apps:studio-connected' || event.data?.version !== 1 || !event.ports?.[0]) return;
       clearTimeout(timer);
@@ -41,7 +45,7 @@
       try {
         return await new Promise((resolve, reject) => {
           const id = ++sequence;
-          const timer = setTimeout(() => { pending.delete(id); reject(new Error('操作等待超时，请检查任务状态，不要重复提交。')); }, ['invoke', 'setup'].includes(operation) ? 1800000 : 30000);
+          const timer = setTimeout(() => { pending.delete(id); reject(new Error(ui('操作等待超时，请检查任务状态，不要重复提交。'))); }, ['invoke', 'setup', 'subtitle.refine'].includes(operation) ? 1800000 : 30000);
           pending.set(id, {resolve, reject, timer});
           port.postMessage({id, operation, ...fields});
         });
@@ -66,7 +70,7 @@
   const workflows = {
     transcription: {
       id: 'ai2apps.media-voice.transcription',
-      eyebrow: 'Audio intelligence',
+      eyebrow: '音频智能',
       title: '生成录音文本记录',
       description: '识别逐字时间戳和说话人，完成后可把匿名角色改成真实姓名，并导出结构化记录或字幕。',
       accept: 'audio/*,video/mp4,video/quicktime',
@@ -86,7 +90,7 @@
     },
     separation: {
       id: 'ai2apps.media-voice.source-separation',
-      eyebrow: 'Audio processing',
+      eyebrow: '音频处理',
       title: '分离人声和背景音',
       description: '从音频中拆出独立人声与背景轨，并保持原始时间线，方便后续换声、混音或字幕制作。',
       accept: 'audio/*,video/mp4,video/quicktime',
@@ -102,7 +106,7 @@
     },
     'audio-voice-replacement': {
       id: 'ai2apps.media-voice.audio-speaker-replacement',
-      eyebrow: 'Voice conversion',
+      eyebrow: '声音转换',
       title: '替换录音中的某个角色声音',
       description: '识别目标说话人的片段，只转换该角色的音色，并将其他人声与背景轨按原时间线混回。',
       accept: 'audio/*',
@@ -124,7 +128,7 @@
     },
     'video-subtitles': {
       id: 'ai2apps.media-voice.video-subtitles',
-      eyebrow: 'Video localization',
+      eyebrow: '视频本地化',
       title: '生成、翻译与添加视频字幕',
       description: '从视频对白生成带时间轴的字幕，可翻译为另一种语言，导出字幕文件或直接烧录到视频。',
       accept: 'video/*',
@@ -146,7 +150,7 @@
     },
     'video-audio-translation': {
       id: 'ai2apps.media-voice.video-audio-translation',
-      eyebrow: 'Video dubbing',
+      eyebrow: '视频配音',
       title: '翻译视频音轨',
       description: '面向单讲解者视频：翻译原始旁白，可选 Voice Studio Character 或临时克隆原始音色重新配音，并保留音乐与环境背景。',
       accept: 'video/*',
@@ -166,7 +170,7 @@
     },
     'video-voice-replacement': {
       id: 'ai2apps.media-voice.video-speaker-replacement',
-      eyebrow: 'Video voice conversion',
+      eyebrow: '视频声音转换',
       title: '替换视频中的某个角色声音',
       description: '从视频中定位一个说话人，转换对应对白音色，再与其他角色、环境声和画面同步合成。',
       accept: 'video/*',
@@ -192,15 +196,16 @@
   const config = workflows[mode];
   const root = document.getElementById('app');
   if (!config || !root) return;
+  i18n?.configureDocument(mode, locale);
 
-  const state = {files: {}, fileObjects: {}, roles: [{id: 'speaker-1', name: '角色 1'}, {id: 'speaker-2', name: '角色 2'}], characters: [], voiceCloneModels: [], draft: null, analysis: null, result: null, resultUrl: null};
+  const state = {correctionProfiles: [], correction: {id:'',name:'',rules:''}, files: {}, fileObjects: {}, roles: [{id: 'speaker-1', name: ui('角色 1')}, {id: 'speaker-2', name: ui('角色 2')}], characters: [], voiceCloneModels: [], draft: null, analysis: null, result: null, resultUrl: null};
   const storageKey = `ai2apps.media-voice-suite.${mode}.draft.v1`;
   let refreshRoles = null;
 
   function node(tag, className, text) {
     const value = document.createElement(tag);
     if (className) value.className = className;
-    if (text != null) value.textContent = text;
+    if (text != null) value.textContent = ui(text);
     return value;
   }
 
@@ -268,7 +273,7 @@
       input.checked = Boolean(field.value);
       input.required = Boolean(field.required);
       input.disabled = Boolean(field.disabled);
-      label.append(input, document.createTextNode(field.label));
+      label.append(input, document.createTextNode(ui(field.label)));
       wrap.append(label);
       return wrap;
     }
@@ -282,13 +287,13 @@
       (field.options || []).forEach(([value, text]) => {
         const option = document.createElement('option');
         option.value = value;
-        option.textContent = text;
+        option.textContent = ui(text);
         input.append(option);
       });
     } else {
       input = document.createElement(field.type === 'textarea' ? 'textarea' : 'input');
       if (input.tagName === 'INPUT') input.type = field.type || 'text';
-      if (field.placeholder) input.placeholder = field.placeholder;
+      if (field.placeholder) input.placeholder = ui(field.placeholder);
     }
     input.id = field.id;
     input.required = Boolean(field.required);
@@ -322,12 +327,12 @@
         const input = document.createElement('input');
         input.type = 'text';
         input.value = role.name;
-        input.setAttribute('aria-label', `角色 ${index + 1} 名称`);
+        input.setAttribute('aria-label', ui(`角色 ${index + 1} 名称`));
         input.addEventListener('input', () => { role.name = input.value; syncRoleSelects(); renderTranscript(); });
         const remove = node('button', 'icon-button', '−');
         remove.type = 'button';
-        remove.title = '删除角色';
-        remove.setAttribute('aria-label', `删除角色 ${index + 1}`);
+        remove.title = ui('删除角色');
+        remove.setAttribute('aria-label', ui(`删除角色 ${index + 1}`));
         remove.disabled = state.roles.length === 1;
         remove.addEventListener('click', () => { state.roles.splice(index, 1); refresh(); syncRoleSelects(); });
         row.append(key, input, remove);
@@ -339,7 +344,7 @@
     add.type = 'button';
     add.addEventListener('click', () => {
       const number = state.roles.length + 1;
-      state.roles.push({id: `speaker-${number}-${Date.now()}`, name: `角色 ${number}`});
+      state.roles.push({id: `speaker-${number}-${Date.now()}`, name: ui(`角色 ${number}`)});
       refresh();
       syncRoleSelects();
     });
@@ -372,22 +377,22 @@
   setupButton.addEventListener('click', async () => {
     if (setupButton.disabled) return;
     setupButton.disabled = true;
-    setupButton.textContent = '正在安装配置…';
+    setupButton.textContent = ui('正在安装配置…');
     try {
       await hostRequest('setup', {capability: config.primaryCapability});
       await probeCapabilities();
     } catch (error) {
-      notice.textContent = error.message || '无法打开安装配置，请重试。';
+      notice.textContent = ui(error.message || '无法打开安装配置，请重试。');
     } finally {
       setupButton.disabled = false;
-      setupButton.textContent = '安装并配置模型';
+      setupButton.textContent = ui('安装并配置模型');
     }
   });
 
   const sourcePanel = node('section', 'panel');
   const sourceHeading = node('div', 'panel-heading');
   const sourceTitle = node('div');
-  sourceTitle.append(node('span', 'step', 'Step 01'), node('h2', '', '选择素材'));
+  sourceTitle.append(node('span', 'step', '步骤 01'), node('h2', '', '选择素材'));
   sourceHeading.append(sourceTitle);
   const sourceGrid = node('div', 'grid');
   sourceGrid.append(renderFilePicker('source', config.fileLabel, config.accept, true));
@@ -398,7 +403,7 @@
   const settingsPanel = node('section', 'panel');
   const settingsHeading = node('div', 'panel-heading');
   const settingsTitle = node('div');
-  settingsTitle.append(node('span', 'step', 'Step 02'), node('h2', '', '配置工作流'), node('p', 'hint', '',));
+  settingsTitle.append(node('span', 'step', '步骤 02'), node('h2', '', '配置工作流'), node('p', 'hint', '',));
   settingsHeading.append(settingsTitle);
   const settingsGrid = node('div', 'grid');
   config.fields.forEach(field => settingsGrid.append(renderField(field)));
@@ -409,7 +414,7 @@
     const rolePanel = node('section', 'panel');
     const roleHeading = node('div', 'panel-heading');
     const roleTitle = node('div');
-    roleTitle.append(node('span', 'step', 'Step 03'), node('h2', '', '角色名称'), node('p', 'hint', '模型先产生匿名角色；用户确认后再绑定名字。MVP 可预先配置，执行结果回来后仍可修改。'));
+    roleTitle.append(node('span', 'step', '步骤 03'), node('h2', '', '角色名称'), node('p', 'hint', '模型先产生匿名角色；用户确认后再绑定名字。MVP 可预先配置，执行结果回来后仍可修改。'));
     roleHeading.append(roleTitle);
     rolePanel.append(roleHeading);
     renderRoles(rolePanel);
@@ -420,7 +425,7 @@
   const pipelinePanel = node('section', 'panel');
   const pipelineHeading = node('div', 'panel-heading');
   const pipelineTitle = node('div');
-  pipelineTitle.append(node('span', 'step', config.roles ? 'Step 04' : 'Step 03'), node('h2', '', '处理链路'));
+  pipelineTitle.append(node('span', 'step', config.roles ? '步骤 04' : '步骤 03'), node('h2', '', '处理链路'));
   pipelineHeading.append(pipelineTitle);
   const pipeline = node('div', 'pipeline');
   pipeline.setAttribute('aria-live', 'polite');
@@ -442,7 +447,7 @@
   const exportButton = node('button', 'secondary', '导出 JSON');
   function updateExportLabel() {
     const format = mode === 'transcription' ? document.getElementById('output')?.value : 'json';
-    exportButton.textContent = '导出 ' + ({markdown: 'Markdown', srt: 'SRT', json: 'JSON'}[format] || 'JSON');
+    exportButton.textContent = ui('导出 ' + ({markdown: 'Markdown', srt: 'SRT', json: 'JSON'}[format] || 'JSON'));
   }
   document.getElementById('output')?.addEventListener('change', updateExportLabel);
   updateExportLabel();
@@ -474,13 +479,13 @@
 
   function resetSubtitleActions() {
     if (!runButton) return;
-    runButton.textContent = config.runLabel || '开始本地处理';
+    runButton.textContent = ui(config.runLabel || '开始本地处理');
     runButton.className = 'primary';
     if (subtitleVideoButton) subtitleVideoButton.hidden = true;
   }
 
   function setStatus(message, kind) {
-    status.textContent = message;
+    status.textContent = ui(message);
     status.className = `status${kind ? ` ${kind}` : ''}`;
   }
 
@@ -512,7 +517,7 @@
       } else {
         phaseState.textContent = '';
       }
-      if (index === phaseIndex && progress?.detail) item.title = progress.detail;
+      if (index === phaseIndex && progress?.detail) item.title = ui(progress.detail);
       else item.removeAttribute('title');
     });
     if (progress?.detail) setStatus(progress.detail, phaseStatus === 'failed' ? 'error' : undefined);
@@ -531,7 +536,7 @@
     active.item.classList.remove('running');
     active.item.classList.add('failed');
     active.phaseState.textContent = '!';
-    if (message) active.item.title = message;
+    if (message) active.item.title = ui(message);
   }
 
   function collect() {
@@ -550,6 +555,7 @@
       requiredCapabilities: [...config.capabilities],
       result: state.result,
       analysis: state.analysis,
+      correction: state.correction,
       executionStatus: state.result ? 'completed' : 'draft'
     };
   }
@@ -563,7 +569,93 @@
   function speakerName(speaker) {
     const transcript = state.analysis || state.result;
     const index = transcript?.speakerIds?.indexOf(speaker) ?? -1;
-    return index >= 0 ? (state.roles[index]?.name || speaker) : (speaker || '未分配');
+    return index >= 0 ? (state.roles[index]?.name || speaker) : (speaker || ui('未分配'));
+  }
+
+  function renderCorrectionPanel() {
+    const panel = node('details', 'panel subtitle-correction');
+    panel.append(node('summary', '', '可选：用 AI 润色 / 修正字幕'));
+    panel.append(node('p', 'hint', '使用系统 Standard tasks 模型。只修正文字，保留时间轴和段落；审阅后确认应用。'));
+    const select = node('select'); select.setAttribute('aria-label', ui('修正规则 Profile'));
+    const name = node('input'); name.placeholder = ui('Profile 名称'); name.maxLength = 100; name.value = state.correction.name;
+    name.setAttribute('aria-label', ui('Profile 名称'));
+    const rules = node('textarea'); rules.rows = 4; rules.maxLength = 8000;
+    rules.placeholder = ui('例如：把 AI to Apps 写作 Ai2Apps；尽量用阿拉伯数字而不是中文数字。');
+    rules.setAttribute('aria-label', ui('字幕修正规则')); rules.value = state.correction.rules;
+    const sync = () => {state.correction.name = name.value; state.correction.rules = rules.value;};
+    name.addEventListener('input', sync); rules.addEventListener('input', sync);
+    const refresh = () => {
+      select.replaceChildren();
+      const empty = node('option', '', '临时规则 / 新建 Profile'); empty.value = ''; select.append(empty);
+      state.correctionProfiles.forEach(p => {const option = node('option', '', p.name); option.value = p.id; select.append(option);});
+      select.value = state.correction.id;
+    };
+    refresh();
+    select.addEventListener('change', () => {
+      state.correction.id = select.value;
+      const profile = state.correctionProfiles.find(p => p.id === select.value);
+      name.value = profile?.name || ''; rules.value = profile?.rules || ''; sync();
+    });
+    const controls = node('div', 'actions');
+    const save = node('button', 'secondary', '保存 Profile'); save.type = 'button';
+    const remove = node('button', 'secondary', '删除 Profile'); remove.type = 'button';
+    const analyze = node('button', 'primary', '生成修正建议'); analyze.type = 'button';
+    const review = node('div', 'correction-review');
+    save.addEventListener('click', async () => {
+      if (!name.value.trim()) {setStatus('请填写 Profile 名称。', 'error'); return;}
+      save.disabled = true;
+      try {
+        const profile = {id:state.correction.id || crypto.randomUUID(), name:name.value.trim(), rules:rules.value};
+        const next = [...state.correctionProfiles.filter(p => p.id !== profile.id), profile];
+        await hostRequest('subtitle.profiles.set', {profiles:next});
+        state.correctionProfiles = next; state.correction = {...profile}; refresh(); setStatus('修正规则 Profile 已保存。', 'ready');
+      } catch(error) {setStatus(error.message, 'error');} finally {save.disabled = false;}
+    });
+    remove.addEventListener('click', async () => {
+      if (!select.value) return;
+      remove.disabled = true;
+      try {
+        const next = state.correctionProfiles.filter(p => p.id !== select.value);
+        await hostRequest('subtitle.profiles.set', {profiles:next}); state.correctionProfiles = next;
+        state.correction.id = ''; refresh(); setStatus('Profile 已删除，当前规则仍可使用。');
+      } catch(error) {setStatus(error.message, 'error');} finally {remove.disabled = false;}
+    });
+    analyze.addEventListener('click', async () => {
+      const original = JSON.stringify(state.analysis.segments);
+      const segments = JSON.parse(original);
+      analyze.disabled = true; review.replaceChildren();
+      setStatus('正在生成字幕修正建议，原文暂不修改…');
+      try {
+        const proposal = await hostRequest('subtitle.refine', {segments, rules:rules.value});
+        if (JSON.stringify(state.analysis?.segments) !== original || !panel.isConnected) throw new Error('字幕已变化，请重新生成修正建议。');
+        if (!Array.isArray(proposal.segments) || proposal.segments.length !== segments.length) throw new Error('修正结果段落数量不一致。');
+        let count = 0;
+        proposal.segments.forEach((line,i) => {
+          if (line.text === segments[i].text) return;
+          count++;
+          const row = node('div', 'panel');
+          row.append(node('strong', '', `片段 ${i+1} · ${clock(segments[i].start)}`), node('p', '', '原文：'+segments[i].text), node('p', '', '建议：'+line.text));
+          review.append(row);
+        });
+        review.prepend(node('p', 'hint', `共 ${count} 个片段建议修改。`));
+        if (count) {
+          const apply = node('button', 'primary', '确认应用修正'); apply.type = 'button';
+          const discard = node('button', 'secondary', '放弃建议'); discard.type = 'button';
+          discard.addEventListener('click', () => review.replaceChildren());
+          apply.addEventListener('click', async () => {
+            if (JSON.stringify(state.analysis?.segments) !== original) {setStatus('字幕已变化，请重新生成建议。', 'error');review.replaceChildren();return;}
+            state.analysis.segments = proposal.segments; state.result = null;
+            renderTranscript();
+            try {await draftStorage.setItem(storageKey, JSON.stringify(collect()));setStatus('已应用修正并保存草稿，请继续校对或导出。', 'ready');}
+            catch(error) {setStatus('已应用修正，但保存草稿失败：'+error.message, 'error');}
+          });
+          review.append(apply, discard);
+        }
+        setStatus('修正建议已生成，请审阅。', 'ready');
+      } catch(error) {setStatus(error.message, 'error');} finally {analyze.disabled = false;}
+    });
+    controls.append(save, remove, analyze); panel.append(select, name, rules, controls, review);
+    return panel;
   }
 
   function renderTranscript() {
@@ -575,7 +667,7 @@
     const heading = node('div', 'panel-heading');
     const title = node('div');
     title.append(
-      ...(subtitleEditor ? [] : [node('span', 'step', 'Result')]),
+      ...(subtitleEditor ? [] : [node('span', 'step', '结果')]),
       node('h2', '', subtitleEditor ? '校对字幕段落' : '角色识别结果'),
       node('p', 'hint', subtitleEditor
         ? `${transcriptResult.segments.length} 个字幕段落 · 修改文本不会改变时间轴；清空文本可移除该段字幕。`
@@ -590,8 +682,8 @@
         meta.append(node('strong', '', `片段 ${String(index + 1).padStart(2, '0')}`), node('span', '', `${clock(segment.start)} – ${clock(segment.end)}`));
       } else {
         const speaker = document.createElement('select');
-        speaker.setAttribute('aria-label', `片段 ${index + 1} 角色`);
-        const options = [{id: '', name: '未分配'}, ...state.roles];
+        speaker.setAttribute('aria-label', ui(`片段 ${index + 1} 角色`));
+        const options = [{id: '', name: ui('未分配')}, ...state.roles];
         if (segment.speaker && !options.some(role => role.id === segment.speaker)) options.push({id: segment.speaker, name: segment.speaker});
         options.forEach(role => { const option = document.createElement('option'); option.value = role.id; option.textContent = role.name; speaker.append(option); });
         speaker.value = segment.speaker || '';
@@ -601,7 +693,7 @@
       const text = document.createElement('textarea');
       text.value = segment.text || '';
       text.rows = Math.min(8, Math.max(2, Math.ceil(text.value.length / 80)));
-      text.setAttribute('aria-label', `片段 ${index + 1} 文本`);
+      text.setAttribute('aria-label', ui(`片段 ${index + 1} 文本`));
       text.addEventListener('input', () => {
         segment.text = text.value;
         // Corrected text no longer has verified word-level alignment. Segment timing stays intact.
@@ -611,9 +703,11 @@
       row.append(meta, text);
       transcript.append(row);
     });
-    resultPanel.append(heading, transcript);
+    resultPanel.append(heading);
+    if (subtitleEditor) resultPanel.append(renderCorrectionPanel());
+    resultPanel.append(transcript);
     if (subtitleEditor) {
-      runButton.textContent = '生成字幕文件';
+      runButton.textContent = ui('生成字幕文件');
       runButton.className = 'secondary';
       subtitleVideoButton.hidden = false;
     }
@@ -660,7 +754,7 @@
       state.result = {...payload, segments, speakerIds};
       if (speakerIds.length) {
         const previous = state.roles;
-        state.roles = speakerIds.map((id, index) => ({id, name: previous[index]?.name || `角色 ${index + 1}`}));
+        state.roles = speakerIds.map((id, index) => ({id, name: previous[index]?.name || ui(`角色 ${index + 1}`)}));
         refreshRoles?.();
         syncRoleSelects();
       }
@@ -711,7 +805,7 @@
       resultPanel.replaceChildren();
       const heading = node('div', 'panel-heading');
       const title = node('div');
-      title.append(node('span', 'step', 'Result'), node('h2', '', '音轨分离完成'), node('p', 'hint', `${profile} · ${fileSize(size)} · ZIP 内含 WAV 音轨和 separation.json`));
+      title.append(node('span', 'step', '结果'), node('h2', '', '音轨分离完成'), node('p', 'hint', `${profile} · ${fileSize(size)} · ZIP 内含 WAV 音轨和 separation.json`));
       heading.append(title);
       const download = node('a', 'primary', '下载分离音轨 ZIP');
       download.href = state.resultUrl;
@@ -801,7 +895,7 @@
       const heading = node('div', 'panel-heading');
       const title = node('div');
       const contents = burnIn ? `.${subtitleFormat}、转写 JSON 和烧录视频` : `.${subtitleFormat} 和转写 JSON`;
-      title.append(node('span', 'step', 'Result'), node('h2', '', '视频字幕已生成'), node('p', 'hint', `${fileSize(archive.size)} · ZIP 内含 ${contents}`));
+      title.append(node('span', 'step', '结果'), node('h2', '', '视频字幕已生成'), node('p', 'hint', `${fileSize(archive.size)} · ZIP 内含 ${contents}`));
       heading.append(title);
       const download = node('a', 'primary', '下载字幕结果 ZIP');
       download.href = state.resultUrl;
@@ -880,7 +974,7 @@
       resultPanel.replaceChildren();
       const heading = node('div', 'panel-heading');
       const title = node('div');
-      title.append(node('span', 'step', 'Result'), node('h2', '', '视频音轨翻译完成'), node('p', 'hint', `${character?.name || 'Character'} · ${fileSize(video.size)} · MP4`));
+      title.append(node('span', 'step', '结果'), node('h2', '', '视频音轨翻译完成'), node('p', 'hint', `${character?.name || 'Character'} · ${fileSize(video.size)} · MP4`));
       heading.append(title);
       const download = node('a', 'primary', '下载翻译配音视频');
       download.href = state.resultUrl;
@@ -929,11 +1023,11 @@
         const speakerIds = [...new Set(segments.map(item => item?.speaker).filter(Boolean))];
         state.analysis = {...payload, segments, speakerIds};
         const previous = state.roles;
-        state.roles = speakerIds.map((id, index) => ({id, name: previous[index]?.name || `角色 ${index + 1}`}));
+        state.roles = speakerIds.map((id, index) => ({id, name: previous[index]?.name || ui(`角色 ${index + 1}`)}));
         refreshRoles?.();
         syncRoleSelects();
         renderTranscript();
-        runButton.textContent = '开始替换所选角色';
+        runButton.textContent = ui('开始替换所选角色');
         setStatus('角色识别完成。请命名角色、选择目标角色和参考声音，然后再次执行。', 'ready');
         return;
       }
@@ -963,7 +1057,7 @@
       resultPanel.replaceChildren();
       const heading = node('div', 'panel-heading');
       const title = node('div');
-      title.append(node('span', 'step', 'Result'), node('h2', '', '角色换声完成'), node('p', 'hint', `${fileSize(audio.size)} · ${isVideo ? 'MP4' : 'WAV'}`));
+      title.append(node('span', 'step', '结果'), node('h2', '', '角色换声完成'), node('p', 'hint', `${fileSize(audio.size)} · ${isVideo ? 'MP4' : 'WAV'}`));
       heading.append(title);
       const download = node('a', 'primary', isVideo ? '下载替换后的视频' : '下载替换后的音频');
       download.href = state.resultUrl;
@@ -1069,7 +1163,7 @@
       state.files = {}; state.fileObjects = {}; state.draft = null; state.analysis = null; state.result = null;
       if (state.resultUrl) URL.revokeObjectURL(state.resultUrl);
       state.resultUrl = null;
-      state.roles = [{id: 'speaker-1', name: '角色 1'}, {id: 'speaker-2', name: '角色 2'}];
+      state.roles = [{id: 'speaker-1', name: ui('角色 1')}, {id: 'speaker-2', name: ui('角色 2')}];
       refreshRoles?.(); syncRoleSelects();
       document.querySelectorAll('input[type="file"]').forEach(input => { input.value = ''; });
       document.querySelectorAll('.file-pill').forEach(pill => { pill.hidden = true; pill.textContent = ''; });
@@ -1092,11 +1186,13 @@
   });
 
   try {
+    if (mode === 'video-subtitles') state.correctionProfiles = await hostRequest('subtitle.profiles.get');
     const saved = JSON.parse(await draftStorage.getItem(storageKey) || 'null');
     if (saved && saved.schema === 'ai2apps.mini-app-draft/v1') {
       state.draft = saved;
       state.result = saved.result || null;
       state.analysis = saved.analysis || null;
+      if (saved.correction) state.correction = {id:String(saved.correction.id || ''),name:String(saved.correction.name || ''),rules:String(saved.correction.rules || '')};
       state.files = saved.files || {};
       if (config.roles && Array.isArray(saved.roles) && saved.roles.length) {
         state.roles = saved.roles;
@@ -1134,36 +1230,36 @@
         checkbox.disabled = !asrReady;
         if (!asrReady) checkbox.checked = false;
         checkbox.parentElement?.classList.toggle('disabled', !asrReady);
-        checkbox.parentElement.title = asrReady
+        checkbox.parentElement.title = ui(asrReady
           ? '逐句回听生成的配音；不合格时最多自动重试两次。'
-          : '未检测到可用的 Detailed Transcription ASR 模型。';
+          : '未检测到可用的 Detailed Transcription ASR 模型。');
       }
       notice.classList.toggle('ready', capability?.ready === true);
       setupActions.hidden = setupButton.hidden = !['transcription', 'separation', 'video-audio-translation', 'audio-voice-replacement', 'video-voice-replacement'].includes(mode) || capability?.ready === true;
       if (mode === 'separation') {
-        notice.textContent = capability?.ready
+        notice.textContent = ui(capability?.ready
           ? '音轨分离能力已就绪。素材只提交给本机已安装并验证的 MLX Demucs Package。'
-          : '音轨分离模型尚未配置。点击下方按钮，安装并配置 MLX Demucs。';
+          : '音轨分离模型尚未配置。点击下方按钮，安装并配置 MLX Demucs。');
       } else if (mode === 'video-subtitles') {
-        notice.textContent = capability?.ready
+        notice.textContent = ui(capability?.ready
           ? '视频字幕 Host 流程已就绪；转写、翻译和烧录能力会在执行时分别校验。'
-          : '视频字幕 Host 流程不可用；请更新当前 AI2Apps App。';
+          : '视频字幕 Host 流程不可用；请更新当前 AI2Apps App。');
       } else if (mode === 'video-audio-translation') {
-        notice.textContent = capability?.ready
+        notice.textContent = ui(capability?.ready
           ? '单讲解者音轨翻译链路已就绪；原对白会被移除，翻译后的配音将与保留的背景声重新混合。'
-          : '视频音轨翻译所需模型尚未齐备。点击下方按钮，配置 Detailed Transcription 和 MLX Demucs。';
+          : '视频音轨翻译所需模型尚未齐备。点击下方按钮，配置 Detailed Transcription 和 MLX Demucs。');
       } else if (mode === 'audio-voice-replacement') {
-        notice.textContent = capability?.ready
+        notice.textContent = ui(capability?.ready
           ? '指定角色换声链路已就绪；先识别角色，再用授权参考声音替换所选角色。'
-          : '指定角色换声所需模型尚未齐备。点击下方按钮，配置 Detailed Transcription、MLX Demucs 和 MLX Seed-VC v2。';
+          : '指定角色换声所需模型尚未齐备。点击下方按钮，配置 Detailed Transcription、MLX Demucs 和 MLX Seed-VC v2。');
       } else if (mode === 'video-voice-replacement') {
-        notice.textContent = capability?.ready
+        notice.textContent = ui(capability?.ready
           ? '视频指定角色换声链路已就绪；先识别角色，再转换目标对白并保留原画面封装。'
-          : '视频角色换声所需模型尚未齐备。点击下方按钮，配置 Detailed Transcription、MLX Demucs 和 MLX Seed-VC v2。';
+          : '视频角色换声所需模型尚未齐备。点击下方按钮，配置 Detailed Transcription、MLX Demucs 和 MLX Seed-VC v2。');
       } else {
-        notice.textContent = capability?.ready
+        notice.textContent = ui(capability?.ready
           ? '详细转写能力已就绪。文件只提交给本机已安装并验证的 MLX WhisperX Package。'
-          : '详细转写模型尚未配置。点击下方按钮，选择并安装 Compact 或 Quality。';
+          : '详细转写模型尚未配置。点击下方按钮，选择并安装 Compact 或 Quality。');
       }
     } catch (_) {
       const checkbox = document.getElementById('asrVerification');
@@ -1171,9 +1267,9 @@
         checkbox.checked = false;
         checkbox.disabled = true;
         checkbox.parentElement?.classList.add('disabled');
-        checkbox.parentElement.title = '无法确认本机 ASR 能力。';
+        checkbox.parentElement.title = ui('无法确认本机 ASR 能力。');
       }
-      notice.textContent = '无法检查本地模型能力；重新打开 Mini-App 后可重试。';
+      notice.textContent = ui('无法检查本地模型能力；重新打开 Mini-App 后可重试。');
     }
   }
 
@@ -1183,17 +1279,17 @@
     if (!select) return;
     const savedValue = state.draft?.options?.voiceProfileId || select.value;
     select.disabled = true;
-    select.replaceChildren(new Option('正在读取 Voice Studio Characters…', ''));
+    select.replaceChildren(new Option(ui('正在读取 Voice Studio Characters…'), ''));
     try {
       const payload = await hostRequest('characters.list');
       state.characters = Array.isArray(payload?.items) ? payload.items : [];
       select.replaceChildren(
-        new Option('请选择已验证的 Character', ''),
-        new Option('原始音色 · 临时克隆', '__original_voice__'),
+        new Option(ui('请选择已验证的 Character'), ''),
+        new Option(ui('原始音色 · 临时克隆'), '__original_voice__'),
       );
       state.characters.forEach(character => {
         const option = new Option(
-          `${character.name}${character.modelName ? ` · ${character.modelName}` : ''}${character.ready ? '' : ' · 未就绪'}`,
+          `${character.name}${character.modelName ? ` · ${character.modelName}` : ''}${character.ready ? '' : ` · ${ui('未就绪')}`}`,
           character.id
         );
         option.disabled = !character.ready;
@@ -1205,7 +1301,7 @@
         setStatus('请先在 Voice Studio → Characters 创建、预览并验证一个配音角色。', 'error');
       }
     } catch (error) {
-      select.replaceChildren(new Option('Characters 读取失败', ''));
+      select.replaceChildren(new Option(ui('Characters 读取失败'), ''));
       setStatus(error.message || '无法读取 Voice Studio Characters。', 'error');
     } finally {
       select.disabled = false;
@@ -1219,17 +1315,17 @@
     if (!select) return;
     const previous = preserve ? (select.value || state.draft?.options?.voiceCloneModelId || '') : '';
     select.disabled = true;
-    select.replaceChildren(new Option('正在读取本机语音克隆模型…', ''));
+    select.replaceChildren(new Option(ui('正在读取本机语音克隆模型…'), ''));
     try {
       const payload = await hostRequest('voice-clone-models.list');
       state.voiceCloneModels = Array.isArray(payload?.items) ? payload.items : [];
-      select.replaceChildren(new Option('请选择语音克隆模型', ''));
+      select.replaceChildren(new Option(ui('请选择语音克隆模型'), ''));
       state.voiceCloneModels.forEach(model => {
-        const option = new Option(`${model.name}${model.ready ? '' : ' · 未就绪'}`, model.id);
+        const option = new Option(`${model.name}${model.ready ? '' : ` · ${ui('未就绪')}`}`, model.id);
         option.disabled = !model.ready;
         select.append(option);
       });
-      select.append(new Option('安装更多模型…', '__install_more__'));
+      select.append(new Option(ui('安装更多模型…'), '__install_more__'));
       if (state.voiceCloneModels.some(model => model.id === previous && model.ready)) select.value = previous;
       else {
         const firstReady = state.voiceCloneModels.find(model => model.ready);
@@ -1237,7 +1333,7 @@
       }
       select.dataset.previous = select.value;
     } catch (error) {
-      select.replaceChildren(new Option('安装更多模型…', '__install_more__'));
+      select.replaceChildren(new Option(ui('安装更多模型…'), '__install_more__'));
       setStatus(error.message || '无法读取语音克隆模型。', 'error');
     } finally {
       select.disabled = false;

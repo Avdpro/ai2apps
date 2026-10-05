@@ -240,6 +240,17 @@ class MessageRepository:
             raise ResourceNotFoundError("message", message_id)
         return value
 
+    def get_by_idempotency_key(
+        self, session_id: str, idempotency_key: str
+    ) -> MessageWithParts | None:
+        """Resolve a durable input without scanning a bounded history page."""
+        with self.database.transaction() as connection:
+            row = connection.execute(
+                "SELECT id FROM messages WHERE session_id = ? AND idempotency_key = ?",
+                (session_id, idempotency_key),
+            ).fetchone()
+            return None if row is None else self._load(connection, row["id"])
+
     def list_for_session(
         self,
         session_id: str,
@@ -247,9 +258,13 @@ class MessageRepository:
         app_instance_id: str | None = None,
         after_sequence: int = 0,
         limit: int = 100,
+        through_sequence: int | None = None,
+        latest: bool = False,
     ) -> tuple[MessageWithParts, ...]:
         if after_sequence < 0:
             raise ValueError("after_sequence must be non-negative")
+        if through_sequence is not None and through_sequence < 0:
+            raise ValueError("through_sequence must be non-negative")
         if not 1 <= limit <= 1_000:
             raise ValueError("limit must be between 1 and 1000")
         with self.database.transaction() as connection:
@@ -261,13 +276,17 @@ class MessageRepository:
                 and session["app_instance_id"] != app_instance_id
             ):
                 raise ResourceNotFoundError("session", session_id)
+            order = "DESC" if latest else "ASC"
             rows = connection.execute(
-                """
+                f"""
                 SELECT id FROM messages
                 WHERE session_id = ? AND sequence > ?
-                ORDER BY sequence LIMIT ?
+                  AND (? IS NULL OR sequence <= ?)
+                ORDER BY sequence {order} LIMIT ?
                 """,
-                (session_id, after_sequence, limit),
+                (session_id, after_sequence, through_sequence, through_sequence, limit),
             ).fetchall()
+            if latest:
+                rows.reverse()
             values = tuple(self._load(connection, row["id"]) for row in rows)
         return tuple(value for value in values if value is not None)

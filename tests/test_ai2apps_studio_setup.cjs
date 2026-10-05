@@ -12,7 +12,8 @@ const vm = require('node:vm'), fs = require('node:fs'), assert = require('node:a
  MessageChannel:class{constructor(){channel=this;this.port1={postMessage:v=>replies.push(v),close(){}};this.port2={}}},
  fetch:async url=>({ok:true,json:async()=>url.endsWith('/mini-app-mounts')?{id:'mount',content_url:'/frame',app_instance_id:'provider',resource:'web/transcription.html'}:{items:[{capability:declared,ready:false}]}})};
  vm.runInNewContext(fs.readFileSync(require('node:path').join(__dirname, '../ai2apps/web/static/js/studio_mini_apps.js'),'utf8'),context);
- await context.window.AI2AppsStudioMiniApps.mount('ai2apps.readaloud','transcription');
+ const mount = await context.window.AI2AppsStudioMiniApps.mount('ai2apps.readaloud','transcription');
+ frame.src = new URL(mount.content_url, context.location.origin).href;
  for(const f of listeners.message)f({data:{type:'ai2apps:studio-connect',version:1},source,origin:'null'});
  await channel.port1.onmessage({data:{id:1,operation:'setup',capability:'audio.detailed_transcription'}});
  assert.equal(calls.length,1);assert.equal(calls[0].appId,'ai2apps.readaloud');assert.equal(calls[0].capability,'audio.detailed_transcription');assert.equal(replies[0].value.outcome,'configured');

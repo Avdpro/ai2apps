@@ -309,8 +309,8 @@ def test_gallery_is_a_pinned_user_system_app_with_first_party_surface():
     assert '@contextmenu.prevent.stop="showAssetContextMenu($event,asset)"' in mini_template
     assert '_gallery_asset_context_menu.html' in template
     assert '_gallery_asset_context_menu.html' in mini_template
-    assert "gallery-context-menu-1" in template
-    assert "gallery-context-menu-1" in mini_template
+    assert "gallery-attachment-dnd-2" in template
+    assert "gallery-attachment-dnd-2" in mini_template
     for action in ("open", "download", "rename", "delete", "copy", "paste", "move"):
         assert f"gallery.action.{action}" in context_menu_template
     assert "contextMoveTargets" in context_menu_template

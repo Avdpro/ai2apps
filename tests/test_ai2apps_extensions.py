@@ -257,6 +257,7 @@ def test_builtin_app_catalog_and_launch_are_filtered_by_role(tmp_path):
         "ai2apps.knowledge",
         "ai2apps.messager",
         "ai2apps.readaloud",
+        "ai2apps.todo",
         "ai2apps.video-studio",
     }
     assert "ai2apps.coder" in developer_catalog
@@ -770,6 +771,7 @@ async def test_app_api_enforces_principal_catalog_and_launch_policy(tmp_path):
         "ai2apps.readaloud",
         "ai2apps.video-studio",
         "ai2apps.imagine-studio",
+        "ai2apps.todo",
     ]
     assert denied.status_code == 403
     assert denied.json()["error"]["code"] == "app_access_denied"

@@ -10,7 +10,7 @@ import re
 import secrets
 import threading
 import time
-from contextlib import suppress
+from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -343,6 +343,35 @@ class ShellBiDiSessionBroker:
 _shell_session_broker = ShellBiDiSessionBroker()
 
 
+@asynccontextmanager
+async def attach_shell_bidi_session(endpoint: ShellBiDiEndpoint, connector: Any):
+    """Refresh an expired native session without replaying client commands."""
+
+    from websockets.exceptions import InvalidStatus
+
+    for attempt in range(2):
+        session = await _shell_session_broker.ensure(endpoint, connector)
+        attached = False
+        try:
+            async with connector(
+                session.web_socket_url,
+                additional_headers={"Authorization": endpoint.authorization},
+                open_timeout=5,
+                close_timeout=2,
+                max_size=_MAX_BIDI_MESSAGE_BYTES,
+                proxy=None,
+            ) as upstream:
+                attached = True
+                yield session, upstream
+                return
+        except InvalidStatus as exc:
+            # Firefox's attach URL returns 404 after the native session ends.
+            # Network errors and auth failures must not discard a shared session.
+            if attached or exc.response.status_code != 404 or attempt:
+                raise
+            await _shell_session_broker.invalidate(session)
+
+
 def _success_response(command_id: Any, result: dict[str, Any]) -> str:
     return json.dumps(
         {"type": "success", "id": command_id, "result": result},
@@ -362,12 +391,6 @@ async def serve_shell_bidi_gateway(websocket: WebSocket, _runtime: Any) -> None:
         await websocket.close(code=4403, reason="WebSocket origin denied")
         return
     try:
-        endpoint = ShellBiDiEndpoint.load(shell_bidi_descriptor_path())
-    except ShellBiDiGatewayError:
-        await websocket.close(code=1013, reason="AceFox Shell BiDi unavailable")
-        return
-
-    try:
         from websockets.asyncio.client import connect
     except ImportError:
         await websocket.close(code=1013, reason="BiDi gateway dependency unavailable")
@@ -378,16 +401,24 @@ async def serve_shell_bidi_gateway(websocket: WebSocket, _runtime: Any) -> None:
     # HTTP upgrade, and failures should arrive as WebSocket close reasons
     # instead of an opaque HTTP 403.
     await websocket.accept()
+    endpoint = None
+    # Native Shell refreshes its record from the live listener once per second.
+    # Reread this instance's fixed path while it repairs a missing/dead record;
+    # never scan profiles, processes, ports or other installations.
+    for attempt in range(7):
+        try:
+            endpoint = ShellBiDiEndpoint.load(shell_bidi_descriptor_path())
+            break
+        except ShellBiDiGatewayError:
+            if attempt < 6:
+                await asyncio.sleep(0.25)
+    if endpoint is None:
+        await websocket.close(code=1013, reason="AceFox Shell BiDi unavailable")
+        return
     try:
-        shared_session = await _shell_session_broker.ensure(endpoint, connect)
-        async with connect(
-            shared_session.web_socket_url,
-            additional_headers={"Authorization": endpoint.authorization},
-            open_timeout=5,
-            close_timeout=2,
-            max_size=_MAX_BIDI_MESSAGE_BYTES,
-            proxy=None,
-        ) as upstream:
+        async with attach_shell_bidi_session(endpoint, connect) as (
+            shared_session, upstream
+        ):
             downstream_send_lock = asyncio.Lock()
 
             async def send_downstream(payload: str | bytes) -> None:

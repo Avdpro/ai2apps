@@ -132,14 +132,30 @@
             this.pending = new Map();
         }
         async connect() {
+            for (let attempt = 0; attempt < 2; attempt++) {
+                try { return await this.connectOnce(); }
+                catch (error) {
+                    await this.close();
+                    if (attempt === 1 || error.authorizationDenied) throw error;
+                    await new Promise(resolve => window.setTimeout(resolve, 1000));
+                }
+            }
+        }
+        async connectOnce() {
             const scheme = location.protocol === 'https:' ? 'wss:' : 'ws:';
             const ticketResponse = await fetch('/v1/platform/browser/webdriver-bidi/ticket', {
                 method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: '{}',
             });
-            if (!ticketResponse.ok) throw new Error('AceFox BiDi authorization is unavailable');
+            if (!ticketResponse.ok) {
+                const error = new Error('AceFox BiDi authorization is unavailable');
+                error.authorizationDenied = [401, 403].includes(ticketResponse.status);
+                throw error;
+            }
             const ticket = (await ticketResponse.json()).ticket;
             this.socket = new WebSocket(`${scheme}//${location.host}/v1/platform/browser/webdriver-bidi?ticket=${encodeURIComponent(ticket)}`);
+            const socket = this.socket;
             this.socket.addEventListener('message', event => {
+                if (this.socket !== socket) return;
                 let payload;
                 try { payload = JSON.parse(event.data); }
                 catch (_) { return; }
@@ -150,10 +166,19 @@
                 if (payload.error) pending.reject(new Error(`${payload.error}: ${payload.message || ''}`));
                 else pending.resolve(payload.result || {});
             });
+            this.socket.addEventListener('close', () => {
+                if (this.socket !== socket) return;
+                for (const pending of this.pending.values()) {
+                    window.clearTimeout(pending.timeout);
+                    pending.reject(new Error('AceFox BiDi is disconnected'));
+                }
+                this.pending.clear();
+            });
             await new Promise((resolve, reject) => {
                 const timeout = window.setTimeout(() => reject(new Error('AceFox BiDi connection timed out')), 7000);
                 this.socket.addEventListener('open', () => { window.clearTimeout(timeout); resolve(); }, { once: true });
                 this.socket.addEventListener('error', () => { window.clearTimeout(timeout); reject(new Error('AceFox BiDi Gateway is unavailable')); }, { once: true });
+                this.socket.addEventListener('close', () => { window.clearTimeout(timeout); reject(new Error('AceFox BiDi Gateway is unavailable')); }, { once: true });
             });
             let status = await this.command('session.status', {});
             for (let attempt = 0; status.ready !== true && attempt < 12; attempt++) {
@@ -184,8 +209,9 @@
                 } catch (_) {
                     // The upstream may close first after ending the Session.
                 }
-                this.socket.close();
             }
+            this.socket?.close();
+            this.socket = null;
             for (const pending of this.pending.values()) {
                 window.clearTimeout(pending.timeout);
                 pending.reject(new Error('AceFox BiDi is disconnected'));

@@ -2,7 +2,7 @@ schema: ai2apps.app/v1
 id: ai2apps.media-voice-studio-suite
 name: Media Voice Studio Suite
 description: Local-first transcription, separation, voice replacement, dubbing, and subtitle tools.
-version: 0.2.0
+version: 0.2.1
 publisher:
   id: ai2apps
 instances:
@@ -27,10 +27,14 @@ mini_apps:
   - schema: ai2apps.mini-app/v1
     id: ai2apps.media-voice.source-separation
     name: Voice and Background Separation
-    version: 0.2.0
+    version: 0.2.1
     kind: clip
     icon: split
     description: Separate vocals or dialogue from music and background audio.
+    localizations:
+      zh-CN:
+        name: 人声与背景音分离
+        description: 从音乐和背景音中分离人声或对白，并保持原始时间线。
     catalog:
       categories: [audio, video]
     entry:
@@ -65,10 +69,14 @@ mini_apps:
   - schema: ai2apps.mini-app/v1
     id: ai2apps.media-voice.transcription
     name: Detailed Transcription
-    version: 0.2.0
+    version: 0.2.1
     kind: project
     icon: captions
     description: Create timestamped transcripts, detect speakers, and let the user assign names.
+    localizations:
+      zh-CN:
+        name: 详细转写
+        description: 生成带时间戳的文本记录、识别说话人，并允许用户为角色命名。
     catalog:
       categories: [audio, video]
     entry:
@@ -104,10 +112,14 @@ mini_apps:
   - schema: ai2apps.mini-app/v1
     id: ai2apps.media-voice.audio-speaker-replacement
     name: Audio Speaker Voice Replacement
-    version: 0.2.0
+    version: 0.2.1
     kind: project
     icon: audio-lines
     description: Replace one selected speaker in an audio recording with an authorized target voice.
+    localizations:
+      zh-CN:
+        name: 录音角色换声
+        description: 使用已获授权的目标声音替换录音中选定角色的声音。
     catalog:
       categories: [audio]
     entry:
@@ -143,10 +155,14 @@ mini_apps:
   - schema: ai2apps.mini-app/v1
     id: ai2apps.media-voice.video-subtitles
     name: Video Subtitles and Translation
-    version: 0.2.0
+    version: 0.2.1
     kind: project
     icon: subtitles
     description: Generate, translate, export, or burn subtitles into a video.
+    localizations:
+      zh-CN:
+        name: 视频字幕与翻译
+        description: 生成和翻译字幕，可导出字幕文件或将字幕直接添加到视频。
     catalog:
       categories: [video]
     entry:
@@ -182,10 +198,14 @@ mini_apps:
   - schema: ai2apps.mini-app/v1
     id: ai2apps.media-voice.video-audio-translation
     name: Video Audio Translation
-    version: 0.2.0
+    version: 0.2.1
     kind: project
     icon: languages
     description: Translate a single narrator and dub with a Voice Studio Character or a temporary clone of the original voice.
+    localizations:
+      zh-CN:
+        name: 视频音轨翻译
+        description: 翻译单人旁白，并使用语音工坊角色或原始音色的临时克隆重新配音。
     catalog:
       categories: [audio, video, localization]
     entry:
@@ -224,10 +244,14 @@ mini_apps:
   - schema: ai2apps.mini-app/v1
     id: ai2apps.media-voice.video-speaker-replacement
     name: Video Speaker Voice Replacement
-    version: 0.2.0
+    version: 0.2.1
     kind: project
     icon: refresh-cw
     description: Replace one selected speaker in a video while preserving its picture and ambience.
+    localizations:
+      zh-CN:
+        name: 视频角色换声
+        description: 替换视频中选定角色的声音，同时保留原始画面和环境声。
     catalog:
       categories: [audio, video]
     entry:

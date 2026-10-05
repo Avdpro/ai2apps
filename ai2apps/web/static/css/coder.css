@@ -123,3 +123,13 @@ body { margin: 0; overflow: hidden; background: #0c0d10; }
 .coder-report-dialog { width: min(760px, calc(100vw - 28px)); }
 .coder-report-dialog pre { min-height: 180px; max-height: min(60vh, 620px); margin: 0; overflow: auto; padding: 14px; border: 1px solid #30323a; border-radius: 8px; color: #d6d7dc; background: #0d0e11; font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; }
 @media (max-width: 720px) { :root { --coder-sidebar: 230px; } .coder-ide { grid-template-columns: 190px minmax(0, 1fr); } }
+
+/* Native source development tasks */
+.coder-native-dialog { width: min(1100px, 94vw); max-height: 90vh; overflow: auto; }
+.coder-native-dialog > header, .coder-native-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
+.coder-native-dialog textarea { width: 100%; resize: vertical; padding: 10px; border: 1px solid #353740; border-radius: 7px; color: #e7e7ea; background: #0d0e11; font: inherit; }
+.coder-native-actions button { padding: 8px 12px; border: 1px solid #353740; border-radius: 7px; color: #e7e7ea; background: #252730; cursor: pointer; }
+.coder-native-actions button:disabled { opacity: .4; cursor: default; }
+.coder-native-dialog pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 32vh; overflow: auto; padding: 12px; background: #17191e; }
+.coder-native-dialog iframe { width: 100%; height: 420px; border: 1px solid #454750; background: white; }
+.coder-native-dialog [hidden] { display: none; }

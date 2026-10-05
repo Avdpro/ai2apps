@@ -24,7 +24,7 @@ def test_media_voice_suite_builds_as_one_contract_package_with_six_mini_apps(tmp
     assert built.sha256 == inspected.sha256
     assert inspected.manifest["package"]["id"] == "ai2apps/media-voice-studio-suite"
     assert inspected.manifest["package"]["type"] == "app"
-    assert inspected.manifest["package"]["version"] == "0.2.0"
+    assert inspected.manifest["package"]["version"] == "0.2.1"
     assert len(inspected.manifest["miniApps"]) == 6
     assert {item["componentId"] for item in inspected.manifest["miniApps"]} == {
         "ai2apps.media-voice.transcription",
@@ -52,6 +52,7 @@ def test_media_voice_suite_builds_as_one_contract_package_with_six_mini_apps(tmp
         "web/video-audio-translation.html",
         "web/video-voice-replacement.html",
         "web/mini-app.css",
+        "web/i18n.js",
         "web/mini-app.js",
     }.issubset(indexed)
 
@@ -117,6 +118,16 @@ def test_media_voice_suite_uses_lazy_capability_dependencies():
 
     package_manifest = (SOURCE / "ai2apps.json").read_text(encoding="utf-8")
     assert '"dependencies": []' in package_manifest
+
+
+def test_every_media_voice_mini_app_has_localized_catalog_metadata():
+    manifest = _app_manifest()
+
+    assert manifest["localizations"]["zh-CN"]["name"] == "音视频语音工作室套件"
+    for mini_app in manifest["mini_apps"]:
+        localized = mini_app["localizations"]["zh-CN"]
+        assert localized["name"]
+        assert localized["description"]
 
 
 def test_every_media_voice_mini_app_has_a_distinct_mounted_ui_and_help():
@@ -198,8 +209,9 @@ def test_media_voice_suite_uses_the_studio_native_visual_contract():
         resource = (SOURCE / mini_app["entry"]["resource"]).read_text(
             encoding="utf-8"
         )
-        assert "mini-app.css?v=subtitle-actions-v9" in resource
-        assert "mini-app.js?v=subtitle-actions-v9" in resource
+        assert "mini-app.css?v=i18n-v12" in resource
+        assert "i18n.js?v=i18n-v12" in resource
+        assert "mini-app.js?v=i18n-v12" in resource
     assert "progress?.phasePercent ?? progress?.percent" in client
 
     for template_name in ("readaloud.html", "video_studio.html", "imagine_studio.html"):

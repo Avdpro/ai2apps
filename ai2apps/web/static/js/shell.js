@@ -5,6 +5,11 @@
     const root = document.getElementById('ai2apps-shell');
     if (!root) return;
 
+    const shellStart = new URLSearchParams(window.location.hash.slice(1)).get('ai2apps-shell-start');
+    if (shellStart === 'home' || shellStart === 'resume') {
+        window.history.replaceState({ home: true }, '', '/');
+    }
+
     const storage = {
         mode: 'ai2apps.shell.dockMode',
         pinned: 'ai2apps.shell.pinnedApps',
@@ -59,8 +64,8 @@
     let pinned = [];
     let dockOrder = [];
     let warmApps = [];
-    let currentId = boot.initialAppId || '';
-    let currentInstanceId = boot.initialInstanceId || null;
+    let currentId = shellStart === 'home' ? '' : boot.initialAppId || '';
+    let currentInstanceId = shellStart === 'home' ? null : boot.initialInstanceId || null;
     let currentMountToken = null;
     let homeAppsLocked = false;
     let activeCategory = 'All';
@@ -277,10 +282,22 @@
     }
 
     async function resumeProvisioningApp() {
+        if (shellStart !== 'resume' || currentId) return false;
+        const sequence = launchSequence;
         try {
             const result = await request('/v1/platform/provisioning/sessions');
-            const session = (result.items || []).find(item => provisioningReturnApp(item));
-            const appId = provisioningReturnApp(session);
+            if (currentId || sequence !== launchSequence) return false;
+            const session = (result.items || []).find(item =>
+                !['failed', 'cancelled', 'unsupported'].includes(item.status)
+                && provisioningReturnApp(item));
+            let appId = provisioningReturnApp(session);
+            // Legacy Discover installs persist a separate dependency continuation.
+            // Only reconnect recovery may consume this navigation intent.
+            if (!appId) {
+                const pending = await request('/v1/platform/packages/install-continuation');
+                if (currentId || sequence !== launchSequence) return false;
+                if (pending.continuation?.packageId) appId = 'ai2apps.discover';
+            }
             if (!appId || !byId.has(appId) || currentId === appId) return false;
             await launch(appId, { navigate: true });
             return true;
@@ -951,7 +968,7 @@
             frameElement.referrerPolicy = 'same-origin';
             appStage.insertBefore(frameElement, loading);
         }
-        frameElement.allow = record.appId === 'ai2apps.general-chat'
+        frameElement.allow = ['ai2apps.general-chat', 'ai2apps.video-studio'].includes(record.appId)
             ? 'clipboard-read; clipboard-write; microphone'
             : 'clipboard-read; clipboard-write';
         frameElement.hidden = true;

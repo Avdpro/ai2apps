@@ -1,0 +1,114 @@
+{
+  "dev": {
+    "pid": 22343,
+    "port": 63452,
+    "started_at": "2026-10-04T18:30:49.084801Z",
+    "health": "healthy",
+    "memory_api_present": true,
+    "memory_tools": [
+      [
+        "agent.read_context_checkpoint",
+        1
+      ],
+      [
+        "agent.read_session_memory",
+        1
+      ]
+    ],
+    "identity": {
+      "CFBundleIdentifier": "com.ai2apps.desktop.dev",
+      "AI2AppsInstanceID": "dev",
+      "AI2AppsDevelopment": true,
+      "AI2AppsRuntimeProfile": null,
+      "AI2AppsDevelopmentSourceRoot": "/Users/avdpropang/sdk/omlx-moe-cache",
+      "AI2AppsUpdateManifestURL": null
+    }
+  },
+  "app-dev": {
+    "pid": 22662,
+    "port": 63634,
+    "started_at": "2026-10-04T18:31:23.024020Z",
+    "health": "healthy",
+    "memory_api_present": true,
+    "memory_tools": [
+      [
+        "agent.read_context_checkpoint",
+        1
+      ],
+      [
+        "agent.read_session_memory",
+        1
+      ]
+    ],
+    "identity": {
+      "CFBundleIdentifier": "com.ai2apps.desktop.appdev",
+      "AI2AppsInstanceID": "app-dev",
+      "AI2AppsDevelopment": true,
+      "AI2AppsRuntimeProfile": "cloud",
+      "AI2AppsDevelopmentSourceRoot": "/Users/avdpropang/sdk/omlx-moe-cache",
+      "AI2AppsUpdateManifestURL": null
+    },
+    "embedded_source_matches": {
+      "ai2apps/agents/session_memory.py": true,
+      "ai2apps/context_engine/core.py": true,
+      "ai2apps/context_engine/images.py": true,
+      "ai2apps/context_engine/pruning.py": true,
+      "omlx/server.py": true
+    }
+  },
+  "test": {
+    "pid": 40313,
+    "port": 63982,
+    "started_at": "2026-10-04T18:33:03.674127Z",
+    "health": "healthy",
+    "memory_api_present": true,
+    "memory_tools": [
+      [
+        "agent.read_context_checkpoint",
+        1
+      ],
+      [
+        "agent.read_session_memory",
+        1
+      ]
+    ],
+    "identity": {
+      "CFBundleIdentifier": "com.ai2apps.desktop.test",
+      "AI2AppsInstanceID": "test",
+      "AI2AppsDevelopment": null,
+      "AI2AppsRuntimeProfile": "cloud",
+      "AI2AppsDevelopmentSourceRoot": null,
+      "AI2AppsUpdateManifestURL": "https://coder.ai2apps.com/updates/stable.json"
+    },
+    "embedded_source_matches": {
+      "ai2apps/agents/session_memory.py": true,
+      "ai2apps/context_engine/core.py": true,
+      "ai2apps/context_engine/images.py": true,
+      "ai2apps/context_engine/pruning.py": true,
+      "omlx/server.py": true
+    }
+  },
+  "verification": {
+    "date": "2026-10-05",
+    "strict_codesign": {
+      "dev": true,
+      "app-dev": true,
+      "test": true
+    },
+    "release_app_verifier": {
+      "app-dev": true,
+      "test": true
+    },
+    "app_dev_native_title": "AI2Apps-App-Dev: App-Dev 127.0.0.1:63634",
+    "test_native_title": "AI2Apps: M5Max-128G 127.0.0.1:63982",
+    "test_ui": "sign-in page",
+    "production_published": false,
+    "real_model_compaction_tested": false,
+    "scope": "General Agent memory modules and API are loaded; activation checks only",
+    "logs": {
+      "dev": "/tmp/ai2apps-memory-build-dev.log",
+      "app-dev": "/tmp/ai2apps-memory-build-app-dev.log",
+      "test": "/tmp/ai2apps-memory-build-test.log"
+    }
+  }
+}

@@ -148,3 +148,10 @@ def test_html_security_headers_are_added_without_overriding_route_csp():
         "/admin/chat"
     ).headers["permissions-policy"]
     assert client.get("/sandbox").headers["content-security-policy"] == "default-src 'none'"
+
+
+def test_video_studio_microphone_policy_is_scoped():
+    from ai2apps.http_security import _html_permissions_policy
+    assert b"microphone=(self)" in _html_permissions_policy("/admin/app-content/ai2apps.video-studio")
+    assert b"microphone=()" in _html_permissions_policy("/admin/app-content/untrusted.package")
+    assert b"microphone=()" in _html_permissions_policy("/admin/api/shell/app-instances/package/resources/web/record.html")

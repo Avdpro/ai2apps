@@ -1,0 +1,87 @@
+{
+  "date": "2026-10-05",
+  "feature": "Native AI2Apps App/Mini-App development",
+  "status": "implemented_verified",
+  "upstream": {
+    "repository": "https://github.com/deepseek-ai/deepseek-harness",
+    "commit": "5badb15009ae1756c3afe0ae0cef1faafc290ccc",
+    "license": "MIT",
+    "references": [
+      "packages/fs/tool-fs/src/read.ts",
+      "packages/fs/tool-fs/src/edit.ts",
+      "packages/shell/tool-bash/src/index.ts"
+    ]
+  },
+  "tests": [
+    {
+      "command": ".venv/bin/pytest -q tests/test_ai2apps_app_development.py tests/test_app_development_core_isolated.py tests/test_ai2apps_coder.py tests/test_ai2apps_agents.py tests/test_ai2apps_session_memory.py tests/test_ai2apps_tool_recovery.py",
+      "passed": 111,
+      "seconds": 215.21
+    },
+    {
+      "command": ".venv/bin/pytest -q tests/test_ai2apps_app_development.py tests/test_ai2apps_processes.py",
+      "passed": 20,
+      "seconds": 61.17,
+      "real_macos_sandbox": true,
+      "after_final_service_changes": true
+    },
+    {
+      "command": "/tmp/ai2apps-app-development-isolated-20261005/bin/python -I tests/test_app_development_core_isolated.py",
+      "passed": 12,
+      "stdlib_only": true
+    },
+    {
+      "command": "node --test tests/test_ai2apps_coder_native_ui.mjs",
+      "passed": 4
+    }
+  ],
+  "distinct_tests": {
+    "python": 123,
+    "node": 4
+  },
+  "checks": {
+    "ruff": "passed",
+    "compileall": "passed",
+    "javascript_syntax": "passed",
+    "scoped_diff_check": "passed"
+  },
+  "live_ui": {
+    "instance": "app-dev",
+    "native_title": "AI2Apps-App-Dev: App-Dev 127.0.0.1:59153",
+    "project": "Native Harness UI Acceptance",
+    "source_root": "/private/tmp/ai2apps-native-coder-ui-20261005",
+    "verified": [
+      "Project type restriction",
+      "enabled AI2Apps Agent button",
+      "model selection",
+      "task and follow-up entry",
+      "review/apply initially disabled"
+    ],
+    "real_model_task_executed": false
+  },
+  "activation": {
+    "App-Dev": "Native panel visible through hot-mounted source; no rebuild",
+    "Dev": "Not restarted for this feature",
+    "Test": "Not rebuilt for this feature; previous embedded snapshot"
+  },
+  "limits": [
+    "Static preview, not full Host Bridge or automated visual debugging",
+    "No apply of deletions",
+    "Apply is atomic per file, not multi-file transactional; backup and journal retained",
+    "No packaging, installation, publication or sub-Agent tools",
+    "Model behavior tested with simulated responses, not a real-model quality benchmark"
+  ],
+  "source_sha256": {
+    "ai2apps/app_development/__init__.py": "afd06716313c7e5559fcf7e98b13a9b152372b4058d812027504fa74e9a93d20",
+    "ai2apps/app_development/core.py": "1222c0791f5dc17e42110204067a9a4916120c38329ed13855b5cacd2a846022",
+    "ai2apps/app_development/service.py": "f46413835f058f447943a15255a84555c75b3066c770625cf75266acd3b73ee7",
+    "ai2apps/platform_runtime.py": "7ce6277bc851ed24759426687add8890af1a67d17a177f99faac890f372f7ba5",
+    "ai2apps/processes/manager.py": "16e72c478f68f1b45025d4101e813af697cdc8edf94e26cd97f3947ac0f9015d",
+    "ai2apps/processes/sandbox.py": "5683046d371a48e72c679e7220cc1a95e96cc16e5344d5a5590e972b67b4f898",
+    "ai2apps/api/coder.py": "8efec726d2fcb912053d706350e1a9378272f19e2166eb521f0cc55531a34d2d",
+    "ai2apps/web/templates/system_apps/coder.html": "a7faea4491db1685751f054213210445613d52737ab1336d7bae6d6cf17eb930",
+    "ai2apps/web/static/js/coder.js": "5abe56a5ccf901dee6a9f731cc849ba89f58827181f57c6b79d4c06109b761c5",
+    "ai2apps/web/static/js/coder-native.js": "ef443865383838e5a9a0e4b79100b5a9c9e81a8a43a452ab4244b6b9a773a50b",
+    "ai2apps/web/static/css/coder.css": "89628245a4dd6263e00b1c980f322d794403ca8dd950c7db1c991fdc4bef858e"
+  }
+}

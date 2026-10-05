@@ -44,6 +44,7 @@ def _html_permissions_policy(path: str) -> bytes:
         path == "/"
         or path.startswith("/apps/")
         or path.rstrip("/") == "/admin/chat"
+        or path.rstrip("/") == "/admin/app-content/ai2apps.video-studio"
     ):
         return _MICROPHONE_PERMISSIONS_POLICY
     return _DEFAULT_PERMISSIONS_POLICY

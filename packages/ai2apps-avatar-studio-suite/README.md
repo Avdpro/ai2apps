@@ -22,3 +22,13 @@ Mini-App 必须声明 `video.avatar_generation` 能力。Host ACPF 根据用户�
 0.1.0 源码开发候选，使用固定 App-Dev 源码挂载。已验证 ACPF 真实安装、冻结输入重试、切换 Mini-App 后后台生成和 Host 成片预览：Lite 两秒输入生成 512×512 / 25 fps / 50 帧视频及音轨。FlashHead 模型 0.1.0 已发布；本 Mini-App 尚未发布。当前依赖本轮新增的 Host 持久任务桥接，正式发布必须先纳入 Desktop Release 并完成签名归档的严格沙箱安装验收。
 
 完整通用数字人接口的 plan、人物准备和实时会话仍为后续设计；当前实现范围是单人照片加音轨的离线生成。
+
+
+## Interface languages
+
+The Mini-App follows the studio locale: English, Simplified Chinese, Traditional Chinese, Japanese, Korean, French, Spanish, Brazilian Portuguese and Russian. `web/locales.js` contains the catalogs; `web/i18n.js` handles regional aliases and English fallback. The Host supplies the locale through the mount URL and Studio handshake; language changes preserve selected input files and model settings. Unknown model preset names and upstream diagnostic messages remain as provided. Source changes require a newly built and published Package before installed copies update.
+
+
+## Audio input
+
+The audio slot shows the selected file name, size, duration and a native audio player. Record audio uses the Video Studio Host microphone bridge; stopping uses the recording, discarding keeps the previous input. Recording stops at the model duration limit (with a small encoding margin), and the Host releases the microphone when the mount closes. Browser microphone permission is requested only after clicking Record. Unsupported preview codecs show an explicit message. Host recording support and blob-media CSP must be deployed with this Package update.

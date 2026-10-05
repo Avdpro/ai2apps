@@ -10,7 +10,7 @@ const assert = require('node:assert/strict');
   const requests = [];
   const context = {
     window:{AI2AppsCapabilities:{appInstanceId:()=> 'instance'},addEventListener(k,f){(listeners[k] ||= []).push(f)},dispatchEvent(){}},
-    document:{querySelectorAll:()=>[frame]}, location:{origin:'http://local'},
+    document:{documentElement:{lang:'en'},querySelectorAll:()=>[frame]}, location:{origin:'http://local'},
     URL, URLSearchParams, TextEncoder, AbortController, AbortSignal, Blob, FormData,
     localStorage:{getItem:()=>null,setItem(){},removeItem(){}},
     CustomEvent:class {}, MutationObserver:class{observe(){} disconnect(){}},
@@ -34,7 +34,8 @@ const assert = require('node:assert/strict');
     }
   };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../ai2apps/web/static/js/studio_mini_apps.js'),'utf8'),context);
-  await context.window.AI2AppsStudioMiniApps.mount('ai2apps.video-studio','ai2apps.avatar.photo-speaking');
+  const mount = await context.window.AI2AppsStudioMiniApps.mount('ai2apps.video-studio','ai2apps.avatar.photo-speaking');
+  frame.src = new URL(mount.content_url, 'http://local').href;
   for(const listener of listeners.message) listener({data:{type:'ai2apps:studio-connect',version:1},source,origin:'null'});
   await channel.port1.onmessage({data:{id:1,operation:'avatar.cancel',jobId:'../escape'}});
   assert.match(replies.at(-1).error,/Invalid avatar job/);

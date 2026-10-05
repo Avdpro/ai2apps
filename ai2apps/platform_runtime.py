@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import re
+import sys
 import uuid
 from contextlib import suppress
 from dataclasses import dataclass
@@ -144,6 +145,7 @@ class PlatformRuntime:
     def __init__(self, config: PlatformConfig) -> None:
         self.config = config
         self._database_status = self.status_before_start(config)
+        self.todo = None
         self.database: PlatformDatabase | None = None
         self.security_identity: LocalSecurityIdentity | None = None
         self._instance_lease: LocalInstanceLease | None = None
@@ -172,6 +174,7 @@ class PlatformRuntime:
         self.web_provider = None
         self.browser: BrowserManager | None = None
         self.terminal: TerminalManager | None = None
+        self.app_development = None
         self.coder: CoderManager | None = None
         self.documents: DocumentRepository | None = None
         self.document_manager: DocumentManager | None = None
@@ -312,7 +315,10 @@ class PlatformRuntime:
         if retention_interval_seconds <= 0:
             raise ValueError("retention_interval_seconds must be positive")
         if self.cloud is not None and getattr(self, "model_manager", None) is not None:
-            from ai2apps.cloud_defaults import refresh_cloud_defaults, run_cloud_defaults_refresh
+            from ai2apps.cloud_defaults import (
+                refresh_cloud_defaults,
+                run_cloud_defaults_refresh,
+            )
             self.model_manager.cloud_defaults_origin = self.cloud.base_url
             await refresh_cloud_defaults(self.model_manager, self.cloud)
             self._cloud_defaults_task = asyncio.create_task(
@@ -336,6 +342,9 @@ class PlatformRuntime:
             await self.terminal.startup()
         if self.agent_runtime is not None:
             await self.agent_runtime.start()
+        from ai2apps.todo.service import TodoService
+        self.todo = TodoService(self)
+        await self.todo.startup()
         if self.agent_schedule_runner is not None:
             await self.agent_schedule_runner.startup()
         if self.upstreams is not None:
@@ -464,6 +473,8 @@ class PlatformRuntime:
             await self.peer_transport.shutdown()
         if self.provisioning is not None:
             await self.provisioning.shutdown()
+        if self.todo is not None:
+            await self.todo.shutdown()
         if self.agent_schedule_runner is not None:
             await self.agent_schedule_runner.shutdown()
         if self.agent_runtime is not None:
@@ -800,7 +811,10 @@ class PlatformRuntime:
         )
         self.browser = BrowserManager(browser_backend, workspace=self.workspace)
         install_browser_service(self.browser, self.services, self.service_registry)
-        self.processes = ProcessManager(database, self.events, self.workspace)
+        self.processes = ProcessManager(
+            database, self.events, self.workspace,
+            trusted_runtime_roots=(Path(sys.prefix), Path(sys.base_prefix)),
+        )
         install_process_service(self.processes, self.services, self.service_registry)
         self.terminal = TerminalManager()
         install_terminal_service(self.terminal, self.services, self.service_registry)
@@ -835,7 +849,8 @@ class PlatformRuntime:
         self.agents = AgentRepository(database, self.events, self.capabilities)
         self.agent_builder = AgentBuilderRepository(database)
         self.agent_runtime = AgentRuntime(
-            self.agents, self.tools, self.capability_policy, self.capabilities
+            self.agents, self.tools, self.capability_policy, self.capabilities,
+            model_invocations=self.model_invocations,
         )
         self.agent_schedule_runner = AgentScheduleRunner(self, self.agent_builder)
         self.agent_runtime.bind_run_terminal_handler(
@@ -850,6 +865,8 @@ class PlatformRuntime:
             self.events,
             self.tools,
         )
+        from ai2apps.app_development.service import install_app_development
+        install_app_development(self)
         install_research_agent(self.agents)
         self.sharing.bind_agents(self.agents, self.agent_runtime)
         install_delegation_service(

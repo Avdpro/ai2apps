@@ -253,6 +253,7 @@ class ToolGateway:
         context: ToolCallContext,
         *,
         include_requiring_approval: bool = False,
+        tool_filter=None,
     ) -> tuple:
         """Return active bound Tools visible for execution or Agent planning.
 
@@ -261,12 +262,19 @@ class ToolGateway:
         """
 
         visible = []
+        services, instances = {}, {}
         for tool in self.repository.list_tools():
-            service = self.repository.get_service(tool.service_id)
+            if tool_filter is not None and not tool_filter(tool):
+                continue
+            if tool.service_id not in services:
+                services[tool.service_id] = self.repository.get_service(tool.service_id)
+            service = services[tool.service_id]
             if service.status is not ServiceStatus.ENABLED:
                 continue
             try:
-                instance = self.repository.get_instance_for_service(tool.service_id)
+                if tool.service_id not in instances:
+                    instances[tool.service_id] = self.repository.get_instance_for_service(tool.service_id)
+                instance = instances[tool.service_id]
             except ResourceNotFoundError:
                 continue
             if instance.status not in {
@@ -530,7 +538,7 @@ class ToolGateway:
             except ValidationError as exc:
                 caught = exc
                 error_code = "invalid_tool_output"
-                error_message = exc.message
+                error_message = redact(exc.message)
             except ToolProviderError as exc:
                 caught = exc
                 error_code = "provider_error"

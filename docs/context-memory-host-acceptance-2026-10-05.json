@@ -1,0 +1,40 @@
+{
+  "date": "2026-10-05",
+  "upstream_commit": "5badb15009ae1756c3afe0ae0cef1faafc290ccc",
+  "host_base_commit": "fa377dcb62875d5c82fc8177afd4277cd2357db9",
+  "code_state": "uncommitted source snapshot",
+  "isolated_tests": 35,
+  "host_tests": 78,
+  "host_result": "78 passed in 168.80s",
+  "isolation": "fresh stdlib-only venv for core; temporary SQLite runtimes and fake providers for host",
+  "checks": [
+    "scoped Ruff",
+    "Python compile",
+    "scoped git diff --check"
+  ],
+  "real_model_verified": false,
+  "app_dev_activated": false,
+  "production_published": false,
+  "known_limits": [
+    "unknown/remote/multimodal routes use byte fallback",
+    "summary source admission uses byte batches",
+    "full upstream Vitest equivalence and actual model/cache benchmarks not established"
+  ],
+  "source_sha256": {
+    "ai2apps/agents/compaction.py": "08a8f64393f6c6f774f2994e134fc0b4d0dc2f8e0b41d94e94b7d7d667977cd4",
+    "ai2apps/agents/context_engine_adapter.py": "3e73f48026ad092204c3e28e921b6cde3bdad85efd0fe6525af3655ce01ff31d",
+    "ai2apps/agents/context_meter.py": "cf3640af8c9c9042acb4ad6899b5f0f0ef0106b21495acdd1fd5f76cfa9ae1c1",
+    "ai2apps/agents/general.py": "36c5b39848e149a37d1544834322422069451d25f7acdb182482e7da7f7a7868",
+    "ai2apps/agents/result_reference.py": "c8062c5baff79a933155d84b805db40b9613c633965b118bd5bf4446c5d5f770",
+    "ai2apps/agents/runtime.py": "a7148c017f39ced219a790f785d0b3dcc33e6dd1bee3d25d05cd9230efe9b5bc",
+    "ai2apps/agents/session_memory.py": "d26301ad77780f922e26429c3e8318ce11f24f038cad6459415c0b2832315233",
+    "ai2apps/api/agents.py": "0a5a3ec0cc78144a54f5d568b846459869fc056135d96ca4026d590180e56d9b",
+    "ai2apps/context_engine/__init__.py": "748d37acf0fae3b824cbae3b46a881b7568ffd1a7ad9ea1db9da238d719e1c7a",
+    "ai2apps/context_engine/core.py": "b840698185b1f1139e356407059b60bc8eca9207a4381d65534ce22c3f86b248",
+    "ai2apps/context_engine/images.py": "bcb8cc686c9e89b3478a572b6e534bc633af1e8bb65006dd270e93276bcc8dab",
+    "ai2apps/context_engine/pruning.py": "c65b4e8187fbc7f776b3fb8dd194c4b890cf3c1e228a46f6cdea4ed947f377fe",
+    "omlx/server.py": "abca9f495b3dcd5ad4d1fc15fc71613a71f78540339d7eab2cbade892e114997",
+    "tests/test_ai2apps_context_meter.py": "09a372a1cd39ec3139aef563791d945ecae24699a9c7679ad7abe08835f9cecb",
+    "tests/test_ai2apps_session_memory.py": "3ad38bf9934fa824a50da4a0173b026c168ed5c841d7239a2ce641a4716e5e0e"
+  }
+}

@@ -50,6 +50,9 @@ class TerminalSession:
     created_at: datetime
     owner: str = "terminal"
     owner_id: str | None = None
+    source_app: str | None = None
+    source_task: str | None = None
+    managed_run: str | None = None
     status: str = "running"
     exit_code: int | None = None
     finished_at: datetime | None = None
@@ -74,6 +77,10 @@ class TerminalSession:
             "rows": self.rows,
             "owner": self.owner,
             "owner_id": self.owner_id,
+            "source_app": self.source_app,
+            "source_task": self.source_task,
+            "managed_run": self.managed_run,
+            "close_protected": bool(self.managed_run and self.status == "running"),
             "status": self.status,
             "exit_code": self.exit_code,
             "created_at": self.created_at.isoformat(),
@@ -109,7 +116,7 @@ class TerminalManager:
     async def shutdown(self) -> None:
         self._stopping = True
         await asyncio.gather(
-            *(self.close(item.id) for item in tuple(self._sessions.values())),
+            *(self.close(item.id, allow_managed=True) for item in tuple(self._sessions.values())),
             return_exceptions=True,
         )
         self._loop = None
@@ -160,6 +167,10 @@ class TerminalManager:
         rows: int = 30,
         command: list[str] | tuple[str, ...] | None = None,
         environment: dict[str, str] | None = None,
+        source_app: str | None = None,
+        source_task: str | None = None,
+        managed_run: str | None = None,
+        inherit_environment: bool = True,
         owner: str = "terminal",
         owner_id: str | None = None,
     ) -> TerminalSession:
@@ -185,7 +196,7 @@ class TerminalManager:
         master_fd, slave_fd = pty.openpty()
         try:
             self._set_winsize(slave_fd, cols, rows)
-            child_environment = dict(os.environ)
+            child_environment = dict(os.environ) if inherit_environment else {}
             child_environment.update(
                 {
                     "TERM": child_environment.get("TERM", "xterm-256color"),
@@ -240,6 +251,9 @@ class TerminalManager:
             created_at=datetime.now(UTC),
             owner=owner,
             owner_id=owner_id,
+            source_app=source_app,
+            source_task=source_task,
+            managed_run=managed_run,
             master_fd=master_fd,
             process=process,
         )
@@ -390,8 +404,10 @@ class TerminalManager:
             {"type": "exit", "exit_code": exit_code, "session": session.public()},
         )
 
-    async def close(self, session_id: str) -> None:
+    async def close(self, session_id: str, *, allow_managed: bool = False) -> None:
         session = self.get(session_id)
+        if session.managed_run and session.status == "running" and not allow_managed:
+            raise TerminalServiceError("managed_session", "This terminal belongs to a task. Stop the run from its source App.")
         process = session.process
         if process is not None and process.poll() is None:
             with suppress(ProcessLookupError):

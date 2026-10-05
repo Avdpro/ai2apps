@@ -10,12 +10,24 @@ import json
 import re
 from typing import Any
 
+from jsonschema import ValidationError
+
+from ai2apps.context_engine import BusyError
 from ai2apps.core import MessageRole, MessageStatus, ResourceNotFoundError
 from ai2apps.events import EventStore
 from ai2apps.services import ToolDescriptorRecord, ToolGateway
 from ai2apps.storage import MessagePartInput, PlatformDatabase
 from ai2apps.storage.repositories import MessageRepository
 
+from .compaction import (
+    CHECKPOINT_READER,
+    execution_state,
+    is_checkpoint,
+    prepare_checkpoint,
+)
+from .context import ContextBudgetError, bound_request
+from .control_tools import ASK_USER, question_action
+from .loop_guard import repeats_cycle
 from .models import (
     AgentAction,
     AgentExecutionContext,
@@ -25,9 +37,14 @@ from .models import (
     RunStepRecord,
     RunStepStatus,
     ToolCallAction,
+    ToolErrorAction,
 )
 from .repository import AgentRepository
+from .result_reference import RESULT_READER, result_preview
 from .runtime import AgentRuntime
+from .session_memory import READER as MEMORY_READER
+from .session_memory import SESSION_KEY, SessionMemory
+from .tool_recovery import model_visible
 
 _SAFE_TOOL_NAME = re.compile(r"[^A-Za-z0-9_-]")
 _MODEL_OPTION_KEYS = frozenset(
@@ -168,12 +185,15 @@ class GeneralAgentExecutor:
         database: PlatformDatabase,
         events: EventStore,
         tools: ToolGateway,
+        measure_context=None,
     ) -> None:
+        self.measure_context = measure_context
+        self.agents = AgentRepository(database, events)
         self.messages = MessageRepository(database, events)
         self.tools = tools
+        self.memory = SessionMemory(database, events, _session_message)
 
-    def _messages_for_run(self, context: AgentExecutionContext):
-        records = self.messages.list_for_session(context.run.session_id, limit=1_000)
+    def _messages_for_run(self, context: AgentExecutionContext, memory_enabled=None):
         delegated = context.run.parent_run_id is not None
         requested_message_id = context.run.input.get("message_id")
         if requested_message_id is not None:
@@ -191,32 +211,30 @@ class GeneralAgentExecutor:
             parent_message_id = context.run.delegation.get("context", {}).get(
                 "parent_message_id"
             )
-            parent_message = next(
-                (
-                    item
-                    for item in records
-                    if item.message.id == parent_message_id
-                ),
-                None,
-            )
+            try:
+                parent_message = (
+                    self.messages.get(
+                        parent_message_id, session_id=context.run.session_id
+                    )
+                    if parent_message_id
+                    else None
+                )
+            except ResourceNotFoundError:
+                return None, "parent_input_message_not_found"
             cutoff = (
                 parent_message.message.sequence
                 if parent_message is not None
-                else (records[-1].message.sequence if records else 0)
+                else None
             )
         else:
-            generated_input = next(
-                (
-                    item
-                    for item in records
-                    if item.message.metadata.get("agent_run_id") == context.run.id
-                    and item.message.metadata.get("agent_input")
-                ),
-                None,
+            generated_input = self.messages.get_by_idempotency_key(
+                context.run.session_id, f"agent-run:{context.run.id}:user"
             )
             if generated_input is None:
                 return None, "missing_agent_input"
             cutoff = generated_input.message.sequence
+        # Adopt summaries before projecting this immutable input boundary.
+        self.memory.adopt(context, cutoff)
         messages = []
         instructions = context.definition.manifest.get("instructions")
         if isinstance(instructions, str) and instructions:
@@ -224,39 +242,39 @@ class GeneralAgentExecutor:
         run_instructions = context.run.input.get("instructions")
         if isinstance(run_instructions, str) and run_instructions.strip():
             messages.append({"role": "system", "content": run_instructions})
-        eligible = []
-        for item in records:
-            if item.message.sequence > cutoff:
-                continue
-            if item.message.metadata.get(
-                "agent_run_id"
-            ) == context.run.id and not item.message.metadata.get("agent_input"):
-                continue
-            converted = _session_message(item)
-            if converted is not None:
-                eligible.append(converted)
-        configured_limit = context.definition.manifest.get("context_message_limit", 200)
-        message_limit = (
-            configured_limit
-            if isinstance(configured_limit, int) and configured_limit > 0
-            else 200
-        )
-        omitted = max(0, len(eligible) - message_limit)
-        if omitted:
-            messages.append(
-                {
-                    "role": "system",
-                    "content": (
-                        f"{omitted} earlier Session messages were omitted by the "
-                        "Agent context limit."
-                    ),
-                }
+        if memory_enabled is None:
+            memory_enabled = self._memory_enabled(context)
+        if context.run.input.get("memory_only") or memory_enabled:
+            messages.extend(n.body for n in self.memory.snapshot(context.run.session_id, cutoff, context.run.id).nodes)
+        else:
+            records = self.messages.list_for_session(
+                context.run.session_id, limit=1_000, latest=True, through_sequence=cutoff
             )
-        messages.extend(eligible[-message_limit:])
+            eligible = [_session_message(item) for item in records
+                        if not (item.message.metadata.get("agent_run_id") == context.run.id
+                                and not item.message.metadata.get("agent_input"))]
+            eligible = [m for m in eligible if m is not None]
+            limit = context.definition.manifest.get("context_message_limit", 200)
+            limit = limit if isinstance(limit, int) and limit > 0 else 200
+            omitted = max(0, len(eligible)-limit)
+            if omitted:
+                messages.append({"role":"system", "content":f"At least {omitted} earlier Session messages were omitted by the Agent context limit."})
+            messages.extend(eligible[-limit:])
         if delegated:
             task = context.run.delegation.get("task") or context.run.input.get("prompt")
             messages.append({"role": "user", "content": str(task)})
         return messages, None
+
+    def _memory_enabled(self, context):
+        tools, error = self._available_tools(context)
+        return error is None and any(t.qualified_name == MEMORY_READER for t in tools)
+
+    def _memory_cutoff(self, context):
+        message_id = context.run.input.get("message_id")
+        if context.run.parent_run_id and not message_id:
+            message_id = context.run.delegation.get("context", {}).get("parent_message_id")
+        record = self.messages.get(message_id, session_id=context.run.session_id) if message_id else self.messages.get_by_idempotency_key(context.run.session_id, f"agent-run:{context.run.id}:user")
+        return record.message.sequence if record else None
 
     def _ensure_prompt(self, context: AgentExecutionContext):
         prompt = context.run.input.get("prompt")
@@ -292,7 +310,8 @@ class GeneralAgentExecutor:
             role=MessageRole.USER,
             parts=(part,),
             idempotency_key=f"agent-run:{context.run.id}:user",
-            metadata={"agent_run_id": context.run.id, "agent_input": True},
+            metadata={"agent_run_id": context.run.id, "agent_input": True,
+                      "memory_control": bool(context.run.input.get("memory_only"))},
             trace_id=context.run.id,
         )
         # The generated input is part of context, unlike a generated assistant
@@ -300,6 +319,13 @@ class GeneralAgentExecutor:
         return None
 
     def _available_tools(self, context: AgentExecutionContext):
+        patterns = context.definition.manifest.get("allowed_tools", ["*"])
+        if not isinstance(patterns,list) or not all(isinstance(item,str) for item in patterns):
+            return (), "invalid_agent_tool_policy"
+        def visible(tool):
+            return ((not tool.qualified_name.startswith('appdev.child.') or context.definition.executor_key == 'builtin:coding-child')
+                and (not tool.qualified_name.startswith('appdev.subagent_') or context.definition.executor_key == 'builtin:coding-parent')
+                and any(fnmatch.fnmatchcase(tool.qualified_name,pattern) for pattern in patterns))
         candidates = self.tools.list_tools(
             self.tools.context_for_session(
                 caller_id=f"agent:{context.definition.agent_key}",
@@ -308,20 +334,9 @@ class GeneralAgentExecutor:
                 trace_id=context.run.id,
             ),
             include_requiring_approval=True,
+            tool_filter=visible,
         )
-        patterns = context.definition.manifest.get("allowed_tools", ["*"])
-        if not isinstance(patterns, list) or not all(
-            isinstance(item, str) for item in patterns
-        ):
-            return (), "invalid_agent_tool_policy"
-        allowed = tuple(
-            tool
-            for tool in candidates
-            if any(
-                fnmatch.fnmatchcase(tool.qualified_name, pattern)
-                for pattern in patterns
-            )
-        )
+        allowed = candidates
         requested = context.run.input.get("tools")
         if requested is None:
             return allowed, None
@@ -341,12 +356,15 @@ class GeneralAgentExecutor:
     def _transcript(
         base: list[dict[str, Any]],
         steps: tuple[RunStepRecord, ...],
+        *,
+        result_reader_alias: str | None = None,
     ):
         transcript = list(base)
         by_action = {step.action_key: step for step in steps}
         latest_model = None
         for step in steps:
-            if step.kind != "model" or step.status is not RunStepStatus.COMPLETED:
+            if (step.kind != "model" or step.status is not RunStepStatus.COMPLETED
+                or is_checkpoint(step) or step.input.get(SESSION_KEY)):
                 continue
             message, finish_reason, error = _model_message(step.output or {})
             if error is not None:
@@ -363,17 +381,31 @@ class GeneralAgentExecutor:
                 call_id = call.get("id") or f"call-{index}"
                 action_key = _tool_action_key(step.sequence, index, str(call_id))
                 tool_step = by_action.get(action_key)
-                if tool_step is None or tool_step.status is not RunStepStatus.COMPLETED:
+                if tool_step is None:
+                    continue
+                if tool_step.status is RunStepStatus.COMPLETED:
+                    content = result_preview(
+                        tool_step,
+                        reader_alias=(
+                            result_reader_alias
+                            if tool_step.tool_name not in {RESULT_READER, CHECKPOINT_READER, MEMORY_READER}
+                            else None
+                        ),
+                    )
+                elif (
+                    tool_step.status is RunStepStatus.FAILED
+                    and model_visible(tool_step.error)
+                ):
+                    content = json.dumps(
+                        {"error": tool_step.error}, ensure_ascii=False, sort_keys=True
+                    )
+                else:
                     continue
                 transcript.append(
                     {
                         "role": "tool",
                         "tool_call_id": str(call_id),
-                        "content": json.dumps(
-                            tool_step.output,
-                            ensure_ascii=False,
-                            sort_keys=True,
-                        ),
+                        "content": content,
                     }
                 )
         return transcript, latest_model, by_action, None
@@ -397,15 +429,31 @@ class GeneralAgentExecutor:
         if ensured is not None:
             return FailAction(ensured, "Agent prompt must be non-empty text")
 
-        base, base_error = await asyncio.to_thread(self._messages_for_run, context)
-        if base_error is not None:
-            return FailAction(base_error, "Input Message is not valid for this Run")
         tools, tool_error = await asyncio.to_thread(self._available_tools, context)
         if tool_error is not None:
             return FailAction(tool_error, "Requested Tool selection is invalid")
+        memory_enabled = any(t.qualified_name == MEMORY_READER for t in tools)
+        base, base_error = await asyncio.to_thread(self._messages_for_run, context, memory_enabled)
+        if base_error is not None:
+            return FailAction(base_error, "Input Message is not valid for this Run")
         aliases, tool_definitions = _tool_catalog(tools)
+        memory_reader = next((a for a,t in aliases.items() if t.qualified_name == MEMORY_READER), None)
+        if memory_reader or context.run.input.get("memory_only"):
+            pruned = await asyncio.to_thread(self.memory.prune_old_results, context, self._memory_cutoff(context), memory_reader or MEMORY_READER)
+            if pruned:
+                base, base_error = await asyncio.to_thread(self._messages_for_run, context, True)
+                if base_error:
+                    return FailAction(base_error, "Input Message is not valid for this Run")
         transcript, latest, by_action, transcript_error = self._transcript(
-            base, context.steps
+            base,
+            context.steps,
+            result_reader_alias=next(
+                (
+                    alias for alias, tool in aliases.items()
+                    if tool.qualified_name == RESULT_READER
+                ),
+                None,
+            ),
         )
         if transcript_error is not None:
             return FailAction("invalid_model_response", transcript_error)
@@ -459,24 +507,34 @@ class GeneralAgentExecutor:
                 alias = function.get("name")
                 tool = aliases.get(alias) if isinstance(alias, str) else None
                 if tool is None:
-                    return FailAction(
-                        "tool_not_available",
-                        f"Model requested unavailable Tool alias: {alias}",
+                    return ToolErrorAction(
+                        action_key, str(alias)[:256], "tool_not_available",
+                        "Requested Tool is unavailable; use an alias from the supplied tools list.",
                     )
                 arguments = function.get("arguments", {})
                 if isinstance(arguments, str):
                     try:
                         arguments = json.loads(arguments or "{}")
                     except json.JSONDecodeError:
-                        return FailAction(
-                            "invalid_tool_arguments",
-                            f"Model returned invalid JSON for {tool.qualified_name}",
+                        return ToolErrorAction(
+                            action_key, tool.qualified_name, "invalid_tool_arguments",
+                            "Tool arguments must be valid JSON encoding an object.",
                         )
                 if not isinstance(arguments, dict):
-                    return FailAction(
-                        "invalid_tool_arguments",
-                        f"Arguments for {tool.qualified_name} must be an object",
+                    return ToolErrorAction(
+                        action_key, tool.qualified_name, "invalid_tool_arguments",
+                        "Tool arguments must be a JSON object.",
                     )
+                if tool.qualified_name == ASK_USER:
+                    try:
+                        interaction_action = question_action(context, arguments)
+                    except (ValidationError, ValueError):
+                        return ToolErrorAction(
+                            action_key, tool.qualified_name, "invalid_question",
+                            "Question arguments do not match the supplied Tool schema.",
+                        )
+                    if interaction_action is not None:
+                        return interaction_action
                 repeats = 0
                 completed_tools = [
                     step
@@ -503,11 +561,18 @@ class GeneralAgentExecutor:
                         "repeated_tool_call",
                         f"Repeated Tool call limit reached for {tool.qualified_name}",
                     )
+                if repeats_cycle(completed_tools, tool.qualified_name, arguments):
+                    return FailAction(
+                        "repeated_tool_cycle",
+                        "A Tool cycle of two to four calls repeated three times without input or result changes",
+                    )
                 return ToolCallAction(
                     call_id=action_key,
                     tool_name=tool.qualified_name,
                     arguments=arguments,
                     timeout_ms=tool.timeout_ms,
+                    recover_input_errors=True,
+                    recover_tool_errors=True,
                 )
 
         round_number = 1 + sum(step.kind == "model" for step in context.steps)
@@ -529,7 +594,87 @@ class GeneralAgentExecutor:
         request.update(
             {key: value for key, value in options.items() if key in _MODEL_OPTION_KEYS}
         )
-        return ModelCallAction(call_id=f"model:{round_number}", request=request)
+        max_bytes = context.definition.manifest.get("max_context_bytes", 524_288)
+        if isinstance(max_bytes, bool) or not isinstance(max_bytes, int) or max_bytes <= 0:
+            return FailAction(
+                "invalid_context_budget", "max_context_bytes must be a positive integer"
+            )
+        compact_bytes = context.definition.manifest.get("compact_context_bytes", max_bytes)
+        if type(compact_bytes) is not int or not 0 < compact_bytes <= max_bytes:
+            return FailAction("invalid_context_budget", "compact_context_bytes must be within the admission budget")
+        checkpoint_reader = next((a for a,t in aliases.items() if t.qualified_name == CHECKPOINT_READER), None)
+        state = execution_state(context, await asyncio.to_thread(self.agents.get_plan, context.run.id)) if checkpoint_reader else None
+        raw_request = request
+        request, _, _ = prepare_checkpoint(request, base_count=len(base), steps=context.steps,
+            max_bytes=compact_bytes, reader_alias=checkpoint_reader, run_id=context.run.id,
+            state=state, allow_summary=False)
+        overflow_steps = [s for s in context.steps if s.kind == "model" and (s.error or {}).get("code") == "context_overflow"]
+        if len(overflow_steps) > 1:
+            return FailAction("context_overflow", "Provider window still exceeded after one compaction retry")
+        recovering = bool(overflow_steps) and not any(s.kind == "model" and s.sequence > overflow_steps[-1].sequence for s in context.steps)
+        memory_alias = next((alias for alias, tool in aliases.items() if tool.qualified_name == MEMORY_READER), None)
+        if recovering and memory_alias:
+            changed = await asyncio.to_thread(self.memory.offload_oldest_image, context, self._memory_cutoff(context), memory_alias)
+            if changed:
+                base, base_error = await asyncio.to_thread(self._messages_for_run, context)
+                transcript, _, _, error = self._transcript(base, context.steps, result_reader_alias=next((a for a,t in aliases.items() if t.qualified_name == RESULT_READER), None))
+                if base_error or error:
+                    return FailAction('invalid_memory_projection', str(base_error or error))
+                request['messages'] = transcript
+                raw_request = request
+                # One explicit omission already made progress; retry admission normally.
+                recovering = False
+        measurement = await self.measure_context(context.run.id, request) if self.measure_context else None
+        token_pressure = False
+        if measurement is not None:
+            if "max_tokens" not in request and "max_completion_tokens" not in request:
+                request["max_tokens"] = measurement["output_reservation"]
+            capacity, used, reserve = (measurement[k] for k in ("capacity", "input_tokens", "output_reservation"))
+            if any(type(v) is not int or v < 0 for v in (capacity, used, reserve)) or capacity <= reserve:
+                return FailAction("invalid_context_meter", "Provider returned an invalid context budget")
+            token_pressure = used >= min(int(capacity * .8), capacity-reserve-min(65536, capacity//8))
+        memory_only = bool(context.run.input.get("memory_only"))
+        if memory_only or any(t.qualified_name == MEMORY_READER for t in aliases.values()):
+            try:
+                memory_action = await asyncio.to_thread(
+                    self.memory.action, context, self._memory_cutoff(context), request,
+                    force=memory_only or recovering or token_pressure, max_bytes=compact_bytes, reader_alias=memory_alias or MEMORY_READER,
+                )
+            except (BusyError, ValueError) as error:
+                return FailAction("session_memory_unavailable", str(error))
+            if memory_action is not None:
+                return memory_action
+            if memory_only:
+                return CompleteAction({"memory_compacted": any(s.input.get(SESSION_KEY) for s in context.steps)})
+        raw_request = {**raw_request, **{k:v for k,v in request.items() if k != "messages"}}
+        request, checkpoint_audit, checkpoint_action = prepare_checkpoint(
+            raw_request, base_count=len(base), steps=context.steps, max_bytes=compact_bytes,
+            reader_alias=checkpoint_reader, run_id=context.run.id, state=state, force=recovering or token_pressure,
+        )
+        if checkpoint_action is not None:
+            return checkpoint_action
+        projected_base_count = checkpoint_audit.pop("projected_base_count", len(base))
+        try:
+            request, audit = bound_request(
+                request, base_count=projected_base_count, max_bytes=max_bytes,
+                preserve_history=bool(checkpoint_reader or memory_alias)
+            )
+            audit.update(checkpoint_audit)
+        except ContextBudgetError as error:
+            return FailAction("context_budget_exceeded", str(error))
+        if recovering:
+            previous = overflow_steps[-1].input
+            if previous.get("messages") == request.get("messages"):
+                return FailAction("context_overflow", "No validated context reduction is available; original records retained")
+        if self.measure_context:
+            final_measurement = await self.measure_context(context.run.id, request)
+            if final_measurement:
+                audit["context_meter"] = final_measurement
+                if final_measurement["input_tokens"] + final_measurement["output_reservation"] > final_measurement["capacity"]:
+                    return FailAction("context_window_exceeded", "Protected context and output reservation exceed routed model window")
+        return ModelCallAction(
+            call_id=f"model:{round_number}", request=request, context_audit=audit
+        )
 
     def _complete(self, context, message, finish_reason) -> CompleteAction:
         content = message.get("content")
@@ -650,5 +795,5 @@ def install_general_agent(
     )
     runtime.bind_executor(
         "builtin:general-agent",
-        GeneralAgentExecutor(database, events, tools),
+        GeneralAgentExecutor(database, events, tools, runtime.measure_context),
     )

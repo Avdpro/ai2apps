@@ -1,0 +1,90 @@
+{
+  "sourceCommit": "fa377dcb62875d5c82fc8177afd4277cd2357db9",
+  "sourceHasUncommittedChanges": true,
+  "publication": {
+    "submission_id": "226303d1-fa6e-4e64-a9f7-414d32d26824",
+    "submitted": {
+      "id": "226303d1-fa6e-4e64-a9f7-414d32d26824",
+      "status": "verified",
+      "publisherId": "229d6350-cd0e-408a-9905-41367385ae5c",
+      "publisherKeyId": "8afc0a51-f7f8-4fef-b3d0-8d30abe2a5bc",
+      "packageId": "ai2apps/avatar-studio-suite",
+      "packageVersion": "0.1.3",
+      "artifactSha256": "8b8bb7ba7abb699e1df93f8c916be830b35f55c3412a0702b4b8a1ba6f014d83",
+      "artifactSize": 26423,
+      "createdAt": "2026-10-05T04:15:06.160Z",
+      "releaseStatus": "candidate",
+      "latestReview": null
+    },
+    "review_requested": {
+      "id": "226303d1-fa6e-4e64-a9f7-414d32d26824",
+      "status": "verified",
+      "publisherId": "229d6350-cd0e-408a-9905-41367385ae5c",
+      "publisherKeyId": "8afc0a51-f7f8-4fef-b3d0-8d30abe2a5bc",
+      "packageId": "ai2apps/avatar-studio-suite",
+      "packageVersion": "0.1.3",
+      "artifactSha256": "8b8bb7ba7abb699e1df93f8c916be830b35f55c3412a0702b4b8a1ba6f014d83",
+      "artifactSize": 26423,
+      "createdAt": "2026-10-05T04:15:06.160Z",
+      "releaseStatus": "review_pending",
+      "latestReview": null
+    },
+    "reviewed": {
+      "id": "226303d1-fa6e-4e64-a9f7-414d32d26824",
+      "status": "verified",
+      "publisherId": "229d6350-cd0e-408a-9905-41367385ae5c",
+      "publisherKeyId": "8afc0a51-f7f8-4fef-b3d0-8d30abe2a5bc",
+      "packageId": "ai2apps/avatar-studio-suite",
+      "packageVersion": "0.1.3",
+      "artifactSha256": "8b8bb7ba7abb699e1df93f8c916be830b35f55c3412a0702b4b8a1ba6f014d83",
+      "artifactSize": 26423,
+      "createdAt": "2026-10-05T04:15:06.160Z",
+      "releaseStatus": "approved",
+      "latestReview": {
+        "id": "5018e2ce-a526-4747-9a30-1a2dc94053c0",
+        "decision": "approved",
+        "note": "Avatar Studio Suite 0.1.3: nine-language names/UI and audio metadata, preview, Host-owned recording. Four Node suites and 31 Python tests passed. Final signature verified and exact archive installed active in a clean temporary instance after static review. Documented omit-mini-app-catalog compatibility option preserves signed app.yaml and all localized names. Desktop bridge/CSP rollout is separate; no model or Runtime changes.",
+        "createdAt": "2026-10-05T04:15:06.378Z"
+      }
+    },
+    "published": {
+      "submission": {
+        "id": "226303d1-fa6e-4e64-a9f7-414d32d26824",
+        "status": "verified",
+        "publisherId": "229d6350-cd0e-408a-9905-41367385ae5c",
+        "publisherKeyId": "8afc0a51-f7f8-4fef-b3d0-8d30abe2a5bc",
+        "packageId": "ai2apps/avatar-studio-suite",
+        "packageVersion": "0.1.3",
+        "artifactSha256": "8b8bb7ba7abb699e1df93f8c916be830b35f55c3412a0702b4b8a1ba6f014d83",
+        "artifactSize": 26423,
+        "createdAt": "2026-10-05T04:15:06.160Z",
+        "releaseStatus": "published",
+        "latestReview": {
+          "id": "5018e2ce-a526-4747-9a30-1a2dc94053c0",
+          "decision": "approved",
+          "note": "Avatar Studio Suite 0.1.3: nine-language names/UI and audio metadata, preview, Host-owned recording. Four Node suites and 31 Python tests passed. Final signature verified and exact archive installed active in a clean temporary instance after static review. Documented omit-mini-app-catalog compatibility option preserves signed app.yaml and all localized names. Desktop bridge/CSP rollout is separate; no model or Runtime changes.",
+          "createdAt": "2026-10-05T04:15:06.378Z"
+        }
+      },
+      "repositoryMetadataVersion": 248
+    }
+  },
+  "verification": {
+    "snapshot": 248,
+    "sha256": "8b8bb7ba7abb699e1df93f8c916be830b35f55c3412a0702b4b8a1ba6f014d83",
+    "size": 26423,
+    "version": "0.1.3",
+    "status": "active",
+    "root": "/var/folders/mf/3xkv5lz5567bwcmb8g33pvz00000gn/T/avatar013-public-kurlfm0t",
+    "envelopeIdentical": true
+  },
+  "tests": {
+    "nodeSuites": 4,
+    "pythonPassed": 31
+  },
+  "limitations": [
+    "Desktop Host changes are separately released",
+    "No live microphone or model inference rerun",
+    "Discover UI upgrade on user instance not performed"
+  ]
+}

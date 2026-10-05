@@ -18,6 +18,15 @@ from ai2apps.storage.records import canonical_json
 
 _SYSTEM_APP_MANIFESTS_BASE: tuple[dict[str, Any], ...] = (
     {
+        "schema": "ai2apps.app/v1", "id": "ai2apps.todo", "name": "Todo",
+        "description": "Project trees, attachments, Agent execution and schedules",
+        "version": "0.1.0", "instances": {"mode": "singleton", "scope": "user"},
+        "access": {"capabilities": ["app.use"]},
+        "entry": {"kind": "host", "resource": "ai2apps:system/todo"},
+        "navigation": {"category": "Productivity", "icon": "list-todo", "order": 42, "pinned_default": True},
+        "state": {"version": 1, "defaults": {}},
+    },
+    {
         "schema": "ai2apps.app/v1",
         "id": "ai2apps.dashboard",
         "name": "Dashboard",
@@ -421,6 +430,7 @@ _SYSTEM_APP_MANIFESTS_BASE: tuple[dict[str, Any], ...] = (
 )
 
 _SYSTEM_APP_ZH: dict[str, tuple[str, str, str]] = {
+    "ai2apps.todo": ("待办", "项目树、附件、智能体执行与定时计划", "效率工具"),
     "ai2apps.dashboard": ("仪表盘", "系统状态与运行时概览", "系统"),
     "ai2apps.account": ("账户", "连接可选的 AI2Apps 账户并管理云端积分", "系统"),
     "ai2apps.sharing": ("共享", "在局域网中共享选定的本地模型和工具", "系统"),

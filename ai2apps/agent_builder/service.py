@@ -136,6 +136,9 @@ def create_ir_run(
     schema = ir.get("inputs")
     if isinstance(schema, dict):
         Draft202012Validator(schema).validate(invocation_input)
+    if isinstance(schema, dict) and any(property.get("x-ai2apps-file") for property in (schema.get("properties") or {}).values()):
+        from ai2apps.agent_builder.attachments import enrich_file_inputs
+        invocation_input = enrich_file_inputs(runtime, owner_user_id or "", schema, invocation_input)
     model_manager = getattr(runtime, "model_manager", None)
     ai_model_routes = {
         tier: (

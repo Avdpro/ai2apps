@@ -87,7 +87,7 @@
             const title = document.createElement('strong');
             title.textContent = session.title;
             const cwd = document.createElement('span');
-            cwd.textContent = basename(session.cwd);
+            cwd.textContent = session.source_app ? `${session.source_app} · ${session.source_task || basename(session.cwd)}${session.close_protected ? ' · 任务管理' : ''}` : basename(session.cwd);
             copy.append(title, cwd);
             const state = document.createElement('span');
             state.className = 'session-state' + (session.status === 'running' ? '' : ' is-exited');
@@ -150,6 +150,8 @@
                 } else if (message.type === 'exit') {
                     sessions.set(message.session.id, message.session);
                     renderSessions();
+                    closeButton.disabled = false;
+                    closeButton.title = 'Close terminal';
                     setConnection('Exited (' + message.exit_code + ')');
                 } else if (message.type === 'error') {
                     setConnection(message.message || 'Terminal error');
@@ -185,7 +187,8 @@
         empty.hidden = true;
         currentTitle.textContent = session.title;
         currentCwd.textContent = session.cwd;
-        closeButton.disabled = false;
+        closeButton.disabled = !!session.close_protected;
+        closeButton.title = session.close_protected ? '此终端由任务管理，请到来源 App 停止执行' : 'Close terminal';
         assistantButton.disabled = false;
         assistantButton.title = 'Terminal AI Assistant';
         renderSessions();
@@ -283,13 +286,19 @@
     const observer = new ResizeObserver(function () { resizeTerminal(); });
     observer.observe(host);
 
-    async function loadSessions() {
+    async function loadSessions(keepActive = false) {
         try {
             const result = await api('/admin/api/terminal/sessions');
+            sessions.clear();
             result.items.forEach(function (session) { sessions.set(session.id, session); });
             renderSessions();
+            if (keepActive && sessions.has(activeId)) {
+                closeButton.disabled = !!sessions.get(activeId).close_protected;
+                return;
+            }
             const running = result.items.find(function (session) { return session.status === 'running'; });
-            const first = running || result.items[0];
+            const requested = new URLSearchParams(location.search).get('session');
+            const first = result.items.find(item => item.id === requested) || running || result.items[0];
             if (first) activate(first.id);
         } catch (error) {
             setConnection(error.message);
@@ -320,7 +329,7 @@
     }
 
     async function closeActive() {
-        if (!activeId) return;
+        if (!activeId || sessions.get(activeId)?.close_protected) return;
         const sessionId = activeId;
         try {
             await api('/admin/api/terminal/sessions/' + encodeURIComponent(sessionId), { method: 'DELETE' });
@@ -333,7 +342,7 @@
     }
 
     function confirmCloseActive() {
-        if (!activeId) return;
+        if (!activeId || sessions.get(activeId)?.close_protected) return;
         const session = sessions.get(activeId);
         if (!session) return;
         closeTerminalName.textContent = session.title;
@@ -392,4 +401,5 @@
     iconify();
     empty.hidden = false;
     loadSessions();
+    setInterval(function () { if (!document.hidden) loadSessions(true); }, 5000);
 })();

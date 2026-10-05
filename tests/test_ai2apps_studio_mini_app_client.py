@@ -71,11 +71,19 @@ def test_studios_load_shared_package_mini_app_client_and_resume_setup():
     assert "message?.version !== 1" in helper
     assert "Math.min(20000, Math.max(620" in helper
     assert "frame.style.height = `${height}px`" in helper
+    assert "localize(item, locale)" in helper
+    assert "url.searchParams.set('locale', locale)" in helper
+    assert "context: mountContext" in helper
+    assert "const chineseFallback" in helper
+    assert "language === 'zh' ? byLocale['zh-cn']" in helper
+    assert "AI2AppsStudioMiniApps?.localize" in video
+    assert "AI2AppsStudioMiniApps?.localize" in readaloud
+    assert "AI2AppsStudioMiniApps?.localize" in imagine
     assert "'subtitle_font_size', 'subtitle_background'" in helper
     assert "'asr_verification'" in helper
     assert "'subtitle_action', 'subtitle_segments'" in helper
     assert "name === 'subtitle_segments' ? 2 * 1024 * 1024 : 4096" in helper
-    shared_script = "static('js/studio_mini_apps.js') }}?v=avatar-slots-v1"
+    shared_script = "static('js/studio_mini_apps.js') }}?v=package-i18n-v4"
     assert shared_script in video_template
     assert shared_script in readaloud_template
     assert shared_script in imagine_template

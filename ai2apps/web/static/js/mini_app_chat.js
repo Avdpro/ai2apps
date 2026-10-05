@@ -111,7 +111,9 @@
             if (!frame) frame = event.source;
             try {
                 let result;
-                if (message.method === 'describe') result = await describe();
+                if (message.method === 'begin') { await options.begin?.(); result = { ok: true }; }
+                else if (message.method === 'end') { await options.end?.(); result = { ok: true }; }
+                else if (message.method === 'describe') result = await describe();
                 else if (message.method === 'invoke') result = await invoke(message.payload);
                 else if (message.method === 'help') result = await help();
                 else throw new Error('Unsupported Mini-App Chat method');
@@ -271,6 +273,24 @@
         };
     }
 
+    function mergeToolCallChunks(calls, chunks) {
+        for (const part of chunks || []) {
+            const index = Number(part.index || 0);
+            const call = calls.get(index) || { id: '', type: 'function', function: { name: '', arguments: '' } };
+            // Providers may repeat the complete ID on each delta. It is an
+            // identifier, never a text fragment to concatenate.
+            if (part.id) call.id = part.id;
+            if (part.function?.name && part.function.name !== call.function.name) call.function.name += part.function.name;
+            if (part.function?.arguments) call.function.arguments += part.function.arguments;
+            calls.set(index, call);
+        }
+    }
+
+    function responseError(detail, fallback) {
+        const value = detail?.error?.message || detail?.detail?.message || detail?.detail || detail?.error || fallback;
+        return typeof value === 'string' ? value : value?.message || JSON.stringify(value);
+    }
+
     function startChatEntry() {
         const fragment = new URLSearchParams(location.hash.slice(1));
         if (fragment.get('mini_app_chat') !== '1') return false;
@@ -324,8 +344,13 @@
                 addMessage('assistant', tr('mini_app_chat.switched', `Now controlling ${contract.miniApp?.name || 'the selected Mini-App'}.`).replace('{name}', contract.miniApp?.name || 'Mini-App'));
             }
             document.querySelector('.chat-mini h1').textContent = contract.miniApp?.name || tr('chat.mini.title', 'Chat');
-            document.querySelector('.chat-mini header p').textContent = tr('mini_app_chat.subtitle', 'Control this Mini-App through conversation');
-            input.placeholder = tr('mini_app_chat.placeholder', 'Describe what you want this Mini-App to do…');
+            document.querySelector('.chat-mini header p').textContent = contract.miniApp?.chat?.subtitle || tr('mini_app_chat.subtitle', 'Control this Mini-App through conversation');
+            input.placeholder = contract.miniApp?.chat?.placeholder || tr('mini_app_chat.placeholder', 'Describe what you want this Mini-App to do…');
+            const welcome = document.querySelector('.chat-mini-welcome');
+            if (welcome && contract.miniApp?.chat) {
+                welcome.querySelector('strong').textContent = contract.miniApp.chat.title;
+                welcome.querySelector('p').textContent = contract.miniApp.chat.help;
+            }
             return contract;
         }
         function supportsConversation(model) {
@@ -353,7 +378,7 @@
             });
             if (!response.ok) {
                 const detail = await response.json().catch(() => ({}));
-                throw new Error(detail?.error?.message || detail?.detail?.message || detail?.detail || `HTTP ${response.status}`);
+                throw new Error(responseError(detail, `HTTP ${response.status}`));
             }
             const reader = response.body.getReader(), decoder = new TextDecoder();
             const calls = new Map();
@@ -365,16 +390,12 @@
                 for (const line of lines) {
                     if (!line.startsWith('data:')) continue;
                     const data = line.slice(5).trim(); if (!data || data === '[DONE]') continue;
-                    const delta = JSON.parse(data).choices?.[0]?.delta || {};
+                    const packet = JSON.parse(data);
+                    if (packet.error) throw new Error(responseError(packet, 'Model stream failed'));
+                    const delta = packet.choices?.[0]?.delta || {};
                     const text = Array.isArray(delta.content) ? delta.content.map(part => part?.text || '').join('') : String(delta.content || '');
                     if (text) { content += text; target.textContent = content; }
-                    for (const part of delta.tool_calls || []) {
-                        const index = Number(part.index || 0), call = calls.get(index) || { id: '', type: 'function', function: { name: '', arguments: '' } };
-                        if (part.id) call.id += part.id;
-                        if (part.function?.name) call.function.name += part.function.name;
-                        if (part.function?.arguments) call.function.arguments += part.function.arguments;
-                        calls.set(index, call);
-                    }
+                    mergeToolCallChunks(calls, delta.tool_calls);
                 }
                 if (done) break;
             }
@@ -399,6 +420,7 @@
             busy = true; send.disabled = true; addMessage('user', question); input.value = '';
             const target = addMessage('assistant', tr('chat.mini.thinking', 'Thinking…'));
             try {
+                await request('begin');
                 contract = await loadContract();
                 const tools = modelTools(contract.tools, contract.help);
                 const messages = [
@@ -426,7 +448,10 @@
                 conversation.push({ role: 'user', content: question }, { role: 'assistant', content: target.textContent });
             } catch (error) {
                 target.classList.add('error'); target.textContent = error?.message || String(error);
-            } finally { busy = false; send.disabled = false; input.focus(); }
+            } finally {
+                await request('end').catch(() => {});
+                busy = false; send.disabled = false; input.focus();
+            }
         }
 
         window.addEventListener('message', event => {
@@ -458,5 +483,5 @@
         return { title: `${miniApp?.name || id} help`, content: await response.text() };
     }
 
-    window.AI2AppsMiniAppChat = { SCHEMA, HELP_TOOL_NAME, createStudioController, createPackageBridge, registerPackageProvider, loadBuiltinHelp, startChatEntry, resolveModelSelection, createModelInstaller };
+    window.AI2AppsMiniAppChat = { mergeToolCallChunks, SCHEMA, HELP_TOOL_NAME, createStudioController, createPackageBridge, registerPackageProvider, loadBuiltinHelp, startChatEntry, resolveModelSelection, createModelInstaller };
 })();

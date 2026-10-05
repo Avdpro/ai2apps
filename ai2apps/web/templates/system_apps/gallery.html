@@ -1,7 +1,7 @@
 {% extends app_base_template|default("base.html") %}
 
 {% block title %}{{ t('gallery.title') }} - AI2Apps{% endblock %}
-{% block head %}<link rel="stylesheet" href="{{ static('css/gallery.css') }}?v=gallery-context-menu-1">{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ static('css/gallery.css') }}?v=gallery-attachment-dnd-2">{% endblock %}
 
 {% block content %}
 <div class="gallery-app" x-data="galleryApp()" x-init="init()" data-app-id="ai2apps.gallery" data-client-environment="{{ client_environment|default('browser') }}" data-gallery-surface="{{ request.query_params.get('surface', 'full') }}" data-preview-asset-id="{{ request.query_params.get('assetId', '') }}" data-preview-collection-id="{{ request.query_params.get('collectionId', '') }}" data-preview-kind="{{ request.query_params.get('kind', '') }}" data-preview-search="{{ request.query_params.get('search', '') }}" @click="closeAssetContextMenu()">
@@ -62,4 +62,4 @@
 </div>
 {% endblock %}
 
-{% block scripts %}<script src="{{ static('js/gallery.js') }}?v=gallery-context-menu-1"></script>{% endblock %}
+{% block scripts %}<script src="{{ static('js/gallery.js') }}?v=gallery-attachment-dnd-2"></script>{% endblock %}

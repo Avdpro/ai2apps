@@ -107,6 +107,28 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate, NSMenuDeleg
         var lease: BrowserAgentLease
     }
 
+    private struct ShellNavigationReset: ValidatedContract {
+        let version = 1
+        let instance_id: String
+        let epoch = UUID().uuidString
+        let reason: String
+
+        func validate() throws {
+            _ = try InstanceID(rawValue: instance_id)
+            guard ["helper-start", "menu-restart"].contains(reason) else {
+                throw ContractError.invalidField(field: "reason", reason: "invalid Shell reset reason")
+            }
+        }
+    }
+
+    private func resetShellNavigation(reason: String) throws {
+        try ContractCodec.save(
+            ShellNavigationReset(instance_id: arguments.instanceID.rawValue, reason: reason),
+            to: paths.runDirectory.appendingPathComponent("shell-navigation.json"),
+            mode: 0o600
+        )
+    }
+
     private struct ScreenRecordingWindowCommand: ValidatedContract, Sendable {
         let version = 1
         let instanceID: String
@@ -127,12 +149,7 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate, NSMenuDeleg
                     version: version
                 )
             }
-            guard instanceID == "app-dev" else {
-                throw ContractError.invalidField(
-                    field: "instance_id",
-                    reason: "must be app-dev"
-                )
-            }
+            _ = try InstanceID(rawValue: instanceID)
             guard command == "prepare-screen-recording" else {
                 throw ContractError.invalidField(
                     field: "command",
@@ -299,6 +316,7 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate, NSMenuDeleg
         rebuildMenu()
         do {
             try paths.preparePrivateDirectories()
+            try resetShellNavigation(reason: "helper-start")
             publishStatus(.initializing, message: L("正在初始化 Helper…", "Initializing Helper…"))
             publishUpdateStatus(.idle, message: L("尚未检查更新", "Updates not checked"))
         } catch {
@@ -445,7 +463,7 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate, NSMenuDeleg
         )
         openApp.target = self
         openApp.isEnabled = mainBundleIdentifier != nil || arguments.appBundleURL != nil
-        if allowsRecordingPreparation {
+        do {
             let prepareRecording = menu.addItem(
                 withTitle: L("准备录屏", "Prepare for Screen Recording"),
                 action: #selector(prepareScreenRecording),
@@ -507,12 +525,7 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate, NSMenuDeleg
             && developmentSourceRoot != nil
     }
 
-    private var allowsRecordingPreparation: Bool {
-        allowsTestEnvironment
-    }
-
     @objc private func prepareScreenRecording() {
-        guard allowsRecordingPreparation else { return }
         do {
             try ContractCodec.save(
                 ScreenRecordingWindowCommand(
@@ -1512,7 +1525,12 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate, NSMenuDeleg
     }
 
     @objc private func restartLocalAction() {
-        stopLocal(restart: true)
+        do {
+            try resetShellNavigation(reason: "menu-restart")
+            stopLocal(restart: true)
+        } catch {
+            presentError(error)
+        }
     }
 
     @objc private func configurePort() {

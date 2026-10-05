@@ -16,7 +16,7 @@ six Mini-Apps continue to appear in their declared Voice Studio and Video Studio
 
 ## MVP boundary
 
-Version `0.2.0` targets the complete Package → install → Studio discovery → trusted mount path. Each
+Version `0.2.1` targets the complete Package → install → Studio discovery → trusted mount path. Each
 Mini-App provides its own responsive UI, media selection, workflow options, speaker naming, local draft
 persistence, and JSON draft export. All six workflows execute through the same mount-bound Host Capability
 Broker. Detailed Transcription uses MLX WhisperX; separation uses MLX Demucs; speaker replacement combines
@@ -65,7 +65,7 @@ than eager dependencies so installing the UI suite does not download every model
 From the repository root, build an unsigned contract artifact for local structural validation:
 
 ```bash
-./.venv/bin/python -c "from ai2apps.packages.contract_v1 import build_package; build_package('packages/ai2apps-media-voice-studio-suite', '/tmp/ai2apps-media-voice-studio-suite-0.2.0.ai2app')"
+./.venv/bin/python -c "from ai2apps.packages.contract_v1 import build_package; build_package('packages/ai2apps-media-voice-studio-suite', '/tmp/ai2apps-media-voice-studio-suite-0.2.1.ai2app')"
 ```
 
 Production signing and publication must use `scripts/build_signed_registry_release.py` and the standard

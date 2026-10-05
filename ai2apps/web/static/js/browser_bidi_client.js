@@ -28,19 +28,38 @@
         }
         async connect() {
             if (this.socket?.readyState === WebSocket.OPEN) return this;
+            // Retry transport/session setup once with a new one-use ticket.
+            // Never replay an already submitted browser action.
+            for (let attempt = 0; attempt < 2; attempt++) {
+                try {
+                    return await this.connectOnce();
+                } catch (error) {
+                    await this.close();
+                    if (attempt === 1 || error.authorizationDenied) throw error;
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                }
+            }
+        }
+        async connectOnce() {
             const ticketResponse = await fetch('/v1/platform/browser/webdriver-bidi/ticket', {
                 method: 'POST',
                 credentials: 'same-origin',
                 headers: {'Content-Type': 'application/json'},
                 body: '{}',
             });
-            if (!ticketResponse.ok) throw new Error('AceFox BiDi authorization is unavailable');
+            if (!ticketResponse.ok) {
+                const error = new Error('AceFox BiDi authorization is unavailable');
+                error.authorizationDenied = [401, 403].includes(ticketResponse.status);
+                throw error;
+            }
             const {ticket} = await ticketResponse.json();
             const scheme = location.protocol === 'https:' ? 'wss:' : 'ws:';
             this.socket = new WebSocket(
                 `${scheme}//${location.host}/v1/platform/browser/webdriver-bidi?ticket=${encodeURIComponent(ticket)}`
             );
+            const socket = this.socket;
             this.socket.addEventListener('message', event => {
+                if (this.socket !== socket) return;
                 let payload;
                 try { payload = JSON.parse(event.data); } catch (_) { return; }
                 const pending = this.pending.get(payload.id);
@@ -50,10 +69,22 @@
                 if (payload.error) pending.reject(new Error(`${payload.error}: ${payload.message || ''}`));
                 else pending.resolve(payload.result || {});
             });
+            this.socket.addEventListener('close', () => {
+                if (this.socket !== socket) return;
+                for (const pending of this.pending.values()) {
+                    clearTimeout(pending.timer);
+                    pending.reject(new Error('AceFox BiDi is disconnected'));
+                }
+                this.pending.clear();
+            });
             await new Promise((resolve, reject) => {
                 const timer = setTimeout(() => reject(new Error('AceFox BiDi connection timed out')), 7000);
                 this.socket.addEventListener('open', () => { clearTimeout(timer); resolve(); }, {once: true});
                 this.socket.addEventListener('error', () => {
+                    clearTimeout(timer);
+                    reject(new Error('AceFox BiDi Gateway is unavailable'));
+                }, {once: true});
+                this.socket.addEventListener('close', () => {
                     clearTimeout(timer);
                     reject(new Error('AceFox BiDi Gateway is unavailable'));
                 }, {once: true});
@@ -362,8 +393,8 @@
             });
             return {mode: 'drop-zone'};
         }
-        async findTarget(intent) {
-            return this.callJSON(`function(intent){
+        async findTarget(intent, {operation = ''} = {}) {
+            return this.callJSON(`function(intent,operation){
                 const q=String(intent||'').toLowerCase().replace(/页面上的|按钮|输入框|the|button|field/g,'').trim();
                 const nodes=[...document.querySelectorAll('button,a,input,textarea,select,[role="button"],[role="link"],[tabindex]')];
                 const visible=node=>{const r=node.getBoundingClientRect(),s=getComputedStyle(node);
@@ -373,6 +404,7 @@
                 let best=null;
                 for(const node of nodes){
                     if(!visible(node)) continue;
+                    if(operation==='input'&&!node.matches('input:not([type=button]):not([type=submit]),textarea,[contenteditable=true]'))continue;
                     const name=label(node),low=name.toLowerCase();
                     let score=q&&low===q?100:q&&low.includes(q)?70:q&&q.includes(low)&&low.length>1?50:0;
                     if(/搜索|search/.test(q)&&(/search|搜索/.test(low)||node.type==='search')) score+=45;
@@ -385,7 +417,7 @@
                     if(!best||candidate.score>best.score) best=candidate;
                 }
                 return best;
-            }`, [intent]);
+            }`, [intent, operation]);
         }
         async naturalPointer(target, {click = true, hoverMs = 0, seed = 1} = {}) {
             if (!target?.rect) throw new Error('Target has no visible rectangle');
@@ -410,13 +442,19 @@
             await new Promise(resolve => setTimeout(resolve, click ? 220 : hoverMs));
             return {x, y, profile: 'natural'};
         }
-        async typeText(text) {
+        async typeText(text, {replace = false, submit = false} = {}) {
             const actions = [];
+            if (replace) {
+                const modifier = /Mac/i.test(navigator.platform) ? '\uE03D' : '\uE009';
+                actions.push({type:'keyDown',value:modifier},{type:'keyDown',value:'a'},
+                    {type:'keyUp',value:'a'},{type:'keyUp',value:modifier});
+            }
             for (const character of String(text || '').slice(0, 2000)) {
                 actions.push({type: 'keyDown', value: character});
                 actions.push({type: 'pause', duration: 25 + character.charCodeAt(0) % 45});
                 actions.push({type: 'keyUp', value: character});
             }
+            if (submit) actions.push({type:'keyDown',value:'\uE007'},{type:'keyUp',value:'\uE007'});
             await this.connection.command('input.performActions', {
                 context: this.contextId,
                 actions: [{type: 'key', id: 'ai2apps-natural-keyboard', actions}],
@@ -431,6 +469,48 @@
             });
             await new Promise(resolve => setTimeout(resolve, 260));
         }
+        async readResultPages(items, limit = 3) {
+            const initial = await this.pageState();
+            const articles = [], failures = [], seen = new Set(), readUrls = new Set();
+            const articleLimit = Math.min(5, Math.max(1, limit));
+            const candidates = (Array.isArray(items) ? items : []).filter(item => {
+                try {
+                    const url = new URL(item.url);
+                    if (!/^https?:$/.test(url.protocol) || url.username || url.password ||
+                        /^(localhost|127\.|0\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.|\[)/i.test(url.hostname) ||
+                        /\.local$/i.test(url.hostname) || seen.has(url.href)) return false;
+                    seen.add(url.href); return true;
+                } catch { return false; }
+            }).slice(0, 5);
+            try {
+                for (const item of candidates) {
+                    try {
+                        await this.connection.command('browsingContext.navigate', {
+                            context:this.contextId, url:item.url, wait:'complete',
+                        }, 30000);
+                        const access = await this.handlePageAccess();
+                        if (['needs_user', 'restricted'].includes(access?.classification)) {
+                            failures.push({url:item.url, reason:access.reason}); continue;
+                        }
+                        const page = await this.extractRenderedPage();
+                        if (readUrls.has(page.url)) continue;
+                        const text = String(page.text || '').slice(0, 6000);
+                        if (!text.trim()) { failures.push({url:item.url, reason:'empty_page'}); continue; }
+                        readUrls.add(page.url);
+                        articles.push({url:page.url, title:page.title, text});
+                        if (articles.length >= articleLimit) break;
+                    } catch (error) {
+                        failures.push({url:item.url, reason:String(error.message || error).slice(0, 200)});
+                    }
+                }
+            } finally {
+                await this.connection.command('browsingContext.navigate', {
+                    context:this.contextId, url:initial.url, wait:'complete',
+                }, 30000);
+            }
+            return {articles, failures};
+        }
+
         async extractArticleList(limit = 50) {
             return this.callJSON(`function(limit){
                 const visible=node=>{const r=node.getBoundingClientRect(),s=getComputedStyle(node);
@@ -524,12 +604,15 @@
                 const positive=/reject|decline|only necessary|necessary only|拒绝|仅必要|只允许必要|关闭|close|not now|稍后|以后再说/i;
                 const forbidden=/accept|agree|allow all|同意|接受|全部允许|terms|条款|subscribe|购买|支付/i;
                 const visible=node=>{const r=node.getBoundingClientRect(),s=getComputedStyle(node);
-                    return r.width>2&&r.height>2&&s.display!=='none'&&s.visibility!=='hidden'&&Number(s.opacity)>0;};
+                    return r.width>2&&r.height>2&&r.right>0&&r.bottom>0&&r.left<innerWidth&&r.top<innerHeight&&
+                        s.display!=='none'&&s.visibility!=='hidden'&&Number(s.opacity)>0;};
                 for(const node of document.querySelectorAll('button,[role=button],a')){
                     const name=[node.getAttribute('aria-label'),node.title,node.innerText,node.textContent].filter(Boolean).join(' ').replace(/\\s+/g,' ').trim();
                     if(!visible(node)||!positive.test(name)||forbidden.test(name)) continue;
                     const r=node.getBoundingClientRect();
-                    return {name,rect:{x:r.x,y:r.y,width:r.width,height:r.height},classification:'safe_dismiss'};
+                    const x=Math.max(0,r.left),y=Math.max(0,r.top);
+                    return {name,rect:{x,y,width:Math.min(innerWidth,r.right)-x,
+                        height:Math.min(innerHeight,r.bottom)-y},classification:'safe_dismiss'};
                 }
                 const text=(document.body?.innerText||'').slice(0,50000);
                 if(/captcha|verify you are human|验证码|机器人验证/i.test(text)) return {classification:'needs_user',reason:'captcha'};

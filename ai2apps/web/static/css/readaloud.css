@@ -168,3 +168,5 @@
 .ra-output-warnings{padding:10px 12px;border:1px solid #fed7aa;border-radius:10px;background:#fff7ed;color:#9a3412;font-size:12px;max-height:180px;overflow:auto}.ra-output-warnings p{margin:4px 0}
 
 .ra-quick-asr{display:grid;gap:8px;margin:4px 0 8px}.readaloud-app .ra-quick-asr-toggle{display:flex;flex-direction:row;align-items:center;justify-content:flex-start;gap:8px;margin:0}.readaloud-app .ra-quick-asr-toggle input[type=checkbox]{width:16px;height:16px;min-height:0;flex:0 0 16px;margin:0;padding:0}.readaloud-app .ra-quick-asr-help{display:block;text-align:left;margin:0;color:var(--ra-muted);line-height:1.5}.ra-quick-asr-model{max-width:360px}
+
+.ra-segment-index{display:flex;flex-direction:column;align-items:center;gap:8px}.ra-segment-index .ra-line-select{width:16px;height:16px;min-width:16px;margin:0;padding:0;accent-color:var(--ra-accent);cursor:pointer}

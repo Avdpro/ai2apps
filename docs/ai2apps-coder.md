@@ -1,6 +1,9 @@
 # AI2Apps Coder
 
-Coder is the singleton development App for terminal-based coding Agents. A
+Coder is the singleton development App for native AI2Apps development and
+terminal-based coding Agents. The **AI2Apps Agent** button runs a Python Harness
+in an isolated source draft, with review before applying changes. See
+[Native App development](ai2apps-native-app-development.md). A
 Project binds a user-visible name to one host directory. A Thread selects one
 CLI (`codex`, `opencode`, or `claude`), a model source, and an independently
 owned Terminal session.

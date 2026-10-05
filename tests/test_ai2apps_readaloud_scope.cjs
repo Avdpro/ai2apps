@@ -420,5 +420,66 @@ vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../ai2apps/web/static/j
   lineDrag.lineDragAudio={key:lineDrag.lineDragKey(line),blob};
   event.prevented=false;event.target.closest=()=>({});
   lineDrag.dragLineAudio(event,line);assert.equal(event.prevented,true);
+  {
+  const selection=context.window.readAloudApp();
+  selection.pipelineMode='drama';
+  selection.providers=[{id:'tts',modelType:'audio_tts',ready:true}];
+  selection.selected={id:'selected-book',title:'Book',segments:[{id:'a',reviewStatus:'needs_review'},{id:'b',reviewStatus:'needs_review'},{id:'c',reviewStatus:'approved'}]};
+  selection.scheduleDraft=selection.selectRun=selection.pollRun=selection.pollDialogue=()=>{};
+  selection.fail=e=>{throw e;};
+  assert.equal(selection.dialogueSelectedLines.length,3);
+  selection.setLineIncludedInDialogue(selection.selected.segments[1],false);
+  assert.equal(selection.dialogueSelectedLines.map(line=>line.id).join(','),'a,c');
+  const draft=JSON.parse(JSON.stringify(selection.draftPayload()));
+  const restored=context.window.readAloudApp();restored.applyDraft(draft);restored.selected=selection.selected;
+  assert.equal(restored.dialogueSelectedLines.map(line=>line.id).join(','),'a,c');
+  restored.selected={id:'other-book',segments:[{id:'b'}]};assert.equal(restored.dialogueSelectedLines.length,1);
+  const savedLines=[];selection.saveSegment=async line=>{savedLines.push(line.id);};
+  const dialogueRequests=[];
+  context.fetch=async(url,options)=>{assert.equal(url,'/v1/platform/readaloud/runs');dialogueRequests.push(JSON.parse(options.body));return {ok:true,json:async()=>({id:'selected-run',status:'succeeded'})};};
+  await selection.generateDialogue();
+  assert.equal(savedLines.join(','),'a,c');assert.equal(dialogueRequests[0].segmentIds.join(','),'a,c');
+  assert.equal(dialogueRequests[0].mergeOutput,true);
+  assert.equal(selection.selected.segments[1].reviewStatus,'needs_review');
+  selection.setLineIncludedInDialogue(selection.selected.segments[0],false);
+  selection.setLineIncludedInDialogue(selection.selected.segments[2],false);
+  await selection.generateDialogue();assert.equal(dialogueRequests.length,1);
+  selection.selected.segments.push({id:'new-line'});assert.equal(selection.dialogueSelectedLines.map(line=>line.id).join(','),'new-line');
+  }
+  {
+    const editor = context.window.readAloudApp();
+    const line = {id:'edited', text:'old words', speakerId:'speaker', emotion:'neutral', emotionStrength:1, speed:1, pauseAfterMs:300, reviewStatus:'approved'};
+    editor.selected = {id:'editing-book', segments:[line]};
+    editor.scheduleDraft = editor.icons = () => {};
+    editor.fail = error => {throw error;};
+    editor.ensureCapability = async () => ({configured:false});
+    const pending = [];
+    let persistedText = '';
+    context.fetch = async (url, options) => {
+      assert.equal(options.method, 'PATCH');
+      const body = JSON.parse(options.body);
+      await new Promise(resolve => pending.push({body, resolve}));
+      persistedText = body.text;
+      return {ok:true,json:async()=>({...line,text:body.text})};
+    };
+    editor.createRun = async ids => {
+      assert.equal(ids[0], line.id);
+      assert.equal(persistedText, 'new words');
+      return {id:'fresh-run'};
+    };
+    const oldSave = editor.saveSegment(line);
+    line.text = 'new words';
+    const regenerate = editor.preview(line, true);
+    assert.equal(pending.length, 1, 'new save waits for the older write');
+    pending[0].resolve();
+    await oldSave;
+    assert.equal(line.text, 'new words', 'old response must not overwrite current input');
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(pending.length, 2);
+    assert.equal(pending[1].body.text, 'new words');
+    pending[1].resolve();
+    await regenerate;
+    assert.equal(line.text, 'new words');
+  }
   console.log('Voice Studio: project isolation and project-free Quick Read generation passed');
 })().catch(error => { console.error(error); process.exitCode = 1; });

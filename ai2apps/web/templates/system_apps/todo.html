@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Todo · AI2Apps{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ static('css/todo.css') }}">{% endblock %}
+{% block content %}
+<div id="todo-app" class="todo-app">
+  <header class="todo-app-header">
+    <div class="todo-brand"><span class="todo-logo"><i data-lucide="list-todo"></i></span><h1 data-i18n="appName"></h1></div>
+    <div class="todo-header-actions">
+      <button id="codex-todo" class="todo-icon-button" data-label="codexConnection"><i data-lucide="link"></i></button>
+      <a id="export-todo" class="todo-icon-button" href="/v1/platform/todo/backup" download="todo-backup.zip" data-label="exportTodo"><i data-lucide="download"></i></a>
+      <button id="import-todo" class="todo-icon-button" data-label="importTodo"><i data-lucide="upload"></i></button>
+      <input id="import-todo-file" type="file" accept=".zip,application/zip" hidden>
+      <button id="refresh-todo" class="todo-icon-button" data-label="refresh"><i data-lucide="refresh-cw"></i></button>
+      <button id="toggle-left" class="todo-icon-button" data-label="toggleLeft" aria-controls="todo-sidebar" aria-expanded="true"><i data-lucide="panel-left"></i></button>
+      <button id="toggle-right" class="todo-icon-button" data-label="toggleRight" aria-controls="detail" aria-expanded="true"><i data-lucide="panel-right"></i></button>
+    </div>
+  </header>
+  <div class="todo-workspace" id="todo-workspace">
+  <aside class="todo-sidebar" id="todo-sidebar">
+    <nav class="todo-tabs" role="tablist"><button id="mode-directories" class="active" role="tab" aria-selected="true" aria-controls="directory-panel"><i data-lucide="folder"></i><span data-i18n="directories"></span></button><button id="mode-gallery" role="tab" aria-selected="false" aria-controls="gallery-panel"><i data-lucide="images"></i><span>Gallery</span></button><button id="mode-chat" role="tab" aria-selected="false" aria-controls="chat-panel"><i data-lucide="message-square"></i><span data-i18n="chat"></span></button></nav>
+    <section id="directory-panel"><div class="todo-section-label"><span data-i18n="aggregates"></span></div><div id="aggregate-directories"></div><div class="todo-section-label"><span data-i18n="myDirectories"></span><button id="add-directory" data-label="newDirectory"><i data-lucide="plus"></i></button></div><div id="directories"></div><div class="todo-sidebar-note" data-i18n="localNote"></div></section>
+    <section id="gallery-panel" hidden><div class="todo-gallery-heading"><span>Gallery</span><button id="gallery-reload" data-label="refresh"><i data-lucide="refresh-cw"></i></button></div><p id="gallery-state" class="todo-help" role="status"></p><iframe id="todo-gallery" title="Gallery Mini-Entry" hidden></iframe><p class="todo-gallery-hint" data-i18n="galleryHint"></p></section>
+    <section id="chat-panel" hidden><div id="chat-scope"></div><iframe id="todo-chat" title="Todo Chat" allow="clipboard-write"></iframe></section>
+    <footer class="todo-service"><span></span><span data-i18n="serviceOnly"></span></footer>
+  </aside>
+  <main class="todo-main">
+    <header class="todo-main-head"><div><h2 id="directory-title"></h2><p id="directory-summary"></p></div><button id="add-task" class="todo-primary"><i data-lucide="plus"></i><span data-i18n="newProject"></span></button></header>
+    <div class="todo-toolbar"><input id="search" type="search" data-placeholder="search"><select id="filter"><option value="all" data-i18n="all"></option><option value="open" data-i18n="open"></option><option value="scheduled" data-i18n="scheduled"></option><option value="completed" data-i18n="completed"></option><option value="priority-U" data-i18n="priorityFilterU"></option><option value="priority-S" data-i18n="priorityFilterS"></option><option value="priority-A" data-i18n="priorityFilterA"></option><option value="priority-B" data-i18n="priorityFilterB"></option><option value="priority-C" data-i18n="priorityFilterC"></option><option value="priority-D" data-i18n="priorityFilterD"></option><option value="archived" data-i18n="archived"></option><option value="trash" data-i18n="trash"></option></select></div>
+    <div class="todo-tree-header"><span data-i18n="project"></span><span data-i18n="execution"></span></div>
+    <div id="task-tree" role="tree"></div><div id="tree-empty" class="todo-empty"><span><i data-lucide="list-todo"></i></span><h2 data-i18n="emptyTitle"></h2><p data-i18n="emptyBody"></p></div>
+    <div id="notice" role="status" hidden></div>
+  </main>
+  <aside class="todo-detail" id="detail"><div class="todo-empty"><span><i data-lucide="mouse-pointer-2"></i></span><h2 data-i18n="selectTitle"></h2><p data-i18n="selectBody"></p></div></aside>
+  </div>
+</div>
+<div id="todo-tooltip" class="todo-tooltip" role="tooltip" hidden></div>
+<dialog id="codex-dialog" class="todo-dialog"><h2>Codex</h2><p id="codex-state"></p><pre id="codex-config" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre><p class="todo-help">首次连接后，使用插件安装脚本的 --connection 参数指定上方路径。凭据仅保存在本机，不要复制文件内容。重新连接会撤销旧凭据。</p><footer><button id="codex-close">关闭</button><button id="codex-disconnect">断开连接</button><button id="codex-connect" class="todo-primary">连接 Codex</button></footer></dialog>
+<dialog id="backup-dialog" class="todo-dialog"><h2 data-i18n="importTodo"></h2><p id="backup-summary"></p><p class="todo-help" data-i18n="backupHelp"></p><div id="backup-items"></div><footer><button id="backup-cancel" data-i18n="cancel"></button><button id="backup-confirm" class="todo-primary" data-i18n="confirmImport"></button></footer></dialog>
+<dialog id="name-dialog" class="todo-dialog"><form method="dialog"><h2 id="dialog-title"></h2><input id="dialog-name" maxlength="200" required autofocus aria-labelledby="dialog-title">
+<fieldset id="dialog-task-fields" hidden>
+<label for="dialog-priority" data-i18n="priority"></label>
+<select id="dialog-priority"><option>U</option><option>S</option><option>A</option><option>B</option><option selected>C</option><option>D</option></select>
+<p class="todo-help" data-i18n="priorityOrder"></p>
+<label for="dialog-description" data-i18n="description"></label>
+<textarea id="dialog-description" rows="5" maxlength="100000" data-placeholder="descriptionHint"></textarea>
+</fieldset><footer><button id="dialog-cancel" type="button" data-i18n="cancel"></button><button type="submit" value="save" class="todo-primary" data-i18n="create"></button></footer></form></dialog>
+{% endblock %}
+{% block scripts %}<script src="{{ static('js/mini_app_chat.js') }}"></script><script src="{{ static('js/todo.js') }}"></script>{% endblock %}

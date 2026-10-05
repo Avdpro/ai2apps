@@ -322,6 +322,13 @@ class InteractiveArchive:
                             f"Duplicate Studio Mini-App id: {mini_app_id}",
                         )
                     seen_mini_app_ids.add(mini_app_id)
+                    if "localizations" in item:
+                        try:
+                            validate_app_localizations(item["localizations"])
+                        except ValueError as error:
+                            raise ExtensionError(
+                                "invalid_studio_mini_app", str(error)
+                            ) from error
                     chat = item.get("chat")
                     if chat is not None:
                         try:

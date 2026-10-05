@@ -827,6 +827,10 @@ async def lifespan(app: FastAPI):
             ) as response:
                 if response.status_code >= 400:
                     body = (await response.aread()).decode(errors="replace")
+                    from ai2apps.agents.context_meter import provider_overflow
+                    if provider_overflow(response.status_code, body):
+                        from ai2apps.context_engine import ContextOverflowError
+                        raise ContextOverflowError("Provider confirmed context window overflow")
                     raise RuntimeError(
                         "Model Runtime returned "
                         f"HTTP {response.status_code}: {body[:500]}"
@@ -845,6 +849,12 @@ async def lifespan(app: FastAPI):
                         ) from error
                     if not isinstance(chunk, dict):
                         continue
+                    if isinstance(chunk.get("error"), dict):
+                        from ai2apps.agents.context_meter import provider_overflow
+                        if provider_overflow(400, json.dumps(chunk)):
+                            from ai2apps.context_engine import ContextOverflowError
+                            raise ContextOverflowError("Provider confirmed context window overflow")
+                        raise RuntimeError("Model Runtime stream failed: " + str(chunk["error"].get("message", "provider error"))[:500])
                     accumulator.add(chunk)
                     if report_progress is None:
                         continue
@@ -896,6 +906,7 @@ async def lifespan(app: FastAPI):
             return accumulator.result()
 
         ai2apps_runtime.agent_runtime.bind_model_provider(_invoke_agent_model)
+        ai2apps_runtime.agent_runtime.bind_context_provider(_measure_agent_context)
 
     # Start recovery and dispatch only after every built-in Service/provider is
     # bound. Otherwise a queued Run restored at boot could be claimed during
@@ -2226,6 +2237,64 @@ def get_embedding_max_length(
         return request_max_length
 
     return get_max_context_window(model_id)
+
+
+async def _measure_agent_context(payload, owner):
+    """Count local text prompts through the serving tokenizer and template.
+
+    Unknown/remote and multimodal routes explicitly fall back to byte admission.
+    No heuristic bytes-to-token conversion is reported as exact.
+    """
+    request = ChatCompletionRequest.model_validate(payload)
+    model_id = resolve_model_id(request.model) or request.model or _server_state.default_model
+    pool = _server_state.engine_pool
+    if pool is None or pool.get_entry(model_id) is None:
+        return None
+    if any(isinstance(m.content, list) and any(p.get("type") != "text" for p in m.content) for m in request.messages):
+        return None
+    lease = _LLMEngineLease()
+    try:
+        engine = await get_engine_for_model(request.model, lease=lease)
+        if getattr(engine, "message_extractor", None) or isinstance(engine, VLMBatchedEngine) or getattr(engine, "supports_multimodal_fallback", False):
+            return None
+        if getattr(engine, "tokenizer", None) is None:
+            await engine.start()
+        resolved = _serving_model_id(lease, request.model)
+        ms = get_model_settings_for_request(request.model)
+        kwargs = merge_chat_template_request_kwargs(ms, merge_reasoning_effort_chat_template_kwargs(request.chat_template_kwargs, request.reasoning_effort))
+        if owner.cache_namespace and getattr(engine, "supports_kv_continuity", False) and getattr(ms, "kv_cache_policy", "session") != "strict":
+            kwargs = dict(kwargs or {})
+            kwargs["drop_thinking"] = False
+        entry = pool.get_entry(resolved)
+        native = uses_native_reasoning_content(resolved,
+            config_model_type=getattr(entry, "config_model_type", None),
+            engine_model_type=getattr(engine, "model_type", None),
+            preserve_thinking_default=getattr(entry, "preserve_thinking_default", None))
+        messages = extract_text_content(request.messages, getattr(ms, "max_tool_result_tokens", None), engine.tokenizer,
+            native_reasoning_content=native, consolidate_system_messages=False)
+        partial = detect_and_strip_partial(messages)
+        effective = None if request.tool_choice == "none" else request.tools
+        if _server_state.mcp_manager and request.tool_choice != "none":
+            effective = _server_state.mcp_manager.get_merged_tools([t.model_dump() for t in request.tools] if request.tools else None)
+        tools = convert_tools_for_template(effective) if effective else None
+        if tools and "gemma" in resolved.lower():
+            tools = enrich_tool_params_for_gemma4(tools)
+        messages = prepare_system_messages_for_template(messages, engine.tokenizer, tools=tools,
+            chat_template_kwargs=kwargs or None, is_partial=partial, merge_consecutive_roles=True,
+            unsupported_mid_system_policy=_unsupported_mid_system_policy())
+        count = engine.count_chat_tokens(messages, tools, chat_template_kwargs=kwargs or None, is_partial=partial)
+        limits = [v for v in (get_max_context_window(request.model), get_max_context_window(resolved)) if v is not None]
+        capacity = min(limits) if limits else None
+        if capacity is None:
+            return None
+        reserve = payload.get("max_completion_tokens", payload.get("max_tokens"))
+        if reserve is None:
+            reserve = min(getattr(ms, "max_tokens", None) or _server_state.sampling.max_tokens, 2048, max(1, capacity // 4))
+        return {"provider":"omlx", "model":resolved, "capacity":capacity,
+                "input_tokens":count, "output_reservation":reserve,
+                "unit":"tokens", "token_count_exact":True}
+    finally:
+        await lease.release()
 
 
 def validate_context_window(

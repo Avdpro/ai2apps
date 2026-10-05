@@ -1971,6 +1971,15 @@
                                         :class="agentStatusView(run).effect === 'indeterminate' ? 'agent-progress-indeterminate' : ''"
                                         :style="agentStatusView(run).effect === 'progress' ? `width:${(agentStatusView(run).progress || 0) * 100}%` : ''"></div>
                                 </div>
+                                <ol x-show="(run.plan?.items || []).length" class="agent-run-detail"
+                                    :aria-label="window.t('chat.agent_plan')">
+                                    <template x-for="item in (run.plan?.items || [])" :key="item.id">
+                                        <li class="py-0.5 flex gap-2">
+                                            <span aria-hidden="true" x-text="item.status === 'completed' ? '✓' : item.status === 'in_progress' ? '▶' : '○'"></span>
+                                            <span :class="item.status === 'completed' ? 'opacity-60' : ''" x-text="item.title"></span>
+                                        </li>
+                                    </template>
+                                </ol>
                                 <div x-show="run.expanded" class="agent-run-detail">
                                     <template x-for="detail in agentRunDetails(run)" :key="detail">
                                         <div class="py-0.5" x-text="detail"></div>
@@ -1995,7 +2004,7 @@
                                                 </template>
                                             </div>
                                         </template>
-                                        <template x-if="interaction.kind === 'text' || interaction.kind === 'form'">
+                                        <template x-if="interaction.kind === 'text' || interaction.kind === 'form' || interaction.ui_hints?.allow_other">
                                             <form @submit.prevent="submitAgentText(run, interaction)">
                                                 <input class="agent-interaction-input" type="text"
                                                     x-model="run.interactionDrafts[interaction.id]"
@@ -2060,6 +2069,15 @@
                                             <button x-show="agentRunIsActive(child)" @click="cancelAgentRun(child.id)"
                                                 class="w-6 h-6 rounded hover:bg-surface-muted" title="Cancel child Agent">×</button>
                                         </div>
+                                <ol x-show="(child.plan?.items || []).length" class="agent-run-detail"
+                                    :aria-label="window.t('chat.agent_plan')">
+                                    <template x-for="item in (child.plan?.items || [])" :key="item.id">
+                                        <li class="py-0.5 flex gap-2">
+                                            <span aria-hidden="true" x-text="item.status === 'completed' ? '✓' : item.status === 'in_progress' ? '▶' : '○'"></span>
+                                            <span :class="item.status === 'completed' ? 'opacity-60' : ''" x-text="item.title"></span>
+                                        </li>
+                                    </template>
+                                </ol>
                                         <template x-for="interaction in pendingAgentInteractions(child)" :key="interaction.id">
                                             <div class="agent-interaction-card">
                                                 <div class="font-medium" x-text="interaction.prompt"></div>
@@ -2068,7 +2086,7 @@
                                                         <button class="agent-interaction-button" @click="submitAgentMenu(child, interaction, option)" x-text="String(option)"></button>
                                                     </template>
                                                 </div>
-                                                <form x-show="interaction.kind === 'text' || interaction.kind === 'form'"
+                                                <form x-show="interaction.kind === 'text' || interaction.kind === 'form' || interaction.ui_hints?.allow_other"
                                                     @submit.prevent="submitAgentText(child, interaction)">
                                                     <input class="agent-interaction-input" type="text"
                                                         x-model="child.interactionDrafts[interaction.id]"

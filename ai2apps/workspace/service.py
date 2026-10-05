@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from ai2apps.services import (
@@ -65,11 +66,23 @@ def install_workspace_service(
         )
 
     async def workspace_search(arguments, context):
-        return workspace.search(
+        return await asyncio.to_thread(workspace.search,
             session(context),
             arguments["query"],
             path=arguments.get("path", "."),
             limit=arguments.get("limit", 100),
+            mode=arguments.get("mode", "literal"),
+            include=arguments.get("include", "*"),
+            case_sensitive=arguments.get("case_sensitive", False),
+            context_lines=arguments.get("context_lines", 0),
+            include_hidden=arguments.get("include_hidden", False),
+        )
+
+    async def workspace_glob(arguments, context):
+        return await asyncio.to_thread(
+            workspace.glob, session(context), arguments["pattern"],
+            path=arguments.get("path", "."), limit=arguments.get("limit", 100),
+            include_hidden=arguments.get("include_hidden", False),
         )
 
     async def workspace_write(arguments, context):
@@ -193,11 +206,16 @@ def install_workspace_service(
         (
             "workspace.search",
             "Search workspace",
-            "Search bounded UTF-8 files in the Session workspace.",
+            "Search UTF-8 files by literal text or per-line regex, with file globs and context lines. Hidden paths are excluded by default. Scans are bounded; inspect incomplete_reasons and narrow incomplete searches.",
             {
                 "type": "object",
                 "properties": {
                     "query": {"type": "string", "minLength": 1},
+                    "mode": {"enum": ["literal", "regex"]},
+                    "include": {"type": "string", "maxLength": 256},
+                    "case_sensitive": {"type": "boolean"},
+                    "context_lines": {"type": "integer", "minimum": 0, "maximum": 5},
+                    "include_hidden": {"type": "boolean"},
                     "path": {"type": "string"},
                     "limit": {"type": "integer", "minimum": 1, "maximum": 1000},
                 },
@@ -207,6 +225,21 @@ def install_workspace_service(
             (),
             (),
             workspace_search,
+        ),
+        (
+            "workspace.glob", "Find workspace files",
+            "Find files by glob in the Session workspace. Patterns without slash match basenames at any depth; ** matches directories. Hidden paths are excluded unless requested. Results and traversal are bounded.",
+            {
+                "type": "object",
+                "properties": {
+                    "pattern": {"type": "string", "minLength": 1, "maxLength": 256},
+                    "path": {"type": "string"},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 1000},
+                    "include_hidden": {"type": "boolean"},
+                },
+                "required": ["pattern"], "additionalProperties": False,
+            },
+            (), (), workspace_glob,
         ),
         (
             "workspace.write",

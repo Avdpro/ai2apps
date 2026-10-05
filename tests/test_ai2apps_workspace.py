@@ -396,6 +396,7 @@ def test_workspace_service_is_installed_with_expected_tools(tmp_path):
         "workspace.stat",
         "workspace.read",
         "workspace.search",
+        "workspace.glob",
         "workspace.write",
         "workspace.apply_patch",
         "resource.read",

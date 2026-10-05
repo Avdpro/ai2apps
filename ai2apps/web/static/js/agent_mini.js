@@ -6,7 +6,7 @@
         page: null, drafts: [], draft: null, capabilityId: null, recipe: null,
         client: null, busy: false, run: null, contextRevision: 0,
         resultMode: 'json', presentations: new Map(), review: null, previousReview: null,
-        exploration: null, contextPinned: false,
+        exploration: null, contextPinned: false, attachments: [],
     };
     const $ = selector => document.querySelector(selector);
     const $$ = selector => [...document.querySelectorAll(selector)];
@@ -36,6 +36,8 @@
             'agent.mini.review_ready': 'The run succeeded and the current flow compiled. Review every step.',
             'agent.mini.review_revising': 'Revising and recompiling the entire flow…',
             'agent.mini.review_revised': 'A new revision is ready for Review.',
+            'agent.mini.review_wait_hint': 'AI is updating and compiling the flow. Please wait…',
+            'agent.mini.review_failed': 'Flow update failed. Your feedback has been kept.',
             'agent.mini.before_compile': 'Before compile',
             'agent.mini.after_compile': 'After compile',
             'agent.mini.changed': 'Changed',
@@ -88,6 +90,8 @@
             'agent.mini.review_ready': '试运行成功，当前流程已通过编译。请逐步 Review。',
             'agent.mini.review_revising': '正在调整并重新编译整个流程…',
             'agent.mini.review_revised': '新版本已生成，请重新 Review。',
+            'agent.mini.review_wait_hint': 'AI 正在修改和编译流程，请稍候…',
+            'agent.mini.review_failed': '流程调整失败，修改意见已保留。',
             'agent.mini.before_compile': '编译前',
             'agent.mini.after_compile': '编译后',
             'agent.mini.changed': '已变化',
@@ -170,6 +174,7 @@
                 body.detail || response.statusText;
             const error = new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
             error.code = body.error?.code || body.detail?.code || '';
+            error.details = body.error?.details || body.detail?.details || {};
             throw error;
         }
         return body;
@@ -193,7 +198,10 @@
         return items.find(item => item.id === state.capabilityId) || items[0];
     }
     function pageScope() {
-        try { return new URL(state.page?.url || state.context.url).origin + '/**'; }
+        try {
+            const url = new URL(state.page?.url || state.context.url);
+            return ['http:', 'https:'].includes(url.protocol) ? url.origin + '/**' : '';
+        }
         catch (_) { return ''; }
     }
     function normalizedStep(step, index) {
@@ -202,6 +210,7 @@
             desc: String(step?.desc || ''),
             ...(step?.operation ? {operation: step.operation} : {}),
             ...(step?.ai && typeof step.ai === 'object' ? {ai: structuredClone(step.ai)} : {}),
+            ...(step?.when ? {when: structuredClone(step.when)} : {}),
             target: step?.target && typeof step.target === 'object' ? step.target : {},
             arguments: step?.arguments && typeof step.arguments === 'object' ? step.arguments : {},
             execution: step?.execution || {mode: 'adaptive'},
@@ -214,21 +223,164 @@
         source.name = $('#agent-name').value.trim() || 'New Site Agent';
         source.site_scope = $('#agent-scope').value.split(/[,\n]/).map(v => v.trim()).filter(Boolean);
         const capability = currentCapability();
+        const inputs = readParameterDefinitions(capability?.inputs);
         const nextSteps = $$('.agent-step').map((node, index) => normalizedStep({
             ...(capability?.steps?.[index] || {}),
             name: node.querySelector('[data-field=name]').value.trim() || 'step-' + (index + 1),
             desc: node.querySelector('[data-field=desc]').value.trim(),
             target: node._target || {},
+            ...(node.querySelector('[data-field=tier]') ? {ai: {
+                ...capability.steps[index].ai,
+                tier: node.querySelector('[data-field=tier]').value,
+            }} : {}),
             on: {
+                ...(capability?.steps?.[index]?.on || {}),
                 success: node.querySelector('[data-field=success]').value.trim() || 'done',
                 failed: node.querySelector('[data-field=failed]').value.trim() || 'failed',
             },
         }, index));
         if (Array.isArray(source.capabilities)) {
             const selected = source.capabilities.find(item => item.id === (state.capabilityId || capability?.id));
-            if (selected) selected.steps = nextSteps;
-        } else source.steps = nextSteps;
+            if (selected) { selected.steps = nextSteps; selected.inputs = inputs; }
+        } else { source.steps = nextSteps; source.inputs = inputs; }
         return source;
+    }
+    function parameterValue(type, value) {
+        if (type === 'boolean') {
+            if (![true, false, 'true', 'false'].includes(value)) throw new Error(tr('agent.mini.invalid_parameter'));
+            return value === true || value === 'true';
+        }
+        if (['number', 'integer'].includes(type)) {
+            const number = Number(value);
+            if (value === '' || !Number.isFinite(number) || (type === 'integer' && !Number.isInteger(number)))
+                throw new Error(tr('agent.mini.invalid_parameter'));
+            return number;
+        }
+        if (type === 'object') {
+            const object = JSON.parse(value);
+            if (!object || typeof object !== 'object' || Array.isArray(object)) throw new Error(tr('agent.mini.invalid_parameter'));
+            return object;
+        }
+        return String(value);
+    }
+    function readParameterDefinitions(previous = {}) {
+        const properties = {}, required = [];
+        $$('#agent-parameter-definitions .agent-parameter').forEach(row => {
+            const key = row.querySelector('[data-key]').value.trim();
+            if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key) || ['__proto__','constructor','prototype'].includes(key) || Object.hasOwn(properties, key))
+                throw new Error(tr('agent.mini.invalid_parameter'));
+            const type = row.querySelector('[data-type]').value;
+            const property = {...previous.properties?.[key], type,
+                title: row.querySelector('[data-label]').value.trim() || key};
+            delete property.default;
+            const value = row.querySelector('[data-default]').value;
+            if (value !== '') property.default = parameterValue(type, value);
+            properties[key] = property;
+            if (row.querySelector('[data-required]').checked) required.push(key);
+        });
+        return {...previous, type:'object', properties, required};
+    }
+    function renderInputFields(container, schema = {}) {
+        container.replaceChildren();
+        if (!Object.keys(schema.properties || {}).length) {
+            const empty = document.createElement('p'); empty.textContent = tr('agent.mini.no_parameters');
+            container.append(empty); return;
+        }
+        const title = document.createElement('strong'); title.textContent = tr('agent.mini.run_parameters');
+        container.append(title);
+        Object.entries(schema.properties).forEach(([key, property]) => {
+            const label = document.createElement('label'); label.className = 'agent-field';
+            const text = document.createElement('span'); text.textContent = (property.title || key) + (schema.required?.includes(key) ? ' *' : '');
+            const input = document.createElement(property.type === 'boolean' || property.enum ? 'select' : 'input');
+            input.dataset.parameter = key;
+            if (property.type === 'boolean' || property.enum) {
+                input.add(new Option('', ''));
+                (property.enum || [true, false]).forEach(value => input.add(new Option(String(value), String(value))));
+            } else input.type = ['integer','number'].includes(property.type) ? 'number' : 'text';
+            input.value = property.default == null ? '' : property.type === 'object' ? JSON.stringify(property.default) : String(property.default);
+            if (property['x-ai2apps-file']) {
+                input.type = 'hidden';
+                const filename = document.createElement('small'); filename.textContent = property.default?.name || property.default?.url || '';
+                const picker = document.createElement('input'); picker.type = 'file';
+                picker.setAttribute('aria-label', text.textContent);
+                picker.onchange = () => withBusy(async () => {
+                    if (!picker.files[0]) return;
+                    const file = await uploadAgentFile(picker.files[0]);
+                    input.value = JSON.stringify(file); filename.textContent = file.name;
+                });
+                const url = document.createElement('input'); url.type = 'url'; url.placeholder = tr('agent.mini.file_url');
+                url.onchange = () => withBusy(async () => {
+                    if (!url.value) return;
+                    const parsed = new URL(url.value);
+                    if (!['https:','http:'].includes(parsed.protocol)) throw new Error(tr('agent.mini.invalid_parameter'));
+                    input.value = JSON.stringify({url:parsed.href,name:parsed.pathname.split('/').pop() || 'File'});
+                    filename.textContent = parsed.href;
+                });
+                const gallery = document.createElement('button'); gallery.type = 'button'; gallery.textContent = tr('agent.mini.choose_gallery');
+                gallery.onclick = async () => {
+                    const assets = await window.AI2AppsGalleryPicker.open({multiple:false});
+                    if (assets.length) await withBusy(async () => {
+                        const file = fileReference(await api('/gallery/assets/'+encodeURIComponent(assets[0].id)));
+                        input.value = JSON.stringify(file); filename.textContent = file.name;
+                    });
+                };
+                label.append(filename,picker,gallery,url);
+            }
+            label.append(text, input); container.append(label);
+        });
+    }
+    function readInputFields(container, schema = {}) {
+        const values = {};
+        container.querySelectorAll('[data-parameter]').forEach(input => {
+            const key = input.dataset.parameter, property = schema.properties[key];
+            if (input.value === '') {
+                if (schema.required?.includes(key)) throw new Error(tr('agent.mini.parameter_required', {name:property.title || key}));
+                return;
+            }
+            const value = parameterValue(property.type, input.value);
+            if (property.enum && !property.enum.includes(value)) throw new Error(tr('agent.mini.invalid_parameter'));
+            values[key] = value;
+        });
+        return values;
+    }
+    function renderParameters() {
+        const schema = currentCapability()?.inputs || {};
+        const list = $('#agent-parameter-definitions'); list.replaceChildren();
+        Object.entries(schema.properties || {}).forEach(([key, property]) => {
+            const row = document.createElement('div'); row.className = 'agent-parameter';
+            row.dataset.originalKey = key;
+            row.innerHTML = '<input data-key><input data-label><select data-type></select><input data-default><label><input data-required type="checkbox"><span></span></label><button type="button">×</button>';
+            [['data-key',key,'parameter_name'],['data-label',property.title || key,'parameter_label'],['data-default',property.default == null ? '' : typeof property.default === 'object' ? JSON.stringify(property.default) : String(property.default),'parameter_default']].forEach(([attr,value,label]) => {
+                const input = row.querySelector('['+attr+']'); input.value = value; input.placeholder = tr('agent.mini.'+label); input.setAttribute('aria-label', input.placeholder);
+            });
+            const type = row.querySelector('[data-type]');
+            ['string','integer','number','boolean','object'].forEach(value => type.add(new Option(tr('agent.mini.type_'+value), value)));
+            type.value = property.type || 'string';
+            row.querySelector('[data-required]').checked = schema.required?.includes(key) || false;
+            row.querySelector('span').textContent = tr('agent.mini.parameter_required_label');
+            row.querySelector('button').onclick = () => withBusy(async () => {
+                if (JSON.stringify(currentCapability().steps).includes('${input.'+key+'}'))
+                    throw new Error(tr('agent.mini.parameter_in_use'));
+                row.remove(); syncEditor(); renderParameters(); renderSteps();
+            });
+            row.onchange = () => withBusy(async () => {
+                const next = row.querySelector('[data-key]').value.trim();
+                // Validate before modifying references or discarding editor values.
+                readParameterDefinitions(schema);
+                syncEditor();
+                if (next !== row.dataset.originalKey) {
+                    const before = '${input.'+row.dataset.originalKey+'}', after = '${input.'+next+'}';
+                    const replace = value => typeof value === 'string' ? value.replaceAll(before, after) :
+                        Array.isArray(value) ? value.map(replace) : value && typeof value === 'object' ?
+                            Object.fromEntries(Object.entries(value).map(([k,v]) => [k,replace(v)])) : value;
+                    currentCapability().steps = currentCapability().steps.map(replace);
+                    row.dataset.originalKey = next;
+                }
+                renderInputFields($('#agent-build-inputs'), currentCapability().inputs); renderSteps();
+            });
+            list.append(row);
+        });
+        renderInputFields($('#agent-build-inputs'), schema);
     }
     function syncEditor() {
         if (!state.draft) return;
@@ -259,6 +411,28 @@
             node.querySelector('[data-field=desc]').value = step.desc;
             node.querySelector('[data-field=success]').value = step.on.success || 'done';
             node.querySelector('[data-field=failed]').value = step.on.failed || 'failed';
+            if (step.ai && step.operation?.startsWith('ai.')) {
+                const label = document.createElement('label'); label.className = 'agent-field';
+                const title = document.createElement('span'); title.textContent = tr('agent.mini.step_model');
+                const select = tierSelect(step.ai.tier); select.dataset.field = 'tier';
+                select.onchange = () => syncEditor();
+                label.append(title, select); node.append(label);
+            }
+            if (!step.operation || step.operation === 'input' || step.arguments?.value !== undefined) {
+                const binding = document.createElement('select');
+                binding.setAttribute('aria-label', tr('agent.mini.bind_parameter'));
+                binding.add(new Option(tr('agent.mini.fixed_value'), ''));
+                Object.entries(currentCapability()?.inputs?.properties || {}).forEach(([key, property]) =>
+                    binding.add(new Option(property.title || key, key)));
+                binding.value = /^\$\{input\.([A-Za-z_][A-Za-z0-9_]*)\}$/.exec(String(step.arguments?.value || ''))?.[1] || '';
+                const fixed = document.createElement('input'); fixed.value = binding.value ? '' : String(step.arguments?.value || '');
+                fixed.placeholder = tr('agent.mini.fixed_value'); fixed.hidden = Boolean(binding.value);
+                const update = () => {syncEditor(); const target = currentCapability().steps[index];
+                    target.arguments.value = binding.value ? '${input.'+binding.value+'}' : fixed.value;
+                    fixed.hidden = Boolean(binding.value);};
+                binding.onchange = update; fixed.onchange = update;
+                node.append(binding, fixed);
+            }
             node.querySelector('[data-action=remove]').onclick = () => {
                 syncEditor();
                 state.draft.source.steps.splice(index, 1);
@@ -290,6 +464,7 @@
             select.add(new Option(state.draft.name, 'legacy'));
             state.capabilityId = null;
         }
+        renderParameters();
         renderSteps();
     }
     function renderList() {
@@ -314,10 +489,98 @@
         renderList();
     }
     function switchMode(mode) {
-        $$('.agent-mode button').forEach(button =>
-            button.classList.toggle('active', button.dataset.mode === mode));
-        $('#agent-run-panel').hidden = mode !== 'run';
+        $('#agent-run-panel').hidden = false;
         $('#agent-build-panel').hidden = mode !== 'build';
+        if (mode === 'build') $('#agent-build-panel').scrollIntoView({block:'start'});
+    }
+
+    function fileReference(asset) {
+        return {asset_id:asset.id, url:API+'/gallery/assets/'+encodeURIComponent(asset.id)+'/content',
+            name:asset.name, media_type:asset.media_type, size_bytes:asset.size_bytes};
+    }
+    async function addAgentAttachments(files = [], ids = []) {
+        const uniqueIds = [...new Set(ids)].filter(id => !state.attachments.some(item => item.asset_id === id));
+        if (state.attachments.length + files.length + uniqueIds.length > 8) throw new Error(tr('agent.mini.too_many_files'));
+        // Resolve Gallery references through the owner-authenticated API, never trust drag metadata.
+        const references = await Promise.all(uniqueIds.map(async id => fileReference(await api('/gallery/assets/'+encodeURIComponent(id)))));
+        state.attachments.push(...references); renderAttachments();
+        for (const file of files) {
+            const reference = await uploadAgentFile(file);
+            if (!state.attachments.some(item => item.asset_id === reference.asset_id)) state.attachments.push(reference);
+            renderAttachments();
+        }
+    }
+    async function chooseGalleryAttachments() {
+        const assets = await window.AI2AppsGalleryPicker.open({multiple:true,maxSelection:8-state.attachments.length});
+        if (assets.length) await withBusy(() => addAgentAttachments([],assets.map(asset => asset.id)));
+    }
+    async function uploadAgentFile(file) {
+        if (file.size > (file.type.startsWith('image/') ? 8 : 25) * 1024 * 1024) throw new Error(tr('agent.mini.file_too_large'));
+        const body = new FormData(); body.append('file', file); body.append('sourceAppId', 'ai2apps.agents');
+        const response = await fetch(API+'/gallery/assets/import', {method:'POST', credentials:'same-origin', body});
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error?.message || result.detail || response.statusText);
+        const asset = result.asset;
+        return fileReference(asset);
+    }
+    function renderAttachments() {
+        const list = $('#agent-attachments'); list.replaceChildren();
+        state.attachments.forEach((attachment, index) => {
+            const row = document.createElement('div'); row.className = 'agent-section-title';
+            const name = document.createElement('span'); name.textContent = attachment.name;
+            const remove = document.createElement('button'); remove.type = 'button'; remove.textContent = '×';
+            remove.setAttribute('aria-label',tr('agent.mini.remove_attachment'));
+            remove.onclick = () => { state.attachments.splice(index,1); renderAttachments(); };
+            row.append(name,remove); list.append(row);
+        });
+    }
+    function builderSelection() {
+        const value = $('#agent-builder-model').value;
+        return value.startsWith('model:') ? {model:value.slice(6), model_tier:'standard'} :
+            {model:'', model_tier:value.slice(5) || 'standard'};
+    }
+    function tierSelect(value = 'standard') {
+        const select = document.createElement('select');
+        ['simple','standard','complex'].forEach(tier => select.add(new Option(tr('agent.mini.tier_'+tier), tier)));
+        select.value = value; select.setAttribute('aria-label', tr('agent.mini.step_model'));
+        return select;
+    }
+    function builderModelSupportsVisionChat(model) {
+        if (!model || !model.id) return false;
+        const type = String(model.model_type || model.type || '').toLowerCase();
+        const capabilities = model.capabilities;
+        let chat = false, vision = type === 'vlm';
+        if (Array.isArray(capabilities)) {
+            const declared = capabilities.map(value => String(value).toLowerCase());
+            chat = declared.some(value => ['conversation', 'chat', 'chat_completions'].includes(value));
+            if (!declared.length) chat = type === 'vlm';
+            vision ||= declared.some(value => ['image_recognition', 'image_input', 'vision', 'multimodal'].includes(value));
+        } else if (capabilities && typeof capabilities === 'object') {
+            const chatKeys = ['conversation', 'chat', 'chatCompletions', 'chat_completions'];
+            const declaredChat = chatKeys.filter(key => key in capabilities);
+            chat = declaredChat.length ? declaredChat.some(key => capabilities[key] === true)
+                : capabilities.textOutput === true || (type === 'vlm' && capabilities.imageOutput !== true
+                    && capabilities.imageGeneration !== true && capabilities.audioOutput !== true && capabilities.videoOutput !== true);
+            vision ||= ['imageInput', 'image_input', 'image_recognition', 'vision', 'multimodal'].some(key => capabilities[key] === true);
+        } else chat = type === 'vlm';
+        const modalities = model.input_modalities || model.modalities;
+        vision ||= Array.isArray(modalities) && modalities.some(value => String(value).toLowerCase() === 'image');
+        if (Array.isArray(model.endpoints) && !model.endpoints.includes('chat_completions')) return false;
+        return chat && vision;
+    }
+    async function loadBuilderModels() {
+        const selected = $('#agent-builder-model').value;
+        try {
+            const response = await fetch('/v1/models', {credentials:'include'});
+            if (!response.ok) return;
+            const catalog = await response.json();
+            const select = $('#agent-builder-model');
+            select.querySelectorAll('optgroup').forEach(group => group.remove());
+            const group = document.createElement('optgroup'); group.label = tr('agent.mini.available_models');
+            (catalog.data || []).filter(builderModelSupportsVisionChat).forEach(model => group.append(new Option(model.id, 'model:'+model.id)));
+            if (group.children.length) select.append(group);
+            select.value = [...select.options].some(option => option.value === selected) ? selected : 'tier:standard';
+        } catch (_) { /* System Task choices remain available. */ }
     }
     async function createDraft(name = 'New Agent', description = '', steps = []) {
         const scope = pageScope();
@@ -394,7 +657,19 @@
     }
     function scopeAllows(url, scopes) {
         if (!scopes?.length) return true;
-        return scopes.some(scope => String(url).startsWith(String(scope).replace(/\*\*$/, '')));
+        let destination;
+        try { destination = new URL(url); } catch (_) { return false; }
+        if (!['http:', 'https:'].includes(destination.protocol)) return false;
+        const glob = (value, pattern) => new RegExp('^' + pattern
+            .replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$').test(value);
+        return scopes.some(scope => {
+            try {
+                const allowed = new URL(scope);
+                return destination.protocol === allowed.protocol && destination.port === allowed.port &&
+                    glob(destination.hostname, allowed.hostname) &&
+                    glob(destination.pathname + (allowed.search ? destination.search : ''), allowed.pathname + allowed.search);
+            } catch (_) { return false; }
+        });
     }
     async function client() {
         if (state.client) return state.client;
@@ -403,6 +678,9 @@
         state.client = candidate;
         try {
             await candidate.connect();
+            candidate.connection.socket.addEventListener('close', () => {
+                if (state.client === candidate) state.client = null;
+            }, {once: true});
             const page = await candidate.pageState();
             if (revision !== state.contextRevision || state.client !== candidate) {
                 await candidate.connection.close().catch(() => {});
@@ -441,10 +719,21 @@
     function resolveInput(value, invocationInput) {
         if (Array.isArray(value)) return value.map(item => resolveInput(item, invocationInput));
         if (value && typeof value === 'object') return Object.fromEntries(
-            Object.entries(value).map(([key, item]) => [key, resolveInput(item, invocationInput)]));
+            Object.entries(value).map(([key, item]) => {
+                if (key === 'url' && typeof item === 'string' && !/^\$\{input\.[^}]+\}$/.test(item)) {
+                    return [key, item.replace(/\$\{input\.([a-zA-Z0-9_.-]+)\}/g,
+                        (_match, path) => encodeURIComponent(String(resolveInput('${input.'+path+'}', invocationInput))))];
+                }
+                return [key, resolveInput(item, invocationInput)];
+            }));
         if (typeof value !== 'string') return value;
         const exact = value.match(/^\$\{input\.([a-zA-Z0-9_.-]+)\}$/);
-        const lookup = path => path.split('.').reduce((item, key) => item?.[key], invocationInput);
+        const lookup = path => {
+            const value = path.split('.').reduce((item, key) =>
+                item && Object.hasOwn(item, key) ? item[key] : undefined, invocationInput);
+            if (value === undefined) throw new Error(tr('agent.mini.parameter_required', {name:path}));
+            return value;
+        };
         if (exact) return lookup(exact[1]);
         return value.replace(/\$\{input\.([a-zA-Z0-9_.-]+)\}/g,
             (_match, path) => String(lookup(path) ?? ''));
@@ -453,13 +742,26 @@
         const bidi = await client();
         const before = await bidi.pageState();
         const effectiveScopes = scopes || state.draft?.site_scope || [];
-        if (!scopeAllows(before.url, effectiveScopes)) {
+        const op = step.operation;
+        const searchEnter = ['input', 'click'].includes(op) &&
+            requestedSearchInteraction(step, state.exploration?.goal || state.review?.source?.description || state.draft?.description || '', before.url) &&
+            /press.*enter|回车/i.test(step.description || '');
+        // Navigation enters the authorized site; it need not start there.
+        // Validate its destination before preview or any browser mutation.
+        const navigationURL = op === 'open' ? step.arguments?.url ||
+            (step.description.match(/https?:\/\/[^\s，。]+/) || [])[0] : null;
+        if (op === 'open' && !navigationURL) {
+            return {outcome: 'needs_user', evidence: {reason: 'url_required', before}};
+        }
+        if (op === 'open' && !scopeAllows(navigationURL, effectiveScopes)) {
+            return {outcome: 'restricted', evidence: {reason: 'navigation_outside_scope', url: navigationURL, before}};
+        }
+        if (op !== 'open' && !scopeAllows(before.url, effectiveScopes)) {
             return {outcome: 'restricted', evidence: {reason: 'site_scope', before}};
         }
-        const op = step.operation;
-        if (preview && ['open', 'page_access', 'click', 'delete', 'input', 'hover', 'scroll'].includes(op)) {
+        if (preview && ['open', 'read_results', 'page_access', 'click', 'delete', 'input', 'hover', 'scroll'].includes(op)) {
             const target = ['click', 'delete', 'input', 'hover'].includes(op)
-                ? await bidi.findTarget(intent(step)) : null;
+                ? await bidi.findTarget(intent(step), {operation:searchEnter ? 'input' : op}) : null;
             return {
                 outcome: target === null && ['click', 'delete', 'input', 'hover'].includes(op)
                     ? 'not_found' : 'success',
@@ -468,7 +770,10 @@
         }
         let result;
         if (op === 'page_access') result = await bidi.handlePageAccess();
-        else if (op === 'extract_list') {
+        else if (op === 'read_results') {
+            result = await bidi.readResultPages(step.arguments?.items, step.arguments?.limit || 3);
+            if (!result.articles.length) return {outcome:'failed', evidence:{operation:op, result, before}};
+        } else if (op === 'extract_list') {
             result = await bidi.extractArticleList(Number(step.arguments?.limit || 50));
         } else if (op === 'inspect') {
             const query = intent(step);
@@ -482,11 +787,11 @@
                 return {outcome: requestedPolicy.outcome,
                     evidence: {...requestedPolicy, before}};
             }
-            const target = await bidi.findTarget(intent(step));
+            const target = await bidi.findTarget(intent(step), {operation:searchEnter ? 'input' : op});
             if (!target) return {outcome: 'not_found', evidence: {operation: op, intent: intent(step), before}};
             const policy = interactionPolicy(step, target);
             if (policy) return {outcome: policy.outcome, evidence: {...policy, target, before}};
-            if (op === 'input' && target.sensitive) {
+            if ((op === 'input' || searchEnter) && target.sensitive) {
                 return {outcome: 'needs_user', evidence: {reason: 'sensitive_input', target, before}};
             }
             await bidi.naturalPointer(target, {
@@ -495,21 +800,19 @@
             });
             if (op === 'input') {
                 const value = inputValue(step);
-                if (!value) return {outcome: 'needs_user', evidence: {reason: 'input_value_required', target, before}};
-                await bidi.typeText(value);
+                const submitSearch = requestedSearchInteraction(step, state.exploration?.goal || state.review?.source?.description || state.draft?.description || '', before.url) &&
+                    /\bsubmit\b|press.*enter|提交|回车/i.test(step.description || '');
+                if (!value && !submitSearch) return {outcome: 'needs_user', evidence: {reason: 'input_value_required', target, before}};
+                await bidi.typeText(value, {replace:Boolean(value), submit:submitSearch});
             }
+            if (op === 'click' && searchEnter) await bidi.typeText('', {submit:true});
             result = {target, interaction_profile: 'natural'};
         } else if (op === 'scroll') {
             const delta = Number(step.arguments?.delta_y || 620);
             await bidi.scroll(delta);
             result = {delta_y: delta, interaction_profile: 'natural'};
         } else if (op === 'open') {
-            const url = step.arguments?.url ||
-                (step.description.match(/https?:\/\/[^\s，。]+/) || [])[0];
-            if (!url) return {outcome: 'needs_user', evidence: {reason: 'url_required', before}};
-            if (!scopeAllows(url, effectiveScopes)) {
-                return {outcome: 'restricted', evidence: {reason: 'navigation_outside_scope', url, before}};
-            }
+            const url = navigationURL;
             await bidi.connection.command('browsingContext.navigate', {
                 context: bidi.contextId, url, wait: 'complete',
             }, 30000);
@@ -551,7 +854,8 @@
     }
     async function runEditorStep(index, preview) {
         return withBusy(async () => {
-            const step = await plannedStep(index);
+            const input = readInputFields($('#agent-build-inputs'), currentCapability()?.inputs);
+            const step = resolveInput(await plannedStep(index), input);
             notice(tr(preview ? 'agent.mini.previewing' : 'agent.mini.running', { step: step.id }));
             const result = await execute(step, preview);
             await saveEvidence(step, result);
@@ -615,7 +919,53 @@
         timeline.lastElementChild?.scrollIntoView?.({block: 'nearest'});
     }
 
-    function explorationActionNeedsConfirmation(step, decision) {
+    function navigationMentionedInGoal(step, goal) {
+        if (step.operation !== 'open') return false;
+        let host;
+        try {
+            const url = new URL(step.arguments?.url || '');
+            if (!['http:', 'https:'].includes(url.protocol)) return false;
+            host = url.hostname.toLowerCase().replace(/^www\./, '');
+        } catch (_) { return false; }
+        const text = String(goal || '').toLowerCase();
+        const domains = text.match(/(?:https?:\/\/)?(?:[a-z0-9-]+\.)+[a-z]{2,}(?::\d+)?/g) || [];
+        if (domains.some(domain => {
+            try { return new URL(/^https?:/.test(domain) ? domain : 'https://' + domain)
+                .hostname.replace(/^www\./, '') === host; }
+            catch (_) { return false; }
+        })) return true;
+        const names = {
+            'google.com': ['google', '谷歌'], 'google.cn': ['google', '谷歌'],
+            'bing.com': ['bing', '必应'], 'baidu.com': ['baidu', '百度'],
+            'wikipedia.org': ['wikipedia', '维基百科'],
+            'youtube.com': ['youtube'], 'github.com': ['github'],
+            'openai.com': ['openai'], 'reddit.com': ['reddit'],
+            'taobao.com': ['淘宝', 'taobao'], 'jd.com': ['京东'],
+        };
+        return (names[host] || (host.endsWith('.wikipedia.org') ? names['wikipedia.org'] : []))
+            .some(name => /[^a-z]/.test(name) ? text.includes(name) :
+                new RegExp('(^|[^a-z0-9])' + name + '([^a-z0-9]|$)').test(text));
+    }
+
+    function requestedSearchInteraction(step, goal, pageURL) {
+        if (!['input', 'click'].includes(step.operation) || !/搜索|查询|\bsearch\b|\bfind\b/i.test(goal)) return false;
+        let url;
+        try { url = new URL(pageURL); } catch (_) { return false; }
+        if (!['http:', 'https:'].includes(url.protocol) ||
+            !['google.com', 'google.cn', 'bing.com', 'baidu.com'].includes(
+                url.hostname.toLowerCase().replace(/^www\./, ''))) return false;
+        const target = step.target?.accessible_name || step.target?.intent || '';
+        const text = target + ' ' + (step.description || '');
+        if (/delete|publish|send|purchase|pay|checkout|login|sign.?in|password|captcha|authorize|agree|accept|删除|发布|发送|购买|支付|登录|密码|验证码|授权|同意|接受/i.test(text)) return false;
+        return /搜索|查询|\bsearch\b|\bquery\b/i.test(target || step.description || '');
+    }
+
+    function explorationActionNeedsConfirmation(step, decision, goal = '', pageURL = '') {
+        if (navigationMentionedInGoal(step, goal)) return false;
+        // A requested search includes entering the query and submitting it.
+        // The generic server "submit" flag also covers search forms; target
+        // resolution and sensitive-input/interaction policy still run below.
+        if (requestedSearchInteraction(step, goal, pageURL)) return false;
         if (decision.confirmation?.required) return true;
         return ['open', 'page_access', 'click', 'input', 'hover', 'delete']
             .includes(String(step.operation || ''));
@@ -631,6 +981,7 @@
             method: 'POST',
             body: JSON.stringify({
                 goal: exploration.goal,
+                attachments: exploration.attachments,
                 name: exploration.name,
                 page: {url: state.page?.url || state.context.url || '', title: state.page?.title || ''},
                 attempts: exploration.attempts,
@@ -638,6 +989,7 @@
         });
         state.recipe = result.recipe;
         state.review = result.review;
+        rememberRecipe();
         state.previousReview = null;
         exploration.status = 'awaiting_review';
         addExplorationEvent('complete', tr('agent.mini.exploration_complete'),
@@ -674,8 +1026,10 @@
         $('#agent-recipe-confirm').hidden = true;
         renderRecipeReview();
         state.exploration = {
-            goal, name, status: 'running', cancelled: false,
+            goal, name, attachments:state.attachments.map(file => file.asset_id), status: 'running', cancelled: false,
+            scopes: pageScope() ? [pageScope()] : [],
             maxSteps: 12, attempts: [], events: [],
+            modelSelection: builderSelection(),
         };
         renderExploration();
         try {
@@ -694,7 +1048,7 @@
             const decision = await api('/agent-explorations/next', {
                 method: 'POST',
                 body: JSON.stringify({
-                    goal, name,
+                    goal, name, attachments:state.exploration.attachments, ...state.exploration.modelSelection,
                     page: {url: observation.url, title: observation.title},
                     observation: {
                         fingerprint: observation.fingerprint,
@@ -720,7 +1074,7 @@
                 decision.reason || decision.expected_effect || '');
             addExplorationEvent('preflight', `${step.operation} · ${step.effect}`,
                 decision.preflight?.source_digest || '', 'success');
-            if (explorationActionNeedsConfirmation(step, decision)) {
+            if (explorationActionNeedsConfirmation(step, decision, goal, observation.url)) {
                 const approved = window.confirm(
                     `${step.description || step.operation}\n\n${decision.expected_effect || ''}`);
                 if (!approved) {
@@ -736,7 +1090,16 @@
             }
             addExplorationEvent('execute', step.description || step.operation,
                 decision.expected_effect || '');
-            const execution = await execute(step, false, pageScope() ? [pageScope()] : []);
+            // Reaching here means navigation was explicitly requested or its
+            // confirmation was approved. Carry that grant across later steps.
+            if (step.operation === 'open') {
+                const destination = new URL(step.arguments?.url || '');
+                if (['http:', 'https:'].includes(destination.protocol)) {
+                    const scope = destination.origin + '/**';
+                    if (!state.exploration.scopes.includes(scope)) state.exploration.scopes.push(scope);
+                }
+            }
+            const execution = await execute(step, false, state.exploration.scopes);
             state.exploration.attempts.push({
                 proposal_id: decision.proposal_id,
                 source_step: decision.source_step,
@@ -792,6 +1155,7 @@
         if (value.arguments && Object.keys(value.arguments).length) {
             lines.push(`arguments: ${JSON.stringify(value.arguments)}`);
         }
+        if (value.when) lines.push(`when: ${JSON.stringify(value.when)}`);
         if (value.on && Object.keys(value.on).length) {
             lines.push(`on: ${JSON.stringify(value.on)}`);
         }
@@ -841,10 +1205,25 @@
                     grid.append(side);
                 });
             card.append(header, grid);
+            if (step.source?.operation?.startsWith('ai.')) {
+                const label = document.createElement('label'); label.className = 'agent-field';
+                const title = document.createElement('span'); title.textContent = tr('agent.mini.step_model');
+                const select = tierSelect(step.source.ai?.tier);
+                select.onchange = () => withBusy(async () => {
+                    let result;
+                    try { result = await api('/agent-recipes/'+encodeURIComponent(state.recipe.id)+'/steps/model-tier', {
+                        method:'POST', body:JSON.stringify({expected_revision:state.review.source_revision, step_index:index, tier:select.value}),
+                    }); } catch (error) { renderRecipeReview(); throw error; }
+                    state.previousReview = state.review; state.recipe = result.recipe; state.review = result.review;
+                    renderRecipeReview(); notice(tr('agent.mini.step_model_saved'), 'success');
+                });
+                label.append(title, select); card.append(label);
+            }
             list.append(card);
         });
         $('#agent-review-source').textContent = JSON.stringify(review.source, null, 2);
         $('#agent-review-ir').textContent = JSON.stringify(review.compiled_ir, null, 2);
+        renderInputFields($('#agent-recipe-inputs'), review.source?.inputs);
         const approved = review.status === 'approved';
         $('#agent-review-approve').disabled = approved || !valid;
         $('#agent-review-revise').disabled = !valid;
@@ -857,32 +1236,60 @@
         renderRecipeReview();
         return state.review;
     }
+    function rememberRecipe() {
+        const url = new URL(location.href);
+        if (state.recipe) url.searchParams.set('recipe_id', state.recipe.id);
+        else url.searchParams.delete('recipe_id');
+        history.replaceState(history.state, '', url.pathname + url.search + url.hash);
+    }
+
+    function reviewProgress(phase, detail) {
+        const overlay = $('#agent-review-progress');
+        const waiting = phase === 'waiting';
+        overlay.hidden = false;
+        overlay.dataset.phase = phase;
+        $('.agent-mini').inert = true;
+        $('#agent-review-progress-title').textContent = tr(waiting
+            ? 'agent.mini.review_revising'
+            : phase === 'success' ? 'agent.mini.review_revised' : 'agent.mini.review_failed');
+        $('#agent-review-progress-detail').textContent = detail || tr('agent.mini.review_wait_hint');
+        const close = $('#agent-review-progress-close');
+        close.hidden = waiting;
+        if (!waiting) close.focus();
+    }
 
     async function reviseRecipeReview() {
         if (!state.recipe || !state.review) return;
         const feedback = $('#agent-review-feedback').value.trim();
         if (!feedback) return;
-        notice(tr('agent.mini.review_revising'));
+        reviewProgress('waiting');
         const previous = state.review;
-        const result = await api('/agent-recipes/' + encodeURIComponent(state.recipe.id) +
-            '/review/revisions', {method:'POST', body:JSON.stringify({
-                expected_revision: state.recipe.revision,
-                feedback,
-                locale: document.documentElement.lang || 'en',
-            })});
-        state.recipe = result.recipe;
-        state.previousReview = previous;
-        state.review = result.review;
-        $('#agent-review-feedback').value = '';
-        renderRecipeReview();
-        notice(tr('agent.mini.review_revised'), 'success');
+        try {
+            const result = await api('/agent-recipes/' + encodeURIComponent(state.recipe.id) +
+                '/review/revisions', {method:'POST', body:JSON.stringify({
+                    expected_revision: state.review.source_revision,
+                    feedback,
+                    ...builderSelection(),
+                    locale: document.documentElement.lang || 'en',
+                })});
+            state.recipe = result.recipe;
+            state.previousReview = previous;
+            state.review = result.review;
+            $('#agent-review-feedback').value = '';
+            renderRecipeReview();
+            reviewProgress('success', `v${result.review.source_revision} · ${previous.steps.length} → ${result.review.steps.length}`);
+        } catch (error) {
+            const report = error.details?.report?.errors || [];
+            const details = report.map(item => item.message || item.code).filter(Boolean).join('\n');
+            reviewProgress('error', [error.message, details].filter(Boolean).join('\n'));
+        }
     }
 
     async function approveRecipeReview() {
         if (!state.recipe || !state.review) return;
         const result = await api('/agent-recipes/' + encodeURIComponent(state.recipe.id) +
             '/review/approve', {method:'POST', body:JSON.stringify({
-                expected_revision: state.recipe.revision,
+                expected_revision: state.review.source_revision,
             })});
         state.recipe = result.recipe;
         state.review = result.review;
@@ -1105,7 +1512,8 @@
                 'standard_model_not_configured', 'standard_model_unavailable',
                 'invalid_presentation_spec',
             ].includes(error.code) ? tr('agent.mini.' + error.code) : (error.message || String(error));
-            throw new Error(localized);
+            const reason = error.code === 'invalid_presentation_spec' ? error.details?.reason : '';
+            throw new Error(reason ? `${localized}\n${reason}` : localized);
         }
     }
     async function driveRun() {
@@ -1182,12 +1590,14 @@
     }
     async function runAll(preview = false) {
         return withBusy(async () => {
+            const input = readInputFields($('#agent-build-inputs'), currentCapability()?.inputs);
             await persistDraft();
             const created = await api('/agent-drafts/' + encodeURIComponent(state.draft.id) +
                 '/runs', {
                 method: 'POST',
                 body: JSON.stringify({
                     preview,
+                    input,
                     capability_id: state.capabilityId,
                     browser_context: {
                         bidi_context: state.context.bidi_context || '',
@@ -1259,7 +1669,7 @@
     async function runRecipe() {
         if (!state.recipe) return;
         const created = await api('/agent-recipes/' + encodeURIComponent(state.recipe.id) + '/runs', {
-            method:'POST', body:JSON.stringify({browser_context:{
+            method:'POST', body:JSON.stringify({input:readInputFields($('#agent-recipe-inputs'), state.review?.source?.inputs),browser_context:{
                 bidi_context:state.context.bidi_context || '', url:state.page?.url || state.context.url || '',
             }})
         });
@@ -1280,12 +1690,14 @@
         state.draft = result.site_agent;
         state.capabilityId = result.recipe.committed_capability_id;
         state.recipe = null; state.review = null; state.previousReview = null;
+        rememberRecipe();
         $('#agent-recipe-confirm').hidden = true; renderRecipeReview();
         setContextPinned(false);
         await refreshDrafts(); renderDraft(); switchMode('build');
         notice(tr('agent.mini.capability_added'), 'success');
     }
     function bind() {
+        $('#agent-editor-close').onclick = () => switchMode('run');
         $('#agent-notice-close').onclick = () => notice('');
         $('#agent-notice-close').setAttribute('aria-label', tr('agent.mini.close'));
         $('#agent-run-result-title').textContent = tr('agent.mini.result');
@@ -1296,21 +1708,57 @@
             renderRunResult(state.run);
         };
         $('#agent-result-ai').onclick = () => withBusy(beautifyRunResult);
-        $$('.agent-mode button').forEach(button =>
-            button.onclick = () => withBusy(async () => {
-                if (button.dataset.mode === 'build' && !state.draft) await createDraft();
-                switchMode(button.dataset.mode);
-            }));
+        $('#agent-result-clear').onclick = () => {
+            state.presentations.clear();
+            renderRun(null);
+        };
         $('#agent-quick-form').onsubmit = quickRun;
+        $('#agent-attach-button').onclick = () => $('#agent-attach-input').click();
+        $('#agent-gallery-button').onclick = chooseGalleryAttachments;
+        $('#agent-attach-input').onchange = () => withBusy(async () => {
+            try { await addAgentAttachments([...$('#agent-attach-input').files]); }
+            finally { $('#agent-attach-input').value = ''; }
+        });
+        const attachmentZone = $('#agent-quick-form');
+        attachmentZone.addEventListener('dragover', event => {
+            if (!window.AI2AppsGalleryPicker.acceptsDrop(event.dataTransfer)) return;
+            event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; attachmentZone.classList.add('agent-drop-active');
+        });
+        attachmentZone.addEventListener('dragleave',event => {if (!attachmentZone.contains(event.relatedTarget)) attachmentZone.classList.remove('agent-drop-active');});
+        attachmentZone.addEventListener('drop', event => {
+            if (!window.AI2AppsGalleryPicker.acceptsDrop(event.dataTransfer)) return;
+            event.preventDefault(); attachmentZone.classList.remove('agent-drop-active');
+            if (state.busy) return;
+            const transfer = event.dataTransfer;
+            const files = [...transfer.files];
+            // Drag data is available only during the drop event.
+            let ids;
+            try { ids = window.AI2AppsGalleryPicker.droppedAssetIds(transfer); }
+            catch (error) {void withBusy(async () => {throw error;}); return;}
+            void withBusy(() => addAgentAttachments(ids.length ? [] : files, ids));
+        });
         $('#agent-recipe-test').onclick = () => withBusy(runRecipe);
+        $('#agent-infer-parameters').onclick = () => withBusy(async () => {
+            if (!state.recipe || !state.review) return;
+            const result = await api('/agent-recipes/' + encodeURIComponent(state.recipe.id) + '/parameters/infer', {
+                method:'POST', body:JSON.stringify({expected_revision:state.review.source_revision}),
+            });
+            state.previousReview = state.review; state.recipe = result.recipe; state.review = result.review;
+            renderRecipeReview();
+        });
         $('#agent-exploration-stop').onclick = () => {
             if (state.exploration) state.exploration.cancelled = true;
+        };
+        $('#agent-review-progress-close').onclick = () => {
+            $('#agent-review-progress').hidden = true;
+            $('.agent-mini').inert = false;
+            $('#agent-review-revise').focus();
         };
         $('#agent-review-revise').onclick = () => withBusy(reviseRecipeReview);
         $('#agent-review-approve').onclick = () => withBusy(approveRecipeReview);
         $('#agent-recipe-merge').onclick = () => withBusy(() => commitRecipe('merge'));
         $('#agent-recipe-create').onclick = () => withBusy(() => commitRecipe('create'));
-        $('#agent-capability').onchange = event => { syncEditor(); state.capabilityId=event.target.value; renderSteps(); };
+        $('#agent-capability').onchange = event => { syncEditor(); state.capabilityId=event.target.value; renderParameters(); renderSteps(); };
         $('#agent-add-capability').onclick = () => {
             syncEditor();
             if (!Array.isArray(state.draft.source.capabilities)) return notice(tr('agent.mini.migrate_first'), 'warning');
@@ -1319,7 +1767,7 @@
                 description:'', inputs:{type:'object',properties:{}}, outputs:{type:'object',properties:{}}, steps:[]});
             state.capabilityId=id; renderDraft();
         };
-        $('#agent-refresh').onclick = () => withBusy(initialize);
+        $('#agent-refresh').onclick = () => withBusy(() => initialize({restoreCompleted:false}));
         $('#agent-new-from-run').onclick = () => withBusy(async () => {
             await createDraft(); switchMode('build');
         });
@@ -1333,6 +1781,14 @@
             }, n - 1));
             renderSteps();
         };
+        $('#agent-add-parameter').onclick = () => withBusy(async () => {
+            syncEditor(); const capability = currentCapability();
+            capability.inputs ||= {type:'object',properties:{}};
+            capability.inputs.properties ||= {};
+            let index = 1; while (capability.inputs.properties['value_'+index]) index++;
+            capability.inputs.properties['value_'+index] = {type:'string',title:tr('agent.mini.parameter_label')};
+            renderParameters(); renderSteps();
+        });
         $('#agent-save').onclick = () => withBusy(saveDraft);
         $('#agent-delete').onclick = () => withBusy(deleteDraft);
         $('#agent-preview').onclick = () => runAll(true);
@@ -1371,12 +1827,18 @@
             notice(tr('agent.mini.saved_knowledge'), 'success');
         });
     }
-    async function initialize() {
+    async function initialize({restoreCompleted = true} = {}) {
+        if (!restoreCompleted) {
+            state.presentations.clear();
+            state.resultMode = 'json';
+            renderRun(null);
+        }
         notice(tr('agent.mini.connecting'));
         await state.client?.connection?.close();
         state.client = null;
         await api('/site-agents/reconcile', {method:'POST', body:'{}'}).catch(() => ({}));
         await refreshDrafts();
+        await loadBuilderModels();
         try {
             const buckets = (await api('/knowledge/buckets')).items || [];
             $('#agent-knowledge-bucket').replaceChildren(
@@ -1404,8 +1866,14 @@
         if (resumable) {
             renderRun(resumable);
             if (bidiReady && resumable.status !== 'interrupted') void driveRun();
-        } else if (runs.items?.[0]) {
+        } else if (restoreCompleted && runs.items?.[0]) {
             renderRun(runs.items[0]);
+        }
+        const recipeId = new URL(location.href).searchParams.get('recipe_id');
+        if (recipeId) {
+            state.recipe = {id:recipeId};
+            try { await loadRecipeReview(); $('#agent-recipe-confirm').hidden = false; }
+            catch (error) { state.recipe = null; rememberRecipe(); notice(error.message, 'warning'); }
         }
     }
     function contextKey(context = state.context) {
@@ -1450,7 +1918,7 @@
         bind();
         $('#agent-delete').textContent = tr('agent.mini.delete');
         if (window.lucide) window.lucide.createIcons();
-        withBusy(initialize);
+        withBusy(() => initialize({restoreCompleted:new URL(location.href).searchParams.get('ai2apps_sidebar_refresh') !== '1'}));
     });
     window.addEventListener('ai2apps:browser-context', event => {
         void applyBrowserContext(event.detail || {});

@@ -4548,6 +4548,17 @@ MIGRATIONS: tuple[Migration, ...] = (
         "ALTER TABLE readaloud_projects ADD COLUMN asr_verification INTEGER NOT NULL DEFAULT 1 CHECK(asr_verification IN (0,1))",
         "ALTER TABLE readaloud_projects ADD COLUMN asr_model_id TEXT NOT NULL DEFAULT ''",
     )),
+    Migration(version=78, name="coding_subagent_cooperation", statements=(
+        "CREATE TABLE coding_subagents (child_run_id TEXT PRIMARY KEY REFERENCES agent_runs(id), root_run_id TEXT NOT NULL REFERENCES agent_runs(id), request_key TEXT NOT NULL, request_json TEXT NOT NULL CHECK(json_valid(request_json)), binding_json TEXT NOT NULL CHECK(json_valid(binding_json)), UNIQUE(root_run_id,request_key))",
+        "CREATE TABLE agent_deferred_waits (run_id TEXT PRIMARY KEY REFERENCES agent_runs(id), step_id TEXT NOT NULL REFERENCES run_steps(id), binding_json TEXT NOT NULL CHECK(json_valid(binding_json)), deadline_at TEXT NOT NULL)",
+        "CREATE TABLE coding_model_reservations (step_id TEXT PRIMARY KEY REFERENCES run_steps(id), root_run_id TEXT NOT NULL REFERENCES agent_runs(id), reserved_tokens INTEGER NOT NULL CHECK(reserved_tokens>=0), charged_tokens INTEGER CHECK(charged_tokens>=0), estimated INTEGER NOT NULL DEFAULT 0 CHECK(estimated IN(0,1)))",
+        "CREATE INDEX idx_coding_subagents_root ON coding_subagents(root_run_id)",
+        "CREATE INDEX idx_coding_model_reservations_root ON coding_model_reservations(root_run_id)",
+    )),
+    Migration(version=79, name="native_coding_executor_upgrade", statements=(
+        "UPDATE agent_definitions SET executor_key='builtin:coding-parent',revision=revision+1 WHERE agent_key='ai2apps.app-developer' AND source='builtin' AND executor_key='builtin:general-agent' AND json_extract(manifest_json,'$.builtin')=1",
+    )),
+
 )
 
 

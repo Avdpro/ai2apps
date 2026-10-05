@@ -1847,3 +1847,51 @@ async def test_text_export_validates_mount_and_json_and_publishes_current_edits(
         )
         assert response.status_code in (403, 404)
         assert len(saved) == 1
+
+@pytest.mark.asyncio
+async def test_subtitle_refinement_preserves_timing_metadata_and_input(monkeypatch):
+    runtime = _runtime(extension_manager=VideoSubtitleExtensionManager())
+    broker = StudioCapabilityBroker(runtime)
+    original = [
+        {'start': 0, 'end': 1, 'text': 'AI to Apps 有三种功能', 'speaker': 'A', 'words': [{'word':'AI'}]},
+        {'start': 1, 'end': 2, 'text': '', 'speaker': 'A'},
+        {'start': 2, 'end': 3, 'text': '谢谢。', 'words': [{'word':'谢谢'}]},
+    ]
+    async def completion(prompt, **kwargs):
+        data = json.loads(prompt)
+        assert data['correction_rules'] == '品牌写作 Ai2Apps；使用阿拉伯数字'
+        assert len(data['subtitle_texts']) == 2
+        return json.dumps(['Ai2Apps 有3种功能', '谢谢。'], ensure_ascii=False)
+    monkeypatch.setattr(broker, '_translation_completion', completion)
+    result = await broker.refine_subtitles(STUDIO_ID, MOUNT_ID, principal=RequestPrincipal.legacy_local(),
+        request=Request({'type':'http', 'app':FastAPI(), 'headers':[]}), segments=original,
+        rules='品牌写作 Ai2Apps；使用阿拉伯数字')
+    assert len(result['segments']) == 3
+    assert result['segments'][0] == {'start':0, 'end':1, 'text':'Ai2Apps 有3种功能', 'speaker':'A', 'wordTimestampsNeedReview':True}
+    assert result['segments'][1:] == original[1:]
+    assert original[0]['text'] == 'AI to Apps 有三种功能'
+    assert 'words' in original[0]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('completion', ['not json', '[]', '[null]', '[""]', '["a", "b"]'])
+async def test_subtitle_refinement_rejects_invalid_llm_results(monkeypatch, completion):
+    broker = StudioCapabilityBroker(_runtime(extension_manager=VideoSubtitleExtensionManager()))
+    async def reply(*args, **kwargs):
+        return completion
+    monkeypatch.setattr(broker, '_translation_completion', reply)
+    with pytest.raises(StudioCapabilityError) as error:
+        await broker.refine_subtitles(STUDIO_ID, MOUNT_ID, principal=RequestPrincipal.legacy_local(),
+            request=Request({'type':'http','app':FastAPI(),'headers':[]}),
+            segments=[{'start':0,'end':1,'text':'原文'}], rules='')
+    assert error.value.code == 'subtitle_refinement_invalid'
+
+
+@pytest.mark.asyncio
+async def test_subtitle_refinement_requires_declared_capabilities():
+    broker = StudioCapabilityBroker(_runtime())
+    with pytest.raises(StudioCapabilityError) as error:
+        await broker.refine_subtitles(STUDIO_ID, MOUNT_ID, principal=RequestPrincipal.legacy_local(),
+            request=Request({'type':'http','app':FastAPI(),'headers':[]}),
+            segments=[{'start':0,'end':1,'text':'原文'}], rules='')
+    assert error.value.code == 'capability_not_declared'

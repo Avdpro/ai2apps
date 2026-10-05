@@ -26,6 +26,7 @@
             </div>
             <div class="coder-actions">
                 <span class="coder-status" data-status>Idle</span>
+                <button data-action="native-agent" disabled title="Develop AI2Apps Apps and Mini-Apps">AI2Apps Agent</button>
                 <button class="coder-icon" data-action="files" title="Open Project Files" disabled><i data-lucide="folder-tree"></i></button>
                 <button class="coder-icon" data-action="validate" title="Validate AI2Apps Project" disabled><i data-lucide="badge-check"></i></button>
                 <button class="coder-icon" data-action="test" title="Test Project" disabled><i data-lucide="flask-conical"></i></button>
@@ -66,6 +67,23 @@
         </section>
     </main>
 </div>
+
+<dialog class="coder-dialog coder-native-dialog" data-native-coder>
+    <header><strong data-native-title>AI2Apps Agent</strong><button type="button" data-native-close aria-label="Close">×</button></header>
+    <p>开发和调试 App / Mini-App；修改在隔离草稿中完成，审阅后写回项目。<br>Develop and debug Apps / Mini-Apps in a draft, then review and apply.</p>
+    <form>
+        <label>模型 / Model <select name="model" required></select></label>
+        <label>任务或后续要求 / Task or follow-up <textarea name="prompt" required maxlength="32768" rows="3" placeholder="例如：开发一个待办 Mini-App，并补充测试 / Build a Todo Mini-App with tests"></textarea></label>
+        <div class="coder-native-actions"><button type="submit" data-native-start>开始 / Continue</button><button type="button" data-native-stop disabled>停止 / Stop</button><button type="button" data-native-new>新任务 / New task</button><button type="button" data-native-changes disabled>查看修改和预览 / Review & Preview</button><button type="button" data-native-apply disabled>应用修改 / Apply changes</button></div>
+    </form>
+    <p data-native-progress role="status" aria-live="polite"></p>
+    <div data-native-questions></div>
+    <div data-native-children aria-label="Coding sub-Agent tasks"></div>
+    <pre data-native-output></pre>
+    <pre data-native-review></pre>
+    <select data-native-preview-component hidden aria-label="选择预览组件 / Choose preview component"></select>
+    <iframe data-native-preview hidden sandbox="allow-scripts allow-forms" title="App draft preview"></iframe>
+</dialog>
 
 <div class="coder-context-menu" data-context-menu hidden role="menu">
     <button data-context-action="files"><i data-lucide="folder-tree"></i>Open Files</button>
@@ -137,5 +155,6 @@
 <script src="{{ static('vendor/ace/mode-rust.js') }}"></script>
 <script src="{{ static('vendor/ace/mode-java.js') }}"></script>
 <script src="{{ static('vendor/ace/mode-c_cpp.js') }}"></script>
+<script src="{{ static('js/coder-native.js') }}"></script>
 <script src="{{ static('js/coder.js') }}"></script>
 {% endblock %}

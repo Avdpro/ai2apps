@@ -193,12 +193,33 @@ class ToolCallAction:
     tool_name: str
     arguments: dict[str, Any]
     timeout_ms: int | None = None
+    recover_input_errors: bool = False
+    recover_tool_errors: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class DeferredToolAction:
+    """A durable tool wait which releases the scheduler execution slot."""
+    call_id: str
+    tool_name: str
+    arguments: dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class ToolErrorAction:
+    """Record a rejected model call without dispatching any tool."""
+
+    call_id: str
+    tool_name: str
+    code: str
+    message: str
 
 
 @dataclass(frozen=True, slots=True)
 class ModelCallAction:
     call_id: str
     request: dict[str, Any]
+    context_audit: dict[str, Any] | None = None
 
 
 AgentAction = (
@@ -208,6 +229,8 @@ AgentAction = (
     | StatusAction
     | InteractionAction
     | ToolCallAction
+    | ToolErrorAction
+    | DeferredToolAction
     | ModelCallAction
 )
 

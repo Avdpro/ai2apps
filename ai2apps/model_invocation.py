@@ -211,6 +211,32 @@ class ModelInvocationService:
             "session_id": None if context is None else context.session_id,
         }
 
+    async def invoke_agent_cloud_json(
+        self, payload: Mapping[str, Any], *, context: ModelInvocationContext
+    ) -> dict[str, Any]:
+        """Invoke a durable Agent's Cloud model under its current Session owner."""
+        from ai2apps.cloud_gateway import proxy_cloud_chat_completion
+        from omlx.api.openai_models import ChatCompletionRequest
+
+        principal = IdentityRepository(self.runtime.database).principal_for(context.actor_user_id)
+        if (principal.installation_id != context.installation_id or
+                principal.membership_epoch != context.membership_epoch):
+            raise IdentityBindingError("Agent Session identity changed")
+        request = ChatCompletionRequest.model_validate({**payload, "stream": False})
+        response = await proxy_cloud_chat_completion(
+            request,
+            base_path=self.runtime.config.paths.base_path,
+            model_manager=self.runtime.model_manager,
+            cloud_client=self.runtime.cloud,
+            authorization_headers=self.runtime.cloud_ai_authorization_headers(principal),
+        )
+        if response.status_code >= 400:
+            raise ModelInvocationError("agent_cloud_model_failed", f"Cloud model returned HTTP {response.status_code}")
+        result = json.loads(response.body)
+        if not isinstance(result, dict):
+            raise ModelInvocationError("agent_cloud_model_invalid", "Cloud model returned invalid JSON")
+        return result
+
     async def invoke_interactive_json(
         self,
         model_id: str,

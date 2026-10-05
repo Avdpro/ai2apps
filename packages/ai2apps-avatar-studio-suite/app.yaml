@@ -1,34 +1,108 @@
 schema: ai2apps.app/v1
 id: ai2apps.avatar-studio-suite
 name: Avatar Studio Suite
-version: 0.1.2
+version: 0.1.3
 description: Create talking portrait videos locally.
-publisher: {id: ai2apps}
-instances: {mode: singleton, scope: user}
-entry: {kind: sandbox, resource: web/index.html}
-navigation: {launcher: false}
+publisher:
+  id: ai2apps
+instances:
+  mode: singleton
+  scope: user
+entry:
+  kind: sandbox
+  resource: web/index.html
+navigation:
+  launcher: false
 localizations:
-  zh-CN: {name: 数字人工作室套件, description: 在本地将人像和音频生成数字人视频。}
+  en:
+    name: Avatar Studio Suite
+    description: Open Talking Portrait in Video Studio.
+  zh-CN:
+    name: 数字人工作室套件
+    description: 请在视频工坊中打开照片说话。
+  zh-TW:
+    name: 數位人工作室套件
+    description: 請在影片工作室中開啟照片說話。
+  ja:
+    name: アバタースタジオ
+    description: 動画スタジオで「写真を話させる」を開いてください。
+  ko:
+    name: 아바타 스튜디오
+    description: 비디오 스튜디오에서 말하는 사진을 여세요.
+  fr:
+    name: Studio d’avatars
+    description: Ouvrez Portrait parlant dans Video Studio.
+  es:
+    name: Estudio de avatares
+    description: Abre Retrato parlante en Video Studio.
+  pt-BR:
+    name: Estúdio de avatares
+    description: Abra Retrato falante no Video Studio.
+  ru:
+    name: Студия аватаров
+    description: Откройте «Говорящий портрет» в Video Studio.
 mini_apps:
-  - schema: ai2apps.mini-app/v1
-    id: ai2apps.avatar.photo-speaking
-    name: Talking Portrait
-    version: 0.1.2
-    kind: clip
-    icon: user-round
-    description: Animate a portrait with speech using a compatible local avatar model.
-    catalog: {categories: [video]}
-    entry: {kind: sandbox, resource: web/photo-speaking.html, placements: [inline, sidebar]}
+- schema: ai2apps.mini-app/v1
+  id: ai2apps.avatar.photo-speaking
+  name: Talking Portrait
+  version: 0.1.3
+  kind: clip
+  icon: user-round
+  description: Animate a portrait with speech using a compatible local avatar model.
+  catalog:
+    categories:
+    - video
+  entry:
+    kind: sandbox
+    resource: web/photo-speaking.html
     placements:
-      - {studio: ai2apps.video-studio, category: avatar, order: 60}
-    inputs:
-      - {id: reference_image, kind: image, required: true}
-      - {id: driving_audio, kind: audio, required: true}
-    outputs:
-      - {id: video, kind: video, final: true}
-    executor: {operation: video_generation}
-    requirements: {capabilities: [video.avatar_generation]}
-    localizations:
-      zh-CN:
-        name: 照片说话
-        description: 选择本地数字人模型，将人像和音频生成视频。
+    - inline
+    - sidebar
+  placements:
+  - studio: ai2apps.video-studio
+    category: avatar
+    order: 60
+  inputs:
+  - id: reference_image
+    kind: image
+    required: true
+  - id: driving_audio
+    kind: audio
+    required: true
+  outputs:
+  - id: video
+    kind: video
+    final: true
+  executor:
+    operation: video_generation
+  requirements:
+    capabilities:
+    - video.avatar_generation
+  localizations:
+    en:
+      name: Talking Portrait
+      description: Choose a portrait and audio to begin.
+    zh-CN:
+      name: 照片说话
+      description: 选择人像和音频开始生成。
+    zh-TW:
+      name: 照片說話
+      description: 選擇人像與音訊以開始生成。
+    ja:
+      name: 写真を話させる
+      description: 人物画像と音声を選択してください。
+    ko:
+      name: 말하는 사진
+      description: 인물 이미지와 오디오를 선택하세요.
+    fr:
+      name: Portrait parlant
+      description: Choisissez un portrait et un audio.
+    es:
+      name: Retrato parlante
+      description: Elige un retrato y un audio.
+    pt-BR:
+      name: Retrato falante
+      description: Escolha um retrato e um áudio.
+    ru:
+      name: Говорящий портрет
+      description: Выберите портрет и аудио.

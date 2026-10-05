@@ -1,0 +1,48 @@
+{
+  "date": "2026-10-05",
+  "upstream_commit": "5badb15009ae1756c3afe0ae0cef1faafc290ccc",
+  "host_base_commit": "fa377dcb62875d5c82fc8177afd4277cd2357db9",
+  "code_state": "uncommitted source snapshot",
+  "isolation": "Python -I standalone policy import; temporary SQLite runtimes and simulated providers; no live instance data",
+  "test_runs": [
+    {
+      "command": ".venv/bin/pytest -q tests/test_ai2apps_tool_recovery.py tests/test_ai2apps_harness_reliability.py tests/test_ai2apps_agents.py tests/test_ai2apps_services.py tests/test_ai2apps_secrets.py tests/test_ai2apps_session_memory.py",
+      "passed": 101,
+      "seconds": 190.45
+    },
+    {
+      "command": ".venv/bin/pytest -q tests/test_ai2apps_tool_recovery.py tests/test_ai2apps_agent_control_tools.py tests/test_ai2apps_context_checkpoints.py",
+      "passed": 40,
+      "seconds": 76.27
+    }
+  ],
+  "unique_tests_passed": 117,
+  "checks": [
+    "scoped Ruff",
+    "Python compileall",
+    "scoped git diff --check",
+    "standalone standard-library policy safety checks"
+  ],
+  "new_tool_recovery_tests": 25,
+  "real_model_verified": false,
+  "full_upstream_parity_verified": false,
+  "instances_refreshed_this_turn": false,
+  "production_published": false,
+  "known_limits": [
+    "Three recoverable errors per run; next failure remains terminal",
+    "Effectful execution failures and control/permission failures retain terminal or uncertain protection",
+    "Only General Agent opts into execution-error continuation by default",
+    "Malformed entire call structures remain terminal",
+    "Sandbox no-Metal-device atexit diagnostic; no GPU benchmark claimed"
+  ],
+  "source_sha256": {
+    "ai2apps/agents/tool_recovery.py": "6dbf929c409e2511a16e4bea1c7793636bb59b338307b25d6a1afd5f2320aa7c",
+    "ai2apps/agents/models.py": "0db84e9b8225eefffef68a2ba2822539487bbcaf0ccac28bc8a3d6bab911aa4a",
+    "ai2apps/agents/general.py": "d595d726d2a4e44ac2773711ed304f8b1527b0b00e8624220adbdcccdaa4218b",
+    "ai2apps/agents/runtime.py": "85a62d0e32631f5f9a4bc649f1364a1574cef5c896ae7c922b89dca16da4c9e0",
+    "ai2apps/agents/session_memory.py": "2e07a5c1768be553fa0a8d60428a8123ff955630a92960d211a5383774aa93e7",
+    "ai2apps/agents/__init__.py": "b5ced8bf177c49d0e2b33191251452c15b2db2d5b152f5d368e0610507643dbc",
+    "ai2apps/services/registry.py": "5a04708f3e37936965156e6d9824d253fd0604f11d2a4d4e2c520efbb9154c1b",
+    "tests/test_ai2apps_tool_recovery.py": "e4dcb37a4e47138dfd57fe9e69f4248364dc047e8d494828b762baa0e0d75bdf"
+  }
+}

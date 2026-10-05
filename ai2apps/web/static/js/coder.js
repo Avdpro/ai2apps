@@ -12,6 +12,7 @@
     const meta = app.querySelector('[data-current-meta]');
     const status = app.querySelector('[data-status]');
     const sidebarToggle = app.querySelector('[data-action="toggle-sidebar"]');
+    const nativeButton = app.querySelector('[data-action="native-agent"]');
     const filesButton = app.querySelector('[data-action="files"]');
     const deleteEntryButton = app.querySelector('[data-action="delete-entry"]');
     const validateButton = app.querySelector('[data-action="validate"]');
@@ -331,7 +332,15 @@
         }
     }
 
+    nativeButton.addEventListener('click', function () {
+        const project = activeProject();
+        if (project?.kind === 'ai2apps' && window.AI2AppsNativeCoder) {
+            window.AI2AppsNativeCoder.open({ project, models: ai2appsModels, onApplied: load });
+        }
+    });
+
     function render() {
+        nativeButton.disabled = activeProject()?.kind !== 'ai2apps';
         tree.innerHTML = projects.map(function (project) {
             const children = threads.filter(function (thread) { return thread.project_id === project.id; });
             return '<section class="coder-project"><button class="coder-project-head" data-project-id="' + escapeHtml(project.id) + '">' +

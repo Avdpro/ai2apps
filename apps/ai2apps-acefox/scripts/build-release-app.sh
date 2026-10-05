@@ -243,6 +243,13 @@ if [[ -n ${ACEFOX_SHELL_SOURCE} ]]; then
   rm -rf "${SHELL_OVERLAY_ROOT}"
 fi
 
+/usr/bin/python3 "${SCRIPT_DIR}/apply-screen-recording-shell.py" \
+  --archive "${SHELL_APP}/Contents/Resources/browser/omni.ja"
+/usr/bin/python3 "${SCRIPT_DIR}/apply-shell-navigation.py" \
+  --archive "${SHELL_APP}/Contents/Resources/browser/omni.ja"
+/usr/bin/python3 "${SCRIPT_DIR}/apply-sidebar-refresh.py" \
+  --archive "${SHELL_APP}/Contents/Resources/browser/omni.ja"
+
 mv "${SHELL_APP}/Contents/MacOS/firefox" "${SHELL_APP}/Contents/MacOS/acefox-bin"
 /usr/bin/strings "${SHELL_APP}/Contents/MacOS/acefox-bin" | \
   /usr/bin/grep -Fqx 'AI2APPS_BROWSER_ROLE' || \
@@ -443,6 +450,9 @@ SHELL_INFO=${SHELL_APP}/Contents/Info.plist
   /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string AI2Apps" "${SHELL_INFO}"
 /usr/libexec/PlistBuddy -c "Add :AI2AppsInstanceID string ${INSTANCE_ID}" "${SHELL_INFO}"
 /usr/libexec/PlistBuddy -c "Add :AI2AppsBrowserRole string shell" "${SHELL_INFO}"
+if [[ ${DEVELOPMENT_BUILD} == 1 ]]; then
+  /usr/libexec/PlistBuddy -c "Add :AI2AppsDevelopment bool true" "${SHELL_INFO}"
+fi
 /usr/libexec/PlistBuddy -c "Add :AI2AppsSharedBrowserBundle bool true" "${SHELL_INFO}"
 /usr/libexec/PlistBuddy -c "Add :AI2AppsDisableRemoteServer bool true" "${SHELL_INFO}"
 /usr/libexec/PlistBuddy -c "Add :AI2AppsIconContract string ${ICON_CONTRACT}" "${SHELL_INFO}"

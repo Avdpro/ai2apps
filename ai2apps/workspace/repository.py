@@ -414,32 +414,23 @@ class WorkspaceRepository:
         result = self.write(session_id, path, text)
         return {**result, "replacements_applied": applied}
 
-    def search(self, session_id: str, query: str, *, path: str = ".", limit: int = 100):
-        if not query:
-            raise WorkspaceError("invalid_query", "Search query cannot be empty")
-        root = self._resolve(session_id, path)
-        files = [root] if root.is_file() else sorted(root.rglob("*"))
-        matches = []
-        workspace_root = self._root(session_id).resolve()
-        for file in files:
-            if len(matches) >= limit or not file.is_file() or file.is_symlink():
-                continue
-            try:
-                text = file.read_text("utf-8")
-            except (UnicodeDecodeError, OSError):
-                continue
-            for number, line in enumerate(text.splitlines(), 1):
-                if query.lower() in line.lower():
-                    matches.append(
-                        {
-                            "path": file.relative_to(workspace_root).as_posix(),
-                            "line": number,
-                            "text": line[:500],
-                        }
-                    )
-                    if len(matches) >= limit:
-                        break
-        return {"matches": matches, "truncated": len(matches) >= limit}
+    def search(self, session_id: str, query: str, *, path: str = ".", limit: int = 100,
+               mode: str = "literal", include: str = "*", case_sensitive: bool = False,
+               context_lines: int = 0, include_hidden: bool = False):
+        from .search import scan
+
+        target = self._resolve(session_id, path)
+        return scan(self._root(session_id).resolve(), target, query=query, pattern=include,
+                    mode=mode, case_sensitive=case_sensitive, context_lines=context_lines,
+                    include_hidden=include_hidden, limit=limit)
+
+    def glob(self, session_id: str, pattern: str, *, path: str = ".", limit: int = 100,
+             include_hidden: bool = False):
+        from .search import scan
+
+        target = self._resolve(session_id, path)
+        return scan(self._root(session_id).resolve(), target, pattern=pattern,
+                    include_hidden=include_hidden, limit=limit)
 
     def import_bytes(
         self,

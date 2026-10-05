@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import os
 import platform
+from pathlib import Path
 
 import pytest
 
@@ -400,3 +401,85 @@ async def test_macos_sandbox_allows_own_workspace_and_denies_another_session(tmp
         )
     finally:
         await manager.shutdown()
+
+def test_trusted_runtime_paths_are_read_only_in_sandbox_policy(tmp_path):
+    managed = tmp_path / "managed-python"
+    managed.mkdir()
+    root, temporary = tmp_path / "workspace", tmp_path / "temporary"
+    root.mkdir()
+    temporary.mkdir()
+    adapter = MacOSSandboxAdapter(trusted_runtime_roots=(managed,))
+    if os.path.isfile("/usr/bin/sandbox-exec"):
+        adapter.wrap(("/bin/echo", "ok"), root, temporary, root, network_enabled=False)
+        policy = (root.parent / "policy/process.sb").read_text()
+        assert f'(allow file-read* (subpath "{managed}"))' in policy
+        assert f'(allow file-write* (subpath "{managed}"))' not in policy
+    linux = LinuxBubblewrapAdapter("/usr/bin/true", trusted_runtime_roots=(managed,))
+    launch = linux.wrap(
+        ("/bin/echo", "ok"), root, temporary, root, network_enabled=False
+    )
+    assert ("--ro-bind", str(managed), str(managed)) in tuple(
+        zip(launch.argv, launch.argv[1:], launch.argv[2:])
+    )
+    assert "--unshare-net" in launch.argv
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(
+    platform.system() != "Darwin", reason="macOS production confinement"
+)
+async def test_managed_python_runs_without_reading_original_project(tmp_path):
+    import sys
+
+    runtime = _runtime(tmp_path)
+    session = _session(runtime, "Managed Python")
+    runtime.workspace.write(session, "own.txt", "own")
+    foreign = tmp_path / "outside-original.txt"
+    foreign.write_text("private fixture")
+    manager = ProcessManager(
+        runtime.database,
+        runtime.events,
+        runtime.workspace,
+        trusted_runtime_roots=(Path(sys.prefix), Path(sys.base_prefix)),
+    )
+    await manager.startup()
+    try:
+        own = await manager.start(
+            session_id=session,
+            run_id=None,
+            caller_id="test",
+            argv=[
+                sys.executable,
+                "-I",
+                "-c",
+                "from pathlib import Path; assert Path('own.txt').read_text() == 'own'",
+            ],
+        )
+        completed = await _terminal(manager, own.id, session)
+        logs = "".join(
+            item.content
+            for item in manager.logs(own.id, session_id=session, run_id=None)
+        )
+        if "sandbox_apply: Operation not permitted" in logs:
+            pytest.skip("Nested Seatbelt is unavailable in this execution environment")
+        assert completed.status is ProcessStatus.EXITED and completed.exit_code == 0, (
+            logs
+        )
+        denied = await manager.start(
+            session_id=session,
+            run_id=None,
+            caller_id="test",
+            argv=[
+                sys.executable,
+                "-I",
+                "-c",
+                "from pathlib import Path; Path("
+                + repr(str(foreign))
+                + ").read_text()",
+            ],
+        )
+        completed = await _terminal(manager, denied.id, session)
+        assert completed.exit_code != 0
+    finally:
+        await manager.shutdown()
+        runtime.stop()

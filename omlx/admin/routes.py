@@ -115,6 +115,7 @@ def _sandbox_app_resource_csp(origin: str, *, development: bool) -> str:
         f"script-src {origin} 'unsafe-inline'; "
         f"style-src {origin} 'unsafe-inline'; "
         f"img-src {origin} data: blob:; font-src {origin}; "
+        "media-src blob:; "
         f"connect-src {connect_src}; form-action 'none'; base-uri 'none'"
     )
 
@@ -1348,6 +1349,7 @@ _SYSTEM_APP_MANIFESTS_BY_ID = {
     manifest["id"]: manifest for manifest in SYSTEM_APP_MANIFESTS
 }
 _DASHBOARD_APP_TABS = {
+    "ai2apps.todo": "todo",
     "ai2apps.dashboard": "status",
     "ai2apps.account": "account",
     "ai2apps.ai-browser": "ai-browser",
@@ -1370,6 +1372,7 @@ _DASHBOARD_APP_TABS = {
     "ai2apps.benchmark": "bench",
 }
 _DASHBOARD_APP_TEMPLATES = {
+    "ai2apps.todo": "system_apps/todo.html",
     "ai2apps.dashboard": "system_apps/dashboard.html",
     "ai2apps.account": "system_apps/account.html",
     "ai2apps.ai-browser": "system_apps/ai_browser.html",
@@ -1395,6 +1398,7 @@ _LEGACY_DASHBOARD_TAB_APPS = {
     tab: app_id for app_id, tab in _DASHBOARD_APP_TABS.items()
 }
 _HOST_APP_ENTRIES = {
+    "ai2apps:system/todo": "/admin/app-content/ai2apps.todo",
     "ai2apps:system/dashboard": "/admin/app-content/ai2apps.dashboard",
     "ai2apps:system/account": "/admin/app-content/ai2apps.account",
     "ai2apps:system/ai-browser": "/admin/app-content/ai2apps.ai-browser",
@@ -2546,6 +2550,7 @@ async def shell_ui_locale(
         "agent": "browser.sidebar.agent",
         "gallery": "browser.sidebar.gallery",
         "refresh": "browser.sidebar.refresh",
+        **{key: "browser.sidebar." + key for key in ("menu", "deleteData", "deleteDataConfirm", "deleteDataSuccess", "deleteDataFailed")},
         "currentPage": "browser.sidebar.current_page",
         "readingContext": "browser.sidebar.reading_context",
     }

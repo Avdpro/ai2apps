@@ -1,0 +1,17 @@
+{
+  "upstream_commit": "5badb15009ae1756c3afe0ae0cef1faafc290ccc",
+  "engine": "deepseek-context-python/1",
+  "environment": "fresh venv, Python -I, stdlib only",
+  "ai2apps_imported": false,
+  "result": "passed",
+  "tests": 35,
+  "source_sha256": {
+    "ai2apps/context_engine/pruning.py": "c65b4e8187fbc7f776b3fb8dd194c4b890cf3c1e228a46f6cdea4ed947f377fe",
+    "ai2apps/context_engine/images.py": "bcb8cc686c9e89b3478a572b6e534bc633af1e8bb65006dd270e93276bcc8dab",
+    "ai2apps/context_engine/core.py": "b840698185b1f1139e356407059b60bc8eca9207a4381d65534ce22c3f86b248",
+    "ai2apps/context_engine/__init__.py": "748d37acf0fae3b824cbae3b46a881b7568ffd1a7ad9ea1db9da238d719e1c7a",
+    "ai2apps/context_engine/DEEPSEEK-LICENSE.txt": "ebb4f09972aee8608be255debaf78451a68e95c290f55c240dec2ecfa16ea6be",
+    "tests/context_engine_isolated/test_engine.py": "c48a6ab60641e89929216ee6f4edf27ec11f1fab0615f13eebe52533ba1fdabd"
+  },
+  "scope": "Translated behavioral cases; not the complete upstream Vitest suite or real-model validation"
+}

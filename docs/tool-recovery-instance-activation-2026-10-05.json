@@ -1,0 +1,140 @@
+{
+  "date": "2026-10-05",
+  "feature": "General Agent tool error continuation",
+  "status": "rebuilt_restarted_and_verified",
+  "accepted_source_unchanged": {
+    "ai2apps/agents/tool_recovery.py": true,
+    "ai2apps/agents/models.py": true,
+    "ai2apps/agents/general.py": true,
+    "ai2apps/agents/runtime.py": true,
+    "ai2apps/agents/session_memory.py": true,
+    "ai2apps/agents/__init__.py": true,
+    "ai2apps/services/registry.py": true,
+    "tests/test_ai2apps_tool_recovery.py": true
+  },
+  "instances": {
+    "dev": {
+      "pid": 48843,
+      "port": 55358,
+      "started_at": "2026-10-04T20:14:13.768062Z",
+      "health": "healthy",
+      "memory_api_present": true,
+      "memory_tools": [
+        [
+          "agent.read_context_checkpoint",
+          1
+        ],
+        [
+          "agent.read_session_memory",
+          1
+        ]
+      ],
+      "identity": {
+        "CFBundleIdentifier": "com.ai2apps.desktop.dev",
+        "AI2AppsInstanceID": "dev",
+        "AI2AppsDevelopment": true,
+        "AI2AppsRuntimeProfile": null,
+        "AI2AppsDevelopmentSourceRoot": "/Users/avdpropang/sdk/omlx-moe-cache",
+        "AI2AppsUpdateManifestURL": null
+      }
+    },
+    "app-dev": {
+      "pid": 62202,
+      "port": 55610,
+      "started_at": "2026-10-04T20:15:35.992660Z",
+      "health": "healthy",
+      "memory_api_present": true,
+      "memory_tools": [
+        [
+          "agent.read_context_checkpoint",
+          1
+        ],
+        [
+          "agent.read_session_memory",
+          1
+        ]
+      ],
+      "identity": {
+        "CFBundleIdentifier": "com.ai2apps.desktop.appdev",
+        "AI2AppsInstanceID": "app-dev",
+        "AI2AppsDevelopment": true,
+        "AI2AppsRuntimeProfile": "cloud",
+        "AI2AppsDevelopmentSourceRoot": "/Users/avdpropang/sdk/omlx-moe-cache",
+        "AI2AppsUpdateManifestURL": null
+      },
+      "embedded_source_matches": {
+        "ai2apps/agents/tool_recovery.py": true,
+        "ai2apps/agents/models.py": true,
+        "ai2apps/agents/general.py": true,
+        "ai2apps/agents/runtime.py": true,
+        "ai2apps/agents/session_memory.py": true,
+        "ai2apps/agents/__init__.py": true,
+        "ai2apps/services/registry.py": true
+      }
+    },
+    "test": {
+      "pid": 79913,
+      "port": 55979,
+      "started_at": "2026-10-04T20:17:24.831375Z",
+      "health": "healthy",
+      "memory_api_present": true,
+      "memory_tools": [
+        [
+          "agent.read_context_checkpoint",
+          1
+        ],
+        [
+          "agent.read_session_memory",
+          1
+        ]
+      ],
+      "identity": {
+        "CFBundleIdentifier": "com.ai2apps.desktop.test",
+        "AI2AppsInstanceID": "test",
+        "AI2AppsDevelopment": null,
+        "AI2AppsRuntimeProfile": "cloud",
+        "AI2AppsDevelopmentSourceRoot": null,
+        "AI2AppsUpdateManifestURL": "https://coder.ai2apps.com/updates/stable.json"
+      },
+      "embedded_source_matches": {
+        "ai2apps/agents/tool_recovery.py": true,
+        "ai2apps/agents/models.py": true,
+        "ai2apps/agents/general.py": true,
+        "ai2apps/agents/runtime.py": true,
+        "ai2apps/agents/session_memory.py": true,
+        "ai2apps/agents/__init__.py": true,
+        "ai2apps/services/registry.py": true
+      }
+    }
+  },
+  "codesign_deep_strict": {
+    "dev": "passed",
+    "app-dev": "passed",
+    "test": "passed"
+  },
+  "verify_release_app": {
+    "dev": "not applicable: lightweight source development bundle",
+    "app-dev": "passed",
+    "test": "passed"
+  },
+  "app_dev_native_title": "AI2Apps-App-Dev: App-Dev 127.0.0.1:55610",
+  "instance_state_preserved": true,
+  "real_model_tool_failure_recovery_tested": false,
+  "production_published": false,
+  "archives": {
+    "dev": [
+      "/Users/avdpropang/sdk/omlx-moe-cache/apps/ai2apps-acefox/.build/archive/AI2Apps-dev-20261005-041335.app"
+    ],
+    "app-dev": [
+      "/Users/avdpropang/sdk/omlx-moe-cache/apps/ai2apps-acefox/.build/archive/AI2Apps-app-dev-20261005-041506.app"
+    ],
+    "test": [
+      "/Users/avdpropang/sdk/omlx-moe-cache/apps/ai2apps-acefox/.build/archive/AI2Apps-test-20261005-041644.app"
+    ]
+  },
+  "build_logs": {
+    "dev": "/tmp/ai2apps-tool-recovery-build-dev.log",
+    "app-dev": "/tmp/ai2apps-tool-recovery-build-app-dev.log",
+    "test": "/tmp/ai2apps-tool-recovery-build-test.log"
+  }
+}

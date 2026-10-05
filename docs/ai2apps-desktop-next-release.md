@@ -1,13 +1,314 @@
 # AI2Apps Desktop 下一版 Release 台账
 
+### NXR-RELEASE-015-2258-20261005：Desktop 0.1.4 Build 2258
+
+- 状态：`release_building`。生产匿名基线为 0.1.3 / Build 2257，rollout 100%；本次从最新
+  `origin/main` 建立独立 clean worktree，产品版本提升到 0.1.4，Build 严格递增到 2258。
+- 拟纳入：Todo 项目树、调度、Codex/Terminal 联动和导入导出；General Agent 长任务上下文、
+  会话记忆、工具失败恢复、计划/提问/结果回读和循环保护；原生 App/Mini-App 开发 Harness、
+  Coding sub-Agent、Agent 附件与 Gallery Picker；Agent/BiDi/Sidebar 恢复与刷新；Helper 启动
+  导航和全实例录屏准备；Imagine Portrait 主题；Audiobook 编辑/选段修复；Studio Package
+  多语言以及 Avatar 录音/预览 Host 桥接。
+- 明确延期：H3 1024/1280 分辨率、仍在进行的视频放大后续工作、Encore/AVTR-1/MuseTalk/
+  InfiniteTalk/Ex-Omni 实验源码与个人参考音频。延期内容不得进入 Release commit 或制品。
+- 发布门禁：完成 Python/Node/Swift、Ruff、JavaScript 语法和 diff 检查；核对正式 AceFox
+  快照；Developer ID 签名、Apple 公证、GitHub/ModelScope 同字节双源以及 Cloud 0%→100%
+  原子发布。最终源码 commit、测试数、摘要、Submission ID 与生产 digest 写入独立回执。
+- 候选验证：完整 Python 分三组运行，合计 `10450 passed, 68 skipped, 74 deselected`；Node、
+  Swift（77 项 Swift Testing + 2 项 XCTest）、限定 Ruff、JavaScript/JSON 语法与
+  `git diff --check` 通过。完整回归暴露并修复两处测试合同漂移（迁移 78/79）及一处
+  SDPA 全局 headroom provider 的测试顺序污染；SDPA 25 项和受影响 3646 项分片最终全绿。
+
 ### NXR-RELEASE-014-2257-20261002：Desktop 0.1.3 Build 2257
 
-- 状态：`released_pending_target_mac`。2026-10-02 已从生产 0.1.2 / Build 2256 先以 0% 原子登记，再使用不变的 `build2257-test` 扩到 100%；最终生产清单摘要为 `13b983e758483c30ebfd0e422ff5fe289e426f06526a2b469704fb610de7861e`。目标 Mac 的发现、断点下载、安装、首次启动和旧备份清理仍待端到端验收。
-- 已纳入：Discover 已安装 Package 升级入口；Runtime 1.8.8 与 SoL 0.1.3 所需的 Host capability/资源调度；Imagine Studio 内置图片 2× 放大；Video Studio 内置视频 2× 放大、长片分段拼合与音轨保留；SAM 2.1/Apple Vision 动态人物蒙版；原生 `ai2apps-person-mask` 工具与 Release 包体/导入路径加固。
-- 明确延期：Encore、AVTR-1、MuseTalk、InfiniteTalk、Ex-Omni 研究代码、parity 测试与个人参考音频均不纳入 Desktop 制品或本次 Release commit。
-- 发布门禁：从最新 `origin/main` 建立独立 clean worktree；修复多个 Package 顶层 `worker_adapter` 的测试模块串线后，重跑 Python/Node/Swift 回归、正式 Release 构建验证、Developer ID 签名、Apple 公证、GitHub/ModelScope 同字节双源及 Cloud 0%→100% 验收。
-- 源码门禁结果：最终完整 Python 为 10437 passed、68 skipped、74 deselected；全部 16 个 Node 测试文件、Swift 77 项 Swift Testing + 2 项 XCTest、限定 Ruff 和 `git diff --check` 通过。
-- 发布门禁结果：源码提交 `f7dacc9c06550ac2bbba85d849ffe819aa88f243` 已推送 `main`；Developer ID、公证/staple/Gatekeeper、GitHub/ModelScope 同字节双源、Cloud 双源预检和 0%→100% 两阶段生产验收均通过。Apple submission 为 `6efb70b8-d9fa-4562-bdca-6803941e1621`，ModelScope immutable revision 为 `26d04b3dd2b107446a2a05603b3cffe49cc02b49`。正式回执：`docs/ai2apps-desktop-0.1.3-build2257-release-2026-10-02.md`。
+- 状态：`released_pending_target_mac`。2026-10-02 已从生产 0.1.2 / Build 2256 先以 0% 原子
+  登记，再使用不变的 `build2257-test` 扩到 100%；最终生产清单摘要为
+  `13b983e758483c30ebfd0e422ff5fe289e426f06526a2b469704fb610de7861e`。
+- 正式源码提交 `f7dacc9c06550ac2bbba85d849ffe819aa88f243`；Apple submission
+  `6efb70b8-d9fa-4562-bdca-6803941e1621`；ModelScope immutable revision
+  `26d04b3dd2b107446a2a05603b3cffe49cc02b49`。回执：
+  `docs/ai2apps-desktop-0.1.3-build2257-release-2026-10-02.md`。
+
+### NXR-MEDIA-VOICE-I18N-20261005：音视频扩展 Package 多语言
+
+- 状态：`package_published_host_pending`。`ai2apps/media-voice-studio-suite` 0.2.1 已发布；音视频语音工作室 Suite 的 Package、六个 Mini-App 名称/描述及页面动态 UI 已补齐中英文，英文为回退；用户字幕、角色名、文件名和模型名不被翻译。
+- Studio 共用 mount 客户端统一解析 Package Mini-App `localizations`，将当前 Host locale 写入受约束 mount context 与 Entry URL；Voice、Video、Imagine Studio 均采用同一解析入口。旧 Package 没有本地化字段时仍使用原有 name/description，不改变安装、能力或输出合同。
+- 开发手册明确区分 Package、Provider App 与每个 `mini_apps[]` 的本地化名称，给出 manifest 示例、locale 回退、动态 UI/accessible name 要求和 App-Dev 中英文真实 mount 验收步骤；localized metadata 与 Studio 设计清单同步。
+- Package 发布：0.2.1，submission `af5ec328-6bab-4d5a-a07f-9a38efb3d381`，review `ea7892c9-cb0a-4220-98cb-4979b242071f`，Repository metadata version 247；artifact SHA-256 `c502c05dac2b1c7ef454a202e0f6937186b21c6c229a792599adc9dbda77771b`，49980 bytes。无 Runtime/模型依赖变化；小型 Package 继续使用 Cloud 单源。发布回执：`docs/ai2apps-media-voice-studio-suite-0.2.1-release.md`。
+- 发布边界：Package 已发布；Desktop Host 静态客户端仍须纳入下一 Desktop 候选，当前 Package 发布不等于 Host 已投产。App-Dev 源挂载可继续刷新验收，尚未构建或发布正式 Desktop。
+- 验证：Package i18n/字幕编辑 Node 测试、148 项相关 Package/Host/Sandbox/能力与工作流 Python 测试、Ruff、JavaScript 语法、可复现 Contract 构建、精确签名包隔离安装及六 Mini-App 发现均通过；公网无 Cookie 回读确认 artifact 与 envelope 精确一致。较宽 extensions 回归中的两项既有 Todo 清单断言失败，与本改动无关。
+
+### NXR-AUDIOBOOK-EDIT-SAVE-RACE-20261005：片段重生成使用最新编辑文本
+
+- 状态：`implemented_and_tested`；未发布。
+- 同一项目/片段的保存按编辑顺序串行提交，旧保存响应不得覆盖等待期间的新编辑；再次生成等待本次文本保存完成。
+- 增加旧保存未返回时修改文本并立即重新生成的前端回归场景。仅修改宿主静态 JS，刷新 Shell 即可载入；无需 Runtime 或 Suite Package 更新。
+- 验证：`node tests/test_ai2apps_readaloud_scope.cjs`、JS 语法检查、`tests/test_ai2apps_readaloud_tasks.py` 16 项及 scoped diff check 通过。未使用真实模型重跑用户片段；Python 退出时有沙箱 Metal 设备不可用提示，测试本身全部通过。
+
+
+### NXR-SHELL-STARTUP-NAVIGATION-20261005：区分刷新与 Helper 重启导航
+
+- 状态：`implemented_and_tested`。普通刷新保持当前 Shell URL/App；Helper 菜单重启 Local 和 Helper 自身启动产生新 Home epoch，进入 Home。Runtime/API 自动重启不产生 Home epoch，保留 ACPF 恢复。
+- Shell 仅在原生重连明确标记 resume 时查询 ACPF 自动返回，忽略历史 failed/cancelled/unsupported 会话，并防止异步恢复覆盖用户新导航。不删除历史会话，不把失败记录清理伪装成修复。
+- Helper main.swift、ai2apps/web/static/js/shell.js、公共 apply-shell-navigation.py 及 Dev/Release 构建入口统一实现。Dev/App-Dev 已通过各自固定脚本重建并启动，保留实例数据；两个包深层严格签名通过，App-Dev 完整 verify-release-app.sh 通过。Test/Release 下次构建自动包含，未发布生产。
+- 验证：tests/shell_startup_navigation.test.cjs 的 12 个行为场景通过，Swift Helper 编译、JS 语法和 scoped diff check 通过。现有 Shell Python 套件 110 passed、4 failed：三处已有 Todo 清单断言未更新，一处 Discover 旧模板断言，不属于本次导航改动。
+- Dev 实机：首次启动 Home；Todo 页面 Cmd+R 后仍为 /apps/ai2apps.todo；仅重启 Helper 后同一 Shell、同一 Local 端口返回 / Home，确认 epoch 检测与重定向 fragment 消费。托盘菜单 Computer Use 读取超时，菜单分支通过源码及行为测试验收，未宣称真实菜单点击；Runtime 安装恢复使用模拟会话测试，未实际安装模型。
+- 追加安装链路复核：Runtime/ACPF 的 /client/restart-local → Helper local.restart 不写 Home epoch；Local 先启动 Package Manager 激活 Runtime，再 provisioning.startup 按新的 runtimeEpoch 恢复原持久会话。新增真实编排器跨 epoch 测试覆盖 Discover 与 Video Studio 从 awaiting_restart 到 provider/checkpoint/verify/ready，安装 I/O 使用替身；返回意图保持不变，同 epoch 不重复执行。
+- 补齐旧 Discover registry_install_continuations 的 Shell 返回入口：仅 resume 重连且无可返回 ACPF 会话时读取 /packages/install-continuation 并打开 Discover，由 Discover 原有流程消费记录；Home/普通刷新不读取或删除续接记录。新增 awaiting_restart、旧续接和异步导航竞争回归。
+- 追加验收：ACPF、Registry、Inference Runtime Python 三套共 111 passed；Shell 导航、Discover 升级与下载进度 JS 共 19 passed（初次 JS 从子目录运行导致相对路径错误，改从仓库根目录全部通过）。未下载/安装真实 Runtime 或模型；本次补充只改热挂载 Shell JS 与测试，无需重建 Dev/App-Dev，页面刷新后采用。
+
+### NXR-MEMORY-INSTANCES-ACTIVATION-20261005：记忆系统开发实例启用
+
+- 状态：`activated_and_verified`。按用户授权通过三个固定入口重建并启动 Dev、App-Dev、Test；旧 App 分别归档在 .build/archive，独立实例数据未重置/复制。Dev 使用仓库 .venv 开发入口，App-Dev/Test cloud Runtime 内嵌关键记忆/omlx 文件与当前源码逐字节一致；Test 非 Development、无 source-root；App-Dev Development/source-root 和禁用更新合同保持正确。
+- 三包严格深度签名通过，App-Dev/Test 完整 verify-release-app.sh 通过。实际 Local：Dev 127.0.0.1:63452/PID 22343，App-Dev 127.0.0.1:63634/PID 22662，Test 127.0.0.1:63982/PID 40313，均 healthy；实际 OpenAPI 含 memory/compact，运行数据库中新 memory/checkpoint reader 均 enabled。
+- App-Dev 原生标题由 Computer Use 确认为 AI2Apps-App-Dev: App-Dev 127.0.0.1:63634；Test Shell 已启动，当前为登录页。未代登录、未读取 Cookie、未复制认证状态。仅验收 General Agent 模块/API 已加载，不冒充真实模型长任务压缩验收；未发布生产。回执 docs/context-memory-instance-activation-2026-10-05.json。
+
+### NXR-HARNESS-SESSION-MEMORY-20261005：跨 Run 对话记忆
+
+- 状态：`implemented_and_tested`，真实模型/应用实机验收未完成。新增 SessionMemory 投影与 started/committed/ended 日志，原子来源 CAS、并发锁/终止 owner 恢复、跨 Run 复用、用户原文侧记录、同 Session 来源 reader、手动维护 Run 和完整旧 Run 工具证据。启用 reader 后取消 200/1000 条静默截断；原始记录保留。
+- 独立图投影和旧 Run 大工具结果裁剪先隔离验收后接入；大结果持久投影为可回读 head/tail/hash，原文及工具配对保留，回读不重复裁剪，摘要中断可以重新开始。图投影：超限可明确省略最旧非 pinned 输入图，持久来源/part index/hash，当前输入与 assistant 图不省略。Session 摘要复用原 system/消息/tool schema 前缀；摘要 tool-call/截断/无缩减拒绝提交。最多 8 次尝试、同来源无进展停止；维护 Run 一次提交完成，无任务回答。
+- 本地文本模型实际 tokenizer/template/schema 计量通过 Runtime 注入，记录实际路由/窗口/输出预留；未指定 max_tokens 时实际请求采用 min(2048, capacity/4, serving default)。远程/多模态/custom extractor 明确回退字节；摘要选区仍采用字节预算，不夸大统一 token-meter 完成度。仅已确认 provider context overflow 恢复一次，摘要超限及无进展明确失败，业务工具不重放。
+- 验证：独立 35 项、宿主 78 个不同用例通过，Ruff scoped 与 compile/scoped diff check 通过。宿主覆盖完整 Agent 回归、checkpoint/adapter、来源 reader/control/reliability、Session memory 12、serving meter seam 2；seam 用 fake engine 抽取生产函数，不是实际模型测试。初版变量名/手动重复压缩缺陷已修复，旧问答/纠错测试调整等待窗口后通过，未削弱成功条件。Metal 沙箱 atexit 提示不作为 GPU 验证。
+- 生效：未重启/构建/发布。omlx/server.py 属于 embedded Runtime，需使用固定 build-app-dev-environment.sh 重建 App-Dev 才采用；真实模型长任务、性能/缓存命中和实机故障验收仍待完成。详见 docs/ai2apps-context-engine-python-port.md。
+
+### NXR-HARNESS-CONTEXT-PYTHON-PORT-20261005：独立上下文引擎 Python 移植
+
+- 状态：`core_implemented_and_integrated`，整体移植仍在阶段性实施。新增 `ai2apps/context_engine` 独立标准库核心，固定参考 DeepSeek 5badb150，保留 MIT 来源/许可证。核心以不可变 Surface/Route、Meter、Summarizer、Store 为边界，提供压力/保留预算、精确路由策略选择、工具配对、选区/替换校验、异步事务取消与有界超限恢复；不导入 AI2Apps/MLX/数据库/模型 SDK。
+- 先隔离验收：`scripts/test_context_engine_isolated.py` 复制核心和测试到新临时目录，创建无 system-site-packages 的 venv，以 `-I` 运行并断言未导入 AI2Apps。31 项通过，之后才通过独立宿主桥接接入现有检查点的选区和缩减验证；业务工具无对接修改。宿主计量仍为明确字节回退，审计 token_count_exact=false。
+- 验证：独立 31 项、宿主相关 29 项通过（共 60 个不同用例）；宿主桥接原低压力 fixture 使用 5000 字节请求配 13000 字节数据而失败，修正为一致数据后通过，未放宽生产判定。Ruff 和 scoped diff check 通过。回执含测试数量/核心 SHA-256：`docs/context-engine-isolated-acceptance-2026-10-05.json`。详细合同/源码映射/重跑命令：`docs/ai2apps-context-engine-python-port.md`。
+- 后续接入见 NXR-HARNESS-SESSION-MEMORY-20261005：本地文本 token Meter、跨 Run Session surface、手动维护、宿主已确认 overflow 恢复、图投影与 Session 摘要前缀复用已实现。仍待完整上游逐项差异/真实模型长任务与性能验收；未知/远程/多模态计量明确回退字节。未重启 App-Dev Local、未构建/发布生产客户端。
+
+### NXR-HARNESS-CHECKPOINT-COVERAGE-20261005：检查点原文与状态覆盖
+
+- 状态：`implemented`。`context-checkpoint/v2` 为被覆盖历史中的用户消息保留有序原文、来源组/消息坐标与哈希；来源清单随摘要请求持久化，宿主元数据记录清单 hash，回放和投影核对覆盖一致性。模型漏写约束不再导致对应原文随压缩消失。原文优先于冲突的派生摘要，后续更正及引用数据边界保留，不自动提取/删除约束。
+- 确定状态：采用摘要后的普通模型请求从 Run/Step/Interaction 与当前计划重建状态块，包括计划版本、工具步骤 ID/状态/错误码、问答原文；审批响应内容不投影，工具完成不等于任务成功。状态随下一次模型请求持久化并记录独立 hash，不依赖摘要回忆。v1 检查点不直接采用，可在既有预算内重新生成 v2。
+- 预算：启用 checkpoint reader 时不再通过旧轮次裁剪回退腾空间；原文、状态和摘要必须一起满足字节上限，超限明确失败。禁用 reader 保留既有模式。未引入全 Session 约束注册表、通用语义遗漏检测或 Artifact/最终验收独立验证；保护范围限于已加载上下文，既有消息条数/1000 条读取边界之前的内容不保证覆盖。
+- 验证：27 个不同相关用例通过（检查点 11、可靠性 6、结果引用 7、控制工具 3）；合跑 26 passed，追加 v1→v2 迁移测试后检查点 11 passed。含摘要故意省略约束仍保留原文、来源清单 hash 不匹配拒绝、计划更新无需重新摘要、问答原文、审批内容排除、字节预算拒绝删历史，以及此前中断恢复/工具不重放。Ruff 与 scoped diff check 通过；沙箱退出有 No Metal atexit 提示，不涉及 GPU 结论。
+- 来源：核对 DeepSeek 固定 5badb150 的 summarizer.ts 与 region.ts，确认其提示模板和区间/来源提交保护；本轮确定性原文侧记录及状态投影是本地设计，不宣称上游已具备完整语义覆盖校验。
+- 未重启 App-Dev Local、未发布；生效需按固定 App-Dev 工作流重启 Local。真实模型长任务效果、实际 token 窗口计量和端到端界面验收仍待完成。
+
+### NXR-HARNESS-CONTEXT-CHECKPOINT-20261004：长任务上下文检查点
+
+- 状态：`implemented`。新增 `context-checkpoint/v1`：字节压力达 75% 后，分批摘要较早文本历史与完整工具轮次；保留 system、当前输入与最近两组原文。摘要走独立持久模型步骤，来源/锚点哈希一致且响应完整、结构/大小/实际缩减校验通过才投影；原消息和步骤不删除，摘要不成为系统指令或权限来源，摘要步骤不参与普通模型决策/最终回答。
+- 新增 `agent.read_context_checkpoint`，当前 Run/Session 内分页读取摘要调用的精确来源 JSON，通过 previous_checkpoint_step_id 回查更早来源；大结果原文继续走既有 reader，回读页不递归裁剪。模型侧过滤 reader 时停用检查点投影；Host 元数据不传给 provider。
+- 上限：每 Run 最多 8 次检查点尝试；摘要请求不超过字节预算 85%，输出请求最多 2048 token，接受文本最多 8192 UTF-8 字节，节省须超过 512 字节。摘要同样消耗 Run 步数、时间和 token 预算。无效摘要不在没有新执行进展时立即循环重试；provider 异常仍按现有可重试 Run 失败处理。
+- 验证：相关 75 个不同用例通过（Agent/Services/stream 52、此前可靠性/结果引用/控制工具 16、新增检查点 7）；覆盖摘要中断重启、已完成工具不重放、恢复后继续最终任务、来源与当前指令变更拒绝、格式/截断/空摘要拒绝、完整工具配对、多轮增量来源、无 reader/多模态回退、来源回读隔离。初版新增集成测试的 echo fixture 输出多余字段被真实 gateway 拒绝，修正 fixture 后通过；未放宽生产 schema。Ruff 与 scoped diff check 通过；沙箱退出有 No Metal atexit 提示，未作 GPU 性能结论。
+- 限制与生效：仍按字节计压，未接准确的路由模型 token 窗口；多模态摘要和真实模型长任务效果/成本验收未完成，结构校验不能证明语义无遗漏。既有消息条数/字节裁剪及预算仍可能停止任务。未重启 App-Dev Local、未构建或发布；Python 生效需按 App-Dev 工作流重启 Local。
+
+### NXR-HARNESS-CONTROL-SEARCH-20261004：提问、Run 计划与搜索增强
+
+- 状态：`implemented`。新增 `agent.ask_user`，沿用持久 Interaction 等待/恢复，支持建议选项及自由回答，恢复后返回配对工具结果，回答不授予权限；新增 `agent.read_plan`/`agent.update_plan`，当前 Run/Session 隔离、版本冲突保护、幂等更新、稳定条目 ID、最多一个进行中项，以事件持久化并在父/子 Run 卡片显示；计划完成不更改 Run 或 Todo 完成状态。
+- 搜索：新增 `workspace.glob`，增强 `workspace.search` 的逐行正则、文件模式、大小写、上下文行和隐藏文件选项；限制单文件/总字节、条目、文件数、深度、时间及正则执行时间，返回不完整原因。扫描不跟随符号链接，保留 Session 工作区边界，无数据库迁移或新依赖。
+- 验证：Agent、Services、Workspace、流式响应、可靠性、大结果及本轮测试共 89 个不同用例通过。合跑 88 passed + 1 旧工具清单断言失败；加入新增 glob 后针对清单及控制工具复测 4 passed。覆盖提问重启恢复、任意文本回答、伪造回答拒绝、计划版本冲突/幂等/跨 Session 拒绝，以及 glob/正则超时/隐藏文件/上下文/扫描上限/符号链接隔离。本轮新增/主要修改文件 Ruff、scoped diff check、Chat Jinja 与中英文 JSON 解析通过；扩展 Ruff 仍报告 workspace/repository.py 和既有 workspace 测试中未涉及的导入排序/分号问题，未扩大范围整理。退出时存在沙箱 No Metal atexit 提示，本轮不涉及 GPU 验证。
+- 生效与发布：尚未重启固定 App-Dev Local；Python 改动需 Local 重启，模板需刷新，无需重建 App。真实模型与界面交互实机验收待完成，未发布 Desktop。
+
+### NXR-HARNESS-RESULT-REFERENCES-20261004：大结果按需回读与循环保护
+
+- 状态：`implemented`。继续对照 DeepSeek 的 spill 与 tool-result pruning，使用现有 RunStep 原文为超过 32 KiB 的 JSON 工具结果提供 2048/1024 字符首尾预览、遗漏统计、SHA-256 和实际回读工具别名；新增 `agent.read_tool_result`，只允许当前 Run/Session 的已完成工具结果分页读取，每页最多 8192 Unicode 字符。仅当回读工具可用时缩减上下文，原始存储与工具配对不变，读取页不递归缩减。新增二至四步工具周期检测，输入和结果相同重复三轮后停止下一轮，参数/结果变化不触发。
+- 验证：Agent、Services、流式响应、第一轮可靠性与本轮测试共 65 个不同用例通过。合跑 64 passed + 1 循环测试等待超时（运行到第 10 个持久步骤）；调整测试等待预算以覆盖真实调度节奏后，本轮 7 项全部通过（18.54 秒），确认只分派六次工具、七次模型后 `repeated_tool_cycle`。Ruff 与 scoped diff check 通过。退出时仅有沙箱 No Metal atexit 提示，无 GPU 效果结论。100030 字节合成原文预览为 3605 字节（减少 96.4%），16000 字节请求预算内可回读中部文字。未重启 App-Dev Local、未发布；真实模型长任务与性能验收仍待完成。
+
+### NXR-ALL-INSTANCES-RECORDING-20261004：全部实例准备录屏
+
+- 状态：`implemented_and_verified`。取代 App-Dev/Test 白名单，所有 Helper 实例（含 Release/default）显示“准备录屏”。目标保持 1600×900 和屏幕左上角，不启动录制。
+- Helper 使用标准 InstanceID 校验；Shell 仅消费自己 run 目录下且 instance_id 与自身一致的命令，保留跨实例隔离。
+- 通用 apply-screen-recording-shell.py 由 Dev 和 Release 公共构建入口统一应用到打包 Shell；App-Dev/Test 继承公共入口，不再单独注入。Release 不启用开发源码 overlay/热挂载。
+- 验证：App-Dev、Test、Dev、default、自定义实例共 10 个命令接受/跨实例拒绝行为场景通过，JS/zsh 语法和 diff check 通过。固定三个构建脚本均成功，三个包统一处理器唯一性及深层签名通过，App-Dev/Test 完整 verify-release-app.sh 通过；App-Dev 固定窗口标题/身份合同正常。
+- 本机 App-Dev、Test、Dev 均已更新并恢复运行，数据保留。Dev 通过同菜单命令实机验证：命令已消费，窗口截图 3200×1800 Retina 像素（1600×900 逻辑尺寸），端口 63799。未以命令测试冒充托盘菜单点击验收。
+- 生产用户在正式 Desktop Release 发布后获得此功能，本次未构建或发布正式 Release 制品。
+
+### NXR-TEST-RECORDING-20261004：Test 准备录屏入口
+
+- 状态：`implemented_and_verified`。Test Helper 增加与 App-Dev 相同的“准备录屏”菜单，窗口为 1600×900 并移至可用屏幕左上角；不直接开始录制。
+- 入口绑定非 Development 的 com.ai2apps.desktop.test/test。Test 构建仅对已打包 Shell 应用实例专属录屏转换，不启用源码热挂载或 Development overlay；命令只接受当前 test 实例，App-Dev 保持原规则，生产及普通 Dev 不增加入口。
+- 文件：Helper main.swift、apply-app-dev-shell-overrides.py、build-release-app.sh。
+- 验证：App-Dev/Test 打包 Shell 转换、Node 行为检查（尺寸、一次性消费、跨实例/生产拒绝）、JS/zsh 语法与 diff check 通过。固定 build-test-app.sh 构建完成，verify-release-app.sh、codesign --verify --deep --strict 通过；test bundle ID、instance ID、cloud Runtime、无 Development 标记均核对。
+- 实机 Test `127.0.0.1:58896` 经重启旧 Shell 后，通过与菜单相同的命令验证：test 命令已消费，Computer Use 窗口截图为 3200×1800 Retina 像素，对应 1600×900 逻辑尺寸。Helper 无窗口辅助功能读取超时，因此未冒充实际点击菜单验收；未触发录制，实例数据保留。
+
+### NXR-HARNESS-RELIABILITY-20261004：长会话与执行恢复
+
+- 状态：`implemented`。基于 DeepSeek Harness 源码对照完善本地 General Agent：按当前输入截止位置读取最近历史、按幂等键定位生成输入、固定委派父输入锚点；硬中断模型步骤保存 cancelled 尝试并释放 action key；默认 512 KiB 请求字节预算仅裁剪完整旧轮次，保护 system、当前输入与本 Run 工具链，超限明确失败；记录请求 hash/字节数/策略版本/Step ID；只读工具 schema 拒绝允许最多三次模型纠正，保持 FAILED 步骤和工具结果配对。沿用宿主身份、权限、SQLite 与副作用不确定处理。尚未实现精确 token 窗口、摘要压缩或工具并发。
+- 验证：Agent/流式响应与初版新增用例 43 passed；最终新增用例/存储/Services 43 passed（共 81 个不同用例）。覆盖 1000 条边界、后续输入隔离、生成输入幂等、委派锚点、硬中断恢复、审计 hash、字节裁剪与纠错上限；Ruff、scoped diff check 通过。扩展存储套件首次因沙箱 MLX/Metal 不可用中止，在本机 Metal 可用环境重跑全部通过。待固定 App-Dev Local 重启及真实长任务实机验收，未发布 Desktop。
+
+### NXR-AGENT-REVIEW-PROGRESS-20261003：流程调整等待与结果提示
+
+- Status: implemented. AI 调整流程时增加覆盖整个 Mini-Entry 侧栏内容的固定等待层、等待圆圈和说明，底层内容 inert 防止重复操作；成功显示新版本和步骤数量变化，失败保留修改意见并展示接口与编译错误详情。结果持续显示到用户关闭，支持中英文及减少动态效果偏好。
+- Validation: JavaScript 语法检查与参数/导航确认回归通过。模板与静态资源更新，无需 Local 重启或 App 重建。原失败请求模型 HTTP 200 但未产生新版，历史日志未留具体校验错误，不推断原因；真实重试已生成有效 v2（5→3 步）。本项未发布 Desktop。
+
+
+### NXR-AGENT-REVIEW-TEST-POSITION-20261003：试运行按钮归入 Review
+
+- Status: implemented. 将“先试运行”从编译 Review 上方移入 Review 卡片内，位于步骤和 Source/IR 查看区域之后、修改意见与审核操作之前。保留现有按钮 ID、可见性逻辑、运行版本和参数提交行为。
+- Validation: HTML 结构检查通过，按钮 ID 唯一、属于 Review、顺序在步骤之后和修改意见之前。仅模板位置调整；当前 Sidebar 刷新后生效，无需 Local 重启或 App 重建。未执行浏览器任务或发布 Desktop。
+
+
+### NXR-AGENT-PARAMETER-VISIBILITY-20261003：探索参数提取遗漏和审核入口
+
+- 状态：`implemented`。参数提取对齐执行器的自然语言引号输入回退；审核页将参数区放在步骤前，空时明确提示并提供从现有步骤提取参数按钮。提取通过 actor 隔离与 revision 校验，重新编译并使旧审核失效，保留已有输入定义和可选状态。待审核 Recipe URL 保存精确 recipe_id，刷新时恢复该记录，不自动挑选其他 Recipe。
+- 中文引号输入编译与提取幂等回归已补齐；Python 参数/平台 23 passed，Node 相关 31 passed，Ruff、JS 语法和 scoped diff 通过。固定 App-Dev Local 已重启，原四步“打开Google，搜索OpenAI” Recipe 经认证提取接口返回 200，生成 query 默认 OpenAI、版本 v2，有效审核页实机显示“参数”“本次运行参数”及 QUERY 输入框。未通过 Review、保存为 Agent 或发布。搜索按键授权也支持已恢复 Recipe 的任务描述。
+
+
+### NXR-AGENT-NAVIGATION-BOUNDARY-20261003：探索导航范围和输入目标修复
+
+- 状态：`implemented`。URL 范围检查改为解析协议、hostname、端口、路径 glob，修复 Google 根地址省略末尾 / 时被 origin/** 拒绝；探索保留已请求或已确认的导航 origin，不随当前页面反复覆盖授权范围。输入步骤解析仅选择可输入控件，避免同名搜索链接/按钮被当成输入目标。搜索输入支持替换原文本及原生 BiDi Enter 提交；单独提交不要求再次提供文本且保留现有查询，搜索回车描述即使被模型标为 click 也执行真实按键。仍检查未授权导航、域名、协议、端口和敏感交互。
+- 文件：`ai2apps/web/static/js/agent_mini.js`、`ai2apps/web/static/js/browser_bidi_client.js`。Node 参数/导航/确认/范围/重连/输入键盘 31 passed，JS 语法与 scoped diff 通过。静态源码修改，只刷新 Sidebar，无需重建或 Local 重启；固定 App-Dev 实测从 Google Images 返回普通 Google 搜索，导航成功，提取 19 条结果并进入有效 Review，无范围限制。追加键盘恢复有定向回归，未声称模型文字即真实提交成功。未保存或发布 Agent。
+
+
+### NXR-AGENT-PARAMETERS-20261003：制作与运行 Agent 的输入参数
+
+- 状态：`implemented`。制作界面新增参数名称、显示名称、类型、默认值、必填及步骤绑定；能力间隔离 Schema，修改参数名同步绑定，已引用参数禁止直接删除。步骤预览/试运行及 Recipe 试运行填写并传递 input，数字/布尔类型保真，缺失参数阻止执行。探索沉淀将成功 input.arguments.value 和已识别搜索引擎 URL 的 q/wd 查询提取为参数，搜索使用 query，保留原值为默认值，目标和站点范围保持固定；参数 Schema 随 Source/IR 和能力提交持久化。补齐中英文。
+- Python 参数与平台回归 21 passed，Node 参数/导航/范围/重连 25 passed，Ruff、JS 语法与 scoped diff 通过。直接搜索 URL 参数化编译有效，URL 插值对查询值编码而保持站点范围。通过固定 app-dev Helper 重启 Local 加载最终实现；实机确认参数编辑、默认值回填、本次运行输入和步骤绑定控件可见，未保存验收草稿或发布 Agent。未发布 Desktop/Package/Cloud。
+
+
+### NXR-AGENT-SEARCH-CONFIRMATION-20261003：普通搜索输入与提交免重复确认
+
+- 状态：`implemented`。此前前端逐动作确认和服务端 submit 关键词误将 Google 搜索输入当成提交操作。用户任务明确要求搜索时，在 Google/Bing/百度的准确域名上，搜索框输入与搜索按钮点击直接执行；账号、验证码、支付、发布等目标不适用此例外，执行阶段仍检查目标与敏感输入策略。
+- 文件：`ai2apps/web/static/js/agent_mini.js`、`ai2apps/tests/agent_navigation_confirmation.test.cjs`。导航/搜索确认/范围/重连 Node 21 passed，JS 语法通过。纯静态源码修改，刷新 Sidebar 生效，无需重启 Local 或重建 App。实机侧栏刷新未完成：验证时用户切换到 Imagine Studio，未继续干扰其工作。
+
+
+### NXR-AGENT-PRESENTATION-RECOVERY-20261003：AI 展示校验恢复与诊断
+
+- 状态：`implemented`。统一 Run/Recipe 的展示生成路径，模型展示 JSON 无效时携带具体校验错误修复一次，修复预算 3000 tokens；校验仍严格拒绝不存在路径或可执行内容。保存不含输入值的结构化校验原因、请求 ID、模型 ID、finish_reason，前端保留并显示错误详情。实机复现原 19 条搜索结果：DeepSeek V4 Flash 返回不以 $ 开头的 data_path，finish_reason=stop；一次自动修正后返回 $.items，展示描述通过校验并返回 200。根因是此前 JSON Schema 没有表达 Python validator 的路径约束；补齐 data_path/field.path pattern 与说明，使模型请求契约与运行校验一致。最终 Schema 回归 22 passed，导航/范围/重连 Node 19 passed，Ruff 和 scoped diff check 通过。通过固定 app-dev Helper 重启 Local 后，原 19 条结果再次实测返回 200，生成 table 展示与合法 $.items 路径；当前 Local 已加载修复。
+
+
+### NXR-AGENT-MENTIONED-SITE-20261003：用户明确提到的网站免重复确认
+
+- 状态：`implemented`，固定 App-Dev 已实机验收。探索模式 open 的目标与任务明确给出的网址/域名或已识别网站名称一致时直接导航；未提及网站和其他交互仍保留确认。明确授权的 open 只执行原生导航，不因服务端文本关键词误判重复询问。网址匹配精确 hostname（允许 www），不接受 lookalike 域名；Google/谷歌、Bing/必应、百度、Wikipedia/维基百科等名称解析到固定网站。
+- 文件：`ai2apps/web/static/js/agent_mini.js`；Node 定向 7 passed，JS 语法通过；实机 Open Google 从新标签页直接打开 Google，未出现确认弹窗，1 步成功并进入 Review；导航/范围/重连 Node 合计 19 passed。Python Agent Mini 因同期其他改动的 SYSTEM_APP_MANIFESTS 缺少 ai2apps.todo 本地化映射而未能收集，未计作通过。前端刷新 Sidebar 生效，无需重建或重启 Local。
+
+
+### NXR-AGENT-NEWTAB-SCOPE-20261003：新标签页探索导航范围修复
+
+- 状态：`implemented`，App-Dev 已实机验收，待下一版 Desktop 纳入。Agent Mini 的 pageScope 仅对 HTTP(S) 页面生成 origin 范围，修复 about:newtab/about:blank 产生 null/** 导致首步导航误判 site_scope。open 检查目标 URL 范围而非起始页，预览也检查目标；页面交互仍要求当前页面处于授权范围。
+- 文件：`ai2apps/web/static/js/agent_mini.js`，Node 定向 7 passed，Python Agent Mini 16 passed、JS 语法与 scoped diff check 通过。固定 App-Dev 实测 Search Google for OpenAI IPO date：从 about:newtab 导航成功，inspect 与 extract_list 成功，提取 11 条结果，3 步沉淀并编译有效、等待 Review；未保存/发布 Agent。探索模式既有逐动作确认仍保留，本次实测确认了一次 open。纯前端修改，刷新 Sidebar 即可，无需重建或重启 Local。
+
+
+### NXR-TODO-MVP-20261003：内置 Todo 项目树与执行调度
+
+- 2026-10-05：Todo 普通项目行选中时增加与高亮行一致的 2px 内描边，统一选中标识，保持行高及布局不变。验证：git diff --check 通过。
+
+- 2026-10-05：将 Todo 行高亮入口合并到现有六点拖拽指示，移除独立下拉控件；点击展开纯色块浮层（含斜线清除项，无可见文字），保留拖拽排序，拖拽后抑制误点击；支持键盘打开、方向键选择、Escape 关闭，以及点击外部/滚动关闭。颜色选项保留无障碍名称。验证：Node 回归 27 项通过，JS 语法检查通过。
+
+- 2026-10-05：Todo 任务行左侧新增高亮颜色下拉，默认无高亮，支持荧光绿、浅黄、浅橙、浅粉、浅蓝、浅紫；选择即保存整行底色，保持行高，选中高亮行增加轮廓，深色模式使用对应低亮度底色。新增受枚举约束的 highlight 字段及旧数据默认值，随备份导入导出；与现有字段保存队列共用，保留详情未保存编辑，颜色选择不触发行选择或拖拽。验证：高亮持久化/清除/校验 7 项、备份测试 10 项（含高亮及旧备份兼容）、Node 回归 27 项通过，JS 语法与 diff 检查通过。含 Python 模型变更，运行实例需重启 Local 后刷新；尚未进行原生窗口视觉验收。
+
+- 2026-10-05：Todo 项目行标题由继承的 13px 增至 14px，标题行高固定 20px，保持项目行原有 48px 最小高度与间距，长标题仍单行省略。验证：git diff --check 通过。
+
+- 2026-10-05：Todo 项目行进度百分比字重提升至 700，状态文字保持原样，聚合父级路径仍保留灰色。验证：git diff --check 通过。
+
+- 2026-10-05：提高 Todo 项目行状态与进度的可读性，使用正文颜色及 500 字重，保留聚合筛选父级路径的灰色展示；未开始且进度为 0 的项目仅显示状态、不显示 0%，其他状态仍显示进度。验证：JS 语法检查与 git diff --check 通过。
+
+- 2026-10-05：Todo 新建项目/子任务弹窗增加 U/S/A/B/C/D 优先级（默认 C）与多行任务说明，随标题一次提交创建；新建目录仍仅输入名称，重开弹窗重置字段，弹窗适配小屏滚动。验证：JS 语法检查、创建字段及取消/目录隔离回归测试 2 项、git diff --check 通过。
+
+- 2026-10-05：增加 Todo 项目列表底部滚动留白：非空项目树底部内边距从 8px 增至 80px，普通目录与聚合目录共用，避免末行紧贴面板底边；空列表布局保持原样。验证：git diff --check 通过。
+
+- 2026-10-05：修复 Todo 导入/合并对话框底部按钮未应用统一样式：弹窗位于 .todo-app 外，新增共享 .todo-dialog 按钮作用域，覆盖导入、新建和 Codex 连接弹窗；确认合并使用黑色主按钮，取消使用中性次操作，并统一 hover、键盘焦点和禁用状态。验证：git diff --check、Todo 导出相关 Node 测试 3 项通过；未执行实际导入，原生窗口视觉验收待刷新后确认。
+
+- 2026-10-04 Todo 导出无响应修复：移除 fetch→Blob 的 iframe 下载流程，顶部导出改为真实 HTTP download anchor，单目录导出同步触发同源 HTTP 链接，沿用账号权限及原生 Shell Save As；增加下载已请求反馈。App-Dev 64738 实机验证两种入口均弹出另存为并成功写入临时 ZIP，CRC/manifest 检查通过：全部 4 目录/28 项，单目录 1 目录/3 项。Node 25 passed（新增 3 项下载契约/目录范围/取消回归），JS 语法通过；前端刷新已生效，无 Local 重启。普通浏览器人工验收留待发布前完成。
+
+- 2026-10-04 Todo 顶部工具栏 Hover-Tip：Codex 链接按钮明确命名“Codex 连接”；连接、导入/导出、刷新、左右栏切换及目录/Gallery 图标按钮统一复用 Dock 深色圆角悬浮提示的配色、阴影、字号、70ms 延迟和 80ms 动画，移除重复的原生 title；支持键盘聚焦，移出/点击/Esc/滚动/缩放隐藏，保留 Emoji 的多行说明。JS 语法与 Node 22 项回归通过；前端刷新生效，无需重启 Local。
+
+- 2026-10-04 Todo × Codex Desktop MVP：增加本机 owner-scoped 可撤销连接、专用 stdio MCP 插件/Skill/本地安装器；任务存储 Codex 项目/主对话关联与最近 30 条进展，项目沿父链继承、对话不继承，详情显示关联与最近 5 条进展，导出导入保留关联但不包含连接凭据。工具限制为查询/读取/创建/绑定/更新，不启动 Desktop 对话、不参与运行队列；附件仅元数据。Python 69 项回归通过，新增配对 API 后专项 5 passed（合计 70 项覆盖），Node 22 passed、JS 语法通过。App-Dev 已加载；插件 ai2apps-todo@ai2apps-local 0.1.0 已通过 Codex CLI 安装并启用；经用户同意完成本机配对，真实已安装 MCP 读取 4 目录/27 原任务，并在 Todo MVP 体验创建演示任务，绑定当前项目路径/当前对话并回填完成记录，实机详情已核对。原任务未修改。新 Codex 对话载入插件；不承诺现有对话热载入或外部 Desktop 会话控制。
+
+- 2026-10-04 Todo 等级筛选：项目列表下拉菜单增加 U/S/A/B/C/D 级项目；按等级和搜索组合匹配当前普通目录的活动项目（包括已完成项目），仅保留匹配节点及完整父级路径，非匹配父级灰色标注“父级路径”。筛选自动展开路径，行展开图标/ARIA 与实际显示一致；排除其他目录及归档/回收站数据，缺省优先级按 C。新增 5 项树筛选测试，Node 共 22 passed、JS 语法通过。仅前端变更，刷新 Shell 页面生效；实机视觉待验收。
+
+- 2026-10-04 Todo 单目录导出：普通目录右键菜单新增“导出此目录”，支持 Shift+F10、Esc/点击外部/滚动收起和边缘定位；聚合目录不挂菜单。导出绑定右键目标，文件名包含目录名；backup API 可选 directory_id 并验证当前账号所有权，仅包含目标目录及项目树/附件/文本历史，空目录可导出，沿用原导入合并格式。Python 65 passed（新增范围/附件/历史/空目录/所有权及单目录往返），Node 17 passed、JS 语法通过；已请求 App-Dev 单次重启，菜单实机尚未验收。
+
+- 2026-10-04 Todo 导出/导入迁移：新增账号范围 ZIP 下载与预览/确认导入入口，按目录名+完整父级路径+名称合并，新时间胜出、相同时间保留本地、本地独有项目保留。更新时间覆盖属性/排序/附件/生命周期/周期提醒更新；旧数据缺时间显式以创建时间估算。获胜项目附件集合替换，保留旧不可变 blob；归档/回收站批次保留，周期重算未来时刻，无补跑。执行文本历史去重导入，活动记录转中断并去除 Agent/Terminal 绑定；不含会话产物/模型/活动进程。拒绝同名歧义、活动队列导入、损坏附件、越限 ZIP；成员按名称读取而不解压到任意路径。导入比较预览指纹、SQLite 事务及失败文件清理。Python 66 passed（含往返、较新合并、幂等、归档恢复、损坏/歧义、并发预览、文件失败回滚、API账号隔离），Node 17 passed、JS 语法通过。导出/导入上限 512 MiB，单附件 32 MiB。
+
+- 2026-10-04 Todo CLI/Terminal 联动：外部 Codex/Claude 使用交互 CLI argv，通过共享 TerminalManager 创建 PTY；Run 绑定 terminal_id，执行页可直接打开 Terminal App 并定位会话。Terminal 显示 source_app/source_task/managed_run、自动刷新列表；运行中来源任务终端前端禁用关闭、后端 close 默认拒绝，来源服务与关机清理可显式终止。断开页面不结束进程，等待持续占队列名额；终端退出码 0 记 ended（待确认），非零失败，日志保留，Local 重启标中断，不做 PTY 恢复承诺。保留 Codex workspace-write 和默认授权，不放宽权限；清理继承环境中的 AI2Apps/OMLX 凭据变量。Python 63 passed（含真实 PTY 输入输出/保护关闭/源端停止及既有 Terminal 合约），Node 17 passed、JS 语法通过。沙箱测试退出时出现无 Metal 设备的 atexit 提示，测试断言全通过；真实 Codex/Claude 交互 UI 尚待验收。
+
+- 2026-10-04 Todo 队列完善：快照增加名额上限/占用、本人运行/等待处理/排队计数及队列位置；执行页与当前任务汇总显示，排队提供取消入口，失败/中断/取消支持按已保存配置重新执行（不自动重试）。内部 Harness 停止后继续观察，确认终态才释放名额；未捕获 job 异常登记失败后接续队列，超时提示明确。等待用户/授权继续占名额。Python 56 passed（覆盖停止等待确认、异常释放与账户隔离），Node 17 passed、JS 语法通过；已请求固定 App-Dev Local 单次重启。本项未改变外部 CLI 退出码结果判断，未增加 Desktop 会话接管。
+
+- 2026-10-04 Todo 统一 FIFO 队列：所有执行器/项目共用默认 3 个名额，数据库持久化 todo_queued/queued_at，入场后记录 started_at，完成/失败/取消释放名额，等待任务可取消，重启恢复等待队列；既有 durable Harness Run 接回观察并占名额。等待输入/授权也占名额，同项目防重复保持。新增“当前任务”聚合运行/排队，“执行中”排除尚未入场任务；执行卡片显示等待说明。Python 54 passed（新增 6 任务验证上限/FIFO/取消/重启），Node 共 17 passed；已请求认证 Helper 单次重启 App-Dev，真实多执行器并发实机验收待完成。
+
+- 2026-10-04 Todo 当前执行卡片：执行页顶部常驻状态、开始时间、耗时、当前步骤/最近日志、最新输出和错误，活动 Run 优先，结束后保留最近结果，可直接停止。沿用 5 秒轮询，不展示百分比；输出转义且限制展示尾部，完整记录仍保留；无日志时明确等待进展。JS 语法及原 Node 14 项回归通过，新增当前执行 2 项验证耗时冻结、活动优先、结束/空态及输出转义。仅静态刷新生效，实机真实 Agent 运行展示待验收。
+
+- 2026-10-04 Todo 右栏详情/执行页签：详情保留状态/进度/优先级/Emoji/说明/父级/附件及归档删除，执行页集中执行器、模型、工作目录、周期与自动执行开关、执行按钮和记录。共用原表单与保存逻辑，切换只控制可见性保留草稿；隐藏字段校验失败自动定位页签；Gallery 导入自动回详情定位附件。归档/回收站记录也按页签展示；支持方向键切换。Node 14 passed、JS 语法通过，仅静态修改，刷新生效；尚未实机验收（当前 App-Dev 前台为浏览器子窗口）。
+
+- 2026-10-03 周期提醒模式：Schedule 新增 auto_execute（默认 true，兼容已有自动任务），详情周期区域提供自动执行开关，保存后生效，Chat schema 同步。关闭后到期只重置 not_started/0%/completed=false/completed_at=null，不调用 Agent、不生成 Run；沿用停机补最近一次规则。状态与 next_due 同事务写入，校验 revision 避免覆盖并发编辑，轮询同步无草稿详情。Python 53 passed、Node 14 passed、JS 语法通过；已请求认证 Helper 重启 App-Dev Local，开关实机交互尚未验收。
+
+- 2026-10-03 聚合目录扩展：新增执行中（含排队/规划/等待处理）、最近完成（最近 7 天）和周期任务，共用来源分组/祖先路径/计数/搜索/Chat 范围。后端记录真实 completed_at，编辑/排序保留时间，重新打开清除；旧完成项目无时间则不计入。快照保留全部活动 Run，避免最近 200 条历史截断执行中项目。Python 48 passed、Node 14 passed、JS 语法通过；已通过认证 Helper 重启固定 App-Dev Local。实机端口 50999 确认四个聚合入口、数量和最近完成切换/空态正确。
+
+- 2026-10-03 Todo 聚合目录：左栏新增“紧急”，聚合各目录 U 级未完成且未归档/删除项目，按来源目录分组并保留必要祖先路径，父子命中不重复，路径行弱化且不计数。支持搜索/折叠、原目录定位；即时修改后移出结果但保留详情提示。聚合视图禁用手动排序和无归属顶层新建，子项目按父项目原目录创建，Chat 绑定聚合范围。Node 13 passed（含新增祖先闭包、搜索/折叠、生命周期/优先级过滤回归），JS 语法通过。仅模板/CSS/JS 修改，刷新生效；尝试实机验收时 Mac 锁定，未能完成 UI 验收，未重启或重建 App。
+
+- 2026-10-03 Todo 归档/回收站：继续使用 SQLite；项目归档、软删除按子树批次处理，恢复不误恢复原先独立归档/删除的子项目，保留附件、执行记录和 Emoji 历史。列表筛选新增已归档/回收站及只读详情与恢复入口；关闭项目拒绝编辑、执行和附件变更，活动 Run 阻止归档/删除。归档/删除清除周期 next_due，恢复后从下一计划时间继续；未增加自动清空或永久删除。最终 Todo Python 47 passed、Node 10 passed、JS 语法通过。已通过认证 Helper 请求重启 App-Dev Local；交互实机验收待完成，未发布生产。
+
+- 2026-10-03 Gallery 拖入项目行定位：接受素材时选中目标项目并展开右侧详情，聚焦/滚动到附件区域；上传完成后再次定位，若用户期间切换项目则不抢回焦点。同项目保留草稿，跨项目沿用未保存确认，等待即时保存结束后切换。Gallery Node 3 passed，覆盖目标绑定、定位调用、取消切换不导入及上传中导航不被覆盖；JS 语法通过。仅静态修改，刷新生效。
+
+- 2026-10-03 Todo Gallery/目录排序：左栏增加 Gallery Tab，复用 Shell mountMiniEntry 与既有 Gallery mini URL。使用 gallery-asset MIME 和当前身份授权的素材接口，将文件复制到放下时绑定项目附件，支持项目行/附件区及 32 MiB 上限；附件独立刷新保留草稿。目录拖拽带插入提示，独立 order 表持久化，事务验证完整集合、预期旧顺序及所有权，新目录追加。Python 45 passed、Node 9 passed、JS 语法通过。已通过认证 Helper 重启 App-Dev Local（65039），实机确认三页签和 Gallery 真实素材加载；原生跨 iframe 拖拽及目录拖动尚未实机验收。
+
+- 2026-10-03 进度滑块收起交互：移除下方数值/刻度行，滑块 change（拖动松手）提交后使滑块和数字框失焦，自动收起；Enter 确认同样收起。自动保存回归 4 passed（含失焦断言），JS 语法通过，刷新页面生效。
+
+- 2026-10-03 进度聚焦滑块：数字框聚焦时下方展开 0–100%、step=5 的 range；移到滑块后保持展开，离开整个控件收起。拖动实时同步数字，change/回车提交自动保存，仍支持数字框 1% 精度输入；键盘可操作，保存回填同步滑块。Node 自动保存回归 4 passed，含拖动预览不提前写入和松开提交，JS 语法通过；静态刷新生效。
+
+- 2026-10-03 项目状态/进度：新增 not_started/in_progress/completed/paused 与 0–100 整数进度，旧数据按 completed 映射为未开始 0%/已完成 100%。详情提供状态选择和百分比输入（change/回车自动保存），项目行显示状态与百分比，Chat 读写同步支持。服务端统一完成框、状态和进度：已完成/100%联动，降低已完成进度转进行中，暂停保留进度，取消完成复位；AI Run 状态独立。沿用串行自动保存和其他草稿保护，回填关联状态字段。Todo Python 43 passed、Node 6 passed、JS 语法通过；需保存当前编辑后重启 App-Dev Local 并刷新，实机未验收。
+
+- 2026-10-03 Emoji/优先级即时保存：有效 Emoji 输入、回车确认、常用选择、清除、AI 生成及优先级 change 自动提交，更新项目行；使用已保存基线和乐观版本，不提交标题/说明等无关草稿。请求串行处理，刷新避让待保存操作，失败保留 dirty 状态并报错，IME 组合期不提交，Emoji 回车阻止整表单提交。新增 Node 回归覆盖连续写入版本、无关草稿隔离、回车/IME/无效输入和失败保留；连同 Mini-Entry 共 6 passed，JS 语法通过。仅 JS 修改，刷新生效。
+
+- 2026-10-03 项目行顺序微调：完成框后依次显示优先级、Emoji、项目标题；仅修改渲染顺序，JS 语法检查通过，刷新页面生效。
+
+- 2026-10-03 项目优先级：新增 U/S/A/B/C/D 六档（从高到低），新建及旧项目默认 C。详情提供下拉设置和顺序说明，项目行显示等级标记；Chat 查询/创建/修改同步支持，不改变手动排序。模型验证非法等级，持久化和 reorder 保留优先级；Todo 41 项测试通过，JS 语法通过。Python 模型更新需保存当前编辑后重启 App-Dev Local 并刷新生效，尚未实机验收。
+
+- 2026-10-03 项目树同级拖拽排序：行可拖拽，增加 grip 和前/后插入线，只接收同目录/同父节点目标；排序包含未显示同级项，子树保持父子关系。专用 reorder API 事务内校验完整同级集合、去重、所有权和全部版本，原子更新 position/revision，保留计划时点。拖拽/提交期间暂停快照替换，有未保存编辑时阻止拖拽；刷新不会覆盖期间新增的表单编辑。Todo 34 项测试通过，含根级 API、子树保持、持久化、冲突回滚和跨用户/跨父项拒绝，JS 语法通过。Python 改动需重启 App-Dev Local 后刷新；尚未进行原生拖拽实机验收。
+
+- 2026-10-03 新建弹窗回车修复：取消按钮改为 type=button 并显式 close(cancel)，创建保留唯一 submit/save，使输入框回车触发创建而非取消；每次打开清空 dialog.returnValue，避免 Esc 复用前次 save。目录、项目、子任务共用弹窗均适用。JS 语法及 Mini-Entry 3 项回归通过；纯静态修改，刷新生效。
+
+- 2026-10-03 Emoji 再生成去重：请求传入当前草稿 Emoji，结合已保存符号和用户/项目隔离的最近 5 次成功生成历史，提示模型排除并对返回值强制检查；忽略 variation selector 的重复，最多 3 次模型尝试，总超时仍 90 秒。历史独立持久化，不变更项目草稿/版本；事务内复查避免并发重复，删除项目时清理历史。Todo 32 passed，覆盖当前/历史排除、连续重复失败、历史持久化/容量/隔离，JS 语法通过。用户截图存在未保存草稿，本轮未主动重启 App-Dev 以免丢失编辑；需保存后重启 Local 并刷新生效。
+
+- 2026-10-03 Emoji Hover-Tip：输入说明和 AI 说明移入悬停/键盘聚焦气泡，移除原生 title 和常驻说明，选择区改为简短「常用 Emoji」。对齐 Shell Dock 的深色半透明背景、8px 圆角、阴影、70ms 延迟与 80ms 淡入缩放；固定定位、边缘避让，滚动/编辑/Escape/切换详情时关闭，关联 aria-describedby。JS 语法检查通过，静态页面刷新生效。
+
+- 2026-10-03 Emoji 控件紧凑布局：输入框收窄到 56px，与 AI 生成、清除按钮同行并对齐高度，保留独立 label 与输入提示；JS 语法检查通过，刷新静态页面生效。
+
+- 2026-10-03 项目 Emoji：增加独立可清除的 emoji 属性，旧数据默认空值；服务端校验单个 Unicode 字素（支持肤色、ZWJ、旗帜），项目树显示符号，详情提供输入、常用选择和 AI 生成。AI 使用 work_standard 模型与当前草稿标题/说明，复用 actor/app 隔离调用通道，结果只回填草稿，保存才持久化；避免生成期间切换项目或修改输入导致陈旧结果覆盖。Chat 创建/修改工具同步支持 emoji。Todo Python 31 passed（含持久化、清除、旧数据兼容、复合 Emoji、AI 预览及所有权/无效输出/未配置模型），JS 语法通过，共享 Mini-Entry Node 3 passed。已通过 App-Dev 认证 Helper 重启 Local，实际主窗口端口 49567；实机打开项目 Emoji 控件、调用真实标准任务模型生成 ✅、保存并通过 App 内刷新重新读取仍保留。示例目录 Todo MVP 体验的父项目保留此次生成符号。
+
+- 2026-10-03 Todo 新建弹窗加宽：共用名称弹窗从 350px 调整为 700px，最大宽度限制为视口减 32px，使用 border-box 避免窄屏溢出。CSS 定向检查通过；静态资源刷新生效。
+
+- 2026-10-03 项目树快捷创建：每个项目行右侧常显 Lucide 加号，点击以该行为父项目打开「新建子任务」弹窗，复用创建接口和未保存编辑保护；创建后展开父节点并选中新子任务。按钮支持键盘操作与无障碍标签，窄屏保留。JS 语法检查通过。
+
+- 2026-10-03 UE 对齐：Todo 改为与 Studio 一致的独立 App 标题栏、黑色图标/主按钮、浅灰工作区与白色圆角三栏面板；目录/对话使用带图标页签，项目树与详情统一中性色、间距、控件和 Lucide 图标。新增刷新与左右面板开关，选中项目展开详情，窄窗口以浮层显示面板。仅改 Todo HTML/CSS/JS，App-Dev 刷新生效，无需重建。验证 JS 语法、既有 Mini-Entry Node 用例 3 passed；原生 AX 验证目录/项目树加载、详情选择、详情收起/展开和对话 Mini-Entry 加载。截图工具返回旧首页画面，像素级截图验收尚未完成。
+
+- 状态：`implemented`，固定 App-Dev 已重建、通过签名/Runtime 校验并打开页面。用户级内置 `ai2apps.todo`：左栏目录／Chat Mini-Entry 切换，中栏项目树，右栏说明、附件、执行配置与运行记录。支持父子关系调整、完成标记、搜索、独立 SQLite 持久化与用户隔离、乐观版本冲突检查；不递归执行子项目。
+- 执行：复用内部 General Agent Harness 和所有权隔离的 Session／Workspace／Document 服务；附件复制到每次运行的输入快照，并注册会话资源，文档可由既有工具读取。新增 Codex/Claude Code 非交互 CLI 适配，保留其默认权限机制；移除 Local 私有控制环境变量，不拼接 shell 命令。记录日志、结果、内部产物下载、停止、失败、外部运行重启中断、内部 durable Agent 重启后重新关联；运行成功不自动完成项目。DeepSeek 独立外部 Harness 尚未适配。
+- 服务生命周期内调度每小时／每天／每周／每月；小时错过不补，日周月只补最近一次；新建或重启计划不追溯，运行重叠跳过，计划时点持久化推进。时区、DST 跳过、月末日期收敛已覆盖。按当前成员身份重新检查外部执行权限。
+- Chat 宿主工具支持查询、新建、修改、执行；单轮对话冻结目录／节点范围，防止生成期间切换选中项写错位置。实际模型对话已创建指定子项目；随后暴露共享流式工具调用 ID 被重复拼接导致 `callId is invalid`，已修复并加回归，同时修正 hidden 样式和结构化错误显示；修复后真实模型往返待最终验收。
+- 验证：`.venv/bin/python -m pytest -q tests/test_ai2apps_mini_app_chat.py ai2apps/tests/test_todo.py` 共 22 passed（Todo 18 + 共享 Mini-Entry 4）；在 ai2apps 目录运行 `node --test tests/todo_mini_chat.test.cjs` 3 passed；General Agent 既有模型调用用例另行通过。包含真实内部 AgentRepository/运行状态机 + 假模型、隔离工作区附件、外部 CLI fixture 的完成/取消/中断、权限隔离、树循环、四类计划和去重。Ruff、Python/JS 语法及 scoped diff 检查通过。真实 Codex 冒烟通过：独立 `/tmp/ai2apps-todo-codex-smoke-m1zcnfjm` 仓库，通过 TodoService 启动真实 Codex，要求不调用工具、不读写文件、仅返回 TODO_MVP_OK；status completed、exit_code 0、预期回复匹配。Claude 尚未真实验证。
+- 固定 App 通过规定 `build-app-dev-environment.sh` 重建，前版归档 `AI2Apps-app-dev-20261003-125223.app`。`verify-release-app.sh`、`codesign --verify --deep --strict` 通过；根/Helper 保持 app-dev、Development、cloud、固定源码根与无生产更新 URL。实际原生标题已验证 `AI2Apps-App-Dev: App-Dev 127.0.0.1:57429`。实机验证目录/项目创建、说明保存、刷新持久化、Chat Mini-Entry 加载和子项目创建。App-Dev 内留有“Todo MVP 体验”示例目录。最新 Python 改动已通过认证 Helper 重启 Local；未发布 Desktop/Package，未改 Cloud。
+
+
+- 最终限制：原生 Computer Use 在后续共享 App-Dev 浏览器调试窗口上连续超时，未完成最后一次真实 Chat 往返与附件 picker 复验；不操作其他调试任务的审核弹窗。后台/API 附件和内部 Harness 工作区接入已测试，最后代码通过认证 Helper 重启生效。
+
+### NXR-BIDI-NATIVE-RECOVERY-20261003：原生 Shell BiDi 启动与自动恢复
+
+- 状态：`implemented`，固定 App-Dev 已重建并完成连接验收，待下一版 Desktop 纳入。原生 AceFox Shell 入口补齐每次启动独立的 256-bit bearer、loopback 自动端口与 WebDriver BiDi 参数，避免绕过旧 Swift Launcher 后遗留失效记录。
+- 受信任 Shell 从实时 RemoteAgent 状态原子发布当前实例 shell-automation.json，写入凭据前设置 0600；每秒核对并修复缺失/失效记录。Gateway 有界重读当前实例记录，404 失效 Session 重新建立；客户端建立连接失败时重新获取一次性票据并重连一次，401/403 不重试，不重放已提交浏览器动作。Chat/Agent 清除断线客户端，下一次操作重新连接。
+- 同一 Gecko buildID 的开发资源覆盖会被旧启动缓存掩盖；构建入口给嵌入 Shell 设置 Development 标记，原生入口仅对该标记加入 -purgecaches，确保 App-Dev 的 Shell 覆盖实际生效。
+- 文件：AceFox `browser/app/nsBrowserApp.cpp`、`browser/components/ai2apps/content/shell.mjs`；Local `ai2apps/browser/shell_bidi_gateway.py`、共享 `browser_bidi_client.js`、Chat/Agent Mini JS；`apps/ai2apps-acefox/scripts/build-release-app.sh`。
+- 验证：Python 定向 51 passed；Node 恢复专项 5 passed（新票据、有界重试、拒绝认证重试、断线动作不重放、Agent 下次任务重连）；Shell 发布函数测试验证缺失/旧记录恢复及 0600-before-secret。JS 语法、Ruff 与 scoped diff check 通过。测试结束时隔离环境 MLX atexit 提示无法获取 Metal，不影响本轮浏览器测试结果。
+- 固定 App-Dev 使用规定入口重建，旧 App 归档 `AI2Apps-app-dev-20261003-122321.app`；verify-release-app 与 codesign --verify --deep --strict 通过，根/Shell/Helper 实例与 Bundle ID、Development、cloud Runtime、可信源码路径契约通过。实机原生标题 `AI2Apps-App-Dev: App-Dev 127.0.0.1:53491`；通过认证 Helper 重启 Local。记录丢失实测 0.8 秒自动恢复，原生 getTree 成功；打开默认 Profile 后 Agent Sidebar 初始化、pageState 正常且无 Gateway 错误。本轮未执行 LLM 探索任务、未发布生产 Desktop。
+
+
+### NXR-BROWSER-LAUNCH-SPINNER-20261003：浏览器启动等待图标
+
+- 状态：`implemented`，待下一版 Desktop 纳入。AI Browser 启动按钮改用独立 CSS 等待圆圈，忙碌时隐藏外链图标、仅旋转圆圈，结束后恢复静态外链图标。避免 Lucide 将 i 替换为 SVG 后动态图标名称未及时更新，导致外链图标旋转。
+- 文件：`ai2apps/web/templates/system_apps/ai_browser.html`、`ai2apps/web/static/css/ai_browser.css`。移除禁用按钮内所有 SVG 旋转的选择器；模板与 CSS diff 空白检查通过。仅静态变更，刷新 AI Browser 页面生效，无需重建或重启 Local；未完成实机动画验收。
+
+
+### NXR-SUBTITLE-LLM-CORRECTION-20261003：字幕 LLM 修正与规则 Profile
+
+- 状态：`implemented`，待 Host 更新和 Media Voice Studio Suite 发布。字幕提取后的校对区提供可选修正，使用系统 Standard tasks 模型，按有界批次生成严格一一对应的文本建议；用户审阅确认后才修改字幕，时间轴、说话人、段落顺序不变，修改文本清除旧逐字对齐。
+- 修正规则支持保存、选择、更新、删除 Profile，复用可信 Host 中 owner/provider/resource 隔离的本地存储，独立于任务草稿，重置素材不删除 Profile。Opaque Package frame 经受校验的 Host 通道请求 LLM，不直接访问认证或浏览器存储。
+- 新增 Host JSON API 与 Bridge 操作；需重启 Local 并刷新页面，Package UI 改动需后续发布 Suite，无需 Runtime 更新。本次不发布 Package、不读取 Cookie。
+- 验证：Broker 与 Suite 定向回归 55 passed，包含修正结果时间/说话人保持、空字幕保持、原始数据不变、异常 JSON/数量/空文本拒绝和未声明能力拒绝；前后端语法与 diff whitespace 通过。未执行真实模型推理和桌面交互验证。
+
+### NXR-H3-16X9-RESOLUTIONS-20261003：H3 新增 1024 与 1280 宽幅/竖幅尺寸
+
+- 状态：`in_progress`。Video Studio 的 H3 系列变种新增精确 16:9／9:16 的 1024×576、576×1024、1280×720、720×1280 输出选项。1024 档直接满足 Worker 的 32 像素网格；1280 档由 Host 向既有 Worker 提交 1280×736／736×1280，并在结果发布前居中裁回目标尺寸、复用原压缩音轨。两种内部画布均低于既有 1,032,192 像素上限，无需更换或发布模型 Package。
+- 需验证文生、图生及各 H3 变种的真实推理输出和首尾帧构图；当前仅有 Host 参数、裁切尺寸/帧数/音轨的合成测试，尚不能宣称视觉效果验收。
+
+### NXR-AUDIOBOOK-SELECTED-DIALOGUE-20261002：完整对话仅合并勾选片段
+
+- 状态：`implemented`，待下一版 Desktop 纳入。Audiobook 每个 Line 卡片前增加默认选中的复选框；完整对话只提交勾选的 segmentIds，按工程原顺序复用或生成音频并合并，未选片段不审批、不生成、不合并。
+- 选择状态按工程保存在现有 Mini-App 草稿中，新片段默认选中；显示已选数量，空选禁用生成且函数再次保护，生成期间禁止修改选择。复选框不触发卡片展开或拖拽。
+- 验证：Voice Studio scope 测试覆盖默认全选、排除片段、工程隔离、草稿恢复、生成请求、未选片段状态保留、空选保护和新增片段；JavaScript 语法检查通过。纯前端变更，刷新页面生效，无需 Runtime 或 Package 更新；尚未实机点击验证。
 
 ### NXR-DISCOVER-INSTALLED-UPGRADE-20261002：已安装模型升级入口
 
@@ -50,8 +351,7 @@
 
 ### NXR-RELEASE-013-2256-20261001：Desktop 0.1.2 Build 2256
 
-- 状态：`released`。2026-10-01 已从生产 0.1.1 / Build 2254 先以 0% 原子登记，再使用
-  `build2256-test` 扩到 100%；此前 0.1.2 / Build 2255
+- 状态：`candidate_testing`。生产匿名基线仍为 0.1.1 / Build 2254；此前 0.1.2 / Build 2255
   只完成 App/DMG、公证和 GitHub/ModelScope 双源，未经过 Cloud stable 发布，因此不会被
   客户端发现，现由 2256 取代，不再激活 2255。
 - 2256 纳入已经完成的数字人 Host/ACPF/素材槽位、照片说话持久任务与共享输出、FlashHead
@@ -65,11 +365,7 @@
   文件、Swift 77 项 Swift Testing + 2 项 XCTest、JavaScript 语法、限定 Ruff 和 diff check
   通过。完整 Python 首轮发现 Avatar ACPF 新 Profile 缺少 9 组中英文映射；已在
   `fff39864` 修复并专项复验，正式候选须在最终源码提交上重新跑完整 Python。
-- 最终完整 Python 为 10317 passed、68 skipped、74 deselected；Developer ID、Apple 公证、
-  staple、Gatekeeper、GitHub/ModelScope 同字节双源、Cloud 双源预检与生产 GET/HEAD/304、
-  健康和审计链均通过。目标 Mac 从低 Build 自动升级、启动和旧备份清理仍待实机验收。
-- 发布准备记录：`docs/ai2apps-desktop-0.1.2-build2256-release-preparation-2026-10-01.md`；
-  最终回执：`docs/ai2apps-desktop-0.1.2-build2256-release-2026-10-01.md`。
+- 发布准备记录：`docs/ai2apps-desktop-0.1.2-build2256-release-preparation-2026-10-01.md`。
 
 ### NXR-VIDEO-DURATION-HALF-SECOND-GRID-20261001：视频时长滑块对齐半秒档位
 
@@ -4790,3 +5086,129 @@ Runtime profile、安装行为或发布流程的工作，都必须在完成该�
 - Host-owned scoped multipart Run endpoint invokes `image_upscaling` through ModelInvocationContext and native-file background invocation. Model catalog includes this capability even for video-primary SoL. Reuses shared history/Artifact/Output/Gallery; does not expose Worker URLs or tokens. Duplicate queued submissions rejected, cancellation uses invocation callback, orphaned running tasks after Host restart become retryable failures.
 - Verification: 14 Imagine Studio Python tests pass, including fake invocation at 13×9→26×18, model/seed validation, shared artifact persistence, duplicate rejection and restart recovery. Node upscaling, i18n, cross-Mini-App Output drop, Product Studio ordering and submitted-prompt tests pass. Python exit emitted existing headless Metal teardown warning (exit 0). No real SoL inference or native UI acceptance performed this turn.
 - Status: implemented, App-Dev Local restart and live UI/inference acceptance pending. Python Host change needs Local restart; no bundle rebuild or Package/Cloud publication performed. Include Host/UI/help in future Desktop candidate.
+
+
+### Avatar odd-dimension playback fix (2026-10-02, NXR-AVATAR-ODD-CANVAS-PLAYBACK)
+
+- Status: in_progress; Desktop Host change, not a model-weight or Runtime change. User-reported FlashHead Lite output artifact art_780f9936fdd94c079d887d307ec25a11 is 1200x675 H.264 High 4:4:4 Predictive/yuv444p. Its original 512-square result is yuv420p; both fully decode with ffmpeg, but the Shell reports the source-canvas artifact unplayable.
+- ai2apps/avatar/video_composition.py now always encodes yuv420p, extending the bottom/right edge by one pixel for odd height/width. Existing source content and audio are retained. Odd-size regression checks updated for 322x182 from 321x181 and browser-compatible pixel format/profile.
+- Existing content-addressed artifact remains unchanged. Compatible recovery copy generated locally at ai2apps/.build/avatar-playback-fix/NewsRoom-compatible.mp4 (1200x676, audio stream copied). Seven avatar canvas regression tests passed (1.80s). Recovered file fully decodes and is H.264 High/yuv420p, AAC unchanged. Imported via current Dev Gallery UI as gala_e1b57bf8d7374584a61aedccb0c4fa54, NewsRoom-compatible.mp4. Same Dev Shell played to 14s and paused at 23s without playback error. Existing output artifact remains unchanged; source fix requires Host restart/adoption in next Desktop build; no release published.
+
+
+### Web Agent optional result reading and summary (2026-10-03, NXR-AGENT-OPTIONAL-RESULT-SUMMARY-20261003)
+
+- Status: implemented and live App-Dev accepted. Adds typed boolean input conditions and bounded read_results client SDK helper using native BiDi. Reads up to three distinct result pages by default (maximum five attempted pages), records blocked/failed pages, restores the search page, then summarizes only actual article evidence with source URLs. False skips reading and preserves the search list. Review exposes conditions and inputs; revision prompt preserves existing steps and query bindings.
+- Fixed restored Review revision submission: use source_revision instead of missing lightweight recipe.revision. Fixed page-access controls outside viewport and clipped partial rectangles. Deduplicate final redirected URLs.
+- Fixed durable Cloud AI invocation: resolve current actor from server-derived Session owner, verify installation/membership epoch, use existing Cloud model gateway authorization. No browser Cookie forwarding, new browser-control protocol, or Cloud-side code change. Local model provider remains unchanged.
+- Validation: 33 Python compiler/platform/result-reading tests, 36 Node browser/input/scope/recovery/parameter tests, Ruff on changed feature modules. Additional Agent model stream regressions run.
+- Live exact app-dev Shell: original recipe arec_81181b6d29954c06b898f94bac0a1355 revised from v2 (3 steps) to v3 (5 steps), adding boolean summarize, read_top_results and ai.transform. Final run run_1337b4153a864bee973aeab98bb95f9f completed with three distinct rendered pages, zero read failures, final summary and exactly those three source URLs; result visibly present in Sidebar. Earlier acceptance failures exposed offscreen dismissal and internal HTTP 401, both corrected and re-tested.
+- Host restarted through exact app-dev Helper; static resources refreshed. No bundle rebuild, Package publication, production or sibling checkout change. Include Host/compiler/SDK/UI in future Desktop candidate.
+
+
+### Agent unified entry and model selection (2026-10-03, NXR-AGENT-UNIFIED-MODEL-SELECTION-20261003)
+
+- Status: implemented. Removes duplicate run/build Tabs, preserves saved-Agent editing below unified run/Review entry. Build/revision model selector defaults to system work_standard, supports task strength or specific catalog model. AI-step Review/editor controls persist simple/standard/complex and use existing per-tier execution routing. Strength changes create a new recipe revision and invalidate prior Review approval; failed saves restore the displayed controls. Editor preserves conditional branches and skipped transitions.
+- Validation: 4 model-selection tests (specific model, default/selected Task, all three execution routes, revision conflicts); 17 Agent platform tests; 16 Mini-Entry tests; 36 Node browser/parameter/navigation/input/result-reading regressions passed. JavaScript syntax, Chinese/English JSON, and Ruff checks passed. Restarted only app-dev Local. Live app-dev sidebar confirms no mode Tabs, medium builder default, and AI-step strength dropdown inside restored Review. No Cloud, bundle rebuild, or production publication. Task strengths follow system defaults; identical defaults select the same actual model.
+
+### Agent builder visual conversation model filter (2026-10-04, NXR-AGENT-VISION-MODEL-FILTER-20261004)
+- Status: implemented. Specific builder models must support both conversation/text output and visual input according to catalog capability metadata; excludes image-generation-only, audio, embedding, text-only and unknown models. Declared non-chat endpoints and explicit conversation=false are excluded. No model-name heuristic.
+- System Task choices remain at the top in high/medium/low order, medium selected by default, resolving work_complex/work_standard/work_simple at invocation. Static Mini-Entry version advanced to agent-model-selection-6.
+- Validation: 3 filter/order regression tests plus 4 parameter tests passed; JS syntax passed. Refreshed only the app-dev sidebar; live dropdown shows high/medium/low followed by 9 visual conversation models, with image/speech generators removed. No Python restart, bundle rebuild, Cloud change or publication.
+
+### Browser Agent authoring attachments and file parameters (2026-10-04, NXR-AGENT-ATTACHMENTS-20261004)
+- Status: implemented. Reuses owner-bound Gallery imports/content URLs for creating Agents with attachments. Authoring receives bounded document text and native multimodal image inputs. Distilled/compiled Agents expose file reference object parameters; runtime forms support replacement uploads or HTTP(S) URLs, and stored assets are resolved against the current owner at run creation. No transient blob URLs in durable Source or IR.
+
+- Validation: 36 Python tests passed across attachment ownership/context, API distillation with file parameters, model routing, Agent platform and builder; 8 Node model-selection/parameter tests passed. Ruff, JavaScript syntax and Chinese/English JSON checks passed. Restarted only app-dev Local for Python changes. Live upload interaction remains unverified; refresh the Sidebar to load agent-attachments-7. No bundle rebuild, Cloud changes or publication. Up to 8 attachments; images up to 8 MiB, other files up to 25 MiB. External HTTP(S) URLs remain references and are not fetched by the host; Blob URLs and file bytes are not persisted as parameter values.
+
+### Portrait creative themes (2026-10-05, NXR-PORTRAIT-THEMES-20261005)
+
+- Horror cameo expansion: added The Shining, The Conjuring, Ringu, Ju-On, Scream, Halloween, A Nightmare on Elm Street and Silent Hill (24 cinema themes total including generic genres). Each has bilingual scene/outfit/action presets. Horror-specific prompts emphasize atmosphere and preserve the user's identity without injury, gore or involuntary monster/mask transformation; other film prompts are unaffected. Theme/Portrait/i18n/submitted-prompt regressions cover these presets. Static refresh only; real-generation and live visual acceptance pending.
+
+- Film cameo expansion: added 12 named film-world presets (Star Wars, Titanic, Alien, Terminator, The Matrix, Harry Potter, The Lord of the Rings, Pirates of the Caribbean, Jurassic Park, Interstellar, Inception, Back to the Future), retaining the four generic genres. Each includes bilingual linked scenes/outfits/actions. Prompts cast the input person as an original guest character, preserve their identity instead of an actor's face, and exclude titles/credits/watermarks. Regression covers 16 unique cinema presets and cameo/identity instructions. Static refresh only; no real inference or live visual acceptance performed.
+
+- Career expansion: expanded from 6 to 26 professions with bilingual scene/outfit/action presets (education, research, engineering, technology, legal, healthcare, aviation, rescue, creative, hospitality and other services). Existing custom controls, clothing references and identity-preservation instructions remain unchanged. Regression asserts 26 unique careers and exercises all themed prompts/localizations. Static refresh only; real image generation not tested for these new presets.
+
+- Added five built-in Portrait modes: professional portrait (six professions including news anchor, reporter and astronaut), sports (20 disciplines), movie still (four genres), Chinese-style portrait (three themes), celebrations/greetings (four occasions).
+- Each theme provides bilingual linked scene/outfit/action options. Changing theme resets incompatible choices; custom scene/action require text, custom outfit reuses the second clothing-only image Slot and model reference validation. Sports default to full-body framing. Optional greeting text is confined to celebration mode. Shared final Prompt and saved drafts include these settings; no extra size selector or Mini-App Package.
+- Static UI/JS only: refresh Imagine Studio; no Host restart, bundle rebuild, Cloud change or publication. Existing Portrait, i18n and submitted-prompt Node tests pass; theme-specific regression covers presets, bilingual labels, resets, custom references, draft restore and prompt invalidation. Live visual and real-generation acceptance remain pending.
+
+### Portrait size selector deduplication (2026-10-04, NXR-PORTRAIT-SIZE-20261004)
+
+- Removed Portrait's duplicate aspect-ratio/size selector. Keep the shared Model / Canvas size / Quality controls and existing custom dimensions; no request or stored draft changes.
+- Added a regression asserting exactly one shared size selector and no Portrait duplicate. Static template change only; refresh Imagine Studio, no Local restart or bundle rebuild required. Included in next Desktop candidate.
+
+### Shared Gallery file picker and Agent attachment drag/drop (2026-10-04, NXR-GALLERY-PICKER-20261004)
+- Status: implemented. Added reusable AI2AppsGalleryPicker.open with collection/search filters, multiple selection, selection limit, explicit confirm/cancel and focus restoration. Agent authoring supports native file multi-selection, Finder file drops, Gallery single/multiple asset reference drops and the shared Gallery picker. Runtime file parameter forms also offer Gallery selection. Gallery drag exports selected asset IDs while retaining the existing single-asset payload.
+- Gallery references are resolved through the owner-authenticated asset API; imported file uploads reuse Gallery storage. Duplicate asset references are removed and the 8-attachment limit is checked before import. Agent static version agent-attachments-8 and Gallery gallery-attachment-dnd-2. No browser-control protocol, Python, Cloud or bundle changes.
+- Validation: 13 Node tests passed (picker multiple selection, limits, cancel/focus restoration, drag payload validation, Agent reference lookup/deduplication and existing model/parameter tests); JavaScript syntax and both localization JSON checks passed. 16 Python Mini-Entry regressions also passed. Live app-dev Sidebar confirms attachment/Gallery buttons and drag hint; opened shared picker, selected two Gallery images, confirmed both appeared as attachments and dialog closed, then removed the temporary attachment references. Native Finder drag has not been manually exercised.
+
+### General Agent tool error continuation (2026-10-05, NXR-TOOL-ERROR-CONTINUATION-20261005)
+
+- Status: implemented_and_verified_in_source. Added stdlib-only `tool_recovery.py` policy, explicit no-dispatch `ToolErrorAction`, and General Agent opt-in to paired, durable model-visible failures. Invalid JSON/aliases/questions and no-effects tool schema/timeouts/provider/output/availability errors can request a new model decision. Preserve approval, identity checks, cancellation and uncertain write protection. Share a three-error recovery budget; no automatic tool replay or change to other executors' defaults.
+- Memory retains failed paired rounds and recognizes legacy schema-error records. Gateway now also redacts injected secrets in output-schema failure messages. 25 new recovery tests cover mixed batches, actual deadline expiry, bounds, writes, cancellation, secret redaction, non-opted-in executors, and host restart without replay.
+- Validation: 101/101 broad regressions and 40/40 final recovery/control/checkpoint tests passed (117 distinct tests); standalone Python -I policy checks, scoped Ruff, compile and diff checks passed. Acceptance receipt: `docs/tool-error-continuation-acceptance-2026-10-05.json`; source comparison and boundaries: `docs/ai2apps-tool-error-continuation.md`.
+- Running Dev/App-Dev/Test not refreshed in this turn. No Cloud, bundle or production publication. Real-model recovery success rates and complete upstream parity remain unverified.
+
+### Tool recovery instance activation (2026-10-05, NXR-TOOL-RECOVERY-ACTIVATION-20261005)
+
+- Status: activated_and_verified. Rebuilt all three fixed Apps through `build-dev-app.sh`, `build-app-dev-environment.sh` and `build-test-app.sh`; each previous Bundle archived by its builder. Restarted only the selected instances, preserving their separate state.
+- Dev / App-Dev / Test Local PIDs 48843 / 62202 / 79913, ports 55358 / 55610 / 55979; all health checks passed. All three strict deep code signatures passed; complete release-shaped Bundle verifiers passed for App-Dev and Test. Fixed bundle/instance identities preserved, App-Dev remains Development/cloud with disabled updates and trusted repo source mount, Test remains non-Development/cloud with no source mount.
+- Seven tool-recovery integration source files embedded in App-Dev and Test match the accepted repo source byte-for-byte; all source hashes from the 117-test acceptance remain unchanged. Dev uses the fixed repo runtime/source contract. Live native App-Dev title verified as `AI2Apps-App-Dev: App-Dev 127.0.0.1:55610`. Memory API and reader registrations remain present in all three.
+- Receipt: `docs/tool-recovery-instance-activation-2026-10-05.json`. No production publication or real-model failure/recovery test; runtime activation is confirmed through fresh process/identity/health and verified source contracts.
+
+### Native App/Mini-App development Harness (2026-10-05, NXR-NATIVE-APP-DEVELOPMENT-20261005)
+
+- Status: implemented_verified. Added a standard-library Python draft core and owner-bound AI2Apps App/Mini-App tools with native Coder UI. Read-before-edit SHA checks, exact text replacement, bounded search/read, Runtime Python commands with background continuation, manifest validation, safe static preview, source conflict detection and reviewed write-back reuse existing Agent memory/tool recovery and process sandbox. Voice Studio authoring retains host-owned Quick Read output.
+- Acceptance: 111 Python regression tests plus final 20 native-development/process tests pass (123 distinct Python tests); isolated standard-library core has 12 passing tests, Node UI has 4. Actual macOS Seatbelt verifies managed Runtime Python and original/foreign project read denial. App/Mini-App generation, failing-test repair, restart follow-up, ownership, stale revision and explicit apply covered. Ruff, compileall, JS syntax and scoped diff checks pass.
+- Live App-Dev native entry and model/task/review panel accepted on the isolated Native Harness UI Acceptance Project at 127.0.0.1:59153. No real-model quality benchmark, automated visual debugging, full host Bridge preview, deletion write-back, installation or publication. Per-file atomic apply retains backups and progress journal; not a multi-file transaction. Dev/Test not rebuilt for this feature.
+- References: docs/ai2apps-native-app-development.md; docs/native-app-development-acceptance-2026-10-05.json. DeepSeek MIT source pinned to 5badb15009ae1756c3afe0ae0cef1faafc290ccc. No Cloud changes or production publication.
+
+### Coding sub-Agent cooperation (2026-10-05, NXR-CODING-SUBAGENTS-20261005)
+
+- Status: implemented and tested in App-Dev. Independent analyst/tester/reviewer/worker snapshots, host-bound workspace/permissions, durable async start/status/wait/cancel/followup and worker merge. Waiting releases global capacity even at concurrency=1, survives restart and settles one original tool result. Root shared budgeting preserves uncertain usage, reports remaining tokens and typed exhaustion; early memory compaction uses a soft trigger without lowering the existing admission ceiling.
+- Coder shows role/stale/evidence/logs/usage, restores the owned latest task after a Local port change, and selects App/Mini-App previews. Native draft HTML embeds bounded local classic JS/CSS to avoid opaque-frame resource 401s; no same-origin, credential, network or publication privileges are added. New subdirectory component registration is explicitly checked against validation IDs. Generic Tool listing caches service metadata only within one list call and filters coding-only tools before reads; execution authorization is unchanged.
+- Validation: 155 distinct pytest checks, 12 isolated standard-library checks and 9 Node UI checks passed, including actual macOS Seatbelt, single-slot waiting, any/all wakeup, group capacity, cancellation/restart, parent capability intersection, forged IDs, migration and patch preflight. Real DeepSeek/Terra attempts, App repair and new Mini-App are recorded; both cases required explicit bounded follow-up Runs after initial budget/context limits, so no single-Run success claim. Counter preview 0→1 and Text Stats hello world→11 characters/2 words verified; original fixture remained unchanged until reviewed Apply. Module/async/remote preview and Host Bridge/mobile acceptance remain outside this static preview guarantee.
+- Activation: fixed App-Dev Local restarted through Helper; live title AI2Apps-App-Dev: App-Dev 127.0.0.1:59092. No App rebuild, Cloud change, production publication or sibling instance data merge.
+- Design/evidence: docs/ai2apps-coding-subagents-development-plan.md and docs/coding-subagents-acceptance-2026-10-05.json. SQLite migrations 78/79 preserve prior tasks and narrowly upgrade the builtin coding executor.
+
+### Agent Sidebar refresh clears previous results (2026-10-05, NXR-AGENT-REFRESH-RESULTS-20261005)
+- Status: implemented. Explicit title-row refresh clears displayed AgentRun/result/handoff and cached AI presentations before reconnecting; initialization skips completed history restoration for explicit refresh. Initial mount still restores history, and active/resumable runs retain their controls. Static version agent-refresh-results-9; no stored run deletion, Python restart, bundle rebuild or Cloud changes.
+- Validation: focused Node refresh regressions verify completed result clearing, unchanged initial restoration and retained active run controls; related parameter/Gallery tests and JavaScript syntax passed.
+
+### Agent result heading clear icon (2026-10-05, NXR-AGENT-RESULT-CLEAR-20261005)
+- Status: implemented. Added an eraser icon directly after the execution-result title with Chinese/English accessible label and tooltip. Click clears the current displayed run/result/handoff and cached AI presentation through the existing renderRun(null) path; stored execution history remains intact. Static version agent-clear-result-10.
+- Validation: JavaScript syntax and existing refresh/result-clear regression tests passed. Static-only change; no Python restart, bundle rebuild or Cloud changes.
+
+### Native Sidebar toolbar refresh (2026-10-05, NXR-SIDEBAR-REFRESH-20261005)
+- Status: implemented. Explicit toolbar refresh reloads the selected Mini-Entry with a fresh context revision and refresh marker; automatic context notifications keep their existing navigation semantics. Agent initialization uses the marker to suppress restoring completed results. Implemented as a checked-in packaged AceFox transformation in the standard App builder. Chinese/English tooltip now describes refreshing the current panel.
+- Validation: 19 focused Python tests and 2 Node refresh regressions passed; packaged sidebar JavaScript syntax passed. Fixed App-Dev rebuilt through build-app-dev-environment.sh; verify-release-app.sh and deep strict codesign verification passed. Live native title verified as AI2Apps-App-Dev: App-Dev 127.0.0.1:52217. Live Browser initially restored completed run_1337b4153a864bee973aeab98bb95f9f; clicking native toolbar refresh reloaded Agent Mini-Entry with the refresh marker and removed the displayed run/result/handoff.
+
+### Builtin App Developer executor migration (2026-10-05, NXR-APPDEV-EXECUTOR-MIGRATION-20261005)
+- Status: implemented. Startup migrates only the legacy host-owned ai2apps.app-developer definition from builtin:general-agent to builtin:coding-parent before registration. Package-owned or unknown executor records retain existing ownership conflict checks. This resolved an App-Dev restart blocker discovered during Sidebar refresh verification.
+- Validation: scoped/idempotent migration regression passed; App-Dev Local startup completed after restart and the Shell reconnected. No Cloud or other instance data changes.
+
+### Native Sidebar actions menu (2026-10-05, NXR-SIDEBAR-SITE-DATA-20261005)
+- Status: implemented. Replaces toolbar refresh with an actions menu containing refresh and native site-data deletion. Uses the active HTTP(S) page's schemeless site and Firefox ClearDataService; clears cookies/site data and caches, including partitioned storage. Internal pages disable deletion. Native confirmation identifies the domain; result dialogs report success or incomplete cleanup. Includes Chinese/English labels.
+- Validation: 3 native-menu behavior tests and 3 packaging regressions passed; native JavaScript, Python and locale JSON syntax checks passed. App-Dev rebuilt via the fixed builder; release verification and deep strict codesign verification passed. Live UI verified menu items, disabled deletion on about:newtab, current example.org domain, and cancellation of the native confirmation without deletion. Actual user website data was not deleted during verification. Existing broad omlx/admin/routes.py lint failures remain outside this change.
+
+
+### Avatar Package localization (2026-10-05, NXR-AVATAR-I18N)
+
+- Implemented source changes in packages/ai2apps-avatar-studio-suite: nine complete catalogs matching Host languages (en, zh, zh-TW, ja, ko, fr, es, pt-BR, ru), localized HTML titles/labels/accessibility strings, model setup and resolution options, known generation preset labels, input validation, job states and submission errors. Removed hard-coded Chinese CSS-generated slot text. Package and Mini-App declaration names/descriptions localized.
+- Studio bridge includes locale in the authenticated mount handshake and sends locale updates when Host document language changes. Package reads mount locale query for initial rendering, normalizes regional variants, and falls back to English. Language updates retain selected media/model/preset/resolution. Existing shared output ownership unchanged.
+- Corrected API error extraction for error/message and detail forms: decoded audio duration limit failure now reports the selected model limit in the UI language. Unknown upstream errors retain their original diagnostic text.
+- Validation: nine-language completeness/placeholders/HTML-key/fallback Node test, input/drag/model setup + language-switch + duration-error Node test, and mount bridge Node test pass. 19 Host client/avatar tests pass; sandbox Metal shutdown warning is unrelated to these CPU/UI tests.
+- Source implementation complete; signed Package rebuild/publication and installed-instance UI acceptance pending. Existing version identifiers and signed dist artifacts untouched this turn. Host change requires next Desktop scope assessment; no production publication performed.
+
+
+### Avatar input audio recording and preview (2026-10-05, NXR-AVATAR-AUDIO-SLOT)
+
+- Source implementation: Avatar Mini-App supports Host-owned microphone recording with start/stop/use/discard, elapsed time and automatic duration limit. Discard preserves existing input. Generation and input replacement are disabled while recording. Finder/Gallery/Output imports and recordings share a filename/size/duration/native audio preview inside the audio slot; no autoplay. Audio metadata is read locally, with decoding fallback for unknown container duration and clear unsupported-preview errors. Nine locales updated.
+- Host recorder is loaded by Video Studio only and exposed through the existing mount-authorized avatar capability bridge. It releases microphone tracks after stop, error, cancellation, navigation, frame removal and late permission completion. Limits: selected model duration with 0.25s encoding margin, Host hard cap 600s and 100 MiB. Input recordings never enter generated output history.
+- Microphone self-permission scoped to first-party Video Studio HTML and its Shell frame, in addition to existing Chat scope. Package frames still cannot request microphone access. Package resource CSP now permits media-src blob: for local input preview while retaining connect-src none and opaque-origin production sandbox. Changes to omlx/admin/routes.py require embedded component adoption/rebuild per release workflow.
+- Validation: recorder lifecycle/auto-stop/denial/late permission cleanup Node tests; audio slot filename/duration/record/use/discard and existing drag/model/locale/error Node tests; all nine locale catalogs; avatar bridge tests pass. 31 Host/security/avatar tests pass. Actual microphone and installed Package UI acceptance, signed Package build/publication and Desktop adoption remain pending. Existing installed Packages have not been modified.
+
+### NXR-AVATAR-PACKAGE-013 (2026-10-05)
+
+- Status: Package 0.1.3 published, Snapshot 248; Desktop Host rollout remains pending. Nine-language names/UI and audio slot recording/preview included. Existing Publisher/key retained. Public signed download and clean-instance installation passed; four Node suites and 31 Python tests passed. Receipt: docs/ai2apps-avatar-suite-release-2026-10-05.md.
+- Host recording bridge, sandbox Blob media CSP and localized Studio labels remain separate Desktop changes; publishing this Package does not publish the Desktop.

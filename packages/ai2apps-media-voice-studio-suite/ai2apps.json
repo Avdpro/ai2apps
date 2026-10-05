@@ -3,9 +3,15 @@
   "package": {
     "id": "ai2apps/media-voice-studio-suite",
     "type": "app",
-    "version": "0.2.0",
+    "version": "0.2.1",
     "displayName": "Media Voice Studio Suite",
-    "description": "Six local-first Mini-Apps for transcription, source separation, voice replacement, video dubbing, and subtitles."
+    "description": "Six local-first Mini-Apps for transcription, source separation, voice replacement, video dubbing, and subtitles.",
+    "localizations": {
+      "zh-CN": {
+        "displayName": "音视频语音工作室套件",
+        "description": "六个本地优先的 Mini-App，支持转写、音轨分离、角色换声、视频配音与字幕制作。"
+      }
+    }
   },
   "compatibility": {
     "ai2apps": ">=0.1.0 <2.0.0",

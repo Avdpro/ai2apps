@@ -28,6 +28,7 @@ from .models import (
     StatusAction,
     StatusLineRecord,
     ToolCallAction,
+    ToolErrorAction,
 )
 from .repository import AgentRepository
 from .runtime import AgentRuntime, diagnostic_executor, install_diagnostic_agent
@@ -56,6 +57,7 @@ __all__ = [
     "StatusAction",
     "StatusLineRecord",
     "ToolCallAction",
+    "ToolErrorAction",
     "diagnostic_executor",
     "install_diagnostic_agent",
     "install_general_agent",

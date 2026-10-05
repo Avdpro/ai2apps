@@ -62,6 +62,8 @@ ACTOR_ROOT="${SHELL_APP}/Contents/Resources/browser/chrome/browser/content/brows
 ACTOR_PARENT='chrome/browser/content/browser/ai2apps/ManagedBrowserParent.sys.mjs'
 ACTOR_CHILD='chrome/browser/content/browser/ai2apps/ManagedBrowserChild.sys.mjs'
 BROWSER_OMNI="${SHELL_APP}/Contents/Resources/browser/omni.ja"
+/usr/bin/python3 "${SCRIPT_DIR}/apply-screen-recording-shell.py" --archive "${BROWSER_OMNI}"
+/usr/bin/python3 "${SCRIPT_DIR}/apply-shell-navigation.py" --archive "${BROWSER_OMNI}"
 ACTOR_CONTRACT_VALID=false
 if [[ -f "${ACTOR_ROOT}/ManagedBrowserParent.sys.mjs" && \
       -f "${ACTOR_ROOT}/ManagedBrowserChild.sys.mjs" ]] && \

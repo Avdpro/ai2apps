@@ -660,6 +660,56 @@ class AgentRepository:
             raise ResourceNotFoundError("agent_run", run_id)
         return self._run(row)
 
+    @staticmethod
+    def _plan_in_transaction(connection, run_id):
+        row = connection.execute(
+            "SELECT payload_json FROM events WHERE subject_id = ? "
+            "AND type = 'agent.plan.updated' ORDER BY sequence DESC LIMIT 1",
+            (run_id,),
+        ).fetchone()
+        return json.loads(row["payload_json"]) if row else {"revision": 0, "items": []}
+
+    def get_plan(self, run_id: str) -> dict[str, Any]:
+        self.get_run(run_id)
+        with self.database.transaction() as connection:
+            return self._plan_in_transaction(connection, run_id)
+
+    def update_plan(self, run_id: str, *, expected_revision: int, items: list) -> dict:
+        from .control_tools import PLAN_SCHEMA
+
+        Draft202012Validator(PLAN_SCHEMA).validate(
+            {"expected_revision": expected_revision, "items": items}
+        )
+        if len({item["id"] for item in items}) != len(items):
+            raise ValueError("Plan item IDs must be unique")
+        if sum(item["status"] == "in_progress" for item in items) > 1:
+            raise ValueError("A sequential Run can have only one in_progress plan item")
+        with self.database.transaction(write=True) as connection:
+            run = connection.execute(
+                "SELECT r.*, s.app_instance_id FROM agent_runs r JOIN sessions s "
+                "ON s.id = r.session_id WHERE r.id = ?", (run_id,),
+            ).fetchone()
+            if run is None:
+                raise ResourceNotFoundError("agent_run", run_id)
+            if run["status"] != "running":
+                raise ResourceConflictError("Plan updates require a running Agent")
+            previous = self._plan_in_transaction(connection, run_id)
+            if items == previous["items"]:
+                return previous
+            if expected_revision != previous["revision"]:
+                raise ResourceConflictError("Plan changed; read the current plan and retry")
+            plan = {"revision": previous["revision"] + 1, "items": items}
+            self.events.append_in_transaction(
+                connection, event_type="agent.plan.updated", subject_id=run_id,
+                app_instance_id=run["app_instance_id"], session_id=run["session_id"],
+                trace_id=run_id, payload=plan,
+            )
+            connection.execute(
+                "UPDATE agent_runs SET revision = revision + 1, updated_at = ? WHERE id = ?",
+                (utc_now_text(), run_id),
+            )
+            return plan
+
     def retry_run(
         self,
         run_id: str,
@@ -1020,6 +1070,8 @@ class AgentRepository:
                 LEFT JOIN agent_concurrency_groups g
                   ON g.group_key = d.concurrency_group
                 WHERE r.status = 'queued' AND r.cancel_requested = 0
+                  AND NOT EXISTS (SELECT 1 FROM agent_deferred_waits w WHERE w.run_id=r.id)
+                  AND (d.executor_key != 'builtin:coding-child' OR EXISTS (SELECT 1 FROM coding_subagents c WHERE c.child_run_id=r.id))
                   AND r.deadline_at > ? AND d.status = 'enabled'
                 ORDER BY r.priority DESC, r.created_at, r.id
                 """,
@@ -1847,6 +1899,17 @@ class AgentRepository:
                     error = {"code": "uncertain_tool_side_effect"}
                     interrupted += 1
                 elif run["resume_policy"] == "restart":
+                    # A hard process loss bypasses runtime cancellation cleanup.
+                    # Preserve the abandoned attempt but free its logical action key.
+                    connection.execute(
+                        """
+                        UPDATE run_steps SET status = 'cancelled',
+                            action_key = action_key || ':retry:' || id,
+                            error_json = ?, finished_at = ?
+                        WHERE run_id = ? AND kind = 'model' AND status = 'running'
+                        """,
+                        (_json({"code": "process_interrupted_during_model"}), now, run["id"]),
+                    )
                     target = "queued"
                     error = None
                     recovered += 1

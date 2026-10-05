@@ -15,15 +15,18 @@ from ai2apps.capabilities import (
     PolicyEffect,
     action_preview,
 )
+from ai2apps.context_engine import ContextOverflowError
 from ai2apps.model_invocation import ModelInvocationContext
 from ai2apps.services import ToolGateway, ToolGatewayError
 
+from .compaction import CHECKPOINT_KEY
 from .models import (
     AgentAction,
     AgentExecutionContext,
     AgentRunStatus,
     CompleteAction,
     ContinueAction,
+    DeferredToolAction,
     FailAction,
     InteractionAction,
     InteractionKind,
@@ -32,8 +35,11 @@ from .models import (
     RunStepStatus,
     StatusAction,
     ToolCallAction,
+    ToolErrorAction,
 )
 from .repository import AgentRepository
+from .session_memory import SESSION_KEY
+from .tool_recovery import error_result, model_visible, recoverable
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +66,7 @@ class AgentRuntime:
         capabilities: CapabilityRepository | None = None,
         *,
         global_concurrency: int = 32,
+        model_invocations=None,
     ) -> None:
         if global_concurrency <= 0:
             raise ValueError("global_concurrency must be positive")
@@ -69,7 +76,10 @@ class AgentRuntime:
         self.capabilities = capabilities
         self.global_concurrency = global_concurrency
         self._executors: dict[str, AgentExecutor] = {}
+        self._context_provider = None
+        self.cooperation = None
         self._model_provider: ModelProvider | None = None
+        self._model_invocations = model_invocations
         self._model_provider_positional_arity = 1
         self._wake = asyncio.Event()
         self._stopping = False
@@ -82,6 +92,17 @@ class AgentRuntime:
         if not executor_key:
             raise ValueError("executor_key must not be empty")
         self._executors[executor_key] = executor
+
+    def bind_context_provider(self, provider) -> None:
+        """Optional trusted provider for actual routed prompt size/window."""
+        self._context_provider = provider
+
+    async def measure_context(self, run_id, request):
+        if self._context_provider is None:
+            return None
+        run = await asyncio.to_thread(self.repository.get_run, run_id)
+        owner = await asyncio.to_thread(ModelInvocationContext.for_session, self.repository.database, run.session_id)
+        return await _await_action(self._context_provider(request, owner))
 
     def bind_model_provider(self, provider: ModelProvider) -> None:
         self._model_provider = provider
@@ -109,6 +130,8 @@ class AgentRuntime:
         context: ModelInvocationContext,
     ) -> dict:
         assert self._model_provider is not None
+        if self._model_invocations is not None and str(request.get("model") or "").startswith("cloud/"):
+            return await self._model_invocations.invoke_agent_cloud_json(request, context=context)
         if self._model_provider_positional_arity >= 3:
             value = self._model_provider(request, progress_reporter, context)
         elif self._model_provider_positional_arity >= 2:
@@ -348,6 +371,8 @@ class AgentRuntime:
                 await asyncio.to_thread(self.repository.expire_interactions)
                 if self.capabilities is not None:
                     await asyncio.to_thread(self.capabilities.expire_leases)
+                if self.cooperation is not None:
+                    await self.cooperation.maintain()
                 while len(self._tasks) < self.global_concurrency:
                     run = await asyncio.to_thread(self.repository.claim_next)
                     if run is None:
@@ -475,6 +500,61 @@ class AgentRuntime:
                     request=action.request,
                     timeout_seconds=action.timeout_seconds,
                 )
+            elif isinstance(action, DeferredToolAction):
+                if self.cooperation is None:
+                    await self._fail(run_id, "wait_unavailable", "Deferred tool adapter unavailable")
+                    return
+                await asyncio.to_thread(self.cooperation.register_wait, context, action)
+                self.wake()
+            elif isinstance(action, ToolErrorAction):
+                if run.current_step >= self._step_budget(run, definition):
+                    await self._fail(
+                        run_id, "max_steps_exceeded", "Agent step budget exhausted"
+                    )
+                    return
+                step, created = await asyncio.to_thread(
+                    self.repository.create_step,
+                    run_id,
+                    action_key=action.call_id,
+                    kind="tool",
+                    input={},
+                    tool_name=action.tool_name,
+                )
+                if not created:
+                    if step.status is RunStepStatus.FAILED and model_visible(step.error):
+                        await self._requeue(run_id, "Tool rejection already recorded")
+                    else:
+                        await self._fail(
+                            run_id, "tool_step_not_retriable",
+                            "Rejected Tool step cannot be replayed",
+                        )
+                    return
+                active_tool_step = step
+                active_tool_effects = ()
+                may_continue = recoverable(
+                    action.code,
+                    effects=(),
+                    enabled=True,
+                    preflight=True,
+                    prior_errors=sum(model_visible(prior.error) for prior in steps),
+                )
+                failure = (
+                    error_result(action.code, action.message, preflight=True)
+                    if may_continue
+                    else {"code": action.code, "message": action.message}
+                )
+                await asyncio.to_thread(
+                    self.repository.settle_step,
+                    step.id,
+                    status=RunStepStatus.FAILED,
+                    error=failure,
+                )
+                active_tool_step = None
+                if may_continue:
+                    await self._requeue(run_id, "Tool call rejected; requesting correction")
+                else:
+                    await self._fail(run_id, action.code, action.message)
+                return
             elif isinstance(action, ToolCallAction):
                 if run.current_step >= self._step_budget(run, definition):
                     await self._fail(
@@ -667,12 +747,32 @@ class AgentRuntime:
                         timeout_ms=action.timeout_ms,
                     )
                 except ToolGatewayError as error:
+                    may_continue = recoverable(
+                        error.code,
+                        effects=tool.effects,
+                        prior_errors=sum(model_visible(prior.error) for prior in steps),
+                        enabled=(
+                            action.recover_tool_errors
+                            or (action.recover_input_errors and error.code == "invalid_tool_input")
+                        ),
+                    )
+                    failure = (
+                        error_result(error.code, str(error), retryable=error.retryable)
+                        if may_continue
+                        else {"code": error.code, "message": str(error)}
+                    )
                     await asyncio.to_thread(
                         self.repository.settle_step,
                         step.id,
                         status=RunStepStatus.FAILED,
-                        error={"code": error.code, "message": str(error)},
+                        error=failure,
                     )
+                    active_tool_step = None
+                    if may_continue:
+                        await self._requeue(
+                            run_id, "Tool failed; requesting a new model decision"
+                        )
+                        return
                     await self._fail(
                         run_id, error.code, str(error), retryable=error.retryable
                     )
@@ -724,12 +824,34 @@ class AgentRuntime:
                         "Model Runtime provider is not bound",
                     )
                     return
+                if self.cooperation is not None and definition.executor_key in {"builtin:coding-parent", "builtin:coding-child"}:
+                    try:
+                        self.cooperation.reserve_model(run, step.id, action.request)
+                    except ValueError as error:
+                        code = getattr(error, "code", "model_budget_rejected")
+                        await asyncio.to_thread(
+                            self.repository.settle_step, step.id,
+                            status=RunStepStatus.FAILED,
+                            error={"code": code, "message": str(error)},
+                        )
+                        await self._fail(run_id, code, str(error), retryable=False)
+                        return
                 try:
                     model_name = str(action.request.get("model") or "the model")
                     model_context = ModelInvocationContext.for_session(
                         self.repository.database,
                         run.session_id,
                     )
+                    if action.context_audit is not None:
+                        await asyncio.to_thread(
+                            self.repository.events.append,
+                            event_type="agent.model.context.prepared",
+                            subject_id=run.id,
+                            app_instance_id=model_context.app_instance_id,
+                            session_id=run.session_id,
+                            trace_id=run.id,
+                            payload={"step_id": step.id, **action.context_audit},
+                        )
                     await asyncio.to_thread(
                         self.repository.events.append,
                         event_type="agent.model.invocation.started",
@@ -746,12 +868,26 @@ class AgentRuntime:
                     model_output = await _await_action(
                         self._run_model_call(
                             run_id,
-                            action.request,
+                            {key: value for key, value in action.request.items()
+                             if key not in {CHECKPOINT_KEY, SESSION_KEY}},
                             model_name=model_name,
                             step_sequence=step.sequence,
                             context=model_context,
                         )
                     )
+                except ContextOverflowError as error:
+                    await asyncio.to_thread(
+                        self.repository.settle_step, step.id,
+                        status=RunStepStatus.FAILED,
+                        error={"code":"context_overflow", "message":str(error)},
+                    )
+                    if action.request.get(SESSION_KEY) or action.request.get(CHECKPOINT_KEY):
+                        await self._fail(run_id, "summary_context_overflow", str(error))
+                    elif context.definition.executor_key in {"builtin:general-agent", "builtin:coding-parent"}:
+                        await self._requeue(run_id, "Compacting context after provider window overflow")
+                    else:
+                        await self._fail(run_id, "context_overflow", str(error))
+                    return
                 except Exception as error:
                     await asyncio.to_thread(
                         self.repository.settle_step,
@@ -787,6 +923,8 @@ class AgentRuntime:
                     status=RunStepStatus.COMPLETED,
                     output=model_output,
                 )
+                if self.cooperation is not None and definition.executor_key in {"builtin:coding-parent", "builtin:coding-child"}:
+                    self.cooperation.settle_model(step.id, model_output)
                 active_model_step = None
                 await self._requeue(run_id, "Model response received")
             else:

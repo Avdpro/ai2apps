@@ -92,6 +92,27 @@ Multiple Mini-Apps can share one App Package, Package version, resource tree, an
 Mini-App ID remains its canonical component identity; installation, activation, disable, rollback, and
 access control continue to use the containing App Package.
 
+## Localization contract
+
+Package Mini-Apps use English as the manifest and UI fallback. Each declaration MAY provide the same
+bounded `localizations` map used by Apps; every locale entry contains a localized `name` and may contain
+`description`. Studio hosts resolve this metadata before rendering Package Mini-App lists, titles, and
+descriptions. A generic `zh` Host locale tries `zh-CN`; `zh-HK`, `zh-MO`, and `zh-Hant` may fall back to
+`zh-TW`; unsupported locales use the English base fields. A Package must not infer its display language
+from translated model output or persisted user content.
+
+The shared Studio mount client adds the Host document locale to the signed mount context and to the
+constrained Entry URL as the `locale` query parameter. Sandbox Entries normalize that value, fall back
+to English for unsupported locales, update `document.documentElement.lang`, and localize visible text,
+document titles, accessible names, placeholders, statuses, errors, empty states, and dynamically added
+controls. User-authored text, transcript content, Character names, filenames, and model/provider names
+remain unchanged. Package code must not read Host storage or browser credentials to discover locale.
+
+Changing the AI2Apps language requires remounting or refreshing an already open Package Entry. New
+mounts receive the current locale automatically. Localization tests pin the locale and cover both static
+and dynamic UI states; untranslated identifiers such as capability IDs and file formats may remain in
+their canonical form.
+
 ### App Launcher visibility
 
 A Package that exists only to provide Studio Mini-Apps should declare `navigation.launcher: false`.
@@ -518,3 +539,21 @@ Host read reconciliation projects durable video-task status and publishes each c
 The model selector includes an “Install model…” action which starts ACPF with `installMore`; cancelling retains the previous model. The image/audio slots accept Finder `File` objects and the existing Gallery, Imagine Output and Voice Output drag types. Selected images have thumbnails; audio shows its file name and size. Both sources can be replaced and removed without creating a Mini-App output player or history. Audio playback inside a Package frame is not enabled by the current sandbox media policy.
 
 `avatar.input.read` is a private Video Studio bridge operation requiring a current authorized mount declaring `video.avatar_generation`. It accepts `kind: image|audio` and structured references only: `gallery/assetId`, `image-output/appInstanceId/artifactId` or `audio-output/sessionId/artifactId`. The Host resolves its fixed authenticated APIs, verifies output membership, checks MIME and caps streamed bytes (20 MiB images, 100 MiB audio). Arbitrary URLs and filesystem paths are not accepted. The frame receives a Blob and display name, never credentials.
+
+
+### Subtitle correction bridge
+
+The subtitle Mini-App may call `subtitle.refine` with `segments` and `rules`.
+The Host revalidates the live owner-bound mount, requires `media.video_subtitles`,
+and calls the Host JSON `subtitle-refinement` endpoint. The Broker additionally
+requires `text.translation`, uses the configured Standard tasks model, and returns
+a proposal only. It preserves cue count, order, timing, speaker and empty cues;
+changed text loses stale word alignment. The frame must show the proposed changes
+and require explicit application; it must reject a proposal if its source cues
+changed while awaiting generation. No output Artifact is produced by refinement.
+
+`subtitle.profiles.get` and `subtitle.profiles.set` persist correction profiles
+through the Host, isolated by the existing owner/provider/resource draft identity
+but stored under a separate key. Resetting a media task must not remove profiles.
+At most 100 profiles, each with a name up to 100 characters and rules up to 8,000
+characters, are allowed. The opaque frame never reads browser storage directly.

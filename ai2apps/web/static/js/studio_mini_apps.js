@@ -8,6 +8,38 @@
             || '';
     }
 
+    function normalizedLocale(value) {
+        const raw = String(value || 'en').trim().replaceAll('_', '-');
+        if (!/^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$/.test(raw)) return 'en';
+        return raw.split('-').map((part, index) => {
+            if (index === 0) return part.toLowerCase();
+            if (part.length === 2 && /^[A-Za-z]+$/.test(part)) return part.toUpperCase();
+            if (part.length === 4 && /^[A-Za-z]+$/.test(part)) return part[0].toUpperCase() + part.slice(1).toLowerCase();
+            return part.toLowerCase();
+        }).join('-');
+    }
+
+    function localizedDeclaration(item, locale = document.documentElement.lang) {
+        if (!item || typeof item !== 'object') return item;
+        const normalized = normalizedLocale(locale);
+        const localizations = item.localizations && typeof item.localizations === 'object'
+            ? item.localizations : {};
+        const byLocale = Object.fromEntries(Object.entries(localizations).map(([key, value]) => [
+            String(key).replaceAll('_', '-').toLowerCase(), value,
+        ]));
+        const language = normalized.split('-', 1)[0].toLowerCase();
+        const chineseFallback = /^zh-(HK|MO|Hant)$/i.test(normalized) ? byLocale['zh-tw'] : null;
+        const languageDefault = language === 'zh' ? byLocale['zh-cn'] : null;
+        const localized = byLocale[normalized.toLowerCase()] || chineseFallback
+            || byLocale[language] || languageDefault || {};
+        return {
+            ...item,
+            name: localized.name || item.name,
+            summary: localized.summary || item.summary,
+            description: localized.description || item.description,
+        };
+    }
+
     async function payload(response) {
         const value = await response.json().catch(() => null);
         if (!response.ok) throw new Error(value?.error?.message || value?.detail?.message || value?.detail || `Request failed (${response.status})`);
@@ -127,17 +159,24 @@
         let avatarJobsState = "";
         const downloads = new Set();
         const progressSources = new Set();
+        let audioRecorder = null;
         const abort = new AbortController();
         const active = () => !closed && frame.isConnected && frame.src === src && frame.contentWindow === source;
         const close = () => {
             closed = true; abort.abort();
+            audioRecorder?.dispose();
             progressSources.forEach(source => source.close()); progressSources.clear();
-            channel.port1.close(); observer.disconnect();
+            channel.port1.close(); observer.disconnect(); localeObserver.disconnect();
             frame.removeEventListener('load', revoke);
         };
         const revoke = () => { mountedFrames.delete(src); close(); };
         const observer = new MutationObserver(() => { if (!active()) revoke(); });
+        const localeObserver = new MutationObserver(() => {
+            if (active()) channel.port1.postMessage({type: 'ai2apps:studio-locale', locale: document.documentElement.lang || 'en'});
+        });
+        localeObserver.observe(document.documentElement, {attributes: true, attributeFilter: ['lang']});
         observer.observe(frame, {attributes: true, attributeFilter: ['src']});
+        observer.observe(document.documentElement, {childList: true, subtree: true});
         frame.addEventListener('load', revoke);
         channels.set(frame, close);
         const base = `/v1/platform/studios/${encodeURIComponent(binding.studioId)}/mini-app-mounts/${encodeURIComponent(binding.mountId)}`;
@@ -158,6 +197,18 @@
                 }));
                 if (!active()) return;
                 if (request.operation === 'probe') reply({value: probe});
+                else if (['avatar.record.start', 'avatar.record.stop', 'avatar.record.cancel'].includes(request.operation)) {
+                    if (binding.studioId !== 'ai2apps.video-studio' || !probe.items?.some(item => item.capability === 'video.avatar_generation')) throw new Error('Capability is not allowed');
+                    if (request.operation === 'avatar.record.start') {
+                        if (audioRecorder?.pending || audioRecorder?.recorder?.state === 'recording') throw new Error('recording_busy');
+                        audioRecorder?.dispose();
+                        audioRecorder = new window.AI2AppsStudioAudioRecorder();
+                        reply({value: await audioRecorder.start(request.maxSeconds)});
+                    } else if (request.operation === 'avatar.record.stop') {
+                        if (!audioRecorder) throw new Error('recording_empty');
+                        reply({value: await audioRecorder.stop()});
+                    } else { audioRecorder?.dispose(); audioRecorder = null; reply({value:{cancelled:true}}); }
+                }
                 else if (request.operation === 'avatar.input.read') {
                     if (binding.studioId !== 'ai2apps.video-studio' || !probe.items?.some(item => item.capability === 'video.avatar_generation')) throw new Error('Capability is not allowed');
                     reply({value: await readAvatarInput(request, abort.signal)});
@@ -233,6 +284,21 @@
                     reply({value: await payload(await fetch(`${base}/voice-clone-models`, {
                         credentials: 'same-origin', cache: 'no-store', signal: abort.signal,
                     }))});
+                }
+                else if (['subtitle.refine', 'subtitle.profiles.get', 'subtitle.profiles.set'].includes(request.operation)) {
+                    if (!probe.items?.some(item => item.capability === 'media.video_subtitles')) throw new Error('Subtitle access is not allowed');
+                    const profileKey = storageKey + ':correction-profiles';
+                    if (request.operation === 'subtitle.profiles.get') reply({value: JSON.parse(localStorage.getItem(profileKey) || '[]')});
+                    else if (request.operation === 'subtitle.profiles.set') {
+                        const profiles = request.profiles;
+                        if (!Array.isArray(profiles) || profiles.length > 100 || profiles.some(p => !p || typeof p.id !== 'string' || p.id.length > 100 || typeof p.name !== 'string' || !p.name.trim() || p.name.length > 100 || typeof p.rules !== 'string' || p.rules.length > 8000)) throw new Error('Invalid correction profiles');
+                        localStorage.setItem(profileKey, JSON.stringify(profiles.map(({id,name,rules}) => ({id,name,rules}))));
+                        reply({value: null});
+                    } else {
+                        const body = JSON.stringify({segments: request.segments, rules: request.rules});
+                        if (new TextEncoder().encode(body).length > 2 * 1024 * 1024) throw new Error('Subtitle text exceeds 2 MiB');
+                        reply({value: await payload(await fetch(`${base}/subtitle-refinement`, {method:'POST', credentials:'same-origin', signal:abort.signal, headers:{'Content-Type':'application/json'}, body}))});
+                    }
                 }
                 else if (request.operation === 'draft.get') reply({value: localStorage.getItem(storageKey)});
                 else if (request.operation === 'draft.remove') { localStorage.removeItem(storageKey); reply({value: null}); }
@@ -334,30 +400,41 @@
                 }
             }
         };
-        source.postMessage({type: 'ai2apps:studio-connected', version: 1}, '*', [channel.port2]);
+        source.postMessage({type: 'ai2apps:studio-connected', version: 1, locale: document.documentElement?.lang || 'en'}, '*', [channel.port2]);
     });
 
     window.AI2AppsStudioMiniApps = Object.freeze({
         async list(studioId) {
-            return payload(await fetch(`/v1/platform/studios/${encodeURIComponent(studioId)}/mini-apps`, {
+            const catalog = await payload(await fetch(`/v1/platform/studios/${encodeURIComponent(studioId)}/mini-apps`, {
                 credentials: 'same-origin', headers: { Accept: 'application/json' }, cache: 'no-store',
             }));
+            return {
+                ...catalog,
+                items: (catalog?.items || []).map(item => item?.source === 'package'
+                    ? localizedDeclaration(item, document.documentElement?.lang)
+                    : item),
+            };
         },
         async mount(studioId, miniAppId, { placement = 'inline', context = {} } = {}) {
             const instanceId = appInstanceId();
             if (!instanceId) throw new Error('Studio App instance is unavailable');
+            const locale = normalizedLocale(context.locale || document.documentElement?.lang || globalThis.navigator?.language);
+            const mountContext = {...context, locale};
             const mount = await payload(await fetch(`/v1/platform/studios/${encodeURIComponent(studioId)}/mini-app-mounts`, {
                 method: 'POST', credentials: 'same-origin',
                 headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-AI2Apps-App-Instance': instanceId },
-                body: JSON.stringify({ miniAppId, placement, context }),
+                body: JSON.stringify({ miniAppId, placement, context: mountContext }),
             }));
             const url = new URL(mount.content_url, location.origin);
             if (url.origin !== location.origin) throw new Error('Invalid Mini-App content origin');
+            url.searchParams.set('locale', locale);
+            mount.content_url = `${url.pathname}${url.search}${url.hash}`;
             if (mountedFrames.size >= 128) mountedFrames.delete(mountedFrames.keys().next().value);
             mountedFrames.set(url.href, {studioId, mountId: mount.id, miniAppId,
-                owner: instanceId, provider: mount.app_instance_id, resource: mount.resource});
+                owner: instanceId, provider: mount.app_instance_id, resource: mount.resource, locale});
             return mount;
         },
+        localize(item, locale) { return localizedDeclaration(item, locale); },
         async probe(studioId, mountId) {
             return payload(await fetch(`/v1/platform/studios/${encodeURIComponent(studioId)}/mini-app-mounts/${encodeURIComponent(mountId)}/capabilities`, {
                 credentials: 'same-origin', headers: { Accept: 'application/json' }, cache: 'no-store',

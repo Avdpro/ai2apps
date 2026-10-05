@@ -1,35 +1,41 @@
 <!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>照片说话</title><link rel="stylesheet" href="avatar.css?v=slots-v2"><script defer src="avatar.js?v=slots-v2"></script></head>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title data-i18n="title">Talking Portrait</title><link rel="stylesheet" href="avatar.css?v=audio-v1"><script defer src="locales.js?v=audio-v1"></script><script defer src="i18n.js?v=audio-v1"></script><script defer src="avatar.js?v=audio-v1"></script></head>
 <body><main><form id="avatar-form">
-<label for="model">数字人模型</label><select id="model" disabled><option value="">请先配置模型</option></select>
-<p id="model-limits">由工作室按需安装模型与权重。</p>
+<label for="model" data-i18n="model">Avatar model</label><select id="model" disabled><option value="" data-i18n="configure">Set up a model first</option></select>
+<p id="model-limits" data-i18n="limitsHint">The studio installs models and weights as needed.</p>
 <div class="source-slots">
 <section class="source-field" aria-labelledby="portrait-label">
-<label id="portrait-label" for="portrait">人像图片</label>
+<label id="portrait-label" for="portrait" data-i18n="portrait">Portrait image</label>
 <div class="source-slot" id="portrait-slot">
-<button type="button" class="slot-pick" id="portrait-pick" aria-label="选择人像图片"><span class="slot-icon" aria-hidden="true">＋</span><strong>拖入人像图片</strong><span>或点击选择文件</span></button>
-<img id="portrait-preview" alt="已选择的人像" hidden>
+<button type="button" class="slot-pick" id="portrait-pick" aria-label="Choose a portrait image" data-i18n-aria-label="pickPortrait"><span class="slot-icon" aria-hidden="true">＋</span><strong data-i18n="dropPortrait">Drop a portrait image</strong><span data-i18n="choose">or click to choose a file</span></button>
+<img id="portrait-preview" alt="Selected portrait" data-i18n-alt="selectedPortrait" hidden>
 <input id="portrait" type="file" accept="image/png,image/jpeg,image/webp" hidden>
-<button type="button" class="slot-clear" id="portrait-clear" aria-label="移除人像图片" hidden>移除</button>
+<button type="button" class="slot-clear" id="portrait-clear" aria-label="Remove portrait image" data-i18n-aria-label="removePortrait" hidden data-i18n="remove">Remove</button>
 </div>
-<p id="portrait-name" class="source-name">Finder · Gallery · 图片 Output</p>
-<p>单人正面照片，PNG / JPEG / WebP，最大 20 MiB。</p>
+<p id="portrait-name" class="source-name" data-i18n="portraitSources">Finder · Gallery · Image Output</p>
+<p data-i18n="portraitHint">Front-facing portrait of one person. PNG / JPEG / WebP, up to 20 MiB.</p>
 </section>
 <section class="source-field" aria-labelledby="speech-label">
-<label id="speech-label" for="speech">驱动音频</label>
+<label id="speech-label" for="speech" data-i18n="speech">Driving audio</label>
 <div class="source-slot" id="speech-slot">
-<button type="button" class="slot-pick" id="speech-pick" aria-label="选择驱动音频"><span class="slot-icon" aria-hidden="true">♫</span><strong>拖入驱动音频</strong><span>或点击选择文件</span></button>
+<button type="button" class="slot-pick" id="speech-pick" aria-label="Choose driving audio" data-i18n-aria-label="pickSpeech"><span class="slot-icon" aria-hidden="true">♫</span><strong data-i18n="dropSpeech">Drop driving audio</strong><span data-i18n="choose">or click to choose a file</span></button>
+<div id="speech-details" hidden>
+<p id="speech-name" class="source-name"></p>
+<p id="speech-duration" role="status"></p>
+<audio id="speech-preview" controls preload="metadata" data-i18n-aria-label="previewAudio" aria-label="Preview audio"></audio>
+</div>
 <input id="speech" type="file" accept="audio/*" hidden>
-<button type="button" class="slot-clear" id="speech-clear" aria-label="移除驱动音频" hidden>移除</button>
+<button type="button" class="slot-clear" id="speech-clear" aria-label="Remove driving audio" data-i18n-aria-label="removeSpeech" hidden data-i18n="remove">Remove</button>
 </div>
 
-<p id="speech-name" class="source-name">Finder · Gallery · 声音 Output</p>
-<p>保留原音轨内容，自动转换音频格式，最大 100 MiB。</p>
+<p id="speech-sources" data-i18n="speechSources">Finder · Gallery · Audio Output</p>
+<div class="record-actions"><button type="button" id="record-start" data-i18n="record">Record audio</button><button type="button" id="record-stop" hidden data-i18n="stopRecord">Stop and use</button><button type="button" id="record-cancel" hidden data-i18n="cancelRecord">Discard recording</button><span id="record-time" role="status" aria-live="polite"></span></div>
+<p data-i18n="speechHint">Keeps the original audio and converts its format automatically. Up to 100 MiB.</p>
 </section>
 </div>
-<label for="preset">生成模式</label><select id="preset" disabled></select>
-<label for="resolution">分辨率</label><select id="resolution" disabled></select>
-<div class="actions"><button type="submit" id="generate" disabled>生成视频</button><button type="button" id="cancel" disabled>停止生成</button><button type="button" id="retry" disabled>重试任务</button></div>
-<progress id="progress" max="100" value="0" aria-label="生成进度"></progress><p id="status" role="status" aria-live="polite">正在连接工作室…</p>
-<p>提交后可切换 Mini-App，生成会在后台继续。视频保存在工作室的预览与输出中。</p>
+<label for="preset" data-i18n="preset">Generation mode</label><select id="preset" disabled></select>
+<label for="resolution" data-i18n="resolution">Resolution</label><select id="resolution" disabled></select>
+<div class="actions"><button type="submit" id="generate" disabled data-i18n="generate">Generate video</button><button type="button" id="cancel" disabled data-i18n="cancel">Stop generation</button><button type="button" id="retry" disabled data-i18n="retry">Retry task</button></div>
+<progress id="progress" max="100" value="0" aria-label="Generation progress" data-i18n-aria-label="progress"></progress><p id="status" role="status" aria-live="polite" data-i18n="connecting">Connecting to the studio…</p>
+<p data-i18n="background">You can switch Mini-Apps after submitting. Generation continues in the background. Videos appear in the studio Preview & Output.</p>
 </form></main></body></html>

@@ -65,7 +65,9 @@
             'readaloud.line.collapse': ['收起编辑', 'Collapse editor'],
             'readaloud.line.delete': ['删除台词', 'Delete line'],
             'readaloud.dialogue.title': ['完整对话输出', 'Full dialogue output'],
-            'readaloud.dialogue.help': ['复用已有音频，生成缺失或已修改的台词，再按顺序和句后间隔合并。', 'Reuse matching audio, generate missing or changed lines, then merge with pauses.'],
+            'readaloud.dialogue.help': ['仅处理勾选片段：复用已有音频，生成缺失或已修改的台词，再按原顺序和句后间隔合并。', 'Process checked lines only: reuse matching audio, generate missing or changed lines, then merge in script order with pauses.'],
+            'readaloud.dialogue.include': ['加入完整对话', 'Include in full dialogue'],
+            'readaloud.dialogue.selection': ['已选 {count} / {total} 个片段', '{count} / {total} lines selected'],
             'readaloud.dialogue.generate': ['生成完整对话', 'Generate full dialogue'],
             'readaloud.line.generate': ['生成 / 重新生成', 'Generate / regenerate'],
             'readaloud.line.play': ['播放（设置改变时重新生成）', 'Play (regenerate if settings changed)'],
@@ -97,12 +99,15 @@
         return /AI2Apps Host did not respond|Unsupported host mount/i.test(String(error?.message || error || ''));
     }
     function localizedMiniApp(item) {
-        if (item.source === 'package') return {
-            ...item, mode: `package:${item.id}`, capability: item.requirements?.capabilities?.[0] || '', icon: item.icon || 'blocks',
-            name: item.name || item.title || item.id,
-            summary: item.summary || item.description || item.provider?.name || 'Installed Package',
-            description: item.description || item.summary || item.provider?.name || '',
+        if (item.source === 'package') {
+            const localized = window.AI2AppsStudioMiniApps?.localize(item, document.documentElement.lang) || item;
+            return {
+            ...localized, mode: `package:${item.id}`, capability: item.requirements?.capabilities?.[0] || '', icon: item.icon || 'blocks',
+            name: localized.name || localized.title || item.id,
+            summary: localized.summary || localized.description || localized.provider?.name || 'Installed Package',
+            description: localized.description || localized.summary || localized.provider?.name || '',
         };
+        }
         const key = item.key || item.title_key?.replace(/\.name$/, '') || 'readaloud.pipeline.quick';
         const capability = item.capability || item.requirements?.capabilities?.[0] || 'audio.speech_generation';
         const value = (candidate, fallback) => { const translated = tr(candidate); return translated === candidate ? tr(fallback) : translated; };
@@ -124,7 +129,9 @@
         return payload;
     }
 
-    window.readAloudApp = function () { return {
+    window.readAloudApp = function () {
+        const segmentSaves = new Map();
+        return {
         expandedLineId: '', lineEditing: false, pendingLineRemoval: null, busy: false, notice: '', noticeTone: '', noticeTimer: null, leftView: 'mini-apps', pipelineMode: 'quick', tab: 'script',
         miniAppDefinitions: [], runs: [], selectedRunId: '', selectedArtifactId: '', runTimer: null, draftTimer: null,
         packageMiniAppId: '', packageMiniAppUrl: '', packageMiniAppMountId: '', packageMiniAppLoading: false, packageMiniAppError: '', packageMiniAppReadiness: {}, packageMiniAppSetupBusy: false,
@@ -132,7 +139,7 @@
         audioPlaying: false, audioPosition: 0, audioDuration: 0, previewAudioBlob: null, previewAudioBlobUrl: '',
         quickForm: { text: '', voice: '', speed: 1, asrVerification: true, asrModelId: '' }, configuringQuickAsr: false, configuringProjectAsr: false, quickGenerating: false, quickAudioUrl: '', quickDownloadUrl: '', quickDownloadFormat: 'wav', quickAudioTitle: '', quickStatus: 'idle', quickTasks: [], selectedQuickTaskId: '',
         projects: [], selected: null, selectedProjectId: '', providers: [], voiceProfiles: [], selectedTtsModel: '',
-        lineAudioArtifact: null, lineDragAudio: null, lineDragPending: '', dialogueJob: null, dialogueTimer: null, dialogueStarting: false, autoPlayRunId: '', previewing: '', configuringSpeech: false, configuringVoice: false, currentAudioUrl: '', currentAudioTitle: '', previewHistory: [],
+        dialogueExcludedByProject: {}, lineAudioArtifact: null, lineDragAudio: null, lineDragPending: '', dialogueJob: null, dialogueTimer: null, dialogueStarting: false, autoPlayRunId: '', previewing: '', configuringSpeech: false, configuringVoice: false, currentAudioUrl: '', currentAudioTitle: '', previewHistory: [],
         designBusy: false, designPreviewUrl: '', designStatus: 'idle', conversionModelId: '', trainingHistory: [], trainingPreviewTitle: '', trainingSamples: [], trainingPreviewUrl: '', trainingPreviewStatus: 'idle', trainingPreviewText: '', trainingPreviewEmotion: 'neutral', trainingPreviewSpeed: 1, trainingBusy: false, autoTrainingAsr: true, trainingAsrModelId: '', configuringTrainingAsr: false,
         transcribingTraining: false, savingTraining: false, recordingTraining: false, trainingAudioUrl: '', trainingRecorder: null, trainingStream: null, trainingChunks: [],
         capabilityProbes: {},
@@ -246,7 +253,7 @@
         },
         dragLineAudio(event, segment) {
             const key = this.lineDragKey(segment);
-            if (!key || this.lineDragAudio?.key !== key || event.target.closest?.('.ra-line-editor,.ra-line-actions')) { event.preventDefault(); return; }
+            if (!key || this.lineDragAudio?.key !== key || event.target.closest?.('.ra-line-editor,.ra-line-actions,.ra-line-select')) { event.preventDefault(); return; }
             const actor = this.selected.characters.find(item=>item.id===segment.speakerId)?.name || '';
             this.writeAudioDrag(event, {title:[actor,segment.text.slice(0,60)].filter(Boolean).join(' · '), blob:this.lineDragAudio.blob});
         },
@@ -635,9 +642,10 @@
         },
         draftPayload() {
             const training = { ...this.trainingForm, audioFile: null, resourceHandle: '' };
-            return { trainingSamples: this.trainingSamples.map(({assetId,name,transcript,confirmed,selected,duration}) => ({assetId,name,transcript,confirmed,selected,duration})), trainingPreviewText: this.trainingPreviewText, trainingPreviewEmotion:this.trainingPreviewEmotion, trainingPreviewSpeed:this.trainingPreviewSpeed, autoTrainingAsr: this.autoTrainingAsr, trainingAsrModelId: this.trainingAsrModelId, characterDraftVersion: 1, characterMode: this.pipelineMode === 'training' ? 'training' : 'voice', showVoiceForm: this.showVoiceForm, selectedQuickTaskId: this.quickDownloadUrl?.split('/').at(-2) || this.selectedQuickTaskId, ...(this.pipelineMode === 'quick' ? { quickForm: this.quickForm } : {}), selectedProjectId: this.selectedProjectId, selectedTtsModel: this.selectedTtsModel, tab: this.tab, leftView: this.leftView, leftCollapsed: this.leftCollapsed, rightCollapsed: this.rightCollapsed, mobilePanel: this.mobilePanel, projectForm: this.projectForm, characterForm: this.characterForm, segmentForm: this.segmentForm, voiceForm: this.voiceForm, trainingForm: training, selectedRunId: this.selectedRunId };
+            return { dialogueExcludedByProject: this.dialogueExcludedByProject, trainingSamples: this.trainingSamples.map(({assetId,name,transcript,confirmed,selected,duration}) => ({assetId,name,transcript,confirmed,selected,duration})), trainingPreviewText: this.trainingPreviewText, trainingPreviewEmotion:this.trainingPreviewEmotion, trainingPreviewSpeed:this.trainingPreviewSpeed, autoTrainingAsr: this.autoTrainingAsr, trainingAsrModelId: this.trainingAsrModelId, characterDraftVersion: 1, characterMode: this.pipelineMode === 'training' ? 'training' : 'voice', showVoiceForm: this.showVoiceForm, selectedQuickTaskId: this.quickDownloadUrl?.split('/').at(-2) || this.selectedQuickTaskId, ...(this.pipelineMode === 'quick' ? { quickForm: this.quickForm } : {}), selectedProjectId: this.selectedProjectId, selectedTtsModel: this.selectedTtsModel, tab: this.tab, leftView: this.leftView, leftCollapsed: this.leftCollapsed, rightCollapsed: this.rightCollapsed, mobilePanel: this.mobilePanel, projectForm: this.projectForm, characterForm: this.characterForm, segmentForm: this.segmentForm, voiceForm: this.voiceForm, trainingForm: training, selectedRunId: this.selectedRunId };
         },
         applyDraft(draft = {}) {
+            this.dialogueExcludedByProject = Object.fromEntries(Object.entries(draft.dialogueExcludedByProject || {}).filter(([,ids]) => Array.isArray(ids)).map(([id,ids]) => [id,ids.filter(value => typeof value === 'string')]));
             for (const key of ['selectedQuickTaskId', 'selectedProjectId', 'selectedTtsModel', 'tab', 'leftView', 'leftCollapsed', 'rightCollapsed', 'mobilePanel', 'selectedRunId']) if (draft[key] !== undefined) this[key] = draft[key];
             if (this.pipelineMode === 'quick' && draft.quickForm) this.quickForm = { ...this.quickForm, ...draft.quickForm };
             for (const key of ['projectForm', 'characterForm', 'segmentForm', 'voiceForm']) if (draft[key] && typeof draft[key] === 'object') this[key] = { ...this[key], ...draft[key] };
@@ -1103,13 +1111,24 @@
             if(!this.dialogueJob)return;
             try {this.dialogueJob=await request('/render-jobs/'+encodeURIComponent(this.dialogueJob.id)+'/cancel',{method:'POST'});clearTimeout(this.dialogueTimer);}catch(error){this.fail(error);}
         },
+        lineIncludedInDialogue(segment) { return !(this.dialogueExcludedByProject[this.selected?.id] || []).includes(segment.id); },
+        setLineIncludedInDialogue(segment, checked) {
+            if (!this.selected || this.dialogueBusy || this.runActive) return;
+            const excluded = new Set(this.dialogueExcludedByProject[this.selected.id] || []);
+            if (checked) excluded.delete(segment.id); else excluded.add(segment.id);
+            this.dialogueExcludedByProject = {...this.dialogueExcludedByProject, [this.selected.id]: [...excluded]};
+            this.scheduleDraft();
+        },
+        get dialogueSelectedLines() { return (this.selected?.segments || []).filter(line => this.lineIncludedInDialogue(line)); },
         async generateDialogue() {
-            if(!this.selected||this.dialogueBusy||!this.selectedSpeechProvider)return;
+            if(!this.selected||this.dialogueBusy||this.runActive||!this.selectedSpeechProvider)return;
+            const lines = this.dialogueSelectedLines.slice();
+            if (!lines.length) return;
             this.dialogueStarting=true;
             const projectId=this.selected.id;
             try {
-                for(const line of this.selected.segments){line.reviewStatus='approved';await this.saveSegment(line);}
-                const run=await request('/runs',{method:'POST',body:{miniAppId:this.currentMiniApp.id,projectId,modelId:this.selectedSpeechProvider.id,mergeOutput:true,title:this.selected.title+' · '+tr('readaloud.dialogue.title')}});
+                for(const line of lines){line.reviewStatus='approved';await this.saveSegment(line);}
+                const run=await request('/runs',{method:'POST',body:{miniAppId:this.currentMiniApp.id,projectId,modelId:this.selectedSpeechProvider.id,segmentIds:lines.map(line=>line.id),mergeOutput:true,title:this.selected.title+' · '+tr('readaloud.dialogue.title')}});
                 this.runs=[run,...this.runs.filter(item=>item.id!==run.id)];
                 this.selectRun(run);this.pollRun();
                 if(this.selected?.id===projectId){this.dialogueJob={id:run.id,status:run.status};this.pollDialogue(projectId);}
@@ -1129,7 +1148,29 @@
             finally { this.lineEditing = false; }
         },
         async createSegment() { if (!this.selected) return; try { await request('/projects/' + encodeURIComponent(this.selected.id) + '/segments', { method: 'POST', body: { speaker_id: this.segmentForm.speakerId || null, text: this.segmentForm.text, emotion: this.segmentForm.emotion, emotion_strength: Number(this.segmentForm.emotionStrength), speed: Number(this.segmentForm.speed), pause_after_ms: Number(this.segmentForm.pauseAfterMs) } }); this.segmentForm = { speakerId: '', text: '', emotion: 'neutral', emotionStrength: 1, speed: 1, pauseAfterMs: 300 }; this.showSegmentForm = false; await this.openProject(this.selected.id, false); this.success(tr('readaloud.success.segment_added')); } catch (error) { this.fail(error); } },
-        async saveSegment(segment) { if (!this.selected) return; const updated = await request('/projects/' + encodeURIComponent(this.selected.id) + '/segments/' + encodeURIComponent(segment.id), { method: 'PATCH', body: { speaker_id: segment.speakerId || null, text: segment.text, emotion: segment.emotion, emotion_strength: Number(segment.emotionStrength), speed: Number(segment.speed), pause_after_ms: Number(segment.pauseAfterMs), ...(segment.reviewStatus ? { review_status: segment.reviewStatus } : {}) } }); Object.assign(segment, updated); this.scheduleDraft(); },
+        async saveSegment(segment) {
+            if (!this.selected) return;
+            const projectId = this.selected.id;
+            const key = projectId + '/' + segment.id;
+            const fields = ['speakerId', 'text', 'emotion', 'emotionStrength', 'speed', 'pauseAfterMs', 'reviewStatus'];
+            const snapshot = Object.fromEntries(fields.map(field => [field, segment[field]]));
+            const body = {speaker_id:snapshot.speakerId || null, text:snapshot.text,
+                emotion:snapshot.emotion, emotion_strength:Number(snapshot.emotionStrength),
+                speed:Number(snapshot.speed), pause_after_ms:Number(snapshot.pauseAfterMs),
+                ...(snapshot.reviewStatus ? {review_status:snapshot.reviewStatus} : {})};
+            // Blur and Generate may both save. Keep server writes in edit order and
+            // never let an older response replace text typed while it was pending.
+            const previous = segmentSaves.get(key);
+            const saving = (async () => {
+                if (previous) await previous.catch(() => {});
+                const updated = await request('/projects/' + encodeURIComponent(projectId) + '/segments/' + encodeURIComponent(segment.id), {method:'PATCH', body});
+                if (fields.every(field => segment[field] === snapshot[field])) Object.assign(segment, updated);
+                this.scheduleDraft();
+            })();
+            segmentSaves.set(key, saving);
+            try { await saving; }
+            finally { if (segmentSaves.get(key) === saving) segmentSaves.delete(key); }
+        },
         openVoice(voice) { if (voice.training?.samples?.length) { this.editTrainingVoice(voice); return; } const design=voice.training?.design||{}; this.voiceForm={emotion:design.preview?.emotion||'neutral',speed:design.preview?.speed||1,profileId:voice.id,name:voice.name,sourceType:'synthetic_designed',modelId:voice.modelId||'',description:design.description||'',referenceTranscript:voice.referenceTranscript||tr('readaloud.design.sample_text')}; this.pipelineMode='voice';this.showVoiceForm=true;this.designPreviewUrl=design.preview?.download_url||'';this.designStatus=this.designPreviewUrl?'succeeded':'idle';this.scheduleDraft(); },
         previewModel(mode) { return mode === 'design' ? this.designProvider : this.providers.find(model=>model.id===this.trainingForm.modelId); },
         previewSpeedCaps(mode) { return this.previewModel(mode)?.audioCapabilities?.tts?.speed || {}; },

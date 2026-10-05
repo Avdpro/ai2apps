@@ -13,9 +13,12 @@ from ai2apps.services import (
     ToolCallContext,
     ToolProviderError,
 )
+from ai2apps.storage.repositories import MessageRepository
 
+from .control_tools import install_control_tools
 from .models import AgentRunStatus
 from .repository import AgentRepository
+from .result_reference import install_result_reader
 from .runtime import AgentRuntime
 
 
@@ -41,6 +44,13 @@ def install_delegation_service(
         status=ServiceInstanceStatus.RUNNING,
         endpoint="/v1/platform/tools/agent.delegate/invoke",
         health={"status": "ok", "max_depth": agents.MAX_DELEGATION_DEPTH},
+    )
+    install_result_reader(
+        agents, services, registry,
+        service_id=service.id, provider_key=instance.provider_key,
+    )
+    install_control_tools(
+        agents, services, registry, service_id=service.id, provider_key=instance.provider_key
     )
     services.ensure_tool(
         service_id=service.id,
@@ -100,9 +110,17 @@ def install_delegation_service(
         child = agents.get_delegated_child(parent.id, request_key)
         if child is None:
             budget = dict(arguments.get("budget") or {})
+            parent_message_id = parent.input.get("message_id")
+            if parent_message_id is None:
+                messages = MessageRepository(agents.database, agents.events)
+                parent_input = messages.get_by_idempotency_key(
+                    parent.session_id, f"agent-run:{parent.id}:user"
+                )
+                if parent_input is not None:
+                    parent_message_id = parent_input.message.id
             delegation_context = {
                 "instructions": arguments.get("context", ""),
-                "parent_message_id": parent.input.get("message_id"),
+                "parent_message_id": parent_message_id,
             }
             child_input = {
                 "model": parent.input.get("model", ""),
