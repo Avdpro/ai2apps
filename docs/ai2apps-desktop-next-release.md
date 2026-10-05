@@ -2,7 +2,7 @@
 
 ### NXR-RELEASE-015-2258-20261005：Desktop 0.1.4 Build 2258
 
-- 状态：`release_building`。生产匿名基线为 0.1.3 / Build 2257，rollout 100%；本次从最新
+- 状态：`released_pending_target_mac`。生产已推进到 0.1.4 / Build 2258，rollout 100%；本次从最新
   `origin/main` 建立独立 clean worktree，产品版本提升到 0.1.4，Build 严格递增到 2258。
 - 拟纳入：Todo 项目树、调度、Codex/Terminal 联动和导入导出；General Agent 长任务上下文、
   会话记忆、工具失败恢复、计划/提问/结果回读和循环保护；原生 App/Mini-App 开发 Harness、
@@ -18,6 +18,13 @@
   Swift（77 项 Swift Testing + 2 项 XCTest）、限定 Ruff、JavaScript/JSON 语法与
   `git diff --check` 通过。完整回归暴露并修复两处测试合同漂移（迁移 78/79）及一处
   SDPA 全局 headroom provider 的测试顺序污染；SDPA 25 项和受影响 3646 项分片最终全绿。
+- 发布完成：源码 `51d30e440d942eb04d254f1e5a796a29d39f13ac` 已同步 GitHub main；Apple
+  submission `bf996bef-3cb3-4cdb-ade3-7fc1d99c886c` Accepted；ModelScope revision
+  `feb3dd54e5d8daf9c4ec8ede754238fd013d766f`；生产最终摘要
+  `d6aa53c228641e800232e65189d137a7e97236b67ec1c1704140cc28899c731d`，0%→100% 审计 24/25。
+  纳入/延期内容与验证限制归档至 `docs/ai2apps-desktop-0.1.4-build2258-release-2026-10-05.md`。
+- 仍待目标 Mac 实机升级闭环；本次没有重建或重启 Dev/App-Dev/Test。Cloud 根分区仅余约
+  240 MiB，本次用内存盘完成预检并已清理临时工件；磁盘清理/扩容留给 Cloud 运维。
 
 ### NXR-RELEASE-014-2257-20261002：Desktop 0.1.3 Build 2257
 
@@ -31,6 +38,7 @@
 
 ### NXR-MEDIA-VOICE-I18N-20261005：音视频扩展 Package 多语言
 
+- 2258 归档：`included`（源码实现）；已发布 0.1.4 / Build 2258。下方为开发历史，真实模型/UI 验收限制继续保留，详见本次发布回执。
 - 状态：`package_published_host_pending`。`ai2apps/media-voice-studio-suite` 0.2.1 已发布；音视频语音工作室 Suite 的 Package、六个 Mini-App 名称/描述及页面动态 UI 已补齐中英文，英文为回退；用户字幕、角色名、文件名和模型名不被翻译。
 - Studio 共用 mount 客户端统一解析 Package Mini-App `localizations`，将当前 Host locale 写入受约束 mount context 与 Entry URL；Voice、Video、Imagine Studio 均采用同一解析入口。旧 Package 没有本地化字段时仍使用原有 name/description，不改变安装、能力或输出合同。
 - 开发手册明确区分 Package、Provider App 与每个 `mini_apps[]` 的本地化名称，给出 manifest 示例、locale 回退、动态 UI/accessible name 要求和 App-Dev 中英文真实 mount 验收步骤；localized metadata 与 Studio 设计清单同步。
@@ -40,6 +48,7 @@
 
 ### NXR-AUDIOBOOK-EDIT-SAVE-RACE-20261005：片段重生成使用最新编辑文本
 
+- 2258 归档：`included`（源码实现）；已发布 0.1.4 / Build 2258。下方为开发历史，真实模型/UI 验收限制继续保留，详见本次发布回执。
 - 状态：`implemented_and_tested`；未发布。
 - 同一项目/片段的保存按编辑顺序串行提交，旧保存响应不得覆盖等待期间的新编辑；再次生成等待本次文本保存完成。
 - 增加旧保存未返回时修改文本并立即重新生成的前端回归场景。仅修改宿主静态 JS，刷新 Shell 即可载入；无需 Runtime 或 Suite Package 更新。
@@ -48,6 +57,7 @@
 
 ### NXR-SHELL-STARTUP-NAVIGATION-20261005：区分刷新与 Helper 重启导航
 
+- 2258 归档：`included`（源码实现）；已发布 0.1.4 / Build 2258。下方为开发历史，真实模型/UI 验收限制继续保留，详见本次发布回执。
 - 状态：`implemented_and_tested`。普通刷新保持当前 Shell URL/App；Helper 菜单重启 Local 和 Helper 自身启动产生新 Home epoch，进入 Home。Runtime/API 自动重启不产生 Home epoch，保留 ACPF 恢复。
 - Shell 仅在原生重连明确标记 resume 时查询 ACPF 自动返回，忽略历史 failed/cancelled/unsupported 会话，并防止异步恢复覆盖用户新导航。不删除历史会话，不把失败记录清理伪装成修复。
 - Helper main.swift、ai2apps/web/static/js/shell.js、公共 apply-shell-navigation.py 及 Dev/Release 构建入口统一实现。Dev/App-Dev 已通过各自固定脚本重建并启动，保留实例数据；两个包深层严格签名通过，App-Dev 完整 verify-release-app.sh 通过。Test/Release 下次构建自动包含，未发布生产。
@@ -65,6 +75,7 @@
 
 ### NXR-HARNESS-SESSION-MEMORY-20261005：跨 Run 对话记忆
 
+- 2258 归档：`included`（源码实现）；已发布 0.1.4 / Build 2258。下方为开发历史，真实模型/UI 验收限制继续保留，详见本次发布回执。
 - 状态：`implemented_and_tested`，真实模型/应用实机验收未完成。新增 SessionMemory 投影与 started/committed/ended 日志，原子来源 CAS、并发锁/终止 owner 恢复、跨 Run 复用、用户原文侧记录、同 Session 来源 reader、手动维护 Run 和完整旧 Run 工具证据。启用 reader 后取消 200/1000 条静默截断；原始记录保留。
 - 独立图投影和旧 Run 大工具结果裁剪先隔离验收后接入；大结果持久投影为可回读 head/tail/hash，原文及工具配对保留，回读不重复裁剪，摘要中断可以重新开始。图投影：超限可明确省略最旧非 pinned 输入图，持久来源/part index/hash，当前输入与 assistant 图不省略。Session 摘要复用原 system/消息/tool schema 前缀；摘要 tool-call/截断/无缩减拒绝提交。最多 8 次尝试、同来源无进展停止；维护 Run 一次提交完成，无任务回答。
 - 本地文本模型实际 tokenizer/template/schema 计量通过 Runtime 注入，记录实际路由/窗口/输出预留；未指定 max_tokens 时实际请求采用 min(2048, capacity/4, serving default)。远程/多模态/custom extractor 明确回退字节；摘要选区仍采用字节预算，不夸大统一 token-meter 完成度。仅已确认 provider context overflow 恢复一次，摘要超限及无进展明确失败，业务工具不重放。
@@ -73,6 +84,7 @@
 
 ### NXR-HARNESS-CONTEXT-PYTHON-PORT-20261005：独立上下文引擎 Python 移植
 
+- 2258 归档：`included`（源码实现）；已发布 0.1.4 / Build 2258。下方为开发历史，真实模型/UI 验收限制继续保留，详见本次发布回执。
 - 状态：`core_implemented_and_integrated`，整体移植仍在阶段性实施。新增 `ai2apps/context_engine` 独立标准库核心，固定参考 DeepSeek 5badb150，保留 MIT 来源/许可证。核心以不可变 Surface/Route、Meter、Summarizer、Store 为边界，提供压力/保留预算、精确路由策略选择、工具配对、选区/替换校验、异步事务取消与有界超限恢复；不导入 AI2Apps/MLX/数据库/模型 SDK。
 - 先隔离验收：`scripts/test_context_engine_isolated.py` 复制核心和测试到新临时目录，创建无 system-site-packages 的 venv，以 `-I` 运行并断言未导入 AI2Apps。31 项通过，之后才通过独立宿主桥接接入现有检查点的选区和缩减验证；业务工具无对接修改。宿主计量仍为明确字节回退，审计 token_count_exact=false。
 - 验证：独立 31 项、宿主相关 29 项通过（共 60 个不同用例）；宿主桥接原低压力 fixture 使用 5000 字节请求配 13000 字节数据而失败，修正为一致数据后通过，未放宽生产判定。Ruff 和 scoped diff check 通过。回执含测试数量/核心 SHA-256：`docs/context-engine-isolated-acceptance-2026-10-05.json`。详细合同/源码映射/重跑命令：`docs/ai2apps-context-engine-python-port.md`。
@@ -80,6 +92,7 @@
 
 ### NXR-HARNESS-CHECKPOINT-COVERAGE-20261005：检查点原文与状态覆盖
 
+- 2258 归档：`included`（源码实现）；已发布 0.1.4 / Build 2258。下方为开发历史，真实模型/UI 验收限制继续保留，详见本次发布回执。
 - 状态：`implemented`。`context-checkpoint/v2` 为被覆盖历史中的用户消息保留有序原文、来源组/消息坐标与哈希；来源清单随摘要请求持久化，宿主元数据记录清单 hash，回放和投影核对覆盖一致性。模型漏写约束不再导致对应原文随压缩消失。原文优先于冲突的派生摘要，后续更正及引用数据边界保留，不自动提取/删除约束。
 - 确定状态：采用摘要后的普通模型请求从 Run/Step/Interaction 与当前计划重建状态块，包括计划版本、工具步骤 ID/状态/错误码、问答原文；审批响应内容不投影，工具完成不等于任务成功。状态随下一次模型请求持久化并记录独立 hash，不依赖摘要回忆。v1 检查点不直接采用，可在既有预算内重新生成 v2。
 - 预算：启用 checkpoint reader 时不再通过旧轮次裁剪回退腾空间；原文、状态和摘要必须一起满足字节上限，超限明确失败。禁用 reader 保留既有模式。未引入全 Session 约束注册表、通用语义遗漏检测或 Artifact/最终验收独立验证；保护范围限于已加载上下文，既有消息条数/1000 条读取边界之前的内容不保证覆盖。
@@ -89,6 +102,7 @@
 
 ### NXR-HARNESS-CONTEXT-CHECKPOINT-20261004：长任务上下文检查点
 
+- 2258 归档：`included`（源码实现）；已发布 0.1.4 / Build 2258。下方为开发历史，真实模型/UI 验收限制继续保留，详见本次发布回执。
 - 状态：`implemented`。新增 `context-checkpoint/v1`：字节压力达 75% 后，分批摘要较早文本历史与完整工具轮次；保留 system、当前输入与最近两组原文。摘要走独立持久模型步骤，来源/锚点哈希一致且响应完整、结构/大小/实际缩减校验通过才投影；原消息和步骤不删除，摘要不成为系统指令或权限来源，摘要步骤不参与普通模型决策/最终回答。
 - 新增 `agent.read_context_checkpoint`，当前 Run/Session 内分页读取摘要调用的精确来源 JSON，通过 previous_checkpoint_step_id 回查更早来源；大结果原文继续走既有 reader，回读页不递归裁剪。模型侧过滤 reader 时停用检查点投影；Host 元数据不传给 provider。
 - 上限：每 Run 最多 8 次检查点尝试；摘要请求不超过字节预算 85%，输出请求最多 2048 token，接受文本最多 8192 UTF-8 字节，节省须超过 512 字节。摘要同样消耗 Run 步数、时间和 token 预算。无效摘要不在没有新执行进展时立即循环重试；provider 异常仍按现有可重试 Run 失败处理。
@@ -97,6 +111,7 @@
 
 ### NXR-HARNESS-CONTROL-SEARCH-20261004：提问、Run 计划与搜索增强
 
+- 2258 归档：`included`（源码实现）；已发布 0.1.4 / Build 2258。下方为开发历史，真实模型/UI 验收限制继续保留，详见本次发布回执。
 - 状态：`implemented`。新增 `agent.ask_user`，沿用持久 Interaction 等待/恢复，支持建议选项及自由回答，恢复后返回配对工具结果，回答不授予权限；新增 `agent.read_plan`/`agent.update_plan`，当前 Run/Session 隔离、版本冲突保护、幂等更新、稳定条目 ID、最多一个进行中项，以事件持久化并在父/子 Run 卡片显示；计划完成不更改 Run 或 Todo 完成状态。
 - 搜索：新增 `workspace.glob`，增强 `workspace.search` 的逐行正则、文件模式、大小写、上下文行和隐藏文件选项；限制单文件/总字节、条目、文件数、深度、时间及正则执行时间，返回不完整原因。扫描不跟随符号链接，保留 Session 工作区边界，无数据库迁移或新依赖。
 - 验证：Agent、Services、Workspace、流式响应、可靠性、大结果及本轮测试共 89 个不同用例通过。合跑 88 passed + 1 旧工具清单断言失败；加入新增 glob 后针对清单及控制工具复测 4 passed。覆盖提问重启恢复、任意文本回答、伪造回答拒绝、计划版本冲突/幂等/跨 Session 拒绝，以及 glob/正则超时/隐藏文件/上下文/扫描上限/符号链接隔离。本轮新增/主要修改文件 Ruff、scoped diff check、Chat Jinja 与中英文 JSON 解析通过；扩展 Ruff 仍报告 workspace/repository.py 和既有 workspace 测试中未涉及的导入排序/分号问题，未扩大范围整理。退出时存在沙箱 No Metal atexit 提示，本轮不涉及 GPU 验证。
@@ -104,11 +119,13 @@
 
 ### NXR-HARNESS-RESULT-REFERENCES-20261004：大结果按需回读与循环保护
 
+- 2258 归档：`included`（源码实现）；已发布 0.1.4 / Build 2258。下方为开发历史，真实模型/UI 验收限制继续保留，详见本次发布回执。
 - 状态：`implemented`。继续对照 DeepSeek 的 spill 与 tool-result pruning，使用现有 RunStep 原文为超过 32 KiB 的 JSON 工具结果提供 2048/1024 字符首尾预览、遗漏统计、SHA-256 和实际回读工具别名；新增 `agent.read_tool_result`，只允许当前 Run/Session 的已完成工具结果分页读取，每页最多 8192 Unicode 字符。仅当回读工具可用时缩减上下文，原始存储与工具配对不变，读取页不递归缩减。新增二至四步工具周期检测，输入和结果相同重复三轮后停止下一轮，参数/结果变化不触发。
 - 验证：Agent、Services、流式响应、第一轮可靠性与本轮测试共 65 个不同用例通过。合跑 64 passed + 1 循环测试等待超时（运行到第 10 个持久步骤）；调整测试等待预算以覆盖真实调度节奏后，本轮 7 项全部通过（18.54 秒），确认只分派六次工具、七次模型后 `repeated_tool_cycle`。Ruff 与 scoped diff check 通过。退出时仅有沙箱 No Metal atexit 提示，无 GPU 效果结论。100030 字节合成原文预览为 3605 字节（减少 96.4%），16000 字节请求预算内可回读中部文字。未重启 App-Dev Local、未发布；真实模型长任务与性能验收仍待完成。
 
 ### NXR-ALL-INSTANCES-RECORDING-20261004：全部实例准备录屏
 
+- 2258 归档：`included`（源码实现）；已发布 0.1.4 / Build 2258。下方为开发历史，真实模型/UI 验收限制继续保留，详见本次发布回执。
 - 状态：`implemented_and_verified`。取代 App-Dev/Test 白名单，所有 Helper 实例（含 Release/default）显示“准备录屏”。目标保持 1600×900 和屏幕左上角，不启动录制。
 - Helper 使用标准 InstanceID 校验；Shell 仅消费自己 run 目录下且 instance_id 与自身一致的命令，保留跨实例隔离。
 - 通用 apply-screen-recording-shell.py 由 Dev 和 Release 公共构建入口统一应用到打包 Shell；App-Dev/Test 继承公共入口，不再单独注入。Release 不启用开发源码 overlay/热挂载。
@@ -126,64 +143,75 @@
 
 ### NXR-HARNESS-RELIABILITY-20261004：长会话与执行恢复
 
+- 2258 归档：`included`（源码实现）；已发布 0.1.4 / Build 2258。下方为开发历史，真实模型/UI 验收限制继续保留，详见本次发布回执。
 - 状态：`implemented`。基于 DeepSeek Harness 源码对照完善本地 General Agent：按当前输入截止位置读取最近历史、按幂等键定位生成输入、固定委派父输入锚点；硬中断模型步骤保存 cancelled 尝试并释放 action key；默认 512 KiB 请求字节预算仅裁剪完整旧轮次，保护 system、当前输入与本 Run 工具链，超限明确失败；记录请求 hash/字节数/策略版本/Step ID；只读工具 schema 拒绝允许最多三次模型纠正，保持 FAILED 步骤和工具结果配对。沿用宿主身份、权限、SQLite 与副作用不确定处理。尚未实现精确 token 窗口、摘要压缩或工具并发。
 - 验证：Agent/流式响应与初版新增用例 43 passed；最终新增用例/存储/Services 43 passed（共 81 个不同用例）。覆盖 1000 条边界、后续输入隔离、生成输入幂等、委派锚点、硬中断恢复、审计 hash、字节裁剪与纠错上限；Ruff、scoped diff check 通过。扩展存储套件首次因沙箱 MLX/Metal 不可用中止，在本机 Metal 可用环境重跑全部通过。待固定 App-Dev Local 重启及真实长任务实机验收，未发布 Desktop。
 
 ### NXR-AGENT-REVIEW-PROGRESS-20261003：流程调整等待与结果提示
 
+- 2258 归档：`included`（源码实现）；已发布 0.1.4 / Build 2258。下方为开发历史，真实模型/UI 验收限制继续保留，详见本次发布回执。
 - Status: implemented. AI 调整流程时增加覆盖整个 Mini-Entry 侧栏内容的固定等待层、等待圆圈和说明，底层内容 inert 防止重复操作；成功显示新版本和步骤数量变化，失败保留修改意见并展示接口与编译错误详情。结果持续显示到用户关闭，支持中英文及减少动态效果偏好。
 - Validation: JavaScript 语法检查与参数/导航确认回归通过。模板与静态资源更新，无需 Local 重启或 App 重建。原失败请求模型 HTTP 200 但未产生新版，历史日志未留具体校验错误，不推断原因；真实重试已生成有效 v2（5→3 步）。本项未发布 Desktop。
 
 
 ### NXR-AGENT-REVIEW-TEST-POSITION-20261003：试运行按钮归入 Review
 
+- 2258 归档：`included`（源码实现）；已发布 0.1.4 / Build 2258。下方为开发历史，真实模型/UI 验收限制继续保留，详见本次发布回执。
 - Status: implemented. 将“先试运行”从编译 Review 上方移入 Review 卡片内，位于步骤和 Source/IR 查看区域之后、修改意见与审核操作之前。保留现有按钮 ID、可见性逻辑、运行版本和参数提交行为。
 - Validation: HTML 结构检查通过，按钮 ID 唯一、属于 Review、顺序在步骤之后和修改意见之前。仅模板位置调整；当前 Sidebar 刷新后生效，无需 Local 重启或 App 重建。未执行浏览器任务或发布 Desktop。
 
 
 ### NXR-AGENT-PARAMETER-VISIBILITY-20261003：探索参数提取遗漏和审核入口
 
+- 2258 归档：`included`（源码实现）；已发布 0.1.4 / Build 2258。下方为开发历史，真实模型/UI 验收限制继续保留，详见本次发布回执。
 - 状态：`implemented`。参数提取对齐执行器的自然语言引号输入回退；审核页将参数区放在步骤前，空时明确提示并提供从现有步骤提取参数按钮。提取通过 actor 隔离与 revision 校验，重新编译并使旧审核失效，保留已有输入定义和可选状态。待审核 Recipe URL 保存精确 recipe_id，刷新时恢复该记录，不自动挑选其他 Recipe。
 - 中文引号输入编译与提取幂等回归已补齐；Python 参数/平台 23 passed，Node 相关 31 passed，Ruff、JS 语法和 scoped diff 通过。固定 App-Dev Local 已重启，原四步“打开Google，搜索OpenAI” Recipe 经认证提取接口返回 200，生成 query 默认 OpenAI、版本 v2，有效审核页实机显示“参数”“本次运行参数”及 QUERY 输入框。未通过 Review、保存为 Agent 或发布。搜索按键授权也支持已恢复 Recipe 的任务描述。
 
 
 ### NXR-AGENT-NAVIGATION-BOUNDARY-20261003：探索导航范围和输入目标修复
 
+- 2258 归档：`included`（源码实现）；已发布 0.1.4 / Build 2258。下方为开发历史，真实模型/UI 验收限制继续保留，详见本次发布回执。
 - 状态：`implemented`。URL 范围检查改为解析协议、hostname、端口、路径 glob，修复 Google 根地址省略末尾 / 时被 origin/** 拒绝；探索保留已请求或已确认的导航 origin，不随当前页面反复覆盖授权范围。输入步骤解析仅选择可输入控件，避免同名搜索链接/按钮被当成输入目标。搜索输入支持替换原文本及原生 BiDi Enter 提交；单独提交不要求再次提供文本且保留现有查询，搜索回车描述即使被模型标为 click 也执行真实按键。仍检查未授权导航、域名、协议、端口和敏感交互。
 - 文件：`ai2apps/web/static/js/agent_mini.js`、`ai2apps/web/static/js/browser_bidi_client.js`。Node 参数/导航/确认/范围/重连/输入键盘 31 passed，JS 语法与 scoped diff 通过。静态源码修改，只刷新 Sidebar，无需重建或 Local 重启；固定 App-Dev 实测从 Google Images 返回普通 Google 搜索，导航成功，提取 19 条结果并进入有效 Review，无范围限制。追加键盘恢复有定向回归，未声称模型文字即真实提交成功。未保存或发布 Agent。
 
 
 ### NXR-AGENT-PARAMETERS-20261003：制作与运行 Agent 的输入参数
 
+- 2258 归档：`included`（源码实现）；已发布 0.1.4 / Build 2258。下方为开发历史，真实模型/UI 验收限制继续保留，详见本次发布回执。
 - 状态：`implemented`。制作界面新增参数名称、显示名称、类型、默认值、必填及步骤绑定；能力间隔离 Schema，修改参数名同步绑定，已引用参数禁止直接删除。步骤预览/试运行及 Recipe 试运行填写并传递 input，数字/布尔类型保真，缺失参数阻止执行。探索沉淀将成功 input.arguments.value 和已识别搜索引擎 URL 的 q/wd 查询提取为参数，搜索使用 query，保留原值为默认值，目标和站点范围保持固定；参数 Schema 随 Source/IR 和能力提交持久化。补齐中英文。
 - Python 参数与平台回归 21 passed，Node 参数/导航/范围/重连 25 passed，Ruff、JS 语法与 scoped diff 通过。直接搜索 URL 参数化编译有效，URL 插值对查询值编码而保持站点范围。通过固定 app-dev Helper 重启 Local 加载最终实现；实机确认参数编辑、默认值回填、本次运行输入和步骤绑定控件可见，未保存验收草稿或发布 Agent。未发布 Desktop/Package/Cloud。
 
 
 ### NXR-AGENT-SEARCH-CONFIRMATION-20261003：普通搜索输入与提交免重复确认
 
+- 2258 归档：`included`（源码实现）；已发布 0.1.4 / Build 2258。下方为开发历史，真实模型/UI 验收限制继续保留，详见本次发布回执。
 - 状态：`implemented`。此前前端逐动作确认和服务端 submit 关键词误将 Google 搜索输入当成提交操作。用户任务明确要求搜索时，在 Google/Bing/百度的准确域名上，搜索框输入与搜索按钮点击直接执行；账号、验证码、支付、发布等目标不适用此例外，执行阶段仍检查目标与敏感输入策略。
 - 文件：`ai2apps/web/static/js/agent_mini.js`、`ai2apps/tests/agent_navigation_confirmation.test.cjs`。导航/搜索确认/范围/重连 Node 21 passed，JS 语法通过。纯静态源码修改，刷新 Sidebar 生效，无需重启 Local 或重建 App。实机侧栏刷新未完成：验证时用户切换到 Imagine Studio，未继续干扰其工作。
 
 
 ### NXR-AGENT-PRESENTATION-RECOVERY-20261003：AI 展示校验恢复与诊断
 
+- 2258 归档：`included`（源码实现）；已发布 0.1.4 / Build 2258。下方为开发历史，真实模型/UI 验收限制继续保留，详见本次发布回执。
 - 状态：`implemented`。统一 Run/Recipe 的展示生成路径，模型展示 JSON 无效时携带具体校验错误修复一次，修复预算 3000 tokens；校验仍严格拒绝不存在路径或可执行内容。保存不含输入值的结构化校验原因、请求 ID、模型 ID、finish_reason，前端保留并显示错误详情。实机复现原 19 条搜索结果：DeepSeek V4 Flash 返回不以 $ 开头的 data_path，finish_reason=stop；一次自动修正后返回 $.items，展示描述通过校验并返回 200。根因是此前 JSON Schema 没有表达 Python validator 的路径约束；补齐 data_path/field.path pattern 与说明，使模型请求契约与运行校验一致。最终 Schema 回归 22 passed，导航/范围/重连 Node 19 passed，Ruff 和 scoped diff check 通过。通过固定 app-dev Helper 重启 Local 后，原 19 条结果再次实测返回 200，生成 table 展示与合法 $.items 路径；当前 Local 已加载修复。
 
 
 ### NXR-AGENT-MENTIONED-SITE-20261003：用户明确提到的网站免重复确认
 
+- 2258 归档：`included`（源码实现）；已发布 0.1.4 / Build 2258。下方为开发历史，真实模型/UI 验收限制继续保留，详见本次发布回执。
 - 状态：`implemented`，固定 App-Dev 已实机验收。探索模式 open 的目标与任务明确给出的网址/域名或已识别网站名称一致时直接导航；未提及网站和其他交互仍保留确认。明确授权的 open 只执行原生导航，不因服务端文本关键词误判重复询问。网址匹配精确 hostname（允许 www），不接受 lookalike 域名；Google/谷歌、Bing/必应、百度、Wikipedia/维基百科等名称解析到固定网站。
 - 文件：`ai2apps/web/static/js/agent_mini.js`；Node 定向 7 passed，JS 语法通过；实机 Open Google 从新标签页直接打开 Google，未出现确认弹窗，1 步成功并进入 Review；导航/范围/重连 Node 合计 19 passed。Python Agent Mini 因同期其他改动的 SYSTEM_APP_MANIFESTS 缺少 ai2apps.todo 本地化映射而未能收集，未计作通过。前端刷新 Sidebar 生效，无需重建或重启 Local。
 
 
 ### NXR-AGENT-NEWTAB-SCOPE-20261003：新标签页探索导航范围修复
 
+- 2258 归档：`included`（源码实现）；已发布 0.1.4 / Build 2258。下方为开发历史，真实模型/UI 验收限制继续保留，详见本次发布回执。
 - 状态：`implemented`，App-Dev 已实机验收，待下一版 Desktop 纳入。Agent Mini 的 pageScope 仅对 HTTP(S) 页面生成 origin 范围，修复 about:newtab/about:blank 产生 null/** 导致首步导航误判 site_scope。open 检查目标 URL 范围而非起始页，预览也检查目标；页面交互仍要求当前页面处于授权范围。
 - 文件：`ai2apps/web/static/js/agent_mini.js`，Node 定向 7 passed，Python Agent Mini 16 passed、JS 语法与 scoped diff check 通过。固定 App-Dev 实测 Search Google for OpenAI IPO date：从 about:newtab 导航成功，inspect 与 extract_list 成功，提取 11 条结果，3 步沉淀并编译有效、等待 Review；未保存/发布 Agent。探索模式既有逐动作确认仍保留，本次实测确认了一次 open。纯前端修改，刷新 Sidebar 即可，无需重建或重启 Local。
 
 
 ### NXR-TODO-MVP-20261003：内置 Todo 项目树与执行调度
 
+- 2258 归档：`included`（源码实现）；已发布 0.1.4 / Build 2258。下方为开发历史，真实模型/UI 验收限制继续保留，详见本次发布回执。
 - 2026-10-05：Todo 普通项目行选中时增加与高亮行一致的 2px 内描边，统一选中标识，保持行高及布局不变。验证：git diff --check 通过。
 
 - 2026-10-05：将 Todo 行高亮入口合并到现有六点拖拽指示，移除独立下拉控件；点击展开纯色块浮层（含斜线清除项，无可见文字），保留拖拽排序，拖拽后抑制误点击；支持键盘打开、方向键选择、Escape 关闭，以及点击外部/滚动关闭。颜色选项保留无障碍名称。验证：Node 回归 27 项通过，JS 语法检查通过。
@@ -278,6 +306,7 @@
 
 ### NXR-BIDI-NATIVE-RECOVERY-20261003：原生 Shell BiDi 启动与自动恢复
 
+- 2258 归档：`included`（源码实现）；已发布 0.1.4 / Build 2258。下方为开发历史，真实模型/UI 验收限制继续保留，详见本次发布回执。
 - 状态：`implemented`，固定 App-Dev 已重建并完成连接验收，待下一版 Desktop 纳入。原生 AceFox Shell 入口补齐每次启动独立的 256-bit bearer、loopback 自动端口与 WebDriver BiDi 参数，避免绕过旧 Swift Launcher 后遗留失效记录。
 - 受信任 Shell 从实时 RemoteAgent 状态原子发布当前实例 shell-automation.json，写入凭据前设置 0600；每秒核对并修复缺失/失效记录。Gateway 有界重读当前实例记录，404 失效 Session 重新建立；客户端建立连接失败时重新获取一次性票据并重连一次，401/403 不重试，不重放已提交浏览器动作。Chat/Agent 清除断线客户端，下一次操作重新连接。
 - 同一 Gecko buildID 的开发资源覆盖会被旧启动缓存掩盖；构建入口给嵌入 Shell 设置 Development 标记，原生入口仅对该标记加入 -purgecaches，确保 App-Dev 的 Shell 覆盖实际生效。
@@ -288,12 +317,14 @@
 
 ### NXR-BROWSER-LAUNCH-SPINNER-20261003：浏览器启动等待图标
 
+- 2258 归档：`included`（源码实现）；已发布 0.1.4 / Build 2258。下方为开发历史，真实模型/UI 验收限制继续保留，详见本次发布回执。
 - 状态：`implemented`，待下一版 Desktop 纳入。AI Browser 启动按钮改用独立 CSS 等待圆圈，忙碌时隐藏外链图标、仅旋转圆圈，结束后恢复静态外链图标。避免 Lucide 将 i 替换为 SVG 后动态图标名称未及时更新，导致外链图标旋转。
 - 文件：`ai2apps/web/templates/system_apps/ai_browser.html`、`ai2apps/web/static/css/ai_browser.css`。移除禁用按钮内所有 SVG 旋转的选择器；模板与 CSS diff 空白检查通过。仅静态变更，刷新 AI Browser 页面生效，无需重建或重启 Local；未完成实机动画验收。
 
 
 ### NXR-SUBTITLE-LLM-CORRECTION-20261003：字幕 LLM 修正与规则 Profile
 
+- 2258 归档：`included`（源码实现）；已发布 0.1.4 / Build 2258。下方为开发历史，真实模型/UI 验收限制继续保留，详见本次发布回执。
 - 状态：`implemented`，待 Host 更新和 Media Voice Studio Suite 发布。字幕提取后的校对区提供可选修正，使用系统 Standard tasks 模型，按有界批次生成严格一一对应的文本建议；用户审阅确认后才修改字幕，时间轴、说话人、段落顺序不变，修改文本清除旧逐字对齐。
 - 修正规则支持保存、选择、更新、删除 Profile，复用可信 Host 中 owner/provider/resource 隔离的本地存储，独立于任务草稿，重置素材不删除 Profile。Opaque Package frame 经受校验的 Host 通道请求 LLM，不直接访问认证或浏览器存储。
 - 新增 Host JSON API 与 Bridge 操作；需重启 Local 并刷新页面，Package UI 改动需后续发布 Suite，无需 Runtime 更新。本次不发布 Package、不读取 Cookie。
@@ -306,6 +337,7 @@
 
 ### NXR-AUDIOBOOK-SELECTED-DIALOGUE-20261002：完整对话仅合并勾选片段
 
+- 2258 归档：`included`（源码实现）；已发布 0.1.4 / Build 2258。下方为开发历史，真实模型/UI 验收限制继续保留，详见本次发布回执。
 - 状态：`implemented`，待下一版 Desktop 纳入。Audiobook 每个 Line 卡片前增加默认选中的复选框；完整对话只提交勾选的 segmentIds，按工程原顺序复用或生成音频并合并，未选片段不审批、不生成、不合并。
 - 选择状态按工程保存在现有 Mini-App 草稿中，新片段默认选中；显示已选数量，空选禁用生成且函数再次保护，生成期间禁止修改选择。复选框不触发卡片展开或拖拽。
 - 验证：Voice Studio scope 测试覆盖默认全选、排除片段、工程隔离、草稿恢复、生成请求、未选片段状态保留、空选保护和新增片段；JavaScript 语法检查通过。纯前端变更，刷新页面生效，无需 Runtime 或 Package 更新；尚未实机点击验证。
