@@ -204,7 +204,50 @@ def _smoke_long_audio_limit(endpoint: str, headers: dict[str, str]) -> dict:
             "transportAccepted": True}
 
 
-async def _prepare_checkpoint_distributions(runtime, model_ids: set[str]) -> list[dict]:
+def _smoke_audio_generation(endpoint, headers, model_id, task, duration, output):
+    import httpx
+    import io
+    import wave
+    request_id = "music-smoke-" + uuid.uuid4().hex
+    with httpx.Client(base_url=endpoint, headers=headers, timeout=300) as client:
+        response = client.post("/v1/audio/generations", headers={"X-Request-ID":request_id},
+            json={"model":model_id,"task":task,"duration":duration,
+                  "prompt":"Gentle piano instrumental" if task == "music" else "Rain on leaves",
+                  "steps":8,"seed":42})
+        if response.status_code != 200:
+            raise RuntimeError(f"Audio generation failed: {response.status_code} {response.text[:1000]}")
+        assert response.headers["content-type"] == "audio/wav"
+        with wave.open(io.BytesIO(response.content)) as wav:
+            seconds = wav.getnframes() / wav.getframerate()
+            assert abs(seconds - duration) < .25 and wav.getnchannels() == 2
+        output.parent.mkdir(parents=True,exist_ok=True)
+        output.write_bytes(response.content)
+        status = client.get("/v1/requests/"+request_id).json()
+        assert status["status"] == "succeeded"
+        import threading
+        import time
+        cancel_id = request_id + "-cancel"
+        cancelled = {}
+        def generate_long():
+            cancelled["response"] = client.post("/v1/audio/generations", headers={"X-Request-ID":cancel_id},
+                json={"model":model_id,"task":task,"duration":120,"prompt":"Piano" if task == "music" else "Rain",
+                      "steps":100,"seed":42})
+        thread = threading.Thread(target=generate_long)
+        thread.start()
+        for _ in range(600):
+            current = client.get("/v1/requests/"+cancel_id)
+            if current.status_code == 200 and current.json().get("progress",{}).get("phase") in {"planning","sampling"}:
+                break
+            time.sleep(.05)
+        else:
+            raise RuntimeError("Generation never reached a cancellable phase")
+        assert client.delete("/v1/requests/"+cancel_id).status_code == 200
+        thread.join(30)
+        assert not thread.is_alive() and cancelled["response"].status_code == 499
+        return {"model":model_id,"seconds":seconds,"bytes":len(response.content),"request":status,"cancel_http_status":499}
+
+
+async def _prepare_checkpoint_distributions(runtime, model_ids: set[str], local_snapshots=None, license_consents=None) -> list[dict]:
     registry_packages = runtime.registry_packages
     registry_root = registry_packages.root.parent
     acquisition = CheckpointAcquisitionService(
@@ -223,7 +266,9 @@ async def _prepare_checkpoint_distributions(runtime, model_ids: set[str]) -> lis
         recipe = recipes.get(model_id)
         if recipe is None or not recipe.get("distribution_id"):
             raise RuntimeError(f"No checkpoint distribution recipe for {model_id}")
-        acquired = await acquisition.acquire(recipe["distribution_id"])
+        acquired = await acquisition.acquire(recipe["distribution_id"],
+            local_snapshot=(local_snapshots or {}).get(model_id),
+            license_consent=(license_consents or {}).get(model_id))
         snapshot = await asyncio.to_thread(
             acquisition.materialize_worker_snapshot,
             acquired,
@@ -254,6 +299,9 @@ async def smoke(
     model_publisher_public_key: str | None = None,
     detailed_audio: tuple[tuple[str, Path, str], ...] = (),
     process_audio: tuple[tuple[str, Path, str, Path], ...] = (),
+    generate_audio: tuple[tuple[str, str, float, Path], ...] = (),
+    checkpoint_snapshots: dict[str, Path] | None = None,
+    checkpoint_license_consents: dict[str, dict] | None = None,
 ) -> dict:
     os.environ["AI2APPS_ALLOW_DEVELOPMENT_RUNTIME"] = "1"
     runtime = PlatformRuntime(PlatformConfig.from_base_path(base_path))
@@ -353,9 +401,10 @@ async def smoke(
                 approve_audit_review=True,
             )
         checkpoint_report = []
-        if process_audio:
+        if process_audio or generate_audio:
             checkpoint_report = await _prepare_checkpoint_distributions(
-                runtime, {item[0] for item in process_audio}
+                runtime, {item[0] for item in (*process_audio, *generate_audio)}, checkpoint_snapshots,
+                checkpoint_license_consents
             )
             await manager.restart(installed.service_key)
         provider = runtime.package_repository.active("ai2apps.runtime.omlx")
@@ -449,6 +498,19 @@ async def smoke(
                         "result": value,
                     }
                 )
+        if generate_audio:
+            headers = manager.supervisor.internal_headers(model.service_key)
+            assert headers is not None
+            report["generate_audio"] = []
+            for model_id, task, duration, output in generate_audio:
+                report["generate_audio"].append(await asyncio.to_thread(
+                    _smoke_audio_generation, instance.endpoint, headers, model_id, task, duration, output))
+            await manager.stop(model.service_key)
+            await manager.restart(model.service_key)
+            service = runtime.services.get_service(model.service_key)
+            instance = runtime.services.get_instance_for_service(service.id)
+            report["restart_status"] = instance.status.value
+            report["uninstall"] = await manager.uninstall(model.service_key)
         return report
     finally:
         await runtime.stop_background_tasks()
@@ -478,6 +540,8 @@ def main() -> None:
         metavar=("MODEL_ID", "AUDIO_PATH", "PROFILE", "OUTPUT_PATH"),
         default=[],
     )
+    parser.add_argument("--generate-audio", action="append", nargs=4,
+                        metavar=("MODEL_ID", "TASK", "SECONDS", "OUTPUT"), default=[])
     parser.add_argument(
         "--publisher-sidecar",
         type=Path,
@@ -512,6 +576,7 @@ def main() -> None:
             ),
             publisher_public_key=publisher_public_key,
             model_publisher_public_key=(None if args.model_publisher_sidecar is None else _publisher_public_key(json.loads(args.model_publisher_sidecar.read_text())["public_key"])),
+            generate_audio=tuple((m,t,float(d),Path(o).resolve()) for m,t,d,o in args.generate_audio),
             detailed_audio=tuple(
                 (model_id, Path(audio_path).resolve(strict=True), language)
                 for model_id, audio_path, language in args.detailed_audio

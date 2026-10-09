@@ -1,0 +1,82 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/model-yue2-mlx",
+    "type": "service",
+    "version": "0.1.0",
+    "displayName": "YuE2 MLX",
+    "description": "Local song creation with lyrics, melody and chord planning, optional ABC score, and native MLX synthesis. Original model terms require confirmation before downloading."
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": [
+      "darwin"
+    ],
+    "architectures": [
+      "arm64"
+    ],
+    "minimumOsVersion": "26.2"
+  },
+  "entrypoints": [
+    {
+      "name": "model-worker",
+      "kind": "service",
+      "path": "service.yaml"
+    }
+  ],
+  "permissions": [
+    {
+      "capability": "model-weights.huggingface-cache.read",
+      "reason": "Generate music and effects from a declared checkpoint using Metal.",
+      "required": true
+    },
+    {
+      "capability": "accelerator.metal",
+      "reason": "Generate music and effects from a declared checkpoint using Metal.",
+      "required": true
+    }
+  ],
+  "dependencies": [
+    {
+      "packageId": "ai2apps/runtime-omlx",
+      "version": ">=1.8.10 <2.0.0",
+      "optional": false
+    }
+  ],
+  "files": [],
+  "sbom": {
+    "format": "spdx-json-2.3",
+    "path": "META/sbom.spdx.json"
+  },
+  "discovery": {
+    "kind": "model",
+    "categories": [
+      "speech"
+    ],
+    "tasks": [
+      "music-generation"
+    ]
+  },
+  "modelProfile": {
+    "sizeBytes": 7794560119,
+    "minimumMemoryBytes": 17179869184,
+    "scores": {
+      "speed": 2,
+      "capability": 4
+    },
+    "benchmark": {
+      "label": "46.6s song: installed cold Host call 354s; standalone optimized median 22.8s; 2026-10-06",
+      "device": "Apple M5 Max 128 GiB"
+    }
+  },
+  "modelInstall": {
+    "serviceKey": "ai2apps.model.yue2-mlx",
+    "models": [
+      {
+        "id": "ai2apps.model.yue2-mlx/default",
+        "label": "YuE2 Song Creation",
+        "recommended": true
+      }
+    ]
+  }
+}

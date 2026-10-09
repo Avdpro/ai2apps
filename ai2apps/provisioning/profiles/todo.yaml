@@ -1,0 +1,34 @@
+schema: ai2apps.capability-profiles/v1
+app_id: ai2apps.todo
+version: 1
+capabilities:
+  audio.speech_recognition:
+    trigger: on_feature_request
+    presentation:
+      eyebrow: AI2APPS TODO VOICE INPUT
+      title: 配置本地语音识别
+      description: 为待办语音输入配置本地 ASR 模型，也可以取消并继续手工输入。
+      icon: mic
+      confirm_label: 同意并配置
+      ready_label: 本地语音识别已经可用
+      steps:
+        runtime: 配置音频推理 Runtime
+        provider: 安装语音识别 Package
+        checkpoint: 下载语音识别模型
+        verify: 启动并验证语音识别
+    requirements:
+      operations: [speech_recognition]
+    profiles:
+      - id: apple-metal-qwen3-asr-06b-4bit
+        label: Qwen3 ASR 0.6B · 轻量语音识别
+        description: 4-bit 多语言识别与原生标点，适合待办语音输入。
+        priority: 100
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator: {vendor: apple, api: metal, unified_memory_gib: {minimum: 8}}
+        recommendation_memory_gib: {minimum: 8}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.3.0,<2.0.0"}
+          provider: {package_id: ai2apps/model-qwen3-asr-06b, service_key: ai2apps.model.qwen3-asr-0.6b, version: ">=0.1.0,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.qwen3-asr-0.6b/4bit}

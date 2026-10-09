@@ -607,3 +607,70 @@ def test_long_audio_upload_limits_are_scoped_and_enforced(tmp_path, monkeypatch)
                 headers={"Authorization": "Bearer worker-secret"},
                 files={field: ("audio.wav", content, "audio/wav")})
             assert response.status_code == 413
+
+
+def test_embeddings_use_authenticated_worker_and_drain(tmp_path):
+    package, data = _worker_files(tmp_path)
+    _, config = ManagedServiceSupervisor._model_worker_command(package, data, _manifest(), 9123)
+    with TestClient(create_app(config, token='embedding-test')) as client:
+        body = {'model': 'example-checkpoint', 'input': ['hello']}
+        headers = {'Authorization': 'Bearer embedding-test'}
+        assert client.post('/v1/embeddings', json=body).status_code == 401
+        response = client.post('/v1/embeddings', json=body, headers=headers)
+        assert response.status_code == 200
+        assert response.json()['operation'] == 'embeddings'
+        assert client.post('/v1/control/drain', headers=headers).status_code == 200
+        assert client.post('/v1/embeddings', json=body, headers=headers).status_code == 503
+
+
+def test_nonstream_cancel_records_cancelled_and_releases_request_resources(tmp_path):
+    package, data = _worker_files(tmp_path)
+    adapter = package / "src/adapter.py"
+    source = adapter.read_text().replace(
+        '        if request.payload.get("fail"):',
+        '        if request.payload.get("cancelled"):\n'
+        '            (request.output_root / "partial.bin").write_bytes(b"partial")\n'
+        '            raise ModelWorkerError("Generation cancelled", code="request_cancelled", status_code=499)\n'
+        '        if request.payload.get("fail"):')
+    adapter.write_text(source)
+    _, config = ManagedServiceSupervisor._model_worker_command(package, data, _manifest(), 9123)
+    with TestClient(create_app(config, token="worker-secret")) as client:
+        headers = {"Authorization": "Bearer worker-secret"}
+        for identity, payload, status_code, terminal in (
+            ("cancel", {"cancelled": True}, 499, "cancelled"),
+            ("failure", {"fail": True}, 503, "failed"),
+            ("recover", {}, 200, "succeeded"),
+        ):
+            response = client.post("/v1/chat/completions", headers={**headers, "X-Request-Id": identity},
+                                   json={"model": "example-checkpoint", **payload})
+            assert response.status_code == status_code
+            state = client.get("/v1/requests/" + identity, headers=headers).json()
+            assert state["status"] == terminal
+            status = client.get("/v1/status", headers=headers).json()
+            assert status["active_requests"] == status["queued_requests"] == 0
+        assert not list(data.rglob("partial.bin"))
+
+
+def test_audio_process_transports_voice_zip_as_binary_and_cleans_request(tmp_path):
+    import io
+    import zipfile
+    package, data = _worker_files(tmp_path)
+    _, config_path = ManagedServiceSupervisor._model_worker_command(package, data, _manifest(), 9123)
+    app = create_app(config_path, token='worker-secret')
+    contents = io.BytesIO()
+    with zipfile.ZipFile(contents, 'w') as archive:
+        archive.writestr('model.json', '{}')
+    with TestClient(app) as client:
+        response = client.post('/v1/audio/process', headers={'Authorization': 'Bearer worker-secret'},
+                               data={'model': 'example-checkpoint'},
+                               files={'voice': ('voice.zip', contents.getvalue(), 'application/zip')})
+        invalid = client.post('/v1/audio/process', headers={'Authorization': 'Bearer worker-secret'},
+                              data={'model': 'example-checkpoint'},
+                              files={'voice': ('voice.zip', b'not zip', 'application/zip')})
+    assert response.status_code == 200
+    body = response.json()
+    assert body['part']['media_type'] == 'application/zip'
+    assert Path(body['part']['path']).suffix == '.zip'
+    assert not Path(body['part']['path']).exists()
+    assert invalid.status_code == 400
+    assert invalid.json()['error']['code'] == 'invalid_voice_bundle'

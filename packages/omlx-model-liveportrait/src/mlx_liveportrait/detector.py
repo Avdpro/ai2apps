@@ -9,7 +9,10 @@ import numpy as np
 
 from .geometry import align_face
 from .media import blob_from_bgr, resize_bgr
-from .onnx_mlx import MLXOnnxGraph
+def _mlx_graph(path):
+    from .onnx_mlx import MLXOnnxGraph
+
+    return MLXOnnxGraph(path)
 
 
 @dataclass(frozen=True)
@@ -31,7 +34,7 @@ def _blob(
 
 class MLXArcFace:
     def __init__(self, model_path: str | Path):
-        self.graph = MLXOnnxGraph(model_path)
+        self.graph = _mlx_graph(model_path)
         self.input_name = self.graph.inputs[0]
 
     def embed_aligned(self, image_bgr: np.ndarray) -> np.ndarray:
@@ -53,7 +56,7 @@ class MLXSCRFD:
     ANCHORS = 2
 
     def __init__(self, model_path: str | Path):
-        self.graph = MLXOnnxGraph(model_path)
+        self.graph = _mlx_graph(model_path)
         self.input_name = self.graph.inputs[0]
         self._centers: dict[tuple[int, int, int], np.ndarray] = {}
 
@@ -174,7 +177,7 @@ class MLXYuNet:
     STRIDES = (8, 16, 32)
 
     def __init__(self, model_path: str | Path):
-        self.graph = MLXOnnxGraph(model_path)
+        self.graph = _mlx_graph(model_path)
         self.input_name = self.graph.inputs[0]
 
     def detect(

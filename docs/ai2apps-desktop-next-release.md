@@ -1,44 +1,2394 @@
 # AI2Apps Desktop 下一版 Release 台账
 
+### NXR-RELEASE-2259-PREFLIGHT-20261009：发布回归合同核对
+
+- 状态：in_progress，生产仍为 0.1.4 / 2258；未构建、公证或发布 2259。
+- 用户选择先修复回归、发布完整 2259；独立候选位于 /private/tmp/ai2apps-release-2258 的 codex/release-2259 分支。Spark/CUDA 与未发布模型实验不纳入；候选源码版本为 0.1.5，尚未提交/构建。初始及增量文件清单保存在 /private/tmp/ai2apps-2259-source-inventory-initial.json 与 /private/tmp/ai2apps-2259-source-inventory.json。
+- 本轮修复：情报中心测试改用真实后台 Runtime，并独立验证前端 finish/progress 对 Local 拥有任务返回 409；旧 finish 合同仅用 legacy 记录测试。浏览器/Studio 测试补齐页面稳定等待、语言化 URL、DOM 和隔离 Tab 身份。服务器测试明确回环 Host，不放宽公网路由边界。数据库清单补齐 78–87；保留迁移账本完整性和 2258 SDPA provider reset 修复。
+- 产品补丁：Mobile App 内容路由先校验角色/可用性，再访问设备开放策略；补齐 ACPF 音乐/音效/歌曲/放大中英文提示以及首页公网入口七种语言与状态文案。
+- 后续产品修复：带附件 WebAgent 的参数重推断原先引用未定义 runtime，现从已验证 runtime_store 获取；15 项附件/参数回归通过，保留附件归属和未使用参数清理合同。
+- 发布测试门禁完成：全量历史失败的 17 个在范围内测试文件集中完整复验 466 passed、2 deselected；结合完整候选已通过用例与最终 Core 分片，当前范围 11552 个不同 Python 用例通过、69 skipped、74 deselected（分批完成，非宣称单次全量全绿）。Swift 77 + 2 XCTest、Node 346 + 44、原生后台 BiDi 1 项通过。日志 /private/tmp/ai2apps-2259-all-failed-files-final.log 和 /private/tmp/ai2apps-2259-runtime-final.log。开始冻结源码并构建，生产仍为 2258。
+- 最终索引检查补充：首次 staged diff 检查发现新文件的行尾空白，8 个第一方文件已做仅空白格式化；第一方 scoped diff 检查通过。保留 4 个第三方 vendor/原始许可证文件的上游空白，不声称全提交原始 diff --check 零诊断，不改写已发布 Package 的许可证字节。通用 Worker 的按后端延迟导入适配属于共享 Host 兼容代码，不包含新 CUDA 模型包、推理环境或 Spark 部署。
+- 最终分片进度：Core 8924 passed、68 skipped、19 deselected；Desktop 的 Imagine/存储/Shell 151 passed；后台 Agent/扩展/文档转换 72 passed；音频/Cloud Runtime 131 passed。此前全量进程收集了修复前模块，128 failed、11431 passed、69 skipped、74 deselected、4 errors，不能直接称全绿；所有仍在候选内的失败文件正在集中完整复验。415 个改动 Python 文件关键 Ruff 与 132 个 JS/CJS/MJS 语法检查通过。
+- 源码范围逐项索引：docs/ai2apps-desktop-2259-scope-audit.json，475 条历史/开放记录；不把 source inclusion 等同于 UI/真实模型验收。未新增 Spark/CUDA/未发布 AVTR 实验，候选中误收集的五个相关测试副本已移除，原开发目录保留。GitHub main 的 Runtime 1.8.9/1.8.10 配方提交已 fast-forward 保留。
+- 已验证：Node 346 + 44 项通过；情报中心 Python 42 项通过；正常主机上的 Local/Shell 等合并复测为 804 passed、1 skipped、4 failed（四项后续合同修复正在重验）。原生后台 BiDi 独立验收 1 passed/30.55s：临时隔离 Profile、20 万字符、上传、提取、关闭 HTTP 客户端后继续后台任务与重新连接均通过；未读取用户网页或模型缓存。
+- 受限环境 MLX/Metal 导入崩溃与默认 testserver Host 被公网边界拒绝不能记为成功；完整候选改用正常主机环境运行。当前日志 /private/tmp/ai2apps-2259-candidate-full-r2.log、/private/tmp/ai2apps-2259-candidate-focused.log、/private/tmp/ai2apps-2259-native-acceptance.log。未替代最终签名 App 的目标 Mac 升级验收。
+- 用户授权 0.1.5 / 2259 发布、公证及必要的 Dev Cookie 使用；Todo 修复后恢复准备。
+- Todo 定向 Python 103 项、前端 46 项通过；Swift 77 项 Swift Testing 通过。首次完整 Python 收集 12329 项，达到 20 个失败门限停止（441 passed、1 skipped、74 deselected），不视为全量通过。
+- 首批测试合同修正：展示 JSON 修复预算为两次修复（三次调用）、独立能力命名使用 work_simple、身份替身补齐 local_principal_for、个人空间替身补齐 owner_home。未放宽产品验证或移除失败用例；情报中心后台迁移等剩余回归继续核对。
+- 日志：/private/tmp/ai2apps-2259-python-preflight.log、/private/tmp/ai2apps-2259-focused-failures.log、/private/tmp/ai2apps-2259-todo-node-correct-cwd.log、/private/tmp/ai2apps-2259-swift-preflight.log。正式候选范围、clean-tree 和最终回归尚未完成。
+
+### NXR-VISITOR-SESSION-LEASE-20261009：匿名访客持续浏览
+
+- 状态：implemented_dev_chromium_10min_verified。接入 personal-space-anonymous-session-v1，独立8小时/30分钟会话与120秒短租约，server-only proof、single-flight、幂等与版本检查，前台阅读POST心跳、后台不延长闲置，同版本不重绘。旧协议不升级，开关与内容未改变。
+- 76项Python、8项Node通过，新增HTTP专项后7项会话测试通过；最终Dev PID80116/60039真实Chromium连续10分27秒、同会话10次续租200、0失败、1次交接，页面未中断。详细记录 ai2apps/docs/anonymous-visitor-session-local-2026-10-09.md。iPhone/opaque sandbox/真实关闭与完整8小时期限未验收。
+
+
+### NXR-ANONYMOUS-VISITOR-20261009：匿名访客协议 Local 接入
+
+- 最新状态：implemented_dev_anonymous_text_verified。Cloud 1.64.1 published boolean 已接入，纯文字空间零 App 数量保持真实。Dev 单实例就绪配置启用，通过标准 Helper 重启到 PID 73190/55625，用户空间开关和内容未改变。真实内置浏览器免登录显示已发布文字；独立空 Cookie 客户端交接/匿名 bootstrap 成功、重放401、Owner/private API 403/404。69 项 Python 回归及新增 readiness 后 16 项空间测试通过。原 Cloud 文本阻塞已解决；iPhone/opaque sandbox/真实过期关闭矩阵仍待测，120秒上限未变。
+
+
+- 状态：implemented_tests_passed_cloud_text_status_blocked，未启用就绪标志或重启。匿名完成页、独立 Cloud 断言验证、一次性 opaque 会话、发布/开关能力同步与旧快照撤销；Owner 协议不变，无匿名 Local principal。
+- 68 项 Python、6 项 Node 与 scoped diff 检查通过。Cloud publishedAppCount=0 判为 unpublished 阻断文字/链接主页，已形成修复需求；不虚报 App 数量。记录 ai2apps/docs/anonymous-visitor-local-integration-2026-10-09.md，Cloud 交接 ai2apps/docs/cloud-anonymous-text-space-fix-2026-10-09.md。
+- 真实匿名浏览器、过期/撤销安全矩阵、opaque sandbox Cookie Chrome/iPhone 验收仍待完成。现有三环境构建未加载本轮 Python 更新。
+
+
+### NXR-VISITOR-EDITOR-ENABLE-20261009：首次开启流程与管理页提示
+
+- 状态：implemented。首次按钮明确标为“发布并开启访客空间”，顺序保存修改、发布快照、开启；任一步失败停止。已发布空间开启保留原有已发布版本，不自动发布后续草稿。
+- 读取平台标准 error.message，保留 detail 兼容；成功/错误/普通提示分别采用 Account 的绿色/红色/中性灰色。管理页文字、边框、输入与主按钮统一中性色，访客预览保留选定主题。保存和发布合并状态，保留 App 通道就绪元数据。
+- 6 项 Node 测试与编辑器 JS 语法检查通过，覆盖首次保存/发布/开启版本顺序及发布失败不执行开启。静态版本更新；未刷新用户带未保存修改的页面，未代用户发布或开启空间。Test 需后续重新构建才包含此变更。
+
+
+### NXR-VISITOR-RECOVERY-ROOT-20261009：恢复链接禁止退回 Cloud 根路径
+
+- 状态：implemented，待 iPhone 原路径复测。移除访客空间模板中 coder.ai2apps.com 根地址兜底；仅在持有严格校验的固定 /u/ 用户 URL 时显示重新进入链接。首次交换/Bootstrap 失败且无有效 URL 时提示重新扫码，不暴露错误导航。拒绝凭证、查询、fragment 和异域 URL。
+- 4 项 Node 测试与 JS 语法检查通过，含无缓存/非法缓存/有效用户链接的失败恢复。静态脚本版本更新；Dev/App-Dev 刷新即可加载，Test 已有构建不包含此后续变更。截图与生产 Cloud 根路径 JSON 完全一致，具体触发操作尚未复现；不宣称所有 Owner 恢复链路已验证。
+
+
+### NXR-VISITOR-SPACE-20261009：内置访客空间 MVP
+
+- 2026-10-09：用户要求的 Dev / App-Dev / Test 标准构建全部成功，严格签名与实例身份通过，三实例首页启动通过。Test 输入 AceFox 通过原有 mach build faster/package 刷新；未修改安全补丁。详见 ai2apps/docs/dev-app-dev-test-build-2026-10-09.md。
+
+- 状态：implemented_local_appdev_verified，Cloud 端到端待完成。开发计划 ai2apps/docs/visitor-space-development-plan-2026-10-09.md；Cloud 交接 ai2apps/docs/cloud-visitor-space-requirements-2026-10-09.md。
+- 内置管理 App、安装绑定草稿/发布快照/撤销代次，默认关闭；独立零权限 sandbox Open-Entry 资源通道，Cloud 就绪标志默认关闭。数据库 schema 86。不得将 Owner Mobile App 自动开放为访客 App。
+- 55 项 Python、2 项共享预览 Node 测试通过。固定 App-Dev 已标准重建并通过 release verifier/codesign，窗口标题与身份合同已验收；管理页面打开、编辑保存草稿和手机预览实测通过。空间保持关闭，未发布 Desktop；公网 Dev 已在 2026-10-09 三环境构建中重启。Cloud 资源通道/访客长会话、贪吃蛇 1.0.2 签名发布、非 Owner/iPhone 验收待完成。详见 ai2apps/docs/visitor-space-implementation-2026-10-09.md。
+
+### NXR-MOBILE-PACKAGE-BRIDGE-JSON-20261009：Sandbox App 加载 500
+
+- 状态：implemented。Dev 日志确认蛇来运转加载握手后 /v1/mobile/app-mounts/{id}/bridge 收到非 JSON 请求体并抛 JSONDecodeError。Mobile Shell 的 context POST 现在显式 JSON.stringify 并声明 application/json；更新静态缓存版本。
+- 7 项 Mobile 导航测试通过，新增测试走真实 request 与 message handler，验证请求体、Content-Type、context 回传和加载状态。无需重启或 Package 升版；iPhone 刷新复测待完成。
+
+### NXR-MOBILE-RECONNECT-20261009：失效会话重连恢复
+
+- 状态：implemented。已知设备 Host 上 GET /mobile 的 HTML 导航在 Owner Cookie 缺失或失效时，303 返回严格校验的 Cloud 用户 URL；无可信 URL 时回公开 member complete。API、资源、未知 Host、非 GET 不放行、不重定向。恢复按钮不再刷新受保护页面。
+- 23 项 Owner gateway、7 项会话前端测试通过；手机原报错地址确认为 /mobile#app=ai2apps.general-chat。已通过官方 Helper 重启公网 Dev Local（端口 52100）；本地及公网匿名 HTML GET /mobile 均实测 303 到固定账户 URL，匿名 /v1/mobile/apps 保持 403；真实 iPhone 重连待复测。
+
+### NXR-MOBILE-STALE-MOUNT-20261008：App 旧实例 404 恢复
+
+- 状态：`implemented`。Mobile 复用挂载 focus 返回 404 时，清除该 App 的失效 Frame/挂载引用，按目录中的 App ID 通过现有授权 open 路由重开一次。401/403/500 不重试，首次 open 404 不循环，导航序列过期不再恢复。
+- 6 项 Mobile 导航测试通过，JS 语法及 scoped diff 检查通过；模板缓存版本更新，静态刷新生效，无重启或 Cloud 改动。用户截图是绘图 App 打开请求 404，尚未捕获该次实际失败 URL，不能将旧实例失效认定为已证实的唯一根因；公网手机恢复待复测。
+
+### NXR-STUDIOS-MOBILE-AUTO-OUTPUT-20261008：所有 Studio 新素材自动打开 Output
+
+- 状态：`implemented`。共享 studio_mobile 导航监听三个 Host 的输出刷新：Imagine runs、Voice 唯一 studioOutputs、Video tasks/提取音轨/合成/放大/Package runs，以及通过宿主发布的 Package 素材事件和视频合并结果。新成功结果自动选中并打开共享 Output，返回保留原工作区；首次历史刷新、失败/取消、重复刷新及桌面宽度不自动跳转。
+- Voice 不新增输出历史/播放器、不按 Mini-App 过滤或重置共享输出、不触碰 Line 私有缓存。三个模板缓存版本同步更新，静态刷新生效，无重启或 Cloud 改动。
+- 10 项共享导航测试、Voice 跨 Mini-App scope 测试通过，JS 语法与 scoped diff 检查通过。真实手机各类模型/Package 生成完成后切换仍待实机复测，未为此次导航改动执行付费生成。
+
+### NXR-IMAGINE-MOBILE-AUTO-OUTPUT-20261008：绘图完成自动查看输出
+
+- 状态：`implemented`。Imagine 成功完成 Cloud/BYOK 轮询、本地绘图和图片调整导出后自动打开共享 Mobile Output；放大图片沿用成功轮询。先选中本次 Run，再切换输出；失败/取消不触发，初始历史刷新不触发。统一共享导航与 Imagine 的 openMobileOutput，重复完成通知不覆盖返回位置，返回保留编辑器草稿。
+- 6 项 Studio Mobile 导航/拖动/自动输出测试通过，Imagine JS 语法及 scoped diff 检查通过。更新脚本缓存版本；静态刷新生效，无重启、无 Cloud 改动。未为视觉验收调用付费绘图，手机真实生成完成后切换待复测。
+
+### NXR-MOBILE-MODEL-CATALOG-20261008：Owner Mobile 对话模型目录
+
+- 状态：`implemented`。Owner /v1/mobile/models 在现有租约内将公开目录与桌面管理目录合并，仅返回显式展示字段；合并 Cloud/Fusion、规范别名稳定 ID、去重并携带收藏/就绪标志，不返回 settings、密钥、路径或 Fusion 配置，不开放 /admin 路由。
+- Mobile 补齐 Fusion 与 work-only LLM、收藏排序、API Default 路由，并先读取默认模型再构建列表；保留音频/图片/视频/嵌入模型排除和不可用模型过滤。会话模型继承及温度默认策略不变。
+- 18 项 Python、11 项 Node 通过，JS 语法及 scoped diff 检查通过。通过官方 Helper 单独重启公网 dev Local（PID 44700）；未重启 app-dev，未重建、未修改 Cloud。真实 Chrome Owner 重新授权后模型选择器正常加载，新增此前缺失的 (BYOK) DeepSeek · DeepSeek-V4.1-Flash，既有 Cloud 对话模型保留；未列出语音模型。状态为 `implemented_owner_chrome_verified`，iPhone 刷新复测待确认。
+
+### NXR-MOBILE-CHAT-STREAM-20261008：Chat 空回复与流错误显示
+
+- 状态：`implemented`，未发布。Mobile Chat 接受带/不带空格 SSE data、分块 UTF-8 与末尾无换行数据，兼容 JSON completion；流中 error 不再被解析 catch 吞掉，无正文不再保存空 assistant 消息。失败移除临时空气泡，刷新历史后再显示错误，避免错误被重绘清除。更新脚本缓存版本。
+- 7 项 Chat 流解析/模型记忆 Node 测试通过，JS 语法和 scoped diff 检查通过。未更改 Cloud 或模型参数；截图这次 gpt 6 luna 的上游响应尚未捕获，不宣称真实模型已恢复。手机刷新后需重发验证，既有空历史不自动删除。
+
+- 2026-10-08 真实公网续验：同一 Owner Chrome、同一 gpt 6 luna，旧 Mobile 默认 temperature=0.7 返回 Cloud lifecycle failed/provider request failed。Mobile 请求显式 temperature=null，令现有网关采用模型默认温度（与桌面一致），重新加载后同对话发送 hi 得到“Hi! How can I help you today?”。未修改 Cloud、未重启实例。
+- 补齐 ai2apps_cloud failed 事件真实错误显示及结构化文本 content；共 10 项流解析/模型记忆/请求参数 Node 测试通过，语法及 scoped diff 检查通过。状态更新为 `implemented_owner_chrome_verified`；iPhone 刷新后复测仍待用户确认。
+
+### NXR-GALLERY-MINI-BOOTSTRAP-20261008：图库 Mini-Entry 加载修复
+
+- 状态：`implemented_mobile_owner_verified`。Gallery Mini-Entry 改为遵循 app_base_template，Mobile 使用 mobile_app_base.html，避免错误加载 /admin/static Alpine/Lucide 和被 CSP 拒绝的桌面内联启动脚本。图库头图标使用已有 images 图标，更新 Mini-Entry 脚本版本。
+- 共享 galleryApp.init 增加幂等保护：Alpine 自动 init 与遗留 x-init 不再重复加载或注册窗口事件，覆盖桌面及 Mobile。保留权限边界，无 Cloud 改动。
+- 30 项 Owner Studio Python、6 项 Gallery Node 通过，JS 语法及 scoped diff 检查通过。真实公网 dev Chrome Owner 的 Imagine 素材内嵌 Gallery 已加载 6 个目录、34 个素材、88 个 SVG 图标。未重启或重建；静态页面刷新生效。iPhone Safari 及桌面偶发空白实机复现仍待验证，不宣称桌面全部根因已消除。
+
+### NXR-OWNER-MOBILE-RECOVERY-20261008：Mobile 会话恢复页面
+
+- 状态：`implemented`，未发布 Desktop。Owner 会话结束时清除私有 Frame 并显示手机友好的连接卡片；按钮返回严格限定的 coder.ai2apps.com 固定用户 URL。经过服务端有效状态返回的 URL 保存到当前标签页 sessionStorage，供刷新后首次校验失败恢复使用；仅作导航提示，不作为权限凭证。无 URL 时显示重试和重新扫码提示，不推测账号、不自动循环跳转。
+- owner_session.js 缓存版本已更新；7 项会话前端测试通过，包含首次校验失败的恢复与恶意 URL 拒绝，JS 语法和 scoped diff 检查通过。静态变更无需重启，现有旧错误页需刷新一次加载新脚本。iPhone Safari 真实过期恢复待复测。
+
+- 2026-10-08 样式修复：移除动态内联 style，改由已允许的 mobile_app.css 外部加载恢复页样式，避免公网 CSP 拦截。加入浅色渐变背景、品牌图标、圆角卡片、深色主按钮、安全区和矮屏适配；连接结束时 blur 当前及子 Frame 输入，标题接收非输入焦点以收起键盘。缓存版本更新，7 项会话测试及语法/diff 检查通过；无需重启或 Cloud 改动，iPhone 实机视觉/键盘复测待确认。
+
+### NXR-INTELLIGENCE-ENTITIES-20261008：跨频道实体与机会线索
+- 状态：`app_dev_verified`。已增加按用户隔离、跨频道共享实体档案、逐条引用与历史版本、人工归属纠正、自然语言关注规则、机会线索和单轮实体问答。26 项 Python、9 项 Node 定向测试通过。App Dev 62009 实测已有微博文章生成两个实体/六条引用事实，关注规则保存、无充分证据时不生成机会、重复检查跳过、其他频道共享查看均通过。有机会时的反馈分支由定向测试覆盖。提醒为 App 内数量；每轮最多评估五个变化实体，依赖 Shell 采集后接续处理。详见 ai2apps/docs/intelligence-center-v1.md。未重建、未发布。
+
+### NXR-INTELLIGENCE-WEIBO-IMAGES-20261008：微博正文图片显示
+- 状态：`app_dev_verified`，未发布。排除 tvax 头像 CDN 和头像节点，提取 video poster；历史卡片/标题图/详情缩略图/大图统一跳过头像。对已保存的 wx1–4.sinaimg.cn 公开正文图片提供按文章所有权校验的本地加载入口，带微博 Referer，禁止跳转，限 8 MiB、校验图片签名、私有缓存，不读取 Profile Cookie。正文采集和图库导入仍沿用源 Profile。20 项 Node、2 项 Python 检查通过，语法及 diff 检查通过。App Dev 标准 Helper 重启至 53202，实际 RADO 帖子的列表图片和详情标题图均正确显示腕表照片，旧头像被排除；无需重新生成文章。无重建、无发布。
+
+### NXR-OWNER-MOBILE-STUDIOS-20261008：三个 Studio 的 Owner Mobile 接入
+
+- 状态：cloud_deployed_owner_entry_verified。注册 Imagine / Voice / Video Mobile 入口，增加带 Owner 租约的独立 Studio API 应用，冻结可公开路由清单并复用现有 actor/AppInstance/mount 归属检查；不使用管理员 Cookie/API Key 转发，不暴露整个 Platform/Admin。
+- Package Mini-App 使用专用 Mobile resource 路径并验证 Studio 父实例、live mount、资源摘要及原 sandbox。补齐静态依赖、Gallery Mini-Entry 路径和 Mobile locale。
+- Cloud 已部署 owner-mobile-studios-20261008-v1，140 个精确方法/路径组合与分层 CSP；客户端复测记录：ai2apps/docs/cloud-owner-mobile-studios-20261008.md。
+- 验证：60 项 Owner/Studio/Library Python、14 项既有 Voice/bridge Python、14 项 Mobile/Voice Node 通过；真实 Mobile 模板依赖清单、Gallery Range/跨用户隔离、原生路径拒绝、图片/语音 Owner invocation context 均覆盖。生成调用使用隔离替身，不等于真实模型验收。
+- 固定 App-Dev 已标准重建，verify-release-app 与 codesign --verify --deep --strict 通过；原生标题 AI2Apps-App-Dev: App-Dev 127.0.0.1:50664，保持 app-dev/cloud/Development/source-root 与禁用生产更新合同。首次构建未操作 dev/Test；本次 Cloud 部署后已通过官方 Helper 单独重启公网 dev（PID 96063、端口 55673），使 Studio 注册生效，未操作 app-dev/Test。清单 JSON 已加入 package-data。
+- Mobile 隐藏尚依赖桌面挂载的 Mini-App Chat；模型安装仍在 Mac 完成（允许只读能力 probe，不开放 ensure/confirm）。真实 Chrome Owner 重新授权后 Apps 已显示三个 Studio，390×844 下列表和编辑器均加载，Imagine/Video 输出历史加载、Video 返回 Home 后重开通过。Quick Read 所选本地 TTS 显示需配置，未生成；真实生成、Package bridge、素材交互、iPhone Safari 和负向权限实机验收仍待补齐。
+
+
+### NXR-INTELLIGENCE-POST-FILTER-20261008：帖子质量过滤与恢复
+- 状态：`in_progress`。频道配置宽松/标准/精选与保留偏好；微博列表初筛、帖子详情复筛结合频道兴趣和顶踩偏好，模型结构化决策逐条校验。过滤记录按用户/频道保存原因、阶段和原始证据，支持恢复；完整正文恢复后下一轮进入整理，列表记录恢复后允许后续重新发现和读取。历史过滤避免重复打开，人工恢复不再被质量筛选拦截。
+- 24 项 Python、18 项 Node 定向检查通过，语法与 diff 检查通过。App Dev 标准 Helper 重启至 49322，默认标准配置保存、更新记录入口和空记录面板已验证。实现完成；实际微博采集仍沿用既有冷却及待验收状态，真实内容过滤质量尚待端到端复测，不标记完整 app_dev_verified。无重建、无发布。
+
+### NXR-INTELLIGENCE-FORMAT-CARDS-20261008：六类内容卡片与筛选
+- 状态：`app_dev_verified`，未发布。网页文章、帖子、视频、音频、图片/图集、文档/报告采用独立列表布局，新增类型筛选；历史来源按平台/URL 识别，明确 AI 摘要/综合，混合来源保留多类型筛选。引用证据增加可选类型/时长/页数，缺失不补造。
+- 验证：25 项 Python、41 项 Node 检查通过，JS 语法及 diff 检查通过；1440px/390px 六类隔离样例验证，App Dev 标准 Helper 重启至 63948，实际 YouTube 视频卡片、25 篇历史网页文章及类型筛选通过。无重建、无发布。本轮是展示适配；微博自动采集仍按下项待验收。
+
+### NXR-INTELLIGENCE-WEIBO-20261007：微博账号与话题点击采集
+- 状态：`in_progress`。账号 UID 主页及话题来源、站内搜索输入提交、可见正文链接原生点击、新标签绑定与关闭返回、微博正文与图片提取已实现；沿用每源 Profile、去重及平台共享冷却。无直接导航详情 URL 回退。YouTube 导航流程本轮未改变。
+- 增加 not_started 预约释放：只在 browser session 未创建时恢复此前预约，不对已开始访问的网站清除冷却；过期 token 不能释放后续租约。
+- 20 项 Python、24 项 Node 定向检查通过。App Dev 标准 Helper 重启至 62242，建立“微博腕表测试”，保存 RADO 官方 UID 1938210792 与 #腕表# 来源。手动站内输入/点击搜索、点击正文新页成功；自动首轮初始化失败未访问网站，核对精确日志后恢复该次误写预约。第二轮话题目标确认失败、0 篇；补充输入可见性与值核对、导航等待和保留页面，修正后尚待复测，话题源仍冷却至 10 月 8 日 05:41。账号自动正文采集未验收，不能标记 app_dev_verified。无重建或发布。
+- 文件：`ai2apps/intelligence/social.py`、`models.py`、`store.py`、`api/intelligence.py`、共享 BiDi SDK、情报中心 JS/模板及测试。详见 `ai2apps/docs/intelligence-center-v1.md`。
+
+### NXR-INTELLIGENCE-YOUTUBE-SEARCH-20261007：YouTube 搜索与话题来源
+- 状态：`app_dev_verified`。新增关键词搜索、话题标签来源创建与编辑，生成标准结果页/hashtag 地址，保留用户搜索筛选 sp 参数；原链接添加仍可用。复用每源 Profile、平台冷却、有限滚动及详情前按视频 ID 去重，搜索页不整页入库。
+- 18 项 Python、6 项 Node 定向检查通过，覆盖中文编码、筛选条件、非法来源、搜索结果去重和旧版社交采集路径。标准 Helper 重启后的 App Dev 端口 58566。解锁后建立“YouTube 腕表搜索测试”频道，验证关键词“腕表”创建及编辑回显，Default Profile 实际检查 30 个视频、读取 2 个、成功生成 2 篇简报（1 个网页文字稿、1 个仅标题简介）；封面、正文与引用截图确认。连续第二次更新读取/变化/生成均 0，日志显示冷却至 10 月 8 日 05:12，没有启动新采集页。关键词主流程实机通过；话题标签与筛选参数仍由定向测试覆盖。未重建或发布。
+- 文件：`ai2apps/intelligence/social.py`、`web/static/js/intelligence_social.js`、`web/static/js/intelligence.js`、情报中心模板、社交来源测试及 `ai2apps/docs/intelligence-center-v1.md`。
+
+### NXR-INTELLIGENCE-YOUTUBE-20261007：YouTube 社交来源与低频采集
+- 状态：`in_progress`。实现已落地，58 项 Python、28 项 Node 定向检查通过；真实站点修正后复测仍待完成。
+- YouTube 频道/视频 URL 归一化，专用 DOM 列表和详情提取、封面与可见网页文字稿/简介覆盖标注；打开详情前排除已收录视频，每轮最多 2 个新视频。
+- 社交来源默认 6 小时间隔，持久化源冷却、跨频道/Profile 平台共享租约、失败退避、验证码暂停及人工恢复；有限滚动、串行停顿，无指纹伪装或验证绕过。浏览器仍使用原生 BiDi Gateway 和每源 Profile。
+- App Dev Local 通过标准 Helper 重启，端口 54907。建立 YouTube 测试频道及官方 OpenAI 来源；首轮 empty_page、生成 0 篇，手动页面检查可见正常视频列表。随后补充新版卡片选择器与不重新导航的 SPA 等待，相关检查通过。实机已确认下次采集时间为 10 月 8 日 00:17，未清除冷却反复访问；修正后的真实详情/生成文章链路待复测，不能标为 app_dev_verified。未重建或发布。
+- 文件：`ai2apps/intelligence/social.py`、`models.py`、`store.py`、`service.py`、`api/intelligence.py`、共享 `browser_bidi_client.js`、`intelligence_social.js`、`intelligence.js`、情报中心模板及测试。完整说明见 `ai2apps/docs/intelligence-center-v1.md`。
+
+### NXR-INTELLIGENCE-WRITING-20261007：按情报范围撰稿与对话修改
+
+- 状态：`app_dev_verified`。文章、栏目、频道、热点新增撰写入口，支持短 Post、长文、视频稿、播客稿、简报及内容指导；资料限定在所选范围（最多 20 篇/80000 字符），冻结引用证据，对话修改保存最新版与沟通记录。新增频道稿件列表、复制、引用跳转、请求去重、版本并发保护和 owner 隔离；失败保留原稿。
+- 56 项 Python、24 项 Node 定向检查通过。App Dev 从浪琴文章生成短 Post、对话修改保存第 2 版，刷新后从稿件页恢复完整稿件、引用和对话；其他范围以隔离测试验证。标准 Helper 重启 app-dev Local（端口 53016），未重建或发布。详见 ai2apps/docs/intelligence-center-v1.md。
+
+### NXR-INTELLIGENCE-IMAGES-20261007：文章多图与 Gallery 收藏
+
+- 状态：`app_dev_verified`。共享 BiDi SDK 提取封面和相关正文图片（每源 24 张、每篇 48 张），详情底部缩略图支持放大与前后切换；通过原信息源 Profile、共享资源传输 helper 和现有 Gallery 导入 API 保存图片、去重并记录来源。已有文章支持手动补图。共享 helper 新增可选 preferExact，避免将懒加载占位图作为选中图片导入；其他调用默认不变。
+- 52 项 Python、23 项 Node 定向检查通过。App Dev 实机为浪琴文章补齐 13 张图片，验证大图并成功加入 Gallery，刷新后确认 L3.809.4.93.9_FACEtiff.jpg（316.4 KB）；早期测试占位图已移入废纸篓。标准 Helper 重启 app-dev Local（端口 51185）并刷新页面，未重建或发布。详见 ai2apps/docs/intelligence-center-v1.md。
+
+### NXR-INTELLIGENCE-FEEDBACK-20261007：文章顶踩与偏好记录
+
+- 状态：`app_dev_verified`。文章支持顶/踩和撤销；踩理由由 Standard 模型依据当前频道、文章生成，至少选择一项后保存。按 owner 保存结构化当前偏好，验证理由与当前上下文一致，支持修改、缓存与过期保护；文章更新保留理由，撤销清除有效偏好，频道删除级联清理。
+- 51 项 Python、19 项 Node 定向检查通过。固定 App Dev 腕表文章实测生成 5 项理由、选择保存、详情回显、修改恢复选项与撤销；测试反馈已清除。标准 Helper 重启 app-dev Local（端口 49679），未重建或发布。详见 ai2apps/docs/intelligence-center-v1.md。
+
+### NXR-INTELLIGENCE-TOPICS-20261007：频道热点话题
+
+- 状态：`app_dev_verified`。近 7 天最多 60 篇情报按具体事件/产品聚合为最多 8 个热点，每个热点至少 2 篇相关文章；显示摘要、相关文章与封面，支持手动整理与采集后自动更新。服务端逐篇核对具体对象 anchor 和文章引用，避免同品牌不同型号宽泛合并；具备版本签名缓存、owner 隔离、并发和过期结果保护。
+- 47 项 Python、18 项 Node 定向检查通过，最终 anchor 版本相关 Python 16 项复验通过。固定 App Dev 使用腕表频道 25 篇文章生成朗格 TRIPLE SPLIT 铂金镀铑盘版本热点及 2 篇相关文章，确认右侧文章跳转和标准样式；仅标准 Helper 重启 app-dev Local（端口 64826），未重建或发布。采集后自动触发未额外运行整轮采集实测。详见 ai2apps/docs/intelligence-center-v1.md。
+
+### NXR-INTELLIGENCE-COVER-20261007：原文标题图采集和展示
+
+- 状态：`app_dev_verified`。共享 BiDi SDK 提取原文封面元数据或正文大图，通用/编译采集统一接入；仅从引用证据选图，列表和详情显示，旧文章支持按原信息源 Profile 补图，失败回退文字布局。情报中心桌面/移动 HTML 的 CSP 仅增加 HTTPS 图片来源；其他页面、脚本与 connect-src 限制不变，已有路由 CSP 保留。图片使用原站 URL、no-referrer，不代理下载，原站链接失效时回退文字。
+- 55 项 Python、40 项 Node 通过。实机从 Fratello 浪琴 Spirit Pilot 原文通过原 Profile 补图，确认列表封面、详情大图、出处链接及 Local 重启后保留；仅标准 Helper 重启 app-dev（端口 62502），未重建或发布。详见 ai2apps/docs/intelligence-center-v1.md。
+
+### NXR-INTELLIGENCE-CHAT-20261007：频道右侧栏对话
+
+- 状态：`app_dev_verified`。右侧栏对话/文章详情切换，基于本频道文章与上下文追问并显示可跳转引用；按用户及频道持久保存对话，提交幂等，失败可重试。首版通过有界词匹配选取文章，不实时浏览网页或检索关联库内其他内容。
+- 39 项 Python、13 项 Node 通过，覆盖隔离、持久化、重试、引用校验、选文预算、频道切换和文本转义。标准 Helper 仅重启 app-dev Local；实机完成朗格与浪琴动力储存对比问答、引用跳转、文章上下文入口和刷新后历史保留，未重建或发布。详见 ai2apps/docs/intelligence-center-v1.md。
+
+
+
+### NXR-INTELLIGENCE-KNOWLEDGE-20261007：频道关联多个系统知识库
+
+- 状态：`app_dev_verified`。频道创建/设置可关联多个已有系统知识库或新建专用私有库，历史文章补录与新文章/更新自动同步；持久化队列、幂等条目和 revision 防止重复或旧确认覆盖新任务。每次同步校验写入范围，失败可重试，解除关联/删除频道保留已入库内容，用户删除知识条目不自动复活。
+- 验证：66 项 Python、10 项 Node 通过（含真实 KnowledgeStore 多库、版本更新、断点重试、权限、删除与失败隔离）。固定 App Dev 仅标准 Helper 重启 Local，界面为现有腕表频道新建并关联私有“腕表情报”库，25 篇全部补录，待同步 0；系统知识资料库确认 25 项及来源。新生成文章和多库更新由集成测试覆盖，本次未额外触发外站采集。队列随页面打开推进，未发布。详见 ai2apps/docs/intelligence-center-v1.md。
+
+### NXR-INTELLIGENCE-SITE-AGENT-20261007：网站采集 WebAgent 编译与复用
+
+- 状态：`app_dev_partially_verified`。实现完成。复用 AgentBuilderRepository / compile_source 编译与版本仓库，规则仅从真实观察的 DOM 区域选择；列表与已确认文章链接比对、正文与通用提取的文本片段比对，通过后保存 evidence 并激活。App 管理规则不参与用户站点 Agent 自动选择/合并，避免覆盖其工作。
+- 按 owner、规范化源 URL、列表/正文类型复用，继续使用每个源指定 Profile；未激活、失效和编译器旧版规则不复用。失效回退通用提取，每种规则每源每轮只学习一次。浏览器操作保留原生 BiDi SDK、稳定性、Cookie 和访问检查；不生成任意脚本。日志记录复用、学习请求、回退和耗时。此版不固化翻页/任意交互。
+- 44 项 Python 与 40 项 Node 测试通过，涉及现有编译/执行、规则验证/激活、隔离、跨频道复用、回退与 Cookie 处理。仅标准 Helper 重启 app-dev Local，未重建或发布。
+- 实测两个网站均保存列表与正文规则。Fratello 连续两次完整复用：每轮 4 次复用、0 学习请求、0 回退（18.7 秒、12.8 秒）；腕表之家正文复用 3 次且列表规则通过校验。最后一次腕表之家首页导航超时，整轮 partial，随后 Computer Use 读取/刷新持续超时，未完成追加复测或截图。腕表之家完整暖运行待复测；各轮页面不同且网络波动，未宣称稳定整体加速比例。详见 ai2apps/docs/intelligence-center-v1.md。
+
+### NXR-INTELLIGENCE-SECTIONS-20261007：AI 频道栏目
+
+- 状态：`app_dev_e2e_verified`。创建频道时由 Standard 模型按兴趣生成 4–8 个有明确范围的栏目；新情报按栏目 ID 归类、界面按栏目筛选。旧频道可创建栏目并对既有文章补分类，失败不提交部分结果。29 项 Python、7 项 Node 测试通过，涵盖失败事务性、栏目 ID 与完整分类校验、隔离、状态保留和组合筛选。App Dev 实测腕表生成 7 个栏目、12 篇历史情报全部归类，机芯与技术筛选显示 2 篇；仅重启 Local，未重建或发布。当前不含栏目手动编辑或重规划。
+
+### NXR-INTELLIGENCE-ICON-20261007：Discover 与情报中心图标调整
+
+- 状态：`app_dev_e2e_verified`。按最终选择，Discover 导航与页头使用原情报中心的 Lucide `radar` 雷达屏幕图标，情报中心导航与页头使用原 Discover 的 `satellite-dish` 卫星天线图标，沿用标准单色线条样式。两个 App 的 Dock 与页头均已实机截图验证；仅重启 app-dev Local，无需重建，未发布。
+
+### NXR-INTELLIGENCE-PREFILTER-20261007：采集前排除已收录文章
+
+- 状态：`app_dev_e2e_verified`。列表候选在详情导航前对照 owner/频道隔离的成功 pages 历史，过滤后取前 3 条未处理文章；已有历史直接适用。URL 忽略跟踪参数与 fragment，保留功能查询参数；记录原始请求 URL 以识别重定向别名，同轮跨源已读 URL 也排除。
+- 全部候选已处理时只读列表，不再打开文章、不回退生成列表摘要。没有文章列表的页面型源继续正文比较。失败/未提交指纹的页面仍可重试；普通刷新不再复查同 URL 已收录文章的正文改动。日志显示跳过数。
+- 23 项 Python 与 6 项情报浏览器测试通过，覆盖连续采集排除已读、补下一批、全部命中零详情导航、失败重试、频道隔离、参数规范化和重定向。固定 App Dev 实测腕表之家与 Fratello 各检查 20 条、跳过 3 条历史文章、读取 3 篇未采集文章；整轮 completed，共跳过 6 条并生成 6 篇新情报，总文章数 6 → 12。仅通过标准 Helper 重启 app-dev Local，无需重建，未发布。
+
+### NXR-INTELLIGENCE-STYLE-CONSENT-20261007：标准 App 样式与 Cookie 对话框
+
+- 状态：`app_dev_e2e_verified`。情报中心改用共享 dashboard 主题变量与语言字体、标准中性色按钮/频道/分段标签，去掉独立紫蓝配色与装饰性英文标题。
+- Fratello Cookiebot 真实弹窗提供 Deny，旧共享 PageAccess 未识别。修复位于 BiDi 客户端 SDK：在可见 Cookie/隐私面板内识别 Deny/拒绝等安全动作，通过原生指针点击、检查遮挡、等待稳定并复查；最多三次，未关闭则保留 Profile 页面请求协助，不将其当作已读取。
+- 生成失败保留已验证的各信息源日志与具体错误，仍不提交页面指纹，允许重试。
+- 真实生成失败诊断定位为证据全局编号与文章局部编号混用：模型输入、evidence_ids 和正文统一从 1 开始的全局编号，验证来源后由服务端按文章来源顺序映射局部引用。仍拒绝越界、未声明、缺失与重复来源；新增重排引用回归。诊断仅记录校验类型与字段，不记录正文。
+- 22 项 Python、23 项 Node 定向测试通过；固定 App Dev 标准主题实机显示正常，Fratello 默认 Profile 成功读 3 篇并生成 3 篇带正确来源的新情报，总文章数由 3 增至 6。最后一轮腕表之家发生导航超时，来源失败日志与 partial 状态正常保留，不影响 Fratello 成果提交；此前两轮该源采集成功，外站超时未宣称解决。仅通过标准 Helper 重启 app-dev Local 加载 Python/静态资源变更，未重建或发布 Desktop。
+
+### NXR-INTELLIGENCE-CENTER-20261007：情报中心首版
+
+- 状态：`app_dev_e2e_verified_preview`。新增用户隔离的频道、信息源、采集记录和情报文章本机存储，以及独立三栏 App；AI 根据真实搜索结果推荐信息源，复用 BiDi Gateway/共享 SDK 采集公开网页与社交话题。
+- 每个信息源保存 AI Browser `profile_key`，可独立选择；推荐搜索也先选择 Profile。复用现有 Profile launch 生命周期，以本轮唯一页面 URL 精确绑定 BiDi context，只关闭本轮页面；非默认 Profile 保存校验 actor 所有权，已删除 Profile 不静默回退。
+- 首版边界：页面与 AceFox 保持打开时按间隔更新，重开补一次；每源每轮最多读取列表前 3 项，无列表时比较当前页面。不会操作社交平台关注按钮。没有 Cloud 代码变更。
+- 同频道原子运行认领、失联回收、源级失败记录、正文指纹增量、模型输出/引用约束；生成成功后原子提交，失败不吞掉新内容。按事件合并/更新由模型完成，文章保留引用与最近历史版本、兴趣反馈。
+- 系统 App 注册和 omlx Admin 三处 host/template/tab 映射已接入。固定 App Dev 通过 build-app-dev-environment.sh 重建，verify-release-app、codesign deep/strict 与身份/源码根/禁用生产更新/实时原生标题核验通过。21 项 Python 与 2 项 Node 定向测试通过。
+- 实机验证：默认 Profile 真实搜索返回推荐；专用“情报中心”Profile 采集腕表之家 3 篇正文、生成 3 篇带来源文章并阅读。重启 Local 后数据与绑定保留，再次更新读取 3 篇、变化 0 篇、生成/更新 0 篇。需登录站点会话复用与定时跨睡眠/长周期运行仍待验收；未发布 Desktop。
+
+
+### NXR-STUDIO-TASK-MODEL-ERROR-20261007：任务模型错误操作指引
+
+- 状态：`test_build_verified`。Studio Host 将翻译缺省模型/调用失败错误转换为中英文操作提示，缺配置明确指出 模型 → 默认模型 → 标准/简单任务 → 保存默认设置；401/403 区分密钥权限与聊天正常但流程失败的系统故障，429 提示额度/限流，其余提示聊天检查、连接/本地运行状态及换用模型。兼容旧版字符串化错误字典；后端新增 purpose/upstream_status 结构字段，不暴露供应商原始诊断。9 种提示测试、21 项 Python 回归通过；固定 Test 重建、verify-release-app 和严格签名验证通过，已启动，保留配置/数据。
+
+### NXR-STUDIO-TRANSLATION-HOST-20261007：内部翻译请求 403
+
+- 状态：`test_build_verified`。Studio 翻译通过 ASGITransport 调用聊天接口时使用 ai2apps.internal，触发 PublicDeviceBoundary 未知公网 Host 拒绝；改为固定 loopback Host，仍在进程内执行，保留会话认证及公网边界。新增真实边界中间件回归，覆盖 BYOK 模型路由、会话传递与未知 Host 仍拒绝。21 项定向回归通过；固定 Test 已重建、verify-release-app 与 codesign --deep --strict 通过并启动，未重置数据。未自动重跑用户的视频/BYOK 付费请求，端到端翻译待用户重试。
+
+### NXR-OFFLINE-ACCOUNT-UI-20261007：脱机帐号页布局
+
+- 状态：`test_visual_verified`。将贴边的三行说明改为有边距的居中状态页：设备标识、脱机标题、配置模型/聊天入口、BYOK/本地模型/本机数据三张能力卡片及低强调帐号服务说明。沿用 Account 中性配色与圆角，适配窄屏，中英文文案齐全。
+- 不新增帐号切换或 Cloud 操作，按钮通过 Shell 打开现有 App。JS/JSON 与 scoped diff 检查通过；固定 Test 已标准重建，verify-release-app/严格签名通过；原生截图检查布局、图标和文案通过，配置模型/聊天入口均可跳转，页面留在新版帐号页。现有数据未重置。
+
+### NXR-BYOK-VISION-IMAGINE-20261007：BYOK 视觉与绘图目录
+
+- 状态：`test_verified`。修复 GPT-6 BYOK 视觉能力漏识别，以及 Imagine Studio 未纳入 BYOK 图像目录。使用共同能力归一化，保留供应商直连身份，不回退到 AI2Apps Cloud；脱机不展示虚构 Cloud 默认项。67 项 Python 通过，新 Node BYOK 目录/后台路由与现有 11 个 Imagine 脚本通过；1 项既有移动端模板 is-mobile-nav 断言失败（模板未改）。固定 Test 已标准重建并通过 verify-release-app 与 codesign 严格验证；原生视觉下拉可选 GPT-6.1 Sol/GPT-6 Luna/Astra，绘图可选 Image 2.5 Sunburst/日期版/Flare。BYOK 直连说明已实机确认，未执行收费绘图。详见 ai2apps/docs/byok-vision-imagine-20261007.md。
+
+### NXR-OFFLINE-CHECKPOINT-20261007：脱机权重 Registry 403
+
+- 状态：`test_verified_local_inference_passed`。用户 Test Qwen3.8 安装已完成 Runtime/Package，但权重索引仍经过帐号通道而被本地脱机门禁 403。匿名读取实测仓库 key 与 checkpoint index 均 200。
+- CheckpointRegistryClient 脱机只读请求改用无 Cookie/Authorization 的公共通道，保留签名、发行者、摘要、有效期和防回滚检查；帐号与写操作仍禁用。45 项脱机/Checkpoint 联合回归通过；固定 Test 已标准重建并通过 verify-release-app/严格签名校验。原生 UI 重试越过 403，进入 21.83 GB 权重验证；原生安装向导最终四步全部完成并显示安装成功，Chat 可选 Qwen3.8 本地模型，真实本地对话返回“本地模型测试成功。”（15.44s 含首次加载，20.9 token/s，23.1 GiB 峰值）。详见 ai2apps/docs/offline-test-20261007.md。
+
+### NXR-MOBILE-BLANK-ICON-20261007：非 Chat App 白屏与图库图标
+
+- 状态：owner_chrome_verified_phone_security_matrix_pending。Mobile Shell 将旧 Gallery 图标名映射到现有 Images，并对未知图标兜底；恢复被错误写成 JavaScript 的 mobile_library.css；iframe 被 CSP 阻止/无有效 HTML 时显示明确错误而非白屏，保留正常已加载 iframe 重开行为。
+- 真实公网 Owner 验证：Home 图库图标已出现；Knowledge 的 iframe src=/mobile/knowledge 被拒绝，但同会话顶层直接打开正常显示页面并加载 4 项、无 notice 错误。公网 HEAD 对照：Chat CSP frame-ancestors self，Knowledge none。只读核对 Cloud 两份 edge nginx 模板，嵌入 location 仅包含 chat/app-content。
+- Cloud 已独立部署实际 Edge 配置 mobile-iframe-20261007-r3，回执：/Users/avdpropang/sdk/ai2apps-cloud/docs/mobile-iframe-production-2026-10-07.md。本项目未修改 Cloud 代码/配置。上述拒绝嵌入证据为修复前记录。
+- 2026-10-07 客户端复测：刷新既有真实公网 Owner Chrome Mobile Shell，Knowledge iframe 显示 4 项、Gallery 显示 20 项、Todo 显示页面与任务控件；三个页面各完成 Home → 重开，均正常，无白屏，最后恢复 Home。图库图标存在。未创建/修改业务数据，未重启实例。
+- 待验收：iPhone Safari 三页及重开、独立非 Owner、过期/撤销租约及续租周期、跨源父页面实际阻断、有效 Owner 请求网络面 200/唯一 CSP 抓包。不得以 Chrome 页面成功替代这些项目。
+- 验证：9 项 Node 检查通过（iframe 复用/加载失败提示、真实 bundled icon、图库触控回归）；真实公网客户端热更新已生效，未重建或重启实例。
+
+
+### NXR-STUDIO-MOBILE-GALLERY-DRAG-20261007：Gallery 拖动切换到 Mini-App
+
+- 状态：implemented_phone_e2e_pending。Studio 手机页接收当前 Gallery iframe 的同源、source 绑定拖动事件，开始拖动切回当前 Mini-App，保留原 Gallery iframe 以维持拖动/指针捕获；取消或无槽命中恢复原 Gallery 页面。Mini-Entry 新增触屏拖动把手，卡片长按仍是菜单、列表滑动不触发拖动。
+- Touch/Pen 拖动超过 8 px 后启动，拖动提示与兼容素材槽高亮，松手后通过既有 Gallery 受权 content 接口读取并复用目标 file input change 校验/缩略图流程。无新增 API 权限；仅 DOM 可访问的同源 Package 槽可回填，不改变 sandbox。桌面路径不自动切换。
+- 验证：来源伪造拒绝、导航与输入保留、取消恢复、触屏启动阈值/连续事件、原长按兼容等 10 项定向 Node 检查通过。iPhone Safari 连续指针捕获与跨 iframe 实机拖拽尚待验收。
+
+
+### NXR-DEEPSEEK-BYOK-VISION-20261007：Flash 图像输入能力修正
+
+- 状态：`implemented_and_tested`。BYOK DeepSeek 模型读取时补齐 deepseek-flash 及官方兼容别名 deepseek-v4-flash、deepseek-v4-flash-vision-exp 的 imageInput 能力；已有缓存（包括字符串模型记录）直接受益，不需重填 Key 或重新同步。保留其他能力字段，不将 Pro/Reasoner 一概标记为视觉模型。
+- 依据：https://api-docs.deepseek.com/guides/vision/ 与官方首次调用文档中的 Flash 别名路由说明。现有 Admin 能力归一化、Chat/Agent 图像入口使用该声明；OpenAI 兼容代理保留 image_url 内容块。
+- 验证：新增五个缓存型号能力场景及 DeepSeek Flash 图片消息代理测试，相关 Model Manager/Cloud Gateway 共 50 项通过；使用模拟上游，未作真实付费图像推理。Python 变更需 Dev/App-Dev Local 重启；本轮未重启实例，未构建/发布 Desktop。
+
+### NXR-GALLERY-TOUCH-CONTEXT-20261007：Gallery 长按菜单
+
+- 状态：implemented_phone_e2e_pending。Gallery 完整页和 Mini-Entry 的文件卡片支持 Touch/Pen 550 ms 长按，复用现有右键菜单；移动超过 10 px、滚动、取消或离开卡片会中止。长按后的合成点击被消耗，后续正常点击不受影响；触控时避免原生拖动抢走长按，鼠标拖动/右键保持原行为。Owner 独立 Mobile Gallery 添加同样长按手势，菜单仅提供既有预览/保存权限，不扩展 API。
+- 验证：长按触发、点击抑制、短按、滑动取消、鼠标/交互控件排除等新增测试，加 Gallery picker/result viewer/Todo Gallery 回归，共 13 项 Node 检查通过；JS 语法及 diff 检查通过。真实 iPhone Safari 长按手势待验收。仅前端改动，无需重建 App。
+
+
+### NXR-STUDIO-MOBILE-MEDIA-20261007：三个 Studio 手机导航与素材菜单
+
+- 状态：implemented_preview_verified_phone_e2e_pending。Voice/Video 复用列表→工作区→共享输出导航；三个 Studio 统一输出动作菜单和素材来源菜单，复用现有文件 change/import 与 Gallery 归属校验。Voice 保持 host-owned 唯一输出历史/选择/播放。当前为响应式界面接入，Owner 公网 API 尚未开放。
+
+
+- 验证：18 项 Node 检查通过（共享手机导航/桌面兼容/素材类型过滤、Imagine 回归、Voice 跨 Mini-App 输出选择）；Voice shared_output_history_across_producers_and_retention 通过。390×844 本机隔离预览验证 Voice/Video 列表与编辑/输出切换、测试音频菜单播放、Voice Gallery 导入回执、Imagine Gallery 测试素材回填与尺寸更新。Python 退出时有沙箱 Metal 无设备告警，测试 exit 0。
+- 范围：内置素材槽及 DOM 可访问的同源 Package iframe 复用 file change 处理；不弱化 sandbox，opaque-origin Package 需通过既有桥另行接入。音频槽的照片选项禁用，图片输出提供查看大图。真实 iPhone 照片/系统下载、生成、Owner 公网 API、完整 Package 实机验收待完成；本轮不发布、不重建、不更改公网开关。
+
+### NXR-IMAGINE-MOBILE-NAV-20261007：Imagine Studio 手机导航预览
+
+- 状态：implemented（手机交互预览已验收，公网接入未完成）。按用户指定交互改造现有Imagine Studio窄屏布局：启动Mini-App列表，选择后进入工作区，右上角共享Output，返回恢复原页面。保留DOM/输入/任务/Output，移动布局忽略桌面折叠状态；当前运行Mini-App可从列表重新进入而不重置。先验收手机交互效果，尚未开放Owner公网Studio生成API。
+
+
+- 验证：新增手机导航/输入与任务保留检查，加现有 Imagine Node 回归共 13 项通过；390×844 浏览器验证列表→文生图→共享输出→返回，提示词完整保留。修复基础 Studio 窄屏 `display: block !important` 覆盖 Alpine 隐藏的问题；手机左右面板采用 `x-show.important`。预览未提交生成请求，真实手机图片上传、生成、下载及 Owner 公网入口仍待验收。
+
+### NXR-MOBILE-LIBRARIES-20261007：Owner Knowledge 与 Gallery
+
+- 状态：implemented_dev_enabled_phone_e2e_pending。高优先级Mobile App补齐知识搜索/阅读/私有手机收藏，以及图库图片视频列表/预览/原文件保存。专用入口与窄API，复用知识可见性及图库owner校验；媒体仅固定安全图片/视频MIME，no-store、Range由FileResponse处理，仍受Owner租约控制。未开放任意文件、导入执行、管理和永久资源句柄。
+- 验证：44项通过（含14项新Library API/权限/Range测试、17项Owner网关、7项图库及6项Knowledge存储）；另1项旧桌面图库模板断言gallery-context-menu-1失败，相关桌面模板未修改。中文短词兜底限定最近500条可见知识并在UI明示。390×844隔离临时页面验证搜索/阅读/收藏/筛选/图片预览，全屏弹窗也已验证；视频Range206及下载attachment由接口测试覆盖。真实iPhone视频播放与公网全链路待用户复测。
+- App-Dev固定脚本重建完成，verify-release-app和codesign deep/strict通过，固定身份/Development/cloud/source-root/无更新URL核对；原生标题AI2Apps-App-Dev: App-Dev 127.0.0.1:51419。普通Dev已通过专属Helper重启；不复制实例数据、不改公网开关、未发布Desktop。
+
+
+### NXR-MOBILE-TODO-20261007：Owner Mobile Todo
+
+- 状态：implemented_dev_enabled_mobile_e2e_pending。新增手机专用Todo入口、目录/任务列表、编辑/创建/完成/文本执行结果；仅开放窄数据接口，按验证后的actor_user_id访问既有TodoStore，保留revision冲突与父子/目录归属检查。不开放运行、计划配置、Codex绑定、文件系统和桌面接口。Owner App名单加入Todo，Chat不变。90项Todo/Owner/API测试通过；390×844临时隔离页面实测创建/编辑保存/完成/返回列表成功。固定App-Dev按标准脚本重建，verify-release-app与codesign deep/strict通过，Development/cloud/source-root/禁用更新配置核对；原生标题AI2Apps-App-Dev: App-Dev 127.0.0.1:49870。普通Dev已通过专属Helper重启加载；未复制实例数据、未改变公网开关。真实手机公网扫码后的Todo闭环仍待验收，未发布Desktop。
+
+
+### NXR-QWEN35-WITHDRAWAL-20261007：移除旧 Qwen3.5 安装推荐
+
+- 状态：`client_updated_cloud_handoff_pending`。用户批准下架 `ai2apps/model-qwen35`；移除 Chat 向导的 0.8B/2B 两个旧包配置，8–15 GiB 暂无本地聊天推荐，保留 BYOK。
+- 不删除既有安装/权重，不修改上游模型或其他 Qwen 包。Cloud 下架由 Cloud 项目按 `ai2apps/docs/cloud-qwen35-package-withdrawal-20261007.md` 执行，本轮未修改 Cloud。
+- 客户端源码更新；Test/生产 Desktop 尚未重建发布。Provisioning 回归 52 passed，scoped diff 检查通过；沙箱退出时 MLX 报无 Metal 设备的清理警告，测试退出码为 0，本次没有运行模型推理。
+
+### NXR-OFFLINE-MODE-20261007：未绑定设备脱机使用
+
+- 状态：`test_built_offline_byok_verified_local_package_blocked`。用户确认首版只支持未绑定设备；登录页增加“脱机使用”，要求本机原生 Shell 证明与同源检查签发独立本机会话，不创建 Cloud 安装或成员登记；有安装绑定或旧设备登记记录时禁止启用。
+- 独立 offline 主体、实例专属 HttpOnly Cookie、仅存会话摘要的原子 0600 状态文件；持久化/撤销/跨实例/损坏状态拒绝。后台任务解析使用独立 local_principal_for，原 Cloud 成员解析器不接纳 offline 主体。
+- Cloud 帐号请求在发送前统一 403，直接认证传输也拒绝；关闭 Cloud defaults、设备/消息轮询与 Provider 启动。BYOK 共用 cloud/ 网关入口时不请求 Cloud 认证，继续直连供应商；本地模型工作流保持本机身份。匿名 Registry 浏览与已发布模型/Runtime 下载保留，所有匿名请求去除 Cookie/Authorization，继续校验签名/Range/SHA；需要帐号的功能不可用。脱机不再继承缓存 Cloud 默认模型。
+- 回归 112 passed：14 项脱机、14 项身份、9 项桌面引导、42 项 Cloud Client、8 项 Local Auth、13 项 BYOK/Cloud Gateway、12 项 Worker Scheduler。真实 Server 认证依赖、重启、Cloud 零发送、BYOK 模拟直连均覆盖；JS/JSON/scoped diff 检查通过。沙箱 MLX 导入需在批准的非沙箱测试环境运行；不进行真实付费推理。
+- 标准 build-app-dev-environment.sh 已重建固定 App 并归档旧包；verify-release-app.sh、codesign --verify --deep --strict 通过，固定 bundle ID/instance/development/cloud Runtime/source-root 合同与禁用更新配置已检查。使用标准 Helper 控制通道重启 Local，health/新 bootstrap 200；已绑定 app-dev 保持 offline_mode=false。原生窗口标题已核验包含 AI2Apps-App-Dev、设备名和 loopback 端口。
+- Test 已通过标准 Helper 重置私有数据并用固定脚本重建，verify-release-app 与严格签名通过；原生脱机入口、帐号/公网禁用、模拟 BYOK SSE、重启后配置和对话保留通过。安装/成员/远程设备表为 0。新增匿名 Registry 与默认项回归后相关测试 150 passed。
+- 本地包匿名下载已通过（key/metadata/envelope 200、artifact 206），真实推理仍被推荐 Qwen3.5 0.1.1 旧包缺少 uvicorn/Runtime 合同阻塞；未修改签名包或 Cloud。临时模拟 Provider 已清理，Test 保持脱机。详见 ai2apps/docs/offline-test-20261007.md。
+- 当前长期 app-dev 已绑定帐号，未为本功能重置/解绑/复制其数据；新设备上点选脱机并完成真实本地/BYOK 模型推理的端到端验收仍待进行。未修改 Cloud 后端，未发布 Desktop。设计与限制见 ai2apps/docs/offline-mode.md。
+
+
+### NXR-DEEPSEEK-BYOK-20261007：内置 DeepSeek Provider
+
+- 状态：`implemented_and_tested`。ModelManagerStore 内置 DeepSeek（deepseek，https://api.deepseek.com，OpenAI 兼容协议）；复用动态 BYOK UI、现有密钥保护、/models 同步、模型启用与 Chat Completions 代理。不预置易过期的型号，不修改 Cloud 后端。
+- 官方协议依据：https://api-docs.deepseek.com/guides/codex 的首次 API 调用说明；使用 Bearer 认证和 /chat/completions。模型清单继续由用户配置 Key 后同步。
+- 验证：Model Manager、Cloud Gateway、Model Identity 共 51 passed，新增 DeepSeek 默认 URL 的模型同步、非流式和 SSE 流式代理场景，使用模拟传输，无真实付费请求；scoped diff check 通过。
+- 生效：Python 配置变更，Dev/App-Dev 需重启 Local；本轮未重启实例或重建/发布 Test、Release。Test/Release 下次打包包含。
+
+### NXR-OWNER-OPEN-HOME-20261007：Owner 成员授权接收与长会话 Cloud 交接
+
+- Mobile Chat 默认模型：选择立即保存至对话session_metadata.mobile_model_id，打开时恢复；新对话继承上个活跃选择，否则使用现有Cloud API Default。Chat state只返回默认模型ID，不开放管理路由；按已筛选目录验证可用性，旧记录没有模型信息时回退默认。生成/保存期间禁止切换以避免模型记录与实际请求不一致。32项Chat/Owner gateway测试、3项模型筛选/优先级/对话恢复Node测试通过；普通Dev通过专属Helper重启，手机实机验收待用户复测，App-Dev未重建。
+
+- Fish Audio S2 Pro 混入 Mobile Chat：实机配置为 fish_qwen3_omni，补齐模型发现器固定TTS类型以兼容缺失/旧mlx-audio；前端明确非聊天类型优先于宽泛text/conversation能力，排除隐藏/辅助模型，更新脚本版本。174项模型发现测试、Mobile模型筛选测试通过，实际Fish配置检测为audio_tts。已通过dev专属Helper重启生效；App-Dev和发布包未升级。
+
+- 2026-10-07 手机 Home→Chat 重入修复：已加载 iframe 复用时依据 loaded 状态关闭加载遮罩，未加载帧继续等待 load。Owner 前端旧租约定时器到期改为在线确认，恢复前台主动确认，避免后台节流后依据过时期限误锁；服务端租约与请求鉴权不变。8项Node测试通过（含暖帧重入、未加载帧、旧定时器再确认、真正拒绝锁页、活动隔离），语法/diff检查通过。资源版本已更新，无需重启；手机实机复测待完成，无法断言此前会话结束完全由定时器导致。
+
+- 手机第二次截图是接收页缺失 handoff 的恢复状态，新增已验证 Cloud 授权地址的返回按钮，修正 CSS 覆盖 hidden 导致失败后仍显示 Ready 卡片；更新资源缓存版本。12项个人空间测试通过，Dev标准Helper重启。原401原因仍待带新交接凭证的复现，未宣称修复。
+
+- 手机失败定位续记：接收路径为 /mobile/member/complete；设备日志 05:54:12 Cloud exchange/JWKS 均200，Local 接收接口返回401。公网无效凭证探针401证实路由可达。补充无凭证的校验阶段日志与 OpenAI 格式错误解析；未放宽验证。31项Owner/个人空间测试通过，Dev按标准Helper重启加载诊断，真实失败项待用户重新授权复现。
+
+- 手机截图故障跟进（2026-10-07）：修正交接页错误显示 Local 已连接、目录失败后点击 Chat 误报不支持 Mobile；接收页显示正在验证，丢失 handoff 时明确要求从账户入口重新授权，HTTP 错误保留状态码。Mobile 脚本增加缓存版本以避开旧脚本；不放宽任何访问权限。JS 语法检查通过，手机实际失败原因及复测仍待当前页面路径确认，不能视为授权链路已修复。
+
+- 本轮最终状态：`implemented_dev_e2e_verified`。北京时间2026-10-07 05:15:19首次续租的同一Chrome Owner会话，05:30:46仍成功发送并得到“Long session OK.”，期间无重登；固定用户URL→Cloud授权→Mobile Home→Chat、真实DeepSeek调用、消息保存/刷新恢复通过。首个原生浏览器会话也持续续租超过20分钟。
+- 流式退出实测：出现“Streaming from this Mac”后退出，05:31:44 Cloud revoke200，iframe清除并要求重新授权；刷新不能恢复旧会话。公网内部账户API仍边缘404拒绝；普通用户/跨App等隔离另有专项测试。未执行真实断网、30分钟闲置及8小时等待，边界由单测覆盖。
+- 最终相关验证为114项Python及4项Node通过；修正模型能力列表/对象兼容、非聊天能力优先和显式模型选择，修正隐藏Agent/附件与手机顶部退出按钮。390×844视口核对后恢复默认。旧Local发现器仍有语音模型被标为llm，未在本轮扩大修改范围。
+- 原生AI2Apps浏览器自动化控件树异常，实际对话/15分钟/流式退出在Chrome完成；无Cookie拷贝或后台Owner会话替代。仅通用dev已激活，App-Dev需后续按固定脚本重建，生产Desktop未发布。详细回执：ai2apps/docs/owner-open-home-client-integration-2026-10-07.md。下方为实施阶段历史记录。
+
+- 2026-10-07 后续：用户明确批准实现与启用后，完成隔离 Chat 适配，不修改通用认证依赖。Owner Home 目录/实例/挂载只允许 Chat；内部 Chat API 在独立 ASGI App 中按显式方法与路径调用，模型目录/对话仅通过两个类型化回调，拒绝 API Key 回退。Cloud AI 明确带入验证后的 Owner 主体。Cookie 无通用 Local 权限，client_scope 固定 owner-home 保持会话间数据连续。
+- 相关 Python 112 项、前端3项通过，包括真实 Chat 数据库创建/读取/保存、跨 App/方法/Origin 拒绝、活动与轮询区分、流式撤销。扩大测试有未改 shell.js 的桌面麦克风旧断言失败，独立记录。Python/JS 语法与 scoped diff 通过。
+- 状态：`implemented_dev_activated_e2e_in_progress`。模块默认关闭，仅完整服务端配置后启用；自动审批两次阻止激活后，用户明确批准“启用并进行实机验收”，启用操作成功。仅通过标准 Helper 通道重启 dev（PID88485、53256），health200；公开Host未认证管理路径403。App-Dev boot未变，未重建/发布Desktop。
+- 固定链接实际打开Cloud已出现“进入我的应用”按钮；真实授权点击及Chat/长会话验收正在进行。首批仅文本Chat，附件和Agent后台任务隐藏/拒绝。见 ai2apps/docs/owner-open-home-client-integration-2026-10-07.md；下方 blocked 与 pending 为历史阶段。
+
+- 2026-10-07 Cloud 1.62.0 对接进行中（`in_progress_runtime_integration_blocked`）：新增独立 Owner lease 管理，不再把 Owner handoff 换成通用 Local Session。严格签名/scope/绑定检查，服务端保存 refreshToken，不透明 Cookie，60 秒租约/30 秒续租/8 小时绝对及 30 分钟闲置上限；后台刷新不制造活动，断网不延长租约，撤销与续租竞争不能复活会话。
+- 新增流式响应租约护栏及关闭生产者测试，Home 独立授权链接仅在能力就绪后显示。READY 保持 false，接收端拒绝未就绪的新交换，未声明新能力。旧 personal-space-v1 的 120 秒期限不变。
+- 验证：17 项新 Owner 租约/流式测试、12 项个人空间/接收/公网隔离测试、42 项 Remote 回归及 8 项 Mobile/路由回归通过，共 79 项。Python/JS 语法通过；测试退出有沙箱 Metal 不可用提示。尚未实机 App 操作或长会话验收，未重启/重建/发布客户端。
+- 自动审批拒绝 sibling omlx 通用认证和内部代理批量修改（新特权身份与隔离边界风险）；被拒命令未执行。需继续完成受限 App 适配接入，不得将当前基础实现描述为上线可用。范围与后续验收见 ai2apps/docs/owner-open-home-client-integration-2026-10-07.md。Cloud 代码未修改。以下为 1.62 合同上线前的历史记录。
+
+- 状态：local_receiver_ready_cloud_contract_pending。独立 /mobile/member/complete 与 /v1/mobile/member-session/exchange 复用 Mobile Home，但只接受 Installation member handoff；验证 Owner/device/installation/current epoch，错误成员撤销临时 Local Session，浏览器只获得既有 15 分钟 HttpOnly Mobile Cookie。个人空间 visit 断言不能转换为成员权限。
+- 现有 Cloud remote_mobile handoff 回调与 Local pairing exchange 不匹配，Cloud 缺少从固定个人空间入口进入 Owner 授权的完整 UI/续期合同。未猜测 Cloud 登录 URL，未把 120 秒 JWT 放宽，也未把已有 15 分钟 Mobile 会话无限延长。
+- Cloud 需求文档：ai2apps/docs/owner-open-home-cloud-requirements.md。要求独立 Owner 授权入口、版本化回调/能力协商，以及可撤销的使用会话租约与续期；待 Cloud 确认/实现/部署后再接实际按钮和完整 App 操作。
+- 14 项个人空间/成员接收/公网边界测试、42 项 Remote 回归、8 项 Mobile/路由专项通过，JS 语法和 scoped diff 检查通过。本轮没有重启/重建运行实例，新增接收路由尚未实机激活；现有个人空间 120 秒会话仍然生效，不宣称 Owner 长会话或完整应用运行验收完成。
+
+
+### NXR-PERSONAL-SPACE-20261007：设备个人空间接入与 Owner 入口
+
+- 2026-10-07 后续实机纠正：账户固定 URL 的主设备实际为通用 Dev “MacIntel · AI2Apps”（cedeacbd…e2f2c3），不是 App-Dev。只正常重启已核对的 dev Local PID 50766，保留设备/主设备选择/URL/公网启用状态；新端口 56842。
+- 真实 Owner 端到端通过：从账户固定 URL 经 Cloud 已登录会话跳转设备 /mobile/space/home，浏览器实际显示 Home、已验证你的 Owner 身份。真实公网无 Cookie 探针：/mobile/space/complete 200，/admin 404（边缘拒绝），/v1/mobile/space/bootstrap 401。本机同公开 Host /admin 403。
+- 当前状态：activated_dev_owner_e2e_verified。访客真实账号端到端仍待验收（隔离单测通过）；Open-Entry 发布目录仍为空。此前“general Dev 未升级、Owner 公网未验收”是本次修复前历史状态。
+
+- 状态：`implemented_activated_app_dev_public_e2e_pending`。用户确认 Home Open-Entry（非 Mini-Entry），管理操作另走 Owner/成员授权。独立 personal-space-v1 验签、120 秒会话、Host/Origin 绑定、重放与停止/epoch 拒绝；访客凭证不得成为 Local/Mobile 管理身份。
+- Owner 显示 Home Open-Entry，访客显示个人空间；当前公开应用目录为空，不自动暴露已安装 App，完整 Open Publication/应用发布框架仍未实现。Cloud 固定 URL、登录、handoff/exchange 沿用既有合同，无 Cloud 代码修改。
+- 生命周期已接入启动、启动开关、轮换、周期声明、停止和退出；只有安装了公网边界与个人空间路由的运行时才声明支持。公开 Host 默认拒绝内部管理、App、平台/模型/MCP/文档路径；旧 Mobile 必须验证其自身会话，个人空间 Cookie 不授予这些权限。局域网沿用原认证策略。
+- 11 项个人空间/公网边界测试、42 项 Remote 回归、8 项 Mobile/路由专项通过。完整 Shell 首项旧目录断言不含已有 Todo 而失败，未改该无关断言。测试进程退出另有沙箱无 Metal 提示，不影响上述通过结果。
+- 自动审批曾拒绝父目录运行时编辑，用户明确批准后完成。固定 App Dev 已通过 build-app-dev-environment.sh 重建、verify-release-app.sh 与 codesign deep/strict 校验；bundle/instance/development/cloud/source-root 合同和原生标题 AI2Apps-App-Dev: App-Dev 127.0.0.1:56068 已核对，未修改其他实例。
+- 发现 Helper 采用仍存活的旧 Local（57350），经 PID/工作目录/日志路径确认后仅正常终止 app-dev 旧 Local；新 Local 56068 health 200。真实新进程以模拟公网 Host 请求 /admin、/v1/platform/cloud/auth/me、/v1/chat/completions、/mcp、/openapi.json、/mobile 均 403。初次旧进程结果不得计入通过。
+- App Dev 公网开关原为关闭，保持关闭。未完成真实公网 Owner/Visitor 扫码端到端；原截图中的 general Dev 未升级，未发布 Desktop。账户固定链接二维码弹窗在 App Dev 已实机展示。
+
+### NXR-SPARK-MEDIA-20261006：媒体模型 CUDA 对齐
+
+- 2026-10-09：新增OpenVDN真实CUDA内核合并预检check_openvdn_torch_kernels.py：分别在原2.13/cu129和主2.10/cu130环境调用固定官方Fp8Linear及设备实际选择的flex attention，对照BF16 Linear/SDPA，使用私有新Triton缓存和Runtime编译器/头文件，记录失败而不改上游实现。任务排于Fish wrapper47746后（session75648），要求Runtime通过及GPU空闲；尚未运行/通过，不以导入结果替代内核兼容。
+
+- 2026-10-09：OpenVDN主Torch合并只读overlay预检完成：原2.13/cu129与主2.10/cu130+Triton3.6均能导入官方assemble/render及flash_attn.cute，证据artifacts/openvdn-core-torch-compatibility-r1.json。候选出现torchao要求torch>=2.11而跳过C++扩展的提示；导入成功不证明FP8/attention内核运行兼容，不能据此删cu129。需要CUDA原生kernel与官方固定输出验收，保留原环境。
+
+- 2026-10-09：Fish统一Transformers4.57.6固定权重验收脚本已准备：使用优化Runtime内置固定加载器，保留生成WAV，与现有官方基线逐PCM及重复生成比较，finally释放engine；要求Runtime已通过且GPU空闲。任务排在E5 wrapper44604之后（session84710），未计真实推理通过，不删除旧依赖。脚本check_fish_consolidated_engine.py。
+
+- 2026-10-09：修正FlashHead入口后的版本收敛r2预检全部通过：E5、Fish、FlashHead三个环境各自原版与Transformers4.57.6候选，真实分词、tiny CPU BERT前向、实际引擎/官方pipeline导入共六项通过。证据artifacts/runtime-version-consolidation-r2.json；尚非固定媒体权重推理，不删除旧版本。此前PyArrow整树共享子集3profile真实原生计算/IPC/Snappy和Zstd Parquet及生产解包通过，逻辑节省142771168字节，子集压缩83929946字节，回执artifacts/runtime-pyarrow-sharing-r1.json；未计整包下载节省或启用正式builder。
+
+- 2026-10-09：优化Runtime r2的生产解包/构建源码摘要/30profile布局/关键依赖及引擎导入全部通过，回执artifacts/media-runtime-size-acceptance-r4.json，9,157,172,927字节；不计GPU回归/签名安装/发布。FlashHead版本统一探针已修正为Runtime实际固定官方flash_head.src.pipeline.flash_head_pipeline，独立r2预检session47672运行，原r1失败保留；E5后置推理补齐Runtime验收及GPU空闲门禁。
+
+- 2026-10-09：按用户要求启动版本收敛，独立overlay将E5/Fish/FlashHead的Transformers4.57.3候选替换为既有4.57.6，未修改安装环境。E5/Fish两组原版/候选tiny CPU BERT前向、真实tokenizer和引擎导入通过；FlashHead两组均因探针误引用Runtime不包含的adapter路径失败，不计升级失败或通过，待修正。E5固定权重CUDA对官方FP32及取消恢复验收已排在wrapper35264之后（session81387），尚未推理通过。证据artifacts/runtime-version-consolidation-r1.json。
+
+- 2026-10-09：优化r2标准完整构建exit0，实际压缩9,157,172,927字节；相对原始11,155,039,458减少1,997,866,531字节（17.91%），较首轮再少161,642,339字节。仅删除30个有源码Packaging/PyYAML缓存共511781字节；其余主要来自Transformer共享。生产解包验收PID39259已确认live，尚不计全验收或发布通过。证据evidence/media/runtime-size-second-full-build-20261009.json。
+
+- 2026-10-09：补齐ACE-Step CUDA Package开发源码：10–120秒音乐/可选歌词、固定官方权重与许可、Runtime依赖。补齐必需modelProfile并在内存索引真实源码后manifest校验通过，Host音乐合同通过；Spark r3物化Runtime中无GPU无权重实际入口1模型/401/正常关闭/容器删除通过。首次远端通用探针缺失已补齐。评分及内存标为估计；未发布分发或签名安装，歌词质量问题保留。
+
+- 2026-10-09：Seed-VC v2独立CUDA权重分发完成固定HF2122cee1/MSf1c5ab39元数据逐文件复核、标准builder签名和独立验签，16文件267pieces/2,236,581,603字节；manifest 5f249311。沿用已验证CUDA固定输入，不改精度/版本；metadata_verified非双源重新全下载，未读Cookie/发布/绑定service。证据evidence/media/seed-vc-v2-cuda-distribution-signed-20261009.json；既有质量差异和签名安装门槛保留。
+
+- 2026-10-09：Klein9B HTTP探针支持显式原生回执及经确切runtime_root绑定的优化Runtime验收，避免继续读取r1失败结果；尚未启动的r2 Runtime验收脚本补齐该字段。HTTP r2排于SoL wrapper31336之后（session28023），要求原生生成/编辑通过及GPU空闲，保留旧失败，不计新推理通过。三脚本语法检查通过。
+
+- 2026-10-09：SoL失败已定位为旧fixture缺新Custom引擎，Host probe新增固定META/sol-sources摘要及Standard/Custom两类预检。标准和自定义两模式重试改用完整media-runtime-size-materialized-r2，必须完整Runtime验收passed、GPU空闲，排于RVC Host wrapper30203后（session1152），保留两个旧失败目录；未宣称新推理通过。证据evidence/media/sol-host-complete-runtime-retry-20261009.json。
+
+- 2026-10-09：RVC训练声音Host端到端脚本和独立源码快照已准备，覆盖当前audio_routes、真实调度/代理、归一化输入Worker逐PCM对照、默认恢复及非法ZIP422恢复，5次前台调用。等待Klein9B重试wrapper28126后执行，不并行占GPU；证据evidence/media/rvc-trained-voice-host-preparation-20261009.json，未计通过。优化Runtime构建19996仍live，未重启。
+
+- 2026-10-09：Dev Host attempt2升级回执upgraded_health_integrity_passed/schema87，固定wheel迁移、健康和身份Package计数通过，完整备份保留。Klein9B探针新增阶段内存与OOM失败回执，保持BF16生成/编辑配置；run_flux9b_memory_retry.py排队于Runtime验收wrapper21970之后，必须验收passed且GPU空闲，只对明确已完成Runtime树大文件及逐SHA核验checkpoint用posix_fadvise，不全局drop_caches、不改权重，不将缓存假设计为已证实。尚未开始r2推理。
+
+- 2026-10-09：RVC训练声音真实隔离HTTP通过：413760样本48kHz输出非空且不同于默认；上传后及非法ZIP422后默认PCM均最大LSB差0，active归零、容器删除。回执artifacts/rvc-trained-voice-http-r1-receipt.json；Host voice上传与签名安装仍待验收，未启用Package能力。SAM/Stable完整Host回执已收并更新清单。SoL旧fixture缺CudaCustomRefiner；Klein9B加载和InfiniteTalk VAE初始化均CUDA OOM，保留失败与约107GB文件缓存快照，不能断言唯一根因；下一轮大模型需等构建/备份结束并加内存证据，不盲目重跑。
+
+- 2026-10-09：SAM/Stable Host实际调度代理验收均通过，待收取完整回执。Dev Host媒体候选升级误因脚本硬编码schema81拒绝已健康schema87，自动完整回滚至81且服务active。已核对固定29c3a0c6 wheel config常量87；新增安全AST解析候选schema并严格核对health实际/目标版本、独立--attempt备份及显式Package/安装身份表计数保护，7项测试通过。修正版attempt2已排队于RVC队列7836结束后，保留旧脚本/失败环境/原路径备份；未计升级成功。证据evidence/media/host-media-coverage-upgrade-retry-20261009.json。
+
+- 2026-10-09：OpenVDN StageB50隔离HTTP124帧通过2368.60秒，active归零、容器删除，回执artifacts/openvdn-stageb-http-r1-receipt.json；不计正式Host/安装，清单同步。优化r2构建PID19996/wrapper19995仍live，磁盘余量1.6TB；accept_runtime_size_r2.py已排队于wrapper结束后，先生产物化/构建源逐SHA、固定server/builder摘要及删除缓存检查，再30profile布局和关键依赖/引擎导入，均使用-B禁写缓存。尚无r2构建或验收通过结果。
+
+- 2026-10-09：不可变tar比较完成，302502基线文件中除精确builder/清单预期变化外，30差异全部为Packaging/PyYAML .pyc；其他逻辑文件字节/权限一致，原结果passed=false保留于artifacts/runtime-immutable-archive-comparison-r1.json。已冻结media-runtime-size-source-r2，仅相对r1更新builder和Worker server（摘要artifacts/media-runtime-size-build-r2-source-hashes.json），标准完整重建加入Transformer共享及--remove-source-bytecode、RVC声音上传协议；build_runtime_size_r2.py记录精确命令/进程，尚无结果。RVC固定分发标准签名并独立验签通过，19文件169pieces/1,410,906,582字节，manifest d3f64420，metadata_verified；evidence/media/rvc-cuda-distribution-signed-20261009.json，未读Cookie/未发布。
+
+- 2026-10-09：RVC固定双源元数据已匿名复核，HF738acad9/MS643998a0的19文件1,410,906,582字节与本地固定输入一致；大文件LFS SHA256，小文件HF git blob SHA1结合本地SHA256，MS全部最终文件SHA256核对。证据evidence/media/rvc-cuda-fixed-metadata-20261009.json；未读Cookie/签名/发布，不声称双源重新全下载。归档比较工具新增7项真实tar回归通过（首次重复member测试误用未压缩tar已修正）；完整比较已读完343747个基线member，PID11761继续读取候选。
+
+- 2026-10-09：新增compare_runtime_archives.py直接读取两个固定SHA归档，检查逐文件内容/权限、原有链接不变、共享目录链接逻辑解析及越界/循环，字节码不忽略；仅允许精确builder源码及其清单摘要变化。本地逻辑共享/改动传播/逃逸与循环检查通过，Spark任务session12704已启动；输出runtime-immutable-archive-comparison-r1.json尚未产生，不宣称整包等价。
+
+- 2026-10-09：完整对照r3终止于PyYAML constructor.pyc差异，原始构建树也可能受构建/导入缓存影响；此轮不计通过，下一步直接以不可变原始tar核验而非继续改目录基线。标准builder新增候选--remove-source-bytecode，仅清理有对应普通.py源码的CPython/legacy缓存，保留无源码模块、软链接及独立H3清单树；75项测试通过，未默认启用或改已生成tar。OpenVDN依赖审计确认主机只有CUDA13，独立cu129 NVIDIA库不能直接改成主机链接。
+
+- 2026-10-09：RVC独立CUDA checkpoint分发spec已准备，固定HF738acad9/MS643998a0，19文件1,410,906,582字节逐SHA/大小与既有固定输入回执一致，MIT termsHash核对通过；新distributionId绑定CUDA modelId，尚未签名/发布，service不提前绑定。证据evidence/media/rvc-cuda-distribution-preparation-20261009.json。RVC独立Runtime复制完成、新server cmp一致，GPU队列7836等待既有前驱4083021；未开始推理。
+
+- 2026-10-09：RVC训练声音真实Worker验收脚本check_rvc_trained_voice_http.py完成，固定现有fp32训练声音，覆盖默认→上传→默认逐PCM恢复、非法ZIP422→默认恢复、48kHz非空输出和容器清理。独立Runtime复制wrapper6746/copy6747仍live，完成后精确cmp新server，再等待GPU队列4083021结束执行；不修改旧fixture或正式能力声明。回执evidence/media/rvc-trained-voice-http-preparation-20261009.json，未计实机通过。
+
+- 2026-10-09：收齐媒体队列结果：Avatar FL2VA INT8固定音频56帧HTTP通过396.80秒；OpenVDN DMD8 124帧HTTP通过1045.30秒；ExOmni Teacher74帧实际Host调度/代理通过451.51秒。三者active归零/离线只读容器删除通过；不计签名安装/UI验收，不继承至其他变体，Avatar此前7776秒清理问题保留。回执artifacts/{h3-avatar-http-r1,openvdn-http-r2,exomni-host-r2}-receipt.json，MEDIA-INVENTORY同步。StageB GPU进程4178182仍运行，未并发启动新模型。Transformer同构建器压缩对照217,862,361→68,582,032字节，子集节省149,280,329字节；非整包更新值。
+
+- 2026-10-09：按需层发布边界核查发现Registry仅允许官方保留inference_provider身份，不能借用其他role绕过；新增docs/spark-runtime-optional-layers-cloud-requirements-20261009.md，要求Cloud工程确认官方层身份/role、权限、能力发现及依赖合同，本工程未改Cloud。Transformer未共享压缩基线独立任务session44172已启动，使用相同逻辑树与标准_archive，结果待收。
+
+- 2026-10-09：Transformer/Tokenizers独立子集生产解包、17profile原版/重定位真实Rust分词+FastTokenizer+配置/序列化对照全部通过，候选压缩68,582,032字节，逻辑副本节省702,376,780字节；未测未共享压缩基线，不能将逻辑节省当作下载节省。回执artifacts/runtime-transformer-sharing-r2.json。完整三项优化包生产解包及266688构建源文件对照通过；旧r3逻辑路径检查因嵌入builder源码及META/h3-toolchain.json的对应摘要变化失败。已精确固定旧/新builder SHA，只允许这两处预期差异，修正版r2从已有物化树继续逐文件检查（session5755），原失败保留；尚非完整通过。
+
+- 2026-10-09：Transformer子集已完成去重/归档，逻辑副本减少702,376,780字节；随后PYTHONPATH指向仅Worker冻结源码遮蔽已安装Host，生产安装器import失败。保留r2失败日志，新增--resume-archive从已有tar恢复，移除该覆盖，session14963运行中，未重建tar或计验收通过。新增RUNTIME-OPTIONAL-LAYERS.md，明确OpenVDN按模型必需锁依赖、签名层、只读挂载和分离进程环境的设计及门槛；未改Cloud或安装合同。
+
+- 2026-10-09：新增check_runtime_transformer_sharing.py，复制独立子集后走标准_archive及生产_copy_tar_archive，再以原版/重定位版本对照真实Rust分词、FastTokenizer包装、序列化回读和AutoConfig；CPU离线运行，不声称模型推理。首次r1因builder放在非仓库目录缺锁文件退出，保留日志；已从冻结源码复制独立runtime-transformer-builder-source-r1并替换builder，r2任务session71888已启动。不得重启仍运行的r2；待取得receipt后判断结果。
+
+- 2026-10-09：标准builder新增显式候选开关--share-identical-transformer-libraries，复用整包内容/结构/权限一致共享，分别处理transformers、tokenizers并保留各profile dist-info和不同版本。74项builder测试通过（exit 0，退出期沙箱Metal提示）。未默认启用，尚未Spark真实tokenizer/native加载、生产解包或新整包测量。H3确认为私有Comfy main.py服务启动，frontend_management缺前端包会sys.exit，暂不直接删除前端资源。
+
+- 2026-10-09：新增只读audit_runtime_remaining_size.py并在Spark优化构建树实跑，常规文件19,208,689,120字节（不遍历目录软链接）。最大项OpenVDN nvidia 4,470,515,932、torch 1,227,790,388、triton 676,989,572字节；测试命名路径约436MB、静态库约123MB，仅为审查候选，不授权删除。H3含前端/示例媒体资源，但固定ComfyUI frontend_management和server实际引用这些包，须验证服务启动链路后才能裁剪。完整解包验收PID4184188/4184189仍live，未重启。回执evidence/media/runtime-remaining-size-20261009.json。
+
+- 2026-10-09：完整优化候选标准构建正常完成（exit 0）。实际压缩体积11,155,039,458 → 9,318,815,266字节，减少1,836,224,192字节（16.46%）；这是整包实测。生产解包、全逻辑路径SHA/权限对照及30profile布局验收仍运行，不计签名安装/GPU验收通过。仍超过4GiB，下一步继续裁剪和按需依赖设计；本冻结候选不含后续RVC训练声音协议。证据evidence/media/runtime-size-full-build-20261009.json。
+
+- 2026-10-09 RVC上传训练声音链路代码完成并同步Package adapter：35项adapter/Worker +39项Host路由通过，4慢测试未运行。修正测试默认testserver被公共边界403拦截的问题为回环Host，不改生产认证。声音ZIP只允许固定manifest/safetensors/report文件，512MiB上限，加载后请求结束清空声音状态，模拟序列验证上传→默认声音无泄漏。真实Spark训练声音GPU推理仍待验收，Package trained_voice能力未启用，冻结中的体积候选不包含新协议。证据evidence/media/rvc-trained-voice-request-implementation-20261009.json。
+
+- 2026-10-09 RVC训练声音回灌实现中：CUDA adapter新增有界固定文件ZIP解包、调用既有load_trained_voice、请求后清除上传声音状态；Host新增能力门控voice上传，Worker保留WAV规则同时识别audio_process专用voice ZIP，最大512MiB。首轮34项adapter/Worker测试通过，Host测试因沙箱Metal导入中止，已在正常本机环境重跑Host组。尚未实机GPU验证、未启用Package trained_voice能力；当前完整体积构建仍使用修改前冻结源码，不包含本次协议改动，正式候选必须重新冻结/验收。
+
+- 2026-10-09 RVC CUDA Package开发源码补齐：固定Serena合成测试声音转换及WAV-ZIP训练/voice-bundle导出，adapter与现有CUDA实现一致，Host/manifest合同通过。发现并明确记录缺口：引擎load_trained_voice已有原生证据，但Worker/Host尚无导出声音选择入口；新Package不虚报trained_voice推理目标，仍保留该项为对齐必做。CUDA分发绑定、签名安装/发布待完成；完整r3无GPU无权重隔离入口93796退出0，发现/401/正常关闭/容器删除通过，回执artifacts/rvc-package-entrypoint-r1/receipt.json。源码回执artifacts/rvc-cuda-package-source-20261009.json。
+
+- 2026-10-09补齐Seed-VC v2 CUDA Package开发源码，独立adapter与既有CUDA实现逐字节相同，三模式/参考音频/WAV Host合同与manifest校验通过，GPL及各组件署名保留；Runtime>=0.6.0，CUDA model-bound分发尚待签名发布，未复用Mac model_id分发。语音质量问题继续保留，源码/入口不代表正式模型验收。Spark完整r3无GPU无权重隔离入口96698退出0，模型发现/401/正常关闭/容器删除通过，回执artifacts/seed-vc-package-entrypoint-r1/receipt.json。Stable Audio清单修正遗留Metal权限说明及固定分发大小1,704,750,192字节。回执artifacts/seed-vc-cuda-package-source-20261009.json。
+
+- 2026-10-09 Stable Audio CUDA两项固定分发标准签名和独立验签完成：music digest3994d989、sfx digest122b4529，分别6文件/204pieces/1,704,750,192字节。使用现有Mac权重的独立副本并与官方双源固定元数据核对；metadata_verified，非双端完整下载。签名保留安装者许可确认。未读取Cookie、发布或安装。回执evidence/media/stable-cuda-distributions-signed-20261009.json。
+
+- 2026-10-09补齐Stable Audio CUDA music/sfx两个未签名固定分发spec：官方HF da6edc54、MS c5ae91a1，分别6文件1,704,750,192字节；所有选中文件两端SHA/大小完全一致。README两端差3字节、非推理依赖，显式不纳入分发并保留差异证据；许可正文与termsHash复核，安装者downloadConsent保持required，不代用户承诺。保留官方NOTICE和Package完整署名。未签名/读取Cookie/发布，不在service.yaml填未发布distribution_id。证据evidence/media/stable-cuda-distribution-specs-20261009.json。
+
+- 2026-10-09完整体积候选启动：独立media-runtime-size-source-r1冻结当前builder摘要，沿用r3固定输入并启用llvmlite/scientific/PyAV三项候选开关；标准构建wrapper4168869、builder4168870。构建结束后的生产解包、r3所有逻辑文件SHA/权限和30profile布局验收已排队（check_runtime_size_candidate.py），缺失/改变任一原始路径即失败；仅允许新增三项共享报告。输入artifacts/media-runtime-size-build-r1-input.json。整包结果尚未产生，未签名/安装/发布，旧r3和GPU任务保持不变。
+
+- 2026-10-09 PyAV/FFmpeg去重候选：标准builder新增--share-identical-pyav，av与av.libs整组SHA/结构/权限相同才共享，缺私有库布局保持不变；73项构建器测试通过。Spark runtime-pyav-sharing-r1生产解包及12环境原版/候选无损编码解码、48k→16k音频重采样全部通过；逐项确认候选av实际加载，逻辑副本减少781,751,440字节、子集压缩131,988,094字节，回执artifacts/runtime-pyav-sharing-r1.json；runtime-pyav-baseline-r1同构建器压缩对照完成：398,199,797降至131,988,094字节，节省266,211,703字节，回执evidence/media/runtime-pyav-size-comparison-20261009.json。尚非完整Runtime或模型验收，未发布。
+
+- 2026-10-09科学库去重候选：将共享逻辑扩展为显式完整目录组，新增--share-identical-scientific-libraries，对NumPy/numpy.libs和SciPy/scipy.libs整组SHA、权限及结构相同才共享；避免单独替换ELF依赖，保留不同版本和每profile元数据。72项构建器测试通过；Spark runtime-scientific-sharing-r1生产解包及23环境实际求解/逆矩阵/FFT/重采样原版对照通过（已核对实际从候选加载SciPy），逻辑副本减少2,615,225,308字节，子集压缩130,095,730字节。首次验收脚本遗漏基础框架路径导致原版/候选均缺NumPy，修正后通过并保留失败记录；同构建器压缩对照完成：852,390,227降至130,095,730字节，实际减少722,294,497字节（仅科学库子集），回执evidence/media/runtime-scientific-size-comparison-20261009.json。仍未启用发布默认行为；完整Runtime及模型回归未完成。
+
+- 2026-10-09 Runtime首项去重实现：标准CUDA builder增加显式候选开关--share-identical-llvmlite，逐目录SHA/权限/结构核对后以内部相对目录链接共享完全相同的llvmlite，保留dist-info与原profile搜索路径；不同版本/权限保留独立副本，拒绝源目录内部链接。构建器71项测试通过（退出0，既有Metal退出警告）。Spark独立目录runtime-llvmlite-sharing-r1生产解包及15环境真实LLVM 22.1.0 MCJIT通过，减少逻辑副本2,463,152,426字节；子集压缩从872,128,875降至58,140,338字节，实际减少813,988,537字节（仅此子集），回执artifacts/runtime-llvmlite-sharing-r1.json；未启用发布默认行为，完整Runtime缩减与全部模型回归尚未完成。
+
+- 2026-10-09 Runtime体积优化：用户要求优先缩减。r3常规文件25,264,508,336字节，SHA256/大小/权限一致的冗余副本10,068,913,487字节（180,878文件）；压缩tar仍11,155,039,458字节，尚无优化制品。跨媒体profile重复存储及独立OpenVDN cu129环境是主要来源。r3保留为回归基线，先优化再评估发布容量；方案见spark/RUNTIME-SIZE-PLAN.md，证据spark/evidence/media/runtime-size-audit-20261009.json。未修改运行中环境或读取Cookie。
+
+- 2026-10-09：补齐Stable Audio CUDA Package开发源码，音乐/音效双模型、1–120秒/WAV/无歌词合同，固定官方optimized NPZ身份，保留Stability/Gemma条款及安装者确认要求。manifest/Host合同与r3 Runtime下无GPU无权重实际入口73600 exit0，2模型发现/401/正常关闭/容器删除通过。两项固定分发与正式安装仍待完成。Cloud容量再次匿名复核仍4294967296字节，r3为11155039458字节，16GiB Cloud需求仍未满足；未绕过限制。回执artifacts/stable-audio-cuda-package-source-20261009.json、stable-package-entrypoint-r1/receipt.json、runtime-upload-capabilities-post-r3-20261009.json。
+
+- 2026-10-09：VibeVoice官方主权重固定HF6bce5f06/MS6b26f5a3四文件摘要及大小一致；605张量真实BF16，Mac接收Spark原始权重后标准builder签名和独立验签通过（2035345525字节、243pieces、manifest e21f1359，metadata_verified非双端全下载）。Package内六声音缓存与tokenizer在r3实际加载器CPU验收92965 exit0，CUDA未初始化；保留上游Qwen2Tokenizer/VibeVoiceTextTokenizerFast类型提示，未替换tokenizer。尚未读取Cookie/发布/签名安装。回执evidence/media/vibevoice-distribution-signed-20261009.json。
+
+- 2026-10-09：补齐VibeVoice CUDA Package源码与实际离线资源：固定tokenizer和6个安全safetensors声音预设逐SHA核对、许可及来源保留，原始29653827字节/逐文件deflate估算18186489字节（非正式制品）。manifest/Host语音合同通过；已验收完整Runtime r3下无GPU/无主权重隔离入口26938 exit0，模型发现/401/正常关闭及容器删除通过。官方主权重独立分发、签名安装和新Package实际合成仍待完成。回执artifacts/vibevoice-cuda-package-source-20261009.json、artifacts/vibevoice-package-entrypoint-r1/receipt.json。
+
+- 2026-10-09：用户批准Dev Cookie后，经标准脚本对E5、SAM2.1、SenseVoice ASR/同Service VAD四项分别提交、审核、发布；匿名Registry Index126/91记录签名和四个envelope精确一致。三Package源码绑定已发布distribution_id，SenseVoice Host依赖回归2项通过。Cookie仅标准脚本内存使用，本批授权已消费。权重发布不等于模型Package签名安装。回执evidence/media/e5-sam-sensevoice-distributions-published-20261009.json。
+
+- 2026-10-09：完整媒体Runtime r3生产tar解包验收通过：302503文件逐SHA匹配、2821个H3 inventory文件通过，修复后cuda_video SHA57c6dd13核对通过，30profile/30service/2stage重定位验证通过。最终tar SHA841c4728300006b51a0477c9f3bd98577a10e5b0d026ab9ee699bbde8912bb21；未签名安装/发布。回执artifacts/media-runtime-candidate-r3-acceptance.json及media-runtime-materialized-r3-receipt.json。
+
+- 2026-10-09：E5官方固定HF权重与MS intfloat/multilingual-e5-small不可变c86aae44共10文件元数据逐SHA/大小一致；Spark复制到Mac后标准builder签名（493292828字节、59pieces、manifest adafc57e），独立签名及metadata_verified收据复核通过。补齐固定MIT全文摘要与来源。与SAM2.1、SenseVoice ASR及新同Service VAD共4项签名候选形成精确清单，Installation会话仍拒绝；已申请本批Dev Cookie授权，未读取Cookie/未发布。证据evidence/media/e5-distribution-signed-20261009.json及e5-sam-sensevoice-publication-batch-20261009.json。
+
+- 2026-10-09：补齐Multilingual E5 Small CUDA Package开发源码（官方FP32、384维、query/passage前缀），保留Runtime-owned固定引擎和权重哈希，不复用Mac转换权重。manifest/Host embedding合同通过；Spark完整物化Runtime下无GPU/无权重实际入口24951 exit0，模型发现/401/正常关闭及容器删除通过。独立官方checkpoint分发、完整许可发布审查、签名安装与知识库实际配置仍待完成。回执artifacts/e5-cuda-package-source-20261009.json、artifacts/e5-package-entrypoint-r1/receipt.json。
+
+- 2026-10-09：包含H3 Host metadata修复的完整Runtime r3标准构建已正常exit0，回执unsigned_source_ready（1074源码文件）；构建PID4115077/4115078已结束，后置验收PID4115625现为live Python，正在执行生产tar物化/摘要/重定位检查。尚未计后置验收、签名安装或发布通过。回执artifacts/media-runtime-candidate-build-r3-operation.json。
+
+- 2026-10-09：补齐标点恢复Linux CUDA Runtime Package开发源码（实际CPU/sherpa-onnx，不请求GPU），保留跨平台Service/model身份和已发布分发；匿名Registry验签摘要687dbf60。Spark完整物化Runtime下真实Package源码推理54846 exit0，中英文/数字三例、401、active归零、应用正常关闭/容器删除通过。尚非签名安装发布。另新增SenseVoice真实Host recipe→Worker内部VAD依赖边界及旧跨Service身份拒绝回归，2项通过。证据evidence/media/punctuation-package-20261009.json。
+
+- 2026-10-09：SenseVoice补齐CUDA Package源码并修正长音频VAD正式接入：Host要求model ID属于同一Service，旧fixture跨Service ID不能直接安装。声明内部/sensevoice-small-cuda/vad依赖，适配器按固定upstream身份解析；15项回归、manifest/Host依赖解析、Spark无GPU隔离实际入口两模型/401/正常关闭通过（70735）。新VAD distribution dist_ai2apps_sensevoice_small_cuda_vad_df20e6b3_v1经标准builder双源字节签名、独立验签，manifest 4df630a5；与旧候选文件/piece完全一致，旧签名保留。未读Cookie/未发布，正式GPU长音频和签名安装仍待验收。证据artifacts/sensevoice-cuda-package-source-20261009.json及evidence/media/sensevoice-vad-service-distribution-signed-20261009.json。
+
+- 2026-10-09：按实际回执校正H3逐变体清单：Turbo4/8隔离HTTP已通过，OpenVDN两变体为原生通过/HTTP待验；Avatar仅FL2VA INT8固定音频原生通过，适配器输出已核验但清理未完成，其他Avatar变体不能继承通过。登记九个CUDA Package开发源码及验证回执，均不计签名安装。证据evidence/media/media-inventory-reconciled-20261009.json。
+
+- 2026-10-09：SAM2.1固定官方原始权重分发通过标准builder签名与独立验签，ID dist_ai2apps_sam21_small_cuda_ee5bba1d_v1，manifest ed1260fd，1文件184416285字节22pieces；metadata_verified模式，不声称双源全下载，未读Cookie/未发布。SAM与停止保护更新后的Demucs实际GPU禁用隔离入口88048 exit0，两模型发现/401/应用shutdown/容器删除通过；非推理或签名安装。证据evidence/media/sam21-distribution-signed-20261009.json及artifacts/media-package-updates-entrypoints-r1/receipt.json。
+
+- 2026-10-09：SAM2.1 CUDA Package源码与固定原始.pt分发spec已准备，HF ee5bba1d与现有MS官方镜像不可变6fabd5a3两源184416285字节/SHA6d1aa6f3元数据一致，无需新镜像。安装manifest、Host分割合同通过；修正Mac复制来的NOTICE/SBOM/source-lock为Runtime-owned Meta CUDA与官方原始权重。分发尚未签名/发布故不绑定ID，正式GPU/Host/签名安装仍待完成。证据artifacts/sam21-cuda-package-source-20261009.json和sam21-modelscope-fixed-files-20261009.json。
+
+- 2026-10-09：SAM2官方原始权重从Mac补传完成后，Spark实际嵌入Runtime CPU验收46319 exit0：519张量/46060610参数与已验证safe转换逐dtype/逐值完全一致，官方SAM2模型strict load通过，CUDA未初始化。首次66623只因缺原始文件退出，未运行反序列化；已补输入而未替换权重。回执artifacts/sam21-original-checkpoint-acceptance-r1.json。可准备直接固定官方.pt的分发，无需另行公开转换权重镜像；GPU/签名安装待验收。
+
+- 2026-10-09：SAM2.1 Package适配器新增原始官方sam2.1_hiera_small.pt受控加载：固定SHA6d1aa6f3验证后同一文件描述符seek+torch.load(weights_only=True,map_location=cpu)，限定519纯张量并交官方模型strict load；保留旧固定safe格式，拒绝HF Transformers model.safetensors误替换。坏摘要/格式在反序列化前拒绝等9项回归通过。Spark嵌入Runtime CPU逐张量对比与严格加载66623已启动，尚不计新GPU/安装通过；Package-owned代码，不修改正在构建Runtime。
+
+- 2026-10-09：补上Demucs停止状态与重复request ID保护，stop先拒绝新请求并取消现有队列，重复ID返回409避免覆盖cancel event。受控native回归验证stop等待、active/queued取消499、停止后503、仅一次加载、清空资源和start恢复，2项通过；已同步Package源码，不改变正在构建Runtime（适配器由Package持有）。证据evidence/media/demucs-stop-guard-20261009.json；真实GPU生命周期仍待验收。
+
+- 2026-10-09：新增H3 CUDA Package开发源码，固定既有已签名FL2VA/Ref2VA分发身份，variant置metadata；经过实际Host模型归一化后两变体解析正确，manifest合同通过。声明当前真实4图/1视频/1音频上限，仅standard preset；Mac更高参考数量、快速/续接和其他Turbo/OpenVDN/Avatar仍是待补能力，不由基础模型推断完成。保留模型许可/NOTICE；分发未发布故不绑定ID，依赖含metadata修复的新Runtime。证据artifacts/h3-cuda-package-source-20261009.json，尚未签名安装。
+
+- 2026-10-09：含H3 Host metadata修复的r5冻结源码1074文件/4,084,479字节已完整传输并核对修复SHA。新r3标准完整构建36885/PID4115077→4115078确认live；同一未发布0.6.0-dev.1、新目录保留r2。首次启动因scp未结束被完整性预检拦截且未创建候选，传输exit0后才重试。后置物化/302k逐文件核对/修复SHA/重定位检查54149/PID4115625已排队，未计通过。记录evidence/media/full-media-runtime-r3-started-20261009.json。
+
+- 2026-10-09：发现并修复H3正式Host接入缺口：validate_package_models会丢弃顶层h3_variant/h3_turbo/h3_lora_model_id，Runtime此前只读顶层。Worker现从保留的metadata解析，兼容旧fixture但拒绝冲突，不修改Host输入；真实Host归一化回归及既有用例22项通过。已构建r2 Runtime不含此修复，后续必须刷新源码并重新构建，不可直接用于H3正式发布；原始tar验收证据保留。证据evidence/media/h3-host-metadata-fix-20261009.json。生产容量再次匿名确认仍4GiB；Avatar4055348仍live，未重启。
+
+- 2026-10-09：补齐Demucs CUDA独立Package 0.1.0开发源码，带固定安全权重映射、CUDA backend和共享分离媒体代码及许可证；三profile合同与Host模型解析、manifest临时文件索引通过（20源码文件）。保留对白近似人声限制，已签名分发未发布故不绑定ID；未签名安装。源码回执artifacts/demucs-cuda-package-source-20261009.json；独立无GPU入口验收71000 exit0，模型发现/401/应用正常关闭/容器删除通过，回执artifacts/demucs-package-entrypoint-r1/receipt.json。
+
+- 2026-10-09：六个新媒体Package源码在Spark正式物化Runtime下、GPU禁用/无权重Docker实际启动，9个模型发现、401鉴权、active归零和容器删除通过。初始脚本误把Uvicorn SIGTERM退出143判失败；已核对Runtime实际capture_signals源码和六份Application shutdown complete/Finished日志，另存corrected回执，首轮原始失败保留，不改Runtime退出行为。证据artifacts/media-package-entrypoints-r1/receipt-corrected.json；仅入口与无权重生命周期，未计实机推理/签名安装。
+
+- 2026-10-09：补齐Qwen Image 2512/Edit2511及Z-Image Turbo两个CUDA Package源码。新增Qwen统一分派入口，严格模型/operation对应，串行请求且切换先释放上一pipeline；取消排队编辑不会加载第二模型。22项适配器回归通过（测试进程退出0，退出期有沙箱Metal不可用提示）。Z默认9steps按CUDA实现，不照抄Mac8steps。源码manifest/Host模型解析通过；独立分发候选未发布故不绑定ID，未构建正式Package，统一分派Spark实机切换待验证。证据artifacts/next-image-package-sources-20261009.json。
+
+- 2026-10-09：完整媒体Runtime生产tar物化49808 exit0，302503文件与构建源逐SHA一致，H3 inventory2821文件通过；新路径嵌入Python、30profile/30service/2stage解析及contained symlink检查通过。四个新TTS/Klein Package经实际Host validate_package_models和适配器无权重start/stop通过（共6模型）。证据artifacts/media-runtime-materialized-r2-receipt.json、media-runtime-materialized-layout-r1.json、media-package-host-loading-20261009.json；尚非签名安装或全部模型GPU验收。
+
+- 2026-10-09：补齐Qwen3-TTS 0.6B/1.7B两个CUDA Package开发源码，覆盖CustomVoice、Base、VoiceDesign四个固定BF16候选，复用Runtime cuda_audio。manifest与audio合同通过；按实际官方实现声明0.6B无instructions、Base需参考音频，未宣称speed/emotion已对齐。候选权重分发五项（含Klein4B）签名及verification receipt复核通过，Installation会话拒绝，精确Cookie授权待答；未发布/构建正式Package。回执artifacts/qwen3-tts-cuda-package-sources-20261009.json。
+
+- 2026-10-09：补齐Klein4B独立CUDA Package 0.1.0源码，复用Runtime图像适配器，固定现有CUDA模型ID/revision，BF16及1–4参考图合同，移除Mac专用缓存/量化能力声明。源码manifest临时文件索引与图像合同验证通过；已签名分发未发布，weights.distribution_id刻意缺省，未构建/签名/发布Package。回执artifacts/flux4b-cuda-package-source-20261009.json；完整Runtime解包校验4099479仍live。
+
+- 2026-10-09：完整媒体Runtime 0.6.0-dev.1标准构建81628 exit0，最终tar11,154,994,245字节/SHA053b66d6；22组实际引擎入口导入90705全部通过，Klein9B标准隔离HTTP健康93385通过（401、active归零、容器删除）。生产tar物化逐文件比较49808仍运行，未签名/安装/发布。容量Cloud需求补最终内层tar实测，保持仅官方CUDA16GiB提案；无Cloud代码改动。回执evidence/media/full-media-runtime-built-20261009.json。
+
+- 2026-10-09：Klein9B CUDA固定权重分发已通过标准脚本审核发布（submission 52374163-b68f-4436-a2d1-81d2591289f1），匿名验证RegistryIndex122/87记录、签名和envelope精确一致；manifest 2e107b93，21文件34,722,772,164字节。按用户本项精确授权使用Dev会话，发布完成后该授权已消费。Package源码已绑定独立CUDA distribution_id；安装者仍须本人确认许可。仅权重分发完成，Runtime/模型Package发布、GPU推理和签名安装未完成。回执evidence/media/flux9b-cuda-distribution-published-20261009.json。
+
+- 2026-10-09：完整Runtime r2实际嵌入Python逐层关键依赖导入99902完成，30/31首轮通过；GhostV2探针误要求未使用的onnxruntime，代码核对仅需onnx/onnx2torch，精确重测85352 exit0，31组所选关键模块均通过。路径限定Runtime内、CUDA禁用、无权重加载；不扩大为全部动态依赖或模型推理已通过。原始失败与修正回执分别artifacts/media-runtime-imports-r2.json、media-runtime-imports-ghostv2-r3.json。
+
+- 2026-10-09：完整Runtime r2组装树实际嵌入Python只读检查69914 exit0：30 profile/30 service/详细转录2 stage解析正常、路径及符号链接不越界，9B scheduler固定SHA通过。-I -B禁写字节码，不改变压缩中的树。回执artifacts/media-runtime-layout-r2.json；仅结构与解释器验证，不计全部依赖import/GPU/最终tar/签名安装。压缩4080529仍live临时tar约5.99GB，权重LAN传输70408继续。
+
+- 2026-10-09：Klein9B独立CUDA分发准备：Mac无固定快照，局域网rsync70408正在复制Spark已签名校验的34.72GB缓存到artifacts/flux9b-signing-input-r1，当前2.7G；来源明确为ModelScope经既有Mac distribution校验，不声称新HF下载。标准签名所需精确keyRef/namespace仍需从既有发布上下文恢复，未读取Keychain/Cookie或生成新key。完整Runtime r2压缩4080529仍live、临时tar约4.24GB，非最终大小。
+
+- 2026-10-09：新增Klein9B CUDA Package开发源码（0.1.0，运行依赖>=0.6.0），BF16图像生成/编辑合同及源码manifest临时文件索引校验通过。发现Host安装器严格绑定distribution.modelId，已有Mac envelope不可直接给CUDA模型复用；准备独立CUDA distribution spec，保持固定repo/revision/许可，service.weights.distribution_id刻意留空以禁止提前构建发布。正式分发签名发布、GPU/安装仍待完成；证据artifacts/flux9b-cuda-package-source-20261009.json。
+
+- 2026-10-09：Klein9B获取进程4041806已正常结束，最终回执signed_checkpoint_acquired，固定签名manifest 6e9cfa02、ModelScope实际34,722,772,164字节；回执artifacts/flux9b-checkpoint-acquired-20261009.json。原生队列4044450仍等待GPU前驱，未计推理通过。完整Runtime r2已进入tar压缩，构建4080529仍live。
+
+- 2026-10-09：完整Runtime生产tar物化/逐文件SHA验收已排队49808/PID4084113等待构建4080526，并要求unsigned_source_ready回执；nice19、新目录、不改64GiB展开上限。9B清单更新为开发许可已确认、适配器已实现、下载进行中，原生/HTTP仍false；不将构建中候选计为已支持。
+
+- 2026-10-09：新增Klein9B标准Docker HTTP基础生成/编辑探针，直接挂载缺scheduler的签名缓存以验证Runtime离线补充，不使用原生手工视图；精确SDK模型身份，401/非空图像/active归零/容器清理回执。语法通过，尚未执行；健康93385/PID4082839等待完整构建4080526与获取4041806，实际推理61886/PID4083021排GPU队尾4058044并要求原生成功。无新Case矩阵，不计Host/签名安装完成。
+
+- 2026-10-09：LivePortrait官方环境标准导出26802 exit0（11依赖记录），修正输入清单r2；完整Runtime同一未发布开发版本0.6.0-dev.1以新r2目录重建，session81628。r4源码快照1069文件/4,059,064字节包含9B代码与许可资源，旧失败现场保留；新构建尚未完成。
+
+- 2026-10-09：Klein9B CUDA图像适配器增加精确上游repo/HF revision校验，随Worker保留官方scheduler原始486字节/SHA067afb01、来源记录及完整许可；推理显式注入本地scheduler，不改既有权重分发、不在线补文件、不代用户许可确认。4B/9B取消排队清理及错误身份回归11项通过；Spark Host wheel已构建且三资源逐字节包含（SHA161f5a77，23,067,505字节），未安装。正在运行的完整Runtime r1快照不含此后新增9B代码，后续候选必须刷新；9B实际推理尚未通过。
+
+- 2026-10-09：完整Runtime r1在LivePortrait导出明确失败：旧liveportrait-venv缺onnxruntime。保留22G失败目录与日志，未降低closure校验；现有liveportrait-official-venv-r1有onnxruntime1.30.0，标准独立导出26802正在验证，成功后修正构建输入并以新目录重建。
+
+- 2026-10-09：标准完整媒体Runtime未签名开发候选0.6.0-dev.1已启动，session78264/构建PID4076748；源快照1064文件与6个视频输入摘要预检通过，三份清单版本/能力同步仅写入独立candidate-source-r1，生产0.5.0源码未替换。新增29项构建能力声明，尚不证明可用；保留100GiB磁盘门禁/nice15，已组装3.9G进入audio层。完整命令及状态见artifacts/media-runtime-candidate-build-r1-operation.json，未签名/安装/发布。
+
+- 2026-10-09：标准源码全量导出预检发现并修复快照缺AVTR辅助模块/共享许可证/E5与Fish固定输入JSON；OpenVDN和SoL探针补实际H3源码及隔离Diffusers前置。r3快照1064文件4,032,144字节，Spark标准导出24/24通过，回执artifacts/media-runtime-sources-audit-20261009-r2.json。19份依赖锁按importlib.metadata.version实际优先级复核无差异；首轮以重复包元数据末项覆盖的假差异已纠正。仅源码组装与版本预检，未计完整Runtime、GPU推理或签名安装通过；原失败回执保留。
+
+- 2026-10-09：汇齐下一版标准Runtime的显式构建输入，Spark只读核验53个路径全部存在，31个解释器可读取版本/包元数据；未导入GPU模型。ExOmni/MuseTalk/InfiniteTalk固定源码与Quanto原生扩展集中到全新media-runtime-video-inputs-20261009-r1，6文件逐SHA一致，不改运行中候选。输入清单artifacts/media-runtime-build-inputs-20261009-r1.json及审计回执已保存；尚需新版本/capability核对、标准完整构建及安装验收，不计Runtime发布完成。Avatar4055348仍live清理未完成，Klein9B4041806仍live、获取目录26G；未重启或重复提交。
+
+- 2026-10-09：新增prepare_media_runtime_build_source.py冻结标准构建器/Worker SDK/共享模型源与spark源码及依赖锁，实际生成1043文件3,944,659字节，逐SHA校验与builder --help通过；排除权重、制品、二进制和缓存。仅源码快照，未赋新发布版本/扩capabilities/构建Runtime；Linux解释器与固定归档参数仍需汇齐，不能替代完整签名制品。快照artifacts/media-runtime-build-source-20261009-r1。
+
+- 2026-10-09：Avatar清理等待的有界只读sudo栈检查被现有密码要求阻止，未附加或修改ptrace权限。引擎补四阶段INFO日志（引用释放/Comfy卸载/GC/CUDA同步），标准r3导出236文件与尚未运行独立HTTP候选逐SHA一致；当前4055348进程源码不变，原输出与现场保留。完整清理仍未通过。
+
+- 2026-10-09：MuseTalk Host基础调用12030 exit0，自动视频+音频25帧576×768/28.63秒；实际ModelInvocationService/调度/UDS转发completed1，failed/running/queued0，容器清理通过。取回SHA与独立HTTP逐字节相同，本地解码/有限非静音音频通过。仍是源码快照+fixture发现，非已安装Dev产品API/签名安装发布；证据evidence/media/musetalk-host-acceptance-20261009.json。
+
+- 2026-10-09：InfiniteTalk HTTP r2首次Inductor缺C编译器失败，容器已退出。工厂绑定Runtime内CC/CPATH并校验路径，标准构建器要求H3工具链；全新Triton缓存离线只读容器92233 exit0，标准r2导出48文件逐SHA一致，83回归通过。预检首轮漏核心site路径已修正。完整HTTP原设置33333/PID4058044排在现有队尾4044450，尚未计推理通过。证据evidence/media/infinitetalk-compiler-fix-20261009.json。
+
+- 2026-10-09：ExOmni隔离HTTP重试通过，74帧720×400/439.84秒，断网只读/401/active归零/容器移除通过。取回MP4摘要一致，本地解码及有限非静音音频通过，中帧无明显损坏。仍未计Host、口型质量、签名安装发布；证据evidence/media/exomni-http-acceptance-20261009.json。
+
+- 2026-10-09：新增model_license_confirmation.test.cjs，对两安装入口的实际确认函数执行四例DOM桩行为测试：无默认许可选择、仅勾选或仅选择均禁用、无自动提交、显式提交精确绑定distribution/manifest/terms；4/4通过。未宣称真实浏览器视觉验证或部署完成。
+
+- 2026-10-09：OpenVDN StageB50原生6541 exit0，124帧1344×768，总2273.00秒/去噪1764.44秒。官方tunedFP8实际363Linear/208LoRA/decomposed；取回视频SHA一致、解码及有限非静音音频通过，中帧无明显损坏。原始git_commit为空的归档限制保留；仍不计任意提示词HTTP/Host/签名安装发布通过。证据evidence/media/h3-openvdn-native-stageb50-acceptance-20261009.json。
+
+- 2026-10-09：Klein9B已获用户非商业开发测试许可，标准签名权重获取17647/PID4041806进行中。固定MS版本调度器486字节/067afb01和LICENSE18158字节/468d9f43均SHA通过；作为独立补充不改已有发布分发。既有绘图环境diffusers0.41.0/Torch2.10cu130实际导入Flux2KleinPipeline通过。基础生成/编辑52284/PID4044450等待GPU队尾4039874及权重获取，成功签名回执与逐文件SHA门禁后才运行；未计9B推理或产品支持完成。
+
+- 2026-10-09：按用户明确产品要求，模型安装许可声明由安装者本人作出。capability_provisioning.js与dashboard.js取消默认单选，要求主动选择已同意条款/另行授权且勾选确认后才能继续；文案改为“已阅读并同意”。保留既有manifest/terms摘要绑定及下载前门禁，不将开发者Klein9B同意转授其他安装。两JS语法与63项checkpoint分发/获取测试通过；待真实UI验证与未来构建，已排队29c3a0c6 wheel不包含此后续修改。
+
+- 2026-10-09：SoL标准/自定义提示词补入一次基础video_upscaling Host探针；共享桥增加明确操作映射。两模式初始化、隔离Worker鉴权与退出清理65331 exit0，零推理不计Host完成；各一次60帧2x输出验证61763/PID4039874等待队尾4037988，保持串行GPU。未追加场景矩阵；证据evidence/media/sol-host-preparation-20261009.json。
+
+- 2026-10-09：已通过隔离四阶段验证的29c3a0c6 Host候选加入既有事务升级脚本的固定参数，保留GPU空闲/磁盘/摘要/完整备份/原路径恢复门禁；备份后只释放本次大普通文件缓存，保留现有systemd缓存策略。升级43254/PID4037988等待媒体验收队尾4021667，尚未停服或安装。证据evidence/media/host-media-coverage-upgrade-queue-20261009.json。
+
+- 2026-10-09：修复后的Host候选r3实机93871 exit0，旧Host→新候选→重启→原路径备份恢复四阶段通过，合成记录保持、SQLite完整性与恢复schema摘要正常。资源打包缺漏已实证修复；未更新实际Dev或发布。证据evidence/media/host-media-wheel-r3-20261009.json。
+
+- 2026-10-09：r2候选实际隔离启动失败（缺ai2apps/browser/dom_helpers.json）；标准Spark wheel构建器补入该资源。r3产物23,049,625字节/SHA29c3a0c6e499695ca939e39f0623b61d9b0917758d10d08d86d4fff875a4f40a，归档内资源与源码逐字节一致；Spark四阶段合成升级/恢复93871运行中。保留失败回执，实际Dev未替换。
+
+- 2026-10-09：标准Spark wheel构建候选r2完成（23,038,051字节，SHA a672ac057483a79717a5a8c5a0259135499f54aa7c20eebac6ab60984d498fad）；89项Host/调度/Provider相关测试通过，wheel内三核心模块与当前源码摘要一致，无缓存/本机动态库。共享脏工作区开发候选，尚未安装到实际Dev，非签名Runtime或发布。证据spark/evidence/media/host-media-wheel-candidate-20261009.json。
+
+- 2026-10-09：视频新增层容量统计27541 exit0，共4892604066压缩字节；与既有估算相加10150248857字节约9.45GiB，非完整最终Package。Cloud需求文档从8GiB调整为仅官方CUDA16GiB提案；公开合同复核仍4GiB，未改本地或Cloud门禁、未发布。
+
+- 2026-10-09：当前Mac manifest复核未见已列模型ID变更，发现标点恢复因旧model_type=llm未单列，实为非对话ONNX服务，已补入清单共36组。真实CPU Host4923 exit0：中英文与数字三例词汇保持、3次完成/0失败、queued/running0、断网只读/非root和容器清理通过；仍fixture discovery，未签名安装/发布，不将其当对话扩容。
+
+- 2026-10-09：新增视频Runtime容量审计首轮发现OpenVDN开发候选缺sources/openvdn，而标准构建器已有完整保留源码。已从标准r4导出补齐128MiB源码归档/许可证/依赖锁，5文件逐SHA一致。新增audit_video_runtime_size.py以nice19只读流式压缩统计OpenVDN/InfiniteTalk/ExOmni/MuseTalk增量，27541运行中；未出最终容量，不能将未压缩13.11GB当外层Package大小。既有4GiB合同与Cloud需求保持不变。
+
+- 2026-10-09：Stable Audio补基础Host music/sfx双模式调用入口，共享桥显式支持audio_generation。48987 exit0验证初始化/Worker鉴权/清理，零推理不计完成；两次10秒8步合成3376/PID4021667等待4020002，要求44.1k立体声/非静音、completed2及归零。保留fixture discovery和未签名安装限制，不扩展场景矩阵。
+
+- 2026-10-09：共享Host探针显式支持video_segmentation，保留video_generation默认合同。新增SAM2.1一次基础Host分割探针；51142 exit0验证Host/调度初始化、Worker鉴权与清理，零推理不计Host调用通过。真实分割12987/PID4020002等待既有队尾4011741，将检查完整帧数、非空mask、调度completed1与空闲；无新增复杂Case或并发GPU。
+
+- 2026-10-09：OpenVDN DMD8官方原生基础生成通过，124帧1344×768，总856.26秒、去噪302.32秒；取回MP4 SHA一致、解码/有限非静音音频通过。实际363 FP8 Linear、571LoRA、decomposed softmax，官方cached prompt；native归档无git导致记录git_commit空，固定源码来源依旧见准备证据，保留限制不改写原回执。仍未计任意提示词HTTP/Host/签名发布。Stage B原生4017437已按门禁启动。
+
+- 2026-10-09：OpenVDN适配器将官方output.mp4.inference.json逐字节保留到diagnostics/inference.json，并返回其SHA；保留实际kernel/FP8/LoRA/timings字段，缺记录或关键字段拒绝成功。实际导出render_record fixture补timings检查证明清理源sidecar后诊断副本仍一致，空对象拒绝；不是模型实测。标准源码r4导出94文件与Spark未运行HTTP候选逐摘要一致，当前原生任务不受影响。
+
+- 2026-10-09：InfiniteTalk探针加入显式Host源码快照模式，复用真实ModelInvocationService/调度器/Supervisor代理，multipart遵循bytes合同，等待上限14400秒。Host健康73167 exit0：初始化、标准断网只读Worker、401与清理通过；completed0/calls0，不能计真实Host推理。现有HTTP重试仍排队，暂不重复提交另一轮耗时GPU请求。OpenVDN4003815确认live，已组装800分支/571LoRA/363FP8 Linear。
+
+- 2026-10-09：OpenVDN HTTP探针加入显式dmd8/stageb50选择，分别挂载固定阶段权重并记录variant；read等待上限14400秒。Stage B健康53484 exit0，禁网只读/401/active归零/退出清理通过。完整124帧50步HTTP31590/PID4011741串行等待4004864，必须先读取同变体原生成功回执，否则明确defer。未计Stage B实际生成通过；DMD原生4003815本轮确认仍live加载/组装中。
+
+- 2026-10-09：基础Host调用发现固定300秒read超时不足覆盖ExOmni约440秒和InfiniteTalk约7638秒已验证生成。JSON/multipart视频生成改固定14400秒read，connect15/write300/pool300保留，其他操作仍300；25项请求ID/鉴权/调度结果/取消相关测试通过，包含两种编码下实际httpx request timeout验证。相同改动同步到排队Host源码快照，无运行中服务替换。未完成长请求实机Host验收；此改动属于后续Desktop发布评估内容。
+
+- 2026-10-09：Avatar真实推理依赖预检揭示缺soundfile，健康检查不覆盖延迟加载。工厂补入可信Runtime内audio层，保持H3/core优先级并校验路径不越界。实际工厂加11模块CPU模式导入52909 exit0，全部路径属于独立Runtime，未占GPU推理；标准导出r2共236文件与候选一致。最初探针误用候选没有的framework_profile_for_service已改回其已有framework_profile接口。真实HTTP仍排队，不提升验收状态。
+
+- 2026-10-09：标准CUDA构建器新增--h3-avatar-dependencies与h3-avatar显式capability，要求完整H3输入。固定依赖receipt SHA/逐文件SHA/路径与冲突检查，保留共享许可和依赖来源，输出源码清单及SBOM依赖条目。实际标准导出236文件与Spark候选逐摘要一致；69项既有构建器测试通过，退出有既有Metal提示、exit0。完整签名Runtime/HTTP生成仍未完成，不提升可用状态。
+
+- 2026-10-09：Avatar独立Runtime标准Docker HTTP健康49928 exit0，断网/只读/鉴权401/active归零/容器清理通过，回执已归档artifacts/h3-avatar-runtime-preparation-r1。新增完整HTTP探针固定图片+2秒语音、56帧512²，实际推理61187/PID4004864等待既有队尾4000712，不计生成通过。Avatar原生进程3996778确认已自行退出；先前gdb只读attach被系统ptrace限制拒绝，未修改系统权限或强杀进程。
+
+- 2026-10-09：Avatar独立Runtime组装65595已exit0，236个依赖/实现文件写入并记录摘要。隔离导入及真实HTTP仍待验收，未签名发布。
+
+- 2026-10-09：新增prepare_h3_avatar_runtime.py独立候选组装，复制既有H3 Runtime且不使用硬链接；固定pyloudnorm0.1.1/future1.0.0逐摘要、冲突与路径检查，内置Avatar引擎/适配器/latent/共享媒体及许可，服务映射到h3 profile。Spark组装session65595仍运行，无GPU加载；语法检查通过。尚未隔离导入/HTTP推理/签名，不能计Runtime完成。Avatar原生PID3996778输出回执后仍live，futex等待，尚未判退出清理通过，后继OpenVDN继续等原进程。
+
+- 2026-10-09：H3 Avatar原生固定音频画像基础生成通过：56帧512²/20步，208.56秒，audio latent最大误差1.19e-7；视频取回SHA一致，本地解码与有限非静音音频通过。尚非可复用适配器/独立HTTP/Host通过，后续仍优先补基础覆盖。ExOmni Host首轮失败确认是探针将BufferedReader传给声明bytes的接口；桥接层按Host合同转换并限制总fixture 64MiB，混合bytes/流及超限检查通过，已同步到尚未执行的MuseTalk Host探针；ExOmni修复重试PID4000712串行排在OpenVDN HTTP之后。
+
+- 2026-10-09：按用户要求继续优先补缺失模型基础能力，复杂应用Case后置。H3 Turbo4/8隔离HTTP均通过：56帧768×512，分别63.44/75.70秒，断网只读非root；回执artifacts/h3-turbo-http-acceptance-r1。OpenVDN已生成视频但记录阶段缺git导致HTTP失败；标准源码构建器改为记录固定归档revision，保留实际kernel/FP8/LoRA字段。导出render_record无git fixture检查通过，94文件与Spark候选逐摘要一致；修复HTTP排队PID3998877，未计生成接口通过。H3 Avatar与OpenVDN各模式基础推理仍待完成；未签名安装或发布。
+
+- 2026-10-09：H3 Avatar真实SDK适配器探针已准备，固定图片/2秒音频/56帧/512²/20步，验收输出解码、非静音音频、音频latent保持及引擎释放。首次完整导入39922因Comfy初始化CUDA在OpenVDN占用时OOM退出；--check改官方CPU模式后38344 exit0，实际生成仍CUDA且严格排队。不计真实适配器通过。证据h3-avatar-engine-preparation-20261009.json。
+
+- 2026-10-09：H3 Avatar加入标准Worker工厂/请求适配器，固定Host checkpoint repo/revision、受控上传部件/输出目录、参数网格、SoL请求所有权、OOM释放和可信Comfy/工具链路径。Spark真实SDK合同检查exit0（渲染器为明确fixture，未加载模型）；尚待真实渲染、独立Runtime/HTTP及Host验收，不宣称模型可用。证据h3-avatar-engine-preparation-20261009.json。
+
+- 2026-10-09：H3 Avatar原生流程整理为可复用cuda_h3_avatar_engine.py：完整音频窗口校验后再加载权重、固定20步Comfy配方、音频latent保持检查、共享MP4封装、明确close释放。输入frame/canvas/seed边界与checkpoint符号链接越界检查通过，尚无该引擎真实生成或Worker工厂，不提升模型可用状态。证据h3-avatar-engine-preparation-20261009.json。
+
+- 2026-10-09：MuseTalk复用当前Host源码快照调用/调度/转发桥，92037 exit0验证声明/初始化/标准离线Worker/清理；完整一次视频音频请求12030/PID3981278串行等待3979781，要求调度completed1且归零。健康检查零生成，不判Host完成；正式安装/UI仍未验收。证据musetalk-host-preparation-20261009.json。
+
+- 2026-10-09：MuseTalk预计算自动区域17.87秒、仅视频音频输入自动处理13.55秒、独立断网只读HTTP26.68秒均通过，25帧576×768。回执/视频取回，SHA/解码/有限非静音音频通过，中帧无明显损坏；引擎释放/active归零/容器移除通过。Host、口型质量与发布未通过，覆盖清单更新。证据musetalk-automatic-acceptance-20261009.json。
+
+- 2026-10-09：Ex-Omni/InfiniteTalk首次HTTP探针在客户端裁剪阶段缺soundfile，未进入模型请求。协调venv补固定soundfile0.13.1（17997 exit0），两原音频3秒裁剪/重解码通过；Runtime未改，80719/PID3979781串行等待3977398重试。证据media-http-audio-preflight-20261009.json。
+
+- 2026-10-09：OpenVDN适配器7922也在首次Triton编译退出1。开发解释器全新缓存重现Python.h缺失，确认先前CudaUtils成功只是缓存命中；新增openvdn_development_toolchain显式使用已有Runtime的CC/CPATH，原生与适配器探针接入，全新缓存复验exit0。两失败完整日志已取回；修复后DMD8及其通过后的Stage B原设置重试排到Avatar重试之后。未计视频生成通过。
+
+- 2026-10-09：OpenVDN工具链入口修复已重新通过标准_copy_openvdn_sources导出r2；94源码/启动器/协调器文件逐摘要与Spark候选一致，META/openvdn-sources.json在核验后更新。源代码导出已收口；仍非完整签名Runtime构建或模型推理通过。证据h3-openvdn-standard-source-export-20261009.json toolchain_entry_refresh。
+
+- 2026-10-09：OpenVDN双进程入口补上Runtime内可信CC/CPATH，复用H3已打包工具链/头文件并校验路径；新增全新临时Triton缓存编译预检。宿主检查通过，标准断网只读Docker20381 exit0；前两探针启动合同错误已修正。未运行候选入口已同步并保留旧版，标准源码导出需刷新，完整生成仍待验收；不将此推断为原生gcc失败确定根因。证据h3-openvdn-compiler-20261009.json。
+
+- 2026-10-09：OpenVDN自定义文本经现有Comfy NVFP4编码器实际生成26×5120 BF16条件，编码子进程退出；临时缓存及原提示词已保留至prompt-encoder-acceptance-r1。官方weights_only读取器CPU验证57297 exit0：摘要一致、shape/有限数值/纯文本tag正确。保留非官方BF16精度参考声明，完整适配器视频仍在加载中，未计生成通过。回执artifacts/h3-openvdn-prompt-encoder-r1/verification.json。
+
+- 2026-10-09：H3 Avatar缺失依赖修复：从已验证MuseTalk Runtime导出pyloudnorm0.1.1/future1.0.0，共231文件核对RECORD摘要，排除两开发CLI和无摘要pyc。首次导出因RECORD外部CLI/已去除pyc失败，规则显式修正后完成。97798 exit0，10项真实导入含共享封装器通过；新原生重试排在Ex-Omni Host之后，未宣称模型推理或正式Runtime发布完成。证据h3-avatar-dependencies-20261009.json。
+
+- 2026-10-09：OpenVDN首轮原生失败：已完成800分支张量/571 LoRA合并/363 FP8 Linear组装，首次forward的Triton cuda_utils编译gcc退出1，日志无编译器原始原因。单独同venv CudaUtils复测exit0，根因未确认，不误报缺头文件。H3 Avatar随后在模型加载前缺pyloudnorm退出；两失败均不计能力完成，需后续修复/重试。证据h3-openvdn-native-failure-20261009.json。
+
+- 2026-10-09：Ex-Omni加入当前Host调用/调度/UDS转发探针，显式源码快照与三模块摘要。74971 exit0验证初始化/离线Worker健康，零生成，不判Host推理通过；正式基础调用38972/PID3958708等待队尾3956474，要求完成一次调度且running/queued归零，退出错误使验收失败。保留fixture discovery/未签名安装与UI限制。证据exomni-host-preparation-20261009.json。
+
+- 2026-10-09：补入OpenVDN Stage B 50步基础模式验收队列68172/PID3956474，等待既有队尾3948307；仅在共享DMD8原生回执通过后运行，避免共同路径失败时重复加载。继续固定官方tuned_fp8/124帧配方，不缩减为DMD8覆盖。当前DMD8 PID3952634仍在首次加载，无Stage B成功结论。
+
+- 2026-10-09：Ex-Omni Teacher真实适配器调用35426 exit0，74帧720×400，440.07秒；视频/非静音有限音频/引擎释放通过。取回文件SHA一致、本地再解码通过，中帧无明显空白损坏；不宣称口型质量、HTTP/Host或签名发布通过。覆盖清单更新，证据exomni-adapter-acceptance-20261009.json。OpenVDN下一队列已加载权重，仍运行。
+
+- 2026-10-09：H3四步独立候选标准Docker HTTP健康72353 exit0，非root/断网/只读/cap-drop/no-new-privileges、401鉴权、空闲及退出清理通过，回执已取回。探针新增--health-only，明确零推理cases，不将健康检查当成生成。实际四步/八步生成仍在既有串行队列，Ex-Omni适配器采样进程确认live。
+
+- 2026-10-09：InfiniteTalk首次原生FP8单人视频完成，25帧896×448、7637.56秒。取回MP4摘要一致，本地视频解码/非静音有限音频/帧变化通过；中帧人工查看无明显空白或损坏。只证明一次基础原生生成，未证明口型质量、Worker/Host或发布完成。覆盖清单更新，证据infinitetalk-native-acceptance-20261009.json。
+
+- 2026-10-09：H3 Turbo4独立未签名Runtime组装65447 exit0，未修改现有排队Runtime；HTTP探针增加解码与中帧证据。八步首轮HTTP在加载模型前失败：h3-venv缺ai2apps；media-image-venv探针导入预检通过。四步HTTP及八步修复重试12504/PID3948307串行等待3943014，无新增并发GPU；尚无Turbo HTTP通过结论。
+
+- 2026-10-09：H3 Turbo4 v1.2接入标准CudaH3Adapter，固定独立LoRA文件/版本和FL2VA限制；缺省步数随配方选择4或8，显式错配拒绝。现有HTTP探针新增互斥--turbo4/--turbo8。23项适配器/子进程测试通过，语法/diff检查通过；测试退出有既有Metal不可用提示、退出码0。尚未修改排队Runtime或宣称Turbo4实机/发布完成。
+
+- 2026-10-09：找到lightx2v Owner的v1.2发布公告（https://huggingface.co/lightx2v/Minimax-h3-Turbo/discussions/52），明确4步/Euler/视频shift6/音频3/最高768p，解除精确配方缺口。新增apply_lightx2v_4step，复用同一受限构图器且8步合同不变，Spark实际H3构图15168 exit0。现有v1.2权重无需重下，基础生成48302/PID3943014排队等待3936033。尚未计生成/Worker/发布通过；证据h3-turbo4-recipe-audit-20261009.json。
+
+- 2026-10-09：OpenVDN标准构建专用解释器已就绪，使用明确普通wheel输入而非editable；在标准_profile_build_env下依赖锁/两wheel来源摘要/Torch2.13cu129均预检通过。构建专用.pth不进入交付Runtime。完整签名构建及实际生成仍待完成，证据h3-openvdn-standard-source-export-20261009.json。
+
+- 2026-10-09：标准Runtime构建器加入OpenVDN双环境完整入口：固定源码/补丁Diffusers归档、指定普通wheel摘要、独立cu129依赖、协调profile/双启动器/工厂META；要求显式h3-openvdn及H3编码器capability。实际源码导出94文件逐摘要通过，H3仅为导出fixture，未重建完整Runtime或发布。源码入口与既有HTTP候选还需一致性收口。证据h3-openvdn-standard-source-export-20261009.json。
+
+- 2026-10-09：OpenVDN协调profile/工厂与双进程META接入独立Runtime，标准离线HTTP健康76254 exit0，401/只读禁网/空闲状态/清理通过。自定义prompt→编码→DMD8/124帧完整请求17207/PID3936033排队等待3924023；未计实际HTTP生成或Host安装完成。证据h3-openvdn-dual-runtime-20261009.json。
+
+- 2026-10-09：OpenVDN组装19969已exit0；双入口检查70166 exit0，inference实际Torch2.13cu129/FA4/官方assembler、encoder实际Torch2.10cu130/Comfy，路径全部属于独立Runtime。仍未加载权重或运行完整生成。
+
+- 2026-10-09：OpenVDN固定双进程启动器openvdn_process_entry.py与独立Runtime组装脚本已实现，推理/编码使用不同明确模块路径并限定目标脚本；匹配工厂META清单。组装session19969仍运行，未重启；两端隔离导入/实际调用未验证，不计Runtime完成。证据h3-openvdn-dual-runtime-20261009.json。
+
+- 2026-10-09：标准构建器新增独立OpenVDN cu129全环境导出，精确锁定全部已安装依赖与CUDA库，不与cu130核心去重。12266 exit0：77分发/24451文件/7,031,938,713字节。首轮隔离导入77044缺CUTLASS路径；显式添加Runtime内nvidia_cutlass_dsl/python_packages后37386 exit0，Torch2.13/FA4/官方assembler等9模块均来自导出目录，未借用开发site。固定启动器/双环境组装/模型推理仍待完成；torchao提示保留。证据h3-openvdn-process-export-20261009.json。
+
+- 2026-10-09：OpenVDN与补丁Diffusers原为editable安装，不能依靠RECORD直接交付源码。离线普通wheel构建29763 exit0，独立目标安装1407 exit0，真实config/assembler/render与Diffusers导入41520 exit0且全部来自wheel目录；无.pth。保留torchao可选Tensor导入提示；全依赖/双Runtime导出及真实推理未完成。证据h3-openvdn-runtime-wheels-20261009.json。
+
+- 2026-10-09：OpenVDN新增create_adapter工厂，从可信Runtime META/openvdn-processes.json解析五个相对路径，拒绝越界/外部符号链接。子进程移除父Worker PYTHONHOME/PYTHONPATH等，避免Torch2.13推理与2.10编码环境串用。Spark真实SDK工厂与子解释器探针79626 exit0；双Runtime实际导出/模型调用未完成，不计新模型通过。证据h3-openvdn-runtime-contract-20261009.json。
+
+- 2026-10-09：InfiniteTalk正式标准构建器补齐源码/预编译Quanto/依赖三输入与显式capability门禁，固定补丁归档、CUDA库摘要和Torch/CUDA/Python/架构ABI。实际标准导出48文件逐摘要通过，保留官方/共享代码/Quanto许可；源码与原生库不再仅靠临时组装入口。语法与diff检查通过；尚无独立HTTP推理/签名安装/发布结论。证据infinitetalk-standard-source-export-20261009.json。
+
+- 2026-10-09：InfiniteTalk补齐实际渲染路径所需musetalk_shared_media与许可，隔离导入/HTTP健康7135 exit0：12模块内部路径、46源码摘要，断网只读Docker、鉴权401/空闲/清理均通过。一次25帧40步HTTP生成77789/PID3924023排队等待3913077，未计完整推理通过。原生PID3835826观察30/40仍live。证据infinitetalk-runtime-preparation-20261009.json。
+
+- 2026-10-09：InfiniteTalk独立开发Runtime组装后两次导入分别发现scikit-image/cv2缺失，已补精确锁与标准导出r3。29270 exit0：73依赖/8744文件逐摘要一致，11项关键模块均为Runtime内部，45个运行源码摘要通过，预编译Quanto在禁编译回调下重复加载通过。引擎按显式打包目录采用预编译库；源码/二进制仍是未签名开发组装，完整标准源码构建入口及HTTP/真实推理待完成。证据infinitetalk-runtime-preparation-20261009.json。
+
+- 2026-10-09：InfiniteTalk标准依赖profile导出54493 exit0，70个分发/8153文件逐摘要一致，零缺失/额外，未导出开发.pth。源码准备器新增最终文件摘要（含追加attention覆盖和兼容helper），重新生成68文件并复验通过；活跃推理目录未修改。预编译Quanto、源码与依赖仍待合并独立Runtime，未签名发布。证据infinitetalk-runtime-preparation-20261009.json。
+
+- 2026-10-09：Quanto默认在包内写build/并调用编译器，与只读Runtime不兼容。新增cuda_quanto_extensions.py显式ABI/摘要校验加载器；将本次开发已编译CUDA库复制到独立目录，8098 exit0，禁止编译回调时仍可直接加载并绑定Quanto扩展。未执行CUDA算子/模型，CPU扩展未打包，尚未接入引擎或正式构建器；不能计独立推理通过。证据infinitetalk-runtime-preparation-20261009.json。
+
+- 2026-10-09：InfiniteTalk实际依赖导入审计96605 exit0，固定23项直接依赖版本及来源；确认Quanto另需Ninja、Python头文件、CUDA/C++工具链，正式封装不能借用开发机路径。保留Torch对SM12.1兼容性提示。首轮生成PID3835826确认28/40活跃，尚未计推理完成；独立Runtime导出未开始。证据infinitetalk-runtime-preparation-20261009.json。
+
+- 2026-10-09：Ex-Omni独立未签名Runtime组装/隔离导入17018 exit0，15项关键模块均来自Runtime内部、103源码摘要一致。标准断网只读Docker HTTP健康43896 exit0，401鉴权/空闲状态/容器清理通过；完整短视频HTTP83151/PID3913077排队等待MuseTalk3906928，未计真实HTTP生成完成。证据exomni-runtime-preparation-20261009.json；正式安装/发布仍待完成。
+
+- 2026-10-09：Ex-Omni独立构建输入准备19913 exit0，标准依赖导出47081 exit0：110个分发、17,108个文件逐摘要一致，零缺失/额外文件，未导出开发.pth。源码导出与依赖层现已各自完成，仍待合并独立Runtime及基础离线Worker推理；未签名/发布。回执exomni-runtime-preparation-20261009.json。
+
+- 2026-10-09：标准CUDA Runtime构建器新增Ex-Omni Teacher profile、直接依赖锁检查与源码入口，显式capability/两项输入必须同时满足。固定57581cf源码归档SHA21e224ee…，实际导出103文件并逐摘要复验通过，官方Teacher配置路径齐全。源码导出及语法/diff检查通过；依赖profile导出、独立推理、签名安装/发布尚未完成，未启用生产manifest。证据exomni-runtime-source-export-20261009.json。
+
+- 2026-10-09：Ex-Omni Teacher实际依赖与原生后端导入审计53903 exit0，记录25项直接依赖的版本和真实模块来源，新增exomni-cuda-requirements.lock。保留SoX可执行文件缺失/flash-attn缺失提示；已通过原生路径使用SDPA。当前仍借用多个开发目录，非独立Runtime、非完整传递依赖锁；下一步标准profile/源码导出。证据exomni-runtime-preparation-20261009.json。
+
+- 2026-10-09：MuseTalk独立Runtime基础HTTP健康/鉴权/断网只读沙箱通过（79727 exit0）；首轮89834因遗留socket清理失败，已修复并保留记录。一次视频+音频自动生成HTTP验收29334/PID3906928排队等待3893750，无并发GPU。尚无完整HTTP推理或签名安装结论。InfiniteTalk确认25/40仍活跃；继续覆盖优先，不新增复杂场景矩阵。证据musetalk-http-preparation-20261009.json。
+
+- 2026-10-09：MuseTalk独立未签名Runtime组装66709 exit0；首次隔离导入因base旧runtime_profiles缺当前接口失败，候选更新标准模块后32404 exit0。19项关键模块均来自Runtime内部，71源码摘要复验通过，未加载GPU模型。回执imports.json已取回；HTTP隔离推理/安装发布仍待完成。
+
+- 2026-10-09：MuseTalk独立构建解释器准备38135 exit0，标准_copy_isolated_profile导出69446 exit0，75个依赖分发闭包验证通过，service→musetalk映射正确且未导出开发.pth。回执已取回。源码与profile尚待合并到独立Runtime及隔离实机验收，无签名/发布。
+
+- 2026-10-09：标准build_cuda_torch_runtime_package.py新增MuseTalk profile与三项输入门禁，导出固定MuseTalk源码、固定GhostV2 BiSeNet、共享YuNet/媒体与适配器。首轮开发Package无通用LICENSE失败，按仓库许可政策修复并保留三方LICENSE后r2导出71文件且摘要复验通过；补pyloudnorm0.1.1。仅源码导出通过，依赖profile/完整Runtime/隔离推理/签名发布均待完成。
+
+- 2026-10-09：完整读取Package发布手册后核对标准CUDA构建器，新增MuseTalk实际开发overlay直接依赖版本锁musetalk-cuda-requirements.lock。明确非完整传递依赖/轮子锁，Runtime尚未导出或签名；固定源码需同时收录MuseTalk、BiSeNet、共享YuNet与媒体writer。版本回执已取回，未访问Cookie或发布。
+
+- 2026-10-09：MuseTalk仅视频/音频验收补齐run_musetalk_auto_adapter.py开发依赖入口，实际检测/分割/音频模块路径检查通过，沿用CPU预处理MKLDNN禁用配置；完整自动请求排队等待3889311结束，未启动并发GPU。正式Runtime profile仍待合并与签名，未计模型/Host完成。
+
+- 2026-10-09：MuseTalk Worker新增省略regions时的自动预处理路径，Host必须提供detector/parser权重，原显式regions合同保留；NativeFaceParser提取为共享原生CPU组件并在session41523实际25帧验证通过（5.02秒）。新增--auto-preprocess验收入口，仅上传视频和音频；完整GPU调用尚未执行，Runtime依赖合并/Host待完成。
+
+- 2026-10-09：MuseTalk adapter验收新增--auto-regions，将已通过的25帧自动人脸框/嘴部遮罩逐帧传入实际Worker合同；不使用人工框或椭圆mask。语法/实际环境CLI导入通过，视频生成session45208等待OpenVDN服务shell3883811退出后串行运行；尚未计自动视频通过。
+
+- 2026-10-09：MuseTalk CPU自动区域重试43472 exit0，25帧真实YuNet检测和BiSeNet嘴部遮罩生成通过，5.08秒。回执已取回；自动遮罩接回CUDA视频、官方完整预处理比较与Host仍待完成。
+
+- 2026-10-09：MuseTalk新增自动模板区域准备 cuda_musetalk_prepare.py，Mac产品裁框/嘴部遮罩合同通过注入原生detector/parser复用，不声称官方DWPose/SFD流程一致。真实CPU YuNet/BiSeNet探针session26418缺共享导入路径退出1，已修复并启动43472；未并发占用GPU，未计自动预处理或视频通过。
+
+- 2026-10-09：FLUX.2 Klein9B新增离线基础探针check_flux2_klein_9b.py，固定官方ModelScope revision逐文件大小/SHA验证，包含scheduler与LICENSE共23文件34,722,790,808字节；准备BF16生成/单参考编辑两例及释放。CLI和metadata选择通过，未下载权重、未接受许可、未执行模型、未开放产品adapter。仍需已有Host许可确认与权重取得；其他模型继续推进。
+
+- 2026-10-09：OpenVDN自定义提示词服务验收 check_openvdn_adapter.py已准备并同步，真实Runtime/三组Host权重路径检查通过。完整编码→DMD8生成→音视频解码→stop验收session7922排队等待H3数字人shell3878559结束。编码与推理诊断日志改存Worker私有data_root，临时prompt/cache仍自动清理；未计实际推理通过。
+
+- 2026-10-09：OpenVDN新增 cuda_openvdn_adapter.py，将用户prompt经可信独立编码进程生成内部cache，再运行固定官方DMD8/StageB50程序；Host分别提供variant/base/text-encoder，Runtime路径显式注入，取消等待进程退出。Spark实际SDK导入与3项非法请求前置拒绝通过，无GPU加载。Runtime工厂/manifest、实际自定义prompt生成和Host验收未完成；不计新支持。证据h3-openvdn-worker-preparation-20261009.json。
+
+- 2026-10-09：新增 cuda_openvdn_engine.py 官方推理子进程边界，Host解析后的权重/内部prompt cache/输出路径显式传入，保留DMD8与StageB50固定FP8配方。Spark官方配置加载器验证两变体及特殊字符路径通过；本地受控休眠子进程取消后确认回收通过。尚非实际模型取消/Worker/Host验收，原生GPU队列不变。
+
+- 2026-10-09：H3数字人采样入口修复原生视频 VAE 的[B,T,H,W,C]展平，与标准VAEDecode一致。新增隔离 Runtime 入口 run_h3_avatar_native.py；首次缺soundfile，补现有audio profile后全部依赖路径检查通过（未加载GPU）。实机基础生成已排队等待OpenVDN shell3862440退出，仍未计生成通过。
+
+- 2026-10-09：InfiniteTalk 真实服务适配器验收入口 check_infinitetalk_adapter.py 已同步，复用官方25帧/40步、Host checkpoint/上传 parts 与受控产物目录，检查音视频解码及 stop 释放。run_infinitetalk_native.sh 增加 adapter 分支，保留默认 native 行为；本地语法和 Spark 实际 SDK/adapter 导入通过。尚未执行真实 adapter 推理，原生 session9930/PID3835826确认仍运行13/40，已有串行队列保留。
+
+- 2026-10-09：H3数字人基础采样入口 check_h3_avatar_native.py 已准备，固定输入音频 latent 并复用现有原生采样器；核对 H3Studio 基础设置后使用 res_multistep/simple/20步，不误用无 LoRA 的 Turbo8步。加入视频和音轨解码检查；仅语法通过，未运行，不计模型支持。现有 GPU 队列保持串行，InfiniteTalk 观察12/40。
+
+- 2026-10-09（in_progress）：H3真实语音音频VAE CPU重试通过（禁用MKLDNN）：latent[1,32,2,93]、解码[1,74400,2]、固定音频构造保持原latent，32.73秒。保留CPU首轮失败；数字人采样/口型/服务接入仍未验收。
+
+- 2026-10-09（in_progress）：H3真实音频VAE CPU验收脚本已运行，首轮ARM卷积报illegal immediate parameter；仅CPU探针禁用MKLDNN重试，尚未通过，不改变CUDA采样。
+
+- 2026-10-09（in_progress）：核实H3导出Runtime已有TorchAudio2.10CPU匹配Torch2.10CUDA，实际隔离Python音频重采样规划通过；此前缺依赖仅裸h3-venv，无需改包依赖。VAE/数字人采样仍待验收。
+
+- 2026-10-09（in_progress）：H3数字人补32kHz双声道/40Hz音频latent网格规划及官方VAE调用，首轮CPU检查缺TorchAudio，复用匹配音频层重试；VAE实机与固定音频采样仍待完成。
+
+- 2026-10-09（in_progress）：OpenVDN完整基础29文件77.3GB与来源锁摘要全部匹配，官方DMD8实机验收排队等待Ex-Omni退出；尚未模型加载/成片。
+
+- 2026-10-09（in_progress）：Ex-Omni固定启动脚本增加adapter入口，真实Worker生成排队在H3 HTTP验收之后（session35426等待PID3844318）；未计实际调用通过。
+
+- 2026-10-09（in_progress）：H3数字人新增固定音频/续接上下文latent候选，复用Comfy原有联合遮罩与时间步/缩放路径；CPU合同验证通过，音频VAE规划、真实采样和服务接入待完成。
+
+- 2026-10-09（in_progress）：OpenVDN新增现有Comfy H3文本编码器缓存导出候选，核对无模板/第50层/标签语义并保留NVFP4精度来源；尚未真实编码或质量比较。
+
+- 2026-10-09（in_progress）：OpenVDN新增官方DMD8/StageB50实机入口，124帧短片、官方tuned FP8、原始缓存提示词；两配方官方配置加载验证通过，基础权重下载中，生成/自定义提示词编码/Worker待完成。
+
+- 2026-10-09（in_progress）：OpenVDN Torch2.13/cu129安装成功，官方依赖安装session57322继续。Stage-B新增同摘要共享权重校验与复用脚本，保留原始张量，不进行格式近似转换。
+
+- 2026-10-09（in_progress）：OpenVDN官方原始基础DiT/VAE 29文件77.3GB已锁定并启动下载，独立依赖脚本固定Torch2.13/cu129与Triton3.7.1、防止解析升级；脚本语法检查通过，执行待基础框架安装完成。
+
+- 2026-10-09（in_progress）：OpenVDN Torch2.13/cu129 ARM64解析成功，独立安装session27837继续；固定源码与官方补丁Diffusers已同步Spark，尚未依赖导入或实机生成。
+
+- 2026-10-09（in_progress）：OpenVDN 17份锁定文件5.47GB校验全部通过；固定Diffusers基线并应用官方补丁，独立Torch2.13 ARM64依赖解析继续，尚未实机推理。
+
+- 2026-10-09（in_progress）：OpenVDN H3官方源码固定e262cb5，5.47GB DMD8/共享分支权重固定摘要并启动下载；核对StageB50共享权重及混合注意力需求，官方Torch2.13/补丁Diffusers依赖尚待准备，未计支持。
+
+- 2026-10-09（in_progress）：H3 Turbo独立未签名Runtime副本已完成并更新Worker模块，导入通过；HTTP基础验收已排队等待InfiniteTalk PID3835826退出，未计通过。
+
+- 2026-10-09（in_progress）：InfiniteTalk新增Host checkpoint/上传图音频Worker入口，官方音频条件、帧数/步数校验、共享媒体封装和请求所有权；语法及无效参数拒绝检查通过，真实服务调用尚未运行。
+
+- 2026-10-09（in_progress）：H3隔离HTTP验收新增--turbo8，独立挂载overlay，单次基础生成、独立输出目录，语法检查通过，未运行；复杂生命周期矩阵后置。InfiniteTalk首步1/40耗时260.78秒，完整生成仍在运行，性能问题保留。
+
+- 2026-10-09（in_progress）：H3 Worker接入显式lightx2v-8step-v1.0-768p配方，Host独立overlay身份、固定repo/revision、目录约束和进程缓存分离；20项相关回归通过。未启用正式manifest，Turbo实机待验收。
+
+- 2026-10-09（in_progress）：H3Process增加Host解析的可选LoRA checkpoint目录映射，默认基础模型路径保持兼容，为独立Turbo叠加权重准备；尚未启用Turbo模型身份或宣称实机通过。
+
+- 2026-10-09（in_progress）：Ex-Omni真实Worker三秒图音频验收脚本已准备并同步Spark，SDK导入通过，等待GPU；InfiniteTalk r4已越过扩展编译并进入CLIP/VAE，完整生成尚未通过。
+
+- 2026-10-09（in_progress）：新增Ex-Omni Teacher Worker适配器，Host权重/上传图音频/共享请求生命周期接线，语法检查通过，真实适配器与HTTP/Host验收待完成。InfiniteTalk复用匹配Python开发头文件修复扩展编译，r4运行中。
+
+- 2026-10-09（in_progress）：InfiniteTalk开发入口补齐独立Ninja1.11.1.4及CUDA编译路径；官方Quanto FP8扩展首次编译/生成r3运行中，保留r1图片ffprobe及r2缺Ninja失败证据。
+
+- 2026-10-09（in_progress）：Ex-Omni官方Teacher基础视频+音轨实机通过（122帧720×400，834.64秒）；Worker/Host待接入。InfiniteTalk图片输入错误依赖ffprobe已在固定源码准备器修复，r2真实生成运行中，未发布。
+
+- 2026-10-09（in_progress）：H3 Turbo8步图补丁接入官方LoRA及视频6/音频3偏移，固定后端构图通过，短视频实机脚本就绪但尚未运行。4步v1.2参数待确认，正式Worker/Host未启用。
+
+- 2026-10-09（in_progress）：H3 LightX2V4/8步固定原始与Comfy格式输入；发现格式和采样偏移要求，独立准备权重中，未启用模型声明。H3数字人固定音频条件仍属缺口。证据 spark/evidence/media/h3-variant-gap-20261009.json。
+
+- 2026-10-09（in_progress）：InfiniteTalk/Ex-Omni全部固定权重校验完成；Ex-Omni已匹配加载官方增量权重并进入50步真实采样，session31562仍运行，尚未计生成通过。InfiniteTalk基础推理待前一GPU任务结束。
+
+- 2026-10-09（in_progress）：Ex-Omni 完整媒体加载器/tokenizer导入通过，新增官方50步基础实机脚本及两模型离线开发入口；复用匹配Torch2.10音频层。大文件下载继续，尚未视频生成/签名安装/发布。证据 spark/evidence/media/media-native-entrypoints-20261009.json。
+
+- 2026-10-09（in_progress）：Ex-Omni 新增官方Teacher媒体独立入口 cuda_exomni_engine.py，固定18.96GB视频/音频tokenizer来源锁并下载校验；不加载对话模型。独立依赖安装及Teacher配置/入口导入已通过，尚未运行完整生成，未发布。
+
+- 2026-10-09（in_progress）：新增 InfiniteTalk 官方音频编码和FP8基础生成入口、实机脚本；真实音频编码发现Transformers5隐藏层接口不兼容，已在独立4.49/ Diffusers0.35.1层通过音频编码（267帧/2.21秒）和整管线导入。31.94GB主权重下载仍进行；尚不声明视频生成通过。
+
+- 2026-10-09（in_progress）：InfiniteTalk 新增可复现固定源码兼容准备器及单GPU SDPA后端；Spark真实注意力公式对照和官方管线导入通过，完整FP8模型推理仍待权重下载完成。保留padding/因果语义并拒绝未支持的分布式配置；未发布Runtime/Package。证据 spark/evidence/media/infinitetalk-compatibility-20261009.json。
+
+- 2026-10-09（in_progress）：InfiniteTalk 固定官方源码及31.94GB官方单人FP8权重，新增公开固定版本下载校验器；下载进行中、尚未实机生成。Python3.12及注意力依赖兼容待处理。未改动现有Runtime，未发布，证据 spark/evidence/media/infinitetalk-preparation-20261009.json。
+
+- 2026-10-09（in_progress）：MuseTalk 新增模板合成与 CUDA Worker 适配器；输入沿用显式逐帧人脸框/遮罩，输出复用 Mac 共享 MP4/AAC 编码器。Spark 576×768、25帧带音轨模板实机通过（11.90秒）；适配器基础CUDA调用已通过（9.46秒、stop后模型释放），HTTP隔离/Host发现/签名安装仍未完成。未改动 Mac 模型实现，未发布。
+
+- 2026-10-09（in_progress）：按用户覆盖优先要求新增 MuseTalk 官方 CUDA 核心与固定权重下载器；固定官方源码 `0a89dec45a0192b824e3cf4daf96c239440c5ed8`，原始 UNet/VAE/Whisper 在 Spark 完整摘要校验通过。基础 CUDA 实机 25 帧人脸序列已通过（16.112 秒，见 spark/evidence/media/musetalk-native-20261009.json），模板合成/音轨/Worker/Host/签名安装未完成；未发布、未变更 Mac App 或现有 Runtime。
+
+- 2026-10-09：Host新增调用者身份绑定的队列取消，运行中带context取消校验active lease；防止排队任务取消仍启动模型、或错误回收其他请求Worker，含活动request ID重用保护。43项测试及Spark真实协议Worker争用验收通过，未部署正式Host/Runtime。见 spark/evidence/media/ideogram4-queue-cancellation-20261009.json。
+
+- 2026-10-09：Host checkpoint完整性校验新增Ideogram官方CUDA FP8四组件布局，沿用各组件必须存在和分片检查，不冒用MLX实现标识；21项checkpoint回归通过。真实Qwen/Ideogram标准权重解析、模型发现、48GiB/阶段常驻预算加临时准入、Supervisor回收实机通过：485.57秒，PNG完全匹配固定基线，process stopped×2/evict completed×2，无资源预留。仍是未签名记录/显式Runtime resolver/start注册fixture，尚未正式安装发布。见 spark/evidence/media/ideogram4-managed-model-workflow-20261009.json。
+
+- 2026-10-09：上述回收保护已用Spark真实Supervisor/ServicePackageManager+一次性协议Worker通过两轮生命周期验证，进程/socket/proxy/数据库停止状态一致，busy/pin/reservation/stale generation拒绝正确。实际模型整合和签名安装仍待完成。见 spark/evidence/media/ideogram4-real-supervisor-lifecycle-20261009.json。
+
+- 2026-10-09：统一Host idle回收入口，关闭回收期间的调度准入与pin竞态；取消等待实际回收结束。Supervisor停止前二次核对generation/managed identity，避免idle snapshot等待期间重启导致误停替代Worker。46项资源/调度/API/Supervisor测试通过；实机生产生命周期整合与打包发布待完成。见 spark/evidence/media/ideogram4-host-resource-eviction-20261009.json。
+
+- 2026-10-09：SchedulerLease 支持已执行请求 cancelled 终态；Host JSON/multipart 的流式/非流式 HTTP499计取消，避免误入失败统计。81项 provider/scheduler/resource测试通过，含重复释放/后续准入。隔离Host与Runtime覆盖层实机绘图取消通过：2/48步取消后1.629秒退出回收，completed1/cancelled1/failed0、无任务/PNG残留。尚未打包部署。证据 spark/evidence/media/ideogram4-host-cancel-counter-20261009.json。
+
+- 2026-10-09：修复系统 Model Worker 非流式请求 HTTP 499/任务取消被记录为 failed 的问题，现记录 cancelled；普通错误仍为 failed，保持清理输出和执行锁。22 项 Worker 协议测试通过；Spark 独立 Runtime 覆盖层实机已复现原失败并验证修复：扩写取消状态 cancelled、无后续绘图、Worker 回收；冷加载取消仍约158秒，Host scheduler将499计failed的统计问题待修。后续 Runtime/Desktop 候选需纳入，尚未发布。见 spark/evidence/media/ideogram4-two-stage-cancellation-20261009.json。
+
+- 2026-10-09：新增 Spark Ideogram 双 Runtime Host 组合实机验收脚本；本地工作流测试增至 8 项（绘图取消等待、忙碌回收拒绝）。真实双阶段组合实机通过：扩写/回收/出图总 527.70 秒，1024 PNG 与质量基线一致，最终调度器清空。发现/身份/容器回收仍为 fixture，生产 Supervisor、实机组合取消和产品 API 未接入，不计正式签名安装通过。见 spark/evidence/media/ideogram4-two-stage-host-20261009.json。
+
+- 2026-10-09 Ideogram Host两阶段原型实现：ideogram_host_workflow.py复用ModelInvocationService前台调用/取消，固定派生阶段request ID并沿用可信context；caption完成后要求Host idle-only释放，失败/截断/重复字段拒绝，取消重试至Worker注册且等待请求结束，回收中取消亦等待并阻止下一阶段。6项本地测试通过；尚未注册公开API，真实两阶段Supervisor/资源准入/签名资产及产品集成未验收。证据 spark/evidence/media/ideogram4-host-workflow-20261009.json。
+
+- 2026-10-09 Ideogram三组实际扩写图44882 exit0：茶壶SHA与已目视通过1024控制一致；中文熊猫全身/坐姿/双前爪吃竹及竹林满足核心要求；海报准确OPEN 24 HOURS居中且无额外内容。固定三样例目视通过，不外推全部质量。图像暖52.26/51.26秒，首图255.71秒含加载，关闭9568256字节；与扩写暖60.99/63.24秒为独立常驻阶段测量，不等于产品端到端延迟。Host分阶段整合/更多种子/最大尺寸/签名发布仍待完成。证据 spark/evidence/media/ideogram4-caption-corpus-20261009.json。
+
+- 2026-10-09 Ideogram三样例Qwen15547 exit0：三项finish_reason stop、官方归一化/schema通过；茶壶caption与前次d4933538摘要一致。中文熊猫核心语义及OPEN 24 HOURS原文保留，附加细节需图像检查。扩写冷238.19秒，暖60.99/63.24秒，延迟仍显著。44882真实caption批量1024同进程出图已启动，尚未质量判定。证据 spark/evidence/media/ideogram4-caption-corpus-20261009.json。
+
+- 2026-10-09 Ideogram批量质量图像脚本准备完成：严格读取逐项真实caption及验证摘要，1024/12步/seed42同一常驻adapter输出三图，记录冷暖耗时/峰值分配及关闭分配；不把出图等同质量通过。15547扩写仍运行，未并行占用GPU。新增check_ideogram4_caption_corpus_images.py语法检查通过，待扩写完整且schema检查通过后执行。
+
+- 2026-10-09 Ideogram最新源码69565标准HTTP/Host回归exit0：adapter986397f3/engine376fbe25摘要与当前源码一致，正常/取消恢复/drain-resume/Host交替图均基线SHA相同，取消0.212秒，身份传递/调度completed2 queued0 running0通过。仍unsigned fixture。三条caption tokenizer总预算8096/8097/8103均<8192；随后15547真实Qwen批量扩写启动，准备冷暖耗时和中文/文字质量，不计已通过。
+
+- 2026-10-09 Ideogram最新源码标准HTTP/Host回归69565启动，独立http-host-sampler-fixed-r1，探针新增源码SHA和独立目录参数。另固定三项实际普通prompt语料（茶壶对照/中文熊猫/英文OPEN 24 HOURS海报），复用官方build_messages，Qwen探针支持批量保留逐项响应及cold/warm耗时；语料尚未执行，不计质量通过。当前GPU串行，先完成Host回归。
+
+- 2026-10-09 Ideogram真实额度OOM53302 exit0：两轮resource_exhausted/503后同进程恢复，恢复图SHA均68934ced…eaa0，保留两个错误对象，停止后CUDA分配均9568256字节，无锁/events/临时输出残留。第一轮OOM后0、第二轮9568256字节，未见停止后递增。仅进程内额度/两轮，非HTTP OOM/系统级压力或长期稳定性；签名发布仍待完成。匿名生产容量复核仍4GiB，记录artifacts/runtime-upload-capabilities-recheck-ideogram.json。证据 spark/evidence/media/ideogram4-real-oom-20261008.json（测试始于10月8日，完成于9日）。
+
+- 2026-10-08 Ideogram采样修复63270 exit0：12/20/48各与直接官方PRESETS管线完整PNG SHA一致，真实步数正确。512/seed42，20步30.43秒、48步72.07秒，峰值29.71GB，关闭后9568256字节；12步198.47秒含加载，直调暖态18.54秒。仅固定同权重桥接样例，不外推质量/最大尺寸/正式安装。随后53302两轮进程内额度OOM恢复启动，结果待定。证据 spark/evidence/media/ideogram4-sampler-presets-20261008.json。
+
+- 2026-10-08 Ideogram官方采样档位实机63270启动：新引擎376fbe25，固定实际Qwen caption/512/seed42，12/20/48逐项核对真实进度步数、直接调用官方preset完整PNG SHA及显存/耗时。原HTTP fixture未替换，新源码结果待定；未据本地测试宣称实机通过。
+
+- 2026-10-08 Ideogram实际扩写默认1024复验30402 exit0：完整红色陶瓷茶壶、主体大致居中、浅木桌/浅白背景且无多余文字，固定单样例目视通过，SHA8593429d…49e5，图像冷249.93秒/峰值32.20GB。同一实际Qwen输出和官方归一化，不是手写替换；512偏左失败保留。仅证明此样例可行，多样例/暖态caption延迟/Host分阶段编排/采样修复实机/签名发布仍未完成。证据 spark/evidence/media/ideogram4-caption-qwen-20261008.json。
+
+- 2026-10-08 Ideogram4采样合同修复：20/48此前错误沿用Turbo schedule，现从固定官方PRESETS加载12/20/48对应guidance/mu/std；其他显式步数标记custom而不冒称官方档位。25测试通过，fixture切换至仓库固定官方源码后3引擎测试再通过。当前30402是旧源码12步质量复验，数值参数本就相同；新引擎实机及20/48资源质量待验。证据 spark/evidence/media/ideogram4-sampler-presets-20261008.json。
+
+- 2026-10-08 实际Qwen扩写→Ideogram 25797 exit0：512/seed42生成完整红茶壶（壶嘴/把手可见）、浅木桌和浅背景，无额外字，但主体偏左，“居中”未通过。SHA088a5486…fb57；扩写冷234.20秒+图像冷253.32秒≈487.52秒（不含进程切换），不能称产品性能达标。已保留图与失败对照，同一caption产品默认1024复验30402运行中，未改描述或权重。证据 spark/evidence/media/ideogram4-caption-qwen-20261008.json。
+
+- 2026-10-08 Qwen caption45025 exit0：实际输入6560/输出237 tokens，finish_reason stop；原始响应保留。初校验aspect_ratio失败定位为探针漏官方归一化，补用固定官方strip_aspect_ratio_and_bboxes默认行为（去aspect_ratio/bbox，不改描述文字）后schema通过，caption SHA d4933538…4034。实际描述保留红茶壶/浅橡木桌/白背景/居中；25797正以真实caption实图验收，不用手写替换。尚未判定图像成功。
+
+- 2026-10-08 Ideogram caption首次Qwen23768 HTTP400终止，原脚本未保留响应body，不作精确错误文本推断。固定tokenizer input_ids计6560，加输出2048超过Worker8192合同；保留完整官方模板将输出限1536，45025以独立r2目录重试。脚本补充caption错误响应留证；图像脚本新增--caption-file以实际扩写文件作输入并记录SHA。未改上下文限制、产品API或宣称扩写成功。
+
+- 2026-10-08 Ideogram4语义caption实验23768启动：复用现有Qwen3.8 27B NVFP4独立Runtime/标准隔离Worker，将固定官方Magic Prompt v1系统词与未修改build_messages函数构建请求。新增验收脚本--caption-request路径，不改产品API、不新增模型或读取Cookie。Qwen替代不是官方已验扩写路径；需先检查响应再实图验收，当前未完成。证据 spark/evidence/media/ideogram4-caption-qwen-20261008.json。
+
+- 2026-10-08 Ideogram4普通prompt复验30121 exit0但质量再次失败：全场景obj替代空elements后仅左上角出现裁切红器皿及多余文字，不能认定修复；原图/回执保留quality-literal-r2。固定结构化布局像素诊断确认红圆/蓝方左右分离但bbox偏移，不声称精确坐标。核对固定官方prompting指南及Mac历史诊断：格式校验/模板包装不等于有效语义caption。后续需验证真正语义caption构建路径；当前普通prompt方案不可按成功修复发布。证据 spark/evidence/media/ideogram4-quality-20261008.json。
+
+- 2026-10-08 Ideogram4质量41923 exit0但普通prompt失败：英文SPARK STUDIO与官方pipeline直调SHA完全一致，中文字形星火工作室准确，左右双色双形状相对布局正确；精确bbox未通过。普通茶壶prompt几乎灰色空白，不能视作功能完成。修复候选将原词写入单一全场景obj，替代空elements，不调用LLM也不称等价Magic Prompt；24测试通过，30121实机复验运行中。证据 spark/evidence/media/ideogram4-quality-20261008.json。
+
+- 2026-10-08 Ideogram4固定质量语料实机41923启动：英文SPARK STUDIO、中文星火工作室1024²，双形状布局768²，普通prompt512²，固定seed42/12步。英文另直调未改官方pipeline对照；记录峰值CUDA分配与原始图。尚无结果，不以输出成功替代目视质量；仅Comfy固定权重桥接，不称原始官方checkpoint对照。
+
+- 2026-10-08 Ideogram4已安装Host调用42935 exit0：Host/direct/Host三图完整SHA均68934ced…eaa0，耗时18.50/18.48/18.50秒；dataUrl/b64一致、Worker请求succeeded、actor/app/session/request传递和调度completed2/failed0/queued0/running0通过。相同独立隔离Worker HTTP回归仍通过；身份/发现为fixture，不能记作产品UI/签名安装。广泛质量与发布仍待完成。证据 spark/evidence/media/ideogram4-host-20261008.json。
+
+- 2026-10-08 Ideogram4 Host调用桥接候选：使用实际已安装ModelInvocationService/WorkerJobScheduler及标准UDS代理，交替Host/direct/Host图像对照，验证actor/app/session/request身份、dataUrl与b64一致及调度归零。42935实机测试启动；发现/身份仍fixture，结果待定。
+
+- 2026-10-08 Ideogram4标准HTTP沙箱79734 exit0：首图225.55秒含加载，取消后19.27秒、resume后18.52秒三图SHA均68934ced…eaa0。HTTP取消返回0.207秒，401鉴权/非法输入/499取消/503 drain/resume及active_requests归零通过。容器network none/read-only rootfs/cap-drop ALL/no-new-privileges/nonroot1000已检查；独立unsigned Runtime 72包依赖约束无冲突。仍非Host产品工作流、签名安装/发布或广泛质量验收。证据 spark/evidence/media/ideogram4-isolated-http-20261008.json。
+
+- 2026-10-08 Ideogram4标准HTTP隔离验收推进：67707独立unsigned fixture装配完成，复用自包含Python、固定Torch2.11依赖与已安装Host代码，按依赖约束补充缺失Server库。标准Supervisor Docker网络关闭/只读Runtime和checkpoint验收79734启动，结果待定，不替换现有Runtime且不构成签名发布。
+
+- 2026-10-08 Ideogram4真实CUDA adapter 39261 exit0：固定四权重/六tokenizer输入校验后，通过已安装Host协议调用。首图与显式取消、task取消后的两张恢复图SHA均68934ced…eaa0，恢复19.48/19.21秒；保留两个异常后stop CUDA分配9568256字节，锁/events/临时输出清空。首请求219.78秒含校验加载；取消3.30秒为整案例耗时而非取消响应延迟。仍非HTTP/Host调度/sandbox/签名安装或广泛质量验收。证据 spark/evidence/media/ideogram4-worker-candidate-20261008.json。
+
+- 2026-10-08 Ideogram4固定输入接入：加载前完整校验四checkpoint与六tokenizer/config文件size/SHA，逐块可取消且仅释放已验证大文件页缓存；保留结构化prompt原文避免隐式JSON重排改变token。23测试通过，39261真实CUDA adapter已启动，尚待结果；非HTTP/签名安装验收。
+
+- 2026-10-08 Ideogram4 Worker候选：增加image_generation合同、显式literal caption包装、请求去重、任务取消等待原生线程及清理、停止拒绝新任务；OOM关闭移入持锁线程，避免关闭下一请求引擎。19项本地测试通过（适配器为注入引擎）；未执行真实CUDA Worker/HTTP Host，固定checkpoint/tokenizer清单集成与质量门禁仍待完成。证据 spark/evidence/media/ideogram4-worker-candidate-20261008.json。
+
+- 2026-10-08 Ideogram4常驻原生引擎18618 exit0：正常512²/12步及两次取消后恢复三图SHA均与原版pipeline首图68934ced…eaa0一致；真实第2/4去噪步取消、无残留输出/挂钩，保留两异常后close模型弱引用释放且CUDA分配9568256字节。暖态恢复19.00/18.74秒；取消案例总耗时3.24/6.18秒含取消前计算，不误称取消响应延迟。10回归通过。尚非HTTP/Host、transport取消、真实OOM或完整尺寸步数/质量验收。证据 spark/evidence/media/ideogram4-engine-20261008.json。
+
+- 2026-10-08 Ideogram4常驻原生引擎实现：复用已验低分配官方加载，结构化caption和产品尺寸/步数/seed边界校验、前向边界取消、临时输出原子替换、异常帧释放及close；10项合同/取消恢复测试通过。18618真实normal/cancel/recover/close在途，未认定生命周期或Worker支持完成。见 spark/evidence/media/ideogram4-engine-20261008.json。
+
+- 2026-10-08 Ideogram4完整原版CUDA管线61973 exit0：低分配加载四组件严格成功，加载约187.56秒，512²/12步/seed42生成21.05秒，结束Torch分配28.12GB；图像SHA/RGB全解码通过，目视红茶壶/浅木桌/白背景正确但壶偏左过大及裁切，未批准精确bbox或广泛质量。真实两个FP8最终层CPU F32/BF16与标量参考max0。仍为Comfy权重桥接而非原始官方checkpoint整图对照；Worker/取消生命周期/Host/签名安装未完成。证据 spark/evidence/media/ideogram4-native-image-20261008.json。
+
+- 2026-10-08 Ideogram4原完整加载78517在条件FP8复制CUDA时OOM，未生成图像。低分配构造候选复用官方网络/量化/严格assign；首轮小模型87229发现rotary buffer遗漏官方BF16转换，修正后69195全42项状态、所有buffer及真实CUDA前向逐字节一致(max0)。完整检查61973以独立native-r2重新启动，文本编码器亦空参数构造；未改官方数值算法，不以小模型通过宣称完整可用。证据 spark/evidence/media/ideogram4-loading-memory-20261008.json。
+
+- 2026-10-08 Ideogram4 Spark准备完成：51377传输完成、99551四文件29.49GB全SHA通过，文件级定向fadvise；独立venv安装官方SHA锁定Torch2.11.0+cu130 ARM64、Transformers5.12.1、bitsandbytes0.49.2，pip check/官方源码导入/GB10 sm121实算通过，完整依赖锁保存。现有Torch2.10 Runtime不变。78517官方原版pipeline+严格Comfy本地布局桥接基线已启动，完整四组件加载和512/12步图像结果尚待验证。证据 spark/evidence/media/ideogram4-spark-preparation-20261008.json。
+
+- 2026-10-08 Ideogram4权重格式桥接候选完成：官方VAE的Diffusers转换器对Comfy原生命名拒绝，直接原生251项匹配；文本编码器初映射误将model.visual归入language_model，已分离，严格749项名称/形状通过。cuda_ideogram4_checkpoint.py不重新量化矩阵，仅校验描述/有限正scalar并扩展官方行scale、明确移除特征编码器无用lm_head，8测试与674组真实scale/descriptor检查通过。未做完整矩阵数值/实际CUDA推理，51377权重传输仍活跃。证据 spark/evidence/media/ideogram4-fp8-bridge-20261008.json。
+
+- 2026-10-08 FlashHead取消清理最新适配器标准HTTP/Host回归20165 Lite、8530 Pro均exit0：源码摘要匹配99025251，两变体签名只读权重视图正常生成/取消恢复/auth-drain-resume与Host四组50帧逐像素精确，调度归零；Runtime及发现身份仍fixture，不代表签名安装。另固定官方Ideogram4源码990fe1c4归档SHA c2be5a5b…aad7并审计加载合同，官方逐行FP8与Mac Comfy标量缩放布局需验证，尚无CUDA推理。证据 spark/evidence/media/flashhead-cancel-fixed-host-20261008.json 与 ideogram4-official-source-audit-20261008.json。
+
+- 2026-10-08 FlashHead任务中断泄漏修复实测通过：34201原候选保留asyncio取消异常后两轮stop分配4.42→8.84GB；新增CancelledError分支，在共享适配器等待原生线程后清理异常帧，16测试通过。32139 Lite两轮均10223616字节，37950 Pro均9568256字节，取消输出删除/锁与token释放/同进程恢复官方MP4 SHA通过，Package准备源码同步。未做真实socket断连、长期压力或签名安装，不据此宣称全部生命周期完成。证据 spark/evidence/media/flashhead-task-cancel-recovery-20261008.json。
+
+- 2026-10-08 FlashHead任务中断清理候选：34201真实asyncio取消两轮显存增长，补CancelledError分支在共享适配器等待原生线程后断开异常帧引用；16项测试通过，Package准备源码同步。32139实机复验运行中。真实socket断连和签名安装不在当前证据范围，见 spark/evidence/media/flashhead-task-cancel-recovery-20261008.json。
+
+- 2026-10-08 FlashHead真实取消泄漏修复完成实机验收：旧14734两轮保留异常后stop分配4.42→8.84GB；CUDA取消路径清理并断开原生traceback、保留文本诊断，15项测试通过。49905 Lite两轮停止后均10223616字节，18924 Pro均9568256字节，持有两异常时恢复MP4均与固定官方SHA完全一致。Package准备源码同步。仅显式请求取消/原生进程，两轮不代表长期压力或transport任务取消；签名安装发布仍未完成。证据 spark/evidence/media/flashhead-real-cancel-recovery-20261008.json。
+
+- 2026-10-08 FlashHead真实取消泄漏修复候选：14734两轮持有取消异常后stop分配4.42→8.84GB，门禁失败；CUDA取消路径保留文本栈并断开原生traceback引用，15项测试含闭包弱引用释放通过。Package准备源码同步；49905实机复验运行中，不宣称修复已验收。见 spark/evidence/media/flashhead-real-cancel-recovery-20261008.json。
+
+- 2026-10-08 FlashHead Pro真实OOM恢复36995 exit0：固定签名分发只读目录，两轮分配额度OOM均映射503，保留两异常对象后仍可同进程恢复，两MP4 SHA与官方2981d0d8…f5fa一致，停止后CUDA分配均9568256字节。适配器源码摘要与已验候选一致，补齐Pro独立额度恢复门禁；不代表系统压力预防、HTTP OOM或长期稳定性/质量/签名安装通过。生产上传合同匿名复核仍4GiB，完整媒体Runtime扩容仍未生效。证据 spark/evidence/media/flashhead-real-oom-recovery-20261008.json。
+
+- 2026-10-08 部署后SenseVoice复验：51372首次OOM，保留失败；62433仅对本次备份35个大普通文件fsync/fadvise，MemFree6242724→13676044KiB，无全局清缓存；97728随后实际安装Host+签名只读权重通过九格式ASGI/Quick Read/长音频/取消恢复。支持文件缓存压力判断，非排他根因证明；更新开发升级脚本在未来备份后定向释放大文件缓存，未重复整次升级。身份/发现及Runtime仍fixture，正式安装发布未完成。证据 spark/evidence/media/spark-host-cache-policy-wheel-20261008.json。
+
+- 2026-10-08 Spark开发Host缓存策略部署完成：0329ca07 wheel仅三个Python文件变化；82861独立启动重启、86888旧新Host及原路径备份恢复四轮通过。13163实际开发服务停机保留完整私有data/venv备份后更新，schema81/完整性/身份安装记录数量保持；62721安装字节与wheel一致、缓存开关生效及实际重启通过。76576 Pro自动缓存导入后2秒输出SHA与官方一致，取消恢复/Host四对50帧精确通过，无手工清缓存。115相关测试既有通过；并发性能/全面内存准入/签名Runtime和Package安装仍未完成。证据 spark/evidence/media/spark-host-cache-policy-wheel-20261008.json。
+
+- 2026-10-08 Checkpoint文件页缓存候选实机通过：显式release_page_cache及Host环境开关AI2APPS_CHECKPOINT_RELEASE_PAGE_CACHE=1（默认关闭），仅已复制源/完整hash后的>=64MiB普通文件fsync+fadvise，best effort不影响验签。63缓存+52安装编排测试通过。49455独立候选完整导入FlashHead15.08GB，Cached仅增2304KiB，空闲保持约17.64GiB；22931随后无需手工处理即可Lite推理/取消恢复/Host四对精确通过。最初测试发现_snapshot_matches类方法不可访问实例策略，已改实例方法并回归。未部署实际Host，Pro自动导入后验证/并发性能/全面内存准入仍待完成。证据 spark/evidence/media/checkpoint-page-cache-policy-20261008.json。
+
+- 2026-10-08 Checkpoint页缓存策略候选进行中：CheckpointCache新增release_page_cache显式参数，Host可通过AI2APPS_CHECKPOINT_RELEASE_PAGE_CACHE=1启用；默认关闭。大文件复制源及完整hash后执行文件级fsync/fadvise，保持全部验证，平台不支持时best effort。63项缓存回归通过，Spark独立候选15GB导入验收运行中；未部署Host，不能宣称已解决系统内存准入。
+
+- 2026-10-08 FlashHead Pro签名快照33695 exit0：真实只读distribution目录2秒50帧输出与官方基线完整MP4 SHA一致，取消恢复/身份传递/调度空队列及Host四组逐像素对照通过；两变体签名缓存到Worker链路均完成开发验收。Runtime仍unsigned fixture，Registry下载/签名安装发布和广泛口型质量未完成。缓存代码核对定位import_local_snapshot复制源及promote/materialize多次完整读取，后续内存处理需同时覆盖源和缓存文件，不能全局drop_caches或跳过验签。证据 spark/evidence/media/flashhead-signed-cache-worker-20261008.json。
+
+- 2026-10-08 FlashHead签名分发缓存验收：48495 Mac及15001 Spark完整21文件约15.08GB验签/哈希导入、只读Worker快照、Host Supervisor和Package布局通过，错误分发/变体拒绝。7764校验后缓存压力触发503；对本任务11个唯一tensor文件定向fadvise后恢复。39346发现Host探针旧upstream alias拒绝，改用实际分发元数据，无生产放宽；88848 Lite签名目录推理/取消恢复/Host四对50帧精确通过。Pro签名目录实推待做；正式内存策略、Registry下载、签名Package安装发布仍未完成。证据 spark/evidence/media/flashhead-signed-cache-worker-20261008.json。
+
+- 2026-10-08 FlashHead发布准备推进：匿名当前Index121验证既有Publisher，精确Keychain公钥指纹一致；1121标准构建器metadata_verified签名Lite11文件8161965386字节与Pro10文件6916079998字节，两envelope独立验签通过。未读Cookie/未提交发布，既有精确批次授权仍待回复。新增packages/ai2apps-model-flashhead-cuda源码准备，适配器/共享文件SHA与最近实机回执一致，保留license与固定spec；无ai2apps.json/service.yaml，不冒充可安装Package。证据 spark/evidence/media/flashhead-distributions-signed-20261008.json。
+
+- 2026-10-08 FlashHead CUDA OOM恢复修复通过：14项测试覆盖PyTorch OOM/明确AcceleratorError映射503及非OOM仍500。43571两轮真实进程内分配限额OOM，持有异常对象时恢复输出均与官方MP4摘要一致，stop后CUDA分配稳定10223616字节；29219当前源码标准禁网Worker正常推理/取消恢复/Host四组逐像素对照通过。不是文件缓存压力的预防修复，Pro限额恢复/签名安装发布仍待完成。证据 spark/evidence/media/flashhead-real-oom-recovery-20261008.json。
+
+- 2026-10-08 FlashHead CUDA OOM恢复候选进行中：将包装后的真实PyTorch OOM/明确CUDA allocation AcceleratorError转为503 resource_exhausted，保留文本栈并释放异常帧及模型；其他错误仍500。14项回归通过，43571真实进程内分配限额OOM/恢复运行中；尚未发布。
+
+- 2026-10-08 FlashHead固定官方对照53827/44458均exit0：Lite/Pro相同图片、PCM音频及推理前seed0，各2秒50帧，独立官方单GPUpipeline与CUDA Worker整个MP4 SHA完全一致（Lite ae768037…f3f1，Pro2981d0d8…f5fa）。保留既有optional-import/Pro安全权重加载准备，未改变上游kernel。45529首轮因探针共享依赖优先错误失败，修正为Worker一致profile优先后通过。不扩大为通用口型质量；多样样本/签名安装发布/内存准入仍待完成。证据 spark/evidence/media/flashhead-official-seeded-comparison-20261008.json。
+
+- 2026-10-08 FlashHead请求RNG修复扩展实机验收：75779 Lite2/10/60秒通过，60秒73.07秒生成、取消0.397秒；96120 Pro2/10秒通过，10秒78.96秒生成、取消0.232秒。两变体各四组Host/直接暖态对照50帧逐像素一致，身份传递/调度空队列及drain-resume通过。全部50/250/1500帧解码、H264/AAC准确时长、音频相关性>0.9996；Lite末帧目视无明显破损，非口型质量声明。Pro有traceback诊断插桩，未签名安装，官方同seed质量基线及内存准入仍待完成。证据 spark/evidence/media/flashhead-seeded-long-20261008.json。
+
+- 2026-10-08 FlashHead Lite请求随机源修复完成实机初验3458 exit0：此前71115相同暖态直接/Host交替四对均约1.7/255像素差；固定上游LTX VAE.sample未使用请求generator，CUDA包装现以fork_rng/manual_seed覆盖整次请求并恢复外部状态。11项测试通过，修复后四对50帧逐像素完全一致，取消恢复、请求身份/调度completed2及空队列通过。未改上游算法/精度；Pro、长视频、官方同seed质量基线、签名安装发布和内存准入仍待完成。证据 spark/evidence/media/flashhead-request-rng-host-20261008.json。
+
+- 2026-10-08 FlashHead CUDA请求RNG修复进行中：官方LTX VAE posterior.sample()使用全局随机源，虽扩散generator固定seed，直接重复与Host重复仍产生约1.7/255平均像素差。候选以fork_rng绑定整个请求并恢复随机状态；11项回归通过，3458实机交替暖态对照运行中。未发布、未修改官方源码或改变模型精度。
+
+- 2026-10-08 SenseVoice独立进程冷启动诊断17170 exit0：五个全新禁网Worker各自完成中英文/时间戳/非法输入/鉴权和生命周期验收，6.25–6.91秒/轮；保留内存数据，未清除系统文件缓存，不等同重启或磁盘冷加载，此前OOM根因仍未确定。61205真实签名缓存→Host Supervisor解析ASR/VAD固定revision、distribution ID及只读仓库根通过；首轮探针误把snapshot当挂载root已修正，无生产代码变更。32相关回归通过。正式签名安装发布保持未完成。证据 spark/evidence/media/sensevoice-cold-worker-series-20261008.json。
+
+- 2026-10-08 SenseVoice真实分发快照→Spark Worker推进：61796在Spark导入并逐文件校验9文件938413143字节，ASR/VAD只读distribution视图及候选Host就绪检查通过。56175首次启动转录503 CUDA OOM，退出后GPU无其他进程，原因未定；47671诊断版、69661原样适配器两轮完整Host/API九格式、长音频、Quick Read、取消恢复及auth-drain-resume通过，原样适配器SHA与源码一致。未替换已安装Host，仍为unsigned Runtime/身份发现fixture；不宣称首次加载可靠性已修复或正式安装完成。证据 spark/evidence/media/sensevoice-checkpoint-worker-spark-20261008.json。
+
+- 2026-10-08 SenseVoice checkpoint就绪缺口修复：官方ASR/FSMN的.pt此前被Host safetensors-only检查拒绝；仅audio_stt/audio_processing的完整不可变distribution回执允许.pt，不放宽普通目录检查。32项缓存及拒绝回归通过（exit0，非致命Metal退出警告）；17011真实938413143字节/9文件签名校验、缓存导入、Worker只读快照、错误distribution拒绝和缓存命中通过。r1失败保留，r2通过；修改尚未部署Spark Host，非Registry下载/正式Package安装验收。证据 spark/evidence/media/sensevoice-checkpoint-cache-20261008.json。
+
+- 2026-10-08 Spark实际开发Host升级完成66533 exit0：同机私有完整data48G/venv备份位于~/ai2apps-spark-dev/host-media-live-upgrade-r1，安装04ff44d5候选wheel，pip check/schema81/SQLite完整性与身份安装记录数量保留通过；39781使用已安装Host（不overlay）九格式ASGI→CUDA Worker、长音频/取消恢复通过；11529实际systemd重启、login200、inode/schema保持与无MLX检查通过。仅开发Host，SenseVoice仍fixture模型发现/未签名Runtime，checkpoint发布与正式Package安装待完成。证据 spark/evidence/media/spark-host-media-live-upgrade-20261008.json。
+
+- 2026-10-08 Host备份恢复演练52561 exit0：合成数据原路径schema79→81→81→79四阶段通过，记录保留、原schema摘要恢复、quick_check正常。52306曾瞬时malformed但停机后两库ok，根因未证实；探针改显式关闭连接/SQLite backup API。14509异路径恢复被安全身份绑定拒绝，最终原路径恢复不削弱检查。真实Host仍active未修改，data48G/venv534M/可用2.3T，探测时无GPU compute任务。实际升级须停服保存程序+数据并原路径回退。证据 spark/evidence/media/spark-host-media-rollback-20261008.json。
+
+- 2026-10-08 新Spark Host wheel独立启动24882与合成升级46144均exit0：新数据2轮健康/login200/SQLite quick_check通过；旧Host schema79→新Host81→重启81三轮通过，合成sentinel保留、inode保持、升级后结构稳定。未复制账户数据，未重启/替换运行中Host。确认实际需要schema79→81迁移，下一步必须备份恢复演练，不能仅旧wheel覆盖回滚。证据 spark/evidence/media/spark-host-media-startup-20261008.json。
+
+- 2026-10-08 Spark Host媒体升级候选：标准wheel构建器补入owner_studio_routes.json，避免新Owner Studio模块导入时缺少路由清单；8项Spark回归通过。标准构建wheel22920303字节/1328entries/SHA04ff44d5a62f7eb4c9feaa718405ae01e8a3a3090f1bf5b0f894b9b2c00597ac，关键4文件与源码逐字节一致；Spark49932独立解包目录导入Host/19条Owner路由成功，MLX显式阻断。尚未替换运行中Host，独立启动及数据库迁移/回退验收待做。证据 spark/evidence/media/spark-host-media-wheel-20261008.json。
+
+- 2026-10-08 SenseVoice实际Host ASGI转录路由→CUDA Worker验收58785 exit0：9格式真实multipart上传/自动解码/模型转发/内容与词时间戳通过，非法音频415、stream400，上下文保持；20调度调用=19成功+1预期拒绝，queued/running0。77339首次因已安装Host缺少reference_audio_sample_rate失败，改为匹配的路由+capabilities源码快照，仅验收进程overlay，不代表正式Host已升级。身份/发现仍fixture，签名安装和Studio mount保持待验收。证据 spark/evidence/media/sensevoice-api-host-20261008.json。
+
+- 2026-10-08 SenseVoice九格式实机Host primitives→ModelInvocationService→禁网CUDA Worker验收32530 exit0：WAV/PCM/MP3/M4A/AAC/FLAC/OGG/Opus/WebM内容及词时间戳边界通过；MP3/OGG/Opus为9,30，其余930，保留原始差异，不宣称逐字一致。长音频/取消恢复/auth-drain-resume通过。首轮60779因过严逐标点比较失败，未改生产适配器。源码摘要、PyAV18.0.0与回执固定；非完整Studio/API或签名安装。证据 spark/evidence/media/sensevoice-codec-host-20261008.json。
+
+- 2026-10-08 SenseVoice双分发签名完成：标准构建器full_dual_download校验ASR936682164字节/5文件/112pieces、VAD1730979字节/4文件/1piece，既有Publisher密钥与新鲜公开Index121匹配，两envelope验签通过。ASR digest401115f89d7058e97fd9def7a4be1fdc73b063578664f78fe0e3528c16857188；VAD digest7a32d3642f54210b49fb2777abef74d11eb86dacbe541f8cdd0f3354c2ad255e。Installation查询仍active user session required；已请求本批两项Dev Cookie授权，尚未读取Cookie/提交/发布。见 spark/evidence/media/sensevoice-distributions-signed-20261008.json。
+
+- 2026-10-08 FSMN VAD精确镜像完成：ai2apps/fsmn-vad固定commit dce94570fbc263aa692d8867b0f47bc03f6330b3，8文件1746044字节上传及匿名完整回下载SHA/size通过。原始4推理文件1730979字节双端标准构建器预检一致，24张量均FP32；新增SenseVoice Package META中的VAD分发spec、完整Apache许可及来源。未读Dev Cookie；未签名/Registry发布，不修改现有模型缓存。原CRLF镜像缺口已解决。证据 spark/evidence/media/fsmn-vad-mirror-verification-20261008.json。
+
+- 2026-10-08 SenseVoice主权重发布源码准备：新增 packages/ai2apps-model-sensevoice-small-cuda 的固定distribution构建spec、许可证、NOTICE及来源；现有标准构建器字节预检完整读取936682164字节/5文件，112个8MiB分块通过；weights_only/mmap检查917张量均FP32。无签名/发布/可安装manifest声明。VAD另查HF六历史版本仍LF，双源精确镜像问题保留。证据 spark/evidence/media/sensevoice-distribution-preflight-20261008.json。
+
+- 2026-10-08 SenseVoice真实取消显存修复：84107/65195引用链定位参数→SANM层→编码器→闭包cell，clear_frames仍因traceback存活保留函数闭包。原生异常调用栈改保留文本note并断开traceback引用；15项测试含闭包所有权回归通过。4424两种真实前向边界取消、保持两异常对象、原样恢复转录通过，停止后分配均9568256字节，替代旧909MB→1.81GB增长。43917标准Docker/Host回归运行中；历史首次OOM根因仍未证实。证据 spark/evidence/media/sensevoice-cancel-memory-fixed-20261008.json。
+
+- 2026-10-08 SenseVoice取消清理候选：共用异常链帧清理覆盖499/transport/nonOOM，14项测试通过；85595真实Linear前向同步后取消/恢复转录都成功，但持有异常并stop后分配909366272→1808738304，内存门禁失败。4777/77540诊断根模型弱引用已释放，仍有920→1840 CUDA张量/参数字典存活，持有链未定位；不宣称取消内存已修复，候选不发布。证据 spark/evidence/media/sensevoice-cancel-memory-20261008.json。
+
+- 2026-10-08 SenseVoice 61892标准禁网Docker/Host回归exit0：当前适配器摘要匹配，长短音频/时间戳/取消恢复/auth-drain-resume通过，补充回执 artifacts/sensevoice-real-oom-r1/host-receipt.json；仍未签名安装，历史首次OOM根因保持未解。
+
+- 2026-10-08 SenseVoice OOM恢复修复：异常链已退出帧可持有半加载CUDA层，清理模型字段后追加traceback.clear_frames再回收缓存；12项测试含保持公开异常活跃时弱引用释放通过。4299内嵌Python真实进程分配额度OOM两轮503→恢复额度→同进程转录一致通过，OOM后分配0/9568256字节、停止后两轮9568256字节稳定；保留两异常对象不妨碍恢复。历史首次AcceleratorError根因仍未确定，不冒充已复现修复。61892 Docker/Host长短转录回归运行中。证据 spark/evidence/media/sensevoice-real-oom-recovery-20261008.json。
+
+- 2026-10-08 GhostV2遮挡Host/Docker验收42491 exit0：r3 Runtime按第六canonical绑定只读挂载XSeg，真实HTTP图片/视频及ModelInvocationService调度图片/视频均通过；401/取消499/active0/drain503/resume通过，容器删除。取回三PNG及双MP4完整SHA/解码通过，视频60帧时序及AAC包与输入逐字节一致。身份上下文字段保持。仍隔离身份和未签名Runtime，HTTP取消非精确GPU阶段，自然遮挡质量、分发许可及正式安装发布待完成。证据 spark/evidence/media/ghostv2-occlusion-host-20261008.json。
+
+- 2026-10-08 GhostV2遮挡Runtime导出完成：标准构建器新增occlusion源码与onnx1.16.1/onnx2torch1.5.15精确依赖，factory纳入模块来源检查；90项回归通过。1110标准profile导出35依赖/74源码，85066内嵌Python -I排除开发site-packages，两轮启用遮挡真实推理/释放重载通过，ONNX转换库来自导出profile，PNG SHA/解码通过。20759独立r3 Runtime树组装并两份74源码逐SHA验证通过。未签名安装/发布；Host HTTP遮挡回归、自然遮挡及许可门槛保留。证据 spark/evidence/media/ghostv2-occlusion-runtime-export-20261008.json。
+
+- 2026-10-08 GhostV2遮挡精度策略修复：XSeg前向局部禁用TF32，成功/异常/取消均恢复原始两个标志，取消回调仍覆盖同步输出；明确依赖Worker串行所有权。54项本地回归通过，96738实机从TF32开启状态完成两轮各5帧官方CPU对照、取消恢复/释放，最大误差仍约2.003e-5；10npy及源码SHA验证通过，原始TF32状态恢复。正式Runtime依赖/源码导出和签名安装仍待完成。证据 spark/evidence/media/ghostv2-occlusion-fp32-policy-20261008.json。
+
+- 2026-10-08 GhostV2可选遮挡Host合同与所有权：显式occlusion=true才要求第六canonical checkpoint绑定，严格布尔控制、固定SHA/大小，并将取消回调贯通至XSeg；构造失败逆序释放、重复close回归通过。46项本地测试exit0，18981实机两轮整套组件加载/图片推理/释放重载exit0，所有组件弱引用释放，取回两PNG SHA/解码通过。探针显式禁用TF32，正式Worker精度策略及新版Runtime导出尚待完成；自然遮挡/交叉/长时序、许可和签名安装门槛保留。证据 spark/evidence/media/ghostv2-occlusion-owner-20261008.json。
+
+- 2026-10-08：GhostV2 官方组件流水线新增显式可选 occluder，在原始目标 crop 上推理并以目标坐标遮罩保护合成结果；默认仍为 None。遮罩形状/范围、矩阵有效性及目标像素保护测试通过，41 项回归及61618/1371完整 CUDA 视频普通/快模式通过，遮挡区约99.55–99.69% pre-encode像素原样，未选人保持；证据 `spark/evidence/media/ghostv2-occlusion-video-20261008.json`。Runtime/Host checkpoint 权限及许可尚未接入，不作已发布能力。
+
+- 2026-10-08：新增候选 `spark/cuda_ghostv2_occlusion.py`，固定 xseg_1 大小/SHA，校验后仅解析已验证字节；封装六节点裁边改写、CUDA FP32 遮罩、取消及显式 close。两项权重负向/取消测试通过；37246 实机两轮 mask 对照、GPU边界取消恢复、弱引用释放与关闭拒绝通过，证据 `spark/evidence/media/ghostv2-occlusion-component-20261008.json`；尚未导出 Runtime、启用默认或新增 Package 权重依赖。
+
+- 2026-10-08：XSeg 遮挡保护诊断合成改善，三模型 CUDA 转换对原 ONNX 15样本通过1e-4容差，六处非对称padding改写先经ONNX零误差验证。仅隔离原型，未新增生产依赖；自然遮挡、生命周期、许可及签名安装待验收。证据 `spark/evidence/media/ghostv2-xseg-composition-cuda-20261008.json`。
+
+- 2026-10-08：GhostV2 两个不同身份的选人/未选人保留/完全丢失通过，但部分遮挡产生明显伪影；官方 FP32 组件基准也存在，CUDA 对官方 mixed 三帧像素一致。质量门槛明确未通过，不得把运行成功作为发布质量证据。详见 `spark/evidence/media/ghostv2-two-identities-occlusion-20261008.json`。
+
+- 2026-10-08：GhostV2 像素修复已通过标准构建器重新导出到 r2 profile，并组装独立 r2 Runtime；两份 73 源文件清单全部验哈希，内嵌解释器两轮 CUDA 加载/推理/释放通过。当前仅未签名验收树，5595 Docker 持久双预设/重试/取消/关闭恢复通过，四输出 SHA/帧时间戳/AAC 校验通过。证据 `spark/evidence/media/ghostv2-runtime-pixel-fix-20261008.json`；不代表正式 Runtime 已更新。
+
+- 2026-10-08：官方固定 RNG 对比发现 GhostV2 CUDA 像素量化四舍五入偏离上游截断。已按官方顺序对齐归一化/反归一化及截断；99995 实机五抽样帧逐像素等于官方 mixed 组件流程，40 项测试通过；证据 `spark/evidence/media/ghostv2-official-parity-20261008.json`。Runtime profile 需重新导出，先前 Runtime 树仍是旧版本，不得据旧证据发布。
+
+- 2026-10-08：GhostV2 持久活动取消与任务管理器关闭/重建实机验收通过，恢复视频完整校验；非断点续帧或崩溃恢复。证据 `spark/evidence/media/ghostv2-durable-lifecycle-20261008.json`。当前通用调度计数把 HTTP 取消归到 failed；实际任务状态及资源释放正确。质量、真实用户安装及发布仍待完成。
+
+- 2026-10-08：修复共享 VideoTaskManager 对 `source_video` 的冻结输入及重试映射；源视频不再错误套用参考素材的 2–15 秒限制（原参考素材限制保持）。GhostV2 CUDA Worker 增加持久任务 envelope、quality/fast_export、源尺寸/帧率冲突校验；54 项回归及短/16秒源视频测试通过；32852 实机双预设、Artifact、幂等、权限隔离、错误帧率拒绝、排队取消重试通过，三视频校验通过。证据 `spark/evidence/media/ghostv2-durable-tasks-20261008.json`；真实用户安装、活动任务关闭恢复及质量门槛仍保留。
+
+- 2026-10-08：GhostV2 Worker 接受 Host 固定官方上游 ID `dimitribarbot/ghostv2`，checkpoint 仍按 canonical model ID 精确绑定；26 项合同/控制器/权重测试通过。新增 `spark/check_ghostv2_host.py` 验证真实 Host 调度及身份字段。5923实机Host图片/60帧视频通过，调度身份字段及音频包一致性通过；证据 `spark/evidence/media/ghostv2-host-20261008.json`。未签名发布，真实用户安装、持久任务及质量门槛保留。
+
+- 2026-10-08 GhostV2标准Docker HTTP47768 exit0：修正multipart parameters/inputs JSON字符串与严格file marker解析，14合同测试通过。真实图片11.37秒/视频14.58秒返回正确MIME；取回SHA/两PNG解码及60帧25fps时间戳、AAC包与输入一致通过。401、运行请求499、active0、drain503/resume图片通过；实查禁网/只读root/capdropALL/no-new-privileges/UID1000，容器删除。仍未签名安装/认证Host/持久任务整链，HTTP取消不冒充GPU精确阶段；质量门槛保留。证据 spark/evidence/media/ghostv2-http-20261008.json。
+
+- 2026-10-08 GhostV2正式create_adapter入口增加服务/profile/内嵌解释器/15模块来源检查，namespace全部搜索路径也须在Runtime profile内，拒绝Package遮蔽；7项控制器/factory专项通过。独立复制base+标准导出profile组装未签名Runtime，60534 exit0：内嵌Python -I经正式factory完成图片/60帧视频，取回SHA/完整解码及音频存在验证通过，stop503/start准入通过。尚非Docker HTTP/认证Host或签名安装发布。证据 spark/evidence/media/ghostv2-runtime-factory-20261008.json。
+
+- 2026-10-08 GhostV2标准完整profile导出78888 exit0：32依赖记录/73源码，11项直接依赖精确锁检查生效。首次入口python3不存在保留启动失败，核对实际python3.12后34486 exit0：Runtime内嵌Python -I且排除开发site-packages，52模型模块来自导出profile，关键二进制依赖仅来自导出profile或既有base Runtime；两轮CUDA加载/推理/释放和取回PNG SHA/解码通过。仍为未签名profile+现有base组合，不等同新Runtime安装/发布；Worker factory/HTTP/Host、质量及Cloud容量门槛待完成。证据 spark/evidence/media/ghostv2-runtime-dependency-export-20261008.json。
+
+- 2026-10-08 标准CUDA Runtime构建器加入GhostV2独立profile/11项精确依赖锁/成对python+sources参数与capability一致性检查，固定归档SHA、许可证及源码清单导出。83项回归通过。首次70499独立导出暴露CVLFace隐式ArcFace依赖，补齐官方源码后86852 exit0：73源码逐SHA重验，52已导入模块均来自导出profile，两轮CUDA加载/图片推理/释放通过。仍用开发解释器依赖，非依赖层完整导出或签名Runtime安装，未宣称已发布能力。证据 spark/evidence/media/ghostv2-runtime-source-export-20261008.json。
+
+- 2026-10-08 GhostV2真实GPU取消发现资源保留：62107/91496/74400失败记录保留，诊断显示异常帧及视频flush闭包持有pipeline/参考状态。控制器清理已退出native异常帧局部引用，视频finally显式清空pending/identity/pipeline闭包；21回归通过。91556实机三种request_cancel/transport_cancel/stop在同步完成生成器forward边界触发均通过，组件弱引用释放、事件清空、锁释放、输出临时文件清空，stop/start后图片恢复SHA/解码通过。是协作式forward边界取消，非GPU内核抢占、HTTP/认证Host或长期无泄漏验收。证据 spark/evidence/media/ghostv2-worker-cancellation-20261008.json。
+
+- 2026-10-08 GhostV2 Worker控制器完成串行执行/事件取消/stop503/start、重复409、排队499、transport取消等待底层清理后释放锁；每请求固定权重校验及组件释放，失败输出删除。20项测试通过。旧协议fixture路径导入失败保留，换当前四文件协议源码后52538 exit0：真实ModelWorker协议图片/60帧视频返回Artifact，取回SHA/PNG及MP4完整解码/音频存在通过，事件归零、stop/start通过。仍非HTTP/真实Host身份/签名Runtime，正式factory、任务envelope与upstream映射、GPU活动请求取消仍待验收。证据 spark/evidence/media/ghostv2-worker-native-20261008.json。
+
+- 2026-10-08 GhostV2 Worker合同源码：cuda_ghostv2_contract提供精确五canonical Host绑定（拒绝缺失/重复/上游别名替代）及image_edit/video_generation multipart/严格控制解析，禁止payload路径。13合同+4checkpoint共17测试通过（非致命Metal退出警告）。该模块尚未接入Worker执行器，候选ID未发布，Host upstream映射/持久任务envelope、串行取消停止、签名Runtime代码绑定和实机Worker仍待完成；不计Host已支持。证据 spark/evidence/media/ghostv2-worker-contract-20261008.json。
+
+- 2026-10-08 GhostV2固定checkpoint入口及所有权封装：精确五角色/文件大小/SHA256，1MiB分块取消检查，不从checkpoint导入代码；全部验证后加载，失败逆序释放全部组件，close断开pipeline。4项负向/清理测试通过，Metal atexit非致命。66894实机两轮五组件加载/推理/重复close/重载exit0，全部组件弱引用释放；取回两PNG SHA/解码通过。当前roots仍为原生fixture，正式Host checkpoint_for和Runtime源码绑定、Worker/HTTP/安装尚未完成。证据 spark/evidence/media/ghostv2-checkpoint-owner-20261008.json。
+
+- 2026-10-08 GhostV2多脸实机发现并修复检测失踪仍生成：47388失败证实选中左脸消失后8–10帧黑区被生成脸覆盖。改为missed==0才渲染，仍保留轨迹用于关联；16865逐帧和71104间隔4均exit0，两段20帧取回SHA/完整解码通过，编码前未选中右半全像素不变，消失检测后不生成、过期不静默重绑、保留轨迹复检恢复和非法track清理通过。素材为同脸双位置，非异人交叉/部分遮挡验收。Mac worker_adapter.py:334同条件另记源码级问题，未执行Mac复现或修改已发布包。证据 spark/evidence/media/ghostv2-track-loss-20261008.json。
+
+- 2026-10-08 GhostV2官方组件pipeline接入：新增CUDA RetinaFace/68点FAN生命周期封装、官方OpenCV对齐/Ghost遮罩；GhostIdentity按请求保存embedding/crop/68点，不共享来源状态。完整视频54618 exit0，normal14.38秒/fast6.91秒处理60帧；三输出取回SHA/完整解码/25fps逐时间验证，normal AAC包及PCM与输入相同，取消清理/恢复通过。抽帧面部表情连贯、眼细节较初版改善；仍非遮挡/多脸/身份/时序质量验收，未接正式Worker/Host、固定checkpoint绑定或签名Runtime。证据 spark/evidence/media/ghostv2-official-pipeline-20261008.json。
+
+- 2026-10-08 GhostV2新增显式可选FP32官方GFPGAN增强组件及pipeline接入口，推理错误向上传递不静默降级；所有权由外层Worker负责。首轮35444跨运行逐像素断言因官方默认随机noise失败，保留记录；相同随机状态直接对照官方函数47966 exit0，五帧像素精确，前/后forward取消、恢复、异常传播、重复close/弱引用释放/关闭拒绝通过，关闭后Torch仍分配8519680字节。启用增强的视频56110 exit0，normal6.92秒/fast5.03秒处理60帧，取回SHA/完整解码/25fps逐时间验证通过，AAC包及PCM与输入精确一致，取消临时清理及60帧恢复通过。仍使用共享检测/几何，非完整官方68点接入、时序/身份质量、Worker/Host或签名安装验收。证据 spark/evidence/media/ghostv2-restoration-20261008.json。
+
+- 2026-10-08 GhostV2官方组件基线：固定Release三个辅助权重共505906544字节，SHA为HTTPS实际下载观测值（上游未公布digest），非声称上游签名。官方RetinaFace/68点/Ghost遮罩/GFPGAN均直接导入；首轮21400因NumPy标量与Torch赋值兼容失败，探针仅把bbox输入转Python float列表后62955 exit0。5帧25PNG取回SHA/解码通过，无GFPGAN回退日志。官方原始生成仍有眼部伪影，增强后眼轮廓/细节改善但不能据此声称身份、表情或时序保真。尚非原始Lightning CLI/SDXL修补、完整视频、Worker/Host或签名安装；后续接入显式官方增强选项及生命周期后继续验证。证据 spark/evidence/media/ghostv2-official-components-20261008.json。
+
+- 2026-10-08 GhostV2逐阶段质量诊断99121 exit0：5帧原始生成crop及组合图25PNG取回SHA全验。保留相同YuNet点位，精确抽取官方norm_crop_v2函数对照共享Pillow几何；FP32对mixed最大1/255，均值0.0473–0.0506/255，几何差异均值0.793–0.912/255。眼部伪影在贴回前原始crop即出现，官方OpenCV对齐+FP32同样可见，因此不能归咎于FP16或遮罩贴回；检测眼中心mask=1。仍非官方完整程序：官方RetinaFace、68点Ghost遮罩、GFPGAN增强尚未纳入对照，下一步补齐该基线，不擅自用增强掩盖未定位问题。证据 spark/evidence/media/ghostv2-geometry-diagnostic-20261008.json。
+
+- 2026-10-08 GhostV2视频36978 exit0：normal/fast/recovery三输出完整解码均60帧、256x256、25fps，逐帧时间匹配，SHA与Spark回执一致；normal的114个AAC包及115712解码样本与输入逐字节一致（编码padding保留），其余无音频。写4帧后取消的临时清理及完整恢复通过。normal 2.739秒/fast 1.462秒仅短例计时；5时点抽帧可见眼周重影、面部偏软，质量未通过，需同输入官方完整链路对照；尚非Worker/Host或签名安装验收。证据 spark/evidence/media/ghostv2-video-native-20261008.json。
+
+- 2026-10-08 GhostV2真实视频36978启动：固定LivePortrait官方d0前60帧运动人脸，合成AAC测试音频，覆盖batch2每帧检测保留音频、batch8间隔4无音频、写4帧后取消临时清理及60帧恢复。真实输出/帧数/音频存在验证在途，不称视频验收完成；合成音频明确不当作真实讲话。证据 spark/evidence/media/ghostv2-video-native-20261008.json。
+
+- 2026-10-08 GhostV2图片视觉复核未见明显贴回边缘/背景破坏；新增cuda_ghostv2_video串行视频渲染，复用共享Track选择/EMA几何/1–8帧批次/检测间隔、音频auto/none/preserve及失败临时清理。控制范围核对Mac合同，velocity_smoothing保持0–1数值；6共享媒体/跟踪测试通过。新视频函数尚未真实执行，不把共享测试作为CUDA/取消/保留音频验收。证据 spark/evidence/media/ghostv2-video-implementation-20261008.json。
+
+- 2026-10-08 GhostV2全图实机准备：新增CPU YuNet执行器复用Mac检测解码，组合真实检测/五点对齐/CUDA生成/ROI贴回，探针含原图/非方形背景/无脸拒绝。首轮Yue2开发环境缺cv2在导入前失败；现有LivePortrait官方开发环境重试8733运行中，保留旧日志。未声明正式Runtime依赖闭包或视频支持。证据 spark/evidence/media/ghostv2-full-image-native-20261008.json。
+
+- 2026-10-08 GhostV2全图组合初版：新增cuda_ghostv2_pipeline复用共享五点对齐/ROI贴回，最大脸选择及批量检测结果处理；Mac包__init__/detector改为惰性MLX导入，独立导入阻断MLX测试通过。原几何/适配器16回归通过，Metal退出警告非失败。尚无真实检测全图实机验收；Mac Package源变更须纳入未来升版，已发布0.1.0不可覆盖。证据 spark/evidence/media/ghostv2-full-image-implementation-20261008.json。
+
+- 2026-10-08 GhostV2核心实机14802 exit0：1/2/8帧批量11张PNG取回SHA/逐像素误差重验，当前engine摘要一致。单帧与官方mixed PNG完全一致；batch2最大2/255均值0.039/255，batch8最大1/255均值0.0404/255。计算前取消、后续恢复、重复close、关闭后拒绝调用及两模型弱引用释放通过；关闭Torch分配9568256字节，不称归零/长期无泄漏。仅重复对齐目标样例，不覆盖完整画面/视频或GPU批次中取消。证据 spark/evidence/media/ghostv2-engine-real-20261008.json。
+
+- 2026-10-08 GhostV2复用核心cuda_ghostv2_engine.py完成初版：严格官方加载、FP32 identity/FP16 generator、BGR转换、批量生成、有限值与取消检查、close；内存语法/通道转换/非法输入检查通过。沿用Mac调用形状但不引入MLX数值实现，检测对齐贴回/视频尚未接入，新核心待单独实机复验，不复用旧探针作为验收。证据 spark/evidence/media/ghostv2-engine-20261008.json。
+
+- 2026-10-08 GhostV2混合精度97908 exit0：身份编码保留官方FP32、生成器FP16，三轮真实CUDA输出取回SHA/有限张量/图像核验；相对官方FP32平均像素误差0.0626/255、最大1.7945/255，identity cosine1.0，暖生成约13.9ms，Torch峰值956743168字节非总统一内存。视觉未见明显损坏，仅单对齐人脸样例；采用为后续全图/视频候选，不能据此批准整体质量或安装支持。证据 spark/evidence/media/ghostv2-mixed-precision-20261008.json。
+
+- 2026-10-08 GhostV2官方FP32 CUDA68871 exit0：两原始权重/全部源码重验，strict加载，source1→target1三轮256x256有限图像，暖生成24–25ms不含检测合成；取回PNG SHA/张量验证通过，视觉无明显空白严重损坏。重复输出不字节一致，最大0.114/255平均约0.0034/255差异，未承诺确定性/身份质量。FP16官方同路径候选63973已启动，尚未选产品精度。证据 spark/evidence/media/ghostv2-official-fp32-20261008.json。
+
+- 2026-10-08 GhostV2两原始权重下载42801及传输98078 exit0，合计1196967612字节摘要匹配固定审计。新增官方FP32 aligned source1→target1探针：导入前逐文件源码对归档、完整权重SHA、strict state_dict，三次真实CUDA输出记录；暂复用已验证Torch开发环境，非正式Runtime。探针已启动ghostv2-official-r1.log，尚未判推理/质量通过。证据 spark/evidence/media/ghostv2-source-preparation-20261008.json。
+
+- 2026-10-08 GhostV2启动官方CUDA基线准备：固定bc53ed086dbe8ea38e165aec7aaac90d1749a335官方源码归档SHA360153100bb7a8d2488bff6ddff164717e6a6c66ff1a6844f4b6635581818527，已提取查看生成器/CVLFace。两原始safetensors按Mac审计记录固定摘要下载42801，完成前不加载；未复制MLX转换权重冒充原始基线。图片/视频/跟踪/保留音频完整产品合同后续均需覆盖，尚无Spark推理。证据 spark/evidence/media/ghostv2-source-preparation-20261008.json。
+
+- 2026-10-08 YuE2同产品配置官方CLI90858 exit0：未修改官方代码、3000token/32步、9文件子集生成3526976帧，与Host帧数相同；官方所有产物SHA/完整解码和generation配置核验通过。PCM24官方与PCM16 Host逐采样差异最大1 LSB、RMS0.577 LSB，落在输出量化范围，当前中文样例不支持接入引入可辨音频差异。非文件字节相等或广泛音质批准；先前中文ASR两字遗漏保留诊断。证据 spark/evidence/media/yue2-matched-official-20261008.json。
+
+- 2026-10-08 YuE2歌词诊断2096 exit0：8音频输入摘要与回执一致，去段落标记/标点后三个英文Host模式及对应官方样例全部歌词精确；中文Host漏“晚”和末尾“来”，官方默认样例完整。ASR可误识别，尚不判音质通过或接入缺陷。已启动90858未修改官方CLI、正式9文件子集及产品3000token/32步配置对照official-off-product-r1，以区分配置差异；不以默认9000token样例替代。证据 spark/evidence/media/yue2-lyrics-diagnostic-20261008.json。
+
+- 2026-10-08 YuE2八音频歌词诊断2096启动：四个Host模式与四个原始官方CLI样例逐一固定SHA，使用同一官方Qwen3-ASR1.7B版本重验权重且不给识别器歌词提示。用于排查内容差异，不代替听感/旋律评价，CLI与产品生成设置不同不声称严格数值对照。Cookie授权仍等待，未访问。证据 spark/evidence/media/yue2-lyrics-diagnostic-20261008.json。
+
+- 2026-10-08 YuE2四模式Host29107 exit0：off/full/自动melody/外部ABC全部真实推理成功，四份WAV取回SHA及有限非静音48k双声道PCM16全解码通过；当前Host源码摘要一致，四次fixture身份转发和completed4/queued0/running0、取消恢复与正常停机通过。仅off有直接对照且字节精确，其余不宣称官方数值相等或旋律质量。尚需音质/歌词/ABC遵循、真实认证和签名安装。证据 spark/evidence/media/yue2-host-modes-20261008.json。
+
+- 2026-10-08 YuE2 CUDA双分发候选已签名并独立验签：default f60d63b2bddeeff65e85d2522b296d889d005bf32bc7aa433550f8bcb59a5fbf；vae 0224b8fe2ca3df3da646b6ac91edf728b1d1340ca0ad2d1aecd1b511264eb31c。沿用原Publisher/key且精确指纹匹配，重验原始快照再由标准构建器对固定MS元数据核验；非双端完整下载。首轮非revision目录被拒后规范快照视图重试成功，历史失败保留。尚未发布/读取Cookie，CUDA Package绑定仍留空。Host29107仍运行。证据 spark/evidence/media/yue2-cuda-distributions-signed-20261008.json。
+
+- 2026-10-08 YuE2安装身份核查发现前述分发复用结论过宽：model_installer两条路径要求manifest.model_id等于CUDA recipe，现有分发绑定MLX故不能直接安装。已从未发布CUDA候选移除错误distribution_id，准备default/vae两份CUDA模型ID专属spec（相同不可变权重/镜像），待签名发布公网验签后再填回；源码发布policy按预期拒绝。未降低安装校验，先前9文件推理证据仍有效但不代表Registry安装。证据 spark/evidence/media/yue2-distribution-identity-20261008.json。
+
+- 2026-10-08 YuE2 CUDA Package源候选0.1.0准备完成：固定双checkpoint已发布distribution、Linux ARM64/CUDA权限、原始许可证、adapter与实测源码字节一致；要求Runtime显式yue2能力和framework-profiles-v1，当前发布Runtime不足不得先发模型。源Contract临时索引/双模型/分发policy校验通过，未构建签名制品或读取Cookie；评分及最低内存明确为估计。四模式Host29107仍在途。证据 spark/evidence/media/yue2-package-source-20261008.json。
+
+- 2026-10-08 YuE2扩展当前Host探针：保留off对照，新增官方full/自动melody/外部ABC，逐请求摘要、PCM格式、Worker成功态、四次actor/App/session转发与调度归零校验；无直接对照的新模式比较字段为null，不伪称数值一致。内存编译通过，远端输入存在，29107已启动于yue2-host-modes-r1，Worker加载中；终态与质量仍待验收。证据 spark/evidence/media/yue2-host-modes-20261008.json。
+
+- 2026-10-08 YuE2边界58899 exit0：1 token/1步、200 token/100步、200 token/32步恢复均生成有限非静音48k双声道PCM16，取回SHA/完整解码及当前engine摘要通过；三例close且模型弱引用释放。最低预算1856帧/0.038667秒且semantic截断，Studio歌曲合同明确允许1 token并跳过固定时长最小值，未填充或收窄参数。最高步数日志100/100通过；非最大token与最大步数组合，不代表质量批准。证据 spark/evidence/media/yue2-boundaries-20261008.json。
+
+- 2026-10-08 YuE2原生边界探针58899已启动：正式9文件子集，依次覆盖1 token/1步、200 token/100步和32步恢复，记录失败及close/模型释放。已观察最低预算完成语义与1步声学合成，解码尚在途；不将启动当验收通过。探针内存语法检查通过，系统py_compile仅因写缓存越界失败。证据 spark/evidence/media/yue2-boundaries-20261008.json。
+
+- 2026-10-08 YuE2仅正式分发9文件验收7979 exit0：Worker正常/取消恢复及当前Host调用均通过，三份73.479秒48k双声道PCM16 WAV取回SHA/全解码验证，与完整开发快照逐字节一致；Host98.582秒，取消3.409秒，调度completed1/queued0/running0，正常退出143无OOM。当前Host与adapter摘要一致。只证明已验文件子集足够运行，不代替Registry真实下载、用户认证、签名安装及听感质量。证据 spark/evidence/media/yue2-registry-host-20261008.json。
+
+- 2026-10-08 YuE2当前Host31306 exit0：当前三Host源码SHA相同，真实ModelInvocation→调度→Worker成功，fixture actor/App/session/request正确传递，completed1/queued0/running0；73.479秒PCM16 WAV与直接调用逐字节一致，Host117.500秒，取消恢复/隔离/停机通过。尚非真实认证安装。已启动7979仅9个公开分发文件的Worker/Host复验yue2-registry-host-r1.log；不将开发快照通过等同正式文件集通过。证据 evidence/media/yue2-current-host-20261008.json。
+
+- 2026-10-08 YuE2既有权重分发复用核查：标准脚本匿名验签default/vae成功Index121，两固定HF版本和本地原始文件一致；12742 Spark重验9个发布文件并构造registry-checkpoints-r1（仅hardlink已验9文件，原文件不改）。开发17文件中的README/examples/generation_config/weights_manifest等未在发布清单，后续必须使用9文件视图实推而非假定完整目录等价。Host31306仍运行；未Cookie读取、发布或真实Registry安装。证据 evidence/media/yue2-public-distribution-reuse-20261008.json。
+
+- 2026-10-08 YuE2隔离HTTP79085 exit0：实际标准profile Runtime断网只读uid1000/capdrop/no-new-privileges，正常及恢复PCM16音频与原生桥接逐字节相同；401认证、400边界、DELETE499取消3.333秒、drain503/resume及active归零、正常SIGTERM清理退出通过，16源码SHA一致。当前Host快照验收31306已顺序启动yue2-host-r1.log，未认定Host成功；权重分发可复用Mac既有固定版本待公网验签，未签名安装/发布。证据 evidence/media/yue2-isolated-http-20261008.json。
+
+- 2026-10-08 YuE2独立HTTP Runtime组装81303 exit0：从既有accepted核心复制独立yue2-worker-runtime-r1，合并标准38依赖profile和16源码SHA并核验，原Runtime未改。79085实际断网只读非root容器HTTP验收已启动，已完成权重检查并加载模型，yue2-worker-r1/worker.log；尚无推理/生命周期终态，不认定产品可用。证据 evidence/media/yue2-http-runtime-assembly-20261008.json。
+
+- 2026-10-08 YuE2 stream修复完整61694 exit0：normal/真实VAE tile取消/recovery关闭分配均26,607,616字节，取消reserved暂增后恢复，三轮未再增长；两成功PCM16 WAV与修复前逐字节相同，SHA/解码通过，仍保留非零基线及短周期限制。标准依赖导出65612 exit0，八项直接依赖精确锁校验后导出38依赖+源码，不含无关Diffusers/Gradio/Qwen-TTS，67构建测试通过。尚未组装HTTP Runtime/签名安装，非全产品生命周期验收。证据 evidence/media/yue2-stream-fix-and-profile-20261008.json。
+
+- 2026-10-08 YuE2标准Runtime构建接入：新增显式yue2 capability与成对--yue2-python/--yue2-sources，隔离服务profile映射、固定archive/graph patch双摘要、许可证/原归档/patch保留；标准_copy_yue2_sources实际导出16文件索引。原79构建/profile测试通过，新增两项后67构建测试通过无skip。只完成源码导出，依赖闭包/签名安装未做；完整模型stream候选61694仍运行，未晋级发布。证据 evidence/media/yue2-runtime-source-export-20261008.json。
+
+- 2026-10-08 YuE2分配增长定位：92627小GEMM每新stream保留8,519,680字节，与真实请求增量一致，独立诊断清cuBLAS工作区归零。精确源码patch复用每设备warmup stream、保留原wait顺序；4877真实CUDA小模型原路径三轮持续增长，候选四轮52,505,600字节平台，logits与官方逐项精确；源码漂移/重复patch拒绝测试通过。私有clear仅诊断未入产品。完整歌曲/取消/恢复候选61694已启动于独立yue2-stream-reuse源码，尚未判真实模型稳定。证据 evidence/media/yue2-stream-retention-20261008.json。
+
+- 2026-10-08 YuE2桥接实机87471 exit0：normal生成73.479秒PCM16 WAV，实际VAE首块后注入取消传播且无输出、模型弱引用释放，随后同进程recovery成功；取回两WAV SHA/完整PCM16解码通过。关闭后Torch分配26,607,616→35,127,296→43,646,976字节连续增长，内存门禁未通过，需查缓存/持有对象，不能把功能成功当生命周期全绿。适配器新增OOM映射resource_exhausted503和失败清理恢复，13测试通过但未实机制造OOM；HTTP/Host/签名发布仍待完成。证据 evidence/media/yue2-bridge-lifecycle-20261008.json。
+
+- 2026-10-08 YuE2 Worker适配器初版：固定Host两模型ID/repo/revision绑定、串行原生owner、独立输出名、重复取消等待原生线程后清理文件；引擎与适配器12测试通过。真实桥接首轮因缺ai2apps导入失败未推理，改用既有Runtime实际协议模块后87471正在运行normal/真实VAE tile取消/recovery三例，日志yue2-preparation-r1/bridge-r1-retry.log；尚无结果，不认定Worker/Runtime支持完成。证据 evidence/media/yue2-adapter-implementation-20261008.json。
+
+- 2026-10-08 YuE2自动melody规划1303 exit0：63.879秒48k双声道FLAC/156.252秒完整流程，无截断，产物SHA/全解码通过。四种官方基线full/off/自动melody/外部ABC均已有结构证据，非质量批准。新增cuda_yue2_engine桥接产品v2/3000token上限、官方原算法32默认步、PCM16 WAV和120秒界限，利用官方status逐块回调检查取消并finally close，10契约测试通过；桥接自身尚未实机验收/Worker接入，不套用CLI证据。证据 evidence/media/yue2-melody-and-bridge-20261008.json。
+
+- 2026-10-08 YuE2外部ABC melody官方基线1997 exit0：44.799秒48k双声道FLAC/124.428秒端到端、32步BF16/FP32 VAE，无token截断；所有产物SHA/全解码通过，plan与导出score的ABC逐字节等于输入。仅保留输入不证明音频音高节奏遵循，质量未批准。官方VAE decode_tiled已有逐块on_progress且异常传播，Worker可通过该边界接入取消，不必重写数值算法。自动旋律规划样例另行启动，仍欠Worker/Host/签名发布。证据 evidence/media/yue2-official-external-abc-20261008.json。
+
+- 2026-10-08 YuE2官方中文off模式17562 exit0：原始BF16/FP32 VAE、CFG1.01、完整32步，56.439秒音频/129.126秒端到端，无ABC/semantic截断。产物逐文件SHA、48k双声道PCM24 FLAC全解码/有限非静音通过，未判听感或歌词质量。外部ABC melody样例1997已启动，official-melody-external-r1.log；不能把在途任务认定完成。新增独立结果校验器并回验full；Worker需映射产品3000token上限及解码取消，不变更官方基线默认。证据 evidence/media/yue2-official-off-20261008.json。
+
+- 2026-10-08 YuE2官方完整CUDA首例24347 exit0：17文件7,794,599,009字节Spark重验，独立环境官方doctor识别GB10；原始BF16 torch/CUDA graph、full规划、完整32步生成49.799秒48k双声道FLAC，端到端139.633秒，ABC/semantic均未截断。所有回执产物SHA取回重验，音频全解码有限非静音。开发环境无关依赖冲突保留，不作为正式Runtime；melody/off/外部ABC、质量、Worker WAV/生命周期/Host/签名安装发布仍待推进。证据 evidence/media/yue2-official-full-20261008.json。
+
+- 2026-10-08 YuE2启动官方CUDA复用：固定干净源码3d21f8f5d31be867f4c3b2e6beafb0f2e52f8c10，原始3B c044757a011169583f363168348ae380946efff8及VAE152733a19ad43aa67e367f9b5503ef8075bb5126在Mac逐文件SHA及官方weights_manifest重验，合计7,794,599,009字节。传Spark独立yue2-preparation-r1，rsync34187仍运行；接收端验证器已同步，未声明Spark字节验收/推理。官方流水线覆盖规划/语义/声学/解码，先用BF16完整32步官方基线；全局后端和显存预算修改需隔离，ACE环境缺tiktoken不得视为现成环境。证据 evidence/media/yue2-source-preparation-20261008.json。
+
+- 2026-10-08 ACE-Step停机修复Spark复验：标准导出620源码与前版相同，适配器摘要一致；两轮真实Worker/Host推理、取消恢复、drain与调度归零通过。首轮47845因--rm删除容器无法inspect；第二轮69846读取退出143/无OOM，日志Application shutdown complete，实际Runtime Uvicorn源码确认清理后重抛SIGTERM。原探针exit1保留，修正未来条件为正常终态+0/143+无OOM/error+清理日志，不冒称原探针全绿。音频取回SHA/PCM验证通过；未签名fixture不代替正式安装。证据 evidence/media/ace-step-stop-worker-20261008.json。
+
+- 2026-10-08 ACE-Step停机恢复修复：adapter使用独立共享shield任务持有完整shutdown，取消stop等待者不再跳过环境恢复；原生release返回或抛错后finally恢复原cuBLAS配置。新增真实线程阻塞/取消等待者/重复stop/保留原配置及release异常回归，19相关测试通过，末尾保留sandbox Metal退出警告。仅本地源码修复，尚未重新导出Spark Runtime，旧GPU回执不覆盖此变更。证据 evidence/media/ace-step-stop-restoration-20261008.json。
+
+- 2026-10-08 ACE-Step最新确定性候选歌词诊断73114 exit0：固定官方Qwen3-ASR权重重验，同一ASR处理当前Worker样本和既有官方样本；纯音乐为空，中文分别为“嗯，风轻轻吹过窗台。嗯，星火带你的肩奔跑。”和“嗯，风轻轻吹过窗台。嗯，星火带你的肩奔。”，均不匹配完整输入。取回回执对应三份音频SHA一致。官方样本后端设置早于确定性集成，不宣称全配置相同；ASR不能代替听感、不单独归因CUDA或上游缺陷，歌词质量仍未批准。证据 evidence/media/ace-step-current-lyrics-quality-20261008.json。
+
+- 2026-10-08 ACE-Step加载状态对照42673 exit0：三轮四类模型完整state_dict摘要与planner编码均相同；确定性初始化两轮PCM精确，但三轮均不同于早期参考，未定位全部数值差异。关闭后分配68,159,488/保留675,282,944字节稳定且模型弱引用释放。seed合同不承诺任意重载跨进程字节一致，此项保留诊断、不直接判音质失败；生产构造器未改，不以两轮推断通用保证。继续以固定官方实现及歌词/音乐质量、认证Host和签名安装为验收重点。证据 evidence/media/ace-step-load-state-20261008.json。
+
+- 2026-10-08 ACE-Step三轮重复装卸19419 exit1：各轮关闭后Torch分配68,159,488/保留675,282,944字节完全相同，四类模型弱引用均释放，三轮范围未观察增长。前两轮输出字节一致，第三轮不同，取回完整PCM重算RMSE26.715/max384 LSB；因此重新装卸确定性不判通过，后续查加载阶段状态。原探针assert失败后回执残留running，已明确记录终态exit1并修正未来失败回执写法，历史不覆盖。非零基线/三轮限制保留，不推断长期无泄漏。证据 evidence/media/ace-step-reload-memory-20261008.json。
+
+- 2026-10-08 ACE-Step最大组合80306 exit0：120秒100步真实decoder次数准确、44.56秒完成，峰值Torch分配10,629,876,736字节；同进程后续10秒8步7.13秒完成并字节精确复现已验收参考。两WAV取回SHA/完整PCM解码/current引擎摘要通过，状态恢复通过。close后仍分配68,159,488/保留677,380,096字节，未宣称归零，需后续重复装卸检查是否稳定；Torch指标非总统一内存。仅native最大组合，不代替真实认证Host/签名安装/音乐质量。证据 evidence/media/ace-step-max-combination-20261008.json。
+
+- 2026-10-08 ACE-Step官方公式步数边界10820 exit0：1/20/21/100实际CUDA decoder调用次数准确，观测时间步与原始公式按decoder dtype转换逐项一致，未被官方20步UI上限截断；四份10秒48k双声道PCM16取回SHA/全解码/current engine摘要通过。每次推理CPU/CUDA RNG及后端标志恢复，峰值Torch分配约10.63GB非总内存。仅边界native样例、非100种步数穷举或120秒100步最大组合；不判各步数音乐质量，默认8Worker/Host证据独立，正式安装发布仍待完成。证据 evidence/media/ace-step-official-step-bounds-20261008.json。
+
+- 2026-10-08 ACE-Step确定性Worker集成：启动前固定cuBLAS workspace、拒绝冲突/过晚配置，正常stop恢复环境；每次串行推理隔离Torch RNG并在成功/异常恢复确定性/cuDNN标志。16测试通过。标准导出620 SHA实机一致；37329 exit0，10秒纯音乐/20秒歌词各四份初始/重复/Host WAV字节精确，完整PCM解码/current源码通过，纯音乐还精确复现独立native确定性实验；取消恢复/drain/身份调度通过。回执Host秒数包含两次直接对照，不能作为Host耗时，探针已修正后续计时。新默认8步通过；1–100完整GPU、歌词质量、真实认证和签名安装发布仍待完成。证据 evidence/media/ace-step-deterministic-worker-20261008.json。
+
+- 2026-10-08 ACE-Step剩余差异定位：99220全Torch RNG隔离仍PCM RMSE36.53，规划编码摘要一致且CPU/CUDA状态恢复；5653在启动设CUBLAS_WORKSPACE_CONFIG=:4096:8后比较三路径，普通/全RNG仍不一致，确定性算法+cudnn固定路径两次WAV字节精确、PCM误差0。10份音频取回SHA/全解码/误差重算通过。仅原生单纯音乐样例，未定位单算子或证明跨进程配置一致；下一步Worker配置/状态恢复/歌词及步数门禁，未改变产品全局后端设置或发布。证据 evidence/media/ace-step-determinism-diagnostic-20261008.json。
+
+- 2026-10-08 ACE-Step官方默认采样开发候选：从Mac shift3改为固定官方shift1公式，1–20步与原始分支逐项一致，21–100按同公式扩展并保留历史Mac helper；10测试通过。标准导出620实机SHA通过；38915实机Host/生命周期成功，但默认8步重复字节不一致，未晋级发布。独立PCM重复RMSE约25–26 LSB，对官方同歌词RMSE30.16/相关0.999965，远小于旧规划随机误差，但原因尚未隔离，不以相关系数判质量。21–100新公式仍欠实机完整门禁，下一步区分完整推理RNG与CUDA数值差异。证据 evidence/media/ace-step-official-schedule-20261008.json。
+
+- 2026-10-08 ACE-Step歌词内容诊断：Qwen3-ASR官方1.7B固定权重重验，当前20秒中文歌词识别明显偏离两行输入，纯音乐识别为空。同prompt/lyrics/seed42官方默认采样基线51859 exit0，28权重文件重验、20秒48k双声道SHA通过；54394相同ASR对照中官方也未全文匹配，词句与当前不同。两例均不判歌词质量通过，不以ASR代替听感或认定单一采样因果。当前Mac来源timesteps/shift3与官方默认/shift1差异仍需官方优先评估，未擅改生产采样。证据 evidence/media/ace-step-lyrics-official-20261008.json。
+
+- 2026-10-08 ACE-Step重复性修复：固定官方ca1e85规划器PT批量分支设置seed、单条分支遗漏；CUDA wrapper以fork_rng隔离并设置请求seed，不改原始源码，异常亦恢复状态。2测试+实机GPU13425状态恢复通过。标准构建器620源码实机摘要通过；独立Runtime Host20765 exit0，纯音乐10秒/中文歌词20秒各四次初始/相邻重复/Host WAV取回逐字节一致，48k双声道PCM16和当前源码SHA通过，取消恢复/drain/身份调度通过。同seed差异在两例消除，不代表全语料质量或跨设备确定性；签名安装发布仍待完成。证据 evidence/media/ace-step-planner-rng-20261008.json。
+
+- 2026-10-08 ACE-Step当前Host接入：首轮36470暴露上游模型别名404，CUDA adapter仅增加既有ace-step-1.5-turbo到固定canonical ID映射，其他ID继续拒绝；20相关测试通过。16104精确输出比较失败；32112相邻直接调用诊断完成，10秒纯音乐/20秒中文歌词均48k双声道PCM16，身份/请求传递、调度completed2归零、取消恢复/drain通过。取回PCM确认直接重复RMSE6140/4358，同seed不稳定并非仅WAV头，Host一致性及质量不判通过；后续查固定官方planner/RNG。当前adapter和Host源码SHA通过。无签名安装发布；全媒体Runtime容量合同仍待Cloud。证据 evidence/media/ace-step-current-host-20261008.json。
+
+- 2026-10-08 LivePortrait预设任务39523 exit0：Quality/Fast均经真实VideoTask生成并入库，各78帧全解码；Quality字节复现旧FP32，Fast字节精确匹配独立显式BF16，当前adapter匹配。25fps驱动请求30fps明确invalid_request失败且无Artifact，新增真实编码视频测试覆盖冲突/NaN/Inf/bool帧率，31测试通过。BF16对FP32全帧MAE0.3177仅诊断，不代替广泛质量门禁。仍fixture身份发现，真实认证/签名安装发布待完成。证据 evidence/media/liveportrait-task-presets-20261008.json。
+
+- 2026-10-08 LivePortrait持久化生命周期29241 exit0：运行中+排队取消、管理器正常shutdown/recreate后恢复通过。独立只读数据库确认2成功/3取消；取消任务无Artifact/result.mp4/*.part，首尾视频各78帧完整解码且字节相同，当前adapter SHA匹配。取消约0.544秒；调度queued/running归零，但两个已执行中断计入failed，数据库正确cancelled，统计差异保留。首轮探针空progress异常已修正记录。仅正常管理器重启、fixture身份，非进程强杀/断电/认证API/签名安装。证据 evidence/media/liveportrait-durable-lifecycle-20261008.json。
+
+- 2026-10-08 LivePortrait持久化任务接入修复：真实VideoTaskManager请求此前因reference_parts/preset/geometry等字段400，不能由旧multipart Host通过推断任务可用。CUDA新增严格转换，quality→FP32/fast→BF16，校验素材唯一性、预设冲突和保留驱动帧率；未知控制继续拒绝。30测试通过。最终45748 exit0，真实数据库/工作区冻结2素材、幂等提交、跨actor404、Artifact入库和调度归零通过；78帧全解码，当前adapter SHA匹配，输出字节精确复现直接Worker。首轮Host快照缺offline模块和第二轮400均记录；Mac共享adapter同类接入问题单列，未修改Mac。仍测试发现/身份，持久化取消重启、真实认证、质量及签名发布待完成。证据 evidence/media/liveportrait-durable-task-20261008.json。
+
+- 2026-10-08 LivePortrait官方合成额外s8源图实机85718 exit0：四项Host/Worker输出字节一致，三视频各78帧完整解码，当前adapter/Host SHA、取消恢复/drain及调度completed4归零通过。对固定官方FP32，ROI MAE2.7299→2.5314、变化相关0.9862、均值0.7373 vs官方0.8187；六帧抽查转头/微笑对应，嘴眼及幅度差异仍在，不判广泛质量通过。后续验收脚本补记输入SHA和精度/控制参数，本次远端快照未改。真实认证VideoTask及签名安装发布待完成。证据 evidence/media/liveportrait-compositor-s8-host-20261008.json。
+
+- 2026-10-08 LivePortrait官方合成标准Runtime/Host19434 exit0：44索引文件实机SHA通过，FP32预裁剪、BF16裁剪、auto视频及图片四项Host与直接Worker字节精确，三视频各78帧完整解码；crop-only与上一版字节不变。当前adapter/Host源码SHA、身份转发、调度completed4归零、取消恢复/drain通过，构建器65测试通过。s0官方FP32对照面部ROI MAE2.2929→1.9102，变化相关0.9811、均值0.2220 vs官方0.2448；仅诊断，不扩大为广泛质量通过。未签名Runtime/fixture身份，真实认证VideoTask、更多素材质量和安装发布仍待完成。证据 evidence/media/liveportrait-compositor-host-20261008.json。
+
+- 2026-10-08 LivePortrait官方合成实现落地：共享Worker提取_paste_face钩子，Mac/v1行为不变；CUDA v2调用固定原始prepare_paste_back/paste_back并校验原始512遮罩摘要。标准Runtime导出43源码+1遮罩共44索引文件；三个旋转仿射对照逐像素精确，40测试通过含v1/v2分派。此前相关指标下降不能单独否定官方算法，本次以官方实现为正确性基线；仍需新Runtime完整视频/Host回归，不据局部测试判广泛质量或发布。证据 evidence/media/liveportrait-compositor-implementation-20261008.json。
+
+- 2026-10-08 LivePortrait官方预处理修正标准导出/Host59625 exit0：43源码实机SHA通过，相比上版仅pipeline改变。FP32/BF16预裁剪、auto视频和图片四项Host输出与直接Worker字节精确，三视频78帧全解码；当前adapter/Host摘要、身份转发、调度completed4归零及取消恢复/drain通过。s0 ROI MAE2.2929、变化相关0.9807，源图裁剪和合成差异仍在，不扩大为质量通过。未签名Runtime、fixture身份，正式安装发布待完成。证据 evidence/media/liveportrait-preprocess-host-20261008.json。
+
+- 2026-10-08 LivePortrait CUDA预处理正式修正：OpenCV linear缩放、CPU float32归一化、显式C-order batch副本对齐官方BCHW步长；Mac未改。前两轮98118/15780输入值虽相同但batch步长3/0造成appearance差，保留回执；31108实机五组输入张量/步长、appearance及同关键点uint8解码均逐元素精确。不能把推测的内核选择当已profile事实；34现有回归测试通过，最终布局改动以真实oracle验证。新pipeline尚未标准重导出Worker/Host或签名发布，下一步完整视频回归。证据 evidence/media/liveportrait-preprocess-fix-20261008.json。
+
+- 2026-10-08 LivePortrait相对动作oracle89889 exit0：固定官方分支pose-friendly/all对两源三帧共6例、共同动作参数，stitch后关键点最大误差5.96e-8；当前pipeline SHA一致。首轮84602误导入保留旧源码产生常量偏差，保留失败并固定Runtime路径；上轮网络oracle也以78546/current Runtime补验5例全部精确。澄清此前直接InferenceConfig基线为pose-friendly，并非CLI默认expression-friendly，后续基线回执记录effective controls。尚未expression-friendly/归一化/完整质量或签名发布。证据 evidence/media/liveportrait-relative-oracle-20261008.json。
+
+- 2026-10-08 LivePortrait网络oracle9605/36959 exit0：s0/s8及d0第0/30/60帧五个统一256输入，原始官方权重与safe转换在相同浮点张量下appearance、全部7项raw motion和同feature/keypoint解码逐元素精确。首轮同像素但CPU/GPU归一化差5.96e-8，导致小输出差，单列保留，不误判转换损坏。此证据排除五例原始网络转换差异，未覆盖相对动作完整链、BF16或全输入；下一步锁定同crop下relative motion及后处理。证据 evidence/media/liveportrait-network-oracle-20261008.json。
+
+- 2026-10-08 LivePortrait预处理差异诊断：同一d0解码帧，Pillow bilinear与官方OpenCV linear像素MAE0.5968/max33；隔离单变量64064 exit0，两视频78帧/图片SHA完整解码、取消恢复/drain通过，原256图片输出字节不变。官方缩放后s0 ROI MAE2.2925→2.2971、变化相关0.9821→0.9796，剩余差异基本不变，因此不能把缩放认定为主要原因。未改生产源；下一步同一张量下网络中间值oracle，尚未质量/签名发布。证据 evidence/media/liveportrait-official-resize-20261008.json。
+
+- 2026-10-08 LivePortrait合成单变量82878 exit0：隔离Worker用固定官方mask_template及原始prepare_paste_back/paste_back替换软椭圆合成，生产未改。两视频78帧及图片取回SHA/完整解码、取消恢复/drain通过；crop-only输出字节不变。s0手工ROI MAE2.2925→1.9462、变化均值0.1993→0.2225更接近官方0.2448，但相关0.9821→0.9341下降，记录混合结果，不判质量通过或直接晋级。后续分离同crop输入的网络/动作输出。证据 evidence/media/liveportrait-official-mask-20261008.json。
+
+- 2026-10-08 LivePortrait额外侧向源图s8/d0：官方FP32基线99415、正式v2 Host24915、官方裁剪59940均exit0。官方/Host主视频78帧562x1000，Host四项媒体取回SHA/逐字节对照直接Worker及全解码通过；当前源码SHA、身份与调度completed4归零、取消恢复通过。官方嘴部比例0.00367不触发归一化；ffprobe缺失提示保留，独立确认d0无音轨。手工ROI MAE2.7299、变化相关0.9773、均值0.7277 vs官方0.8187；六帧抽查动作对应但嘴眼/幅度仍不同，未判质量通过。仅新增未参与调试的侧向绘画源，同一驱动；真实VideoTask/签名安装发布待完成。证据 evidence/media/liveportrait-heldout-s8-20261008.json。
+
+- 2026-10-08 LivePortrait正式适配器支持v2 checkpoint：必须source_crop=yunet203且存在固定SHA landmark.onnx，v1仍保留旧source裁剪；stop释放关键点会话。33测试通过。Spark Host6678 exit0，预裁剪FP32/BF16、auto FP32及图片四项Host输出与直接Worker逐像素一致，三视频各78帧，取回SHA/全解码及当前adapter/Host源码摘要通过；身份转发、调度completed4归零、取消恢复/drain通过。开发v2清单补齐landmark摘要，未改旧快照。仍未真实认证VideoTask/广泛质量/签名安装发布。证据 evidence/media/liveportrait-dynamic203-host-20261008.json。
+
+- 2026-10-08 LivePortrait动态203隔离Worker10474 exit0：标准依赖导出补齐onnxruntime1.30.0及闭包，43源码SHA一致；FP32/BF16两视频各78帧和图片取回SHA/全解码通过，字节精确复现先前固定203裁剪实验，401/取消499恢复/drain503/resume通过。构建器65回归测试通过（非203专项）；首次Worker缺ORT与导出探针源码布局失败均保留。仅动态source-image候选，未切换生产adapter，auto driving路径仍旧；Host/VideoTask、更多素材质量、签名安装发布仍待完成。证据 evidence/media/liveportrait-dynamic203-worker-20261008.json。
+
+- 2026-10-08 LivePortrait203动态模块完成：新增liveportrait_landmark203.py，固定checkpoint SHA、BGR/检测框/有限203点检查，复用原始crop_image几何；六项输入/输出拒绝测试通过。Spark42214 exit0，六图动态crop像素与仿射矩阵逐元素精确复现上一官方203实验，未加载InsightFace模块；首轮14526源码命名空间遮蔽失败保留。标准Runtime exporter现导出43源码（新增原始crop/rprint、utils入口及动态模块），本地清单SHA匹配实机。尚未接入正式adapter或在导出Runtime Worker验收，不计签名安装/发布或额外质量通过。证据 evidence/media/liveportrait-dynamic203-20261008.json。
+
+- 2026-10-08 LivePortrait替代关键点路径17396/70792 exit0：候选仅YuNet检测框固定1.5倍方形初始化+LivePortrait原始203点模型，未使用InsightFace权重（官方oracle仍使用）。六图SHA与前轮一致、关键点有限，尺度相对官方0.9808–1.0256；固定s0裁剪Worker两视频各78帧和图片SHA/完整解码通过，取消恢复/drain通过。手工ROI MAE2.2925、变化相关0.9821、变化均值0.1993 vs官方0.2448，仍非质量通过。203实际CPU，视频为预捕获crop，不计动态Runtime集成；后续实现动态路径并做额外姿态/遮挡验证。官方模型卡MIT及固定LICENSE已记录，发布仍需保留声明并检查精确资产；未发布。证据 evidence/media/liveportrait-yunet203-candidate-20261008.json。
+
+- 2026-10-08 LivePortrait106裁剪诊断闭环：固定官方源码LICENSE明确InsightFace模型仅限非商业研究，未发现额外商业授权，因此106权重不纳入正式Runtime/Package；证据 liveportrait-crop-license-20261008.json。独立捕获30022/Worker98567均exit0，仅将固定s0的YuNet+106研究裁剪及仿射送入已有Worker，两视频各78帧和图片取回SHA/完整解码通过，取消恢复/401/drain503/resume通过。对官方FP32手工面部ROI MAE2.301、变化相关0.9789、变化均值0.1932 vs官方0.2448；六帧转头/微笑更接近但幅度仍有差异，不计广泛质量通过。没有动态106 Runtime集成或签名发布；继续评估具有合适资产许可的替代关键点路径。证据 evidence/media/liveportrait-yunet106-video-20261008.json。
+
+- 2026-10-08 LivePortrait官方裁剪复用前六图几何门禁：65617 exit0证明直接五点+官方scale2.3会相对106点基线放大1.980–2.186倍，s0明显裁掉额头，因此拒绝直接加入Runtime。替代诊断94800 exit0保留YuNet检测框，再用固定官方2d106模型细化后调用原始crop_image；六图尺度倍率0.9881–1.0026，s0抽查看齐官方构图，源素材SHA跨两次一致。仍仅几何候选，未动画质量/通用场景/正式Runtime发布；新增106点依赖及分发条款需在Package发布前解决，尚未纳入生产。证据 evidence/media/liveportrait-crop-geometry-20261008.json。
+
+- 2026-10-08 LivePortrait剩余幅度诊断：官方源图嘴部比例0.0049279<0.03，本例不触发lip normalization；相对旋转/表达/尺度/位移主公式核对一致。官方源图裁剪/对应仿射捕获40703、固定源图单变量Worker57654均exit0，视频78帧SHA/解码通过；面部ROI MAE2.9152→2.2965，时序均值当前0.1502→0.1953更接近官方0.2448，相关0.9829，仍不能当完整质量通过。已定位当前源图使用ArcFace五点模板，官方采用扩展landmark几何；固定官方crop.py原生支持5点，可在保持YuNet检测器的条件下验证复用，剩余合成mask差异亦待分离。仅固定样例实验，未硬编码到产品。证据 evidence/media/liveportrait-source-crop-ablation-20261008.json。
+
+- 2026-10-08 LivePortrait正式裁剪合同38021 exit0：39标准导出源码下预裁剪FP32、预裁剪BF16裁剪、自动裁剪FP32及图片四项Worker/Host成功；取回三个视频各78帧及图片逐像素一致，预裁剪输出字节精确复现实验，auto输出字节精确保留旧自动流程。current adapter/Host SHA、请求身份、调度completed4归零、取消恢复及drain通过。driving_crop_mode默认pre_cropped，普通原始视频调用方必须显式auto；Mac默认不变。此为未签名Runtime/身份fixture，不代表广泛未裁剪视频质量、剩余动作幅度/源图裁剪差异、真实产品VideoTask或签名安装发布完成。证据 evidence/media/liveportrait-framing-contract-20261008.json。
+
+- 2026-10-08 LivePortrait驱动输入合同正式实现：CUDA视频参数driving_crop_mode默认pre_cropped（已裁剪对齐的人脸驱动，原帧送网络，与官方默认一致），普通未裁剪视频显式auto保留逐帧检测/追踪/对齐；不猜测输入类型。图片编辑拒绝此视频参数，非法值400，metadata记录requested/applied。共享Mac Worker仅提取可重写_driving_crop钩子，默认行为不变；28测试通过含默认隔离、参数边界、原帧不重检测、metadata和自动路径分派。标准导出39文件实机逐SHA通过，38021正在独立Runtime进行双路径Worker/Host实机验收。尚未质量/签名安装发布。证据 evidence/media/liveportrait-framing-contract-20261008.json。
+
+- 2026-10-08 LivePortrait驱动预处理单变量实验27520 exit0：独立实验Package仅将prepare_driving(driving_crop)改为prepare_driving(frame)，仍用固定来源、标准导出的未签名stitch修复Runtime，未修改正式源代码或Runtime。两种视频各78帧SHA/完整解码，图片/取消恢复/drain通过。对同一官方预裁剪d0素材，面部ROI时序变化相关0.5662→0.9767、MAE4.1624→2.9152，表明逐帧重新对齐是此样例的主要时序差异来源；运动变化均值仍官方0.2448 vs实验0.1502，不能把模式相关当幅度/质量通过。下一步明确区分预裁剪/普通驱动视频合同并保留自动裁剪能力，继续分离源图裁剪与动作公式差异。仅实验探针，未产品化/发布。证据 evidence/media/liveportrait-driving-ablation-20261008.json。
+
+- 2026-10-08 LivePortrait官方stitch修复标准导出39源码逐SHA校验，相比旧导出仅CUDA pipeline变化；独立Runtime的Worker/Host86585 exit0，FP32视频、BF16裁剪视频、图片及取消/drain恢复通过。Host三个媒体取回独立逐像素一致，两视频各78帧，源码/请求身份/调度completed3归零通过。对照官方FP32手工面部ROI MAE4.3493→4.1624，但时序变化相关0.5640→0.5662基本不变；6帧放大抽查保留，不宣称质量通过，下一步独立驱动帧预处理实验。未正式签名安装发布。证据 evidence/media/liveportrait-stitch-host-20261008.json。
+
+- 2026-10-08 LivePortrait CUDA独立override stitching，移除共享Mac公式额外减去source/source残差，按固定官方wrapper直接加预测exp与xy平移；未改Mac共享实现。Spark真实固定stitching权重+原始官方stitching方法50532 exit0，64组含identity/扰动关键点逐元素精确（max error0），原公式最大差0.150612。回执三方SHA核对当前pipeline、官方归档wrapper及无损权重通过。前两次导入src遮蔽/缺Host路径失败保留，补明确可信路径后通过；Torch12.1设备vs12.0构建范围警告记录。仅FP32局部算法oracle，未重导出Worker/全视频质量/签名发布；驱动裁剪仍待独立处理。证据 evidence/media/liveportrait-official-stitch-20261008.json。
+
+- 2026-10-08 LivePortrait官方对照诊断：取同一s0/d0的官方FP16、补跑官方FP32（52277 exit0）及当前CUDA FP32三组78帧，全解码/官方FP32输出SHA通过。6帧面部放大抽查转头/微笑大致对应，无所抽查帧明显撕裂；固定手工ROI[220,20,430,280]官方FP16↔FP32变化相关0.9727、MAE0.9377，官方FP32↔当前FP32变化相关0.5640、MAE4.3493，排除单纯精度解释但不视为姿态精度指标。代码确认当前共享stitch减去network(source,source)，官方直接加network(source,driving)；当前驱动视频逐帧YuNet检测/平滑/对齐，官方默认不重新裁剪驱动。尚未分离两项贡献，质量不记通过；下一步CUDA独立官方stitch oracle及裁剪对照。对照图/逐帧指标 artifacts/liveportrait-official-comparison-r1；证据 evidence/media/liveportrait-official-comparison-20261008.json。
+
+- 2026-10-08 LivePortrait官方端到端基线48096 exit0：固定官方commit9b294b3d、原始checkpoint82a4fa67及3辅助模型共8文件实机SHA通过，213官方源码/素材逐文件对照固定归档一致。未经替换的官方Pipeline默认半精度生成s0/d0共78帧，推理18.11秒；主视频600x704、拼接视频1536x512，取回SHA/字节及全帧解码复核。动画Torch CUDA，检测/106点/landmark三个ONNX会话实际CPU，已记录版本和pip freeze；不称全CUDA。首次缺Torch/tyro/ORT导入失败保留，独立环境显式依赖路径补齐。仅官方基线，尚未与现有Mac共享动作/合成CUDA路径进行质量对照；辅助InsightFace资产未纳入Package分发。证据 evidence/media/liveportrait-official-baseline-20261008.json。
+
+- 2026-10-08 LivePortrait当前Host实机3257 exit0：ModelInvocationService/PackageModel/调度器经UDS代理使用上游KlingTeam/LivePortrait，FP32视频、BF16裁剪视频及图片编辑三例成功；本地独立逐帧解码两段各78帧，所有视频/图片像素与直接Worker一致，适配器及三份Host源码SHA匹配。actor/app/session/request-id、Worker成功记录与completed3/queued0/running0通过。仅发现/身份fixture及未签名Runtime；产品VideoTask、正式安装发布及官方端到端动作/合成质量基线尚未完成。已固定官方pipeline使用Cropper/FaceAnalysisDIY/HumanLandmark，与当前Mac共享动作/合成及YuNet路径有差别，不以此Host验收替代官方质量基线。证据 evidence/media/liveportrait-host-20261008.json。
+
+- 2026-10-08 LivePortrait生命周期修复实机82738 exit0：FP32视频、BF16裁剪视频、FP32图片三例SHA取回校验及全帧解码通过；取消约0.106秒返回、随后图片恢复、401/drain503/resume通过，adapter SHA与本地一致。10项单测覆盖实际stop/start并发及重复ID；HTTP drain/resume不能替代该生命周期边界，未扩大声称。仍为未签名Runtime Worker，完整Host工作流、官方质量基线和发布待完成。证据 evidence/media/liveportrait-host-lifecycle-20261008.json。
+
+- 2026-10-08 LivePortrait修复Host上游KlingTeam/LivePortrait→canonical映射、重复request ID覆盖取消event、stop后start无法恢复准入三个问题；start/stop独立生命周期锁保证原生owner退出前不重开。10项测试通过，含重复取消event保留、停止/启动并发及transport取消等待。Spark82738正在liveportrait-lifecycle-r3独立目录进行FP32/BF16视频、图片和取消恢复回归，未声明实机通过。证据 evidence/media/liveportrait-host-lifecycle-20261008.json。
+
+- 2026-10-08 VoxCPM2官方BF16长文本29061及固定官方Qwen3-ASR内容85938均exit0：中文47.68秒/英文43.04秒音频，推理44.07/38.87秒，RTF0.924/0.903；峰值torch allocated6.49/6.36GiB，均非整机总显存。两段全文标点/大小写归一化后精确匹配，取回SHA/帧数/48kHz及内容独立复核通过，模型close完成。限两个自然段原生引擎证据，非长文Host/音色相似度/主观风格/正式签名安装发布。证据 evidence/media/voxcpm2-original-long-20261008.json。
+
+- 2026-10-08 VoxCPM2混合Host87942 exit0：当前ModelInvocationService/PackageModel/调度器经UDS代理，4-bit→BF16→8-bit→BF16每档JSON合成及multipart参考克隆共8例；取回WAV与直接Worker对照全部逐采样一致，三份Host源码SHA核对当前checkout一致。8次actor/app/session/request-id调度参数及Worker成功记录通过，completed8/queued0/running0，容器已删除。仍为发现/身份fixture、未签名Runtime，非认证用户/签名安装发布。官方BF16中英文长文本29061正在独立目录推理。证据 evidence/media/voxcpm2-mixed-host-20261008.json。
+
+- 2026-10-08 VoxCPM2混合HTTP Worker96943 exit0：同一隔离Worker原始BF16四例与官方基线精确，4-bit及8-bit后切回原始均与暖态对照逐采样一致；量化输出保持既有基线门限（4bit最大1LSB/RMSE0.0347，8bit精确）。取消499/恢复、drain503/resume精确、请求归零及容器删除通过。本地取回WAV独立复核，Runtime清单engine SHA匹配当前修复。完成CUDA设置泄漏修复及原生/HTTP门禁；仍未混合Host/认证用户整链、广泛音色质量、正式签名Runtime安装或发布。证据 evidence/media/voxcpm2-variant-switch-20261008.json。
+
+- 2026-10-08 VoxCPM2量化引擎修复CUDA全局设置泄漏：正常close及构造失败均恢复原workspace、TF32、cudnn和确定性/warn-only设置，重复close幂等；33项测试通过。Spark原始→4-bit→原始92884及8-bit26871均exit0，全部设置恢复，取回两档WAV与未取消暖态对照逐采样一致；首冷输出已知11LSB漂移仍单列。标准导出44文件逐SHA通过，独立mixed Runtime保留旧制品；96943正在HTTP混合切换/取消/drain验收，未声明正式安装或发布。证据 evidence/media/voxcpm2-variant-switch-20261008.json。
+
+- 2026-10-08 VoxCPM2同进程原始→4-bit→原始诊断86806 exit0，但质量门禁失败：量化close后CUBLAS workspace/确定性/TF32设置仍残留，BF16输出长度92160→99840。保留原始失败回执；43068正在独立目录验证恢复进程设置是否足够，未据此宣布修复或发布。证据 evidence/media/voxcpm2-variant-switch-20261008.json。
+
+- 2026-10-08 VoxCPM2原始BF16隔离HTTP85810 exit0：独立Runtime合入44标准源码，四种输出与官方基线取回逐采样一致；401、HTTP-running取消499、暖态恢复精确、drain503/resume暖态精确、活动归零及容器删除通过。首轮继承量化探针CUBLAS_WORKSPACE_CONFIG导致长度差异，删除该额外环境后四例精确；次轮误将同进程恢复与首次冷输出比较产生已知11LSB差异，均保留。未签名Runtime/Host安装；同服务量化→原始切换可能继承CUDA全局设置，仍需进程隔离/切换验收。证据 evidence/media/voxcpm2-original-http-20261008.json。
+
+- 2026-10-08 VoxCPM2原始BF16 Worker准备：同服务增加固定bf16身份与官方revision，上游别名沿既有映射；SpeechEngine按variant独立选择官方原始引擎，单测证明不会落入Mac量化loader。标准Runtime exporter加入原始engine及权重锁；82项适配器/构建器测试通过。Spark独立标准源码导出44文件逐SHA通过；初次导入缺ACE依赖锁的失败保留并补齐输入后恢复，未覆盖旧Runtime。尚未BF16 HTTP/Host推理、完整Runtime签名安装或发布。证据 evidence/media/voxcpm2-original-worker-preparation-20261008.json。
+
+- 2026-10-08 VoxCPM2新增独立原始官方引擎，逐文件锁验证、官方from_pretrained、本地离线入口、无Mac padding转换；保留请求前向检查与输出独占/失败清理/资源释放。实机25272 exit0，四例PCM与官方基线逐采样一致；第3次真实forward hook取消清除partial，恢复与未取消暖态对照逐采样一致，close清模型与hooks。首次输出与未取消重复输出均存在相同最大11LSB/RMSE1.037漂移，初两轮严格失败保留；不是取消特有差异，不宣称冷暖完全确定性。取回WAV独立对照通过。尚未Worker/Host或签名Runtime接入。证据 evidence/media/voxcpm2-original-engine-20261008.json。
+
+- 2026-10-08 VoxCPM2官方原始权重四例内容回转录18537 exit0：固定官方Qwen3-ASR1.7B@7278e1e7逐音频SHA核对，中英文/克隆/风格四例标点大小写归一化后全部匹配正文，style指令未被读出；本地独立重算匹配与WAV SHA通过。只证明短例内容，不证明音色相似度/自然度/风格遵从。代码核对确认当前量化loader修改VAE padding以复现Mac，官方原始Worker须单独沿用未经该修改的官方加载入口。证据 evidence/media/voxcpm2-official-content-20261008.json。
+
+- 2026-10-08 VoxCPM2原始官方基线推进：匿名固定openbmb/VoxCPM2@32279effe8c19989596f05d353d1447f51d9e915，8文件4,960,730,347字节完整哈希/上游LFS SHA通过；传Spark后再次逐文件哈希，官方源码逐.py与已锁归档f0c787f0匹配。未经修改VoxCPM.from_pretrained本地离线入口96066 exit0，官方BF16主模型/FP32 VAE，中英文、reference克隆、style四例生成48kHz有限音频，2.38–3.09秒，模型加载7.16秒，GPU峰值allocated最高5,919,793,152字节。取回四WAV独立SHA/帧数/采样率验证。未使用Mac仿射解包器；这是官方原始权重基线，不是内容、音色质量或Worker/Host安装发布通过。证据 evidence/media/voxcpm2-official-baseline-20261008.json。
+
+- 2026-10-08 VoxCPM2 Host18253 exit0：4-bit/8-bit各自JSON合成与multipart参考音频克隆四例全部成功，经当前ModelInvocationService/调度器/UDS代理；Host音频与对应直接Worker PCM差异均在1LSB、RMSE<0.1LSB门限内，请求ID在Worker记录成功，调度completed4/queued0/running0。两档取消恢复、drain/resume亦通过；本地取回核对adapter与三份Host源码SHA。仍为既有量化checkpoint、发现/身份fixture，未完成原始官方权重质量基线或签名安装。证据 evidence/media/voxcpm2-host-20261008.json。
+
+- 2026-10-08 VoxCPM2 Host身份合同修复：Host代理发送上游ID而适配器仅接受canonical，现将两档固定mlx-community/VoxCPM2-4bit/8bit映射到对应canonical，未知上游404及固定checkpoint revision校验保留。14项测试通过。Spark 18253正在新voxcpm2-host-r1目录进行两档JSON TTS/参考音频multipart Host验收，尚未记实机通过。此为既有量化模型调用合同，不替代原始官方checkpoint质量基线或签名安装。证据 evidence/media/voxcpm2-host-20261008.json。
+
+- 2026-10-08 SenseVoice OOM错误合同修复：识别torch.OutOfMemoryError及实际CUDA13 AcceleratorError精确OOM前缀，持有请求锁清空模型/VAD引用和缓存后返回503 resource_exhausted；不自动重试，499取消与其他错误不重分类。12项测试通过（分配器OOM、AcceleratorError OOM、非OOM拒绝重分类及下一请求恢复）；Spark正常中英文/长音频/静音/取消恢复/Host整链83867 exit0，源码SHA核对、身份与调度归零通过。错误路径为注入测试，未故意耗尽设备内存，首次真实OOM根因及真实OOM恢复仍未验证。证据 evidence/media/sensevoice-oom-handling-20261008.json。
+
+- 2026-10-08 SenseVoice Host调用4667 exit0：当前ModelInvocationService/调度器/UDS代理到隔离CUDA Worker成功，完整Host结果与直接Worker结果取回逐对象一致，actor/app/session/request-id转发、请求成功记录、调度queued/running归零通过；三份Host源码SHA与当前本地一致。首轮67953在AutoModel加载GPU时CUDA OOM，保留日志，重跑成功但原因未确定；结束时114Gi可用且无GPU计算进程，不声明OOM已修复。仍为发现/身份fixture，非认证用户整链或签名安装。证据 evidence/media/sensevoice-host-20261008.json。
+
+- 2026-10-08 SenseVoice生命周期缺口修复：stop先关闭准入并取消活动/排队请求，start/stop以独立生命周期锁串行；重复request ID在覆盖取消event前409拒绝。8项测试通过，含原event保留、排队取消、stop503及start恢复。Spark全新隔离目录实机64416 exit0，中英文5例、47秒8段长音频、长静音、取消后恢复、drain503/resume及活动请求归零通过，adapter SHA取回核对一致。仍是开发Runtime fixture，非正式Host/签名安装发布。证据 evidence/media/sensevoice-lifecycle-20261008.json。
+
+- 2026-10-08 详细转录长音频签名源码压力验收5267 exit0：质量档处理180秒重复双声线音频耗时67.81秒，16段474词，五个36秒周期均覆盖、全部词时间边界与文本覆盖通过；排除69边界/静音词后，按全局标签置换405/405内部词符合已知声源。取回独立复核上述指标及13个签名源码SHA。活动请求事件清空、stop503和start准入恢复通过，结束后GPU进程查询为空。此为合成重复素材/原生适配器压力，非真实会议DER/准确率、长音频Host或正式签名Runtime安装。证据 evidence/media/detailed-transcription-long-audio-20261008.json。
+
+- 2026-10-08 详细转录1.7B质量档签名代码实机：Spark先验签后解包0.1.0候选，13源码SHA与签名来源清单一致；官方Qwen/NeMo基线推理55.73秒，Studio→Host→隔离Worker重跑71007 exit0耗时54.38秒（36秒合成输入，4段94词）。取回独立对照原文/所有时间及speaker字段精确一致，仅官方基线开启而Studio合同关闭的speech_rate字段按选项区分。401/403、请求身份转发、调度/活动请求归零及容器删除通过。保留基线缺阶段路径、误用compact段数、语速选项比较三项探针失败；非真实会议质量/签名Runtime安装或发布。生产Runtime上限匿名重查仍4GiB。证据 evidence/media/detailed-transcription-package-quality-20261008.json。
+
+- 2026-10-08 新增 packages/ai2apps-model-detailed-transcription-cuda 正式源码候选0.1.0：四个模型绑定已发布distribution，保留原始NVIDIA许可/下载同意，CUDA平台及双阶段Runtime能力依赖，13个源码文件记录逐SHA来源；未改旧Runtime能力声明。标准签名构建成功，制品115075字节SHA256 4547363ea6ebe7f2319ead55bc7f05be0970792e3c20052a7a5bef54fc24566f，独立验签、源码一致性和无原生/权重载荷检查通过，27项adapter/engine/process测试通过（Mac进程退出附带Metal环境警告）。模型卡内存/评分明确为估算；仅短合成样本冷启动计时。尚未真实Package审计安装/发布，需先完成并发布具备detailed-transcription能力的Runtime，不能以未签名Runtime fixture替代。证据 evidence/media/detailed-transcription-package-candidate-20261008.json。
+
+- 2026-10-08 用户明确授权四项distribution的Dev Cookie后，标准脚本确认既有Publisher/key有效且无重复提交，逐项提交、审核、发布完成；Index 118–121。四项均通过无Cookie Local trust公网回读，签名Index 121、manifest摘要及envelope精确JSON一致。共27文件/8,894,997,200字节/1063pieces；本批Cookie授权已消耗完毕。仅完成权重分发，详细转录Runtime/模型Package签名安装、认证用户整链及广泛准确率验收仍待完成。证据 evidence/media/detailed-transcription-distributions-publication-20261008.json。
+
+- 2026-10-08 详细转录四组checkpoint分发标准构建15233 exit0，既有Publisher精确Keychain记录派生指纹匹配，四envelope独立验签通过：27文件/8,894,997,200字节/1063pieces，含原始Qwen0.6B/1.7B/aligner和Sortformer固定双源。均未Registry发布；Installation查询exit1要求active user session，已发本批四个精确distribution ID的Dev --browser-live Cookie授权请求，尚未读取Cookie。摘要和receipt在 evidence/media/detailed-transcription-distributions-signed-20261008.json。
+
+- 2026-10-08 Sortformer镜像全量回读33868 exit0：固定MS提交38b9adca四文件匿名下载SHA/size全部匹配，原始471,367,680字节nemo耗时243.40秒，LICENSE/NOTICE/README亦验证；生成真实双源固定版本distribution spec，未替代官方权重。四组详细转录distribution标准签名15233已启动，使用既有Publisher精确Keychain记录，无Cookie读取/Registry发布。证据 evidence/media/detailed-sortformer-mirror-verification-20261008.json。
+
+- 2026-10-08 正式checkpoint目录传参实机84668 exit0：Studio经Host到隔离Worker成功从snapshot目录解析固定.nemo，36.72秒；取回后完整result与上一点词修复候选逐对象相同。13项控制层测试通过。镜像四文件已上传固定提交38b9adca，匿名全量回读33868仍运行，不能先记下载校验通过；尚未Registry distribution签名/发布或真实Package安装。证据 evidence/media/detailed-transcription-checkpoint-directory-20261008.json。
+
+- 2026-10-08 Sortformer镜像：公开搜索15仓库及两个固定候选均未发现相同原始NeMo字节。按原始NVIDIA许可/署名准备4文件；首次创建上传被自动审批拒绝，随后用户明确批准确切目的地/载荷，59529 exit0创建并上传ai2apps/diar_streaming_sortformer_4spk-v2.1，固定提交38b9adca95005161033e9de177096b21a850b0e5，匿名全量回读33868进行中。另修复正式Host传checkpoint目录而NeMo要求archive文件的路径合同：目录内解析固定nemo文件，缺失503；13项控制层测试通过，尚未该增量安装实机验收。证据 evidence/media/detailed-sortformer-mirror-publication-20261008.json。
+
+- 2026-10-08 详细转录发布准备：按发布手册先准备checkpoint distribution，不把未发布占位ID写入service。固定Qwen compact/quality/aligner官方ModelScope提交4ce9cc72/a04930db/cf1c5016，26文件元数据与HF锁一致；标准builder有界字节验证37230 exit0，重新读取8,423,629,520字节并生成1006全局pieces，全部文件SHA匹配，Safetensors头确认BF16。新增三个独立distribution spec，尚未签名/发布。Sortformer同名官方MS仓库404，镜像/原NVIDIA许可分发待解决，不伪造源。证据 evidence/media/detailed-transcription-distribution-sources-20261008.json 与 detailed-transcription-distribution-bytes-20261008.json。
+
+- 2026-10-08 点词归属修复实机36443 exit0，Studio转录36.93秒。独立逐字段审计确认仅6.09/25.06秒两个零时长词speaker_1→speaker_0，其余全部文本、时间戳及segment/word字段不变；已知合成声音区域内部84词误归属2→0，另12边界/静音词排除。21项测试通过；不等于真实会议DER/准确率或签名安装发布。证据 evidence/media/detailed-transcription-point-speakers-20261008.json。
+
+- 2026-10-08 详细转录质量诊断发现两个官方零时长词（6.09/25.06秒）错误继承整段多数speaker，而该时间点位于官方speaker_0区间。共享assign_speakers新增可选point_word_speakers，CUDA开启：仅唯一包含该点的说话人可覆盖，半开区间处理边界，歧义维持既有fallback；不伪造时长，Mac默认不变。21项测试通过；Studio实机36443运行中，尚未计修复验收完成。修复前已知合成声音区域内部84词中2词误归属，排除12边界/静音词；不是DER。证据 evidence/media/detailed-transcription-point-speakers-20261008.json。
+
+- 2026-10-08 Studio组合76260 exit0：先建立相同meeting-energy VAD的官方阶段基线（96词，37.18秒），再完整重跑Studio broker→音频归一化→模型选择→Host调度/代理→隔离CUDA Worker（37.77秒）。文本、全部segment及词时间戳取回独立对照完全一致；未声明能力403、双speaker/词覆盖、服务器生成request/session身份、Worker成功记录和调度归零通过。前两轮失败保留；不同VAD分段造成的识别差异仍需质量评估，不能用一致性替代准确率。挂载、发现、principal为fixture，无真实用户会话API、签名安装/发布声明。证据 evidence/media/detailed-transcription-studio-20261008.json。
+
+- 2026-10-08 Studio详细转录组合验收：首次4226因探针动态加载子模块触发循环导入而失败，改为完整当前Studio源码正常导入。90574真实调用完成，挂载能力403拒绝、音频归一化、模型选择及调度释放已有回执，但将默认meeting-energy VAD输出与none基线比较的断言失败；保留两次失败，不计整体验收通过。76260串行建立相同VAD设置的官方阶段组合基线并复跑Studio探针，避免把不同输入分段差异误判为CUDA实现错误。证据 evidence/media/detailed-transcription-studio-20261008.json。
+
+- 2026-10-08 Host调用71207 exit0：当前ModelInvocationService、scheduler及Supervisor代理经真实Docker Worker完成36秒双声线转录，38.42秒，文本和全部segment/词时间戳与保留基线一致。固定官方ID映射实机生效；actor/app/session/request-id传递匹配，Worker请求记录succeeded；调度completed1/queued0/running0，容器清理确认。回执取回独立复核通过。模型发现与身份仍为fixture，无用户会话Studio整链、签名安装/发布或广泛质量声明。证据 evidence/media/detailed-transcription-host-invocation-20261008.json。
+
+- 2026-10-08 详细转录Host集成发现并修复ID合同缺口：Host multipart代理将内部ID转为官方upstream_id，CUDA适配器仅接受canonical导致调用失败；现仅映射固定compact/quality官方ASR ID，内部helper和未知ID仍404，checkpoint版本校验保留。12项控制层测试通过。真实Host调用71207启动，覆盖当前ModelInvocationService/调度器/Supervisor代理及actor/app/session/request-id；仍未计实机通过。证据 evidence/media/detailed-transcription-host-invocation-20261008.json。
+
+- 2026-10-08 详细转录标准Docker HTTP验收59797 exit0：内嵌Runtime+正式工厂经真实multipart上传36秒双声线音频，文本及全部segment/词时间戳与engine-r2一致，36.66秒。未认证401、运行请求取消499、active_requests归零、drain503及resume后完整恢复结果一致；容器清理确认。网络none、只读根、cap-drop ALL、no-new-privileges、UID1000均实查。取回结果独立复核通过。仍是未签名开发fixture，不等于用户会话Host整链/安装发布或广泛质量；取消观测为HTTP running，精确GPU阶段另有证据。证据 evidence/media/detailed-transcription-http-20261008.json。
+
+- 2026-10-08 完整开发Runtime链路72949 exit0：独立复制既有Runtime并合并标准导出层，内嵌Python -I经正式stage_launcher执行Qwen/Sortformer，结果与官方阶段基线对象精确一致（29.11/6.55秒）。正式create_adapter组合验收77986 exit0，36秒双声线输入耗时36.43秒，文本/全部segment及94词时间戳与engine-r2一致；events清空、stop503、start准入恢复通过。首轮工厂探针漏加正式启动器提供的core路径而NumPy导入失败，修正探针后重跑，未改生产算法。独立回执复核通过；仍是未签名开发副本，非HTTP/Host整链、安装发布或广泛质量。证据 evidence/media/detailed-transcription-runtime-tree-20261008.json。
+
+- 2026-10-08 导出层真实推理60652 exit0：-I -S隔离下Qwen中文文本/词时间及Sortformer双声线分段与原官方结果对象完全一致，取回后独立逐对象复核；含冷进程耗时29.64/6.34秒。证明标准导出依赖可推理，仍不等于完整Runtime stage launcher链路、签名安装或生产Host通过。证据 evidence/media/detailed-transcription-export-inference-20261008.json。
+
+- 2026-10-08 导出层实际推理60652启动：Python -I -S只加入标准导出的Qwen/NeMo层与固定核心，执行导出的stage入口，逐例比较中文文本/词时间与双声线分段的原始官方基线。当前运行中，不计推理通过；仍不是完整Runtime、stage launcher整链或签名安装。证据 evidence/media/detailed-transcription-export-inference-20261008.json。
+
+- 2026-10-08 标准双依赖导出81998 exit0（290分发条目），强化导入64690 exit0：Python -I -S禁用site初始化，仅显式导出profile与既有固定核心，Qwen/ForcedAligner及NeMo Sortformer类导入通过；独立检查sys.path无开发Qwen/NeMo或Host venv site。79项构建器/配置测试通过。仍是依赖层开发导出，尚无导出层实际推理、完整Runtime包/签名/安装或发布。证据 evidence/media/detailed-transcription-runtime-export-20261008.json。
+
+- 2026-10-08 标准CUDA Runtime构建器加入详细转录双层导出：固定Qwen100/NeMo190完整依赖锁逐版本验证，使用既有_copy_framework/清单路径导出，两层成功后才写stage/profile/entrypoint映射，保持主service profile；capability需成对显式输入，当前发布清单未新增能力。79项构建器/配置测试通过。独立目录runtime-profile-export-r1真实导出81998运行中，不覆盖已有Runtime，不是包构建/签名或安装通过。证据 evidence/media/detailed-transcription-runtime-export-20261008.json。
+
+- 2026-10-08 详细转录Runtime阶段绑定源码完成：framework-profiles/v1增加可选service/stage依赖层和entrypoint解析，均验证Runtime路径/符号链接边界；stage_launcher强制python -I，仅运行Runtime声明入口。适配器create_adapter通过执行Runtime定位两个必需阶段，不接受开发venv或payload目录。31项组合回归及新增工厂测试通过，最终19项专项通过，含真实隔离子进程抵御PYTHONPATH干扰。尚未导出依赖层、写构建元数据、构建/签名/安装Runtime；不能声明发布可用。证据 evidence/media/detailed-transcription-runtime-stages-20261008.json。
+
+- 2026-10-08 九格式官方ASR/对齐11905 exit1（严格文本比较）：9例均词覆盖及时间结构通过，8例逐字匹配；MP3仅将nine thirty转为9:30，完整原文人工复核语义一致。保留失败断言及原始回执，不重写输出、不把8/9改称逐字全过；另存semantic-review。耗时32.43秒含单次冷加载。仅短英文样例，不替代广泛质量或认证HTTP/Host。证据 evidence/media/detailed-transcription-nine-formats-20261008.json。
+
+- 2026-10-08 九格式识别内容验收11905启动：复用Spark已验证共享Host解码输出及逐SHA，官方Qwen compact/ForcedAligner一次加载处理9例，逐例检查参考文本、词覆盖和有限时间边界。当前运行中，尚未计通过；不替代认证Host/HTTP或广泛质量。证据 evidence/media/detailed-transcription-nine-formats-20261008.json。另确认签名Runtime现有framework profiles按service选择单层，详细转录双阶段依赖仍需标准机制接入，未用开发venv冒充发布Runtime。
+
+- 2026-10-08 详细转录Host接入缺口修复：Studio原写死MLX profile ID，现按compact/quality选择已就绪的既有Mac或CUDA provider，并检查内部checkpoint；preferred profile同样支持CUDA，保留同时就绪时现有Mac优先顺序。50项Studio测试通过。确认九格式由Host既有PyAV解码，未重复Worker解码器；Spark共享源码9格式转16kHz单声道PCM16、损坏输入拒绝及时长限制通过。仍非9格式识别质量/认证Host整链，解码to_thread取消也未宣称受模型进程取消覆盖。证据 evidence/media/detailed-transcription-host-input-20261008.json。
+
+- 2026-10-08 详细转录原生Worker控制层65426 exit0：真实ModelWorkerContext/Request调用36秒样例，输出文本/全部segment和词时间戳与engine-r2精确一致；事件清空、stop503拒绝、start准入恢复通过，耗时37.98秒含冷加载。实际候选SHA2e7e09bf已记录；输入类型校验后续增量17项单测通过。仍非HTTP/Host、多格式解码或签名安装通过。证据 evidence/media/detailed-transcription-adapter-20261008.json。
+
+- 2026-10-08 详细转录Worker控制层cuda_detailed_adapter.py实现固定checkpoint校验、串行执行、重复409、停止503、活动/排队取消499、stop等待清理与start恢复；transport任务取消亦等待底层线程回收后释放锁。17项专项测试通过，参数错误提前拒绝。原生ModelWorkerContext/Request真实CUDA验收65426运行中；该候选仅早于最后输入类型校验，校验增量单测通过。尚需9格式解码、签名Runtime解释器绑定、HTTP/Host及安装发布；证据 evidence/media/detailed-transcription-adapter-20261008.json。
+
+- 2026-10-08 词覆盖修复后完整组合引擎64280 exit0：36秒样例输出94词，两个片段规范化文本与词序列均完整一致，四个官方零时长点保留并计数，双speaker/时间界限/语速结构通过，含冷加载37.48秒。10项测试通过。此证明输出不再丢词，不等于人工标注对齐准确性或广泛质量；Worker/Host/签名发布仍待做。证据 evidence/media/detailed-transcription-word-coverage-20261008.json。
+
+- 2026-10-08 词覆盖根因确认：原始官方Qwen两段75/19词均完整，四个the/the/a/the时间点相等（1.12/6.08/21.20及第二段1.36秒）；共享clip_segments删掉了这些词。新增可选preserve_point_words保留界内原始点，CUDA开启，Mac默认行为不变；不伪造时长、仍删除界外区间。10项测试通过，含固定官方输出回放及边界/默认行为回归。完整实机64280运行中。共享Mac逻辑风险已记录，尚未测Mac实际影响；证据 evidence/media/detailed-transcription-word-coverage-20261008.json。
+
+- 2026-10-08 组合引擎34881 exit0，36秒合成双声线一次Qwen批量+全段Sortformer共37.06秒（含冷启动），产品schema/2段时间轴/双speaker/语速结构通过。但独立检查发现两段文本75/19词而保留词时间戳72/18，规范化文本覆盖均不一致，完整词级质量门禁失败。需保留原始官方阶段输出区分官方对齐缺词与共享clip_segments删除；不能按Mac裁剪逻辑判定正确。证据 evidence/media/detailed-transcription-engine-20261008.json；尚未Worker/Host/发布。
+
+- 2026-10-08 详细转录新增cuda_detailed_engine.py组合引擎：复用现有VAD/30秒分段、时间轴裁剪、schema、全局speaker分配与语速逻辑；Qwen一次进程加载批量识别/对齐，Sortformer处理完整音频。支持compact/quality选择、word/segment、可选diarization及明确neutral兼容策略；8项专项测试通过。输入边界目前16kHz单声道PCM16，9格式Worker解码待接。实机组合34881运行中，非HTTP/Host/签名安装通过。证据 evidence/media/detailed-transcription-engine-20261008.json。
+
+- 2026-10-08 Sortformer GPU阶段取消恢复40811 exit0：首次实际子模块计算后0.215秒取消，PID与临时目录回收；新进程双声线36秒分段与官方基线完全一致。首轮14406在已取消后因探针命令行变量覆盖而exit1，保留原回执并记录终态，修复后完整重跑。Qwen/Sortformer阶段分别已有取消恢复证据，完整Worker/Host准入、排空与签名安装仍未完成。证据 evidence/media/detailed-transcription-sortformer-cancel-20261008.json。
+
+- 2026-10-08 详细转录Qwen真实GPU取消恢复26931 exit0：首次实际模型调用后0.215秒取消，子进程与临时目录回收；新进程中文识别及逐词时间戳与官方基线完全一致。首轮观测失败保留。此为Qwen阶段生命周期，尚不覆盖Sortformer取消、完整Worker准入/drain或Host/签名安装。回执 artifacts/detailed-transcription-preparation/gpu-cancel-r2/receipt.json。
+
+- 2026-10-08 详细转录GPU取消首轮99153 exit1：顶层forward观测未触发，官方源码1353行实际转至self.thinker.generate；保留失败，不计通过。改为首次实际子模块调用一次性观测，r2/26931确认进入计算后0.215秒取消并回收PID和临时目录，中文恢复对照仍运行。证据 evidence/media/detailed-transcription-gpu-cancel-20261008.json。
+
+- 2026-10-08 详细转录真实GPU取消探针99153已启动：通过官方Qwen首个forward pre-hook原子记录阶段，确认实际进入模型计算后取消进程组，验证PID消失/临时目录回收，再用中文短句恢复并对照官方输出。探针尚未完成，不计GPU生命周期通过。4项既有进程测试重跑通过；仅内部观测增加，不改精度、权重或推理参数。
+
+- 2026-10-08 详细转录隔离阶段11929 exit0：Qwen中文文本/逐词时间与官方compact基线完全一致，Sortformer双声线分段与固定官方基线一致。进程及冷加载总耗时29.00/6.54秒，不能当稳态推理速度；尚未组合为完整产品Worker，真实GPU取消恢复待做。回执 artifacts/detailed-transcription-preparation/isolated-stages-r1/receipt.json。
+
+- 2026-10-08 详细转录新增官方CUDA阶段入口cuda_detailed_stage.py及协调器cuda_detailed_process.py：Qwen BF16和NeMo FP32分开解释器运行，取消终止并等待进程组，临时目录回收，结果原子写入。4项真实子进程测试通过（成功/失败清理、活动取消回收、预取消不启动）；实机阶段输出对照11929运行中。尚未完成产品schema/Worker/Host、Runtime导出或签名安装。证据 evidence/media/detailed-transcription-process-20261008.json。
+
+- 2026-10-08 Sortformer官方NeMo2.6/v2.1严格加载及36秒合成双声线交替实测15784 exit0：未关闭strict，FP32官方默认，固定模型卡streaming参数；0.660秒推理、峰值963,069,952字节，四段主要speaker为0/1/0/1。独立核验音频SHA/16kHz/36秒及[1,450,4]概率有限且在[0,1]。仅合成声线一致性诊断，非真实会议DER/重叠说话质量；集成Worker、压缩格式和生命周期/签名安装待做。证据 evidence/media/detailed-transcription-sortformer-official-20261008.json。
+
+- 2026-10-08 官方Qwen ASR→ForcedAligner联合实测compact53352、quality66014均exit0：两档各自中英文短句识别内容及词时间戳结构通过，未给ASR注入参考文本。0.6B两例1.144/0.288秒、峰值约3.50GB；1.7B两例1.362/0.491秒、峰值约6.01GB。均官方BF16，非Mac数值对齐；不代表长音频、多语言、人工时间标注准确性、说话人分离、集成Worker或签名安装通过。回执及限制见 evidence/media/detailed-transcription-asr-official-20261008.json。AGENTS明确不同CUDA精度/内核按官方质量、性能和内存证据选择，不设通用逐数值一致要求。
+
+- 2026-10-08 Base四场景3683 exit0：布局/文字/风景/人像官方BF16与候选适配器逐RGB一致；取回四适配器图片独立解码/尺寸/摘要核验，结合既有目视检查四例通过，仅限所列样例，非完整质量/签名安装/发布。NeMo2.6环境31460 exit0、ASR extras递归依赖闭包6586 exit0（190分发包）；Sortformer尚未加载推理，ffmpeg PATH警告及Qwen/NeMo依赖隔离需求保留。官方compact ASR→对齐联合53352已启动，未计通过。
+
+- 2026-10-08 Base官方四场景视觉检查完成：layout/text/landscape/portrait均符合预声明标准，适配器对照3683仍运行，不计整个质量门禁完成。NeMo2.6固定归档4d313cf5/SHA0d95a5cd已准备，要求transformers4.53.x，与官方Qwen4.57.6需环境/进程隔离。独立环境首试56785因官方更名Speech导致归档目录假设错误失败，保留日志与回执，修正路径后同环境续装31460运行中；未改官方源码，未宣布Sortformer推理通过。证据 detailed-transcription-nemo-environment-20261008.json及Base visual-review.json。
+
+- 2026-10-08 官方ASR→ForcedAligner联合探针已编译并同步：compact/quality分别固定原始checkpoint、BF16，不把预期文本传入ASR，实际识别后官方对齐，保存文本/全部时间戳并检查两项短句内容和结构。尚未运行；Quality1.7B原始7278e1e7权重下载58145运行中。Base四场景3683已进入official:layout，未完成；保持单GPU。
+
+- 2026-10-08 Qwen Edit共享适配器回归71440 exit0：512 PNG/JPEG/WebP及1–3参考图协议、0/4参考拒绝、生成拒绝、取消恢复/drain/resume通过，独立解码摘要确认，三输出目视均绿色茶壶保留桌面蓝背景；参考是同一图不同编码，不算多源语义验收。ForcedAligner官方英中BF16基线11626 exit0：17英文词/21汉字时间戳结构与文本覆盖通过，推理1.058/0.053秒、峰值约1.93GB；非人工标注准确性/ASR/完整详细转录，释放后进程内仍9.57MB分配已记录。原始ASR/Sortformer传输16724及Spark全哈希78393均exit0。证据 detailed-transcription-aligner-official-20261008.json及shared-image-lifecycle-regression-20261008.json。随后顺序启动Base四场景官方/适配器对照3683，尚在运行，未发布。
+
+- 2026-10-08 ForcedAligner官方英中基线脚本已编译并同步，固定已有两WAV摘要/供应文本，直接官方BF16调用，保存逐词时间戳并检查文本覆盖/有序/有限/音频边界（官方80ms量化）；仅结构验证，不计人工标注时间戳准确性或完整详细转录。尚未运行，等待唯一GPU任务Qwen Edit71440结束。
+
+- 2026-10-08 详细转录官方Qwen独立开发环境95997 exit0：qwen-asr0.0.6/transformers4.57.6/accelerate1.12.0/nagisa0.2.11/soynlp0.0.493/tokenizers0.22.2，复用固定Torch2.10cu130，官方ASR/ForcedAligner类导入成功。标准构建器依赖闭包13120 exit0，100分发包精确锁；首次检查缺仓库相对ACE锁，补原始目录后通过。开发pth可见但未使用的Diffusers/HF Hub冲突已记录，不能称全环境pip check通过；未导出Runtime/未GPU对齐推理。证据 evidence/media/detailed-transcription-qwen-environment-20261008.json。Qwen Edit71440仍在第三组回归。
+
+- 2026-10-08 Base多场景探针完善失败留痕：记录运行阶段、未捕获推理错误、Torch/Diffusers版本和源码摘要，预声明物体数量/空间顺序、文字内容与人像风景检查标准；数值比较通过后仍保持visual_review pending。脚本编译并同步完成，未启动；当前唯一GPU任务Qwen Edit71440仍活跃。
+
+- 2026-10-08 Z-Image Base真实Host调用/调度/隔离Worker验收69110 exit0：1024 PNG/JPEG/WebP完整解码，PNG与固定官方negative基线RGB精确；取消恢复、drain拒绝/resume生成通过，5完成/2预期失败、运行排队0、计算槽位归还。仍为fixture发现，不含产品API认证或签名安装；原始receipt顶层HTTP scope标签由嵌套host_bridge及证据明确实际Host范围。证据 evidence/media/z-image-base-host-20261008.json。四例扩展质量脚本已准备未运行；顺序启动Qwen Edit共享适配器三格式/1–3参考图及生命周期回归71440，尚未通过。未发布。
+
+- 2026-10-08 Base验收扩展：独立输出检查器新增官方receipt/参数/PNG RGB核对（不对JPEG/WebP要求无损精确）；新增固定官方与适配器四例布局/文字/横图/纵图质量探针，保存双方图片并将视觉审查独立标记pending。语法检查通过，四例尚未运行，不计质量通过；Host69110首图仍生成中。证据 evidence/media/z-image-base-quality-plan-20261008.json。
+
+- 2026-10-08 Z-Image Base隔离HTTP71214 exit0：1024 PNG/JPEG/WebP完整生成并独立解码/摘要/尺寸通过，首请求195.06秒、后两次74.41/74.66秒；编辑拒绝400、取消恢复、drain503/resume实际生成通过，禁网/只读/non-root。PNG目视符合红茶壶/桌面/蓝背景，非广泛质量通过。证据 evidence/media/z-image-base-http-20261008.json。顺序启动Host69110（z-image-base-host-r1），使用官方相同prompt/negative/seed与准确生成能力声明；仍在运行，签名安装/发布未完成。
+
+- 2026-10-08 图像Host验收桥接改为按family声明真实操作：Base/Turbo/Qwen生成仅image_generation，Qwen Edit仅image_edit且最多3参考图，FLUX保留生成/编辑及4参考图；回执记录family与操作。check_media_worker显式传family，语法编译通过。仅验收fixture修正，不改变生产发现；Base隔离HTTP71214仍加载中，Host实机尚未执行。
+
+- 2026-10-08 Z-Image Base官方对照83734 exit0：候选默认与negative_prompt两例1024²/30步/CFG4/seed42解码RGB均与固定官方BF16基线精确一致；实际生成取消后恢复亦精确，stop释放pipeline。证据 evidence/media/z-image-base-official-adapter-20261008.json。随后启动隔离HTTP三格式与生命周期验收71214（z-image-base-http-r1），尚在运行；单提示对照不代表广泛质量，Host/签名安装/发布仍未完成。
+
+- 2026-10-08 Z-Image Base正式分发缺口确认：既有Mac分发17文件不含scheduler/scheduler_config.json，不能直接作为CUDA完整checkpoint。已按固定MS 77e77d0c权威元数据核对本机已哈希HF18文件全部一致，新增 z-image-base-checkpoint-distribution.json 规格（CUDA专用ID，包含scheduler）；只准备规格，未签名、未发布、未在模型Package引用。官方适配器对照83734仍运行，首例去噪接近完成，尚未计通过。证据 evidence/media/z-image-base-preparation-20261008.json。
+
+- 2026-10-08 Z-Image Base官方原始权重BF16基线74193 exit0：固定Diffusers0.41.0、Torch2.10cu130、Transformers5.18.0；1024²/30步/CFG4/cfg_normalization=False/seed42，空及非空negative_prompt两例75.52/74.61秒，模型加载103.16秒，峰值CUDA分配23.272GB。两图目视均符合红茶壶/木桌/蓝背景，构图不同；仅单提示，不计广泛质量通过。回执 artifacts/z-image-base-official-r1/receipt.json。候选逐RGB对照及取消恢复83734已启动，尚未通过；Worker/Host/签名发布仍待完成。
+
+- 2026-10-08 Qwen Image共享适配器修改后隔离HTTP回归1583 exit0：512 PNG首请求342.73秒，生成外操作拒绝、取消恢复、drain/resume实际生成通过。慢加载期间保持原进程，未重复启动；不将首请求耗时当稳态性能。证据 artifacts/qwen-shared-adapter-r1/receipt.json。Base官方BF16基线已顺序启动74193，固定checkpoint重新完整校验、官方Pipeline加载完成，生成尚未返回；Qwen Edit回归/签名安装仍待完成。
+
+- 2026-10-08 Z-Image Base原始权重传输42189 exit0，Spark全量集合/大小/SHA校验82177 exit0：18文件20,538,488,559字节，官方scheduler已包含。回执 artifacts/z-image-base-preparation/z-image-base-spark-verification.json。Qwen共享适配器回归1583仍活跃，PID2752870已加载pipeline组件、尚未返回生成；观察可用RAM69Gi，不据等待判失败或重启。Base官方基线继续等待唯一GPU任务结束，尚无Base推理通过声明。
+
+- 2026-10-08 共享图像生命周期修改后Z-Image Turbo隔离HTTP回归通过（47642 exit0）：1024 PNG/JPEG/WebP、编辑拒绝、取消恢复、drain拒绝/resume实际生成，禁网/只读/非root。证据 evidence/media/shared-image-lifecycle-regression-20261008.json。顺序启动Qwen Image512单图+生命周期回归1583，尚未完成；Base权重42189持续传输已约13G，未启动Base推理。check_media_worker.py新增Base固定checkpoint入口和negative_prompt选项。
+
+- 2026-10-08 共享CUDA图像候选补齐停止准入与重复ID保护：Base/Turbo/Qwen三个家族受控线程验证原取消事件保留、active/queued499、stop中新请求503、资源清理及start后重载；20项测试通过，Qwen Edit继承同一invoke生命周期。新增 check_z_image_base_adapter.py 准备对固定官方Base两例逐RGB摘要对照及取消后精确恢复；尚未执行。权重传输42189持续运行，未重启；所有受影响候选仍需实机/隔离Worker回归，既有已发布制品不变。
+
+- 2026-10-08 Z-Image Base候选接入现有CUDA图像适配器：固定Base revision，32倍数画布、默认30步/CFG4；明确使用官方guidance_scale、negative_prompt、cfg_normalization=False，避免误走Qwen true_cfg_scale；Turbo既有约束保持。17项测试通过，新增完整invoke fake Pipeline验证实际参数/seed传递与非法几何拒绝，非GPU质量通过。原权重传输42189仍运行，远端已5.6G；官方/适配器数值与Worker/Host验收待传输及远端校验后执行。证据 evidence/media/z-image-base-preparation-20261008.json；未发布。
+
+- 2026-10-08 开始Z-Image Base官方CUDA接入：固定04cc4abb原始权重，Mac本机18运行文件/20,538,488,559字节按官方摘要校验通过；补齐同提交scheduler配置。准备固定Diffusers0.41.0官方BF16基线（1024²/30步/CFG4/seed42，空和非空negative_prompt），尚未生成。传输42189仍运行，已观察远端2.0G；不可重复启动，完成后先远端全量哈希。证据 evidence/media/z-image-base-preparation-20261008.json、Z-IMAGE-BASE-REUSE.md；Worker/Host/签名发布均待做。
+
+- 2026-10-08 H3持久化任务生命周期实机通过（83424 exit0）：运行中任务0.567秒取消，排队任务取消，均无Artifact/残缺result/part；运行中优雅关闭VideoTaskManager后旧任务正确cancelled，重建管理器后新任务生成并登记Artifact。恢复视频解码RGB/音频摘要与首次同seed精确一致，56帧/同步有限非静音音轨。调度2正常完成/2预期失败、queued/running0、槽位/GPU释放。证据 evidence/media/h3-durable-lifecycle-20261008.json；是管理器优雅关闭重建，不是进程崩溃或断点续算，API登录/签名安装和完整质量仍待完成。
+
+- 2026-10-08 H3真实持久化视频任务通过（57131 exit0）：完整当前Host源码快照下VideoTaskManager/数据库/身份解析/后台调度/stream-to-file/Workspace产物登记完成文本及图音视频混合两例；3输入冻结摘要正确，幂等重试同ID、跨用户get404，2完成/0失败、队列归零/槽位释放。独立解码均56帧、同步非静音音轨；GPU进程清空。证据 evidence/media/h3-durable-tasks-20261008.json，保留此前3次验收环境失败和源码同步修正。仍为声明/测试身份fixture，不含产品API登录、签名安装；持久化任务取消/重启及完整质量待补。
+
+- 2026-10-08 H3 生命周期修复后的Host/隔离HTTP回归通过（53088 exit0）：音频、视频含原音、忽略原音、图音视频混合参考四例均成功，解码RGB/音频摘要与修复前逐项一致；取消恢复、drain拒绝、resume真实生成通过，6完成/2预期失败，queued/running0、槽位归还。证据 artifacts/h3-host-lifecycle-r1 与 evidence/media/h3-worker-lifecycle-guards-20261008.json。另记录产品接入缺口 evidence/media/h3-product-integration-gap-20261008.json：现有foreground fixture不覆盖VideoTaskManager内容冻结、background-to-file、产物登记及API认证；H3精度禁用策略亦需按官方CUDA证据评估，未擅自放开。签名安装/发布仍未完成。
+
+- 2026-10-08 H3 新生命周期保护实机通过（25771 exit0）：真实Comfy队列运行时重复ID409且原事件保留，stop中新请求503，活动/排队均499；3.110秒停止并回收旧子进程/临时目录，start后重新加载生成成功，最终事件与GPU进程清空。重启后与首次同seed输出解码RGB及音频SHA完全相同，均56帧、音视频时长同步。证据 evidence/media/h3-worker-lifecycle-guards-20261008.json、artifacts/h3-lifecycle-r1。此为候选适配器原生生命周期，更新版本的HTTP/Host及签名安装仍待完成，未发布。
+
+- 2026-10-08 H3 Worker 修复重复request_id覆盖取消事件和stop期间接受新请求：重复409，stop先关闭准入并取消活动/排队请求，显式start恢复；15项测试通过，受控异步子进程fixture验证原事件保留、排队不进入生成、等待清理、子目录回收及重启。证据 evidence/media/h3-worker-lifecycle-guards-20261008.json；此前实机Host通过早于此次修改，新候选GPU/Host回归仍待完成，未构建发布Runtime/Package。pytest退出0，结束时有无Metal设备环境警告。
+
+- 2026-10-08 H3 多媒体参考 Host 实机通过（40765 exit0）：音频/视频含原音/忽略视频原音/图音视频混合参考均经真实Host调用、调度和Supervisor代理至禁网Worker，耗时41.68/48.78/47.69/53.10秒。取消恢复、drain拒绝、resume实际生成通过；6完成/2预期失败，队列和运行归零、槽位释放、GPU进程清空。四视频各56帧/2.333秒，音频2.325秒/32kHz、有限非静音；新增解码RGB与音频摘要。证据 evidence/media/h3-host-media-20261008.json。忽略参考视频原音不等于输出静音；此为fixture发现下链路验收，不代表完整参考保持/听感、产品API/UI/签名安装或发布。
+
+- 2026-10-08 H3 当前 Host 整链实机通过（58782 exit0）：canonical模型ID经ModelInvocationService/真实调度器/Supervisor转发为各变体upstream别名，文本JSON、首帧/参考图multipart均成功；取消恢复、drain拒绝和resume后真实生成通过。5完成/2预期失败，queued/running0，槽位归还。三项独立解码56帧且音轨有限非静音、时长同步。回执 artifacts/h3-host-identity-r1/receipt.json 与 media-inspection.json；模型发现/能力声明仍fixture，不含API/UI认证、签名安装及完整质量验收，音视频参考Host工作流仍待补。
+
+- 2026-10-08 H3 唯一变体别名隔离 Worker 实机通过：文本/首帧/参考图分别63.67/24.32/27.37秒，取消恢复通过。三例完整解码56帧、视频2.333秒/音频2.325秒，音轨有限非静音。证据 artifacts/h3-identity-worker-r1/{receipt,media-inspection}.json；不替代完整视听质量、Host或签名安装。新增 Host JSON/multipart 调度转发探针及 resume 后实际生成断言，实机尚待运行。
+
+- 2026-10-08 H3 Host 身份修复：FL2VA/Ref2VA 开发声明的调用 upstream_id 改为各自带变体后缀，checkpoint repo仍固定Comfy-Org/MiniMax-H3；适配器接受唯一声明别名并按canonical ID找checkpoint，共享仓库别名含糊时明确拒绝，不静默选首个变体。14项测试通过，实机/HTTP/Host复验待做。证据 evidence/media/h3-host-model-identity-20261008.json。另匿名复核生产 Runtime 上传合同仍4GiB，8GiB需求未生效，见 evidence/media/runtime-upload-capabilities-recheck-20261008.json。
+
+- 2026-10-08 FLUX 当前 Host 整链 r2 通过（42567 exit0）：请求ID转发修复后取消恢复正常；生成/编辑和2–4参考均经ModelInvocationService→调度器→Supervisor代理→禁网Worker完成，恢复后再次生成成功。调度7完成/4预期失败，queued/running0，唯一槽位归还。六项请求ID专项测试覆盖显式、幂等及自动ticket ID的JSON/multipart路径。证据 evidence/media/flux-current-host-probe-20261008.json、artifacts/flux-host-lifecycle-r2/receipt.json。发现仍fixture，不含产品API/UI认证/签名安装；不计发布或9B支持。
+
+- 2026-10-08 FLUX Host 首轮86216exit1揭示真实取消问题：request_id仅进入调度器未转发Worker，取消查询404。已修复JSON/multipart代理x-request-id，优先显式ID、再幂等ID、否则调度ticket ID，认证头保持，去除旧大小写变体。45项测试通过。多参考测试此前直连Worker，已改经Host并声明4参考能力。r2实机重跑中；证据 evidence/media/flux-current-host-probe-20261008.json。未声称整链通过或发布。
+
+- 2026-10-08 FLUX 当前 Host 调用整链脚本已实现并启动86216（flux-host-lifecycle-r1）：ModelInvocationService、WorkerJobScheduler、Supervisor TCP/UDS代理转发至禁网CUDAWorker，复用生成/编辑/多参考/取消/drain/resume验收。仅模型发现fixture，不含API路由/登录UI/签名安装，当前运行中未计通过。证据 evidence/media/flux-current-host-probe-20261008.json。
+
+- 2026-10-08 FLUX 4B 更新适配器隔离 HTTP Worker 验收通过（93256 exit0）：生成/编辑、多参考、非法输入、取消恢复、drain拒绝、resume后实际生成；禁网/只读/非root，结束GPU任务清空。证据 evidence/media/flux-http-lifecycle-20261008.json。候选适配器使用既有Runtime依赖，不代表新版签名Runtime安装、Host UI或9B完成。
+
+- 2026-10-08 FLUX 4B CUDA 生命周期 r2 实机通过（18432 exit0）：真实去噪中重复请求409，stop后新请求503，活动/排队请求均499；stop等候0.211秒，显式start后重新加载生成512图像成功，事件清空/模型释放。生成红色茶壶图已目视确认符合本条提示。证据 evidence/media/flux-worker-lifecycle-guards-20261008.json、artifacts/flux-lifecycle-r2/receipt.json。仅候选适配器+既有Runtime依赖，不代表新版Runtime签名安装/HTTP/Host验收或9B支持。
+
+- 2026-10-08 FLUX CUDA Worker 修复活动 request_id 重复覆盖取消事件，以及 stop 后仍接受请求的问题：重复返回409；stop 先设置 stopping、取消已注册请求并等待串行执行结束，新请求503；显式 start 恢复。7 项适配器测试通过，新增真实线程受控 fake pipeline 测试覆盖活动/排队取消、重复事件保留、资源清理和重启。证据 evidence/media/flux-worker-lifecycle-guards-20261008.json；此为并发单测，非 GPU 实机验收，Runtime/Package 未构建发布，9B 尚未开放。
+
+- 2026-10-08 CosyVoice3 已签名原始分发通过真实 CheckpointCache.import_local_snapshot、CheckpointAcquisitionService.materialize_worker_snapshot 和 Host model_checkpoint_is_complete 路径：13 文件导入、只读 Worker view、缓存命中、错误 distribution ID 拒绝均通过（25471 exit0）。输入 envelope 摘要绑定先前独立验签回执。证据 evidence/media/cosyvoice3-original-cache-acceptance-20261008.json；不是 Registry 网络下载/签名模型安装验收。已请求本次精确分发使用 Dev --browser-live 的 Cookie 入口授权，回复前不执行该读取或发布。
+
+- 2026-10-08 CosyVoice3 原始 checkpoint 分发已由标准构建器签署并按既有 Publisher 指纹验签：13 文件/5427029150 字节/647 pieces，manifestDigest sha256:3952f2573812adbb6ba32509f1d6ba1c83c2f8db37dc26194d1cc748de71cee6。HF 本机字节完整 SHA 校验且与固定 MS 权威元数据一致（metadata_verified，不是双端完整下载）。证据 evidence/media/cosyvoice3-original-distribution-signed-20261008.json。Installation 标准查询仍要求 active user session；未读 Cookie、未提交/发布，未在模型 Package 引用未发布 distribution。
+
+- 2026-10-08 CosyVoice3 13 文件锁的标准 Runtime 导出 r8 完成（71868 exit0，103 依赖/14164 文件，106 源码文件，无缺失/多余）。准备 cosyvoice3-original-checkpoint-distribution.json，固定 HF 29e01c4e 和 MS 9f9c56f2、精确 13 文件、pytorch/fp32；仅构建规格，未在 Package 引用未发布 distribution。证据 evidence/media/cosyvoice3-original-distribution-preparation-20261008.json。本机固定快照传输会话 50027 运行中，完成后仍须逐文件哈希再标准签名；未签署/发布。
+
+- 2026-10-08 CosyVoice3 13 文件运行快照官方实机验证通过（46437 exit0），中英文 WAV 与 15 文件完整基线逐字节一致。严格运行锁仅移出 HF 根 README.md/空 config.json 到 upstream_documentation_files 来源记录，13 个运行文件和官方源码哈希检查保留。证据 evidence/media/cosyvoice3-original-runtime-file-selection-20261008.json；CUDA 引擎五档语速复验 14563 exit0，5/5 WAV 与官方完全一致。修改后的锁尚未进入标准 Runtime 再导出/安装验收，未签署或发布 distribution/Package。
+
+- 2026-10-08 CosyVoice3 更新后的官方原始引擎完成标准导出 r7（103 依赖、14164 依赖文件、106 源码文件，零缺失/多余），独立禁网 Worker fixture r2 的 Host 控制整链通过：五档数值语速及七种指令共 12 个输出均与官方 PCM 0 LSB；指令用例同时携带参考文字以验证优先级，另有中英文基线和 FLAC 无损回归。会话 84946 exit0。证据 evidence/media/cosyvoice3-original-host-controls-20261008.json。仍是 fixture 发现/未签名 Runtime，签名安装、产品 UI、资源准入、听感及发布不计完成；旧快速文字指令 ASR 差异保留。
+
+- 2026-10-08 官方 CosyVoice3 原始 FP32 接入原生非流式数值语速（mel 插值），范围 0.5–2；原始版本适配器保留倍率，不再转文字指令，量化版本行为保持原样。Spark 五档 0.5/0.8/1/1.25/2 倍速 WAV 与独立官方基线逐字节一致，五档 ASR 内容诊断全通过（单条中文）；19 项适配器测试通过。证据 evidence/media/cosyvoice3-official-original-speed-20261008.json。旧快速文字指令差异未消除；新代码的标准 Runtime 导出、Worker/Host 控制整链、多语言/长文本、听感及签名安装发布仍待完成。
+
+- 2026-10-08 官方 CosyVoice3 控制模式：补齐官方 helpful-assistant 指令前缀，指令与参考文字并存时按官方 instruct2 语义优先指令、不消费参考文字。Spark 七种控制及额外优先级用例共 8/8 WAV 与独立官方基线逐字节一致；ASR 内容检查 6/7，快速指令将“我们来介绍”转写为“我们要介绍”，保留失败，未判定合成或识别原因。情绪听感未验收。旧标准导出 r6、HTTP/Host 回执早于该修复，不能证明新修复的整链通过；数值 speed 尚未接入官方原生实现。证据 evidence/media/cosyvoice3-official-original-controls-20261008.json；签名安装/发布仍未完成。
+
+- 2026-10-08 官方CosyVoice3原始FP32当前Host整链通过：当前语音API→ModelInvocationService multipart参考音频→真实WorkerJobScheduler→Supervisor loopback/UDS→禁网Worker。首轮15128暴露Host将内部ID改写为upstream_id但适配器白名单不接受，已只增加固定官方repo别名，canonical checkpoint id/repo/revision/path约束不放宽；14适配器测试通过。r2 22436exit0，中英文PCM与官方基线0LSB，九格式wav/pcm/mp3/m4a/aac/flac/ogg/opus/webm都通过类型/解码时长/有效信号检查，wav/pcm/flac精确。12任务完成、3非法控制预期failed，running/queued0、唯一重计算槽位归还，容器清理。证据cosyvoice3-official-original-host-20261008.json；发现仍fixture PackageModel、ASGI TestClient不含生产登录UI，不计签名安装/QuickRead/资源准入/感知质量/发布完成，指令情绪速度长参考功能仍待验证。
+
+- 2026-10-08 官方CosyVoice3原始FP32禁网HTTP通过：标准export-r6组装独立未签名fixture，真实Worker launcher/UDS multipart，中英文与官方r9 WAV逐字节一致；未认证health401、非法seed/采样/stream/路径拒绝；观测running后DELETE取消499耗时0.0834秒，恢复及drain503/resume后PCM精确，active_requests归零。Docker实查断网/只读/uid1000:1000/capdropALL/no-new-privileges，finally清理容器并wait进程，99148exit0。首次探针误加局部Worker源码PYTHONPATH导致导入Host失败，尚未起容器；改用Spark完整Host安装后通过。证据cosyvoice3-official-original-http-20261008.json；未完成实际Host发现/gateway/scheduler、签名安装/权重分发/正式发布，声纹风格等完整功能仍待验证。
+
+- 2026-10-08 CosyVoice共用Runtime profile升级：标准构建器固定官方Transformers4.51.3及103项闭包，补Matcha子模块固定归档/MIT与README/requirements、原始引擎/权重源码锁和完整依赖锁/NOTICE。r6导出14164依赖文件逐SHA匹配、0多余/缺失、无.pth；106运行源码与34保留文件校验。原4/8bit六例在共用依赖环境与历史输出逐字节一致（兼容回归，不作为正确性真值）。原始模型Python -I -S仅导出profile+固定core，中英文WAV与官方基线精确；70构建器/profile测试通过。r5缺matplotlib/rich已修复留证；r6首次CUDA stream分配OOM，GPU无其他任务，特定测试文件fadvise回收缓存后物理free约13→20GiB，复验通过，不断言精确内因。证据cosyvoice3-unified-runtime-export-20261008.json，53846exit0；尚未完整CLI封装/禁网HTTP/签名安装与发布，既有0.5.0签名候选不变。
+
+- 2026-10-08 官方CosyVoice3原始FP32变体接入共享Worker适配器：复用现有WAV/串行锁/线程排空和Host参数契约，严格要求官方repo/revision及Host checkpoint，不新增远端下载。Spark实际ModelWorker请求91762 exit0：两种参考模式与官方WAV逐字节一致；6类非法控制拒绝；观测LLM运行后event取消0.00218秒/task.cancel0.00086秒，恢复音频精确；同时停止运行中/排队请求后engine/events清空，停止后503，restart输出精确。证据cosyvoice3-official-original-adapter-20261008.json。仍为fixture声明和开发Host快照的原生适配器；未验禁网HTTP/安装后Host。现有cosyvoice3 Runtime profile仍旧量化依赖闭包，必须合并官方依赖并重新验证旧变体后才能封装；指令/情绪/速度在本轮fixture明确未开放，完整功能对齐和发布未完成。
+
+- 2026-10-08 官方CosyVoice3可复用引擎实现：cuda_cosyvoice_original_engine.py固定15权重文件/49官方Python源码摘要及Transformers4.51.3，以实例局部函数绑定明确CPU ONNX/SoundFile兼容，不全局改写上游模块；保留官方算法和非流式线程join，捕获producer异常并在解码前传回，finally清请求缓存。Spark原生78332 exit0：中英文WAV与官方r9逐字节一致，LLM/decode两个阶段取消无partial、线程退出、缓存清空，恢复音频精确；producer错误传播、已有文件保留、RNG恢复、close清model/hooks及关闭后拒绝通过。证据cosyvoice3-official-original-engine-20261008.json。尚未接Worker/profile/签名Host发布；新封装FP16、长请求取消、声纹风格与长参考音频尚待验证，原生官方参考上限30秒，Matcha及完整依赖闭包须在Runtime构建中继续固定。
+
+- 2026-10-08 LanceDB真实Supervisor.start/restart/stop通过：独立Runtime快照与一次性PlatformDatabase/PackageRepository，显式host-unix服务自动选中knowledge profile、自动socket+Host loopback代理+health，真实存储重启保留。停止后CLI进程终止、代理不可访问、socket清除，两条managed_service_processes记录stopped；按测试mount检查无遗留容器。证据knowledge-real-supervisor-20261008.json，18565 exit0。Repository记录明确为未签名不受信测试fixture且Runtime resolver为fixture，不作为签名安装/依赖锁/Registry验收；发布仍未完成。
+
+- 2026-10-08 正式Supervisor接入显式runtime.transport=host-unix：仅managed http-json及唯一--port {port}允许；Host分配私有socket并复用loopback代理、health与清理生命周期，CPU服务不授GPU。缺Docker/非Linux明确拒绝，避免退回不可达TCP；未改变现有Mac manifest。30合同/Runtime/profile回归通过，证据knowledge-host-unix-transport-20261008.json，文档补充声明契约。尚未在Spark真实PackageRepository走当前Supervisor.start整链，Linux候选manifest、签名安装/发布待完成。
+
+- 2026-10-08 LanceDB新增--uds Unix HTTP入口（与--port互斥），socket0600且拒绝覆盖既有路径；标准Docker沙箱构造器增加显式cuda=False，默认CUDA行为不变。真实标准导出profile+core在network none/只读/UID1000/cap-drop ALL/no-new-privileges/无DeviceRequests容器通过upsert/search/private owner过滤、进程重启保留及删除重启保留，67166 exit0，23项Runtime/profile回归通过。证据knowledge-uds-sandbox-20261008.json。本轮显式测试启动，尚未接通正式Supervisor.start选择/已安装Service Host代理；无签名安装或发布，不能视为完整交付。
+
+- 2026-10-08 普通Service独立Runtime profile选择已修复：提取framework_profile_for_service供模型launcher和Supervisor共用，由Host service_key查询Runtime元数据，保留绝对路径/父目录/符号链接越界拒绝；普通Service PYTHONPATH按选中profile→core排列。回归首轮50通过/8本地端口权限失败/1跳过，获准本地测试服务重跑8全通过。证据knowledge-generic-runtime-profile-20261008.json。另发现Linux普通无网络Service使用unshare-net，LanceDB现有TCP loopback无法据此保证Host可达；待受保护传输实作验收，不以开放外网权限绕过。尚未签名安装/发布。
+
+- 2026-10-08 LanceDB标准Runtime接入推进：构建器新增knowledge独立profile/固定服务映射、--knowledge-python与lancedb能力声明双向约束，固定knowledge依赖锁。Spark标准导出16依赖、1052文件逐SHA一致、零缺失/多余/无.pth；python -I -S仅导出profile+固定core实测create/search/delete/reopen通过。69构建器/profile回归通过，证据knowledge-standard-runtime-export-20261008.json，42163/83677 exit0。初始环境缺PyYAML已固定补6.0.3，仅构建使用不进入闭包；尚未验证沙箱Service自动profile选择、完整CLI Runtime/签名安装与发布，既有0.5.0签名制品不变。
+
+- 2026-10-08 E5生命周期补验通过：真实CUDA前向期间task.cancel传播后events/lock清空、恢复向量精确；stop同时处理运行中499与排队503请求并清空engine，新adapter重建后向量精确。独立禁网HTTP Worker观测running后DELETE取消返回499、active_requests归零、恢复精确，原鉴权/drain/resume继续通过。证据e5-lifecycle-20261008.json；11139/23079 exit0。首次开发探针缺少engine搜索路径在推理前失败，修正为已验标准导出profile，日志保留；本轮不代表已安装服务进程重启/卸载验收或签名发布。
+
+- 2026-10-08 E5公开Knowledge接口与Tool实机通过：当前API router经ASGI和注册knowledge.search handler调用真实Host→隔离E5→LanceDB；Alice/Bob各自hybrid检索与私有权限结果一致。Worker drain503时两条入口均正常FTS回退且仍排除私有记录，resume恢复hybrid。证据e5-public-knowledge-20261008.json；首轮快照导入顺序导致循环导入（71664 exit1）已留痕，修复测试加载后39195 exit0，容器清理。身份依赖及模型发现仍fixture，未验真实登录中间件/签名安装自动发现；LanceDB Runtime与Package发布仍待完成。
+
+- 2026-10-08 E5当前Host真实链路通过：独立源码快照的ModelInvocationService/Knowledge provider经Supervisor loopback→UDS代理调用禁网E5 Worker；真实WorkerJobScheduler限定1槽，5次后台sync每次仅1次准入，查询actor Alice/Bob正确。SQLite新增/更新/删除、持久游标与最终权限回查继续通过；错误凭据401后正常凭据恢复384维向量，最终running/queued均0。证据e5-real-host-gateway-20261008.json；47021/32084 exit0、容器清理。模型发现仍fixture，LanceDB开发环境；尚未覆盖公开Knowledge HTTP/Tool路由、签名安装自动发现、完整取消并发stop及发布。
+
+- 2026-10-08 Knowledge CUDA Host调用桥已实现：query/passage通过ModelInvocationService，后台索引复用自身已准入ready model及内部鉴权，不重复申请租约；查询传递principal派生身份并走前台调度。同步桥拒绝事件循环线程调用，Knowledge Tool检索移到线程以免阻塞；后台callback取消后等待真实线程结束才释放租约。45项不同Knowledge/gateway回归通过（fixture传输），证据e5-host-gateway-implementation-20261008.json。尚未在Spark用新Host代码跑真实代理/调度验收，不能把之前fixture直连结果当作新链路通过；签名安装与发布仍待完成。
+
+- 2026-10-08 E5真实SQLite索引链路验收通过：PlatformDatabase/KnowledgeVectorIndexer/HybridKnowledgeRetriever连接隔离E5 HTTP与开发LanceDB；新增两条文档、幂等增量、网页更新重嵌入、持久化游标重新构造、删除传播通过。刻意令向量预过滤返回Alice私有记录给Bob，SQLite最终回查仍排除；删除尚未同步向量时也不泄漏旧记录。证据e5-sqlite-index-20261008.json，exec35905 exit0、容器及服务清理。仅测试fixture持有鉴权传输；正式Knowledge provider当前无Worker鉴权，外层index租约与嵌套调用可能冲突，Host接入仍待修复，不能声称正式安装/发布通过。
+
+- 2026-10-08 Spark Knowledge存储链路推进：独立knowledge-venv安装官方Linux ARM64 LanceDB0.37.1/PyArrow25.0.1并记录knowledge-cuda-requirements.lock，复用未修改LanceDB服务源码。禁网只读E5 HTTP真实向量接LanceDB loopback服务，五条受控记录验证中英日Top1、installation/私有owner/bucket过滤、Mac generation为空，两次进程重启后结果及删除持久化通过。证据e5-lancedb-storage-20261008.json。LanceDB仍开发进程而非签名沙箱Runtime，未覆盖Knowledge SQLite change-log/indexer/最终权限回查和大库性能，不改用户数据；32437/17293 exit0，容器与子进程清理。
+
+- 2026-10-08 Knowledge Host修正硬编码Mac E5绑定：Linux默认CUDA E5、Mac沿用原MLX，构造器可显式指定；查询/文档provider与后台ModelInvocation资源准入统一使用self.embedding_model_id。CUDA独立generation lancedb_e5_small_cuda_614241f6_fp32_v1与检索profile防止384维相同而混用Mac旧索引。19项Knowledge runtime/indexer/retrieval回归通过，证据e5-knowledge-binding-20261008.json；未迁移用户索引/生产实例，Spark真实Host代理、LanceDB安装/持久化/删除/重启及签名发布仍待完成。
+
+- 2026-10-08 E5禁网只读HTTP Worker通过：标准E5 profile/engine/checkpoint锁加固定core的独立未签快照，当前共享embeddings路由和适配器在UID1000运行。384维有限单位向量、实际token计数、中英日三对Top1正确，上游alias结果相同，未鉴权health401、4项非法参数400、drain503/resume精确、active_requests归零，Docker Network none/ReadonlyRootfs/CapDrop ALL/no-new-privileges核验通过。证据e5-isolated-http-worker-20261008.json；完整HTTP取消/并发stop/restart、Knowledge Host索引检索、正式签名安装发布未完成，旧原生数值对照不冒充本轮HTTP逐向量对照。42429/2510 exit0，容器清理完成。
+
+- 2026-10-08 E5标准Runtime支持已实现：新增e5独立profile和明确服务映射、--e5-python与capability闭合校验、固定33依赖锁、两运行文件（engine+checkpoint锁）及requirements/NOTICE保留文件。实际导出3506个依赖文件逐SHA匹配、0缺失/0多余/无开发.pth；python -I -S仅profile+固定core实测官方向量对照/取消恢复/关闭通过。构建器与profile67项回归通过。证据e5-standard-runtime-export-20261008.json；仍未构建完整CLI Runtime、禁网Docker HTTP、签名安装或Knowledge Host，旧0.5.0候选不变，38733/56030进程exit0。
+
+- 2026-10-08 E5 Worker适配器实现并通过原生异步实机验收：固定model/alias/checkpoint绑定、384维float输出与实际token计数、输入边界、串行请求、重复ID409、模型前向中cancel499、取消后结果精确恢复、stop清空并503；六项非法控制拒绝。共享Worker新增embeddings→/v1/embeddings路由，沿用鉴权/排空/请求生命周期，21项Worker回归exit0（沙箱Metal退出警告不计GPU证据）。证据e5-native-worker-adapter-20261008.json；传输测试为fixture adapter、GPU为原生调用，不能合并声称真实隔离HTTP通过；Runtime导出、Host Knowledge、签名安装发布、task.cancel/排队stop仍待完成，exec71143 exit0。
+
+- 2026-10-08 E5新增cuda_e5_engine.py：加载前逐文件锁定官方原始权重字节、禁止远端代码，FP32 eager/官方mask均值池化/L2，最多256条、每条64KiB、16条分批、512token截断，返回实际token计数；串行锁保护encode/close，各BERT层取消hook在finally清理。实际Spark与官方FP32基准max_abs6.89179e-8，第5次检查中断后hook清理且恢复向量逐值精确，17条跨批执行、5项非法输入及close后拒绝通过。证据e5-native-engine-20261008.json；本轮仅原生模块，未完成Runtime声明/HTTP Worker/Knowledge Host/并发压力/签名发布，exec56248 exit0。
+
+- 2026-10-08 Multilingual E5 Small官方原生基线完成：固定intfloat/multilingual-e5-small@614241f622f53c4eeff9890bdc4f31cfecc418b3，10文件493292828字节重哈希通过。Torch2.10.0+cu130/Transformers4.57.3官方BertModel、FP32 eager、masked mean pooling+L2，加载missing/unexpected/mismatched均0；CPU/CUDA最大绝对差1.86265e-7、relativeL2 8.06705e-7，中英日三对检索Top1正确，单条/批量及512token截断有限输出通过。BF16诊断min cosine0.999944/max relativeL2约1.09%，排序相同但不据此选择产品BF16。首次forward CPU0.106秒/CUDA0.310秒含初始化，不宣称吞吐优劣。证据e5-official-native-20261008.json；仅原生开发环境，后续FP32可复用engine/Runtime/Worker/Knowledge Host和签名发布尚未实现，两个进程exit0。
+
+- 2026-10-08 Fish S2五角色六轮HTTP实测通过：speaker0/1/2/3/4/0跨官方分批边界，结构化dialogue与显式官方标签WAV逐字节一致；六个不同角色请求400，随后合法请求WAV精确恢复，active_requests归零。10.820秒音频独立ASR正文全文精确。证据fish-s2-five-speaker-20261008.json；ASR原始scope沿用多语言脚本旧说明，证据已明确本轮仅英文对话。未提供参考声纹，不能据此声称五声音听感区分或跨轮声纹稳定，也不是正式安装/Host/QuickRead/发布验收；HTTP与ASR进程exit0，容器已清理。
+
+- 2026-10-08下一批媒体Runtime容量预检完成（exec62726 exit0）：完整已签0.5.0基线3906220347字节保持不变，九组标准导出profile+保留源码分别压缩增量1351424444字节，估算合计5257644791字节约4.90GiB，超过当前4GiB。此为估算而非完整最终ZIP；证据next-media-runtime-size-20261008.json。已写docs/ai2apps-spark-media-runtime-capacity-cloud-requirements-20261008.md供用户转交Cloud，建议仅官方CUDA Runtime升至8GiB，oMLX/普通限制及全部安全门禁保留；未改Cloud、未提前放开客户端上限、未改已签候选。发布会话及模型质量工作独立继续。
+
+- 2026-10-08 Fish S2权重发布快照同步完成（exec87279 exit0），标准metadata_verified预检重新读取固定MS元数据并重哈希Mac完整原始字节，11文件/1313个全局8MiB分片/11008083526字节通过（exec12747 exit0）。证据fish-s2-distribution-preflight-20261008.json；未签分发规格可供标准构建器使用。Dev公开bootstrap确认当前installation local_a43644810f7b48bdcce578ca1db05416；Installation标准Publisher查询返回active user session required，已有授权下精确Profile Cookie标准查询仍database is locked（exec84964 exit1），未扫描/复制其他数据库，未提交。当前Cloud Publisher状态未重新核对，因此不宣称完成新签名/分发发布；继续独立Runtime/质量工作。
+
+- 2026-10-08 Fish S2正式分发准备推进：匿名git解析ModelScope fishaudio/s2-pro固定revision25d17c7b8763aa4bab6ec86fd61e2a3f388f2d04，标准元数据读取器确认11文件大小/SHA与官方HF1de9996b既有实机校验清单全部一致，总11008083526字节。新增fish-s2-checkpoint-distribution.json未签规格，保留研究许可/下载同意/署名要求；正式service manifest未写入未发布distribution ID。证据fish-s2-distribution-metadata-20261008.json。Spark原始权重向Mac独立发布目录同步中，exec87279已重新确认仍运行（约4.8GiB），不能重复启动；完成后运行check_fish_s2_distribution_snapshot.py执行标准本地字节/全局piece预检，再核对Publisher并签署。Runtime导出596MiB仅解包增量，完整压缩候选4GiB门禁未验证，既有0.5.0签名候选未修改；未访问Cookie或发布。
+
+- 2026-10-08 Fish S2中日英内容实机检查通过：固定官方源码/原始权重、未编译CUDA路径在禁网只读非root HTTP Worker生成中文8.777秒、日文7.384秒、英文段落29.164秒；独立ASR去标点/大小写后3/3全文精确，含英文末句，无削波样本。日文驻留请求18.379秒、英文75.827秒（RTF约2.60）；中文119.424秒含冷加载，不能当纯推理耗时。证据fish-s2-multilingual-content-20261008.json。仅三组内容样例，不等同多分钟/全语言/自然度/音色质量验收，本轮未做独立官方数值对照或签名发布。HTTP与ASR进程exit0，容器清理完成。
+
+- 2026-10-08 Fish S2情绪控制传递通过：以固定官方源码与原始权重为基准，将结构化emotion映射为官方自然语言内联标签；修复多说话人全局instructions/emotion放在首speaker标记前被官方split_text_by_speaker丢弃的问题，改为每个turn标记后注入。隔离HTTP中happy/angry/whisper及双角色组合四组与显式内联标签生成的WAV逐字节相同，独立ASR正文4/4通过；未知emotion和非1数值strength返回400，35项回归通过。证据fish-s2-emotion-controls-20261008.json。此为同一CUDA实现内控制映射等价，不替代独立官方端到端数值对照；其他标签仅控制路径覆盖，情绪听感/音色/长时多语言、正式签名安装与发布仍未完成。实机进程已结束。
+
+- 2026-10-08 Fish S2 Host变速流水线通过：显式tts.speed mode=pipeline/control=host_atempo时Worker按1倍生成，Host用共用atempo保音高后处理再编码，保持原生44.1kHz并返回pipeline状态；共用函数新增可选sample_rate，既有调用默认24k不变。24/44.1/48k音高时长及Host/codec47项回归通过。实机0.5/0.75/1/1.25/1.5/2六档时长符合预期，1倍原字节不变，独立ASR6/6正文通过；非法速度推理前400，流式变速拒绝；调度6成功0失败、队列归零。首轮旧快照边界状态失败保留，最终r2通过。证据fish-s2-host-tempo-20261008.json；仍为短英文fixture验收，不是模型原生变速或正式Package/Quick Read/长音频感知质量验收，生产manifest未改，语言/情绪等及签名发布继续推进，进程结束。 共享Host/codec改动纳入未来Desktop评估，尚未发布Desktop。
+
+- 2026-10-08 Fish S2 Host工作流与九输出格式通过：真实Host路由/ModelInvocation/调度租约/代理接隔离Worker，普通、带文本参考、无文本参考、双角色对话均0 PCM16 LSB差；WAV/PCM/FLAC无损一致，MP3/M4A/AAC/OGG/Opus/WebM可解码，独立ASR九格式正文9/9通过。14次有效调用完成、3次非法控制按预期拒绝、队列/运行归零。修复共享Host：tts.voice_profiles.reference_sample_rate整数8000–192000、默认24000，Fish声明44100避免额外降采样；Package尊重reference_transcript=optional，旧接口默认要求文本保留。r1无文本拒绝证据保留；34项回归通过，其中旧Runtime能力测试改为解析YAML消除缩进假失败。证据fish-s2-host-formats-20261008.json；模型发现仍为fixture，正式安装/资源准入/Quick Read、其他参考输入格式、变速/语言、长音频及音色质量和发布仍未完成；进程均已结束。 共享Host改动须纳入未来Desktop Release，未构建或发布Desktop。
+
+- 2026-10-08 Fish S2标准导出r3与隔离HTTP Worker通过：117依赖、26运行文件、6留存文件校验，独立fixture来自标准导出；首轮参考请求因multipart seed字符串被拒绝，已按有界ASCII整数正规化请求副本，布尔/浮点/非法值仍拒绝，38项回归通过。HTTP r2普通、带文本参考、无文本参考、双角色对话均0 PCM16 LSB差；鉴权、取消约0.0185秒、恢复、drain/resume、active_requests=0通过。容器NetworkMode=none、ReadonlyRootfs=true、CapDrop ALL、no-new-privileges、UID/GID1000确认；退出清理完成。证据fish-s2-isolated-http-worker-20261008.json；仍为未签名fixture，不等同正式安装/Host/音色及长音频质量，变速等控制和签名发布继续推进。
+
+- 2026-10-08 Fish S2局部cuDNN codec策略已接入engine并通过冷启动与原生Worker复验：只在decode范围设deterministic=True/benchmark=False，其他设置保持，正常/异常恢复验证通过，不改变全局确定性策略。候选engine overlay+已导出加载器/依赖下，无参考文本重复与取消后恢复精确，普通/带文本参考仍匹配旧基准；取消约0.070秒，stop释放通过。普通/带文本/无文本参考/双角色对话ASR正文4/4通过。旧无文本非确定性波形仍不同，保留原证据，不声称音色质量或字节等价。75项回归通过；证据fish-s2-scoped-codec-worker-20261008.json。更新源码导出、HTTP隔离/Host、变速等功能及签名安装发布仍待完成，所有实机进程已结束。
+
+- 2026-10-08 Fish S2无参考文本差异已定位codec：带文本重复全部一致；无文本在工作/主线程参考编码和语义codes均逐值精确，仅波形max_abs0.0078125。固定同一codes用官方codec解码复现；cuDNN deterministic=True/benchmark=False即可使后三次解码一致，无需全局use_deterministic_algorithms。此为切换后诊断，尚未改产品engine或通过冷启动/端到端新策略验收，数值漂移不等于内容错误，先前三项ASR仍有效。标准Runtime新增--fish-s2-python/--fish-s2-sources闭合能力校验与导出入口，64项回归通过，未构建新制品。证据fish-s2-reference-codec-determinism-20261008.json；下一步局部cuDNN策略及完整Worker复验，HTTP/Host/签名发布仍待完成，实机进程已结束。
+
+- 2026-10-08 Fish S2共享语音Worker适配器已接入已验证加载器并实机诊断：普通/上游别名WAV精确，带参考文本与旧基准及重复均精确；取消约0.063秒退出、恢复WAV精确、stop释放通过。无参考文本与旧基准及重复均不一致，因此整体passed=false，保留r1失败和r2音频，继续以官方同输入重复运行定位；独立ASR对带文本/无文本参考和双角色对话正文3/3通过，不代表音色质量通过。修复共享OmlxTTSAdapter只对inline_speaker_tags跳过named_voices校验，其他模型预设检查保留；25项回归通过，影响未来Mac Desktop需纳入Release。证据fish-s2-native-worker-diagnostic-20261008.json；变速/指定语言/自定义采样尚未支持，HTTP/Host及签名安装发布未完成，所有实机进程结束。
+
+- 2026-10-08 Fish S2正式可复用加载入口已实现并从标准导出r2实测：先按固定原始checkpoint清单校验全部字节，保留官方语义加载/键映射，通过局部类绑定检查358字段闭包，未替换进程全局torch加载器；codec541字段检查，仅允许六个已登记非持久缓存且逐值核对。导出26运行文件/6留存文件，python -I -S下加载95.03秒，短英文PCM16匹配此前稳定codec基准，重复float精确；66项回归通过。证据fish-s2-exported-verified-loading-20261008.json。本轮未重跑参考/取消生命周期，不宣称原始优化codec冷/热波形等价；共享Worker/Host、完整Runtime CLI、质量及签名安装发布仍待完成，既有Runtime0.5.0候选未改，实机进程已结束。
+
+- 2026-10-08 Fish S2标准官方推理源码导出通过：固定源码摘要、显式24个运行文件、6个留存文件含完整源码/许可/Built with Fish Audio署名，排除训练datasets/lit_module；Spark逐SHA校验通过。使用python -I -S，仅导出profile与固定core路径，官方语义/DAC入口和engine导入通过，外部site模块0。构建器/profile60项回归通过(exit0，沙箱Metal atexit警告不计GPU证据)。证据fish-s2-standard-source-export-20261008.json；本轮未跑新GPU推理，完整Runtime CLI/加载factory/Worker/Host/签名安装发布仍待完成，Runtime0.5.0已签候选未修改。
+
+- 2026-10-08 Fish S2标准Runtime依赖导出完成：新增fish-s2独立profile与ai2apps.model.fish-s2-cuda服务映射，导出前校验固定requirements.lock；Spark标准_copy_isolated_profile实际导出117分发包，16,975条RECORD对应16,974个唯一文件逐SHA核验，0缺失/0多余，不带开发.pth。新增服务隔离参数回归，构建器/profile58项通过(exit0，沙箱Metal atexit警告不计GPU证据)。证据fish-s2-standard-dependency-export-20261008.json；仅依赖profile，官方推理源码/包装器导出、完整Runtime CLI制品、Worker/Host/签名安装发布仍未完成；未修改Runtime0.5.0已签候选，进程结束。
+
+- 2026-10-08 Fish S2推理依赖冲突已解决：独立探针验证protobuf3.19.6满足audiotools/TensorBoard声明且可导入官方两个推理入口，之后仅替换Fish独立环境protobuf；标准Runtime完整依赖约束检查117分发包通过，固定fish-s2-cuda-requirements.lock，未修改校验器或依赖元数据。官方>=3.20覆盖针对训练datasets生成protobuf，后续推理Runtime必须排除这部分训练模块，不宣称完整上游训练环境等价；Torch2.10偏差仍记录。变更后六组官方codes GPU解码WAV与先前ASR通过的稳定codec版本逐字节相同。证据fish-s2-inference-dependency-lock-20261008.json；尚未profile/source导出、Worker/Host/签名发布，进程结束。
+
+- 2026-10-08 Fish S2稳定codec参考路径重新端到端实测：直接走engine参考PCM编码，中英带参考文本、无参考文本、双说话人四项均EOS正常、ASR正文4/4通过；带参考请求实际取消后float逐值恢复、CPU/CUDA RNG保持、hook清理、六参考拒绝通过。合成参考不代表音色克隆/说话人区分质量验收。并行标准Runtime依赖闭包预检明确失败：descript-audiotools要求protobuf>=3.9.2,<3.20，而开发环境按官方Fish override使用5.29.6；未绕过检查或导出假可用Runtime。证据fish-s2-stable-reference-preflight-20261008.json；后续解决固定依赖约束及Worker/Host、长时质量/签名发布，进程结束。
+
+- 2026-10-08 Fish S2稳定codec方案通过有限验证并接入engine：局部torch.jit.optimized_execution(False)保留官方Snake公式，六组既有codes（中英/参考/情绪/双说话人）重复解码逐值一致，ASR正文6/6通过；相对旧PCM的relativeRMSE0.008805–0.016326，明确是BF16舍入变化，不宣称与旧官方冷/热波形等价或听感通过。引擎完整原生短句生命周期复验通过：匹配稳定codec基准PCM16、实际第10次回调取消后float精确恢复、CPU/CUDA RNG保持、hook清理、EOS超限失败后恢复、close拒绝新请求。原始两次失败保留；证据fish-s2-stable-codec-lifecycle-20261008.json。新参考编码JIT策略仍须端到端复验，长/并发生命周期、质量、Runtime导出/Worker/Host/签名发布仍待完成；进程结束。
+
+- 2026-10-08 Fish S2 codec重复性定位推进：固定同一语义codes，默认首次/后续波形max_abs0.0078125、后两次精确；新进程首次即启用确定性CUDA仍有同差异，排除简单确定性开关修复。166次叶模块对照最早差异在Snake1d decoder.model.1.block.0；实际descript-audio-codec1.0.0使用TorchScript Snake。局部optimized_execution(False)三次解码逐值精确，但输出SHA与官方冷/热路径均不同，因此只作候选，尚不接入引擎或放行生命周期；需进一步波形/内容验证。fresh-deterministic回执第二行default标签实际仍保留确定性设置，证据明确限制仅首行证明冷启动对照。证据fish-s2-codec-jit-diagnostic-20261008.json；进程结束，整体生命周期/服务发布仍未完成。
+
+- 2026-10-08 Fish S2新增可复用原生engine：固定官方采样路径、进程内串行/RNG作用域、参考PCM边界、实际模型层取消hook、局部EOS检查、关闭接口；接受已验证官方model/codec对象，尚无正式加载factory。实机首次PCM16与官方基准精确，但取消后float逐值恢复失败；显式请求前清KV后仍失败。进一步三次诊断确认普通重复/取消后语义codes全部精确、CPU/CUDA RNG恢复，波形最大绝对差均0.0068359375，定位为codec解码可重复性，不能归因取消采样漂移。完整脚本后续超限恢复/close断言未到达，不能声称通过。证据fish-s2-engine-lifecycle-diagnostic-20261008.json；保留两次失败，下一步固定codec输入检查CUDA确定性算法，不放宽门禁；本轮进程结束。
+
+- 2026-10-08 Fish S2官方参考/表达控制实测：固定此前中英文合成音频作参考，经官方codec.encode→带参考文本语义生成→官方decode，中英参考、happy标签、双说话人四项均正常EOS，独立ASR正文4/4归一化全文匹配。输出2.14/3.44/2.37/4.50秒，未编译生成5.80/8.64/5.98/11.42秒。首轮因TorchAudio2.10缺TorchCodec文件读取失败；r2对已验PCM16/44.1kHz WAV直接读取并按/32768归一化，保持官方codec编码输入与数学路径，原始失败保留。证据fish-s2-official-reference-controls-20261008.json；合成参考不等同真实说话人克隆验收，情绪效果和双声音区分度未评估，变速/无参考文本/五说话人/长音频/生命周期/Runtime/Worker/Host/签名发布仍待完成；进程结束。
+
+- 2026-10-08 Fish S2官方BF16端到端实际生成通过：固定源码/原始权重，语义模型及官方CLI codec均BF16，seed42/top_p0.9/top_k30/temperature1.0/未compile；英文2.0898秒/生成7.006秒，中文2.6935秒/生成6.655秒，EOS于46/59token正常结束，独立Qwen3-ASR两项全文归一化精确匹配。加载95.04秒，峰值CUDA分配19.371/19.407GB；目前短句慢于实时，尚非优化性能验收。新增EOS完整结束检查，触及上限不记截断成功；WAV、codes、SHA完整保留。证据fish-s2-official-generation-20261008.json；Torch2.10与官方2.8差异、参考克隆/情绪/变速/多说话人/长音频/生命周期/Runtime/Worker/Host/签名发布仍开放；本轮生成与ASR进程结束。
+
+- 2026-10-08 Fish S2独立export-venv建立并补齐官方推理依赖：transformers4.57.3/einx0.2.2、Hydra/codec/audiotools/Lightning等，未修改共享环境；仍借用GB10 Torch2.10.0+cu130而非官方2.8.0，尚非正式Runtime锁。官方DualAR语义模型358字段完整匹配、4,561,852,416参数BF16 CUDA驻留，加载99.19秒/峰值10.269GB。codec首次严格检查发现六个非持久化RoPE/mask缓存多余；核对固定源码persistent=False后逐值验证checkpoint覆盖范围均精确，再允许仅这六字段，541字段无缺失、391,430,530参数FP32 CUDA驻留，16.45秒/峰值5.220GB。原始缺依赖及strict失败保留；证据fish-s2-official-loading-20261008.json。仅官方加载验收，尚未生成语音或完成质量/生命周期/Runtime导出/Worker/Host/发布；本轮进程结束。
+
+- 2026-10-08 Fish S2 Pro开始官方CUDA接入：固定fishaudio/fish-speech源码214da3cd及归档SHA39385029、官方原始checkpoint1de9996b；源码归档与配置/许可/README/权重索引Git摘要已校验，Spark全部11个选定文件、11008083526字节已逐摘要校验完成。实机官方导入定位loralib/hydra缺失，codec依赖与官方Torch2.8/transformers上限/einx固定版本需独立环境处理，不修改共享模型环境。新增匿名固定版本校验下载器和实机导入探针，FISH-S2-REUSE.md记录37语言选项/参考音色/情绪指令/变速/最多五说话人待验合同及官方实现优先原则。证据fish-s2-official-preparation-20261008.json；尚未实际推理/Worker/Host/签名发布。
+
+- 2026-10-08 VibeVoice长文本Host链路实机通过：258词连续故事、默认官方剩余context预算，Carter85.2秒/Emma95.07秒WAV与固定官方原生输出逐PCM16样本0LSB；95.07秒FLAC解码亦0LSB，MP3解码2,281,600样本时长完整，固定ASR全文归一化精确匹配。真实调度4正常完成、3非法controls预期失败，running/queued归零，禁网只读容器与进程清理。探针复用短/长语料和选定格式，无生产推理算法修改。证据vibevoice-host-long-content-20261008.json；仅fixture发现下的约90秒WAV/FLAC/MP3链路，不代表十分钟自然语料、其余格式长音频、音色听感、FA2、签名安装、QuickRead和发布已完成。
+
+- 2026-10-08 VibeVoice实际Host九种产品格式全部复验：wav/pcm/mp3/m4a/aac/flac/ogg/opus/webm经路由→真实调度租约→禁网Worker→Host编码输出，MIME/解码/短句时长通过；WAV/PCM/FLAC与官方Emma基准逐PCM16样本0LSB，九格式固定Qwen3-ASR全部完整保留原文。12正常任务完成、3非法controls预期失败，running/queued归零、槽位释放；容器及进程结束。新增全格式探针与独立ASR脚本，未改生产Host编码逻辑。证据vibevoice-host-all-formats-20261008.json；仅2.8秒短句格式/内容验收，不代表长音频编码、音色听感、FA2、签名安装、资源准入、QuickRead或发布通过。
+
+- 2026-10-08 VibeVoice真实十分钟资源边界通过：固定官方BF16/SDPA解码14,403,200样本（600.133秒）时明确超限失败、不返回音频；耗时292.51秒、峰值CUDA分配3.032GB，CPU/CUDA RNG保持、hook清理、随后短句恢复与官方PCM16精确。重复2340词仅作资源/保护验证，不作十分钟自然语音质量验收。最新limits经标准export-r3刷新（60依赖7913文件、29运行源码6保留文件），unsigned fixture-r2隔离HTTP六声音0LSB，取消0.110秒及恢复通过；Host-r3两WAV/FLAC解码0LSB，3正常完成、3非法请求预期失败、运行排队归零。原始Host回执multipart旧标签由证据更正为实际JSON路径。证据vibevoice-ten-minute-refreshed-host-20261008.json；FA2、听感/音色、签名安装/资源准入/QuickRead和发布仍待完成；本轮进程结束。
+
+- 2026-10-08 VibeVoice固定官方依赖环境长段落复验：Carter85.2秒/Emma95.07秒WAV与此前ASR全文通过版本SHA完全一致，耗时44.38/45.85秒，峰值2.816/2.835GB。核对官方generate发现包装器默认4096偏小、文本token在shared new-token预算被重复计入；改为官方8192减voice prefix的剩余预算，显式预算内文本与语音共享，拒绝无语音容量。新增实际decoder累计样本十分钟保护，超限失败不返回截断成功；hook在finally清理。64定向测试通过；默认预算实际短句与官方基准精确，取消/长度失败恢复、RNG与hook清理通过，缩小音频阈值的故障注入恢复通过但不计真实十分钟验收。证据vibevoice-long-pinned-limits-20261008.json；既有export-r2/HTTP/Host早于此修改，需刷新重验，十分钟质量/FA2/签名发布仍待完成；进程结束。
+
+
+- 2026-10-08 VibeVoice当前Host调用链实机通过：当前omlx音频路由→ModelInvocationService JSON请求→真实WorkerJobScheduler租约→Supervisor loopback/UDS→禁网只读Worker。Carter/Emma两WAV与官方基准0LSB，Host FLAC转换经Host自带解码后也0LSB；3正常任务完成、3非法speed/voice/language请求400并计预期failed，最终running/queued均0、槽位完全释放。r1仅测试脚本缺soundfile，r2改用Host原有解码helper通过；未改生产Host行为。原始回执scope误继承multipart字样，证据明确更正实际为JSON路径。模型发现仍fixture PackageModel，不是签名安装/资源管理器准入/QuickRead验收。证据vibevoice-host-invocation-20261008.json；容器与进程已清理，长时质量/FA2/签名发布仍待完成。
+
+
+- 2026-10-08 VibeVoice隔离HTTP实机通过：最新engine checkpoint路径变更经标准export-r2刷新，60依赖7913文件/28运行源码6保留文件再次校验；独立unsigned fixture-r1经真实Worker launcher与UDS认证HTTP运行。六声音输出与官方基准逐PCM16样本0LSB，非法model/seed/speed/voice拒绝，未认证health401；取消0.1131秒返回499，恢复与drain/resume后音频精确，active_requests归零。Docker inspect确认network none、ReadonlyRootfs、CapDrop ALL、no-new-privileges、uid1000:1000；finally容器清理并等进程退出。证据vibevoice-http-worker-20261008.json；这不是签名安装或实际Host/QuickRead验收，固定环境长时质量、FA2和发布仍待完成。
+
+
+- 2026-10-08 VibeVoice新增共享TTS Worker适配器：复用CudaQwenTTSAdapter/OmlxTTSAdapter串行请求、线程排空、WAV响应和Host格式转换契约；固定官方BF16 checkpoint由Host指定，tokenizer/安全voice从Package resources读取，engine新增checkpoint_path分离。原生真实请求对象输出与官方基准WAV逐字节相同，upstream别名/取消后恢复精确；seed布尔、零max_tokens、非法voice、speed、中文language、instructions六项拒绝通过，取消不返回音频，stop释放engine/events并拒绝新请求。证据vibevoice-native-worker-adapter-20261008.json。仍为fixture Package/native调用，不是HTTP/Host/签名安装；既有标准source export早于本次engine路径变更，须刷新后隔离HTTP验证，十分钟质量/FA2/发布仍待完成；本轮进程结束。
+
+
+- 2026-10-08 VibeVoice标准源码导出完成：构建器固定Microsoft归档SHA cbd51f45，导出未修改vibevoice源码与3运行包装器，保留MIT/README/pyproject/完整归档/依赖锁/NOTICE；28运行文件、6保留文件逐摘要通过，不把开发pickle转换器或pt预设放入运行模块目录。CLI新增成对--vibevoice-python/--vibevoice-sources与capability一致性门禁，尚未执行完整制品封装或修改已签Runtime。Python -I清除开发site路径，仅导出profile+固定core执行实际官方短句，PCM16与官方基准精确，模块来源检查通过；仍非禁网容器HTTP。新增错误归档写入前拒绝和许可保留/转换器排除测试，构建器/profile57通过(exit0，有沙箱Metal atexit警告)。证据vibevoice-standard-source-export-20261008.json；Worker/Host/长时质量/签名发布待完成，进程已结束。
+
+
+- 2026-10-08 VibeVoice固定依赖接入标准CUDA Runtime构建器：新增vibevoice独立profile与ai2apps.model.vibevoice-cuda服务映射，导出前校验vibevoice-cuda-requirements.lock。Spark调用标准_copy_isolated_profile导出60分发包，7913文件逐RECORD/SHA验证，0缺失/0多余，不导出开发.pth。构建器/profile回归55通过(exit0，沙箱Metal atexit警告不计GPU证据)。证据vibevoice-standard-dependency-export-20261008.json；仅依赖profile，官方源码/包装代码导出、CLI完整Runtime封装、HTTP/Host/签名发布仍未完成；没有修改Runtime0.5.0已签候选。所有本轮实机进程结束。
+
+
+- 2026-10-08 VibeVoice创建独立export-venv，对齐官方streaming依赖transformers4.51.3与tokenizers0.21.4，未改其他共享环境。标准Runtime构建器_distribution_closure验证60个依赖版本闭包并固定vibevoice-cuda-requirements.lock；当前仍通过明确development-framework.pth借用底层包，不是已导出的独立Runtime。官方六声音BF16/SDPA短句重跑WAV与旧官方基准逐字节相同；实际取消/恢复、CPU/CUDA RNG、hook清理、长度失败与close拒绝全数复验通过。证据vibevoice-official-pinned-environment-20261008.json；FA2尚缺，既有85/95秒长文本证据使用4.57.6，不能自动提升为本环境长音频验收；profile/source导出、Worker/Host、10分钟质量和签名发布仍待完成，进程已结束。
+
+
+- 2026-10-08 VibeVoice官方原生引擎连续英文长段落内容通过：同一258词四段原创故事，Carter/Emma分别生成85.2/95.07秒，耗时42.77/47.31秒，峰值分配2.816/2.815GB；无异常峰值或非有限值。固定Qwen3-ASR全文按预声明忽略标点大小写空白归一化两项均匹配，未调整阈值或截短输入。原始文本、完整WAV与SHA保留；这是官方BF16/SDPA/5步/seed1234路径，无Mac数值要求。证据vibevoice-official-long-content-20261008.json。尚非10分钟上限、音色/听感、长请求取消资源验收，Worker/Host/FA2/固定官方依赖profile及签名发布仍待完成；本轮生成和ASR进程均结束。
+
+
+- 2026-10-08 VibeVoice新增官方CUDA原生引擎：固定官方模型/tokenizer摘要、六声音集合与安全缓存，串行调用官方BF16/SDPA/5步路径；请求seed通过fork_rng作用域恢复CPU及CUDA随机状态。利用官方stop_check_fn和扩散头pre-hook增加取消检查，无推理数学修改。实机短句PCM16与官方基准精确；第10次回调在实际扩散阶段取消后恢复float逐值精确，CPU/GPU RNG保持，取消及长度失败后hook清除。官方reach_max_step_sample明确转为失败，不返回截断音频；close后拒绝请求。证据vibevoice-official-engine-lifecycle-20261008.json。当前为原生引擎，不是Worker adapter/HTTP/Host或10分钟验收；FA2、官方依赖闭包、长音频与签名发布仍待完成，所有本轮进程结束。
+
+
+- 2026-10-08 VibeVoice官方路径发布准备推进：六个官方声音各100tensor由固定摘要可信原件一次性转换为safetensors，往返逐tensor精确；运行加载器仅读safetensors，验证SHA/键集合/形状/BF16/有限值和32MiB上限，重建独立DynamicCache。六声音请求间缓存隔离通过，摘要错/缺tensor/形状错/NaN/精度错五项拒绝通过。新增官方权重闭包检查：仅允许完整缺失的276个声学encoder tensor（官方checkpoint未提供），0推理tensor缺失/0多余，并为encoder意外执行设置失败钩子。安全声音加载后六个官方BF16/SDPA短句WAV与上一轮原件路径逐字节相同，因此已有六项ASR内容证据仍适用。证据vibevoice-official-safe-assets-20261008.json；未放宽为Mac一致性门禁，本次比较同一官方实现的资产格式无损性。FA2/官方依赖profile、长音频音色生命周期、Worker/Host/签名发布仍待完成；本轮进程结束。
+
+
+- 2026-10-08 VibeVoice官方基准已实际运行：直接使用固定Microsoft代码1541f590与原始checkpoint6bce5f06、官方六声音缓存、BF16/SDPA/5步/CFG1.5/seed1234，六声音均生成完整短句，独立Qwen3-ASR六项全文匹配。输出2.13–2.80秒，模型加载后生成0.874–1.828秒，峰值约2.82GB（短句观测，非完整性能基准）。先初始化CUDA再CPU加载权重后迁移解决本次加载失败；官方预设的BaseModelOutputWithPast在当前Torch restricted loader失败，开发探针仅对固定归档摘要验证的官方原件使用trusted pickle，不接受用户pickle，正式Runtime须转换为安全tensor资产。官方checkpoint缺少encoder权重，生成源码使用decoder；正式严格加载闭包仍须落实。FA2缺失、当前transformers4.57.6不同于官方streaming可选依赖4.51.3均已记录；SDPA回退下的短句内容通过不等于音色/长音频/官方FA2质量验收。证据vibevoice-official-bf16-baseline-20261008.json；所有本轮实机进程已结束，尚未签名发布。
+
+
+- 2026-10-08 用户明确调整模型验收原则：官方固定版本实现与原始权重作为算法/质量主要基准；Mac只作为产品能力、接口和辅助数值诊断参考，不要求CUDA照搬Mac量化或精度。已写入spark/AGENTS.md与VIBEVOICE-REUSE.md，适用于后续非LLM模型。VibeVoice新增651tensor主干/桥接/EOS的30项Mac诊断与六声音×三文本18项全部通过；374tensor声学解码器六项辅助诊断通过，最大relativeRMSE1.7561e-5、分块1.3540e-5。仅辅助证据，未生成移植版完整语音。固定官方checkpoint6bce5f06044837fe6d2c5d7a71a84f0416bd57e4（约2.035GB原始权重）并下载逐摘要验证，官方CUDA demo为BF16/FA2优先/5步/CFG1.5，区别于Mac4bit/20步。当前开发环境transformers4.57.6可导入固定官方源码，但缺FA2，SDPA冒烟仍在排查加载兼容性；不声称官方质量、正式Runtime/Host/签名安装或发布完成。组件记录vibevoice-backbone-decoder-official-transition-20261008.json；不因Mac对照通过而推进质量发布。
+
+
+- 2026-10-08 VibeVoice Realtime 0.5B开始CUDA对齐：固定Mac 4bit checkpoint550877a1，29文件732,671,870bytes在Mac逐项与公开Hub LFS/Git摘要核对，Spark全文件SHA再次通过；固定Microsoft源码1541f590与MIT许可及Mac Runtime1.8.10的7个模型源文件摘要。新增严格70tensor扩散头和请求局部DPM-Solver++，4bit数值展开FP32（非CUDA原生打包4bit）；六个真实voice正负condition×3时刻的18项head对照最大relativeRMSE1.37e-6，1/5/20步×六voice的18项采样对照最大5.54e-6，均通过预设1%；取消第3检查后恢复精确、全局CUDA RNG不变。只完成组件，未生成完整语音；tokenizer固定、两段主干/声学解码器、6声音/10分钟质量生命周期、Runtime/Worker/Host和签名发布都待完成。VIBEVOICE-REUSE.md列明完整范围，不把额外voice文件扩为产品语言/能力。证据vibevoice-components-20261008.json；本轮所有进程结束。
+
+- 2026-10-08 Seed-VC分钟级缺失分段已补齐：81.76秒双语拼接实测旧voice模式Mac只输出3.61秒、CUDA7.79秒；按固定上游30秒HuBERT/5秒上下文、AR总条件1500token、参考前25秒补齐两端处理，CFM按30秒窗口/16frame重叠融合。AR生成token先拼接再CFM分窗，避免无语义重叠的AR边界丢帧；分段种子为请求seed+index。新voice输出Mac79.93秒/CUDA80.38秒；CUDA三档耗时22.20/52.51/86.01秒，峰值3.75/3.75/4.20GB。两端六项短输入PCM16均保持精确。实际分钟级扩散中cancel0.468秒/stop0.984秒，事件和锁释放、无残留输出、重启后短句精确；stop后仍9.57MB allocated，未声称GPU占用归零。标准export-r4/fixture-r3隔离HTTP-r5三档短句及81.76秒timbre_fast均0LSB，禁网只读容器已清理。9定向测试通过；完整混语ASR保留5/6转换失败；按已知语言边界分段后，两端timbre共8个语言片段全部匹配原文，说明混语识别存在干扰，但voice两端共4个语言片段仍错漏词，质量未通过。最新Host-r3三档0LSB、非法controls/调度通过，返回文件与此前ASR通过的Host-r2逐字节相同；模型发现仍fixture。音色/拼接听感、自然连续录音、voice内容和签名安装发布仍未验收。本轮实机进程均已结束。证据seed-vc-v2-minute-chunk-fix-20261008.json；不把时长恢复当作质量通过。
+
+- 2026-10-08 Seed-VC ASTRAL token精度根因确认并修复Mac独立Worker：首个pwconv1相同输入对独立FP64参考，默认MLX误差0.003518，禁用TF32后2.81e-6，CUDA1.27e-6；只在Seed-VC adapter/package首次MLX运算前设置MLX_ENABLE_TF32=0，共享Runtime及其他Worker不变。wide/narrow×speech/sweep/silence×共享特征/完整HuBERT共12项token全部精确，完整编码relativeRMSE最高0.000114。Mac包源码需未来升版/签名发布，未改已发布制品。段落三档重验仍保留CUDA timbre两项A→The失败，不放宽质量门槛。新标准export-r3的59依赖/8405文件与39源码/20保留文件校验通过，最新Mel修复进入独立unsigned fixture-r2；HTTP-r4三档0LSB、取消0.02554秒、恢复/drain通过；Host-r2三档0LSB、3任务完成槽位释放、3非法controls拒绝及全部短句ASR通过。64定向测试通过(exit0，有沙箱Metal atexit警告)，实机进程及容器已结束。证据seed-vc-v2-fp32-token-fix-20261008.json与seed-vc-v2-refreshed-worker-host-20261008.json；音色/分钟级/段落内容/签名安装发布仍开放，formal_spark_host_acceptance保持false。
+
+- 2026-10-08 Seed-VC Mel精度门禁修复：独立NumPy complex128参考确认Mac/CUDA FP32 FFT低能量log误差分别最高0.003379/0.002761；两端保留相同FP32加窗，再用FP64 FFT/幅度/mel/log、最后转FP32。Mac用CPU NumPy（MLX不提供FP64），Spark仍GPU运算；speech/sweep/silence跨端Mel最大误差全部0，原0.001门槛未放宽，fbank/style原门禁亦通过。8.5秒全链路回归正常，CUDA10/30/voice耗时2.26/3.72/7.61秒；原timbre两项A→The内容失败仍在，Mac三档和CUDAvoice通过，未把数值修复当作质量闭环。证据seed-vc-v2-mel-fp64-fix-20261008.json；Mac模型Package源码需升版评估，旧Spark r2导出/HTTP/Host证据早于本修复，必须更新导出后重验。ASTRAL token、内容/音色/分钟级/签名安装发布继续开放，所有本轮进程结束。
+
+- 2026-10-08 Seed-VC当前Host调用链实机通过：当前omlx音频路由、ModelInvocationService、multipart代理、真实WorkerJobScheduler与Supervisor loopback→UDS连接禁网只读Worker；三profile参考音频随源音频经48k统一规范化后正确转发，与同一规范化输入直连Worker分别50944/50944/54784样本全部0LSB。3个local_foreground任务完成、0失败、槽位释放；3组非法controls在调用前400拒绝。Host最终返回三份音频固定ASR均完整保持Hello, welcome to the voice service.。模型发现仍是fixture PackageModel，未验签安装、资源管理器准入或QuickRead，不计formal_spark_host_acceptance。证据seed-vc-v2-host-{invocation,asr}-20261008.json；容器/进程结束，既有段落2/6内容失败和Mel/token/音色/分钟级/发布门禁仍开放。
+
+- Seed-VC标准导出profile进入独立未签名Runtime fixture，隔离HTTP实机r3通过：三profile分别59392/63488/63488样本与原生Worker基线PCM16逐样本0LSB；取消0.02413秒，恢复及drain/resume后输出精确、active_requests归零。Docker inspect确认network=none、ReadonlyRootfs、CapDrop ALL、no-new-privileges、uid1000:1000；测试容器已清理。r1因脚本repo ID误写被固定checkpoint门禁拒绝，r2输出最大2282LSB偏差；修复adapter显式关闭matmul/cuDNN TF32、benchmark并启用deterministic，使正式Worker计算条件对齐既有探针后通过，未放宽0LSB门槛。9个adapter测试通过。证据seed-vc-v2-http-worker-20261007.json；这仍非签名安装/实际Host/发布，原段落质量2/6失败及Mel/token、音色/分钟级验收继续开放。下一步实际Host调用；本轮所有进程结束。
+
+- Seed-VC BigVGAN缺失许可证已补齐：从官方NVIDIA/BigVGAN固定提交7d2b454564a6c7d014227f635b7423881f14bdac读取LICENSE及incl_licenses/LICENSE_1..8，保留NVIDIA、HiFiGAN、Snake、alias-free-torch等文本，逐文件SHA写入seed-vc-bigvgan-licenses.lock.json。该commit只标识许可文本来源，不冒充Seed-VC代码祖先。标准导出器在写任何目标前校验缺失/摘要/路径越界，并同时保留运行目录许可和sources来源快照。r2标准依赖8405文件及源码39运行文件/20保留文件全部字节校验通过；新增缺失/篡改/越界3负例，构建器/profile共55测试通过。未改模型、未发布，完整Runtime/隔离HTTP/Host及质量门禁仍待完成。证据seed-vc-v2-standard-source-export-r2-20261007.json；本轮进程结束。
+
+- Seed-VC标准源码导出实现完成：校验固定51383efd归档SHA，BigVGAN搬入seed_vc_bigvgan独立命名空间，11个CUDA包装/共享speaker文件随profile导出；保留GPL归档、README、共享speaker确切来源及许可证，30运行文件/10保留文件逐字节校验通过。Python -I从导出profile加载pipeline和vocoder实机生成63488样本有限音频，证明无需开发源码目录，但仍用开发core，不是隔离HTTP。标准构建器新增成对--seed-vc-python/--seed-vc-sources和seed-vc capability一致性门禁，完整CLI封装尚未跑；既有52构建器/profile测试通过。发现固定上游BigVGAN引用incl_licenses但归档未含，第三方许可证闭包仍待补齐，不宣称可发布；旧质量失败保留。证据seed-vc-v2-standard-source-export-20261007.json；下一步许可证闭包、完整Runtime/隔离HTTP/Host，本轮进程结束。
+
+- Seed-VC已接入标准CUDA Runtime构建器的独立依赖profile（service映射ai2apps.model.seed-vc-v2-cuda），导出前强制校验seed-vc-cuda-requirements.lock。Spark标准_copy_isolated_profile实机导出59个分发包，逐RECORD校验8405唯一文件，0缺失/0多余/no .pth；核心Runtime相同版本去重保持原规则。test_cuda_runtime_builder与test_cuda_runtime_profiles合计52项通过(exit0，atexit有沙箱Metal不可用提示)。已完整读取当前发布手册；本轮仅依赖profile，不包括固定源码/许可导出、完整Runtime封装、隔离HTTP或签名发布，旧质量失败继续开放。证据seed-vc-v2-standard-dependency-export-20261007.json；下一步固定源码命名空间/许可证、隔离Worker与Host。本轮实机导出进程结束。
+
+- Seed-VC预先固定1234/1235/1236三种子、两档timbre、Mac/CUDA共12输出的8.5秒段落内容矩阵完成：Mac6/6通过，CUDA4/6通过，原种子1234两项A→The失败保留，新增1235/1236均通过；未选择成功种子替换默认或豁免质量。另创建独立开发export-venv并用标准构建器依赖闭包固定59分发包到seed-vc-cuda-requirements.lock；初次构建器导入因缺仓库目录中的ACE锁失败，校验复用既有venv/pth后补齐标准布局成功。此仅开发依赖环境，不是标准Runtime profile导出、签名包或隔离HTTP验收。证据seed-vc-v2-seed-sweep-export-prep-20261007.json；质量/分钟级/音色/Mel-token/Runtime/Host/发布仍未完成，本轮进程结束。
+
+- Seed-VC新增8.4985秒英语段落+独立中文参考三profile实机对照（尚非分钟级长音频验收）。Mac三档与CUDA voice内容全部保持；CUDA timbre10/30的固定ASR将A little girl改成The little girl，两项严格内容门禁失败。模型加载后CUDA耗时2.18/3.72/7.49秒，输出无异常扩长。诊断仅替换扩散noise为Mac记录值后，CUDA两档内容恢复，Mac对照亦通过，说明此样例对随机noise敏感，非正式修复；未改变产品RNG/阈值，原始失败保留。后续需多种子/更多语料，既有Mel/token、音色、分钟级、Runtime/HTTP/Host/发布门禁仍开放。证据seed-vc-v2-paragraph-noise-diagnostic-20261007.json含所有原始结果及noise SHA；本轮全部进程结束。
+
+- Seed-VC CUDA新增原生Worker adapter：固定model/upstream别名与checkpoint revision、三profile映射、参考输入、参数校验、GPU串行锁、取消线程排空及停止释放。实机共享Worker请求对象三profile均输出，别名重复/取消恢复逐字节一致，取消0.01893秒无残留输出，stop释放pipeline/events并拒绝后续请求；9个本地参数/版本门禁测试通过(exit0，atexit有沙箱Metal不可用提示，不作为GPU证据)。新增独立英语source(IndexTTS)与中文reference(VoxCPM设计音色)三profile Mac/CUDA对照，6输出固定ASR全部完整保留Hello, welcome to the voice service.；输入SHA固定，不将独立录音等同说话人身份/主观音质验证。首次ASR脚本缺soundfile，改为直接读取既有PCM16源文件后通过。证据seed-vc-v2-adapter-cross-reference-20261007.json；标准Runtime导出、隔离HTTP/Host、长音频、音色质量与签名发布未完成，既有Mel/token失败保持开放。本轮实机进程结束。
+
+- Seed-VC voice采样修复已同时进入Mac Package源码及CUDA pipeline：沿固定上游top_p=.7/temperature=.7/repetition_penalty=1.5替换默认纯贪心，保留greedy供对照；请求局部RNG，满4000token未EOS明确报错，不返回异常截断音频。修复后同一短句自身参考，Mac62976样本(2.856秒)/CUDA58112样本(2.635秒)，取代旧1775872样本(80.54秒)异常扩长；两端固定ASR均完整保留原文。CUDA AR阶段取消后恢复重复输出逐值相同，输入/全局RNG保持；Mac最小10token、EOS、上限失败、非法controls、局部key不污染全局随机序列均通过。独立backend随机算法不同，不宣称采样token/波形跨端精确；跨音色/长音频、Mel/token旧门禁、Runtime/Worker/Host/签名发布仍待完成。Mac源码改动需下一模型Package版本评估，尚未构建发布。证据seed-vc-v2-voice-sampling-fix-20261007.json；所有本轮进程结束。
+
+- Seed-VC AR CUDA及完整voice路径已实现：93tensor严格载入，12层GQA/RoPE/KV缓存、贪心EOS与逐token取消；pipeline懒加载narrow/AR，恢复voice length_adjust语义。共享真实特征prefill/缓存logits relativeRMSE 0.001307/0.001263通过1%，512token与Mac精确一致，但重复464触及上限，不能视为质量通过。两端完整voice把约2.88秒输入扩至1775872样本（80.54秒），Mac/Spark耗时51.68/136.39秒。固定上游使用top_p=.7、temperature=.7、repetition_penalty=1.5，而当前Mac纯贪心；独立CUDA上游采样诊断三种子1234/1235/1236于136/135/134token正常EOS，缩小故障到采样策略，尚未验证采样后音频或修改产品默认。下一步两端采样修复及音频内容/音色验收；此前Mel/token门禁与Runtime/Worker/Host/发布仍未完成。证据seed-vc-v2-ar-cuda-20261007.json；本轮全部Mac/Spark探针结束。
+
+- Seed-VC BigVGAN严格783张量逆布局加载及CUDA实测通过：相同真实/生成Mel的波形relativeRMSE 0.011884/0.007744，均小于预设5%。新增完整timbre链路，10/30步各生成63488样本（22.05kHz，约2.88秒），Spark模型加载后耗时1.27/1.53秒；Mac同输入0.43/0.57秒，非系统性能基准。短句自身作参考，Mac/CUDA两档输出固定ASR均完整保留原文；原生取消后重复输出精确，输入与全局CUDA RNG不变。仅短句内容/生命周期通过，不代表跨说话人音色质量或完整模型对齐。AR voice路径明确拒绝、尚待实现；此前Mel/token数值门禁失败仍开放，Runtime/Worker/Host/签名发布未完成。补齐开发环境matplotlib3.10.7及传递依赖，正式导出仍须锁定。证据seed-vc-v2-vocoder-cuda-20261007.json和seed-vc-v2-timbre-pipeline-20261007.json；本轮所有实机进程已结束。
+
+- Seed-VC v2新增CUDA双guidance Euler采样器（cosine sway时间网格、prompt区每步归零、每步取消检查）。实际DiT固定31frames/7promptframes、相同noise/condition/style：10步无guidance/仅speaker/仅content/双guidance与30步双guidance relativeRMSE 0.002082/0.002429/0.002535/0.002972/0.003995均通过1%；第4步前取消后重跑逐张量精确，输入及全局CUDA RNG保持。此仅短采样器链路，不是完整长音频/声码器/质量验收；random_voice与zero_prompt_condition可选分支尚未实测。下一步BigVGAN及完整转换，既有Mel/token失败保留。证据seed-vc-v2-flow-cuda-20261007.json；本轮探针结束。
+
+- Seed-VC固定13层DiT CUDA已实现并通过单步对照：140tensor严格键/形状/有限值完整加载，保留与Mac一致的未使用checkpoint字段，实际推理时间嵌入/style token/RoPE/长度mask/自适应RMSNorm/attention/MLP全CUDA。相同真实mel/style/condition与固定noise，time0有效31frames、time0.5有效23frames relativeRMSE 0.000949/0.001256均通过1%门槛。此只单步估计器，不是多步Euler/声码器或完整音频质量通过；下一步双guidance flow采样与BigVGAN。Mel和ASTRAL token此前失败仍开放。证据seed-vc-v2-dit-cuda-20261007.json；本轮Mac/CUDA探针结束。
+
+- Seed-VC新增CUDA音频前处理：Kaldi fbank的分帧/DC/preemphasis/Povey/FFT/mel/log/中心化和22.05k Slaney Mel的反射padding/Hann/FFT/log均GPU执行，滤波器常量由NumPy构造。原音频→fbank→CAMPPlus三例style relativeRMSE 4.42e-6/2.81e-4/6.95e-6通过1%；fbank最大绝对误差0.000605/0.000757/0通过0.001门槛。Mel语音0.002544/扫频0.004603超出预设0.001，静音0，保留失败不调整门槛；完整音频前端整体1/3通过。下一步定位Mel误差并在实际生成链路评估，ASTRAL token门禁仍开放；不宣称完整模型/Host/发布支持。证据seed-vc-v2-audio-cuda-20261007.json；本轮Mac/Spark探针结束。
+
+- Seed-VC CAMPPlus音色编码器已通过组件实机对照：复用cuda_cosyvoice_speaker架构，新增Seed专属未补零尾段平均及显式长度无偏统计池化；固定815tensor完整严格键/形状/有限值载入，神经参数全部CUDA。相同Mac fbank下speech/sweep/silence relativeRMSE 1.98e-6/1.69e-5/6.95e-6，cosine均>=0.99999976，通过1%/0.999组件门禁。未验证当前Seed的CUDA音频预处理或完整参考音色转换，不将组件相似度称为声音质量。标准Runtime导出需包含共享speaker源码与其原来源许可；未改动CosyVoice实现。证据seed-vc-v2-speaker-cuda-20261007.json；本轮Mac/Spark进程结束，ASTRAL token失败仍开放。
+
+- Seed-VC token阈值诊断完成：相同Mac encoded输入下六例CUDA projection符号均无差异；编码路径后wide speech两bit、wide silence一bit、narrow silence一bit在接近零处翻转（最小Mac margin0.000109）。此仅缩小累计编码/投影误差范围，未证明根因或豁免token精确失败。新增严格CUDA AR/CFM discrete length regulators，固定全部张量与词表范围，原长/73/287frames六例实机全通过：AR和未变长CFM逐值相同，CFM缩短/扩展relativeRMSE约1.10e-6/1.06e-6，负数/越界token拒绝。证据seed-vc-v2-quantizer-diagnostics及seed-vc-v2-regulator-cuda-20261007.json；完整模型/Worker/Host/发布尚未完成，所有本轮探针结束。
+
+- Seed-VC ASTRAL wide(11bits)/narrow(5bits) CUDA已实现并实测：各127tensor严格键/形状/有限值与binary mask检查，神经张量全CUDA。六例共享HuBERT特征的编码relativeRMSE均<1%(0.001563–0.006522)，但token精确门槛未全通过：wide语音/静音及narrow静音共享特征token有差异；完整HuBERT→ASTRAL wide语音2/143、静音1/49，narrow扫频3/49不一致。结果2/6完整门禁通过，不能将低连续误差当作离散内容对齐。下一步量化零阈值margin及逐层误差诊断；不调整门槛、不宣称完整转换可用。证据seed-vc-v2-astral-cuda-20261007.json；Mac/CUDA探针已结束。
+
+- 开始Seed-VC v2 CUDA对齐：固定Mac checkpoint2122cee1、上游commit51383efd，16文件2,236,581,603bytes全部Hub摘要与Spark SHA通过。新增cuda_seed_vc_hubert.py严格MLX卷积布局转换/完整325tensor加载，保持HuBERT18输出在末层LayerNorm之前的Mac语义；实机speech/sweep/silence relativeRMSE 0.002027/0.007525/0.001569均通过预设1%门槛，全部神经参数CUDA。首次probe因Hubert feature_projection返回单Tensor而非Wav2Vec tuple失败，按实际合约修正后r2通过。SEED-VC-V2-REUSE.md列明wide/narrow量化器、CFM/AR、三profiles与Host/Runtime/发布完整门禁；只完成前端，不宣称整个Seed-VC已可用。证据seed-vc-v2-{fixed-inputs,hubert-cuda}-20261007.json；本轮下载/传输/Mac与Spark探针均结束。
+
+- RVC预声明种子1234/1235/1236与held-out英文诊断完成：30epoch同短训练缓存，CUDA1235/1236训练中文短句ASR完整匹配，默认1234仍空；同Mac1234声音作为参照。四份声音在未参与训练的英文短句全部失败（Mac与CUDA1235误识别为日文，其余空），两条source基线均全文正确。此为10项中5通过/5失败（含2source），保留全部结果，不择种子发布。结合共享Mac噪声单变量结果，当前证据支持短重复语料/随机敏感性限制，不能把某个训练句成功称为泛化通过或直接归为CUDA架构故障。下一步较完整同音色语料与保留测试集；现有默认种子失败未解决，训练质量门禁开放。证据rvc-training-seeds-heldout-20261007.json；本轮训练/推理/ASR全部结束。
+
+- RVC共享后验噪声受控训练通过固定ASR：保持CUDA训练/data/config不变，仅将30次训练posterior noise替换为Mac实际float16噪声张量（提升float32输入），30epoch/30step后原文完整匹配；原生CUDA噪声同配置失败保留。说明这个极短重复语料案例对随机输入（含噪声量化）敏感，尚不能排除其他数值差异或证明默认CUDA训练可靠。噪声仅诊断钩子、未进入生产adapter/trainer；不把录制噪声作为修复，不替换原失败结果。证据rvc-shared-noise-{training,asr}-20261007.json含噪声SHA；下一步独立语料和多种子质量评估，避免以一个成功seed宣称对齐。本轮进程全部结束。
+
+- RVC同缓存Mac默认训练与交叉推理完成：实际Mac MLXRVCVoiceTrainer、FP16/batch4/30epoch/30step在相同三记录CUDA缓存上12.63秒完成；Mac训练→Mac推理ASR全文通过，Mac训练权重→CUDA推理也全文通过，而CUDA训练→CUDA推理仍为空。全部使用相同zero-noise/retrieval0.5内容探针与同一个固定ASR。证据优先指向CUDA训练差异，不能据此宣称全部推理或训练语料问题已排除；下一步共享随机输入/精度/逐步梯度更新对照。Mac/cache摘要与配置在rvc-default-training-mac-20261007.json；三向结果rvc-default-training-cross-asr-20261007.json。未放宽门禁、未发布；本轮训练、交叉推理与ASR进程均已结束。
+
+- RVC默认30epoch safe训练实机完成但内容仍失败：FP16/FP32 master、batch4、36frames、lr1e-4、seed1234，在现有三条重复诊断缓存上30steps共27.30秒；所有训练有限值门禁通过，导出353tensors/918vectors，137280samples非零输出peak0.73739。固定ASR仍为空，与预期“你好，欢迎使用语音工作室。”不匹配，因此不能将此前2epoch失败简单归因于轮数。30epoch样本并非独立充分语料，不宣称训练收敛、音色或整体质量通过；下一步相同数据/config的Mac训练对照，定位数据/训练/导出差异。证据rvc-default-training-20261007.json与rvc-default-training-asr-20261007.json；训练和ASR均已结束（ASR因门禁失败exit1），不重试掩盖失败。
+
+- RVC固定ASR内容验收完成但整体未通过：统一PCM16后，原文“你好，欢迎使用语音工作室。”在Mac/CUDA普通变声、retrieval0.5、升调12半音及CUDA默认路径均归一全文一致，两端静音均空；仅两epoch/6step导出声音在Mac和CUDA原生加载后的输出均ASR为空，edit distance=11。保留该质量失败，不把跨框架波形0.4%误差/声音包互通当成训练质量。证据rvc-content-roundtrip-20261007.json，12项中10项通过/2项失败（含source基线），仅一条短语的ASR内容门禁，不代表身份/听感或广泛语料。下一步按Mac默认30epoch safe训练验证内容保持与收敛，仍需充分独立数据/声音质量验收。源码复查Mac当前Worker也是返回训练Voice ZIP，没有现成通用声音库导入路径；不虚构该能力已存在。本轮ASR进程已结束。
+
+- RVC实际Host调用层实机验收通过：用当前未改写ModelInvocationService/proxy_package_multipart、真实WorkerJobScheduler和Supervisor loopback→UDS代理替换前一轮自定义invocation桥接；仅PackageModel发现为fixture。变声/训练分别进入local_foreground/local_background，actor=local、app=ai2apps.audio-api；两项完成、0失败，结束queued/running均0、槽位全部释放。相同归一化输入变声413760samples为0LSB差异，后台训练3step声音ZIP摘要通过。未覆盖正式签名安装发现、resource manager内存准入、Quick Read、训练声音导入和听感；formal Host验收仍false。证据rvc-host-invocation-20261007.json，当前调用层源码SHA匹配，本轮进程与容器均结束。
+
+- RVC共享Host音频路由实机r2通过：实际FastAPI路由/音频归一化/参数验证连接断网只读非root Worker，413760samples与相同归一化输入的直接Worker输出0LSB差异；训练3step返回五文件声音ZIP且SHA通过，六项无效输入在调用Worker前拒绝。检查Host proxy发现model字段实际发送upstream_id，已修正CUDA adapter同时接受固定Package ID及固定upstream ID，保留固定revision检查；6项身份/错误checkpoint单测通过。r1只用Package ID的路由桥接结果保留，r2按真实upstream转发语义复验。模型发现和invocation transport仍是fixture，尚未覆盖正式签名安装、真实资源调度、Quick Read输出、训练声音导入或听感；不计为formal Host验收。证据rvc-host-routes-http-r2-20261007.json；本轮实机进程/容器已结束。
+
+- RVC隔离HTTP r4通过（export-r3/fixture-r3）：NetworkMode none、ReadonlyRootfs true、uid1000:1000、CapDrop ALL/no-new-privileges；同PCM16输入输出413760samples，与原生基准0LSB差异；鉴权/参数拒绝、请求取消0.00442秒、恢复及drain/resume输出精确；真实训练3step并返回五文件Voice ZIP，权重/索引SHA通过。隔离暴露并修复两处：标准source缺infer.module.transforms（最终21src/4retained），训练进度缺current/total。另保留FLOAT WAV协议拒绝证据并改用相同PCM16原生基准，未放宽任何校验。最终50依赖/7345RECORD全SHA一致、零缺失/额外/无.pth；52项builder/profile回归通过。此仍unsigned fixture，不是正式签名Runtime/Package安装Host、声音质量或发布完成。证据rvc-http-worker及rvc-standard-{dependency,source}-export-r3-20261007.json，本轮进程/容器已结束。
+
+- RVC新增prepare_rvc_worker_fixture.py/check_rvc_worker.py，以已校验标准profile及相同core distribution inventory创建独立unsigned隔离fixture，计划覆盖network=none/read-only/nonroot、鉴权、真实HTTP变声与3step训练ZIP、请求取消、恢复及drain/resume。r1 FLOAT WAV被协议拒绝，改PCM16并生成同字节原生基准；r2暴露标准源码导出遗漏infer.module.transforms，已补入标准builder并创建export-r2/fixture-r2/http-r3重验。52项builder/profile回归通过，HTTP尚待完成；既有Runtime0.5.0不变。
+
+- RVC标准Runtime导出已完成：既有build_cuda_torch_runtime_package.py新增rvc独立profile、精确依赖锁、成对CLI/capability门禁，以及固定81eed5e源码archive SHA门禁。仅复制六个上游必要模块、三个明确package边界和11个wrapper/lock文件，保留原archive/LICENSE/README/AI2AppsNOTICE。52项builder/profile测试通过。Spark export-r1依赖50项、7345个RECORD文件SHA逐一一致，零额外/缺失且无.pth；20源码和4来源文件摘要与固定输入一致。未构建最终签名Runtime，既有0.5.0字节不变；下一步独立断网HTTP fixture，Host/安装/质量/发布仍未完成。证据rvc-standard-{dependency,source}-export-20261007.json，本轮进程已结束。
+
+- RVC原生Worker生命周期48954实测通过：预处理后和epoch1结束取消均无完成Voice ZIP/训练报告，恢复变声字节精确；调用方async取消等待底层线程退出，恢复精确；重复request_id拒绝、排队取消和五类错误参数拒绝通过。新增prepare_rvc_export_env.py，独立开发export-venv引用已验证开发依赖路径，使用既有标准builder._distribution_closure得到50项精确依赖锁rvc-cuda-requirements.lock；这是导出准备，不是Runtime payload，尚未执行profile源码/license导出、RECORD逐文件校验或断网HTTP。证据rvc-adapter-lifecycle-20261007.json、rvc-export-environment-20261007.json。本轮进程均已结束。
+
+- RVC新增cuda_rvc_adapter.py和固定weights lock，接共享audio_process/audio_voice_training：严格Host checkpoint绑定、数值参数、串行GPU执行、重复请求所有权、取消/停止门禁；WAV ZIP按500files/2GiB展开上限读取并生成固定文件名，训练后只输出声音权重/索引/清单/训练报告ZIP。原生协议实机3060通过：重复变声WAV字节精确、该测试取消响应0.000365秒且无部分结果、恢复与stop/start后输出精确；训练请求3step完成，返回ZIP五文件集合和两个权重SHA一致。此仅native shared Worker协议，尚非断网HTTP/正式Host安装；训练取消各阶段、输入边界回归、标准依赖导出/完整Runtime/Package及质量仍需完成。证据rvc-adapter-cuda-20261007.json，本轮进程已结束。
+
+- RVC Spark训练声音已通过Mac实际加载/转换：导出权重与index回传SHA一致，Mac原生pipeline输出137280samples有限波形。新增CudaRVCPipeline.load_trained_voice，先验证固定文件名/摘要/架构/全部权重与索引，再替换idle pipeline声音；CUDA同一零noise+retrieval0.5输出relativeRMSE0.0039915，长度相同，通过5%门槛。无效speaker_count拒绝后原声音恢复逐采样精确，完整架构声明验证已补齐。此为原生声音权重/索引互通，尚非正式VoiceBundle Host安装、相似度/听感或训练收敛验收；Worker/Host/export发布仍需推进。证据rvc-trained-voice-{mac,cuda}-20261007.json。
+
+- RVC混合精度r1先完成首轮，复查修正log_mel_l1_loss禁用autocast，保证mel矩阵乘法及STFT损失FP32（r1证据保留）。r2 FP16/BF16各三真实片段两epoch/6step完成，跨epoch恢复模型和optimizer全部状态、元数据、最终loss精确一致，取消无完成报告；仅短训练数值/生命周期，非收敛或质量验收。新增cuda_rvc_voice_export.py，验证断点绑定cache后导出Mac既有tensor布局：FP32两epoch声音353tensors、918检索向量，modelSHA0f5550ab8b4251939c7b38ced2ebdd17cee6e417a7c8fb56e4b9a2a553b586be、indexSHAc637f6e78bf52141657160f2aa9649dd3a93825cc9a3aad8258ff4d067f697eb。Mac实际加载/转换、正式VoiceBundle/Worker/Host和质量发布仍待验收。证据precision-{float16,bfloat16}-resume-r2.json、rvc-voice-export-cuda-20261007.json；本轮进程均结束。
+
+- RVC新增cuda_rvc_trainer.py，按epoch随机打乱、随机裁剪、每步局部噪声种子，cache摘要/config绑定断点，有限梯度/参数检查及取消不写完成报告。首轮恢复机制通过后查到MLX AdamW默认bias_correction=False而Torch默认开启；保留r1证据但不视为优化语义对齐。新增cuda_rvc_optimizer.py显式匹配Mac未修正偏差的AdamW，三步固定梯度与真实Mac优化器逐位一致（最大绝对误差0）。重跑两轮共6step，r2连续与恢复的最终loss、完整模型和optimizer状态树逐张量精确一致，epoch元数据精确、取消无完成报告；两轮G211.32→195.64、D62.30→203.62，不以小样本损失波动宣称收敛。证据rvc-epoch-trainer-cuda-r2及rvc-optimizer-cuda-20261007.json，本轮进程已结束。FP16/BF16仅有实现路径尚未验收；声音导出/质量/Worker/Host/发布仍待完成。
+
+- RVC新增cuda_rvc_checkpoint.py：非可执行safetensors+typed JSON树保存模型/AdamW状态，SHA256校验、有限值校验、暂存目录完成后原子改名、拒绝覆盖已有断点。CUDA optimizer schema独立于Mac MLX schema，不宣称跨框架optimizer兼容。真实语音36frames FP32 safe-adaptation保存step1后恢复，step2与连续训练loss精确一致（G119.200233459/D14.967311859），generator/discriminator全部state tensors逐张量精确。配置不匹配与覆盖拒绝通过；独立CPU测试roundtrip、损坏摘要、NaN、任意object拒绝及失败暂存清理通过。尚需完整epoch trainer/数据shuffle及噪声续跑/混合精度/VoiceBundle，未宣称完整训练或发布完成。证据rvc-resume-cuda-20261007.json、rvc-checkpoint-format-20261007.json；本轮实机进程已结束。
+
+- RVC新增cuda_rvc_preprocess.py，真实24kHz语音重采样、高通、3.7秒/0.3秒重叠分段和75%峰值归一化生成与Mac相同v2训练缓存。三个片段368/368/182frames，manifest及pitch bins精确相同，phone相对RMSE0.001924/0.002736/0.002381，其余连续张量<0.000009；取消不写完成manifest。抽取pipeline共享extract_content/extract_pitch后，原四例转换与默认噪声重复/取消恢复全部回归通过。使用真实缓存36frames完成两步FP32 GAN更新，G169.48→119.20，D4.24→14.97，权重确实更新且参数/梯度有限、冻结encoder保持不变；仅短更新验证，不宣称训练收敛。下一步完整trainer/断点恢复/FP16-BF16/VoiceBundle互通，Worker/Host/质量/发布仍待完成。证据rvc-preprocess-{mac,cuda}及rvc-real-training-updates-cuda-20261007.json；本轮进程均已结束。
+
+- RVC新增cuda_rvc_losses.py，按已发布Mac实现FP32 Slaney mel/STFT、KL、LSGAN及feature matching损失。固定共享输入下六项loss相对误差全部<0.4%（generator0.1587%、mel0.3895%、其余更低）。Spark两步真实FP32 AdamW更新均完成，generator/discriminator参数确实改变、梯度及参数有限、冻结encoder逐张量不变。固定合成输入下D loss由6.94升至435.09，G loss154.94→117.75；明确只验证计算/更新，不宣称收敛或语音质量。仍需真实WAV预处理、完整trainer、混合精度、断点恢复、VoiceBundle互通和Worker/Host/发布。证据rvc-training-losses-{mac,cuda}-20261007.json；所有本轮进程已结束。
+
+- RVC新增24秒含静音间隔的三段检索变声实测：整体波形relativeRMSE0.035513，两接缝窗口0.012547/0.013830，均通过预设5%数值门槛，1151040输出samples与Mac一致；不将接缝数值匹配称为听感验收。新增cuda_rvc_training.py，严格加载固定训练generator423/discriminator110 tensors，后验编码器按Mac的2**layer dilation而非上游默认1实现；同输入/noise下波形relativeRMSE0.005877，中间张量和9个判别器分支全部<1%。安全适配冻结enc_p/flow，所有可训练参数反向梯度有限、冻结参数无梯度、神经参数全CUDA。仅组件与backward验证，尚非完整训练；数据预处理/GAN optimizer/FP16-BF16/断点恢复/VoiceBundle互通及Worker/Host/发布仍待完成。证据rvc-long-{mac,cuda}和rvc-training-components-cuda-20261007.json。
+
+- RVC原生完整转换r2通过：固定真实语音普通/检索0.5/升调12半音与静音四例，零latent-noise波形相对RMSE为0.011552/0.015894/0.017636/0.024748，输出长度与Mac一致，均通过预设5%门槛。新增cuda_rvc_pipeline.py严格固定输入加载、Mac高通/音高插值/protect和长音频拼接，默认噪声使用请求局部CUDA Generator。r1重复最大差0.00022067且RNG状态未变，保留失败证据；关闭cuDNN benchmark并开启deterministic后r2重复及阶段取消恢复逐采样精确，RNG状态保持。此结果仅四个native样本，长音频方法尚未实测、声音/内容质量与训练、Worker/Host、签名Runtime/发布仍待完成；原ContentVec非语音1%门槛失败不豁免。证据rvc-pipeline-{mac,cuda-r1,cuda-r2}-20261007.json；本轮所有进程已结束。
+
+- RVC合成器Mac语义对齐28683完成：保留同一权重/输入/latent noise后，原13/31frames波形relativeRMSE由0.040403/0.040959降为0.001329/0.002370；新增31frames有声无声交替为0.003383、peak归一误差0.008027，全部原门槛通过。差异修正在CUDA生成器，未修改Mac或固定checkpoint；仍只是短组件样本，不宣称完整变声音质/实时性能/训练对齐。下一步组合已验证RMVPE、retrieval和generator，保留ContentVec非语音1%门槛未通过项并量化端到端影响。所有本轮进程已结束。
+
+- RVC CUDA精确检索61470通过：38,924向量、19queries（语音/精确匹配/近邻），Top8索引集合19/19与Mac一致，合成特征相对RMSE0.001430；输出全CUDA，并列结果确定性、分块取消及恢复精确通过。代码复查发现Mac NSFGenerator的确定性激励（含unvoiced相位）与末层leaky-ReLU slope0.1不同于上游Torch（噪声/UV处理、末层默认0.01）。新增cuda_rvc_generator.py显式对齐Mac语义，保持固定神经权重；原始上游4%波形结果保留，正在补三例voiced/mixed复验，不先宣称误差改善。
+
+- RVC固定Serena声音合成器CUDA7982通过两例：353tensors全覆盖严格匹配，flatten原weight-norm结构后载入，无随机缺失权重。13/31frames下encoder/flow中间相对RMSE均<1%，波形相对RMSE0.040403/0.040959、peak误差0.041588/0.047572，满足Mac既有5%波形门槛。此测试仅全voiced、共享显式latent noise、关闭上游source noise；无声激励/完整audio/训练仍待验证。新增分块精确CUDA检索cuda_rvc_retrieval.py，保持Mac逆距离平方权重，stable并列顺序和取消回调；固定38,924向量/19queries检索实测正在运行。
+
+- RVC ContentVec逐层18953诊断完成：三例layer0相对误差约0.000215–0.000275；真实语音最终0.001812，扫频/静音逐层增长至0.024579/0.027440，未发现单次形状/键映射错误。此证据只定位累积趋势，不能证明根因或豁免原门槛；两项失败保持开放。下一步在保留该门禁的同时验证固定voice synthesizer、retrieval与完整音频路径，评估特征误差的实际影响。所有本轮下载、传输和GPU探针已结束。
+
+- RVC ContentVec CUDA初次严格加载210tensors成功，单独保留2个v1 projection tensor；神经参数全CUDA。真实语音relativeRMSE0.001812通过1%门槛，但扫频0.024579、静音0.027440失败，原始回执rvc-contentvec-cuda-r1保留。查到Mac旧实验采用3%/cosine0.999门槛且已有约2.76%累积偏差记录；本次不以旧阈值重分类原1%失败，先采集逐层诊断。所有训练与转换集成门禁仍开放。
+
+- RVC RMVPE CUDA79299通过全部三例：salience相对RMSE分别0.000639/0.000889/0.002153，voiced mask全部精确，最大F0误差0.06419cents；全部神经参数位于CUDA。仅恢复发布converter刻意省略的118个BatchNorm训练计数器为0，其余权重严格匹配。Mac ContentVec v2三个特征oracle已完成(143/49/49frames)，CUDA特征校验正在运行；完整转换/训练/Runtime/Host/发布仍未完成。
+
+- 开始RVC对齐（含变声和声音训练，不缩减为仅推理）。固定已发布Mac复合checkpoint738acad9及上游81eed5e：19files/1,410,906,582bytes，公开Hub摘要及Spark传输SHA全部通过。Mac生产Package RMVPE三例oracle已生成；Spark原生CUDA严格加载及pitch门禁79299运行中，预设salience相对RMSE<1%、voiced mask精确、音高最大误差<10cents。RVC-REUSE.md记录完整训练/转换/Runtime/Host/发布门禁，未宣称已支持RVC。
+
+- IndexTTS Host工作流长文复验通过：当前共享invoke_speech针对CUDA身份按120加权字符分成5段，断网HTTP调用保留全部原文，合并音频经同一固定ASR全文匹配（含此前错误的傍晚与结尾）。证据 indextts25-host-workflow-http-20261007.json、indextts25-host-long-roundtrip-20261007.json。此工作流使用PCM16参考；旧原生两段失败使用FLOAT参考，因此不把改善全部归因于分段的单变量因果，旧失败保留。当前仅证明这个固定Host工作流内容通过，声音相似度/情绪听感、完整签名Runtime、正式Package安装/Host与发布仍待完成。所有本轮测试进程已结束；50项builder/profile、9项adapter、50项speech/readaloud回归均通过。
+
+- IndexTTS 断网HTTP61113通过：NetworkMode=none、readonly root、uid1000、cap-drop ALL/no-new-privileges；54528sample参考克隆与直接引擎PCM零差异，鉴权/参数拒绝、取消0.02383秒、恢复、drain/resume生成通过。发现Host ai2apps/readaloud/speech.py仅识别Mac模型ID，已加入CUDA精确服务前缀共用120加权字符分段和空长音频恢复。扩展原有Mac分段、ASR/no-ASR恢复、失败回退、深度限制及取消测试到CUDA身份，50项speech/readaloud测试通过。当前Host共享函数经隔离HTTP跑同一失败长文本，内容复验尚未完成；不是正式安装Host验收。
+
+- IndexTTS 标准 export 终验：38项依赖、3395个RECORD文件全SHA一致，零缺失/额外文件、无.pth导出；25源码/资产、5保留来源文件与固定源逐字节一致。新增archive与frontend数据篡改门禁，50项builder/profile测试通过。发现并修正adapter资产路径：从Runtime实现模块的位置读取indextts25-data，而非Package适配器目录；9项adapter测试复验通过。独立unsigned fixture已创建，断网/只读/非root HTTP实测启动；尚未标记正式Runtime或Host发布完成。
+
+- 开始 IndexTTS 标准 Runtime profile export：在既有 build_cuda_torch_runtime_package.py 增加 indextts25 独立 profile 与成对 CLI/capability 校验；固定 WIndexTTS commit/archive SHA、前处理数据 SHA，保留原始 archive/LICENSE/README/pyproject 和 AI2Apps 修改说明。两份前处理NPZ与固定上游逐字节相同。独立 export-venv 生成38项精确依赖锁，现有47项 builder/profile 测试通过；实际依赖导出及 RECORD 全文件校验88659正在进行。未构建最终Runtime制品，既有0.5.0字节不变。
+
+- IndexTTS 共享语音协议实机28221完成：使用PCM16参考音频的 adapter 输出与直接引擎逐采样一致；取消信号到请求结束0.02055秒；同引擎恢复及 stop/start 后真实生成均与首次WAV字节一致。已保存 indextts25-adapter-20261007.json。engine 支持 Mac 四项采样参数，实机本轮验证默认值；其他采样组合未单独验收。慢/快样本3.460/1.730秒仅证明本例时长变化，不宣称普遍精确倍率；五种情绪内容通过不等于听感通过。下一步标准 Runtime 依赖/源码/license export 和 offline HTTP，长文本傍晚/棒篮严格失败及完整Host/发布仍开放。所有本轮实机进程已结束。
+
+- IndexTTS 八例控制生成全部完成：语速慢/快及五种情绪共7例 ASR 全文匹配；两段长文本535098samples(24.27秒)末尾完整，但 ASR 将傍晚识别为棒篮，严格内容门禁未通过，保留失败，不以生成成功替代质量。共享 CUDA speech adapter 已实现固定 Host checkpoint、必需 reference part、请求所有权、停止门禁、Mac 情绪/语言映射和请求seed；9项针对性测试通过（退出0，Metal退出诊断不影响结果）。正式协议实测已启动；隔离HTTP/export/Host/发布待完成。
+
+- IndexTTS 常驻引擎 resident-r1 和正式取消回调 resident-r2 均通过：首条57088sample/22.05kHz 输出与已通过 ASR 的归一化 native baseline PCM 精确相同，重复生成一致；GPT、S2Mel、BigVGAN 三阶段取消均删除部分文件，恢复逐采样一致；CPU/CUDA RNG 每次成功或取消后均恢复，已有输出不覆盖，close 清空模型与钩子。证据 indextts25-resident-{engine,callback}-20261007.json。当前语速/五种情绪/长文本八例正在 Spark 单 GPU 实测，尚无内容/听感验收结论；Worker/Host/export/发布仍未完成。
+
+- 新增 cuda_indextts_engine.py 与固定权重/前处理 SHA lock：六个 FP32 CUDA 组件常驻、完整 wetext 归一化、Mac 120token 分段/200ms 间隔/语言 token cap、参考音频截取15秒、8轴情绪强度和 duration_factor=1/speed；非阻塞请求锁、独占输出、模块级取消检查、失败删部分文件、请求 RNG 恢复和 close 清理。check_indextts_engine.py 已在 Spark 启动真实 baseline/repeat/GPT-CFM-vocoder 取消恢复验收，结果尚未确认；不标记 Worker/Host/发布完成。
+
+- IndexTTS 正式前处理诊断完成：Mac TextNormalizer 归一化同一三条中文文本后，CUDA/Mac 六段音频全部 ASR 全文匹配，双方 CER 0/89；seed42、参考与生成参数保持不变。证据 indextts25-normalized-{cuda,mac,roundtrip,content-metrics}-20261007.json。Spark 独立 normalizer-deps 安装与 Mac 一致的 wetext0.1.8/kaldifst1.8.0/contractions0.1.73，使用固定 upstream 原生 TextNormalizer 对十例（含日期、金额、术语、发音标注）与 Mac 输出精确一致，见 normalizer-{cuda,mac} 回执。原始关闭归一化的失败结果保留；这修正了测试前处理差异，不代表完整 Worker/Host、情绪/音色或发布验收通过。下一步将已验证前处理和六个 CUDA 组件接入 resident engine，验证取消与恢复。所有本轮进程已结束。
+
+- IndexTTS 固定六例原始文本对照已完成：Mac/CUDA 英文各 3/3 全文匹配、WER 0；中文各 0/3 全文匹配，CUDA CER 9/89 (10.11%)、Mac 12/89 (13.48%)。仅为固定参考音频上的 ASR 内容指标，不代表听感或通用质量通过。发现原始探针禁用了正式 Mac 默认启用的 TextNormalizer；该归一化器将中文标点映射为 ASCII。下一步保持文本语义、参考、seed 与生成参数不变，单独验证正式前处理。原始失败保留。证据：evidence/media/indextts25-corpus-content-metrics-20261007.json。
+
+- IndexTTS broadercorpus preregistered indextts-parity-corpus.json (SHA in corpus-contract receipt):3ZH/3EN includingoriginalfailure,workflow/storymulti-sentence. SameFP32/reference/seed42/beam3/topp0.8/topk30/temp0.8/repetition10/15CFMstep,caps14xtoken+8 bothbackends;normalizationseparate. CUDA24526 andMac98356 runningindependentGPUs. Preservealloutputs/errors;aftergeneration run sameASR andreport exactmatch plus per-language editrates,not inferparityfromsinglephrase.
+
+- IndexTTS nativeMac95301/ASR79184 completed:ZH80tokens/70400samples but transcript你好，欢迎使用语音服务。行。 fails;EN fullcontentpasses. CUDAZH also80tokens but only1positionequal,consistentbackendRNGdifference(noexactsequenceclaim). Macsame-token acousticreplacement also retains extra-wordfailure. Therefore issueisnotCUDA-exclusive,butdifferenterrorsdonotprovequalityparity. Preserve allstrictfailures;next preregister broaderfixedZH/ENcorpus underbothbackends,measurefullcontent/speakerquality andcontinue residentWorker/lifecycle ratherthanfitonephrase. Alljobs terminal;formalRuntime/Host/publication remainsopen.
+
+- IndexTTS Macsame-tokenacousticprobecompleted:codec latentrelativeRMSE0.001211,mel0.000646,fullwave0.04782(fixedmelvocoder0.009074). ASR18714 stillfailsbothMacoutputs:fullsame-token你好，既欢迎使用语音服务先。;fixedmelvocoder你好，即欢迎使用语音服务线。 SameerrorpersistsafterMacacousticreplacement,socannotattributetoCUDA-vocoderalone. Originalfailedtokens/reference/noise retained. NativeMac95301 nowrunningbothZH/EN withsamefixedcheckpoint/reference/FP32settings,seed42,beam3,samplingparams,archivingitsowncodes. RNGstreamsarebackenddifferent;notexacttokenexpectation. Noqualityacceptanceyet.
+
+- IndexTTS trace96423 completed:ZH/EN diagnosticWAVs reproduceoriginalbytesexactly;allintermediatetensors+initialCFMnoise retained. ZHtrace downloadedforMacsame-token/same-noiseoracle. Alljobs terminal;qualityfailure remainsopen.
+
+- IndexTTS fullnative9589 completed:ZH80codes/70400samples3.193s audio generated3.096s;EN60codes/52736samples2.392s generated2.253s,allneuralCUDA,belowcaps218/148. StrictASR84868 passesEN butfailsZH:expected你好，欢迎使用语音服务。 transcript你好，即欢迎使用语音服务线。 No acceptancereclassification. Newtrace96423 runsidenticalseed/params,archivescodes/spk/style/refmel/latent/mel/wave/exactCFMnoise andrequiresbyteidenticalWAV tooriginal;next Macsame-token/same-noise acousticdiagnosis. Pureconformer neutral path preserved. Fullresidentengine/Worker/Host/publication remainsunimplemented.
+
+- IndexTTS first complete native CUDA probe9589 running:strictfixedsixcomponents,realreference24k resampledonCUDA,mean/variance-normalizedW2V17,CAM++,reference-derivedneutralemotion (notcalmmatrix),fixedZH/ENtokenizer,beam3/topk30/topp0.8/temp0.8/repetition10,15stepCFMcfg0.7,BigVGAN22.05k. Seed42,uncaptured/eagerGPU,checksboundednonemptycodecount<cap,finitewaveform andallneuralCUDA. This is diagnosticscript only,notresidentWorker/Host/qualityacceptance. Mustinspectterminalresult then ASR;no publicationclaim.
+
+- IndexTTS realfrontend62519 passes fixedMacreference24k audio:16k/22.05kresamplerrelativeRMSE0.000263/0.000853,W2Vfeatures0.002067,mel0.000630,fbank0.000712;fixedMacresampledinputfeatures2.074e-6,mel0.000122. Masks andZH/EN rawtexttokenIDs/languageIDs exact. Firstprobe45790 failedmissing tiktoken;installedMacmatching0.14.0 onlyintoindependent extra-deps (7461),acceptedRuntime unchanged. CoefficientNPZ files copiedfromexactMacvendoreddata andhashesrecorded. Notnormalizer/fullreferenceconditioning orfullsynthesis acceptance. Nextassemble strictfixedcheckpointpipeline,preserveMacneutral/reference-derived emotion semantics (upstream Torch defaults calm differs),boundedgeneration andrealtext/cache comparison. Alljobs terminal.
+
+- IndexTTS GPT strictCPU45289 passesall456tensors includingemotionconditioner,noextra transposeonconvertedLinears. MacFP32oracle2casescovers emotion/condition,prefill,leftpad,andcachedone-token. CUDA41282 numericalerrorpasses<1% (emotion0.001036,condition0.000249,logits0.006475/0.008024,cached0.003853/0.005023),but all-positionprefillTop1gatefails. Diagnostic4481 pinpointsonepositionpercase:thirdconditiontoken (positions2/4 afterleftpad),5683CUDA vs5078Mac. SameMacembeddingstillreproducesdifference;not explainedbyinputconditioningdrift. Bothlastprefillpositions andcachednextpositionsTop1exact;rawfailurepreserved,nofullGPTacceptanceclaimed. Next realtext/referencefrontend andgenerated-position teacherforcing,plusmargin/layerdiagnosis asneeded. Alljobs terminal.
+
+- IndexTTS BigVGAN CUDA10281 completed:all667fixedtensors,allneuralparametersCUDA. Random17frame andMacCFM25frame mel inputs produce4352/6400samples withrelativeRMSE0.008479/0.005157 againstMac (<predeclared1%). This is fixed-mel componentwaveformonly,not fulltext/referencevoice acceptance. Alljobs terminal. Next GPT strictmapping+conditioning/cachedteacherforcing,thenfullfrontend/nativepipeline. Remaining nonLLMgoal unchanged.
+
+- IndexTTS S2Mel strictCPU55587 passes259combinedDiT/lengthregulatortensors afterexplicitweightnormflattening. CUDA92407 passes2cases(single33/double48maskedframes):conditionrelativeRMSE0.000251/0.000238,velocity0.001375/0.002691,fixedMacconditionvelocity0.001375/0.002693. Full25stepCFM48572 withfixednoise passesCFG0/0.7 atrelativeRMSE0.001094/0.003883 andexactzero promptregion. Mac CFM oracle uses eager DiT (WINDEXTTS_NO_O1_COMPILE=1),not performanceclaim. BigVGAN strictCPU50106 passesall667tensors;Mac randommel+CFMmel two-waveformoracle generated;CUDA10281 running. GPT/fullreferencefrontend/integratedspeech,Runtime/Worker/Host/publication stillpending.
+
+- IndexTTS W2V-BERT CUDA2656 completed:strict772tensors,allneuralCUDA;layer17MacrelativeRMSE0.003154(unmasked33frames)/0.006387(masked80frames),finite andbelow predeclared1%gate. CAM++/codec/W2V componentoracles accepted;GPT,S2Mel,BigVGAN,realfrontend/fullinference/Runtime/Host/publication pending. Alljobs terminal.
+
+- CosyVoice corrected modes21037 generatedall8;ASR91335 passes7/8,8bittranscript retains你好/您好 mismatch. Slowvsfast durations4bit2.68/1.72s,8bit2.64/2.28s show directionaldifference ononephrase,notgeneralizedstyle/speed acceptance. Evidence corrected-modes-native/roundtrip retained. IndexTTS codec241tensors strictCPU83755 pass afterexplicit2weightnormflattenings;CUDA53730 exact34totalVQcodes across33/34frameinputs,featuresrelativeRMSE3.5e-8,decoded0.001423/0.001494(<1% gate),allneuralparamsCUDA. Mac W2V-BERT772tensor oracle generated2masked/unmaskedcases;CUDA2656 running. NofullIndexTTSpipeline/Runtime/Host/release claim.
+
+- CosyVoice second-segmentcancel81718 completed:4/8both deletepartialfile and recoverbyteexact fullzhlongoutput. CorrectedRASH+losslesssegmentation sixcontentcases/HTTP/lifecycle acceptedwithin scopes;transcript/instruction revalidation,voice/style/fullHost/release remain. IndexTTS CUDA CAM++1998 passes actualreal+randomfeatures againstMacFP32:relativeRMSE2.214e-6/1.385e-6,cos1.0/0.99999988,allneuralparametersCUDA. Strict937tensors/815Macparameters+122trackingbuffers;completepipeline remainsunimplemented. Alljobs terminal.
+
+- Corrected CosyVoice HTTP76597 passed4/8 reference generation exactPCM againstsix-case acceptednativebaseline;cancel0.00215/0.00261s,recovery/drain/resume exact,auth/parameterrejection,networknone/read-onlyuid1000/capdropALL verified. New sourcehash inventory preserved in cosyvoice3-corrected-source-export-20261007.json. Second-segmentcancel81718 running;formal Host/signature/publication and broader voice/style/modes remainpending. IndexTTS CUDA CAM++ oracle prepared usingMac realfeature+fixedrandomfeature outputs,predeclared relativeRMSE<1%/cosine>.999,not yetrunwhileGPUowned.
+
+- CosyVoice corrected engine60144 passes all6 byte-exact PCM comparisons against accepted upstream-RAS diagnostics;losslessguard includespunctuation/quotes/decimals andmissingfinalpunctuation,degenerate repeatedtoken exclusion tested. Standard reexport75564 passes61deps/8022files+60source/27retained;freshunsignedfixture-r3 assembled. HTTP76597 currentlyrunning on correctedsource;second-segment cancellation probe prepared. 9adaptertests pass. IndexTTS Mac CAM++ oracle2cases generated from815assignedMLXtensors,122trainingtrackingbuffers explicitlyexcluded;CPUloader937strictpass. CUDAforward stillpending.
+
+- CosyVoice upstream RAS diagnostic34367/ASR41849 completed:all6 strict full-text cases pass (4/8 x longzh,longen,shortzh),including previous4biten omission and4bitshort您好 mismatch. Corrected production cuda_cosyvoice_sampling.py tostable sort and exclude repeated selectedtoken before fallback,matching pinnedofficial rather than Mac omission. Added official80/60/20 sentence grouping with losslessguard (any unexpected text loss falls back to original fullinput). Engine preprocesses reference once,serially generates allsegments withrequestseed42 semantics,concatenates fullwaveform,retains cancellation/exclusiveoutput/cleanup. Integrated six-case PCM oracle60144 running against independent accepteddiagnostic outputs;degenerate RAS exclusion and punctuation/decimal/text preservation checked beforegeneration. Need lifecycle and standard Runtime source reexport/HTTP;oldfixture stillcontainsoldengine and cannot validate newcode. No release yet.
+
+- CosyVoice pinned official frontend splits text at80/60 with merge20; diagnostic85927 preserves entire input andseed42. FullASR30599 now passes3of4 (8bitzh extra tail removed),4biten still omits final sentence. No production segmentation change yet. Pinned official RAS excludes repeated selectedtoken before fallback;installedMac/CUDA policy does not. Diagnostic34367 tests upstream RAS+split across4long+2short cases atsame seed,not a production sampler change. IndexTTS matching WIndexTTS source downloaded at eafb98c1b2ba46f6a608f29d8831208b89047681,archiveSHA9813d77fd70555bbcbe5b64b38ab7bad840cad0c900f9f1857912707ddfe01e3. New strict inverse-layout loader rejects hash/keys/shapes/nonfinite/nonintegral buffers;CPU meta initialization CAM++ probe16510 loadsall937tensors without randomfallback. CUDA numericaloracle/runtime/Host remainpending. First source hash command usedsystemPython withoutfile_digest;reranwithprojectPython againstsamearchive. Initialscp wrongdestinationfailed,nodataexport;corrected.
+
+- IndexTTS remote hash verification36044 completed:all15files3,338,231,798B match Mac SHA256. Evidence indextts25-spark-preparation-20261007.json. Fixed checkpoints now available on Spark; CUDA implementation remains pending. All jobs terminal.
+
+- CosyVoice3 long generation82479:4/8bit x zh/en all4 produce36.84–42.32s audio in16.02–17.34s,RTF0.408–0.435 with fixedseed42/PCM16reference/CUBLAS4096:8. Full ASR70718 passes4bitzh and8biten but fails4biten (missing final Thank you for listening) and8bitzh (extra 科他). Tail-only ASR51485 reproduces both mismatches; same recognizer so not an independent perceptual oracle. Strict full-text quality remainsfailed; no seed selection/truncation or normalization change. First tail script lacked soundfile; replaced crop with standard wave without dependency changes. Next Mac same-condition long baseline and official text segmentation/sampling review, preserving full text. Evidence cosyvoice3-long-native/long-roundtrip/long-tail-roundtrip-20261007.json. IndexTTS fixed Mac15files3,338,231,798B located in Dev weights cache and full conversion hashes verified; transfer36081 complete,remote fullhash36044 pending. INDEXTTS25-REUSE.md records exactMac controls/source/remaininggates; no CUDA implementation claim.
+
+- CosyVoice3 isolated HTTP r4 (65691) passes both variants: same-environment native PCM exact, auth/invalid-parameter checks, cancellation (4bit0.002887s,8bit0.002306s), recovery, drain/resume and zero active requests; networknone/read-only/nonroot/capdropALL verified. However strict ASR72115 fails 4-bit: expected 你好 but transcript 您好;8-bit full text matches. This is a quality failure, not waived as synonymous, and cannot yet distinguish synthesis from ASR error. Evidence cosyvoice3-http-r4 and cosyvoice3-http-r4-roundtrip. Prior FLOAT-reference native matrix passed, current PCM16-reference 4-bit fails; preserve both. Next examine reference quantization/content sensitivity with fixed seed/text and independent listening/oracle, plus long-text/speaker/style gates. Full signedRuntime/Host/publication still pending. All jobs terminal.
+
+- CosyVoice3 numerical diagnosis39752/28760 completed: native with Worker OMP8+CUBLAS :4096:8 matches both Worker WAVs exactly. Single-variable 8-bit OMP8 alone matches original baseline; CUBLAS :4096:8 alone matches Worker (max0LSB). Thus the observed difference tracks CUBLAS configuration, not export bytes or OMP. HTTP r4 now compares against independently generated same-environment native baselines at unchanged <=1LSB/RMSE<0.1 gate; original failed comparison preserved. Does not establish the internal kernel-level cause or voice quality. Full lifecycle and ASR revalidation pending.
+
+- CosyVoice3 r2 standard export passes 61 exact dependencies / 8,022 RECORD files (zero missing or extra), 60 source files and 27 retained source/license files. 50 builder/adapter tests pass. Isolated HTTP r3 job75869: 4-bit PCM exact and cancel/recovery passed (cancel 0.00299s); 8-bit generated same-length audio but PCM max difference39,994 / RMSE6,000.529LSB, so acceptance failed, not relaxed. Fresh same OMP8/CUBLAS environment native diagnosis39752 running; original baselines/failure logs retained. No full Runtime or Package publication.
+
+- HTTP r2 job72391 terminal:PCM16native baselines completed,but isolatedWorker model_load_failed No module named onnxruntime. PinnedCosyVoice upstream import requiresonnxruntime despiteourGPU speaker/tokenizer paths;developmentoverlay had maskedmissingdependency. Addedonnxruntime root tostandardprofile;standardclosure r2passes61exactpins,revisedlock saved,old58pin evidence retained. No CPU model fallbackintroduced. Must rerunstandarddependencyexport into freshr2 directory,reassemblefixture,andHTTP;source60fileexport alreadyverified. HTTP acceptance remainsfailed. Alljobs terminal.
+
+- First isolatedHTTP8175 failed correctly at unsupported_audio_format because development reference WAV subtypeFLOAT is outside transportPCM contract;Worker startup/auth succeeded. Preserved r1logs. No transport relaxation. New PCM16reference+bothvariant matchingnative baselines prepared;serial baseline+HTTP r2 job72391 running. HTTP probe paths immutable r1/r2,comparison uses exactsamePCMreference. Sourceexport remains accepted;offlineHTTP acceptance not claimed yet.
+
+- CosyVoice3 standard source export completed:60runtime source files and27retainedsource/license files fullSHA match;26fixed input files pinnedin cosyvoice3-sources.lock.json. Standardbuilder now pairs --cosyvoice3-python/--cosyvoice3-sources with declaredcapability,rejects undeclaredpayload;source/notice corruption/pathescape tests added,47builder/profiletests pass. Independentfixture49276 assembled with exactcoreinventory equality. HTTP8175 running networknone/readonly/nonroot onstandard58dependency+60source export with reference multipart,4/8nativePCM,auth/validation,cancel/recovery/drain/resume. Firstscp wrongdestination failed withoutcopy,corrected. No productionRuntime/Package build orpublication.
+
+- Upstreamlicense retrieval4452 completed:Chatterbox5de7a54a MIT/Resemble2025,S3Tokenizer9bf5d845 Apache2.0,3D-Speaker065629c3 Apache2.0. Fulltexts andSHA/URL/immutablecommit provenance retained underupstream-licenses andevidence/media/cosyvoice3-upstream-license-provenance-20261007.json. Retain alongside exactMacsource snapshots/copyright andMLXMIT;latestupstreamlicense snapshot isnot a claim ofexactMacsource revision. Alljobs terminal;next standard sourcecopy+CLI/profileacceptance tests.
+
+- CosyVoice3 standard dependency export32439 completed via existing _copy_isolated_profile:58distributions,7620unique selectedRECORD files allSHAequal,zero missing/unexpected,no.pth exported. Uses isolateddevelopment interpreter and existingcore distribution inventory;source/wrappers not yet included,no finalRuntime/HTTP claim. Receipt cosyvoice3-standard-dependency-export-20261007.json. Installed MLXsource references absent licenses/chatterbox.txt ands3tokenizer.txt;official MLXrepo tree70f4add3 also lacks thosefiles. Retrieving original upstreamlicense snapshots atimmutablecommits,explicitlynot asserting they identify exactMacsourcecommit. ExistingMITMLXlicense retained. Sourceexport/CLI wiring/fullRuntime remainpending.
+
+- CosyVoice3 export preparation:read complete publication runbook incl6.4/7 (missing truncated line reread);created independent export-venv with explicit development framework paths and copied5extra-dependency packages,without modifying accepted Runtime. Standard builder _distribution_closure passes58exactpins savedcosyvoice3-cuda-requirements.lock +dependency-closure receipt. Added isolatedprofile registration and required exact-lock verification to existing build_cuda_torch_runtime_package.py;45existing builder/profile tests pass(exit0,local Metal atexit diagnostic). Full profile CLI/source export and license closure stillpending;no Runtime tar/Package built or published,no existing0.5digest changed. Need retain upstreamsource+MLX/Chatterbox attribution before source payload,then standard fileexport/full-byte verifier/offlineHTTP. All remote tasks terminal.
+
+- CosyVoice3 actual adapter97994 completed:4/8bit reference multipart generation matches resident native PCM exactly;request cancellation returns in0.00103/0.00317s aftercancel signal,same-engine recovery byteexact;variant switch and actual inference afterstop/start also byteexact. Exact Host S3 dependency resolution exercised via shared model-worker context. Receipt cosyvoice3-adapter-20261007.json. This is development adapter,not isolatedHTTP/completeHost orRuntime acceptance. All processes terminal;next standard isolatedRuntime export and offlineHTTPWorker;longtext/speaker/style quality andpublication stillopen.
+
+- CosyVoice3 adapter integration preparation found inherited synthesis_options passes numeric speed;Mac engine converts CosyVoice speed to qualitative instruction. Fixed same thresholds/wording in CUDA adapter while preserving shared emotion+instruction order and passing engine speed1.0;9targetedtests pass. Actual shared-protocol adapter97994 running bothvariants with declaredfixedS3,reference multipart,nativePCMbaseline,cancel/recovery,switchandstop/start generation. Development-only worker-models JSON derives existingMac declaration withCUDA IDs;not signed/published Package. Next standard Runtime isolated dependency/source closure after protocol acceptance;no parallelGPUjobs.
+
+- CosyVoice3 resident stages91931 completed:4/8bit x LM/Flow/vocoder cancel at fifth targeted module call,all6 delete partial output and recover exactPCM(max0LSB/RMSE0);both engines close with models/hooks removed. Report cancel_request_seconds includes pre-cancel work,not cancellation latency. New cuda_cosyvoice_adapter.py reuses shared serialized CUDA TTS protocol,strict Host model/S3 revision+declared dependency,required reference,request/stop protection,Mac shared qualitativecontrols,request seed andOOM release.8targeted adapter admission/dependency/ownership tests pass;localpytest exit0 had non-failing Metal atexit diagnostic. Adapter nativeHTTP/Worker and Runtime export not yet tested. All GPU jobs terminal;remaining media scope unchanged.
+
+- CosyVoice3 resident4bit engine81611 passes actual inference:59520samples/2.48s audio generated2.3566s after loading;cancel at100th neural callback propagates,partial output removed;fresh request on same engine reproduces PCM exactly(max0LSB,RMSE0),close removes models/hooks. Receipt cosyvoice3-resident-engine-20261007.json. This cancellation occurs early in reference encoder;LM/flow/vocoder cancellation stages and8bit resident,adapter/offlineWorker/export/Host/longvoicequality remain pending. All jobs terminal.
+
+- CosyVoice3 shared official prompt matrix1336 and ASR58979 completed:all8 (4/8bit x zh/en cross,zh transcript,zh instruction) generate and exactly match normalized full target text at unchangedseed42. Earlier missing-boundary failures retained. Evidence cosyvoice3-official-native-matrix and official-matrix-roundtrip. Establishes short content/mode correctness,not speaker similarity/style realization,long text orRuntime/Host. Resident4bit engine81611 now running baseline,cancel100th neural check,partial cleanup,recovery andclose. Engine output preservation uses exclusive create;all-component resident loading and fixedfile verification are not yet accepted until probe completes.
+
+- CosyVoice3 official8case matrix1336 running through shared prepare_speech_prompt helper;first5native cases completed successfully. Added resident cuda_cosyvoice_engine.py and Runtime-owned fixed hash lock for bothspeech variants plusS3. Validates every fixedfile,keeps allCUDA components resident,reference required/bounded,request RNG/prompt priority,exclusive output creation,per-module cancel hooks,CUDA sync before request release,partial output deletion and close cleanup. Real lifecycle probe prepared but not run while matrix owns Spark GPU. Engine is development implementation,not accepted Worker/Runtime;tests and8bit lifecycle pending.
+
+- Official prompt comparison7693/ASR95424 completed:unchangedseed42 4bit zh and8bit en now both normalized exact target text;8bit en stops normally. Fixed official example.py prefix/boundary omission is a demonstrated contributor to these2failures. Added prepare_speech_prompt central helper:official default prefix+endofprompt,reference transcript after boundary,explicit instruction priority clears transcript/speech LM reference;prompt excluded from spoken length limits. Helper still awaits integrated all-mode revalidation;2cases do not prove broad quality. Earlier failures preserved. All jobs terminal;next use helper for4/8 xzh/en/transcript/instruction matrix and resident lifecycle.
+
+- Mac8bit original token->CUDA acoustic84827 and ASR38553 completed but content still fails:zh extra G prefix,en repeats Hello. Stronger lead from pinned official CosyVoice commit074ca6dc example.py lines76/81/86:zero-shot/cross/instruction all include You are a helpful assistant. plus endofprompt boundary;installed Mac wrapper omits default prefix. Added diagnostic-only --official-prompt preserving original seed42 and old artifacts;4bit zh/8bit en probe7693 running. This changes prompt construction,not kernels/checkpoints or success gate;no acceptance until ASR. Cross default prefix provided as prompt_text so target length bounds remain based on spoken text.
+
+- CosyVoice3 original Mac8bit token acoustic probe84827 running serial zh/en. Development integrated probe accepts diagnostic Mac tokens only when source did not hit its length limit and text matches exactly;records token_source,never substitutes for native CUDA sampling acceptance. Mac8bit zh and CUDA8bit zh both112tokens but sequences differ (0of first20 equal),consistent with different backend RNG streams. All previous content failures preserved;same seed alone is not a cross-backend RNG oracle.
+
+- Same-token ASR49801 terminal:both Mac fixed-mel/source and Mac flow/same-source audio transcribe 主持人你好，欢迎使用语音服务。,exactly the same extra prefix as CUDA. Therefore this sample extra prefix persists after swapping both decoder and Flow to Mac;not explained by CUDA-only Flow/vocoder computation. Excitation is shared and untested,so do not overclaim exhaustive root cause. Next common-draw sampling comparison and original Mac sampled-token decode,plus excitation fixed-noise oracle. Quality gates remain failed;all jobs terminal.
+
+- CosyVoice3 same-token acoustic Mac51912 completed:real218frame flow mel relativeRMSE0.004774;fixed CUDA mel/source decoder waveform0.010648 exceeds prior1% component gate;Mac flow+sameCUDA excitation waveform0.488479 (phase-sensitive full-waveform difference),retained not accepted. Strict Mac loader required deterministic stft_window plus explicit vector-alpha reshape matching existing Snake broadcast;first2probe failures retained. This oracle shares source excitation and cannot validate excitation. Two diagnostic WAVs submitted to same ASR49801;content comparison pending.
+
+- CosyVoice3 same-token acoustic diagnosis started:integrated probe now archives tokens,prompt mel/speaker,explicit noise,generated mel/source/audio in nonsecret NPZ;diagnostic90523 completed without overwriting original failure cases. Mac acoustic76133 running on identical4bit weights/token/reference/noise with strict vocoder weights:compare Flow mel,decoder with same CUDA mel/source,and Mac Flow mel with same source. Shared excitation intentionally isolates decoder and does not validate excitation. Next compare ASR across both diagnostic WAVs;quality/release remains failed.
+
+- Original Mac RAS sampling45455 terminal:seed42 4bit zh240/en160 tokens both reach original20x limit (Mac generator silently ends at cap),8bit zh112/en109 stop below cap. Saved full token sequences in cosyvoice3-mac-native-sampling-20261007.json. This is upstream Mac speech-sampling baseline,not waveform/ASR quality,does not establish CUDA failed content is acceptable. CUDA explicit limit error intentionally avoids claiming truncated success. Next same-token Mac/CUDA acoustic decoding to isolate content before changing sampling. No live jobs remain.
+
+- CosyVoice3 real-text teacher-forcing oracle69438 completed:4/8bit x zh/en x21positions=84,embedding exact,all84 Top1 equal for full and cached Mac-vs-CUDA;full logit relativeRMSE0.001306–0.001725,cached0.001446–0.002098. CUDA and Mac cache-vs-full each retain all21Top1 with expected FP16 differences. Evidence narrows diagnosis but does not prove full sampled parity or excuse failed ASR. Original Mac RAS sampler45455 running atseed42 for shared text to provide same-token acoustic comparison;no kernel change based on these results. All Spark GPU jobs terminal.
+
+- CosyVoice3 native modes89682 terminal:4bit transcript8.52s,4bit instruction2.44s,8bit cross zh4.48s,4bit cross en2.60s WAVs generated;8bit transcript fails sampling20x length limit. ASR13642 strict content fails all4:transcript repeats reference sentence before target,instruction 您好 instead of 你好,8bit zh omits 你好,English repeats Hello. All failures retained in cosyvoice3-roundtrip-modes-20261007.json and native-modes receipt;no acceptance by seed selection or normalization relaxation. Next diagnose real text/prompt teacher-forced Mac-vs-CUDA speech-LM logits/cache rather than rely on previous4speech-token-only component oracle;then fixed-noise vocoder and full same-token audio comparison. All jobs terminal;not releasable.
+
+- CosyVoice3 first complete waveform ASR61756 failed strict normalized content:expected 你好，欢迎使用语音服务。 but transcript 主持人你好，欢迎使用语音服务。 Extra prefix retained in cosyvoice3-roundtrip-first-20261007.json;waveform generation is not content acceptance. Native probe now supports explicit4/8bit,transcript/instruction/cross modes and immutable case outputs. Serial5case probe89682 running (4/8 transcript,4instruction,8zh cross,4en cross) to locate mode dependence. Model source confirms reference transcript has no endofprompt marker;instruction appends marker. No runtime/Host/release claim.
+
+- CosyVoice3 integrated4bit Chinese reprobe50165 completed:real reference66speech tokens,generated109tokens,flow218mel frames,24kHz104640samples/4.36s WAV,15.37s full cold pipeline,finite,all vocoder neural parameters CUDA. SHA23523ee6ff92e396c2c3e47c2d1f02bf9c26740f6e3e649a847884524e1bb9a3. Native no-transcript/cross-lingual path now produces complete waveform;not ASR/perceptual speaker quality,mode coverage,Worker,Host,Runtime or release acceptance. Artifact artifacts/cosyvoice3-cuda-preparation/integrated-4bit-zh.wav;receipt evidence/media/cosyvoice3-integrated-4bit-zh-20261007.json. Next ASR and fixed-noise excitation oracle,then transcript/instruction,4/8bit English and lifecycle. All jobs terminal.
+
+- Integrated CosyVoice3 first probe23365 reached vocoder then failed on upstream non-state_dict meta rand_ini. Inspection also proves upstream causal cached uniform noise differs from Mac per-call Gaussian excitation. Added explicit synthesize_hifigan with request-owned generator,Mac phase/nearest upsample/Gaussian excitation and trained source linear+tanh;no global RNG mutation or random checkpoint substitute. Reprobe50165 running. New excitation path still requires fixed-noise Mac numerical oracle;first failure retained.
+
+- CosyVoice3 full reference frontend implemented using actual Mac Model.generate semantics:24k30s cap,librosa trim600/300/top_db60,scipy FFT16k resample,symmetric Hann,compat S3 final-frame crop,flow80mel1920/480/fmax8000. Real reference CUDA31219 passes original0.001 relative gate:trim exact,resample2.77e-7,S3mel0.0001695,flowmel0.0001579. New complete native cross-lingual/no-transcript4bit Chinese probe23365 running through S3,speaker,speech LM,flow,HiFiGAN with fixed checkpoints;not yet waveform/quality acceptance. Releasable frontend tracked;no accepted Runtime changed.
+
+- CosyVoice3 token-to-mel conditioning implemented for finalized batch1:strict token/device/finite/length validation,explicit2:1 reference alignment,normalized speaker projection,lookahead/repeat and prompt crop. RealCUDA probe97258 passes fixed Mac oracle:mu relativeRMSE0.000462,speaker1.23e-7,conditioning exact,10-step croppedmel0.004008 (unchanged1% gate). Synthetic reference mel plus real speaker embedding is component evidence,not full speech quality. Four4/8bit zh/en text-ID sequences match installed Mac tokenizer exactly despite same regex warning on both;8bit English seed42 stop-limit failure remains. Authoritative full Model.generate imports log_mel_spectrogram_compat (drops last STFT frame),not the similarly named non-compat helper;use compat in full reference frontend. All jobs terminal;next full reference mel frontend and integrated waveform.
+
+- CosyVoice3 speech sampler probe12537 completed:4bit zh109/en65 tokens and8bit zh112 tokens stop normally;8bit English seed42 reaches unchanged20x text-token limit and raises explicitly,retained as failed case. Both variants cancel at4th callback and recover exact Chinese tokens with request-owned RNG/cache. RAS/tokenizer mirror fixed Mac policy; Transformers emits a tokenizer-regex warning,so text-token oracle remains required before any tokenizer patch. No waveform/content/voice quality claim. Speaker/frontend and sampler evidence saved; full reference frontend,token-to-flow orchestration,integrated TTS and lifecycle/Runtime/Host/release remain pending. All GPU sessions terminal.
+
+- CosyVoice3 CUDA CAM++ speaker encoder now strictly loads all815 tensors with no CPU ONNX/zero-embedding fallback. Real speech fixed-feature relativeRMSE0.001747,cosine0.99999857; same16k waveform through CUDA Povey/HTK frontend+CMVN+CAM++ relativeRMSE0.001759,cosine0.99999845;fbank relativeRMSE9.234e-5. Both unchanged numeric gates pass. Reference trim/resampling and full TTS remain separate. Added bounded request-owned RNG/cache speech sampler preserving Mac nucleus/RAS and extended stop-token rules,with cancellation and explicit length-limit failure. Real4/8bit zh/en token probe17329 running; first probe manifest lookup failed before loading because4bit is downloaded rather than installed,log retained. No speech/audio quality,Worker,Runtime or publication claim.
+
+- CosyVoice3 flow330/330 tensor strict mapping/load passed (73983);dedicated development extra-deps overlay pinsx-transformers2.11.24,omegaconf2.3.0,antlr4-runtime4.9.3,einx0.3.0,frozendict2.4.7 without changing accepted Runtime. CUDA component4012:lookahead relativeRMSE4.16e-7 passes;DiT single-step0.011323 exceeds0.01 gate,retained failure. Explicit-noise cosine Euler/CFG implementation avoids global RNG mutation;10-step20520 passes relativeRMSE0.003229,maxabs0.06395,same [1,80,16]shape;cancel at4th check and identical recovery. Mac first probe default512input mismatch corrected to manifest80,original log retained. Strict loader uses pinned official DiT/PreLookahead directly;no Matcha training imports required for this inference path. Components do not prove real TTS quality. Next speaker encoder,reference preprocessing,speech-token sampler and integrated audio;single-step/tokenizer differences still open. All sessions terminal.
+
+- CosyVoice3 HiFiGAN stage trace located first mismatch in STFT (Mac zero padding vs official Torch reflection). Explicit adapter subclass preserves Mac zero padding; unchanged7680sample waveform gate now passes relativeRMSE0.005101/maxabs0.002057 vs original0.012175 (1% threshold unchanged); original trace/failure retained. New strict speech-LM loader accounts292parameter tensors per4/8-bit checkpoint, expands168affine layers toFP16 and materializes deterministic nonpersistent RoPE inFP32 (first meta-buffer move failure retained). Native36456 passed both full/cached4-token runs; maxcachelogitdifference0.01172/0.00977,top1matches. Mac oracle19413 passes relativeRMSE0.000991/0.000959,all4positions Top1 and Top10 sets identical. Scope fixed speech embeddings only,not sampled TTS quality. Flow needs dedicated x-transformers/omegaconf/Matcha setup; speaker encoder/full generation/lifecycle/Runtime/Host/release remain. All probes terminal.
+
+- CosyVoice3 tokenizer long-window probe29219 completed:3000/3101/5201mel frames yield750/776/1251tokens with exact lengths but1/1/2 token differences vs unchanged Mac single-window + merge oracle. Mixed batch matches CUDA serial;3 invalid-length cases rejected. Mac batch defect remains; this is repeated-speech boundary evidence,not natural long-reference quality. HiFiGAN246/246 tensor name/shape coverage and strict loading pass using pinned official source; new CUDA loader verifies SHA, reverses fused conv layouts and materializes deterministic Hann window after meta construction. GPU pitch-predictor50417 passes FP32/FP64 relativeRMSE1.94e-6/3.87e-6. Fixed-input full decoder98071 produces correct7680samples,finite,all neuralCUDA, butrelativeRMSE0.012175>0.01 gate (maxabs0.005491): retained failed gate; waveform parity not accepted. Next diagnose decoder stages, then remaining flow/LM/speaker encoding and complete TTS. All probes terminal.
+
+- CosyVoice3 CUDA S3TokenizerV3 implemented with SHA-checked strict198-tensor load,FP32 CUDA parameters,explicit conv axes,RoPE/FSMN/FSQ and30s/4s window logic. Short,padded-single and real-speech mel cases preserve all token IDs/lengths (speech73tokens). Intermediate relativeRMSE0.00191–0.00334 exceeds original0.001 gate: not full numerical acceptance. Layer trace locates difference at first linear; independent FP64 oracle gives CUDA relative1.26e-7 vs Mac6.23e-4,max1.08e-6 vs0.002277. Keep accurate CUDA math; original failure retained. Existing Mac batch2 mask broadcasting fails, recorded separately; long-window/batch/lifecycle remain unverified. No full TTS/Runtime/Host claim. All probes terminal.
+
+- CosyVoice3 preparation: official074ca6dc and exact Matcha gitlinkdd9105b3 pinned;4/8-bit plus S3TokenizerV3 transferred and Spark full SHA verified10files/3,604,165,611bytes.4-bit was fetched at fixed HF revision;8-bit/tokenizer reuse installed Mac bytes.672 affine first/last-row checks across168quantlayers x2variants pass exactly with FP16 rounding. Native CUDA/Worker/Runtime/Host/quality/publication remain unimplemented; see spark/COSYVOICE3-REUSE.md. Preserve mandatory reference audio, instruction priority and no implicit STT downloads. All transfer/probe sessions terminal.
+
+- VoxCPM2 Mac Runtime1.8.10 long-text baseline65426 and same-ASR check90896 completed:all4 normalized full transcripts match too. Mac36.80–44.96s audio generated18.08–22.18s (RTF0.483–0.493);Spark40.32–50.72s generated47.66–60.43s (RTF1.172–1.191). Different sampled speech lengths are retained; no cross-device waveform/style parity claim. Evidence voxcpm2-mac-long-native-20261007.json and voxcpm2-mac-long-roundtrip-20261007.json. All probes terminal. Next implementation candidate CosyVoice3 has4/8-bit checkpoints plus required S3TokenizerV3; preserve reference-audio requirement and optional transcript semantics.
+
+- VoxCPM2 natural long-text probe80817 and ASR73185 completed:4/8-bit Chinese/English 40.32–50.72s, generation47.66–60.43s; all4 normalized transcripts exactly match complete inputs including endings. Full WAV decode,48000Hz mono PCM16,frame counts and SHA checks pass. Mac same-text baseline65426 is running; voice/style/perceptual quality remains pending. Standard builder signed CUDA distributions4bit991dc1fd…(5files/275pieces/2,300,904,017bytes) and8bitf517e799…(5files/385pieces/3,225,461,623bytes), metadata_verified with local full bytes and fixed MS metadata; neither submitted nor published. Full signed Runtime/Host/product audit/release remain pending; immutable Runtime0.5 unchanged.
+
+- VoxCPM2 HTTP6028 completed under standard56-dependency/42-source profile:4/8-bit plain speech and authorized multipart reference clone pass against deterministic native PCM (4-bit plain sparse1LSB bound; other3cases exact).Cold24.12/17.99s,clone5.33/4.19s,cancel0.0365/0.0384s,same-engine recovery and actual generation after drain/resume pass.Offline network none,readonly,uid1000:1000,capdropALL,no-new-privileges verified.Receipt voxcpm2-http-worker-20261007.json,adapterSHA3750bc301e9d7e8979a1d45aab7b9aebd6395f96c799add83bbf1fd53204a786.25 targeted plus45 builder/profile tests passed.4/8-bit unsigned CUDA distribution specs preserve existing fixed HF/MS sources and Apache terms; not signed,submitted,published or referenced by formal Package. Full signed Runtime/Host and broad voice/style/long-text quality remain pending. All probes terminal.
+
+- VoxCPM2 standard Runtime builder now has explicit capability/paired source+interpreter inputs, pinned official archive hash, retained license/source archive and Runtime-owned weight lock.56 exact dependencies; standard export12276 passed42sourcefiles/7597full-byte checks against accepted environment/source.45 builder/profile tests passed. Independent unsigned fixture46600 assembled from accepted core plus standard VoxCPM2 profile. Adapter numeric admission now handles multipart integer strings and returns400 before loading;25 targeted tests pass. First HTTP client failed before creating Worker due missing host soundfile; replaced probe decoder with stdlib wave, no Host dependency changes. HTTP6028 now running; no HTTP/Host/publication acceptance claimed.
+
+- Deterministic VoxCPM2 ASR90580 completed:all8 plain/design/reference-clone cases exactly match normalized input text. Receipt voxcpm2-roundtrip-deterministic-20261007.json. All GPU sessions terminal; next gate is dedicated Runtime export and isolated HTTP Worker using latest OOM-safe adapter, followed by formal Host/quality/release.
+
+- VoxCPM2 deterministic native8-case baseline23349 completed. Adapter54399 passed both variants through actual TTS protocol,request cancel(4bit0.0215s/8bit0.0268s),same-engine recovery,variant switch and actual stop/start generation.4-bit full-waveform recovery differs on133samples by1PCM16 LSB(max1,RMSE0.03650);8-bit recovery and restart are byte-identical. Original byte-exact failures preserved; acceptance explicitly uses same48000Hz/shape,max1LSB andRMSE<0.1LSB rather than claiming bitwise4-bit repeatability. Native/adapter evidence archived. Added OOM release/reload path with21 targeted tests passing; OOM change is unit-verified and awaits next real isolated Worker snapshot. ASR90580 revalidating deterministic8-case content; Runtime export/HTTP/Host/release remain pending.
+
+- VoxCPM2 Adapter first cross-path SHA check failed:4-bit WAV has identical48000Hz/107528sample shape,135samples differ by exactly1PCM16 LSB (RMSE0.03543LSB). Saved diagnostic receipt. Same-adapter post-cancel byte equality also failed, so lifecycle acceptance remains unproven. Deterministic CUDA algorithms/CUBLAS workspace were enabled; this changes sampled native output length, so old baseline cannot be used as a same-config oracle. Independent deterministic native8-case baseline23349 is running, to be followed by matching-config adapter and ASR revalidation. Preserve all prior receipts/logs; no Worker/Host/publication completion claim.
+
+- VoxCPM2 resident engine now uses Runtime-owned fixed 4/8-bit weight locks, request-scoped native module checks, CUDA synchronization before ownership release, bounded inputs and exclusive output ownership/cleanup. Real resident93967 passed mid-network cancellation at100th check for both variants, removed partial output, fresh-callback recovery reproduced native hashes,close removed hooks/model. TTS adapter reuses existing speech protocol and serialized CUDA runner, adds exact Host checkpoint selection and Mac qualitative speed/emotion/instruction controls, rejects duplicate requests/stopping work.20 targeted engine/adapter/shared lifecycle tests pass. Actual adapter66699 is running; no isolated Worker/Host claim yet.
+
+- VoxCPM2 Mac-padding component recheck86569 completed:VAE encoder max8.34e-6/relativeRMSE1.22e-6;decoder now exact15368sample shape,max1.264e-4,relativeRMSE0.00683;BF16 feature encoder relativeRMSE0.01012 remains documented,not bitwise parity. Native r2 eight cases (4/8-bit x zh/en/design/reference clone) all real CUDA48kHz passed;duration2.24-3.52s,generation1.94-4.16s,peak5.80GB. ASR80469 exactly matches normalized input text for all8. These establish native content only,not speaker/style similarity,long text,lifecycle,Worker,Runtime export,Host or production publication. All GPU/probe handles terminal.
+
+- VoxCPM2 strict development loader now accounts for all1,326 Mac tensors, loads811 inference tensors with strict=True and verifies9 computed rotary buffers (max5.96e-8). Removes unused logvar via explicit mean-only inference encoder, no random substitute. Both4/8-bit checkpoints generated real48kHz Chinese/English audio with all neural parameters CUDA; packing currently expands toBF16. Fixed-input comparison exposed official-vs-Mac odd-stride VAE padding mismatch (encoder relativeRMSE19.35%,decoder15360vs15368samples); retained failure and implemented explicit Mac padding behavior, component recheck86569 running. First source module naming failure also retained. Native generation alone is not quality/Worker/Host acceptance.
+
+- AVTR standard FP32 60s probe99465 completed:1,500frames25fps,879.99s generation,CUDA peak6,541,899,776bytes,zero fallback,engine close passed. SHA f562368fbe843d24e4ba9674448b102dadc304b48a683281f586ccb7858553fd. Independent complete decode passes all frame timestamps,512x512 and16k mono audio SNR44.72dB/512AAC padding. Six time-spaced images retain identity/background and speech motion. Scope remains repeated-speech max boundary,not broad natural long-form quality. No GPU jobs remain; formal Runtime/Host/release gates pending.
+
+- VoxCPM2 checkpoint copy30875 and remote verification42475 completed:10files5,526,365,640bytes match Mac hashes; official source import passes. CPU/meta target inspection81625 maps811of813 tensors by explicit names/layouts; two fc_logvar parameters removed by Mac require an explicit inference path, and nine rotary buffers still require computed-value checks. No native CUDA synthesis claim.
+
+- VoxCPM2 preparation: fixed official source f0c787f0937dc1c9a8f4f64d9a332d9c5da2e629; freshly hashed Mac 4/8-bit checkpoints (2.301/3.225GB). New affine decoder matches MLX exactly on 1,012 first/last-row cases covering every quantized layer. This is a conversion primitive, not packed CUDA inference; full layout mapping, native synthesis, Runtime/Worker/Host/release remain pending. Checkpoint copy30875 live; AVTR standard60s99465 remains the only Spark GPU job.
+
+- AVTR fast HTTP71052 completed:standard36.28s/fast12.51s both exact native hashes,fast cancel0.012s,standard-after-fast and actual fast-after-drain/resume pass in offline readonly nonroot sandbox. Mac60s reference51190 completed; full1500-frame comparison41243 meanPSNR42.53dB,min41.33dB,all timestamps aligned; six samples show matching identity/mouth/eyes/pose through59.96s. CUDAfast60s took366.38s,peak3.361GB,no fallback. These are repeated-speech boundary and fixed-identity evidence,not broad natural60s quality. Separate standardFP32 1500-frame probe99465 now running; only active Spark GPU job. No Runtime/Package production publication.
+
+- AVTR1500-frame/60s fast native61491 completed with zero FP32 fallback and closed engine. Complete independent decode proves1500 exact25fps frames,512x512 and mono16kHz audio SNR44.72dB,512AAC padding samples. Six time-spaced frames preserve identity/background and show speech motion; not natural long-speech/lipsync acceptance. Standard fast export90697 completed25distributions2822verifiedfiles19sourcefiles; fast HTTP71052 running with both modes/cancel/resume. Parallel Mac60s reference51190 uses separate Mac GPU on identical repeated speech. No Package publication or formal Host claim.
+
+- AVTR fast Worker wiring implemented: standard/fast explicit per-request selection and reset,approximate/fallback output metadata;36 parameter,ownership,and nonfinite fallback tests passed. Standard exporter refreshing fast source with exact existing25 dependency pins in independent fixture90697.1500-frame native boundary61491 confirmed live~900frames; no second GPU workload started. Fast HTTP probe prepared to verify both baselines,fast cancellation,standard after fast and fast generation after drain/resume. No formal fast Worker or60s completion claim yet.
+
+- AVTR fast decoder43677 passed Mac-derived approximate gate on real inputs: FP16scaled256 Conv median~0.084s vs FP32~0.432s; preserves FP32 bias/residual/norm. Synthetic fastCUDA-vsFP32 PSNR58.91dB but fastCUDA-vsMacFast40.72dB retained as cross-backend stress difference. Native fast50frames59439 passed12.52s vs standard30.11s,zero fallback; switching back reproduces standard SHA f366d6c8. Four nonfinite/cancel fallback tests pass; standard builder retains new fast source/provenance (export refresh pending). Complete short-video comparison: CUDAfast-vsstandard meanPSNR42.94dB,vsMacfast42.36dB,matching sampled mouth/eye/pose. CUDA fast/standard decoded audio identical; cross-platform exactAAC sample assertion failed,source-waveform SNR45.62dB on both backends passes preserved-driving-audio check.60s/1500frame boundary probe61491 currently running on repeated reference speech,not natural long-form quality evidence. Worker still rejects fast until its integration/acceptance.
+
+- AVTR fast decoder prototype now mirrors Mac scaledFP16 Conv (input/256,output FP32*256;bias/residual/normalization FP32) with persistent channels-last weights and fixed-op rejection. Actual Mac fast decoder oracles generated for animal,human,and synthetic features. Real Spark component numerical/performance probe launched; Worker still rejects fast pending full acceptance. Existing standard Runtime/Worker and signed candidates unchanged.
+
+- AVTR Host-default HTTP62860 completed: current adapter31c0f57c accepts all Mac declared standard default fields, first generation36.49s matches native SHA f366d6c8,auth/bounds/cancel/post-cancel and actual drain/resume generation pass under standard25-dependency AVTR Runtime profile. Receipt avtr-host-defaults-http-worker-20261007.json. CUDA distribution envelope independently verified using authenticated Index116 Publisher key fingerprint216f5256; candidate is not submitted/published. Next remaining AVTR gates include fast mode,60s boundary and broader quality,full signed Runtime and formal Host/package install. No live AVTR GPU or build sessions remain.
+
+- AVTR standard-profile HTTP13470 completed: baseline SHA f366d6c8,36.96s cold,cancel0.061s,post-cancel and actual post-resume inference pass in offline readonly nonroot sandbox. Signed CUDA distribution builder18607 completed dist_ai2apps_avtr1_cuda_57bfb656_v1, digest457727dda1c98bf7edf3757271270f221e1b47ed752839c109ed7706e1a676ad,30files2,549,026,222bytes304pieces,HF/MS metadata_verified; preserves original conditional composite license/consent. Candidate only, not Registry published or referenced by Package. New Host-default parameter compatibility fix accepts exactly declared resolution/ratio/output_format/audio mode, rejects unsupported alternatives, preserves flat seed;14 adapter tests pass. Full-default HTTP revalidation launched with new adapter snapshot; prior accepted fixtures preserved.
+
+- AVTR standard export6968 initially failed byte-equality solely on source-provenance.json; retained the failure. Explicit comparison70673 proves2820 exported files identical to accepted execution fixture and only adds pipeline lineage metadata;25 exact distributions. New independent avtr-profile fixture completed, standard HTTP test launched. Independent portable-decoder ONNX CPU reconstitution shows Mac stress max2.31743e-4 vs ONNX, while CUDA vs same ONNX passes unchanged1e-4 (stress5.73397e-5,real-input1.13249e-6). This triangulates backend numerical differences without claiming fresh original upstream ONNX verification or erasing the Mac stress mismatch. No inference CPU fallback, no tolerance change.
+
+- Standard Runtime builder now supports explicit avtr capability plus --avtr-python, dedicated25-distribution exact lock, reviewed CUDA wrappers, retained AVTR source provenance/licenses and unchanged-helper hash verification.43 Runtime builder/profile tests pass, including missing license and changed retained helper rejection. Actual Spark standard profile export and byte comparison launched; not yet accepted and no signed Runtime replacement/publication. Existing signed0.5.0 candidate remains unchanged.
+
+- AVTR isolated HTTP Worker54302 completed exit0: first standard inference36.64s incl cold setup exactly matches native human baseline SHA f366d6c8; invalid bounds/auth rejected, HTTP cancel0.041s, post-cancel and actual post-drain/resume generation match baseline. Offline readonly nonroot/capdrop/no-new-privileges sandbox inspected. Receipt avtr-http-worker-20261007.json. Fixture inherits byte-verified Echo dependency profile; AVTR dedicated standard export, fast mode,60s boundary/quality, synthetic decoder stress, formal signed Host installation and publication still pending. All AVTR runtime sessions are terminal.
+
+- AVTR resident engine61469 completed: fixed22-file checkpoint verification, mid-decoder cancellation drains CUDA in0.00147s for this injected node-boundary cancellation, then a new callback succeeds even while old callback remains cancelled. Recovery MP4 matches independent human baseline f366d6c8.160-frame6.4s generation94.52s,close passed. Independent complete decode proves160 CFR25fps frames and102400 audio samples at16kHz. This does not establish60s maximum or general temporal quality. Worker adapter implemented with controlled paths/Host checkpoint/serial owner and rejects unverified fast mode;25 admission,adapter and lifecycle tests pass. Independent unsigned HTTP fixture54275 remains running; no HTTP acceptance yet.
+
+- AVTR resident engine added fixed22-file Runtime-owned hash lock, bounded parameter/audio admission, request-scoped cancellation rebinding and CUDA synchronization before ownership release.12 admission/security tests passed (corrupt same-size weights, symlink escape, hash cancellation and invalid parameters). Real mid-decoder cancellation/fresh-callback recovery/160-frame probe launched; no new acceptance claim yet. New user grant covers current related Package publication via Dev Cookie; standard exact-DB Runtime0.5 query96647 still failed database locked before submission. Explicit live-method override requested because AGENTS path-only restriction conflicts with current runbook preference; no live Cookie read performed.
+
+- AVTR native full CUDA chain passed two fixed inputs: s22 is an animal sample (not a human portrait), s42 is a visually confirmed photographic human portrait. Both50frame/25fps/2s outputs independently decode with exact CFR and preserved16kHz mono audio (SNR45.62dB,768AAC padding samples recorded). Mac reference comparisons: animal meanPSNR48.07dB; human42.57dB. Four sampled frames visually retain corresponding mouth/eyes/pose; not full lipsync/temporal quality acceptance. Native chunk-boundary cancellation cleans partial output; fresh generation after cancellation is byte-identical to independent baseline SHAe1688cf2. Full-source reference CUDA throughput ~1.6–1.8fps,peak~6.5GB. Channels-last decoder diagnostic halves warm decoding time (~.43→.19s) but synthetic stress error remains~2.33e-4; optimization is not activated. All probes terminal. Worker/Host/long-video/Runtime export/distribution/release and synthetic stress parity remain open.
+
+- AVTR decoder diagnosis: Mac per-node trace195 nodes is bit-exact to original reference. FP64 CUDA does not resolve synthetic input error (max2.33427e-4); sampled node differences grow through late decoder blocks. Independent real portrait s22 three-component renderer passes unchanged1e-4 threshold (decoder max1.13249e-5). Synthetic stress failure remains open. Full CUDA audio-to-video development pipeline implemented with Mac CPU geometry/provenance/licenses retained, CUDA-only neural operations and serial source-canvas encoding; initial probe failed missing PyAV before inference, retried using existing isolated Echo export environment. Not a production Worker/Host acceptance.
+
+- AVTR CUDA graph74710 passed HuBERT,motion_extractor(all7outputs),appearance_extractor at5e-4. Remaining graph7959 passed landmark106,landmark203,insightface_det,stitch_network,warp_network; decoder failed1e-4 gate(max2.27153e-4,mean4.79276e-6). Mac reference initial detector640 input failed because actual AVTR pipeline uses512; corrected probe only, preserved failure. Explicit Mac arithmetic for InstanceNormalization tested88664, decoder still fails(max2.22325e-4,mean4.78097e-6). Tolerance unchanged. Eight of nine graph components pass plus prior motion network; no full video/Worker/Host. Next diagnose decoder layerwise/convolution rounding before acceptance. All GPU sessions terminal.
+
+- AVTR constrained CUDA portable graph executor implemented for actual locked graph operators with early unknown-op rejection, CUDA neural operations and last-use temporary release. Mac oracle generated for HuBERT1x8400, motion extractor1x3x256x256 and appearance extractor; real Spark parity probe launched. No component graph pass yet, no full-video claim. Runtime publication method override still pending.
+
+- AVTR portable copy35351 completed. CUDA probe6655 rehashed all22 files and passed five condition outputs at5e-5 plus four-Euler-step motion at2e-4 tolerance against identical actual Mac MLX inputs. Final maximum error1.54972e-5,mean2.221e-6; all weights CUDA,peak627646464bytes,component test1.204s including load. Receipt avtr-motion-cuda-parity-20261007.json. No full avatar video/Worker/Host claim: HuBERT and8 detector/render graphs plus full lifecycle remain next.
+
+- AVTR native CUDA motion port cuda_avtr_motion.py implemented from the reviewed213-line Mac model: same condition encoder, rotary/rms/CFG and Euler schedule with Torch CUDA tensors; no neural CPU fallback. Syntax check passes, numerical acceptance not yet run. Mac fixed-input reference generation launched via existing MLX model; portable checkpoint copy35351 remains live. Nine renderer/audio graphs and full pipeline remain unimplemented.
+
+- AVTR original /private/tmp checkpoint paths are empty, so original-input rehash failed missing HuBERT; no false reuse claim. Located actual installed Dev Registry distribution directory c3278655 under Library/Caches/AI2Apps/.../models--Avdpro--AVTR-1-MLX/distributions. Fresh portable manifest verification passed22 files/2,548,975,525bytes; receipt avtr-portable-inputs-20261007.json. Selected weights+manifest copy to Spark avtr-cuda-preparation/models started, no app-state/Cookie copy. Native CUDA implementation and original tensor-identity verification remain pending.
+
+- EchoMimic published-layout HTTP75555 completed exit0: exact171.34s/fast57.85s reproduce native SHA, cancel0.313s, post-cancel and actual post-resume generation pass, offline readonly nonroot sandbox verified. Saved echomimic-published-http-worker-20261007.json. No live GPU probes remain. AVTR-1 next-source inventory saved with10 original hashed-asset declarations and9 portable graphs plus motion; AVTR-REUSE.md records CUDA/component/Host gates, no Spark execution claim. Runtime0.5 browser-live method override remains unanswered; no broadened Cookie access.
+
+- Final published-layout standard export90174 completed: all53 exact pinned dependencies validated,25 source files and6436 profile files equal the current10-weight-file candidate. Receipt echomimic-published-profile-export-20261007.json. No changes to signed Runtime0.5 r2; Echo profile belongs to a future full Runtime candidate.
+
+- Published-layout HTTP75555 exact171.34s and fast57.85s match accepted video hashes; cancellation0.313s, remaining recovery/resume still live. CUDA checkpoint envelope independently verified against registered Publisher key from trusted public Index116. Standard ten-file profile re-export/full-byte comparison90174 launched. Runtime0.5 exact authorized Cookie DB query86440 again failed database locked before network; no submission. Asked explicit user override to allow same exact Runtime/SHA via standard --browser-live because user AGENTS allows only DB path. Pending answer; no live Cookie access performed.
+
+- Standard signing39595 completed: dist_ai2apps_echomimic_v3_cuda_c04fb474_v1, manifestDigest sha256:62a03e7fc3b291252ad2cadaf67a7fa66443c32285edb0aa424c89348c2dcd39,15files20,766,374,281bytes/2476pieces, metadata_verified HF+MS. Envelope and verification receipt retained under spark/artifacts. This is signed candidate only, no Registry submission/publication; exact Cookie authorization has not been requested for this distribution. Published10-file HTTP75555 still live; formal Host/quality/release gates remain.
+
+- Published-layout candidate46050 completed; GPU HTTP75555 is live. Exact15-file checkpoint snapshot69170 completed with fresh10-file tensor rehash and5 small anonymous HF license/metadata downloads. Standard distribution builder33170 rejected snapshot directory basename (required full revision), before any envelope/publication. Corrected owned snapshot layout to artifacts/echomimic-distribution-snapshots/c04fb47465c0c615681b7d927256f6d5a3a314cc; standard signing retry39595 running with same spec/Publisher/key. No Cookie access, new identities or release mutation.
+
+- Standard EchoMimic HTTP48701 completed exit0, including actual post-drain/resume generation with baseline SHA554987af, exact/fast/auth/bounds/cancel/recovery and sandbox checks. Receipt echomimic-standard-http-worker-20261007.json. New published-layout candidate46050 completed with exactly10 hashed weight files; Runtime lock now matches these published files after full tokenizer identity proof.26 targeted adapter/recovery/cache/media tests passed. Accepted12-file fixtures remain unchanged. Published-layout HTTP next serial GPU probe launched; fixed15-file local distribution snapshot69170 preparing by rehashing existing tensors and fetching only5 public license/metadata files. No signing/publication performed.
+
+- Published-layout tokenizer62129 completed: complete backend JSON SHA49813a9a matches four-file fixture, same special map/IDs/model_max_length and10 multilingual/truncation cases. Prepared unsigned/unpublished echomimic-checkpoint-distribution.json for CUDA model identity with existing immutable HF/MS15-file sources; no new upload, signing, publication or Package distribution reference.10-file real checkpoint acceptance is next before activating this layout. Standard-profile HTTP48701 now passed exact167.11s and fast58.15s baseline hashes plus cancellation0.318s; post-cancel and post-resume generation still running.
+
+- Exact53-dependency Runtime lock passed against actual Spark echomimic-export-venv.40 builder/profile tests passed including wrong/missing/nonexact lock and bad source digest rejection. Anonymous standard Registry verifier confirmed existing Mac Echo distribution at Index116 with digestd9d41bf8 and registered Publisher/key.10 published runtime files match hashed CUDA inputs exactly; two extra fixture tokenizer files are not in distribution. CPU tokenizer probe proves published tokenizer.json/config reproduce entire fast backend, special IDs/map and max length plus10 multilingual/truncation cases exactly. CUDA model-ID binding still needs its own proper distribution; existing MLX ID cannot be relabeled. Current12-file Runtime lock is preserved until a10-file checkpoint real acceptance is prepared. Standard HTTP48701 first exact passed167.11s/SHA554987af, remaining lifecycle runs live.
+
+- EchoMimic Runtime dependency lock validator now rejects nonexact pins, wildcard versions, missing distributions and version drift before exporting. Added7 targeted builder tests;40 builder/profile tests pass. Existing source archive digest mismatch is rejected before extraction. Standard-profile HTTP48701 remains live in CUDA loading; do not restart. Exact53-dependency validation against the Spark export environment launched.
+
+- EchoMimic HTTP38126 completed exit0: exact163.93s cold and fast57.57s both native-baseline MP4 SHA; cancellation0.316s and post-cancel exact recovery passed; invalid parameters/auth checks passed. Sandbox network none/read-only/capdropALL/no-new-privileges/uid1000 confirmed. Drain/resume endpoints passed but post-resume generation was not included; next standard-profile probe explicitly adds it. Standard export53 distributions/25 source files/6436 full-byte matches to fixture; source/legal retained. Builder now checks exact dependency lock,33 builder/profile tests pass. Independent standard fixture41273 preparing; signed Host/release/quality remain pending.
+
+- EchoMimic HTTP38126 first exact generation passed (163.93s including cold load), output SHA554987af exactly matches native baseline; fast/lifecycle still running. Standard CUDA builder now supports mandatory paired --echomimic-python/--echomimic-sources with declared capability, fixed archive SHA, retained license/source and per-file source inventory.33 existing builder/profile tests passed. Dedicated dependency/source export62756 completed; full-byte comparison against executing fixture launched. No signed Runtime replacement/publication.
+
+- EchoMimic unsigned Runtime fixture32620 completed (8575 profile files, inherited accepted ACE dependencies plus pinned Echo source and isolated PyAV/OpenCV/imageio overlay). Authenticated HTTP no-network/read-only sandbox probe38126 launched; live Worker reached CUDA Transformer loading. No HTTP inference pass yet; preserve this session and inspect before any restart. Follow-up must verify generation after control resume, not only the resume endpoint.
+
+- EchoMimic CUDA Worker adapter implemented: Host-selected checkpoint, Runtime-owned fixed12-file hash lock, strict multipart reference/parameter validation, controlled output/recovery paths and serialized native owner with cancel/stop drain.30 adapter/lifecycle/recovery/cache/codec tests pass. Independent unsigned HTTP fixture creation32620 running; HTTP acceptance script prepared, not yet executed. Source/profile export, Host and release remain pending.
+
+- EchoMimic real CUDA exact recovery39969 completed exit0: interruption after step3 resumes only4–8 in50.64s; interruption after step8 runs no denoise steps and decodes/muxes in15.54s. Both MP4 SHA554987af match the independent uninterrupted baseline exactly. Wrong-seed recovery rejected without changing checkpoint; checkpoint removed only after successful output; engine closed. Receipt evidence/media/echomimic-recovery-native-20261007.json. Native exact/fast/long/recovery lifecycle now accepted for the fixed reference; Worker/Host, cross-identity/lip-sync quality, Runtime export and publication remain pending.
+
+- EchoMimic recovery/media/cache targeted tests:16 passed. Independent fast81 and long161 full-frame/audio decode passed (25fps, original mono16kHz, audio SNR46.21/46.11dB). Real checkpoint step3 replay passed exact video SHA554987af; step8 boundary acceptance still running.
+
+- EchoMimic resident long161-frame lifecycle passed; fast mode passed cancellation,16 CFG calls/6 computed steps,57.64s versus exact72.17s, and return-to-exact SHA554987af matches baseline. UniPC CPU recovery after steps1/3/7/8 is tensor-exact and rejects mismatched request/schedule. SafeTensor recovery is now integrated with model/source/input fingerprint and atomic writes; real CUDA step3/8 replay running39969, not yet accepted. Worker/Host/quality/export/publication remain open.
+
+- EchoMimic resident26838 incrementally passed cancellation at step2 (21.09s whole request, not cancel latency), partial output/hook cleanup, then81-frame recovery71.38s with SHA554987af exactly matching prior independent512 baseline. Long161frame phase remains running. Implemented fast-mode bridge because pinned upstream Pipeline omitted cond_flag and incremented TeaCache per model call: explicit conditional/unconditional pairs,one timestep counter,FP32 distance matching Mac,threshold.15/skip2,window-owned residual cleanup. Nine CPU/media tests pass, including pair mismatch/cancellation/short-window failures. Engine fast path integrated locally; real fast probe prepared but not launched while resident GPU test runs. Exact checkpoint recovery remains pending.
+
+- EchoMimic native768 completed27762 exit0:81frames768x768,load79.35s,pipeline208.70s,peak24719323648CUDA bytes. Independent full decode passed exact25fpsPTS/3.24s/16kHzmonoAAC. Added cuda_echomimic_weights/media/engine resident implementation: strict fixed native loading,exact single-window plus Mac81/80 overlapping-window seam blend,per-module cancellation hooks,finally hook/scheduler/VAE-cache cleanup,request-owned partial MP4. Four real codec/output-ownership tests passed. Fast preset/recovery explicitly unimplemented,not silently approximated. Resident real cancel-step2/recovery/161frame long probe26838 now running; no lifecycle acceptance yet. Receipts echomimic-native-768-mac-media and echomimic-native-768-decoded (20261007).
+
+- EchoMimic native512 Mac-media11362 completed exit0: strict all five CUDA networks,81frames512x512,8steps,load83.11s,pipeline71.64s,peak21,076,485,120 CUDA bytes. OutputSHA554987af5d1a994b9513d781cd148dcbf13e4628b75cbe1693012f573ace7544. Independent full decode passed81frames/exact25fpsPTS/3.24s/16kHzmonoAAC,46.21dB audio SNR vs original,384codec padding samples recorded. Mac frame comparison meanPSNR20.69dB (not parity); four-frame visual review retains subject/book/glasses/background, mouth poses broadly similar but blink/pose differ; full lip-sync/cross-identity quality pending. Native768 Mac-media27762 now running. Evidence echomimic-native-512-mac-media, echomimic-native-512-decoded, echomimic-mac-cuda-frame-comparison (20261007). Worker/Host/release still incomplete.
+
+- EchoMimic Mac reference video located and independently SHA-verified against pipeline-m3.lock.json:67e2a48c048ddba42218093f00b6eb9a1f3427707ebf9cea9c3fdceae8aa7911. Prepared compare_echomimic_video.py for complete81-frame decode metrics plus four-frame side-by-side review, without claiming pixel parity across RNG/backends. Mac-media512 probe11362 remains live (PID1807881), observed actual denoise3/8. Independent decoder and H264/AAC preflight are ready; no completion claim yet.
+
+- EchoMimic native512 task80872 completed all8 denoise steps (~56s) and finite VAE decode but failed final mux because host ffmpeg is absent; no completed video acceptance. Added explicit PyAV18.0.0 only to EchoMimic dependency overlay and independent H264/AAC preflight passed. Probe now uses PyAV and preflights before model load. Mac comparison found crop-before-LUFS and rounded RGB semantics; new native-512-mac-media-r2 run11362 uses these with separate directory, prior failure retained. Independent full video/audio decoder prepared, including exact CFR81frames and explicit AAC tail-padding accounting. Generation remains running.
+
+- EchoMimic first native video probe53814 ended before main(): official src.utils required imageio and cv2 absent in ACE development environment. Added fixed imageio2.37.0 and opencv-python-headless4.11.0.86 with --no-deps into EchoMimic-only dependencies directory; ACE environment unchanged. Native512 baseline restarted80872 with explicit dependency PYTHONPATH, log native-512-r2.log. No completed generation yet; full Runtime closure still required.
+
+- EchoMimic full strict probe95502 ended at audio key mismatch after Transformer/VAE/T5/CLIP stages. Fixed official ForPreTraining→base encoder mapping: strip wav2vec2 prefix, explicitly exclude exactly7 pretraining-head tensors, map legacy weight_g/v to current weight-norm parametrization only when required. Audio-only strict CUDA check2347 passed; receipt echomimic-strict-load-audio-20261007.json. Full native512px81-frame8-step video probe53814 now running (native-512-r1.log); no generation acceptance yet.
+
+- EchoMimic12-file checkpoint copy54241 completed exit0. Full file rehash and strict five-component CUDA load started95502; process1799624 confirmed live during T5 stage. Full native81-frame512px probe prepared in check_echomimic_native_video.py with exact fixed inputs/eight-step callbacks,all five neural modules CUDA,TeaCache off,H264+16kHz mono driving audio. Not yet run. ECHOMIMIC-REUSE.md records source/weight evidence, explicit baseline differences and remaining long-video/recovery/Worker/Host/release gates.
+
+- EchoMimic fixed-image CUDA component forward passed5949: CLIP1x257x1280 in0.340s, VAE mode encode/decode512x512 in0.337s, all outputs finite/CUDA. Initial probe incorrectly passed32-channel Gaussian moments into16-channel decoder; corrected to public encode().latent_dist.mode(), no upstream/model change. Receipt echomimic-visual-forward-20261007.json. This is component execution only, not full video or perceptual acceptance. Checkpoint transfer54241 remains live; no other GPU task.
+
+- EchoMimic new Spark progress: existing Mac T5(242 tensors) and CLIP(784) Safetensors exactly match every original PTH tensor after original fixed SHA verification. VAE Safetensors SHA matches the historical Mac decoder parity lock; fresh original-PTH identity not asserted. VAE194 tensors and CLIP784 tensors strict-load onto CUDA2.10cu130 successfully. Native CLIP constructor cannot use meta initialization because it calls to(cpu); validation now preserves official construction, no missing/unexpected keys tolerated. Receipts echomimic-converted-tensor-identity-20261007.json and echomimic-strict-load-visual-20261007.json. Fixed-image component forward running90042; full checkpoint transfer54241 still active, no full-video acceptance.
+
+- Authorized Runtime0.5.0 standard Publisher query40843 ended before network access: exact Dev Profile SQLite database is locked. No Cookie value printed/exported, no alternate Profile tried, no submission created, no publication. Preserve grant for this exact candidate; user AGENTS requires exact database path, so do not silently switch to browser-live. Independent EchoMimic checkpoint transfer54241 continues.
+
+- EchoMimic fixed source archive SHA verified on new Spark; all six native model/pipeline imports pass using existing ace-step-venv without dependency changes.12-file20.77GB Mac checkpoint transfer is running in exec session54241. Runtime0.5.0/SHA20092284 Cookie permission was explicitly granted this turn; exact current Dev app-shell Profile confirmed from process arguments. Standard publisher query running40843; no publication/submission or audit approval performed.
+
+- Combined signed Runtime r2 product audit completed on Spark: signature valid, no static findings, decision review because local_ai_auditor_not_configured. Audit-only probe never installs/approves; active Runtime digest unchanged. Receipt combined-runtime-signed-audit-r2-20261007.json. Exact Runtime0.5.0/SHA20092284 Cookie authorization requested and pending; no Cookie read or publication.
+
+- EchoMimic CUDA preparation started: official clean source fixed to7e89489ca51c0d008fc1963ec6c03fc5bd0b9397, archive SHA88a87dfac7d1c4df4f706a026621f6ae4b3b8280f987aa6546e1314eba36d023. Existing Mac12 selected files20,770,911,185 bytes hashed; Flash/Wav2Vec bytes match upstream lock. VAE/T5/CLIP safetensor conversion identity remains to verify. Historical sibling Spark benchmark is provenance only; new Spark inference has not run. Independent checkpoint copy launched to echomimic-cuda-preparation/models; no sibling changes. Receipt echomimic-cuda-source-inputs-20261007.json.
+
+- Combined Runtime r2 signed candidate completed and independently verified: ai2apps/runtime-cuda-torch 0.5.0, SHA256 200922842b44e6f6ef763e568c556dbfb9f42e6510f7e810b543edfa33b4cdf5, 3,906,220,347 bytes (within 4 GiB). Existing registered Publisher fingerprint matched. Receipt: spark/evidence/media/combined-runtime-signed-r2-20261007.json. Standard Installation-session publisher query returned active user session required; no Cookie read, submission, publication or approved installation. Product audit and formal Host acceptance remain open.
+
+- Combined Runtime r2 unsigned build completed: inner tar.gz3,921,834,611 bytes, SHA86682691851c1bfe57621988c4cf83756ba70e02dad0d66df858bdc8150fd04e, logical unpacked8,398,707,575 bytes. Production tar materializer into fresh combined-media-extracted-r2 passed all103,219 file-byte comparisons plus2,821 H3 inventory entries; Mac transfer full hash/size verified. Existing Publisher key public fingerprint re-derived and matched; standard signed candidate build is running in exec session19869 at artifacts/runtime-0.5.0-combined-r2. No Cookie read, publication or install. Final outer size/signature verification and product audit/Host gates remain pending.
+
+- Combined Runtime r2 export audit passed: all11 profiles have identical runtime bytes to their accepted fixtures; seven license/README relocations are byte-exact and six pinned Diffusers README restorations accounted.32,119 core Python/framework and26 app files match baseline; H3 has only the expected retained new builder-source difference (cmp verified), no native payload drift. Stable Audio combined HTTP acceptance passed and all3 WAV hashes exactly match independent fixture. ACE-Step combined HTTP passed instrumental/lyrics, auth/bounds, cancel0.204s, recovery/drain/resume against raw Host weights. Containers removed. Archive job52548 remains active; full tar/outer artifact size, signing, registry installation/Host and broader quality gates incomplete. Evidence under combined-runtime-*-r2-20261007.json, stable-audio-combined-worker-r2 and ace-step-combined-worker-r2.
+
+- Combined candidate r1 terminated before archiving: standard FlashHead source digest gate correctly rejected the old Lite-only patch0bd7fdcf. Corrected input snapshot r2 uses the already-verified Lite/Pro patch11c0c020; all other snapshotted inputs unchanged, r1 retained for diagnosis. Standard stage-only r2 build launched under exec session52548, work runtime-0.5.0-combined-media-candidate-r2; no signed artifact or installation changed. Full size/equivalence/regression gates remain pending.
+
+- Started full combined media0.5.0 unsigned stage-only build via the standard builder from immutable input snapshot artifacts/combined-runtime-source-r1, remote work runtime-0.5.0-combined-media-candidate-r1. Existing signed0.5r3 and installations preserved. All current core dependency names/versions match baseline exactly; all24 Worker Python files match baseline byte-for-byte. Nine media profiles plus existing TTS/H3/NVFP4 declared only in candidate snapshot. Build process is still running (exec session63502); final size, full profile equivalence, combined inference regressions and signing/install/publication remain unverified. Operation receipt and build log are on Spark under combined-runtime-candidate-r1-*.
+
+- Combined-media delivery sizing: nine profiles individually gzip-tar measured at 665,801,784 bytes; with signed0.5r3 baseline estimate 3,707,988,247 bytes, leaving 586,979,049 bytes before retained upstream archives and final metadata. This is not a final artifact size guarantee; measure full candidate before signing. Existing source archives/licenses must be retained, no capability removal or weakened checks. SoL Custom standard exporter refreshed:51 dependencies,1,061 source files,1,416 runtime files equal to accepted Custom HTTP Worker (README documentation restored from pinned archive). Evidence: combined-media-runtime-size-20261007.json and sol-refiner-custom-standard-export-20261007.json.
+
+- Stable Audio isolated HTTP Worker passed real music/SFX/short requests, variant switch, 401/400 bounds, active cancellation (3ms observed), recovery, drain503/resume and zero active requests. Docker network none, read-only root, uid1000:1000, all capabilities dropped and no-new-privileges verified; container removed. Independent WAV decoding/hash check passed. Standard Runtime builder now supports paired --stable-python/--stable-sources with stable-audio capability and fixed archive gate. Standard export has39 dependencies/40 source files and3,693 runtime files byte-identical to accepted unsigned Worker (LICENSE/README retained separately);33 builder/profile tests passed. Signed Runtime, real Package installation/Host lifecycle, distribution/publication and perceptual quality remain pending. Evidence: stable-audio-isolated-worker-20261007.json and stable-audio-standard-export-20261007.json.
+
+- Stable Audio resident-r2 maximum contract passed: 120s/100steps generated in 5.444s, recovery 1s/1step in0.073s; no cancelled output and text hooks removed. Receipt: spark/evidence/media/stable-audio-resident-engine-20261007.json.
+
+- Stable Audio resident implementation added: cuda_stable_engine.py, cuda_stable_adapter.py. Strict music/SFX task and no-lyrics v1 validation, 1–120s/1–100 steps, fixed Host checkpoint identity; shared native ownership drains cancelled writers before output cleanup. Real engine 10s generation, cancellation at sampling step2, no partial output, text-hook cleanup, one-step 1s recovery and sequential SFX recreation passed. 14 adapter/shared-lifecycle tests passed. Isolated HTTP Worker, standard Runtime export and full Host lifecycle are still pending; engine acceptance does not prove them.
+
+- Stable Audio native full pipeline: offline Transformers T5Gemma strict-loads 134 tensors and embedded SentencePiece; English/Chinese/empty token IDs and masks exactly match Mac, visible-token embedding relative L2 0.196–0.231%. Music 10s/120s and SFX 10s/1s generated with strict DiT/SAME-S, matched eight-step logSNR ping-pong/real-latent overlap decode; independent WAV decode verifies finite non-silent stereo 44.1kHz and duration tolerance. Generation times 0.834/1.962/0.765/0.661s, load ~7s, peak allocation 2.412GB. Four original Mac NPZ hashes verified on Spark. RNG is Torch, not identical MLX seed stream. These are development native runs; perceptual/semantic quality, resident cancellation/lifecycle, signed Runtime/Worker/Host/publication remain pending. Evidence: spark/evidence/media/stable-audio-native-generation-20261007.json.
+
+- Stable Audio follow-up: identical synthetic SAME-S inputs agree between MLX CPU and CUDA at relative L2 1.15–1.20e-4 (78.4–78.8 dB), while Mac GPU remains ~3%; initial projection CPU/GPU diagnosis saved without altering Mac product behavior. Small-music DiT inverse mapping strictly covers 438 upstream tensors plus 3 conditioner tensors; real CUDA FP32 forward passes (0.294 s, 1,862,058,496 bytes peak allocation). DiT reference relative L2: MLX CPU 7.62e-4, MLX GPU 4.61e-3. MLX explicitly validates checkpoint RoPE frequencies and retains its generated Fourier buffer. These are component/synthetic checks, not full generation or perceptual acceptance; tokenizer/text encoder, sampler, SFX, Runtime/Worker/Host/publication remain pending. Evidence: stable-audio-decoder-parity, stable-audio-dit-cuda-forward, stable-audio-dit-parity (20261007).
+
+- Stable Audio: fixed source includes a SAME-S PyTorch implementation consuming the existing Mac NPZ. Both backends strict-loaded all 114 FP32 tensors; Spark CUDA passed synthetic lengths 2/32/64. Final relative L2 is 3.01–3.37%, so numerical parity is NOT accepted. Per-block traces saved; first projection compared with NumPy float64 gives MLX 4.37e-5 versus CUDA 2.65e-8 relative error, insufficient to attribute all downstream drift. Native music/sfx config endpoints require upstream authorization; no bypass or gated weights download. Text encoder/DiT/full generation, Runtime/Worker/Host and publication remain pending. Evidence: spark/evidence/media/stable-audio-decoder-parity-20261007.json.
+
+- ACE-Step signed distribution candidate completed with existing verified Publisher key: dist_ai2apps_ace_step15_turbo_cuda_19671f40_v1,digest1c3b7a63ca7c0025108d46d57acdf8730bda103a9dda3b94c98dcb145cd228b9,23files/1204pieces. Installation publisher query returned active user session required; exact distribution Cookie authorization asked and pending, no Cookie read/submission. Independent work: Stable Audio3Small music/sfx Mac0.1.1 contract inspected,clean source3a82c807b69cf4b7c5c05270011a5d5e47abac18 archived with SHA receipt; no CUDA weights/inference acceptance.
+
+- ACE-Step official dual-source unsigned preflight31120 passed:23files10,091,984,223bytes/1204pieces; fixedHF19671f406d603126926c1b7e2adc169acbcade22 andMS3e24671cd4f2830dea1cbf5eaaf00cab1087f7ea. No downloaded Python selected; original silence_latent.pt retains weights_only loader. Prepared unsigned spec dist_ai2apps_ace_step15_turbo_cuda_19671f40_v1; no Package manifest references unpublished distribution. Signature/publication/quality/Host gates remain open.
+
+- ACE-Step standard export r2 session21907 completed:71dependency records,620source files,8128runtime files byte-identical to accepted raw-checkpoint Worker candidate. Evidence ace-step-standard-export-r2-verification-20261007.json supersedes old-engine equivalence for current build. Official MS repo master resolved via git ls-remote to3e24671cd4f2830dea1cbf5eaaf00cab1087f7ea. Fixed HF/MS selected-weight preflight running31120 using standard checkpoint_publishing library,excluding downloaded Python; no signing/publication/Cookie access.
+
+- ACE-Step Runtime-owned checkpoint preparation HTTP probe31433 passed in offline readonly sandbox using original reference checkpoint, not prepatched view: instrumental55.933s cold,zh lyrics5.379s,499 cancellation218ms,recovery/drain/resume. Receipt ace-step-host-checkpoint-worker-20261007.json. Original28-file post-run rehash43388 completed exit0: all10,092,102,351bytes retain the recorded hashes. New engine/helper require refreshed standard-export byte comparison; old export receipt remains historical. No formal Host installation/publication or audible-quality acceptance.
+
+- ACE-Step formal Host checkpoint gap addressed: Runtime now creates a disposable view referencing read-only Host weights while copying only hash-verified Runtime model/config Python. Downloaded Python/cache ignored; original checkpoint untouched; view cleanup on failure/close.19 checkpoint/adapter/schedule tests pass (untrusted Python excluded,source drift rejected,cancellation cleans partial view). Standard builder and development exporter include helper; prior8127-file proof applies to old engine only and must be refreshed. New independent fixture+raw-checkpoint HTTP probe31433 running; accepted old fixture preserved.
+
+- ACE-Step standard profile export2689 completed exit0:71 dependency records,619 source files,8127 runtime files byte-identical to accepted HTTP Worker fixture. LICENSE/README moved only to retained sources/ace; archive+patch+requirements retained. Evidence ace-step-standard-export-verification-20261007.json. Formal signed Runtime/model distributions/Package,Host and audible quality remain pending; no active export/GPU task.
+
+- ACE-Step standard CUDA Runtime builder integrated: capability-gated paired --ace-python/--ace-sources,checked-in dependency requirements,existing isolated closure exporter,original fixed source archive+exact schedule patch reconstruction,retained license/archive/patch/requirements and source hashes.31 builder/profile tests pass including source drift rejection. Standard re-export+byte comparison to accepted HTTP Worker running session2689 in ace-standard-profile-export.log. No signed artifact,version change,publication or Cookie access performed.
+
+- ACE-Step isolated HTTP Worker77237 completed exit0:10s instrumental52.163s including cold load,20s zh lyrics5.415s;401auth/400bounds/499cancel182ms/recovery/drain-resume passed. Offline networknone/readonly/nonroot1000:1000/capdropall confirmed. Independently decoded returned WAVs:48kHz stereo exact480000/960000frames,finite,nonsilent,peaks~.95 with distinct stereo channels. Evidence ace-step-isolated-worker-20261007.json and ace-step-worker-decoded-20261007.json. This unsigned fixture is not formal signed Runtime/Package/Host acceptance; audible lyric/music quality still open. No live GPU task.
+
+- ACE-Step isolated HTTP probe77237 started (ace-worker-r1-driver.log); Uvicorn and ACE handler imports passed inside exported profile, first GPU checkpoint loading observed. Probe includes decoded WAV dimensions/duration,instrumental+zh lyrics,401/400 bounds,499 cancellation/recovery,drain/resume and sandbox evidence. No first HTTP generation result yet; preserve live task.
+
+- ACE-Step unsigned Worker Runtime export49027 completed exit0 through existing _copy_framework;71 dependency records, explicit ace service/profile mapping and patched model SHA c309c551bc4442a79eb288f779d4d1f228af147bbec6ea0f0e818557657bc421 retained. Evidence ace-step-worker-runtime-export-20261007.json. This is dependency export only; offline HTTP import/inference validation remains next. No live GPU or export task.
+
+- ACE-Step CUDA Worker adapter implemented: shared validated v1 music10–120s contract,exactmodel/fixedHostcheckpoint,explicit v2 rejection,request-owned unique WAV,serialized resident engine,OOM release,thread-drained cancellation before partial-output cleanup. Conservative development admission28GiB cold/12GiB warm remains provisional.20 schedule/adapter/lifecycle tests pass, including repeated cancellation with actual late native writer. Unsigned dedicated ace profile export via standard dependency closure running49027 (ace-worker-runtime-export.log); no HTTP Worker acceptance yet.
+
+- ACE-Step resident engine95725 completed exit0: default8-step10s generation7.360s, cancellation inside16-step sampling(no output artifact), subsequent1-step10s generation7.635s. Actual CUDA timestep inputs recorded (BF16 rounding), not merely config; cancellation6.145s is whole request including planning, NOT cancellation latency. Evidence ace-step-resident-engine-20261007.json.100-step native count gate also passed10.872s generation. HTTP sandbox/Worker lifecycle,planner/decode cancellation,quality,Host and signed release remain pending. No live GPU task.
+
+- ACE-Step100-step GPU probe14381 passed: actual100 DiT calls,10s waveform,10.872s generation,10906979328 peak CUDA bytes. Added resident cuda_ace_engine.py with mandatory planner/CUDA,explicit Mac schedule,forward cancellation hooks,finally hook restoration,float-waveform validation and close. Real default8/cancel16/recovery1 engine probe95725 running; no engine lifecycle acceptance until receipt completes. HTTP Worker/quality/Host/release remain pending.
+
+- ACE-Step16-step Mac-schedule CUDA probe12150 passed: actual16 DiT calls,10s48kHz stereo,8.471s generation/10,907,008,000 peak CUDA bytes. Explicit schedule equals Mac source inCPUall1–100 comparison. Original8-step native receipts remain pre-parity baselines and must not imply matched Mac defaults.100-step boundary probe14381 started in ace-step-parity-100-r1.log. Worker/quality/Host/release still incomplete.
+
+- ACE-Step explicit schedule bridge implemented: CPU comparison against checked-in Mac source matches all1–100 step schedules;7tests pass including pinned-source drift rejection and CUDA explicit branch1/8/16/100 preservation. Found default shift mismatch too; parity probe explicitly supplies Mac shift3 sequence. Exact-source patch changes only explicit-timestep validation/mapping, leaving networks/attention unchanged. Independent source and hardlinked-checkpoint view breaks the modified code hardlink before writing; original views preserved.16-step GPU probe session12150 running with actual decoder-call count assertion; no GPU parity claim yet.
+
+- ACE-Step120s native upper-bound probe57031 completed exit0:5,760,000frames48kHz stereo,28.338s generation after39.98s load,11,639,489,536 peak CUDA bytes. Real planner emitted11,835characters codes; finite nonsilent waveform verified. Native10s instrumental,20s zh-lyrics and120s structural gates now pass, but audible quality,nondefault steps,Worker/Host and signed releases remain open. All GPU probes ended; no live GPU work.
+
+- ACE-Step20s zh-lyrics native probe15936 passed:960000frames48kHz stereo,7.858s generation after60.80s load,11,583,114,240 peak CUDA bytes. Planner emitted1984characters codes and all four networks stayed CUDA. This proves lyric-conditioned execution and structural waveform contract, not lyric intelligibility/audible quality.120s upper-bound probe57031 now running in ace-step-native-long-r1.log; no other GPU inference launched.
+
+- ACE-Step20s Chinese-lyrics native probe started session15936 with explicit zh language and original user lyrics, mandatory real planner. Static source comparison found unresolved nondefault-step parity: Mac supports custom linspace schedule1–100; official CUDA handler clamps Turbo above8 and model grid/cap20 differ. Recorded exact source behavior in ACE-STEP-REUSE.md; do not silently accept ignored step requests or claim general parameter parity.120s boundary fixture prepared but not yet run.
+
+- ACE-Step first native CUDA probe6795 completed exit0: actual1.7B planner emitted990characters of audio codes; DiT,VAE,text encoder,planner all CUDA.10seconds480000frames48kHz stereo generated in8.472s after42.03s initialization,peak10,906,958,848 CUDA bytes. Finite nonsilent waveform RMS0.1201. Source inspection explains returned peak1.0: upstream VAE output uses whole-waveform peak attenuation, not hard clipping; receipt annotates this distinction. No audible/lyrics/long-duration/Worker/Host/release acceptance yet; no live GPU task remains.
+
+- SoL Custom isolated HTTP Worker completed successfully (33879 exit0): image/video,auth,bounds,499 cancellation20.4ms,recovery,drain/resume and Custom→Standard switch all passed; networknone/read-only/nonroot sandbox verified. Decoded alpha/timestamps/AAC evidence retained. Receipt sol-refiner-custom-isolated-worker-20261007.json. Cold image370.60s and quality/Host/formal release remain unresolved. ACE-Step original CUDA native mandatory-planner probe started session6795, ace-step-native-r1.log; no inference success yet. ACE-STEP-REUSE.md records exact provenance, capability bounds and remaining acceptance gates.
+
+- SoL Custom isolated Worker image/video completed: cold image370.60s and warm60-frame video9.95s; parameter bounds passed and cancellation20.4ms. Independent artifact decoder confirms1026x682 RGBA exact Lanczos alpha/sRGB,60frames30fps512x288 exact PTS and95 byte-identical compressed AAC packets. Full lifecycle/Custom-to-Standard switch still running session33879, so overall Worker acceptance not yet claimed. ACE-Step GPU probe remains queued; native waveform/device validation prepared.
+
+- ACE-Step native probe strengthened before execution: all four modules must hold CUDA parameters, planner must return nonempty audio-code tokens, original floating waveform is validated before single PCM16 output quantization; no normalized/saved intermediate reused as raw data. Probe remains pending behind live SoL Custom Worker session33879.
+
+- SoL Custom native CUDA passed: default prompt output SHA matches Standard exactly; nondefault prompt invokes original text encoder and connectors once,1026x682 RGBA in4.764s/73,391,460,352 peak CUDA bytes. Cold CUDA transfer339.29s remains unresolved. Custom isolated HTTP Worker running session33879; quality/Host/signed release not accepted. ACE-Step transfer87479 and environment61261 completed;28files10,092,102,351bytes rehashed on Spark, original CUDA handler/planner imports pass. Independent environment retains inherited unrelated qwen-tts/gradio dependency conflicts; dedicated release closure still required. Native ten-second mandatory-planner probe prepared, not started while SoL owns GPU.
+
+- SoL Custom transfer48953 completed; Spark rehash passed15files30,752,812,471bytes, receipt sol-refiner-spark-custom-verified-20261007.json. Native session7046 now loading original transformer/text/connector weights, no final inference yet. In parallel ACE-Step preparation pinned clean official Gitca1e85fe9430179831e6bc6be790c332190a3866;8,438,182byte source archiveSHA9c4740a17bdb82a33715e375ddaedacaf9f97c0f82fe4bd2dc689931cc15fab1. Mac reference28files10,092,102,351bytes validated: tensor/data match HF19671f406d603126926c1b7e2adc169acbcade22 metadata, two Python files match fixed official Git due official handler code synchronization (not untouched HF files). No Mac source/checkpoint changes. ACE transfer87479 started to checkpoints/ace-step/reference; no CUDA inference/environment/Worker acceptance yet.
+
+- SoL Custom unsigned Worker fixture cloned independently from passed Standard fixture; build session1314 completed, updated facade/resources and unchanged lifecycle hashes recorded in evidence/media/sol-refiner-custom-worker-fixture-20261007.json. Standard fixture preserved. Current-task dependency waiter/native probe session7046 confirmed live: waits up to30minutes for all declared sizes, then existing probe rehashes15 components before any model loading and executes once. Transfer48953 remains the original live transfer; do not restart or separately launch another Custom GPU probe. No Custom inference acceptance yet.
+
+- SoL Custom checkpoint ownership tests added: absent/incomplete custom checkpoint fails503 without native execution; only exact Host-selected Custom model is queried and complete Custom path is passed through.27 related regressions pass. HTTP probe now supports separate Custom fixture/probe names, nondefault image/video prompts, cancellation/recovery and Custom→Standard switch; not yet run. Transfer48953 remains live, last snapshot8files16,215,313,898/30,752,812,471bytes size-complete, SHA revalidation pending.
+
+- SoL Custom Worker selection implemented: exact custom CUDA model ID selects its own Host checkpoint, required text/connector/tokenizer configs checked, nondefault prompts remain rejected by Standard. Resident cache key includes model ID as well as root; switching variants releases prior model before admission even for same checkpoint path. Conservative cold residency estimate72GiB for Custom vs42GiB Standard, incremental working/headroom retained; estimate not yet GPU-profiled for Custom.24 media/adapter/lifecycle regressions pass. Weight transfer48953 remains live; Custom native/HTTP inference pending. Existing passed Standard fixture not modified.
+
+- SoL Custom Prompts preparation:15 original text_encoder/connectors/tokenizer files30,752,812,471bytes verified on Mac against fixedHFc69c2a543997fe12c1ae24c776df6188e5d2248a; transfer session48953 live to separate original-custom checkpoint. Shared18 standard files hardlinked without modifying original-standard. Added CudaCustomRefiner using original Gemma/LTX text components, fixed default-context fast path and cancellation hooks on text/connector modules; actual new-path inference pending. Native probe will rehash all15 files and verify nondefault prompt invokes both text encoder/connectors.21 media/ownership tests pass but do not validate new GPU loader; previously accepted Worker fixture remains unchanged.
+
+- SoL standard Runtime builder integration completed: capability-gated paired --sol-python/--sol-sources, isolated51-record dependency export, fixed Sana/Diffusers archives and1061 source/module hashes, retained upstream archives/license declaration/Diffusers license. First real source comparison identified only6 directory READMEs omitted by upstream wheel; builder restores those from pinned archive and still rejects any code drift/extra files.28 builder/profile regressions pass. On-Spark verification matches1416 files byte-for-byte to passed HTTP Worker fixture with only6 added pinned READMEs; no changed/missing runtime files. No signed Runtime/model Package or publication. Custom Prompts,Host,numerical/visual quality and resource-bound profiling remain pending.
+
+- SoL Standard isolated HTTP Worker PASSED image/video,401,invalid controls,499 cancellation9.1ms/recovery and drain/resume. Offline/read-only/nonroot1000:1000 sandbox verified. Cold image200.49s includes~193s device transfer; warm60-frame video4.130s. Decoded PNG1026x682 alpha exactly Lanczos/sRGB; video60frames30fps512x288 exact timestamps and95 unchanged AAC packets. ImageSHA exactly matches prior native output. AdapterSHA3c561327eca0b30cb1e32742fd47c662d02aa545caf9bc40cf47fee27e03f504. Session13436 completed/container removed. Cancellation timing proves HTTP request cancellation/recovery, not a specifically instrumented DiT phase. Standard signed Runtime export/model Package,Host,Custom Prompts,max-bound resource profiling and visual/numerical quality still pending.
+
+- SoL unsigned isolated Runtime fixture exported through standard _copy_framework dependency closure; fixed Sana source archive verified and original SoL modules staged with shared Mac media helpers. HTTP Worker r1 started session13436, confirmed Uvicorn startup and first model shard load. Probe covers image/video,401,parameter bounds,499 cancellation/recovery and drain/resume in offline read-only nonroot sandbox. Artifact decoder prepared to verify exact alpha/frame timestamps/AAC packets. No HTTP inference result or release acceptance yet.
+
+- SoL Standard CUDA Worker adapter now binds image/video engines to resident request ownership, exact CUDA model/checkpoint selection, fixed-prompt/scale/seed validation, MIME checks, unique request-owned outputs and cleanup only after native drain. CUDA OOM releases model and maps to resource_exhausted503. Development admission uses verified GB10 MemAvailable, discrete GPUs still constrained by CUDA free, conservative whole-clip working estimate plus42GiB cold residency/4GiB headroom; broad resource profiling still pending.21 related tests pass, including real-thread late-write cancellation cleanup and UMA-vs-discrete regression. Not yet deployed to isolated HTTP Worker or signed Runtime; Custom Prompts/Host/quality remain incomplete.
+
+- SoL CUDA request ownership implemented in cuda_sol_lifecycle.py: one resident-engine lock, registered queued cancellation, duplicate active-ID409, repeated coroutine cancellation drains native thread before unlocking, stop rejects new work/cancels active and queued work, model release runs once and survives cancellation of an individual stop waiter, late cancellation cannot return success.4 real-thread barrier regressions pass. This helper is not yet wired to the HTTP adapter; no Worker/Host acceptance claim. Engine/output cleanup, production admission and actual sandbox lifecycle remain next.
+
+- SoL native CUDA video r2 PASSED media/timeline/audio acceptance:60frames30fps256x144→512x288, one65-frame padded refinement, two6-latent decode windows, exactly60 output frames/all timestamps and95 identical compressed AAC packets.4.694s inference/43,373,898,752 peak CUDA bytes;199.34s CUDA transfer excluded. At admission cudaFree10.67GB vs systemAvailable80.01GB confirms r1 false refusal from ignoring reclaimable page cache. Frames31–33 show no obvious hard window cut but moving face/limb ghosting remains; visual/numerical quality not accepted. Session85127 completed, no live SoL GPU process. Worker/Host/production admission/custom/signed release still pending.
+
+- SoL video r1 stopped before inference: fixture admission incorrectly used min(cudaFree, MemAvailable). Idle GB10 probe proves cudaFree=LinuxMemFree53,249,425,408 while MemAvailable122,538,524,672 and cached71,382,204,416. Corrected fixture-only UMA policy requires exact GB10/shared total and same16GiB incremental headroom from MemAvailable. Original failure log preserved; independent r2 session85127 now running. Host already uses psutil system-memory accounting; no Host behavior changed.
+
+- SoL native video acceptance launched session56720:60 real-motion frames plus synthetic chirp, one65-frame padded refinement, multiple decoder windows, exact timestamps/audio packets. Fixture-only resource bound; no general CUDA admission policy claimed. Updated SOL-REFINER-REUSE.md to remove obsolete transfer status and distinguish actual image acceptance from unresolved numerical/visual quality.
+
+- SoL native CUDA image wrapper PASSED existing Mac RGBA fixtures:513x341→1026x682 in3.093s/40,758,936,064 peak CUDA bytes;1920x1080→3840x2160 in9.674s/43,101,340,160bytes. Exact Lanczos alpha, dimensions and PNG sRGB verified. CUDA transfer193.27s excluded from inference timings. Both Mac/CUDA preview outputs redraw facial detail; no obvious preview tile seam, but4K preview downsampled and full quality/numerical parity remain pending.8 media contract regressions pass. All SoL GPU processes completed (58338 terminal); no live inference job. Native-only, no Worker/Host/Custom Prompts/signed Package acceptance or publication.
+
+- SoL common-input component probe completed: CUDA upsampler vs Mac with identical encoded tensor has relativeL2 0.04124; DiT velocity with identical noisy tensor has relativeL2 0.13124/cosine0.99138. Divergence is not solely propagated from VAE. No numerical parity acceptance or implementation fix claimed. Native real CUDA image wrapper probe started session58338 for existing Mac513x341 RGBA and1920x1080 RGBA fixtures; output1026x682/3840x2160 and exact alpha checks pending.
+
+- SoL stage localization completed with identical RGB/context/noise: VAE encode relativeL2 0.00630, upsampler 0.04055, noisy input 0.02011, velocity 0.19159, final latent 0.13717. These include propagated input differences; no intrinsic-component failure inferred yet. Common-input upsampler/DiT diagnostic now running session36769. CUDA loader timing isolates205.05s of205.77s to pipeline CUDA transfer; inference1.689s. No quality/Worker/Host/Package acceptance claimed.
+
+- SoL controlled Mac/CUDA comparison completed, session34373 ended. SameRGB/defaultcontext/BF16noise yields visually similar redraws on both; content hallucination in this low-resolution sample is not CUDA-specific. Output MAE0.0220/RMSE0.04363/PSNR27.20dB/cosine0.99821; latent relativeL2=0.13717/cosine0.99058. Numerical parity NOT accepted; stage-level investigation remains. CUDA load200.75s/inference1.80s vs Mac1.626s total for this tiny fixture. Added future loader phase timings to diagnose repeated long CUDA cold load; no behavior change. Evidence shared-comparison/shared-cuda JSON and first-frame PNG retained.
+
+- SoL shared-input parity fixture created: identical9x160x256 RGB input and BF16noise[1,128,2,10,16] with SHA receipts. Mac current Package-source reference completed via existing Metal environment, recording latent/output arrays; visual reference also strongly redraws this low-resolution scene. Cannot attribute fidelity issue solely to CUDA. Spark same-fixture comparison running session34373 (sol-refiner-shared-fixture/cuda.log); no comparison conclusion yet. CUDA facade explicit noise input is for controlled parity, not a new exposed user control.
+
+- SoL first native CUDA9-frame standard inference completed: full18-file SHA verified; load186.67s/inference1.493s/peak40,830,044,672 CUDA bytes; output9x288x512, one transformer call/torch SDPA. Process session63323 completed, no live GPU job. Visual first-frame review shows substantial face/clothing redraw relative to low-res input; quality NOT accepted. Next compare Mac with identical input/context/shared noise before attributing cause. Eight CPU image/video contract tests now pass including compressed AAC packet+PTS/DTS passthrough with injected decoder. Formal Worker/Host/Package and custom prompt path remain pending.
+
+- SoL standard checkpoint transfer session7646 completed successfully. Independent environment realGB10 BF16 matmul, SDPA and Conv3D smoke passed (evidence/media/sol-refiner-cuda-environment-20261007.json). Full on-Spark SHA verification and9-frame native inference launched, exec session63323, log~/ai2apps-spark-dev/sol-refiner-native-standard.log; do not count inference as passed yet or restart while session is live.
+
+- SoL CUDA facade adds whole-clip latent refinement and independent VAE decode APIs; shared video wrapper now applies Mac window_plan/join_window/remux_audio, crops exact2x canvas, emits explicit frame PTS and verifies exact original frame count. Seven CPU image/video contract tests pass;60-frame synthetic decoder test confirms one whole-clip refine call and multiple decode windows with60 output frames. This is media orchestration verification with an injected test runner, not real CUDA/quality acceptance. Diffusers fixed-context subclass component signature validated on Spark; transfer session7646 still live.
+
+- SoL CudaStandardRefiner now loads original components locally, checks fixed-context SHA, enforces full8k+1/padded2x canvas preconditions and default-prompt identity, and installs/removes forward cancellation hooks across original networks. Native9-frame probe now uses this same facade with edge padding and exact crop rather than upstream resizing. Static compile passes only; GPU loading/output still unverified pending live transfer session7646 (24G last observed).
+
+- SoL CUDA whole-clip staging added: real decoded CFR/timestamp/geometry/audio-codec scan,1500frame/60s limits, admission callback before memmap allocation, edge spatial padding and repeat-last temporal padding up to8k+1, second-pass input consistency, request-owned temporary cleanup. Real MP4 tests confirm10frames preserved as17 inference frames, admission refusal before staging, and61s rejection; combined image/video contracts6pass. Initial test fixture overflow fixed (uint8 generation), not product behavior. GPU bridge still pending; transfer session7646 live at20G, no restart.
+
+- SoL CUDA image media wrapper now reuses Mac load_image EXIF/color handling, edge-pads to32, requests exact padded2x inference, crops top-left back to original2x, preserves alpha with Lanczos and writes sRGB PNG. Three CPU contract regressions pass (odd47x35 RGBA pixel geometry/alpha, EXIF orientation, nonfinite rejection). CUDA callback/inference not yet verified; transfer session7646 remains active. No claim of actual neural image upscaling yet.
+
+- SoL native nine-frame CUDA probe prepared with on-Spark full SHA verification and fixed-context-only override. SOL-REFINER-REUSE.md records critical Mac contract gaps in upstream CLI: must pad rather than truncate temporal frames, edge-pad spatial dimensions rather than resize, preserve image alpha/audio/CFR and whole-clip refinement. Transfer session7646 remains active; no inference started.
+
+- SoL-Refiner CUDA preparation: located Mac original and compact checkpoints under ai2apps/.build/sol-refiner; fixed clean Git sources Sana670482d8a857d578ac8a2ea89b052d0fb47badba and Diffuserse0abab83b5df05de9e7abd788643c1a7c1e42e28 archived with receipts.18 original standard-component/default-context files total40,435,014,538bytes verified against official HFc69c2a543997fe12c1ae24c776df6188e5d2248a and Mac context hash. Transfer to Spark checkpoints/sol-refiner/original-standard is running (rsync exec session7646); do not restart without checking handle. Independent sol-refiner-venv dependency installation completed; Pipeline import validation pending. No CUDA inference acceptance; custom-prompt text components not yet transferred.
+
+- SAM2.1 isolated Worker boundary acceptance PASSED:450 frames at24fps/18.75s,960x540, complete decoded output in35.97s;451frames rejected400 in0.59s;200frames at10fps/20s rejected400 in0.33s; zero active requests afterward. Adapter unchanged SHA175c828cec016f12da1ad5aabc766e34f200e3bdee1ba428894fe1cf71831fd1. Repeated official clip tests capacity/timing only, not continuous18.75s semantic quality or maximum-resolution combination. Receipt evidence/media/sam21-worker-bounds-20261007.json. Signed Runtime/Package and formal Host still pending.
+
+- SAM2.1 standard Runtime builder integration added capability-gated --sam21-python/--sam21-sources, pinned archive/decoded-frame patch verification, shared Mac controls/media and retained Apache/BSD licenses. Standard profile export31 distribution records; verification matches41 source/config files and2101 dependency files byte-for-byte to the passed isolated Worker fixture.31 existing builder/profile and SAM2 boundary/cancellation regressions pass. No signed Runtime/Package built or published; full Host,450-frame and broader quality acceptance remain.
+
+- SAM2.1 Small isolated Worker PASSED200-frame/30fps mask generation (cold17.30s), negative-point/late-frame controls (14.04s),499 cancel1.36s/recovery,401/drain/resume and offline read-only non-root sandbox. Decoder verifies frame count/rate/canvas, grayscale masks, positive/negative point pixels and five blank prefix frames. Single-point shorts mask empty at65–68; inspected65 shows target occluded, final199 reacquires shorts. Late positive+negative sample tracks full person at199. Six request/cancellation ownership tests pass. Decoded-frame bridge patchSHAaa808a7d03b932c9e306371db154802be6b92e562b20298735d4f18badfd7bfa avoids lossy intermediate JPEG; original networks unchanged. Initial probe model-ID typo failed404 and remains recorded; corrected separate r2 passed. Standard Runtime build integration, formal Package/Host,450-frame bound and broader quality remain.
+
+- SAM2.1 Small native CUDA20-frame tracking PASSED on official bedroom clip: strict519-tensor original state_dict, BF16 autocast, load0.681s/inference1.921s/peak640,881,664 CUDA bytes. Official source2b90b9f5ceec907a1c18123530e92e794ad901a4 archived SHA1f2fbfad3ffa38110368abac76c6ef9df9c282a66d5c2807bc94abf4d2fb30f8; official checkpointfacebook/sam2.1-hiera-small@ee5bba1d82bb8749febdf90f45e84b687142ba03. Safe conversion preserves all tensor values/dtypes (SHAf3e03d4ec31315e9feea2ca161ce7cb9f9a932e545ab63e40e7fb4da19c3b813). Single positive point selects shorts in frame0; first/last overlays retain that target, not a full-person mask acceptance. Optional upstream connected-component postprocessing explicitly disabled to match Mac exposed controls. Native-only; Worker/Host/Package and full quality remain pending.
+
+- LivePortrait isolated Worker PASSED full78-frame/3.12s FP32 video at600x704 (16.06s), BF16 crop512 video (8.27s), image driving, precision switching,499 cancellation0.125s/recovery,401/drain/resume and offline read-only non-root sandbox. Separate preserve-driving-audio probe verifies148 AAC packets including PTS/DTS/timebase byte-identical and decoded samples exactly equal; explicit none removes audio. Seven shared-import/cancellation/boundary tests pass;25 existing Runtime builder/profile regressions pass. Standard source export preserves39 Python files and original module bytes/license; dependency profile export passed. Unsigned fixtures only: signed Runtime/model Package, Host workflows and cross-identity/temporal quality remain pending.
+
+- LivePortrait original CUDA 12-frame probe PASSED both FP32 and BF16 with shared Mac YuNet preprocessing/NMS/alignment and motion math. FP32 load0.757s/process2.424s/peak1,201,740,288 CUDA bytes; BF16 load0.758s/process1.816s/peak609,363,456bytes. All motion values finite and output512px; selected frames preserve source portrait. One final-frame BF16-vs-FP32 MAE0.984 RGB units/PSNR42.73dB, not a quality benchmark. No full-video/Worker/Host acceptance yet. Source/checkpoint hashes and receipts retained; first SDK-import failure log not overwritten.
+
+- LivePortrait CUDA now inherits existing Mac motion/keypoint/stitch math; original Torch feature/motion/warp/decoder modules load safe weights. YuNet uses OpenCV4.13.0.92 CPU graph executor with unchanged Mac resize/decode/NMS/crop, NumPy2.5.3 dependency compatible. Mac detector/model imports lazy; no-MLX import regression and all five original Mac class exports pass. First CUDA probe stopped before inference because SDK path was absent; explicit immutable Runtime app path added to probe and rerun started.
+
+- LivePortrait pinned official source9b294b3d0536135442ea73cb01e6cb3ca7029dd3 (archiveSHA14db8304a3eb98461ec5c19f95a1b46b996ea7daa9cbbcf113b9139d60e0f3be), matching Mac human checkpoint82a4fa6735ca58432b6ce39301b4b9ee066dea47. Five original files verified; seven safetensors converted with weights_only=True, exact dtype/value roundtrip and strict CPU module loading for626 tensors. Original spectral weight_orig/u/v preserved. Shared Mac motion pipeline imports made lazy so CUDA can inherit orchestration without Metal; no-MLX import regression passed. New CUDA wrappers use original Torch modules; no inference acceptance yet. Same fixed YuNet232,589byte ONNX SHA verified.
+
+- FlashHead Pro isolated Worker PASSED2/10s generation (warm10s77.28s), duration/model/input bounds,499 cancellation0.213s and recovery,401/drain/resume,offline read-only non-root sandbox.2s output byte-identical to native reference. Decoded50/250frames and zero-offset audio correlations>0.999 pass; native10s continuous audio also passed (78.59s,6.64GB peak CUDA allocation), last-frame sanity reviewed. After Pro changes, Lite2s full lifecycle regression also passed. Full perceptual lipsync and signed Runtime/Package/Host still incomplete.
+
+- Pro native2s/50frames CUDA passed using strict safe Wan VAE: load5.90s/generation19.12s/peak6,605,110,784 CUDA bytes; decoded/raw pixel check and H264/AAC exact2s durations passed. One middle frame visually normal, no lipsync claim.10s native run ongoing. Standard source-builder patch pin advanced to safe-Pro patch; no existing signed Runtime changed.
+
+- Pro transfer completed and Spark rehash passed all six files. Original Wan VAE strict CPU state_dict loading accepted194 tensors/126,892,531 parameters from the existing safe conversion. CUDA adapter now routes Lite/Pro explicitly, with independent60s/10s limits and9/5-frame overlap;9 request/layout tests passed. Native Pro2s CUDA probe running; no Worker support acceptance yet.
+
+- FlashHead Pro preparation: six Mac files (6,916,065,877 bytes) verified against cached manifest; Pro model/config also exactly match fixed original HF metadata. Separate safe-Pro patch11c0c020ed3a3da8d457917d2aff269d6af0815bf3ec1abca08b92abb2488fa9 loads existing Wan VAE safetensors with strict original state_dict layout. Pro uses5-frame overlap (Lite9). Transfer/native CPU load/CUDA2s/10s acceptance pending; existing Runtime builder remains pinned to Lite-tested patch until Pro validation.
+
+- Standard FlashHead dependency export PASSED on Spark (47 records), including Diffusers0.35.1/Transformers4.57.3/PyAV18.0.0. Source reconstruction also passed33 Python-file byte comparisons with license retained. Evidence flashhead-standard-dependency-export-20261007.json and flashhead-standard-source-export-20261007.json. Incomplete unsigned export only; no signed Runtime or production publication claim.
+
+- FlashHead Lite isolated Worker r2 PASSED2/10/60s (50/250/1500frames), input bounds, cancellation499 in0.456s with recovery,401/drain503/resume and zero active requests.60s generation74.47s. Full decode verifies H264/AAC exact2/10/60s duration and zero-offset driving-audio correlations0.99967/0.99982/0.99985 after shared encoder PTS fix. Three60s frames visually retain source identity/background. Single portrait/repeated2s audio fixture, not continuous perceptual/lipsync quality. Formal Runtime/Package/Host and Pro pending.
+- Standard CUDA Runtime builder now supports capability-gated FlashHead dependency/source inputs. Source archive and patch pinned;33 Python files match development source, Apache license/original archive/patch retained.25 builder/profile regressions passed. Existing signed Runtime0.5.0 remains unchanged; real standard dependency export being verified separately.
+
+- Shared FlashHead Mac/CUDA PyAV encoder now supplies frame/audio PTS, fixing measured64ms AAC priming delay. New chirp regression proves zero-offset decoded correlation>0.99;8 focused tests passed. CUDA cancel maps inherited409 to499. Original60s generation passed but overall first probe failed these checks; separate r2 verification pending. Future Mac Package version/release must include encoder correction; published0.1.0 remains unchanged.
+
+- FlashHead Lite corrected2s/50-frame CUDA probe passed container and decoded/raw RGB checks; three reviewed frames retain portrait/background and mouth movement. Load4.31s/generation3.62s/peak5,423,325,696 CUDA bytes. Single portrait sanity only, not lipsync quality. New CUDA facade reuses Mac validation/lifecycle and streaming MP4 encoding, includes native-forward cancellation; independent unsigned dependency/source fixture exported through standard closure builder. Real2/10/60s Worker lifecycle probe started.
+
+- FlashHead first CUDA inference/container succeeded but encoded frames failed visual inspection due to probe pixel-range mismatch with shared Mac encoder. Caller fixed, encoded/raw RGB checks added, separate r2 rerun underway; upstream model and shared encoder unchanged.
+
+- Qwen Edit square-r3 Worker/lifecycle and single512-output visual preservation passed after1024 internal rendering. FlashHead CPU source import, SDPA and Spark weight hashes passed;2s Lite CUDA probe prepared with shared Mac media encoder, no inference claim yet.
+
+- FlashHead Lite preparation started: seven Mac cached files match fixed original HF bytes; source pinned with auditable optional single-GPU dependency patch. Independent dependency environment being validated after initial Hub/Diffusers conflict; no CUDA inference/Runtime/Host claim yet.
+
+- Qwen Edit1024 single-reference visual preservation passed. Low-resolution square path now renders1024 and downsamples to requested size to avoid observed512 artifacts;16 tests passed, real512 Worker fix acceptance running. Latest SenseVoice short/long timestamp provenance live regression passed.
+
+- Standard speech-profile export now verified on Spark for both profiles (93 records), preserving selected dependency versions. Incomplete export fixture only; full signed Runtime remains pending.
+
+- SenseVoice adds short segment bounds and native/pipeline timestamp provenance for the Host contract; updated live regression queued after1024 image test. Prior long-audio receipt predates this metadata change.
+
+- SenseVoice long Worker passed47.68s/8-segment original-timeline transcription,31s silence,long cancellation/recovery andChinese auto/zh; numerical-time formatting still fails. No full language/hour-long quality claim.1024 Qwen Edit quality run started serially.
+
+- Qwen Edit non-diagnostic isolated rerun passed cold generation and lifecycle with byte-identical output; original timeout retained and512px quality still fails. Long SenseVoice Worker acceptance now running serially.
+
+- SenseVoice long-audio adapter implemented using fixed CPU VAD and serial CUDA chunks, original-timeline offsets, cancellation and empty-speech handling; VAD47.68s/8-segment and silence reference passed. Full long-audio Worker test pending; no formal capability/publication claim.
+
+- SenseVoice long-audio preparation pins and verifies official FSMN VAD weights; CPU segmentation/silence probe added. No checkpoint distribution publication or CUDA adapter long-audio claim yet.
+
+- SenseVoice serial isolated Worker passed real recognition/native word timestamps,415 invalid WAV,language/30s limit,cancel499/recovery,401/drain/resume and sandbox checks. Qwen Edit diagnostic full1–3-ref protocol/lifecycle passed, but512px visual quality still failed and normal-mode stability rerun is active. Formal Package/Host remains pending.
+
+- SenseVoice initial concurrent Worker load failed CUDA OOM; failure retained and serial rerun required. Future image recovery-only probes use explicitly recorded two-step execution after full quality/format runs; current diagnostic remains unchanged.
+
+- Standard CUDA Runtime builder now accepts capability-gated SenseVoice and punctuation dependency profiles. Each preserves existing profiles and selected dependency versions without inheriting PYTHONPATH/PYTHONHOME;22 builder/profile tests passed. No manifest/version bump, signed artifact mutation or publication.
+
+- Added SenseVoice real HTTP Worker probe covering native timestamps, input limits, cancellation/recovery and sandbox/lifecycle boundaries. Adapter rejects timestamp starts beyond audio duration; live acceptance pending GPU availability. Inventory records CUDA equivalence separately from unresolved quality and formal Host acceptance.
+
+- SenseVoice dependency fixture exported; development Worker adapter implemented with fixed CUDA weights, native timestamp conversion and cancellation. Not yet live-tested;30s prototype limit explicitly leaves long-audio parity unfinished.
+
+- SenseVoice actual CUDA output matches CPU in four English fixture cases; numeric formatting remains unresolved. Qwen Edit Worker confirmed900s timeout, preserved failure and started bounded stack diagnostic.
+
+- Punctuation real isolated HTTP Worker acceptance passed Chinese/English/word-preservation and400/401/drain/resume; unsigned fixture only, formal Runtime/Package/Host still pending.
+
+- Punctuation unsigned dependency fixture exported using standard closure; sandbox HTTP Worker acceptance started. Formal Runtime/Package/Host still pending.
+
+- Qwen Edit isolated Worker first step shows abnormal waiting despite sufficient memory; no acceptance claimed. Added opt-in test-only periodic Python stack output for next diagnostic run, without changing Runtime or sandbox privileges.
+
+- Shared punctuation Package source fixes English-only output marks while preserving words, numbers and mixed CJK text. Five regressions and real Spark CPU rerun passed. Applies to a future Package revision; existing published0.1.1 untouched. No Desktop rebuild/publication.
+
+- Unchanged Mac punctuation adapter runs on Spark CPU with pinned ONNX weights and official sherpa-onnx1.13.8 ARM64. Three Chinese/English cases preserve words; model clears on stop. Worker/Runtime/Host acceptance still pending.
+
+- SenseVoice CPU reference safely loads fixed upstream weights; exact spoken-number fixture fails because ITN on/off both produce 930. Failed comparison evidence retained; CUDA equivalence, Mac comparison and number/punctuation quality remain open. No hard-coded transcription fix.
+
+- Qwen Edit first CUDA result changes requested color but fails visual quality due to texture artifacts at512px; evidence retained. Worker protocol checks continue; 1024 quality retest prepared. SenseVoice Spark fixed-byte verification passed, inference pending.
+
+- SenseVoice development dependency import/pip check passed. Five fixed upstream files locally verified and transferred; CUDA fixed-audio probe prepared with offline/safe loading. Real ASR and punctuation/Worker/Host acceptance remain pending.
+
+- Qwen Edit development environment repaired with matching official Torchvision; CUDA ABI check passed. Signed Runtime unchanged. SenseVoice fixed upstream metadata saved; isolated NumPy1.x environment installation started, no model inference yet.
+
+- Qwen Image 1328² 新版 adapter 全套 Worker 通过，热请求约 110 秒，单样例英文文字目视通过。Qwen Edit Spark 33 文件摘要全部通过，真实编辑/Worker 验收已启动，未宣称通过。
+
+- Qwen Edit 固定权重传输完成，Spark 摘要校验进行中；开发质量探针支持独立记录 1–3 张参考图和提示，语法验证通过，尚未实机编辑。
+
+- Qwen Image 1328² 首张真实 Worker 图的英文文字与场景目视通过，证据已保存；属于单样例，后续格式与生命周期验收尚在运行。总模型对齐清单同步 H3/Demucs/绘图当前实测状态。
+
+- Qwen Image 2512 / Qwen Edit 2511 / Z-Image Turbo 三个 CUDA checkpoint 分发候选已标准签名，完整 HF 字节与 MS 固定元数据一致。精确 ID/digest 见 spark/IMAGE-DISTRIBUTIONS-20261007.md；未发布，无 Cookie 访问。
+
+- 开始标准构建 Qwen Image/Edit/Z-Image CUDA checkpoint 分发候选；新 Z-Image spec 包含固定 scheduler。发现旧 Mac Apache termsHash 与当前官方文本不同，新 CUDA 候选内嵌实际原文与 SHA-256，未覆盖历史分发；旧 Mac 后续修订需核对许可证摘要。
+
+- 新版共享 adapter 的 Z-Image 1024² 三格式与取消/鉴权/drain/resume 全通过，热请求约 12.3 秒，PNG 目视通过；Qwen Image 1328² 文字渲染/生命周期复验启动，尚待结果。
+
+- Z-Image Turbo 首轮 512² 隔离 Worker 三格式及生命周期验收通过。探针新增 1024²/1328² 尺寸选择并校验模型对齐倍数；新版共享 adapter 的 Z-Image 1024² 复验进行中。
+
+- Z-Image Turbo 开发 CUDA 512²/9 步出图 3.65 秒，视觉核验通过。开发绘图 adapter 增加 Qwen Edit 独立 factory（1–3 图、30 步/CFG2.5），15 项边界测试通过；新版共享 adapter 待实机复验，未改签名 Runtime。
+
+- Qwen Image 2512 开发 adapter 在 Runtime 0.5.0 解包候选的断网只读 Worker 通过三格式、拒绝编辑、取消恢复、401/drain/resume 验收；热请求约 33 秒，图片目视通过。正式 Package/Host 与高分辨率质量验收仍待完成。
+
+- Z-Image Turbo 固定权重在 Spark 逐文件验收通过。Qwen Image Edit 2511 复用 Mac 固定原始权重，33 文件全部校验，传输及开发编辑探针已准备；未计入正式支持。
+
+- Qwen Image 2512 BF16 开发 CUDA 出图通过（512²、20 步、33.41 秒），已视觉核验；隔离 Worker 多格式与生命周期测试进行中。验收探针支持有界自定义超时，保留原默认值；未改 Runtime 0.5.0 签名制品。
+
+- 标准 CUDA builder 增加受能力声明约束的 audio-processing 依赖层导出，保留 TTS/H3 隔离映射；14 项构建器测试通过。未修改 0.5.0 manifest/签名制品，Demucs 正式支持需后续 Runtime。
+
+- Demucs CUDA 权重分发候选已签名；新 spec 修正为固定官方 LICENSE 的实际 SHA-256。发现 Mac 旧 Demucs spec 的 termsHash 与原文不一致，后续修订须新不可变分发，未篡改既有版本。Qwen Image 固定权重在 Spark 校验通过，真实 CUDA 生成中。
+
+- Demucs 打包中途取消的针对性测试通过（499、无成功制品、事件清理）；修改后的隔离 Worker 全量复验通过，r2 回执已保存。
+
+- Demucs 独立导出 Runtime 的断网只读非 root HTTP Worker 三配置、ZIP/时间线、鉴权、取消恢复及 drain/resume 通过。补充打包阶段取消检查后在新目录复验，正式 Runtime/Package/Host 尚未完成。
+
+- Demucs 共用 Mac 分离管线三配置与取消恢复实机通过，残差双轨重建误差 <1e-6；新增标准音频 Worker 开发适配器及独立依赖导出 fixture，断网 Worker 验收进行中，未改签名 0.5.0。
+
+- Demucs 官方 TorchAudio 2.10/cu130 匹配修复后，Mac 固定安全权重严格加载及 CUDA 四轨分离通过（5.248 秒语音，0.873 秒推理，约 553 MiB 峰值分配）；仅开发探针，Worker/Host/音乐质量尚未验收。H3 FL2VA 权重分发签名完成，未发布。
+
+- Demucs CUDA 开发验收开始：复用 Mac 固定 safetensors 的纯 NumPy 布局恢复，官方 Demucs 4.0.1 源码摘要固定，隔离开发环境 pip check 通过；四轨真实推理测试中，尚未导出正式 Runtime 或接入 Host。
+
+- Qwen Image/Z-Image 独立开发 Worker 适配器及多格式、取消恢复验收探针已实现；12 项参数/操作边界测试通过，固定 checkpoint 本地字节全部验证。尚待 Spark 同步与实机验收，不改变 0.5.0 签名制品或声明正式支持。
+
+- 0.5.0 独立 Host 验签通过；无静态发现，未配置审计器导致 review，等待精确版本人工批准。并行准备 Qwen Image 2512/Z-Image Turbo 固定原始权重及 CUDA 开发探针，尚未计入正式 Runtime/Host 支持。
+
+- r3 从生产解包后的独立路径执行 H3 文本/首帧/参考图及取消恢复回归通过；签名制品已传回 Spark，独立 Host 审计进行中。
+
+- Runtime 0.5.0 外层签名候选已生成（3,042,186,463 字节；SHA-256 `6a7cfc1d169dce18da1c2ee555ed6d275efe5b709e6d73c4e365ffb034fff82c`）。精确制品独立 Host 审计探针已准备，默认不批准审计；生产 0.4.0 未变。
+
+- r3 生产解包器及 2,821 个 H3 文件摘要校验通过；参考音频、视频、参考视频静音与混合输入四例隔离推理及逐帧/音轨检查通过。Mac 标准签名构建成功，尚未完成新版本 Host 安装或生产发布。
+
+- r3 含完整工具链源码候选构建完成（3,052,236,612 字节，payload SHA-256 `ea586940238c21aa1c77d6b8e2a38910ee539326461c3c438f54373fd64073f7`）；r2 27B NVFP4 多图/128 tools/流式取消兼容回归通过。r3 生产解包器校验、参考媒体和签名准备进行中。
+
+- Runtime 0.5.0 r2 已通过 TTS Base 合成/回转写、FLUX 生成及 1–4 参考图边界、ASR 中英文 Worker 回归。标准 builder 新增完整对应工具链源码打包与二进制/源版本及 SHA-256 门禁，固定五组 Ubuntu 源包（397,264,713 字节）；构建器 13 项测试通过，r3 含源码候选构建中。未签名发布或替代正式 Host 验收。
+
+- 标准 CUDA Runtime builder 开始集成 H3：固定归档/补丁摘要门禁、来源版本记录、独立 H3 依赖层、保留音频配置、ARM64 编译器与包归属头文件及版权/SBOM；CLI 要求能力声明和完整输入一致。构建器/依赖层/Package 合同 22 项测试通过；Runtime 0.5.0 H3 候选已完成源码/依赖导出并通过文本/首帧/参考图/取消恢复断网 Worker 回归；标准 builder 载荷压缩完成，原始 tar.gz 大小 2657869197 字节；仍需签名制品审计与安装。构建器环境继承修复后 23 项构建/合同测试及 51 项 Worker 回归通过。0.4.0 生产安装不变；工具链对应源包需从历史仓库补齐。
+
+- H3 参考媒体扩展中：加入单音频/单视频及混合参考输入、参考视频音轨开关、格式/时长边界检查；复用匹配 Torch 2.10 的 TorchAudio 导出到 H3 依赖层。四例断网实机及取消恢复通过（39.33/47.34/45.05/52.55 秒），15 项测试通过；尚未正式构建、签名安装或发布。
+
+- H3 标准视频适配器实现中：文本、首尾帧及 Ref2VA 图片 multipart 输入映射、Host 控制输出根、取消与临时输入清理；暂不声明参考音频/视频或快速变体完成。13 项参数/生命周期测试及真实断网只读非 root Worker 的文本/首帧/参考图、取消恢复、drain/resume 已通过。开发副本包含可重定位 C 工具链，仍需正式 builder/SBOM/签名安装/Host 验收。
+
+- 2026-10-07 H3 Worker 接入实现中：新增私有 Comfy 子进程管理、可信 Runtime 源码路径限制、独占队列、取消等待空闲、未知提交结果回收进程及输出路径约束；3 项生命周期/路径测试通过。独立导出验收副本（标准依赖导出器，新增依赖约 1.1 GB）已脱离开发 venv，真实 GPU 冷请求/取消恢复/子进程重启通过；仍未签名发布 Runtime 或接入 Host，不能宣称 H3 已交付。
+
+- 2026-10-07 继续推进：TTS 1.7B CustomVoice/Base/VoiceDesign 在正式 Runtime 0.4.0 断网 Worker 中合成、取消恢复通过，六段输出 ASR 回转写一致。四份 TTS BF16 与 FLUX CUDA 完整权重分发已签名，待 Cookie 授权发布；未生成占位 distribution。H3 固定 Torch 2.13 独立开发环境通过 pip check/GB10 导入，五个固定模型文件双源元数据一致，63,440,965,087 字节全部下载并完成 SHA-256 校验。新 Spark Ref2VA 冷/热及 FL2VA 文本短片通过，分别 47.73/16.11/27.07 秒；音轨和逐帧解码通过。首尾帧及取消恢复开发探针也通过（取消确认约 0.62 秒）；复用 Runtime 0.4.0 Torch 2.10 核心加 Comfy 开发依赖的三例兼容探针通过；正式依赖导出与 Runtime/Worker 接入继续推进。
+
+- 状态：`in_progress_partial_packages_published`。优先音频、绘图、视频，对话保持 27B；媒体全量对齐未完成。
+- 2026-10-07：CUDA Runtime 0.4.0（metadata 268）及 Qwen3-ASR CUDA 0.1.4（metadata 269）由既有 Publisher/key 和标准脚本生产发布，公开元数据及制品摘要一致。Runtime 上传 504 后查询并恢复同一 submission，无重复提交。初始 Cloud 单源例外已记录，镜像待验证。
+- 用户明确批准两版安装审计。Runtime Registry 安装通过，Spark Dev Discover 升级及 Host 重启健康通过；ASR 正式签名包中英文自动/指定语言、停止/重启/卸载通过，Dev Discover 生产安装/权重校验/启动通过。两版均 active，数据库 quick_check 正常。详见 `spark/MEDIA-RELEASE-20261007.md`。
+- ASR 修复指定语言前填充、auto、空输入；正式六文件 distribution 缺少的模板以固定上游 revision 的签名适配器资源补齐，保持共享权重只读。9 项回归及六文件真实 Worker 验收通过。
+- Runtime 新增 Diffusers 0.41、Qwen3-TTS 音频依赖层和可信服务映射；默认 Transformers 5.18、音频 4.57.3，校验导出闭包版本，不导出开发 .pth，SBOM 区分层版本。15 项 Runtime/构建器测试通过。共享 launcher 的无 profile 路径保持兼容，Desktop 仍需随未来 Runtime 重建验收。
+- CUDA TTS/FLUX 适配器复用统一媒体协议。FLUX 隔离 Worker 生成/编辑/取消恢复通过；TTS 修复上游停止条件丢失，按变体处理采样（CustomVoice/VoiceDesign 默认确定性，Base 保留温度 0.8），保留早期异常和静音证据。四变体开发样例及 r3 0.6B 隔离重复输出/转写/取消恢复通过。27B NVFP4 图像/工具/流式回归通过。相关回归总计 34 项通过。
+- TTS、FLUX 和 H3 独立模型 Package 尚未发布。旧 H3 ComfyUI/Studio 固定源码与补丁已迁入新 Spark；已完成 Torch 2.13 开发环境、权重和三例短片，仍需正式 Runtime/Worker/Host 验收，见 `spark/H3-REUSE.md`。
+- 本次仅 Spark Runtime/Package 发布，未修改 Cloud、未重建或发布 macOS Desktop。共用 Runtime/Host 变更不能默认随 Desktop 发布，未来须独立补充 Desktop 验收。
+
+
+### NXR-HOME-PUBLIC-ACCESS-20261006：Home 公网访问状态与开关
+
+- 追加：Home 新增“链接二维码”按钮，弹窗仅展示 Cloud `GET /v1/space` 返回的账户固定 `spaceUrl`（`/u/<ownerUserId>`）；移除卡片设备域名。Local core-only `/cloud/space` 代理生成 QR，禁止临时 query/fragment、设备路径和身份不匹配的 URL；不修改 Cloud。弹窗每次重新读取，账户边界改变时关闭。
+- 验证：3 项固定 URL/临时链接拒绝/401 保留测试及 3 项现有开关交互测试通过；Python/JS/中英文 JSON 语法通过。新增 Local API 需重启 App Dev Local 后刷新 Shell；本轮尚未实机激活与扫码验收。
+
+- 状态：`implemented_unpublished`。Home 口号右侧环境卡片显示本机已登记设备的公网访问状态、地址与开关，复用现有 Remote status/reconcile/start/stop API；未配置时可进入账户设置。
+- 区分关闭、连接中、已连接、连接异常与不可用；串行刷新、操作锁、防重复提交，Cloud 状态读取失败不显示陈旧在线地址且保留已启用设备的停止入口。接口继续执行现有身份与权限校验，无 Cloud 代码修改。
+- 静态网页变更，App Dev 刷新 Shell 生效，无需重建。JavaScript 语法与中英文 JSON 校验通过；真实公网开关及 App Dev UI 尚未验收，未发布 Desktop。
+
+
+### NXR-WEB-AGENT-CALLS-20261006：复用 Agent 能力与按需登录规划
+
+- 状态：`implemented_activated_app_dev`。新增 `agent.call`，指定 Agent、导出能力、generation 和参数映射；服务端按 owner 固定活动版本，拒绝注入 IR、递归环、超过 4 层或 100 静态步骤的调用图。子步骤在同一父 AgentRun 中持久化并按调用路径命名，沿用浏览器上下文；返回值支持 `${steps.call.output.field}`，文件数组映射保留类型。
+- 构建、探索、Review 修订接收当前网站能力目录，由 AI 判断是否需要认证，公开读取不强制登录。优先网站专用登录能力，缺省 `site.ensure-login` 根据清洗 DOM 和 opener 关联窗口判断状态；自动打开登录入口，只有真实 QR/OTP/凭据才暂停。Continue 后重新观察，不把用户确认或点击入口当作登录成功。
+- 编译器 p1.3；侧栏增加能力选择/参数映射，探索调用的幂等键、run ID 随 checkpoint 保存，刷新或协助后续用原 run，停止取消调用。浏览器仍使用透明 BiDi Gateway；不读 Cookie，不创建新 Profile。
+- 验证：20 项 Python 调用、编译器与 API 测试通过；14 项 Node 调用、输入、窗口与恢复测试通过；语法及 scoped diff 检查通过。广回归 33 项中 26 通过、7 失败：旧结果恢复、旧函数签名/Review 字符串、增强 DOM 之前的禁止正文及原有重复打开断言；本次未更改这些不相关断言。真实扫码和发布端到端仍待验收。
+- Python/静态变更只需 App Dev Local 重启、侧栏刷新；无需重建或发布 Desktop。
+
+- 实机激活：修复嵌入 server 先导入 agents 时的循环依赖（调用辅助模块延迟加载），补充独立进程启动顺序测试。App Dev Local PID 16125、端口 61916，Helper ready；3 次 health HTTP 200（189.9/1.5/0.9 ms）。重启控制请求曾超时，但随后新 Local 成功就绪；未重建 App。
+
+
+### NXR-AUDIO-PACKAGE-UPGRADE-20261006：语言策略 Package 升级
+
+- 状态：`packages_published_host_pending`。Stable Audio 0.1.1、音频套件 0.2.1 已发布；Repository metadata 263，匿名完整下载验签和 Dev Discover 验证通过。
+- 103 项回归、真实签名安装的音乐/音效生成、取消 499、重启/卸载与套件 0.2.0 → 0.2.1 升级/三入口挂载通过。推理代码、权重、Runtime 未变化。
+- Host 条件语言策略仍由客户端交付；本次没有升级 Dev 已安装模型或发布 Desktop，未证明先前 Cloud Task 502 已解决。
+- 回执：`docs/ai2apps-audio-language-packages-release-20261006.md` 与 JSON；证据 `artifacts/audio-language-release-20261006/`。
+
+### NXR-AUDIO-LANGUAGE-POLICY-20261006：模型声明驱动提示词翻译
+
+- 状态：`packages_published_host_pending`。用模型签名元数据 `metadata.audio_generation.preferred_prompt_language: en` 替代全模型强制翻译。仅声明推荐英文的模型调用 work_simple；缺少字段保留原文，不推断模型名，不自动改写歌词/ABC。
+- Stable Audio 音乐和音效的源码声明 en；ACE-Step、YuE2 未声明，保留原文。Host 对外提供 preferredPromptLanguage，Mini-App 按该值提示。当前只实现 en 目标，拒绝其他值，后续语言可扩展。
+- 已发布 Stable Audio 0.1.0 的签名字节未变；要让安装版生效，需发布模型 Package 新版元数据、升级 Mini-App 并交付 Host。运行实例尚未部署，不代表 Cloud 502 已解决。
+- 覆盖英文偏好调用、缺省不调用、中文原文保留、失败和取消；取代此前“所有模型每次翻译”的策略。
+
+
+### NXR-AUDIO-TASK-502-20261006：简单 Task Cloud 故障诊断
+
+- 状态：`local_fix_cloud_diagnosis_pending`。Dev 18:06:24 的翻译 502 来自 Cloud `/v1/ai/responses`，上游 code 为 AI_PROVIDER_ERROR，模型为 openai/gpt-5.6-luna；根因尚未由生产日志确认。
+- 简单 Task 调用省略固定 temperature=0；错误展示模型/HTTP/白名单 code，不转发任意上游诊断文本。未变更模型选择或跳过翻译，未发布/部署。
+- 新增 ASGI 合同回归覆盖成功和 502；服务端交接见 `docs/ai2apps-cloud-audio-task-502-20261006.md`。仍需 Cloud 生产排查与完整真实推理验收。
+
+
+### NXR-AUDIO-PROMPT-TASK-20261006：生成前翻译润色
+
+- 状态：`implemented_unpublished`。音乐、音效、歌曲每次调用音频模型前，使用系统 `work_simple` 默认模型将描述翻译润色为英文；保留声音语义与排除条件，不改歌词和 ABC。无缓存或原文静默回退。
+- 复用 Host 现有受认证模型调用路径，保留 mount/actor 上下文。未配置模型、无效回复、120 秒超时均终止生成；取消翻译时不得进入音频推理。
+- Mini-App 保留原文草稿，成功后展示实际送入模型的英文描述；共享 Preview & Output 不变。Host 与 Package 源码需后续部署/升版，本轮不读取 Cookie、不覆盖已发布制品。
+- 取代上一项“无自动翻译”的临时提示方案。65 项 Host/音频回归、18 项歌曲交互、16 项安装菜单交互、Host 取消消息链与 Quick Read 输出作用域检查通过；尚未做真实 Simple Task + 音频模型端到端复测，未在运行实例部署。
+
+
+### NXR-STABLE-AUDIO-PROMPT-LANGUAGE-20261006：音效输入语言提示
+
+- 状态：`implemented_unpublished`。用户反馈中文“雷鸣般的掌声”与输出不符；源码链路将 prompt 原样传给 Stable Audio T5Gemma，没有翻译。上游明确说明英文描述训练、其他语言效果下降。
+- 音频套件在选择 Stable Audio 时增加中英文语言提示，说明使用具体英文描述且当前无自动翻译；不影响 ACE-Step，不改写用户输入。已发布 0.2.0 制品不变，后续 Package 升版需纳入。
+- 此修正只补产品提示，不代表已经完成音频语义质量修复。尚未对用户音频进行听觉判定或中英文同种子生成对照；实际不符原因仍需结合该对照确认。
+- 依据：https://github.com/Stability-AI/stable-audio-3/blob/main/docs/guides/model-overview.md 。
+
+
+### NXR-SPARK-QWEN38-20261006：CUDA 模型与 Runtime 候选
+
+- CUDA Runtime 0.3.0 / 27B Package 0.2.0 已发布，Repository 266/267，保留原身份，
+  新增 `nvfp4-sm121` 能力与 FlashInfer AOT 内核；Spark Discover 升级、正式 Host
+  文本/思考推理和重启恢复已通过（161 / 43）。Runtime staged 后按合同重启激活。
+  用户已授权本次升级发布使用 Dev Cookie，发布查询完成后不再读取。
+- 独立原生 Runtime 的图像/多图/128 工具/思考/SSE/取消恢复均通过，Qwen2.5
+  共享 Runtime 回归通过；AOT 进程映射证明不依赖开发缓存。构建器修复重复
+  distribution 优先级、排除开发 `.pth`，12 项合同/构建器测试通过。
+  两个制品已用原 Publisher 签名验签并发布；Runtime 上传 504 后按既有 submission
+  ID 恢复成功，没有重复提交。完整状态见
+  `spark/NATIVE-NVFP4-RELEASE-20261006.md`。
+- 当前 27B 原生发布链路已验收；Flash 严格路由、FP8/线性注意力优化、Linux
+  Worker 遥测仍未完成。没有发布 Desktop，也未修改 Cloud 后端。
+- 原生 NVFP4 后续：新增 `spark/NVFP4-PLAN.md`、显式 CUTLASS 内核数值/profiler
+  探针和保留 packed 权重的 168 个 MLP Linear 实验加载器。独立 nvfp4-venv
+  固定 Torch 2.10.0+cu130 / FlashInfer 0.7.0.post1。状态 `in_progress`，
+  不属于已发布 0.2.0/0.1.0，不宣称整模正确或性能达标；FP8 部分暂保留 BF16 对照。
+- NVFP4 实验进展：`spark/native_nvfp4.py` 提供显式原生 Linear，无 BF16 回退；
+  3 组 profiler/数值内核探针、9 组真实权重层通过。官方 compressed-loader 路径的
+  168 个原生 MLP 整模数学/中文输出通过，常驻 30.91 GiB，短推理峰值 31.14 GiB。
+  手工 meta loader 的原生/BF16 控制实验失败，保留诊断，默认入口改用通过的官方路径。
+  扩展能力及固定 token 基准正在验证；尚未改变正式安装的 Runtime/Package。
+- NVFP4 模型级扩展能力和 BF16 同条件对照已通过：69-token 提示、相同 64-token
+  强制序列、三轮解码中位数 4.077→6.285 t/s（+54.15%）；常驻 52.70→30.91 GiB。
+  图像、工具模板/结果续答、思考、增量输出和取消通过。正式断网 Runtime/Host 集成
+  仍待实施，当前状态 `native_model_validated_not_packaged`。完整回执
+  `spark/NATIVE-NVFP4-20261006.md`。
+- 状态：`in_progress_publication_acceptance`，27B 已签名，Runtime 已完成 4 GiB 合同配套与签名；未发布或升级 Desktop。
+- 新增 Qwen3.8 CUDA Package 源码，复用 Mac 的 service/model ID 和已签名 checkpoint
+  distribution；当前 BF16 基线限制 8192 context / 2048 output。图像、工具往返、
+  思考分离、增量 SSE、断连恢复已在断网只读 Docker Worker 验证。
+- CUDA Runtime 构建闭包加入 accelerate、compressed-tensors、torchvision、jsonschema
+  及 Triton，支持显式开发环境 site-packages overlay，输出仍不携带 .pth。
+  新 `qwen38-bf16` 能力防止模型错误使用旧候选。最终独立载荷在无开发 venv 的
+  Docker 内通过图像、工具、思考、SSE、显式取消、断连和恢复验收。
+- 不修改 Mac 模型或生产 Runtime。记录见 `spark/QWEN38-ALIGNMENT.md`。
+- Flash 源候选 `ai2apps-model-qwen38-flash-next-cuda` 标记 experimental、parity-pending，
+  复用 Mac 模型身份与签名 distribution；基础 Worker 图像/工具/思考/SSE/取消恢复
+  通过，严格层级路由、性能和签名安装验收尚未完成。新增有界十专家批量搬运，
+  两组微测输出逐位一致且整模数学/EOS 正常，完整基础 Worker 回归通过；
+  26-token 流式短请求 77.72→39.76 秒，尚非稳态性能门槛或 Mac 数值对齐。
+  扩展 128 工具/多图验收也通过，加载的源文件摘要与当前候选一致。
+- 两个 CUDA Qwen 模型共享纯 Python Worker 协议实现与输出解析器，放在
+  `ai2apps/model_worker/cuda_qwen.py` / `qwen_output.py`；按需导入 Torch，
+  checkpoint 加载器仍在各模型 Package。包含新模块的独立 Runtime 已重建，
+  完整 27B 回归通过：`spark/evidence/qwen38-shared-runtime-check.json`。
+
+- Registry 明确允许官方 CUDA Runtime inference_provider 并选择管理员 Runtime 上传路径，
+  保留普通包路径、现有大小限制和 oMLX 历史重启回退；Registry 全部 47 项回归通过。
+  Cloud 配套尚待部署，不能据此声明正式可安装。交接文档：
+  `docs/ai2apps-spark-runtime-registry-requirements-2026-10-06.md`。
+
+- OpenAPI 1.59.0 配套：仅两个官方 service Runtime 的文件/envelope/ZIP/下载预算放宽至
+  4 GiB，普通合同 1 GiB、上传 25 MiB 不变；构建、哈希、解包检查采用分块 IO，
+  服务定义读取限制 1 MiB；验签仍先于安装 ZIP 解析。67 项合同/Registry/构建器测试通过。
+  已签 Runtime 外层 SHA-256 `ea4eacf71237c9af8c3c1e48bdda20ac368869e1fce750b12a58bf61b05bfdd6`，
+  1,655,127,656 bytes，已发布至 Repository 264，Spark 安装验收进行中。此共享客户端修改需下次 Desktop 评估。
+
+- Spark 安装发现 Linux OS 兼容性误将内核版本作为发行版版本，Registry 与 Service Manager 现共用 `platform_compatibility.local_os_version` 读取 VERSION_ID，
+  仍拒绝缺失和过低版本；Registry 50 项测试通过。Runtime 生产发布回执：
+  `spark/RUNTIME-0.2.0-PRODUCTION-20261006.md`。
+
+- 2026-10-06 后续：用户批准后 Runtime 0.2.0 已在主 Spark Host 安装完成；27B 0.1.0
+  已发布至 Repository 265（submission 04c95428-38b6-42b5-b346-1e6cf02bc779）。
+  正常模型安装暴露目录详情 package.modelInstall 未提升到顶层，已修复三个目录投影
+  （安装计划、内存要求、发现分类）以及重复装饰的 source 字段处理；51 项 Registry 回归通过，
+  已部署 Spark，正式 Host 模型验收继续。
+- 正式安装进一步发现 Service Manager 未将 Linux aarch64 归一到合同 arm64；
+  与 Registry 共用 normalized_architecture，仍拒绝异架构。Package 生命周期 36 项
+  （开放本机回环端口后）、Registry 51 项通过。主 Host 的 27B 安装、checkpoint 校验、
+  服务启动全部完成，截图 `spark/evidence/qwen38-installed-20261006.png`。
+- 正式 Host Chat 已返回正确结果 42（完整冷启动 141.72 秒）；为当前 Spark 的
+  27B 持久化 max_tokens=2048。新机器安装默认预算、Linux Worker 内存遥测及
+  Flash 数值/性能对齐仍需后续处理。当前发布验收见
+  `spark/QWEN38-0.1.0-PRODUCTION-20261006.md`。
+- systemd 重启后，新 Chat 使用持久化默认输出预算及默认思考模式，19+24 返回 43；
+  160.46 秒包含冷加载。正式安装与 Host 文本/思考/恢复验证完成，Flash 和性能对齐仍未完成。
+- 标准发布入口发现 agent_builder 的循环导入，packages 改为直接导入 extensions.models，
+  service 在 create_ir_run 中按需导入 Agent 常量；24 项发布器/Agent Builder 回归通过。
+  两项共享修复纳入下次 Desktop 评估，未发布 Desktop。
+
+### NXR-VOICE-STUDIO-STARTUP-20261006：启动反馈与加载链路优化
+
+- 状态：`implemented_and_tested`；未发布，未测量真实冷启动耗时。
+- 所有 Package 就绪检查移出宿主启动关键路径；基础数据与草稿并行读取，草稿恢复后只加载一次项目详情；五项独立历史/输出/能力请求并行执行，失败分别反馈。
+- 主内容就绪后即退出启动等待，无需等待历史和能力恢复；冷启动及 Mini-App 切换显示“正在启动”提示和加载指示，异常退出等待并可刷新重试。
+- 验证：前端 scope 回归覆盖未完成的 Package 检查不阻塞主界面、项目仅恢复一次、后台并发及切换等待状态；JS 语法检查通过。仅宿主 HTML/CSS/JS/翻译改动，刷新页面生效，无需更新 Runtime 或 Suite Package。
+
+
+### NXR-WORKER-BACKEND-IMPORT-20261006：独立 Runtime 的按需适配器导入
+
+- 状态：`verified_on_spark_unsigned`。CUDA Runtime 独立载荷发现公共 Model Worker 初始化会
+  提前导入 oMLX，导致不含 oMLX 的 Runtime 启动失败。现将 oMLX 适配器公开
+  导出改为按需加载，保留原有导入 API；协议及 HTTP server 可独立使用。
+- 新增禁止 oMLX/MLX 导入的独立进程回归和既有适配器导出兼容验证。
+- 相关 48 项回归通过；独立 CUDA Runtime 在 Docker 中鉴权、推理、SSE、
+  drain/resume 通过。发布准备见 `spark/RELEASE-0.2.0.md`。
+- 共享模块影响后续 Desktop/Runtime，尚未构建或发布 Desktop。
+
+### NXR-AGENT-RELOAD-PROFILE-20261006: Sidebar recovery and Profile tab identity
+
+- Status: `activated_in_app_dev`. Exploratory progress previously lived only in Sidebar memory; Local-origin replacement/context remount could erase it. Added owner- and Tab-bound atomic Local recovery points with 24-hour TTL, ordered writes and a required pre-action checkpoint. Reload restores goal, attachments and timeline in a paused state; an in-flight action is marked unknown for observation before repeating. Tab switches retain the old Tab checkpoint without executing on the new Tab.
+- Native browser Profile windows now bind newly created tabs to their managed Container. Current App-Dev session metadata showed Weibo in Container 0 while the managed Profile has Container 6; this proves a mismatch, not which Container held the earlier login. No Cookie/credential read, migration or deletion. Existing tabs are preserved.
+- BiDi reconnect now retains an authorized Tab across URL changes/login redirects and rejects missing bound Tabs instead of choosing another Tab by stale URL.
+- Verification: 17 Node recovery/window/profile tests, 26 Node input/upload/DOM regressions, 4 Python checkpoint tests (including owner/Tab isolation API), 5 Python login/attachment tests, and JS syntax passed. Gallery regression has one unrelated existing cache-tag assertion failure. Fixed App-Dev rebuilt through build-app-dev-environment.sh; verify-release-app.sh and strict deep codesign passed. Local restarted and checkpoint API confirmed in live OpenAPI on port 61912; native title verified. Opening Profile and adding a Tab produced live session metadata containers [6, 6], and the new Tab Sidebar showed no unrelated prior result. No end-to-end Weibo sign-in/upload/publication was performed. Activation initially encountered an old Local process holding the instance lock after SIGTERM; exact old App-Dev PID was terminated and the new service is online. Historical progress predating checkpoints cannot be restored.
+
+
+### NXR-CLOUD-CAPABILITIES-20261006：Cloud 1.58 客户端对接
+
+- 状态：`verified_on_spark`。Peer 注册前读取并缓存能力发现；关闭/未知协议不请求
+  Device keys/challenges，300 秒默认刷新，旧 Cloud 404 不推断启用。
+- 托管 Cloud 聊天按模型目录 toolOptions.maxTools 预检，不按模型名猜限制、
+  不截断工具；保留超限 details/param，Agent 尊重不可重试错误。
+- 共用 broker/cloud gateway/Agent runtime，需评估未来 Desktop；尚未发布。
+- Cloud 升级后 Spark 原有客户端已真实完成 workspace.write/read，并核对文件。
+- 新客户端部署后再次读回通过，关闭协议的密钥轮询停止；76 项本地回归通过
+  （退出时本机沙箱 Metal 清理警告）。详见 `spark/CLOUD-158-ACCEPTANCE.md`。
+
+### NXR-SPARK-CHAT-EMPTY-STREAM-20261006：聊天空流渲染兼容
+
+- 状态：`verified_on_spark`。Spark 实机验收发现聊天切换/请求结束后 Alpine 仍求值隐藏
+  的 thinking token 文本，对 null currentStream 解引用报错。改为可选链及零默认值。
+- 共用 `ai2apps/web/templates/chat.html`，需纳入后续 Desktop；不重建或发布 App。
+- 已部署到 Spark 开发实例；刷新并切换历史会话后未再出现该控制台错误。
+- Spark Host 的云端普通聊天及重启后会话恢复已验证；Agent 另被 Cloud
+  `INVALID_AI_TOOLS`（最多 32 functions）阻塞，不属于此渲染修复的完成范围。
+
+### NXR-AGENT-ATTACHMENT-INPUT-20261006: Agent input and attachment upload
+
+- 2026-10-06 live image-post diagnosis: Source normalization discarded `arguments.asset_ids`, so an observed hidden file input was incorrectly executed as ordinary text input and returned `not_found`. Preserve attachment IDs through normalization and preserve explicit target refs in client upload dispatch. Regression: 1 Python normalization-to-IR test and 6 Node input/upload tests passed. User restarted App-Dev Local; activated on port 56282. Live WebAgent completed 4 successful steps (text input, native BiDi image upload, send, inspect). Verified visible post https://weibo.com/7015980724/RlnO6A98U with exact text 马上又要过年了 and supplied 封面参考.png; compose cleared and send disabled. No duplicate send. Planner still issued an unnecessary image-preview assistance request before continuation; upload itself succeeded. No Desktop publication.
+
+- Status: `activated_in_app_dev`. Ordinary compose input and upload-entry clicks no longer require generic confirmation; sensitive input, CAPTCHA and legal consent retain their explicit policy. Assistance hints show the actual reason instead of assuming login.
+- Enhanced shared DOM observation includes framework pointer controls and hidden file inputs. Planner receives file_inputs and supplied asset IDs; client uses the owner-bound Gallery browser-transfer route and native BiDi input.setFiles. Ambiguous upload controls are not guessed; failures return to the planner. Reusable attachment IDs bind to runtime file parameters.
+- Verification: 26 Node tests and 5 Python tests passed, plus JavaScript syntax checks. Real Weibo image upload and publication verified on 2026-10-06; see live diagnosis entry above.
+- Activation: App-Dev Local restarted during the subsequent Sidebar recovery/Profile fix; current source API loaded on port 61912 and new Sidebar mounted. Real Weibo image upload/post now verified on port 56282 after user restart. No Desktop publication.
+
+
+### NXR-YUE2-PACKAGE-20261006: YuE2 model Package publication
+
+- 状态：`packages_published_host_pending`。YuE2 模型 0.1.0 与 audio-generation-suite 0.2.0 已发布；Repository metadata 260，公开完整下载/签名/哈希与 Discover 验证通过。主模型、VAE 的 HF/MS 双源全量字节及 930 pieces 验证通过，原始许可仍须用户在 ACPF 确认。
+- 已安装真实推理、取消 499、重启、卸载及共享输出保留验收通过。最终模型仅改展示信息、App 仅省略可选目录投影；最终签名安装验收通过。
+- 安装环境冷调用生成 46.6 秒音频耗时 353.69 秒，显著慢于独立版 22.8 秒；差距待定位，模型卡已披露。Runtime 1.8.10 不变。
+- 详见 `docs/ai2apps-yue2-audio-packages-release-2026-10-06.md` 及 JSON 回执。Package 发布不代表生产 Desktop 已获得 Host 工作流支持。
+
+### NXR-SONG-MINI-APP-20261006：歌曲创作 Mini-App
+
+- 状态：`packages_published_host_pending`。audio-generation-suite 0.2.0 已发布同包音乐、音效、歌曲三个入口；歌词编辑、规划模式、ABC 导入、时长上限、种子、草稿、阶段进度和取消。
+- Host 增加签名工作流筛选、Runtime 1.8.10 协议、共享输出及歌曲 ACPF。YuE2 模型已上架；Host 必须随后续 Desktop 交付，当前生产 Build 2258 不具备歌曲 broker。
+- 原 109 项 Python、18 项中英文交互及跨 Mini-App 输出检查通过；本次另完成已发布依赖的真实签名安装推理及最终三入口挂载验收。App-Dev UI 与 ACPF 入口实测通过。
+- 阶段保存/局部重跑不在本版；输出由 Host Preview & Output 拥有。见 `docs/ai2apps-song-mini-app-0.2.0.md` 和上述发布回执。
+
+### NXR-RUNTIME-YUE2-20261006：音乐工作流 Runtime 1.8.10
+
+- 状态：`runtime_published_host_pending`。Runtime 1.8.10 已正式发布，Cloud/GitHub/ModelScope 三源active；submission `6b409372-8180-45fc-b5ee-4011b7ab8264`，Repository metadata 258，Source revision 6。
+- 基线为已发布1.8.9；唯一Worker源码差异为版本化音频生成协议，支持自动时长、规划模式、内联ABC及token/guidance参数。Python3.11与MLX0.32.0等原生依赖不变，旧音乐/SFX语义保留。
+- 制品SHA-256 `3bd58e16f5cd54cca9d205077f6396a9536a0097f25c049dda720bf0fc3c6256`，380899239 bytes；Developer ID、公证/staple/Gatekeeper、真实签名安装与依赖解析通过。
+- 验证：55项Worker、15项多源/Range、13项原生Python3.11测试；已安装Runtime真实HTTP生成46.6秒YuE2音频且WAV哈希与独立优化版一致，取消499、输出清理、停止/重启/卸载通过。三源完整字节及最终46个piece/签名Snapshot通过。
+- YuE2代码/权重仍属于后续模型Package，Host/Mini-App接入与Desktop发布未包含。未做第二台Mac验证。见 `docs/ai2apps-runtime-1.8.10-release-2026-10-06.md` 与JSON收据。
+
+### NXR-PACKAGE-CANDIDATE-RECOVERY-20261006：未发布候选撤回
+
+- 状态：`cloud_deployed_package_recovery_pending`。Cloud OpenAPI 1.57.0 已部署，标准 `scripts/publish_signed_registry_artifact.py`
+  增加显式 `--withdraw-submission --submission-id --expected-artifact-sha256 --withdraw-reason`，
+  只撤回，不隐式重新提交或批准。调用 Cloud 正式受保护 API；原 Cookie 授权和 step-up 边界不变。
+- 仅标准发布工具与合同变化，不修改 H3 已验收制品字节，不重建 Desktop。
+  `--submission-id` 恢复会先查询实际状态，只执行剩余步骤；approved 不重复审批，
+  published 不重复发布，withdrawn 明确拒绝。
+  Cloud 对接合同：`/Users/avdpropang/sdk/ai2apps-cloud/docs/package-candidate-recovery-v1.md`。
+  H3 0.10.0 的生产撤回/重新发布仍须真实授权会话，不能将此实现条目标记为 Package 已发布。
+- 验证：标准脚本 12/12 Mock 回归及 Ruff 通过；Cloud 真实 accepted 字节在隔离数据库完成
+  撤回/修正/重新审核/发布回归。生产回执：`/Users/avdpropang/sdk/ai2apps-cloud/docs/h3-avatar-recovery-production-2026-10-06.md`。
+
+### NXR-AUDIO-GENERATION-MINI-APPS-20261005：音乐／音效 Mini-App 套件
+
+- 2026-10-06：两个模型下拉框加入“安装模型…”入口，按音乐／音效能力触发 ACPF，返回刷新并保留选择；16 项交互检查及 7 项相关回归通过。真实推理证据来自此前候选；本次仅修改菜单并重新签名。
+- 状态：`signed_candidate_host_pending`。同一 App Package `ai2apps/audio-generation-suite` 0.1.0 提供音乐生成和音效生成两个 Voice Studio Mini-App；共享 Host 输出、挂载绑定模型调用及 ACPF 许可流程。
+- Host 增加音乐／音效语义能力、模型选择、受控推理和取消；不得将模型 Worker、权重路径或凭证暴露给 Frame。须随下一版 Desktop 评估，未发布 Desktop。
+- 验证：73 项相关回归、另增断开取消测试、共享输出跨 Mini-App 选择、源码隔离／热刷新、真实签名包安装后两个 mount 的 10 秒生成及原子启停卸载通过。候选 SHA-256 `6e070e0f01e2900b9fc72262ed20049dcfd929463eae7738289109c5898dc658`，12,892 bytes；未发布 Cloud。详见 `docs/ai2apps-audio-generation-suite-0.1.0.md`。
+
+
+### NXR-CODEX-SYSTEM-20261005：系统级 Codex 接入
+
+- 2026-10-06：修复 Todo 在 Codex Desktop 中打开按钮无响应：绑定区和当前执行区由 iframe 自定义协议链接改为调用系统 Codex POST /threads/{id}/open；要求 Coder 权限和 loopback 请求，严格 UUID 校验，macOS /usr/bin/open 固定协议 argv 无 shell，10 秒超时回收进程，界面展示错误。验证：Python 打开成功/错误/非法参数 2 项、Node 当前执行 7 项、JS 语法通过；sandbox 内 LaunchServices 不可用，获准在原生环境打开当前会话命令退出 0。需重启 Local 刷新，尚未做 Todo 原生点击端到端验收。
+
+- 2026-10-06 结构化回报：Codex 新会话及 Desktop 原生投递统一要求带版本/运行 ID 的 ai2apps-result JSON；严格解析最终 assistant 回报，支持 completed/partial/waiting_user/failed、完成内容/验证/剩余/提问。当前执行及历史显示 AI 自述及待确认说明；缺失/无效/错误运行 ID 不推断成功，任务状态/百分比不自动修改。27 项 Python 与 6 项结果 UI 测试通过。源代码完成，实际模型遵从及 App-Dev 重启后 UI 验收尚未完成；未重建发布。
+
+- 本轮原生队列回归：76 项 Python、29 项 Node 测试通过；历史执行区同样隐藏伪停止入口，后端拒绝 Desktop 任务本地停止时返回 422。
+
+- 2026-10-06 原生投递：已有会话改用 Codex CLI queue，避免 Desktop active writer 冲突；运行标识关联只读 turns/list 记录，以 completedAt 判定终态，回传输出/步骤。持久化投递意图和队列 ID，Local 重启仅恢复跟踪，模糊投递不自动重试；Desktop 执行持续占用 Todo 名额。审批/回复/停止在 Desktop 完成，Todo 不伪装远程取消。新会话保留直连路径。真实原生消息消费及新观察器读取精确回复/终态已验证；Helper UI 超时，App-Dev 重启及实际 Todo 端到端验收待完成。已知边界：用户在 Desktop 删除尚未执行的排队消息时，缺少回合收据，当前仍保持待确认，尚不能自动释放名额。未重建或发布。
+
+- 2026-10-06：修复外部会话 active writer 冲突的处理：解释 Desktop 写入权占用，当前执行区域以“更换会话”替代无效重试，兼容历史错误；resume 失败时不发送 unsubscribe/interrupt，不自动创建替代会话。8 项 Python、3 项当前执行 UI 测试通过。此改动不代表能直接派发到 Desktop 已持有会话，真正 Desktop 会话派发仍待接入；未重启或发布。
+
+- 2026-10-06：工程选择优先只读 Codex Desktop 保存的 local-projects 名称和主目录（兼容旧 saved roots），不可用时回退会话目录；Todo 改为明确的工程下拉选择，选择后自动加载会话，保留其它目录入口。此为本机元数据兼容适配，不是公开 App Server 工程 API；不写 Desktop 状态，不读取凭据。真实读取 17 个工程并与 Desktop 工具列表核对，11 项 Python 与 27 项 Node 测试通过；需重启 App-Dev Local 并刷新页面加载，未重建或发布。
+
+- 状态：`in_progress`。从 Todo 提取 `ai2apps.codex`，由 PlatformRuntime 持有共享 App Server 传输、目录/会话查询、会话互斥、输出/审批/问答与取消清理；新增独立 `/v1/platform/codex` 接口，要求 Coder 权限，不依赖 Todo 插件配对。
+- Todo 作为首个调用方保留任务绑定、三槽队列与持久执行记录；反向 Todo MCP 插件独立保留。目录来源仍是会话 cwd 分组，不声称是 Desktop 注册项目列表；互斥只覆盖本 Local 实例。
+- 验证：87 项 Python 回归与 27 项 Node 测试通过，包含无 Todo 的系统接口、跨调用方同会话互斥和关闭清理；旧 MCP 回环测试经批准在沙箱外复测通过。此前真实临时只读回合已通过；当前 App-Dev 仍需重启 Local 后完成端到端验收。未重建或发布 App。
+
+### NXR-MUSIC-PACKAGES-20261005：ACE-Step / Stable Audio 模型 Package
+
+- 状态：`model_packages_published_host_pending`。`ai2apps/model-ace-step-mlx` 0.1.0 已发布，Package SHA-256 `c31672d7842b621d8409075c08957085943f0e3864736f618c0e103dcec94eff`，75,942 bytes；submission `eccb9f9c-da2c-4081-9c1e-9535d3fed7b4`，metadata 253。依赖 Runtime >=1.8.9。
+- 权重：`dist_ai2apps_ace_step15_turbo_mlx_v1` 已发布，HF/MS 固定 revision、27 文件／1,203 pieces／10.09 GB 双端完整核验；公网 Checkpoint Index 103 验签通过。MS 临时连接失败后实际断点恢复通过。小型代码包走 Cloud，权重独立双源。
+- Host：独立 `audio_generation` 类型与 endpoint、签名能力声明校验、音频生成资源预留、仅验证 Registry 回执可激活的 NPZ 布局。涉及 `ai2apps/model_providers.py`、`ai2apps/checkpoints.py`、`ai2apps/worker_resources.py`。这些 Host 改动仍须随未来 Desktop 发布；本轮未构建或发布 Desktop。
+- 验收：78 项 Host/Worker/checkpoint 与 10 项多源测试通过；三分支真实 MLX 10/120 秒生成、采样取消与内存释放通过。ACE 真实签名包 Sandbox 安装、10 秒 WAV、取消 499、重启、卸载和公开下载验签通过。完整 120 秒范围要求 48 GiB；测试机 M5 Max 128 GiB，第二台 Mac 未验收。
+- Stable：`ai2apps/model-stable-audio-mlx` 0.1.0 已发布，SHA-256 `9a5622efb92316935d609164a1b943ff21e96422c2254f9cd4bf3f7505579826`，199,759 bytes，metadata 254。Music/SFX 各 1.70 GB／8 文件／204 pieces，HF/MS 完整双源核验与公网 Index 104/105 验签通过。用户确认非商业安装体验用途；ACPF/Discover 下载前绑定具体清单及条款哈希的明确许可同意，完整 Stability/Gemma 条款与 Notice 随权重分发。真实签名包 Sandbox 两分支生成、取消 499、重启、卸载通过。
+- 授权：两个模型 Package 发布验证完成，对应 Dev Cookie 授权均已结束。详见 `docs/ai2apps-audio-model-packages-2026-10-05.md` / `.json`。
+
+### NXR-RUNTIME-MUSIC-20261005：音乐生成 Runtime 1.8.9
+
+- 状态：`runtime_published_host_pending`。Runtime 1.8.9 已正式发布，Cloud/GitHub/ModelScope 三源 active；submission `1aaa7445-e1a7-4b5a-8178-039dcbea1dd5`，Repository metadata 252，Source revision 6。
+- 以已发布 1.8.8 精确载荷为基线，仅新增 `audio_generate` / `/v1/audio/generations`、请求验证和 `audio-generation-v1`；Python 3.11 与原生依赖不变。SHA-256 `37cba2443a5848aac090957d37ef0ccaaef7081c58483d257cf6b3c692c4ba02`，380695388 bytes。
+- Developer ID、公证、staple、Gatekeeper、Publisher 签名、真实签名包安装与三模型 HTTP 推理/取消通过；36 项 Worker 回归、5 项多源回归、三源完整摘要、Cloud 46-piece 预检及匿名签名快照/下载验签通过。第二台 Mac 加载验收未执行。
+- Cloud 500 经 Cloud 空间清理及用户恢复 step-up 后解除；ModelScope 严格 200 + Content-Range 已按既有策略通过预检和管理员激活。手册新增明确 200/206 判定表、单管理员审批矩阵和防回归清单。
+- 此项仅完成 Runtime 发布，未发布 Desktop；模型 Package、Voice Studio Host 接入及 Desktop Build 仍独立评估。详见 `docs/ai2apps-runtime-1.8.9-release-2026-10-05.md` 与 JSON 收据。
+
+### NXR-MUSIC-MLX-20261005：ACE-Step / Stable Audio 本地推理实验
+
+- 状态：`prototype_verified`。`experiments/music_mlx/` 固定官方源码及权重版本，已下载 ACE-Step 1.5 Turbo 与 Stable Audio 3 Small SFX/Music，建立离线 WAV 推理、转换、隔离调用和时间/内存/音频有效性记录入口。
+- 后端边界：Stable Audio 使用官方纯 MLX 路径；ACE-Step 原生路径复用固定 `mlx-audio pc/add-ace` 提交，官方权重转换后文本编码、1.7B LM、条件网络、DiT、VAE 均以 MLX 执行。独立 native 环境未安装/导入 PyTorch。保留单独官方混合参考路径，并显式禁止 DiT/VAE 静默回退；两条路径不能混淆。
+- 发布边界：仅本地实验，未接入生产路由、未创建/构建/发布 Package、未修改 Cloud、未重建 Desktop。后续接入需增加显式音乐/音效能力，并走 Voice Studio Host 共用 Preview & Output。
+- 验收：M5 Max / 128 GiB，10 秒 SFX 0.698 秒、30 秒 Stable Music 0.629 秒、30 秒 ACE 配乐 8.334 秒、30 秒 ACE 中文歌词样本 6.217 秒（含加载，不含进程/Metal 启动和下载，非驻留稳态基准）。MLX 峰值分别约 1.71/1.93/12.76/12.76 GiB。音频时长/双声道/非静音/有限值校验通过；3 项桥接测试及真实 5 秒 Artifact 调用通过，两个环境依赖一致性检查通过。详见 `experiments/music_mlx/validation.json` 与 `README.md`。
+- 剩余边界：试听与官方全链路数值 parity 尚未验收；ACE 规划元数据不保证严格遵循提示时长/BPM。正式接入前需 Runtime 封装、Stable Audio 授权核对及 shared output/cross-Mini-App 测试。
+
 ### NXR-RELEASE-015-2258-20261005：Desktop 0.1.4 Build 2258
 
-- 状态：`released_pending_target_mac`。生产已推进到 0.1.4 / Build 2258，rollout 100%；本次从最新
-  `origin/main` 建立独立 clean worktree，产品版本提升到 0.1.4，Build 严格递增到 2258。
-- 拟纳入：Todo 项目树、调度、Codex/Terminal 联动和导入导出；General Agent 长任务上下文、
-  会话记忆、工具失败恢复、计划/提问/结果回读和循环保护；原生 App/Mini-App 开发 Harness、
-  Coding sub-Agent、Agent 附件与 Gallery Picker；Agent/BiDi/Sidebar 恢复与刷新；Helper 启动
-  导航和全实例录屏准备；Imagine Portrait 主题；Audiobook 编辑/选段修复；Studio Package
-  多语言以及 Avatar 录音/预览 Host 桥接。
-- 明确延期：H3 1024/1280 分辨率、仍在进行的视频放大后续工作、Encore/AVTR-1/MuseTalk/
-  InfiniteTalk/Ex-Omni 实验源码与个人参考音频。延期内容不得进入 Release commit 或制品。
-- 发布门禁：完成 Python/Node/Swift、Ruff、JavaScript 语法和 diff 检查；核对正式 AceFox
-  快照；Developer ID 签名、Apple 公证、GitHub/ModelScope 同字节双源以及 Cloud 0%→100%
-  原子发布。最终源码 commit、测试数、摘要、Submission ID 与生产 digest 写入独立回执。
-- 候选验证：完整 Python 分三组运行，合计 `10450 passed, 68 skipped, 74 deselected`；Node、
-  Swift（77 项 Swift Testing + 2 项 XCTest）、限定 Ruff、JavaScript/JSON 语法与
-  `git diff --check` 通过。完整回归暴露并修复两处测试合同漂移（迁移 78/79）及一处
-  SDPA 全局 headroom provider 的测试顺序污染；SDPA 25 项和受影响 3646 项分片最终全绿。
-- 发布完成：源码 `51d30e440d942eb04d254f1e5a796a29d39f13ac` 已同步 GitHub main；Apple
-  submission `bf996bef-3cb3-4cdb-ade3-7fc1d99c886c` Accepted；ModelScope revision
-  `feb3dd54e5d8daf9c4ec8ede754238fd013d766f`；生产最终摘要
-  `d6aa53c228641e800232e65189d137a7e97236b67ec1c1704140cc28899c731d`，0%→100% 审计 24/25。
-  纳入/延期内容与验证限制归档至 `docs/ai2apps-desktop-0.1.4-build2258-release-2026-10-05.md`。
-- 仍待目标 Mac 实机升级闭环；本次没有重建或重启 Dev/App-Dev/Test。Cloud 根分区仅余约
-  240 MiB，本次用内存盘完成预检并已清理临时工件；磁盘清理/扩容留给 Cloud 运维。
-
-### NXR-RELEASE-014-2257-20261002：Desktop 0.1.3 Build 2257
-
-- 状态：`released_pending_target_mac`。2026-10-02 已从生产 0.1.2 / Build 2256 先以 0% 原子
-  登记，再使用不变的 `build2257-test` 扩到 100%；最终生产清单摘要为
-  `13b983e758483c30ebfd0e422ff5fe289e426f06526a2b469704fb610de7861e`。
-- 正式源码提交 `f7dacc9c06550ac2bbba85d849ffe819aa88f243`；Apple submission
-  `6efb70b8-d9fa-4562-bdca-6803941e1621`；ModelScope immutable revision
-  `26d04b3dd2b107446a2a05603b3cffe49cc02b49`。回执：
-  `docs/ai2apps-desktop-0.1.3-build2257-release-2026-10-02.md`。
+- 状态：`released_pending_target_mac`。2026-10-05 13:57（北京时间）已完成签名、公证、
+  GitHub/ModelScope 双源预检与 Cloud 0%→100% 发布；生产基线推进到 0.1.4 / Build 2258。
+- 源码提交：`51d30e440d942eb04d254f1e5a796a29d39f13ac`，独立 clean worktree 构建，已同步
+  GitHub main。原开发工作区与未提交实验内容保留；本条不表示后续新改动也进入该提交。
+- 生产摘要：`d6aa53c228641e800232e65189d137a7e97236b67ec1c1704140cc28899c731d`；
+  ModelScope revision：`feb3dd54e5d8daf9c4ec8ede754238fd013d766f`。
+- 本次纳入条目、延期项目、测试、公证与生产验收归档：
+  `docs/ai2apps-desktop-0.1.4-build2258-release-2026-10-05.md`。
+  回执列明的 NXR 源码实现为 `included`，下方“未发布”等文字是开发历史；真实模型/UI
+  验收限制仍保留，目标 Mac 升级闭环待完成。
+- Cloud 根分区仅余约 240 MiB，本次使用内存盘完成预检且已清理临时工件；仍需运维清理/扩容。
+- 本次未重建或重启 Dev/App-Dev/Test。
 
 ### NXR-MEDIA-VOICE-I18N-20261005：音视频扩展 Package 多语言
 
-- 2258 归档：`included`（源码实现）；已发布 0.1.4 / Build 2258。下方为开发历史，真实模型/UI 验收限制继续保留，详见本次发布回执。
 - 状态：`package_published_host_pending`。`ai2apps/media-voice-studio-suite` 0.2.1 已发布；音视频语音工作室 Suite 的 Package、六个 Mini-App 名称/描述及页面动态 UI 已补齐中英文，英文为回退；用户字幕、角色名、文件名和模型名不被翻译。
 - Studio 共用 mount 客户端统一解析 Package Mini-App `localizations`，将当前 Host locale 写入受约束 mount context 与 Entry URL；Voice、Video、Imagine Studio 均采用同一解析入口。旧 Package 没有本地化字段时仍使用原有 name/description，不改变安装、能力或输出合同。
 - 开发手册明确区分 Package、Provider App 与每个 `mini_apps[]` 的本地化名称，给出 manifest 示例、locale 回退、动态 UI/accessible name 要求和 App-Dev 中英文真实 mount 验收步骤；localized metadata 与 Studio 设计清单同步。
@@ -48,7 +2398,6 @@
 
 ### NXR-AUDIOBOOK-EDIT-SAVE-RACE-20261005：片段重生成使用最新编辑文本
 
-- 2258 归档：`included`（源码实现）；已发布 0.1.4 / Build 2258。下方为开发历史，真实模型/UI 验收限制继续保留，详见本次发布回执。
 - 状态：`implemented_and_tested`；未发布。
 - 同一项目/片段的保存按编辑顺序串行提交，旧保存响应不得覆盖等待期间的新编辑；再次生成等待本次文本保存完成。
 - 增加旧保存未返回时修改文本并立即重新生成的前端回归场景。仅修改宿主静态 JS，刷新 Shell 即可载入；无需 Runtime 或 Suite Package 更新。
@@ -57,7 +2406,6 @@
 
 ### NXR-SHELL-STARTUP-NAVIGATION-20261005：区分刷新与 Helper 重启导航
 
-- 2258 归档：`included`（源码实现）；已发布 0.1.4 / Build 2258。下方为开发历史，真实模型/UI 验收限制继续保留，详见本次发布回执。
 - 状态：`implemented_and_tested`。普通刷新保持当前 Shell URL/App；Helper 菜单重启 Local 和 Helper 自身启动产生新 Home epoch，进入 Home。Runtime/API 自动重启不产生 Home epoch，保留 ACPF 恢复。
 - Shell 仅在原生重连明确标记 resume 时查询 ACPF 自动返回，忽略历史 failed/cancelled/unsupported 会话，并防止异步恢复覆盖用户新导航。不删除历史会话，不把失败记录清理伪装成修复。
 - Helper main.swift、ai2apps/web/static/js/shell.js、公共 apply-shell-navigation.py 及 Dev/Release 构建入口统一实现。Dev/App-Dev 已通过各自固定脚本重建并启动，保留实例数据；两个包深层严格签名通过，App-Dev 完整 verify-release-app.sh 通过。Test/Release 下次构建自动包含，未发布生产。
@@ -75,7 +2423,6 @@
 
 ### NXR-HARNESS-SESSION-MEMORY-20261005：跨 Run 对话记忆
 
-- 2258 归档：`included`（源码实现）；已发布 0.1.4 / Build 2258。下方为开发历史，真实模型/UI 验收限制继续保留，详见本次发布回执。
 - 状态：`implemented_and_tested`，真实模型/应用实机验收未完成。新增 SessionMemory 投影与 started/committed/ended 日志，原子来源 CAS、并发锁/终止 owner 恢复、跨 Run 复用、用户原文侧记录、同 Session 来源 reader、手动维护 Run 和完整旧 Run 工具证据。启用 reader 后取消 200/1000 条静默截断；原始记录保留。
 - 独立图投影和旧 Run 大工具结果裁剪先隔离验收后接入；大结果持久投影为可回读 head/tail/hash，原文及工具配对保留，回读不重复裁剪，摘要中断可以重新开始。图投影：超限可明确省略最旧非 pinned 输入图，持久来源/part index/hash，当前输入与 assistant 图不省略。Session 摘要复用原 system/消息/tool schema 前缀；摘要 tool-call/截断/无缩减拒绝提交。最多 8 次尝试、同来源无进展停止；维护 Run 一次提交完成，无任务回答。
 - 本地文本模型实际 tokenizer/template/schema 计量通过 Runtime 注入，记录实际路由/窗口/输出预留；未指定 max_tokens 时实际请求采用 min(2048, capacity/4, serving default)。远程/多模态/custom extractor 明确回退字节；摘要选区仍采用字节预算，不夸大统一 token-meter 完成度。仅已确认 provider context overflow 恢复一次，摘要超限及无进展明确失败，业务工具不重放。
@@ -84,7 +2431,6 @@
 
 ### NXR-HARNESS-CONTEXT-PYTHON-PORT-20261005：独立上下文引擎 Python 移植
 
-- 2258 归档：`included`（源码实现）；已发布 0.1.4 / Build 2258。下方为开发历史，真实模型/UI 验收限制继续保留，详见本次发布回执。
 - 状态：`core_implemented_and_integrated`，整体移植仍在阶段性实施。新增 `ai2apps/context_engine` 独立标准库核心，固定参考 DeepSeek 5badb150，保留 MIT 来源/许可证。核心以不可变 Surface/Route、Meter、Summarizer、Store 为边界，提供压力/保留预算、精确路由策略选择、工具配对、选区/替换校验、异步事务取消与有界超限恢复；不导入 AI2Apps/MLX/数据库/模型 SDK。
 - 先隔离验收：`scripts/test_context_engine_isolated.py` 复制核心和测试到新临时目录，创建无 system-site-packages 的 venv，以 `-I` 运行并断言未导入 AI2Apps。31 项通过，之后才通过独立宿主桥接接入现有检查点的选区和缩减验证；业务工具无对接修改。宿主计量仍为明确字节回退，审计 token_count_exact=false。
 - 验证：独立 31 项、宿主相关 29 项通过（共 60 个不同用例）；宿主桥接原低压力 fixture 使用 5000 字节请求配 13000 字节数据而失败，修正为一致数据后通过，未放宽生产判定。Ruff 和 scoped diff check 通过。回执含测试数量/核心 SHA-256：`docs/context-engine-isolated-acceptance-2026-10-05.json`。详细合同/源码映射/重跑命令：`docs/ai2apps-context-engine-python-port.md`。
@@ -92,7 +2438,6 @@
 
 ### NXR-HARNESS-CHECKPOINT-COVERAGE-20261005：检查点原文与状态覆盖
 
-- 2258 归档：`included`（源码实现）；已发布 0.1.4 / Build 2258。下方为开发历史，真实模型/UI 验收限制继续保留，详见本次发布回执。
 - 状态：`implemented`。`context-checkpoint/v2` 为被覆盖历史中的用户消息保留有序原文、来源组/消息坐标与哈希；来源清单随摘要请求持久化，宿主元数据记录清单 hash，回放和投影核对覆盖一致性。模型漏写约束不再导致对应原文随压缩消失。原文优先于冲突的派生摘要，后续更正及引用数据边界保留，不自动提取/删除约束。
 - 确定状态：采用摘要后的普通模型请求从 Run/Step/Interaction 与当前计划重建状态块，包括计划版本、工具步骤 ID/状态/错误码、问答原文；审批响应内容不投影，工具完成不等于任务成功。状态随下一次模型请求持久化并记录独立 hash，不依赖摘要回忆。v1 检查点不直接采用，可在既有预算内重新生成 v2。
 - 预算：启用 checkpoint reader 时不再通过旧轮次裁剪回退腾空间；原文、状态和摘要必须一起满足字节上限，超限明确失败。禁用 reader 保留既有模式。未引入全 Session 约束注册表、通用语义遗漏检测或 Artifact/最终验收独立验证；保护范围限于已加载上下文，既有消息条数/1000 条读取边界之前的内容不保证覆盖。
@@ -102,7 +2447,6 @@
 
 ### NXR-HARNESS-CONTEXT-CHECKPOINT-20261004：长任务上下文检查点
 
-- 2258 归档：`included`（源码实现）；已发布 0.1.4 / Build 2258。下方为开发历史，真实模型/UI 验收限制继续保留，详见本次发布回执。
 - 状态：`implemented`。新增 `context-checkpoint/v1`：字节压力达 75% 后，分批摘要较早文本历史与完整工具轮次；保留 system、当前输入与最近两组原文。摘要走独立持久模型步骤，来源/锚点哈希一致且响应完整、结构/大小/实际缩减校验通过才投影；原消息和步骤不删除，摘要不成为系统指令或权限来源，摘要步骤不参与普通模型决策/最终回答。
 - 新增 `agent.read_context_checkpoint`，当前 Run/Session 内分页读取摘要调用的精确来源 JSON，通过 previous_checkpoint_step_id 回查更早来源；大结果原文继续走既有 reader，回读页不递归裁剪。模型侧过滤 reader 时停用检查点投影；Host 元数据不传给 provider。
 - 上限：每 Run 最多 8 次检查点尝试；摘要请求不超过字节预算 85%，输出请求最多 2048 token，接受文本最多 8192 UTF-8 字节，节省须超过 512 字节。摘要同样消耗 Run 步数、时间和 token 预算。无效摘要不在没有新执行进展时立即循环重试；provider 异常仍按现有可重试 Run 失败处理。
@@ -111,7 +2455,6 @@
 
 ### NXR-HARNESS-CONTROL-SEARCH-20261004：提问、Run 计划与搜索增强
 
-- 2258 归档：`included`（源码实现）；已发布 0.1.4 / Build 2258。下方为开发历史，真实模型/UI 验收限制继续保留，详见本次发布回执。
 - 状态：`implemented`。新增 `agent.ask_user`，沿用持久 Interaction 等待/恢复，支持建议选项及自由回答，恢复后返回配对工具结果，回答不授予权限；新增 `agent.read_plan`/`agent.update_plan`，当前 Run/Session 隔离、版本冲突保护、幂等更新、稳定条目 ID、最多一个进行中项，以事件持久化并在父/子 Run 卡片显示；计划完成不更改 Run 或 Todo 完成状态。
 - 搜索：新增 `workspace.glob`，增强 `workspace.search` 的逐行正则、文件模式、大小写、上下文行和隐藏文件选项；限制单文件/总字节、条目、文件数、深度、时间及正则执行时间，返回不完整原因。扫描不跟随符号链接，保留 Session 工作区边界，无数据库迁移或新依赖。
 - 验证：Agent、Services、Workspace、流式响应、可靠性、大结果及本轮测试共 89 个不同用例通过。合跑 88 passed + 1 旧工具清单断言失败；加入新增 glob 后针对清单及控制工具复测 4 passed。覆盖提问重启恢复、任意文本回答、伪造回答拒绝、计划版本冲突/幂等/跨 Session 拒绝，以及 glob/正则超时/隐藏文件/上下文/扫描上限/符号链接隔离。本轮新增/主要修改文件 Ruff、scoped diff check、Chat Jinja 与中英文 JSON 解析通过；扩展 Ruff 仍报告 workspace/repository.py 和既有 workspace 测试中未涉及的导入排序/分号问题，未扩大范围整理。退出时存在沙箱 No Metal atexit 提示，本轮不涉及 GPU 验证。
@@ -119,13 +2462,11 @@
 
 ### NXR-HARNESS-RESULT-REFERENCES-20261004：大结果按需回读与循环保护
 
-- 2258 归档：`included`（源码实现）；已发布 0.1.4 / Build 2258。下方为开发历史，真实模型/UI 验收限制继续保留，详见本次发布回执。
 - 状态：`implemented`。继续对照 DeepSeek 的 spill 与 tool-result pruning，使用现有 RunStep 原文为超过 32 KiB 的 JSON 工具结果提供 2048/1024 字符首尾预览、遗漏统计、SHA-256 和实际回读工具别名；新增 `agent.read_tool_result`，只允许当前 Run/Session 的已完成工具结果分页读取，每页最多 8192 Unicode 字符。仅当回读工具可用时缩减上下文，原始存储与工具配对不变，读取页不递归缩减。新增二至四步工具周期检测，输入和结果相同重复三轮后停止下一轮，参数/结果变化不触发。
 - 验证：Agent、Services、流式响应、第一轮可靠性与本轮测试共 65 个不同用例通过。合跑 64 passed + 1 循环测试等待超时（运行到第 10 个持久步骤）；调整测试等待预算以覆盖真实调度节奏后，本轮 7 项全部通过（18.54 秒），确认只分派六次工具、七次模型后 `repeated_tool_cycle`。Ruff 与 scoped diff check 通过。退出时仅有沙箱 No Metal atexit 提示，无 GPU 效果结论。100030 字节合成原文预览为 3605 字节（减少 96.4%），16000 字节请求预算内可回读中部文字。未重启 App-Dev Local、未发布；真实模型长任务与性能验收仍待完成。
 
 ### NXR-ALL-INSTANCES-RECORDING-20261004：全部实例准备录屏
 
-- 2258 归档：`included`（源码实现）；已发布 0.1.4 / Build 2258。下方为开发历史，真实模型/UI 验收限制继续保留，详见本次发布回执。
 - 状态：`implemented_and_verified`。取代 App-Dev/Test 白名单，所有 Helper 实例（含 Release/default）显示“准备录屏”。目标保持 1600×900 和屏幕左上角，不启动录制。
 - Helper 使用标准 InstanceID 校验；Shell 仅消费自己 run 目录下且 instance_id 与自身一致的命令，保留跨实例隔离。
 - 通用 apply-screen-recording-shell.py 由 Dev 和 Release 公共构建入口统一应用到打包 Shell；App-Dev/Test 继承公共入口，不再单独注入。Release 不启用开发源码 overlay/热挂载。
@@ -143,75 +2484,114 @@
 
 ### NXR-HARNESS-RELIABILITY-20261004：长会话与执行恢复
 
-- 2258 归档：`included`（源码实现）；已发布 0.1.4 / Build 2258。下方为开发历史，真实模型/UI 验收限制继续保留，详见本次发布回执。
 - 状态：`implemented`。基于 DeepSeek Harness 源码对照完善本地 General Agent：按当前输入截止位置读取最近历史、按幂等键定位生成输入、固定委派父输入锚点；硬中断模型步骤保存 cancelled 尝试并释放 action key；默认 512 KiB 请求字节预算仅裁剪完整旧轮次，保护 system、当前输入与本 Run 工具链，超限明确失败；记录请求 hash/字节数/策略版本/Step ID；只读工具 schema 拒绝允许最多三次模型纠正，保持 FAILED 步骤和工具结果配对。沿用宿主身份、权限、SQLite 与副作用不确定处理。尚未实现精确 token 窗口、摘要压缩或工具并发。
 - 验证：Agent/流式响应与初版新增用例 43 passed；最终新增用例/存储/Services 43 passed（共 81 个不同用例）。覆盖 1000 条边界、后续输入隔离、生成输入幂等、委派锚点、硬中断恢复、审计 hash、字节裁剪与纠错上限；Ruff、scoped diff check 通过。扩展存储套件首次因沙箱 MLX/Metal 不可用中止，在本机 Metal 可用环境重跑全部通过。待固定 App-Dev Local 重启及真实长任务实机验收，未发布 Desktop。
 
 ### NXR-AGENT-REVIEW-PROGRESS-20261003：流程调整等待与结果提示
 
-- 2258 归档：`included`（源码实现）；已发布 0.1.4 / Build 2258。下方为开发历史，真实模型/UI 验收限制继续保留，详见本次发布回执。
 - Status: implemented. AI 调整流程时增加覆盖整个 Mini-Entry 侧栏内容的固定等待层、等待圆圈和说明，底层内容 inert 防止重复操作；成功显示新版本和步骤数量变化，失败保留修改意见并展示接口与编译错误详情。结果持续显示到用户关闭，支持中英文及减少动态效果偏好。
 - Validation: JavaScript 语法检查与参数/导航确认回归通过。模板与静态资源更新，无需 Local 重启或 App 重建。原失败请求模型 HTTP 200 但未产生新版，历史日志未留具体校验错误，不推断原因；真实重试已生成有效 v2（5→3 步）。本项未发布 Desktop。
 
 
 ### NXR-AGENT-REVIEW-TEST-POSITION-20261003：试运行按钮归入 Review
 
-- 2258 归档：`included`（源码实现）；已发布 0.1.4 / Build 2258。下方为开发历史，真实模型/UI 验收限制继续保留，详见本次发布回执。
 - Status: implemented. 将“先试运行”从编译 Review 上方移入 Review 卡片内，位于步骤和 Source/IR 查看区域之后、修改意见与审核操作之前。保留现有按钮 ID、可见性逻辑、运行版本和参数提交行为。
 - Validation: HTML 结构检查通过，按钮 ID 唯一、属于 Review、顺序在步骤之后和修改意见之前。仅模板位置调整；当前 Sidebar 刷新后生效，无需 Local 重启或 App 重建。未执行浏览器任务或发布 Desktop。
 
 
 ### NXR-AGENT-PARAMETER-VISIBILITY-20261003：探索参数提取遗漏和审核入口
 
-- 2258 归档：`included`（源码实现）；已发布 0.1.4 / Build 2258。下方为开发历史，真实模型/UI 验收限制继续保留，详见本次发布回执。
 - 状态：`implemented`。参数提取对齐执行器的自然语言引号输入回退；审核页将参数区放在步骤前，空时明确提示并提供从现有步骤提取参数按钮。提取通过 actor 隔离与 revision 校验，重新编译并使旧审核失效，保留已有输入定义和可选状态。待审核 Recipe URL 保存精确 recipe_id，刷新时恢复该记录，不自动挑选其他 Recipe。
 - 中文引号输入编译与提取幂等回归已补齐；Python 参数/平台 23 passed，Node 相关 31 passed，Ruff、JS 语法和 scoped diff 通过。固定 App-Dev Local 已重启，原四步“打开Google，搜索OpenAI” Recipe 经认证提取接口返回 200，生成 query 默认 OpenAI、版本 v2，有效审核页实机显示“参数”“本次运行参数”及 QUERY 输入框。未通过 Review、保存为 Agent 或发布。搜索按键授权也支持已恢复 Recipe 的任务描述。
 
 
 ### NXR-AGENT-NAVIGATION-BOUNDARY-20261003：探索导航范围和输入目标修复
 
-- 2258 归档：`included`（源码实现）；已发布 0.1.4 / Build 2258。下方为开发历史，真实模型/UI 验收限制继续保留，详见本次发布回执。
 - 状态：`implemented`。URL 范围检查改为解析协议、hostname、端口、路径 glob，修复 Google 根地址省略末尾 / 时被 origin/** 拒绝；探索保留已请求或已确认的导航 origin，不随当前页面反复覆盖授权范围。输入步骤解析仅选择可输入控件，避免同名搜索链接/按钮被当成输入目标。搜索输入支持替换原文本及原生 BiDi Enter 提交；单独提交不要求再次提供文本且保留现有查询，搜索回车描述即使被模型标为 click 也执行真实按键。仍检查未授权导航、域名、协议、端口和敏感交互。
 - 文件：`ai2apps/web/static/js/agent_mini.js`、`ai2apps/web/static/js/browser_bidi_client.js`。Node 参数/导航/确认/范围/重连/输入键盘 31 passed，JS 语法与 scoped diff 通过。静态源码修改，只刷新 Sidebar，无需重建或 Local 重启；固定 App-Dev 实测从 Google Images 返回普通 Google 搜索，导航成功，提取 19 条结果并进入有效 Review，无范围限制。追加键盘恢复有定向回归，未声称模型文字即真实提交成功。未保存或发布 Agent。
 
 
 ### NXR-AGENT-PARAMETERS-20261003：制作与运行 Agent 的输入参数
 
-- 2258 归档：`included`（源码实现）；已发布 0.1.4 / Build 2258。下方为开发历史，真实模型/UI 验收限制继续保留，详见本次发布回执。
 - 状态：`implemented`。制作界面新增参数名称、显示名称、类型、默认值、必填及步骤绑定；能力间隔离 Schema，修改参数名同步绑定，已引用参数禁止直接删除。步骤预览/试运行及 Recipe 试运行填写并传递 input，数字/布尔类型保真，缺失参数阻止执行。探索沉淀将成功 input.arguments.value 和已识别搜索引擎 URL 的 q/wd 查询提取为参数，搜索使用 query，保留原值为默认值，目标和站点范围保持固定；参数 Schema 随 Source/IR 和能力提交持久化。补齐中英文。
 - Python 参数与平台回归 21 passed，Node 参数/导航/范围/重连 25 passed，Ruff、JS 语法与 scoped diff 通过。直接搜索 URL 参数化编译有效，URL 插值对查询值编码而保持站点范围。通过固定 app-dev Helper 重启 Local 加载最终实现；实机确认参数编辑、默认值回填、本次运行输入和步骤绑定控件可见，未保存验收草稿或发布 Agent。未发布 Desktop/Package/Cloud。
 
 
 ### NXR-AGENT-SEARCH-CONFIRMATION-20261003：普通搜索输入与提交免重复确认
 
-- 2258 归档：`included`（源码实现）；已发布 0.1.4 / Build 2258。下方为开发历史，真实模型/UI 验收限制继续保留，详见本次发布回执。
 - 状态：`implemented`。此前前端逐动作确认和服务端 submit 关键词误将 Google 搜索输入当成提交操作。用户任务明确要求搜索时，在 Google/Bing/百度的准确域名上，搜索框输入与搜索按钮点击直接执行；账号、验证码、支付、发布等目标不适用此例外，执行阶段仍检查目标与敏感输入策略。
 - 文件：`ai2apps/web/static/js/agent_mini.js`、`ai2apps/tests/agent_navigation_confirmation.test.cjs`。导航/搜索确认/范围/重连 Node 21 passed，JS 语法通过。纯静态源码修改，刷新 Sidebar 生效，无需重启 Local 或重建 App。实机侧栏刷新未完成：验证时用户切换到 Imagine Studio，未继续干扰其工作。
 
 
 ### NXR-AGENT-PRESENTATION-RECOVERY-20261003：AI 展示校验恢复与诊断
 
-- 2258 归档：`included`（源码实现）；已发布 0.1.4 / Build 2258。下方为开发历史，真实模型/UI 验收限制继续保留，详见本次发布回执。
 - 状态：`implemented`。统一 Run/Recipe 的展示生成路径，模型展示 JSON 无效时携带具体校验错误修复一次，修复预算 3000 tokens；校验仍严格拒绝不存在路径或可执行内容。保存不含输入值的结构化校验原因、请求 ID、模型 ID、finish_reason，前端保留并显示错误详情。实机复现原 19 条搜索结果：DeepSeek V4 Flash 返回不以 $ 开头的 data_path，finish_reason=stop；一次自动修正后返回 $.items，展示描述通过校验并返回 200。根因是此前 JSON Schema 没有表达 Python validator 的路径约束；补齐 data_path/field.path pattern 与说明，使模型请求契约与运行校验一致。最终 Schema 回归 22 passed，导航/范围/重连 Node 19 passed，Ruff 和 scoped diff check 通过。通过固定 app-dev Helper 重启 Local 后，原 19 条结果再次实测返回 200，生成 table 展示与合法 $.items 路径；当前 Local 已加载修复。
 
 
 ### NXR-AGENT-MENTIONED-SITE-20261003：用户明确提到的网站免重复确认
 
-- 2258 归档：`included`（源码实现）；已发布 0.1.4 / Build 2258。下方为开发历史，真实模型/UI 验收限制继续保留，详见本次发布回执。
 - 状态：`implemented`，固定 App-Dev 已实机验收。探索模式 open 的目标与任务明确给出的网址/域名或已识别网站名称一致时直接导航；未提及网站和其他交互仍保留确认。明确授权的 open 只执行原生导航，不因服务端文本关键词误判重复询问。网址匹配精确 hostname（允许 www），不接受 lookalike 域名；Google/谷歌、Bing/必应、百度、Wikipedia/维基百科等名称解析到固定网站。
 - 文件：`ai2apps/web/static/js/agent_mini.js`；Node 定向 7 passed，JS 语法通过；实机 Open Google 从新标签页直接打开 Google，未出现确认弹窗，1 步成功并进入 Review；导航/范围/重连 Node 合计 19 passed。Python Agent Mini 因同期其他改动的 SYSTEM_APP_MANIFESTS 缺少 ai2apps.todo 本地化映射而未能收集，未计作通过。前端刷新 Sidebar 生效，无需重建或重启 Local。
 
 
 ### NXR-AGENT-NEWTAB-SCOPE-20261003：新标签页探索导航范围修复
 
-- 2258 归档：`included`（源码实现）；已发布 0.1.4 / Build 2258。下方为开发历史，真实模型/UI 验收限制继续保留，详见本次发布回执。
 - 状态：`implemented`，App-Dev 已实机验收，待下一版 Desktop 纳入。Agent Mini 的 pageScope 仅对 HTTP(S) 页面生成 origin 范围，修复 about:newtab/about:blank 产生 null/** 导致首步导航误判 site_scope。open 检查目标 URL 范围而非起始页，预览也检查目标；页面交互仍要求当前页面处于授权范围。
 - 文件：`ai2apps/web/static/js/agent_mini.js`，Node 定向 7 passed，Python Agent Mini 16 passed、JS 语法与 scoped diff check 通过。固定 App-Dev 实测 Search Google for OpenAI IPO date：从 about:newtab 导航成功，inspect 与 extract_list 成功，提取 11 条结果，3 步沉淀并编译有效、等待 Review；未保存/发布 Agent。探索模式既有逐动作确认仍保留，本次实测确认了一次 open。纯前端修改，刷新 Sidebar 即可，无需重建或重启 Local。
 
 
 ### NXR-TODO-MVP-20261003：内置 Todo 项目树与执行调度
 
-- 2258 归档：`included`（源码实现）；已发布 0.1.4 / Build 2258。下方为开发历史，真实模型/UI 验收限制继续保留，详见本次发布回执。
+- 2026-10-09：桌面 Todo 行内进度滑块旁新增实时百分比，打开即显示当前滑块值，input 时同步更新并提供 aria-valuetext；保留 5% 步进和松手保存关闭行为。验证：JS 语法和 diff 检查通过。纯前端刷新生效。
+
+- 2026-10-09：桌面 Todo 行内优先级/状态/进度浮层改为以触发控件水平居中，按项目列表左右边界限制位置和宽度，避免覆盖右侧详情；底部不足时向上弹出。验证：JS 语法和 diff 检查通过；未做实机截图复验。刷新页面生效。
+
+- 2026-10-09：修复桌面 Todo 优先级由 span 改为 button 后被通用按钮 padding/font/border 覆盖造成的徽标变形与文字下沉；提高行徽标选择器优先级，固定 22×22、border-box、零 padding、line-height 1 和 flex 居中，保留等级配色及快捷菜单，不增加行高。验证：样式层叠检查和 diff 检查通过；未做实机截图复验。刷新页面即可。
+
+- 2026-10-09：补齐 Todo 移动端中英双语，模板与动态 UI 跟随 current_lang/html lang；覆盖创建/搜索/编辑/快捷菜单/高亮/状态/进度/Toast/确认提示及执行状态，英语操作按钮允许换行避免窄屏溢出。桌面修正请求失败固定中文及 Activity 字段标签。沿用既有简体中文/英语策略（其它非中文语言回退英语），不翻译用户内容与服务端原始错误。验证：3 项中英模板渲染测试（英文无残留中文）+14 项移动 API 测试、9 项 Node 回归、JS 语法和 diff 检查通过；未做真机语言切换验收。前端/模板刷新生效，无需重建。
+
+- 2026-10-09：Todo 新增 30 天 Activity：SQLite 触发器与项目创建/修改/删除同事务记录，覆盖 Store、移动端、Chat/Codex 和周期调度写入；忽略只有时间戳变化的保存，记录字段前后值、当时路径、启用时间，写入/查询清理过期历史并按 owner 隔离。导入任务改用 UPSERT，保留更新前记录。新增分页 /activity 查询，支持目录/项目子树、1–30 个日历日与 IANA 时区；目录移动也可从原目录查到。Chat list_activity 默认当前目录，明确项目问法才限子树，提示不能从 updated_at/执行记录推断历史；详情增加最近活动及分页。验证：初轮 98 项 Todo/移动/迁移/Activity 后端测试通过，增补后 3 项 Activity（含 API 隔离/时区）通过，7 项前端 action/autosave 回归、JS 语法、diff 检查通过。未做真实模型/桌面端到端复验。需重启 App-Dev Local 并刷新 Todo 生效；不回填过去历史。
+
+- 2026-10-09：桌面 Todo 项目行的优先级、状态、百分比增加可聚焦快捷编辑按钮；锚定浮层选择后自动保存，进度滑块按 5% 松手提交。复用字段保存队列和 revision，归档/回收站禁用，未保存详情草稿时提示先保存；浮层支持 Escape/外点/滚动关闭，保留原行高及拖拽边界。验证：7 项 action/autosave 回归、JS 语法、diff 检查通过；未做桌面交互实测。纯前端，刷新页面生效。
+
+- 2026-10-09：移动 Todo 项目行支持点击优先级/状态弹出选项、点击百分比弹出 5% 步进滑块；选择或滑块 change 后直接保存并关闭，沿用 revision 冲突检查并同步状态/进度，不修改排列或高亮。标题独立进入详情，避免嵌套按钮。验证：14 项移动 API 测试、2 项树结构测试、JS 语法和 diff 检查通过；未做真机交互复验。刷新移动页面即可。
+
+- 2026-10-08：移动 Todo 的新建目录、新建项目、搜索项目改为同一行按钮；搜索按钮打开原生 dialog，提交后按标题/内容筛选，取消不改变当前筛选，展示当前关键词并提供清除入口。验证：JS 语法、2 项树形/搜索路径测试及 diff 检查通过；未做真机视觉复验。刷新移动页面生效，无需重启或重建。
+
+- 2026-10-08：移动 Todo 列表优先级移至任务标题前，以 `[U]` / `[S]` / `[A]` / `[B]` / `[C]` / `[D]` 显示；副标题保留状态和进度，避免重复。验证：JavaScript 语法和 diff 检查通过。纯前端变更，刷新移动页面即可。
+
+- 2026-10-08：移动 Todo 的刷新/保存等 notice 改为底部固定 Toast，不占文档流、不阻挡点击；3 秒自动清除，新提示重置计时。保留 aria-live 状态播报并适配底部安全区。验证：JavaScript 语法及 diff 检查通过；未做真机复验。纯前端变更，刷新页面即可。
+
+- 2026-10-08：修正移动 Todo 高亮底色侵入树形缩进区域：底色从整行容器移到任务卡片，沿用普通卡片的边框、宽度与位置，展开按钮和树连接线区域不再着色。验证：diff 空白检查通过；未做真机复验。纯 CSS 变更，刷新移动页面即可，无需重启或重建。
+
+- 2026-10-07：移动 Todo 补齐 highlight 读取、创建和更新；列表使用与桌面一致的六种浅色整行底色，详情提供无文字色块及清除入口（保留无障碍名称），已有任务选择后立即保存颜色且不提交其它表单草稿。旧移动客户端遗漏字段时保留已有颜色，沿用 owner/revision 校验与稳定顺序。验证：14 项移动 API 测试、2 项树结构 Node 测试、JS 语法及 diff 检查通过；未做真机视觉验证。需重启 App-Dev Local 并刷新移动页面，无需重建 App。
+
+- 2026-10-07：增强 Todo Emoji 生成提示词；AI 回答按 Unicode grapheme 提取首个未被排除的完整 Emoji，兼容说明文字、多候选、肤色/组合表情、旗帜和键帽，保留手动输入严格校验与最近历史去重。无可用新 Emoji 时在原 90 秒预算内最多请求三次。验证：`ai2apps/tests/test_todo.py -k emoji` 23 项通过；未执行真实模型端到端验证。Python API 变更需重启 App-Dev Local 后生效，无需重建 App。
+
+- 2026-10-07：移动 Todo 列表显示加粗进度百分比（未开始且 0% 隐藏），编辑页增加 0–100 整数输入与聚焦展开的 5% 滑块，松手失焦隐藏；状态/完成操作联动进度，仍按保存提交。移动 API 开放受校验 progress 字段，旧客户端未传进度时保留原值，沿用 revision/owner 边界。验证：移动 Todo API 13 项（含进度、完成、重开、范围与旧客户端）、树形 Node 2 项、JS 语法通过。需 Local 重启并刷新手机页面，未进行真机触控验收。
+
+- 2026-10-07：移动 Todo 列表由平铺改为父子树，按同级 position 排序，增加逐级缩进、连接线、独立展开/收起按钮与 aria-level；搜索保留并展开祖先路径，未完成子项的已完成父项灰色显示，深层允许水平滚动。移动只读字段补充 position，编辑权限不扩大。验证：Node 树顺序/多级/收起/搜索路径 2 项、移动 Todo API 9 项、JS 语法通过。需要 Local 重启读取 API 字段并刷新手机页面；未做真实手机视觉验收。
+
+- 2026-10-07：Run 页执行器选择接入已有字段自动保存队列，切换即保存 executor，沿用 revision 串行校验和错误提示，保留其他未保存草稿。验证：Node 自动保存 5 项及 JS 语法通过。纯前端刷新生效。
+
+- 2026-10-07：修复 Todo Emoji 备用模型调用使用虚构 ai2apps.internal origin 的问题，沿用已认证请求 base_url 并转发 Origin/sec-fetch-site，保留同源校验；上游错误保留 HTTP 状态与有限 message，前端解析统一 error.message 而非显示整段 JSON。证据：dev server.log 中同次内部调用连续 403，外层被转换为通用 502。验证：Emoji 15 项测试通过（含当前 Local origin 转发/上游错误回归），JS 语法通过。需重启 Local 刷新；未重放真实付费模型请求。
+
+- 2026-10-07：Todo 创建对话框标题/内容加入 ASR 语音输入，复用 StudioAudioRecorder 和 /v1/audio/transcriptions；点击先 ensure audio.speech_recognition，缺模型走 Todo 专属 ACPF 配置（Qwen3 ASR 0.6B），已配置直接录音，停止后追加可编辑文本，不自动创建。关闭取消录音与转写并隔离迟到结果，转写中阻止提交，保留手动输入，120 秒录音上限。ACPF 浮层挂到已打开 dialog，避免被顶层模态遮挡。验证：Node 语音输入/缺模型保护 2 项与 JS 语法通过；真实麦克风与安装验收待进行。新增 provisioning profile 需重启 Local 读取并刷新页面。
+
+- 2026-10-06：修复编辑 Todo 项目导致同级显示顺序漂移：save 改为 ON CONFLICT 原位更新，保留 SQLite rowid，兼容旧数据相同 position 的稳定次序；同目录/父节点普通保存强制保留既有 position，排序仅由 reorder 修改；新建或迁入同级末尾。验证：旧重复排序值编辑、拖拽后编辑 2 项新增测试及 Todo/导入导出回归合计 75 项通过。Python 变更需重启 Local 生效，不重排现有数据。
+
+- 2026-10-06：修复确认完成/仍需继续及打开 Codex 按钮事件注册在 Todo IIFE 外部导致 safe 未定义、处理器未绑定的问题；将两个处理器纳回模块作用域。新增保留真实初始化尾部与闭包边界的点击测试，验证 review 携带 revision、Desktop open 发往系统接口。验证：Node 点击 2 项及当前执行 7 项通过，JS 语法通过。仅前端刷新生效，无需新增后端重启。
+
+- 2026-10-06：Todo 左/右栏默认宽度由 280/360px 加宽至 340/420px；增加独立拖动分隔线，指针捕获支持跨 iframe 拖动，松手保存 localStorage，双击/Home 恢复单侧默认，方向键调整。窗口不足时按比例收缩并保留中栏 320px，不覆盖偏好；收起栏和移动窄屏隐藏拖柄。验证：Node 布局交互/持久化/重载/重置/宽度约束 2 项、JS 语法通过。仅前端刷新生效；宽度偏好按当前浏览器 origin 保存，未作跨 Local 端口迁移。
+
+- 2026-10-06：补齐执行结果人工确认：最新 ended 执行支持确认完成/仍需继续，同一事务记录 review 决策、操作者与时间并更新项目；确认完成设 100%，继续设进行中且原 100% 重置 0%，不重跑。校验 owner、revision、最新执行与归档状态，重复同决策幂等。确认后移除行内待确认，当前执行及历史展示审核结果；保留 AI 原始报告。验证：新增存储测试 4 项、已有 Todo Python 63 项、当前执行 Node 7 项通过；JS 语法通过。需要重启 App-Dev Local 并刷新页面，原生验收尚未进行。
+
+- 2026-10-06：修复共享 Mini-App Chat 频道初始化缺陷：新频道同时写入 iframe 查询参数，避免恢复旧 iframe 后仅 hash 导航保留旧 JS 频道而导致 host timed out；宿主按绑定 iframe 的当前 contentWindow 校验消息和发送更新，拒绝旧窗口。验证：Node Mini-Chat 8 项、Python Mini-App Chat/Chat Mini 9 项及 JS 语法检查通过。前端刷新生效；尚未在用户原生窗口复现确认。
+
+- 2026-10-06：修复 Todo Mini-Chat 无法取消行高亮：项目摘要和创建/更新工具暴露 highlight 枚举，空字符串清除；明确区分持久高亮与焦点。查询/读取/更新支持显式 scope=directory，用于用户明确指定当前目录的请求，默认保持选中项目子树范围，聚合视图禁止隐式扩展目录；保存不写入 scope，保留其他字段及 revision 校验。验证：Mini-Chat Node 测试 6 项通过，todo.js 语法检查通过。仅前端变更，刷新 Shell 页面生效；未进行真实模型对话验收。
+
+- 2026-10-05：新增 Todo → Codex Desktop App Server 接入（原生 Local 重启后验收待完成）。执行页可选本机项目目录和已有会话，或选择执行时新建；服务端校验目录归属/版本并保存绑定，设置 codex_desktop 执行器。使用统一三名额队列；新会话 ID 自动回填、已有会话 resume，流式输出/步骤与单次授权/结构化问答显示在当前执行区，等待保留名额，结束标记 ended 待确认，取消 interrupt 后 unsubscribe；未知交互显式失败。仅已连接 Todo 的用户且有 Coder 权限可用，不读取 Desktop 私有数据库或借用内部工具凭据。目录列表来自会话 cwd，不冒充 Desktop 项目 ID；同一会话不要在 Desktop 与 Todo 同时执行。验证：Python 83 项、Node 27 项回归；本机真实 App Server 读取 22 个 AI2Apps 会话并匹配当前会话；ephemeral/read-only/no-tools 临时 turn 完成且精确返回 TODO_CODEX_OK。已在原生 App-Dev 查看新弹窗，运行实例仍未重启导致新路由 Not Found；已请用户通过 Helper 重启，未修改原任务或发送到其已有会话。
+
 - 2026-10-05：Todo 普通项目行选中时增加与高亮行一致的 2px 内描边，统一选中标识，保持行高及布局不变。验证：git diff --check 通过。
 
 - 2026-10-05：将 Todo 行高亮入口合并到现有六点拖拽指示，移除独立下拉控件；点击展开纯色块浮层（含斜线清除项，无可见文字），保留拖拽排序，拖拽后抑制误点击；支持键盘打开、方向键选择、Escape 关闭，以及点击外部/滚动关闭。颜色选项保留无障碍名称。验证：Node 回归 27 项通过，JS 语法检查通过。
@@ -306,7 +2686,6 @@
 
 ### NXR-BIDI-NATIVE-RECOVERY-20261003：原生 Shell BiDi 启动与自动恢复
 
-- 2258 归档：`included`（源码实现）；已发布 0.1.4 / Build 2258。下方为开发历史，真实模型/UI 验收限制继续保留，详见本次发布回执。
 - 状态：`implemented`，固定 App-Dev 已重建并完成连接验收，待下一版 Desktop 纳入。原生 AceFox Shell 入口补齐每次启动独立的 256-bit bearer、loopback 自动端口与 WebDriver BiDi 参数，避免绕过旧 Swift Launcher 后遗留失效记录。
 - 受信任 Shell 从实时 RemoteAgent 状态原子发布当前实例 shell-automation.json，写入凭据前设置 0600；每秒核对并修复缺失/失效记录。Gateway 有界重读当前实例记录，404 失效 Session 重新建立；客户端建立连接失败时重新获取一次性票据并重连一次，401/403 不重试，不重放已提交浏览器动作。Chat/Agent 清除断线客户端，下一次操作重新连接。
 - 同一 Gecko buildID 的开发资源覆盖会被旧启动缓存掩盖；构建入口给嵌入 Shell 设置 Development 标记，原生入口仅对该标记加入 -purgecaches，确保 App-Dev 的 Shell 覆盖实际生效。
@@ -317,14 +2696,12 @@
 
 ### NXR-BROWSER-LAUNCH-SPINNER-20261003：浏览器启动等待图标
 
-- 2258 归档：`included`（源码实现）；已发布 0.1.4 / Build 2258。下方为开发历史，真实模型/UI 验收限制继续保留，详见本次发布回执。
 - 状态：`implemented`，待下一版 Desktop 纳入。AI Browser 启动按钮改用独立 CSS 等待圆圈，忙碌时隐藏外链图标、仅旋转圆圈，结束后恢复静态外链图标。避免 Lucide 将 i 替换为 SVG 后动态图标名称未及时更新，导致外链图标旋转。
 - 文件：`ai2apps/web/templates/system_apps/ai_browser.html`、`ai2apps/web/static/css/ai_browser.css`。移除禁用按钮内所有 SVG 旋转的选择器；模板与 CSS diff 空白检查通过。仅静态变更，刷新 AI Browser 页面生效，无需重建或重启 Local；未完成实机动画验收。
 
 
 ### NXR-SUBTITLE-LLM-CORRECTION-20261003：字幕 LLM 修正与规则 Profile
 
-- 2258 归档：`included`（源码实现）；已发布 0.1.4 / Build 2258。下方为开发历史，真实模型/UI 验收限制继续保留，详见本次发布回执。
 - 状态：`implemented`，待 Host 更新和 Media Voice Studio Suite 发布。字幕提取后的校对区提供可选修正，使用系统 Standard tasks 模型，按有界批次生成严格一一对应的文本建议；用户审阅确认后才修改字幕，时间轴、说话人、段落顺序不变，修改文本清除旧逐字对齐。
 - 修正规则支持保存、选择、更新、删除 Profile，复用可信 Host 中 owner/provider/resource 隔离的本地存储，独立于任务草稿，重置素材不删除 Profile。Opaque Package frame 经受校验的 Host 通道请求 LLM，不直接访问认证或浏览器存储。
 - 新增 Host JSON API 与 Bridge 操作；需重启 Local 并刷新页面，Package UI 改动需后续发布 Suite，无需 Runtime 更新。本次不发布 Package、不读取 Cookie。
@@ -337,7 +2714,6 @@
 
 ### NXR-AUDIOBOOK-SELECTED-DIALOGUE-20261002：完整对话仅合并勾选片段
 
-- 2258 归档：`included`（源码实现）；已发布 0.1.4 / Build 2258。下方为开发历史，真实模型/UI 验收限制继续保留，详见本次发布回执。
 - 状态：`implemented`，待下一版 Desktop 纳入。Audiobook 每个 Line 卡片前增加默认选中的复选框；完整对话只提交勾选的 segmentIds，按工程原顺序复用或生成音频并合并，未选片段不审批、不生成、不合并。
 - 选择状态按工程保存在现有 Mini-App 草稿中，新片段默认选中；显示已选数量，空选禁用生成且函数再次保护，生成期间禁止修改选择。复选框不触发卡片展开或拖拽。
 - 验证：Voice Studio scope 测试覆盖默认全选、排除片段、工程隔离、草稿恢复、生成请求、未选片段状态保留、空选保护和新增片段；JavaScript 语法检查通过。纯前端变更，刷新页面生效，无需 Runtime 或 Package 更新；尚未实机点击验证。
@@ -5244,3 +7620,576 @@ Runtime profile、安装行为或发布流程的工作，都必须在完成该�
 
 - Status: Package 0.1.3 published, Snapshot 248; Desktop Host rollout remains pending. Nine-language names/UI and audio slot recording/preview included. Existing Publisher/key retained. Public signed download and clean-instance installation passed; four Node suites and 31 Python tests passed. Receipt: docs/ai2apps-avatar-suite-release-2026-10-05.md.
 - Host recording bridge, sandbox Blob media CSP and localized Studio labels remain separate Desktop changes; publishing this Package does not publish the Desktop.
+
+### Compact Gallery picker asset cards (2026-10-05, NXR-GALLERY-PICKER-COMPACT-20261005)
+- Status: implemented. Shared Gallery picker matches Gallery Mini-Entry with a compact responsive square thumbnail grid, image/video previews, video badges, audio/file icons, single-line ellipsized names and stable selection borders. Hover or keyboard focus shows the full name in a black tooltip with white text, constrained to the viewport and hidden on scroll or reload. Static version gallery-picker-3; no App rebuild needed.
+- Validation: JavaScript syntax and all five existing Gallery picker regressions passed. Refreshed the live app-dev Browser Sidebar and visually verified the three-column square grid, single-line names, black/white full-name tooltip and loaded video frame preview. No attachments were added; the existing prompt was preserved.
+
+### Agent attachment preview cards (2026-10-05, NXR-AGENT-ATTACHMENT-CARDS-20261005)
+- Status: implemented. Agent composer attachments now use compact 96px square image/video previews, audio/file icons, single-line filenames, black/white full-name tooltips and top-right remove buttons. Existing owner-authenticated Gallery content references and attachment submission remain unchanged. Static version agent-attachment-cards-12; no rebuild required.
+- Validation: JavaScript syntax passed. Live app-dev Sidebar refreshed; original prompt and selected Gallery attachment restored and visually verified as an image thumbnail with single-line name and top-right remove button.
+
+### Requested Weibo navigation (2026-10-05, NXR-WEIBO-NAVIGATION-20261005)
+- Status: implemented. Agent exploration recognizes 微博/Weibo as explicit navigation intent for weibo.com, weibo.cn and m.weibo.cn (including normalized www). Opening these requested sites no longer triggers generic confirmation merely because the task/description mentions publishing. Other operation confirmation rules remain unchanged. Static version agent-weibo-navigation-13.
+- Validation: all 10 navigation confirmation tests pass, including publishing-preparation wording and lookalike host rejection. Existing active exploration was not refreshed or resumed; updated code loads on the next Sidebar refresh.
+
+### WebAgent login assistance and shared enhanced DOM (2026-10-05, NXR-WEBAGENT-LOGIN-DOM-20261005)
+- Status: implemented in source. Exploration now sees bounded cleaned DOM and element references instead of counts alone. The Sidebar and browser.snapshot share one snapshot script (visible HTML, Shadow DOM, stable refs, sensitive field masking); observation, analysis and target resolution use it through authenticated WebDriver BiDi. No new semantic browser transport.
+- Login entry is permitted as a prerequisite of requested publishing; QR/credentials challenges enter needs_user. Manual continue and same-site login-change monitoring resume with original goal, attachments and evidence. Merely opening a site cannot complete a publishing task; actual publish/send action is required and the planner must verify visible success.
+- Validation: 36 scoped Python tests passed, navigation/login monitoring Node tests passed, shared snapshot regression added; source syntax checks passed. Live app-dev Local restart and authenticated Weibo end-to-end acceptance pending; no post published during verification. Python changes require exact app-dev Local restart; no App rebuild required.
+
+### NXR-H3-AVATAR-TIMELINE-20261005
+
+- 2026-10-06 completed model release: H3 0.10.0 accepted SHA 5d87670df8f672497f6129c4c400428688dbed97447f74e56877255206cc05d9 formally published, submission 1701c811-203a-469b-9227-b1a56f19b90e, Snapshot 255. Anonymous complete download and signatures verified; previous Cloud blocker resolved through audited withdrawal. Added Host ACPF Turbo/Base50 profiles requiring Runtime >=1.8.8, H3 >=0.10.0 and 64 GiB; 23 Avatar/Canvas regressions and scoped diff check passed. Model Package is shipped; this Host profile change must be included in the next Desktop release. No Desktop rebuild/publication this turn. Existing Mini-App can discover installed H3 models without a Mini-App update. Cookie authorization for this release is now exhausted.
+
+- Final local accepted artifact: H3 0.10.0 SHA 5d87670df8f672497f6129c4c400428688dbed97447f74e56877255206cc05d9, 215634 bytes. Both installed portrait models infer successfully; restart/uninstall/common Avatar discovery pass. Cloud corrected submission twice returns internal_error, old approved unpublished candidate cannot be rejected by current review endpoint. No corrected submission listed; Cloud handoff: docs/ai2apps-h3-avatar-cloud-publication-blocker.md. ACPF entries remain pending public release. Developer contact-sheet inspector now bounds sampling for one-second clips. Full receipt: docs/ai2apps-h3-avatar-package-0.10.0-release.md.
+
+- Publication resumed with explicit Dev Cookie authorization. Turbo and Base50 auxiliary Distributions are published and signature verified (checkpoint Index 106/107). Initial Package publication correctly rejected a Base50/Distribution identity mismatch; retained submission 32a6d1c0-acdc-44f5-bf09-54865f251a5b remains unpublished/approved (Cloud refuses rejection outside review-pending). Corrected source now uses separate model-bound Distributions with identical pinned weight bytes; both installed-model inferences are under final validation. Package ID/version/Publisher unchanged.
+
+- Packaging audit: added portrait refinement components to the source SBOM, pinned code provenance and removed a dangling attribution file reference. Signed weight assets and published model declarations remain unchanged; final packaging still awaits the new Distribution publication.
+
+- 2026-10-05 latest: end-image anchored 60-second motion now retains lighting; Worker enables it. H3 1569.60 s / 29.980 GB, automatic refinement on Runtime 1.8.8 144.33 s / 4.369 GB. Exact 60-second audio/video, four speech intervals all -1 SyncNet frame, confidence 4.467–5.710. Base50 refined short also -1 frame. 26 Worker plus 72 common/timeline/media tests passed. Dual-source auxiliary Distribution signed and fully re-downloaded (1,536,290,232 bytes); not yet published. Scoped Cookie authorization pending because Installation sessions unavailable. Final Package build/install/publication and ACPF activation remain pending; old local native-only archive must not be published. No Desktop/Cloud deployment.
+
+- Latest long acceptance: 60-second/1440-frame H3 motion completed, PTS exact, improved seams; late lighting drift still fails visual acceptance. Actual installed Runtime 1.8.8 auto refinement completed in 161.12 s / 4.369 GB peak. Four speech intervals remain offset -1 frame. Original-image plus latent-context anchoring is now an explicit research flag under a second 60-second test; not enabled by default. Dual-source refiner assets uploaded and full-download verification underway; no registry submission. Detailed receipt: docs/ai2apps-h3-avatar-validation-2026-10-05.json.
+
+- P3 update: native English Base50 and silent preroll also fail. Added pure-MLX YuNet/BiSeNet automatic mouth preprocessing to the unshipped MuseTalk source, preserving source licenses. BiSeNet CPU parity against upstream: 100% label agreement, max logit error 4.34e-5. Automatic English refinement and 60-second updated continuation remain under acceptance. Existing Runtime reused; no production change.
+
+- Latest acceptance: signed local candidate 0.10.0 installed with Runtime 1.8.8 and completed 68-frame English inference in 107.19 seconds. English lip sync failed; do not publish this candidate as accepted. Direct-latent 30-second run completed in 814.38 seconds with improved visual detail; five-frame VAE boundary holdback implemented and unit-verified, real updated long run pending.
+- P3 investigation repaired unshipped MuseTalk media PTS, stereo preservation, full-track mux and ceil video coverage. Real AAC pulse/correlation regression passed (22.05 kHz, at most two samples of delay); this is part of the future model Package review scope. No current Desktop or public model release changed.
+
+- Status: in_progress. Plan: docs/ai2apps-h3-avatar-technical-plan.md. Host timeline and offline evaluation tooling added; model implementation lives in /Users/avdpropang/sdk/minimaxh3/ai2apps-package, to ship as a separately versioned Package.
+- Fixed driving PCM, correct clean audio timestep, protected video prefix, exact frame/sample timeline, PyAV assembly, cancellation and persistent hashed segment cache implemented. No dedicated Runtime dependency identified; installed Runtime 1.8.8 has required libraries.
+- Validation: 33 timeline tests; latest latent-continuation, Worker routing, mask and real PyAV tests 14 passed. Base/LightX2V short Chinese SyncNet offset 0, confidence 3.0–3.7, calibrated against upstream example. Negative reversed-audio control scores lower. All-silence mouth behavior remains a limitation.
+- First 30-second/720-frame/5-window real run: 957.29 seconds, MLX peak 29.98 GB; cumulative visual drift and visible seams fail quality acceptance. Direct chunk-aligned latent continuation implemented and under real comparison. Do not advertise long-video quality as accepted.
+- Source candidate 0.10.0 includes two portrait aliases with distinct upstream IDs; signed archive and isolated installed Runtime inference passed, quality acceptance pending. No Cloud or Desktop release performed.
+- Reproducible tools: experiments/h3_avatar/run.py and syncnet_evaluate.py. Development-only SyncNet/Vision tools are excluded from the Package.
+
+### WebAgent shared snapshot URL fix (2026-10-05, NXR-WEBAGENT-SNAPSHOT-URL-20261005)
+- Status: implemented. Corrected enhanced snapshot helper loading from the nonexistent /static path to the Admin static route /admin/static. Bumped Agent Mini-Entry browser client cache version to browser-shared-snapshot-10. This fixes exploration failing before its first action with Cannot load shared browser snapshot helper.
+- Validation: shared snapshot regression now asserts the exact Admin resource URL and passes; JavaScript syntax passed. Static-only repair, Sidebar refresh sufficient; no App rebuild or Local restart needed for this repair.
+
+### WebAgent ordinary input payload repair (2026-10-05, NXR-WEBAGENT-INPUT-PAYLOAD-20261005)
+- Status: implemented. Normalizes explicit input text/content/value fields to arguments.value. Exploration rejects missing input payloads before returning an executable step and asks the planner to repair with the user-supplied text. Planner prompt documents the exact input schema. Frontend treats missing ordinary input text as failed for replanning, rather than needs_user; credential/CAPTCHA guards retained. Static version agent-input-payload-15.
+- Validation: 7 Python input/parameter/login tests pass, including malformed input repaired to the exact supplied Weibo text; Node payload, shared snapshot and input target/Enter tests pass. Python normalization changes require app-dev Local restart, static changes require Sidebar refresh. Live publishing not performed.
+
+### Codex persistence event-loop isolation (2026-10-06, NXR-CODEX-PERSISTENCE-20261006)
+- Status: implemented in source. Codex synchronous update callbacks now run on worker threads, preserving ordered completion including cancellation; stream output updates are coalesced at 250 ms with complete output flushed at interaction and completion boundaries. Todo conversation binding and output-file writes also move off the event loop.
+- Validation: 7 scoped tests pass, including a real SQLite write-lock regression proving the event loop remains responsive and a 100-delta coalescing/final-output test. Native localhost MCP transport passes. This removes a reproduced blocking risk; the exact cause of the earlier live health-check timeout remains unconfirmed.
+- Activation: Python-only change, exact app-dev Local restart required; no App rebuild or production publication.
+
+### Sidebar Agent results bound to Tab (2026-10-06, NXR-AGENT-TAB-RESULTS-20261006)
+- Status: implemented. Restore/resume only AgentRuns with the current explicit BiDi browsing context. Unknown or other-Tab results are excluded, including same-URL Tabs. Tab changes clear the result card and presentation cache; stale run polling responses cannot restore it. Same-Tab navigation retains its results. Static cache version agent-tab-results-16.
+- Validation: Node Tab-identity regression and existing input payload/target tests pass; JavaScript syntax passes. Static-only activation requires Sidebar refresh; no Local restart or App rebuild. Live native Tab-switch acceptance pending.
+
+### WebAgent login popup handoff (2026-10-06, NXR-LOGIN-POPUP-HANDOFF-20261006)
+- Status: implemented. Login entry click immediately enters user assistance, recording only newly opened BiDi contexts with the original Tab as opener. Pending login blocks repeated actions; resumption requires the popup to close and original page to be nonempty without login controls. Inline login also pauses. Existing same-origin read-only watcher resumes only after this gate passes; credentials remain user-owned. Static version agent-login-popup-17.
+- Validation: 9 scoped Node tests pass including opener filtering, popup/empty-page/pending-login gates, Tab results and ordinary input. JavaScript syntax passes. Sidebar refresh required; no rebuild or Local restart. Live authenticated login acceptance pending; no credentials entered or post published.
+
+
+### NXR-H3-AVATAR-LONG-JOBS-20261006
+
+- 2026-10-06 latest: H3 model Package 0.11.0 formally published (Snapshot 261). All eight variants passed cross-window tests. Signed installation, queue reconstruction, explicit cancel/retry, and separate Local process restart passed; the resumed process invoked only segment 1 and preserved segment 0 SHA-256. Service stop/restart/uninstall passed. ACPF now exposes all eight portrait variants with >=0.11.0 and removes obsolete 8/60-second descriptions. Host feature changes still require a future Desktop release; Package publication does not ship Host code. Receipt: docs/ai2apps-h3-avatar-0.11.0-release.md.
+
+- FL2VA Q8 两窗口 9 秒检查通过：216 帧，时长/PTS 正确，接缝连续，SyncNet -40 ms/confidence 4.602；耗时 46.66 分钟、MLX 峰值 35.76 GB。六种已完成跨窗口，余下 StageB50/FL2VA Q4。
+
+- DMD8 两窗口 9 秒检查完成：216 帧、时长与 PTS 正确、接缝视觉连续；0–4/5–9 秒 SyncNet 均 -40 ms，confidence 6.041/3.860，保留后段较低置信度说明。耗时 8.83 分钟，MLX 峰值 41.19 GB。跨窗口已有五种通过，剩余三个 50 步变体继续。
+
+- LightX2V 8 步两窗口 9 秒验收通过：216 帧、时长/PTS 正确，接缝视觉连续，SyncNet -40 ms/confidence 4.901；耗时 8.11 分钟、MLX 峰值 29.98 GB。已有四种变体通过跨窗口，剩余四种继续。
+
+- Ref2VA Q8 两窗口 9 秒检查通过：216 帧、音视频时长精确、PTS 误差 0；接缝连续，跨接缝 SyncNet 0 ms/confidence 7.785；耗时 43.82 分钟、MLX 峰值 35.76 GB。其余变体跨窗口测试继续，签名安装/恢复验收仍待执行。
+
+- Ref2VA Q4 真实两窗口 9 秒验证通过：216 帧，音视频均 9 秒，PTS 误差 0；接缝帧差 1.062（全片 p95 1.283），跨接缝 SyncNet -40 ms/confidence 7.470。总耗时 43.17 分钟，MLX 峰值 19.21 GB；直接 Worker 原型证据，签名安装验收仍待执行。
+
+- Mini-App 模型选择脚本验收通过：由目录提供八个 H3 入口，逐项选择后请求保留正确 avatar_model_id/strict preset，69 秒音轨通过前端检查，未就绪模型禁用生成。未改 Mini-App 产品代码；这不是新 Package 的实际安装证明。
+
+- 变体真实短片进度：8/8 完成；全部 24 帧且 PTS 无误，每种均匀抽样 12 帧检查通过。余下七变体的 9 秒两窗口验证已启动，尚未视为安装或发布验收。
+
+- 输入配额：分段模型的总时长按现有 100 MiB 传输边界和 16 kHz 单声道 PCM16 标准化格式计算，上限 3276 秒；避免界面承诺 3600 秒而提交时超过大小限制。此为整项任务的资源配额，8 秒仅为内部生成窗口。
+
+- Status: in_progress. Private continuation packets and the sequential runner are now connected to VideoTask behind an explicit signed `avatar_segments` capability. Task creation pins the Package digest/model contract; per-window calls release the scheduler lease, validate exact decoded frames and predecessor state, and mux the original audio once. Retry copies only the same actor's terminal-task packets and validates them again. Graceful shutdown requeues unfinished segmented tasks.
+- Worker source now supports one-window H3 motion with exported latent state, global-time MuseTalk refinement, and silent segment packets. Eight H3 aliases are routed internally; Ref2VA uses reference-image conditions instead of FL2VA keyframes. These new aliases and segmented capabilities are not yet advertised by a published Package.
+- Validation so far: 44 Host queue/packet/mux tests passed; existing Worker/audio regression 35 passed. Real Whisper features for four intervals of a 60-second track, including the 30-second boundary, exactly match whole-track features (maximum error 0). Real 187-frame segment refinement completed in 23.20 seconds with exact 24 FPS timestamps and no intermediate audio track. Host shutdown/restart test passed (45 Host tests total). A real two-window 9-second render completed in 261.20 seconds: 216 frames, exact audio/video duration, zero timestamp errors, cross-seam SyncNet offset -40 ms/confidence 5.211. A fresh 69-second render completed in 2225.39 seconds: 11 windows, 1656 frames, exact 69-second video/audio duration, no timestamp error. Four SyncNet samples including 30/60-second boundaries and tail have offset -40 ms and confidence 4.701–5.669.
+- 续作补充：区分 Host 关闭与用户取消；关闭期间到达的用户取消不会被重新入队。模型 Package 改变后重试不复制旧模型缓存。Host 音轨读取改用标准库 WAV，最终拼接用已有 PyAV 流式解码，未引入 soundfile 依赖；双声道尾部和 AAC 起始对齐实编码测试通过。八个变种的 Worker 本地文件依赖预检通过，统一真实推理脚本已落盘；69 秒任务完成后串行运行各变种 smoke。
+- Host 兼容性：新增已实现功能标识 `avatar.segmented-jobs.v1`。下一版 H3 必须在内层 service compatibility.features 要求它；旧 Host 按既有机制拒绝安装，新 Host 允许安装，避免长任务被旧单次请求路径执行。无需扩展 Cloud Contract 顶层字段。
+- Scope remaining: all-variant quality/speed acceptance, UI variant selection, public signed contracts and new model Package. Existing published 0.10.0 artifacts remain unchanged. Plan: docs/ai2apps-h3-avatar-technical-plan.md.
+
+### NXR-AGENT-WINDOW-PLANNER-20261006
+- Status: implemented; supersedes NXR-LOGIN-POPUP-HANDOFF-20261006 keyword-based pause/closure gate.
+- Related windows are discovered through native BiDi originalOpener relationships and read with the shared cleaned DOM client. The planner receives original/related documents and opened-window evidence, chooses the observed browsing context, and decides user assistance from document state. No login keyword pause or mandatory popup closure remains.
+- Runtime rejects unrelated/closed context selections and blocks repeated identical clicks while related windows are open; credential input protection remains. Assistance polling forwards changed document evidence back to the AI rather than declaring login successful.
+- Validation: targeted JavaScript window/input/tab and assistance-monitor tests, JavaScript syntax checks, Python login planning API regression.
+- Activation: restart exact app-dev Local for Python planner changes, refresh Agent Sidebar for static client changes. Live Weibo login/publication acceptance remains pending.
+
+### NXR-PROFILE-LAUNCH-FASTPATH-20261006
+- Status: implemented and activated in fixed App-Dev.
+- Native Shell uses complete authenticated Local Profile metadata directly when opening/focusing a browser. Removes the redundant default-Profile actor query and sequential account-status fetch from the launch critical path; legacy metadata-free requests retain their compatibility lookup.
+- Local broker logs queue, Shell handling and total handoff milliseconds without account/Profile names or credentials. Timeout errors now distinguish an unclaimed request from one accepted by Shell.
+- Validation: 3 native Shell harness tests (including a never-resolving account query), JavaScript syntax check, 7 Profile API/Test Center regression tests and 2 timing-log tests passed.
+- Fixed App-Dev rebuilt through build-app-dev-environment.sh, archived previous bundle, passed verify-release-app.sh and codesign --verify --deep --strict. Confirmed app-dev/cloud/development/source-root contracts, packaged fast path, and live title AI2Apps-App-Dev: App-Dev 127.0.0.1:60134.
+- Live default Profile launch succeeded: queue 2927.6 ms, native Shell handling 73.6 ms, total handoff 3001.2 ms (request 5dcfcb691f70b46fc31abfb905e165cb, 2026-10-06 05:08:33). Browser New Tab visibly opened. This is one measured post-change launch, not a controlled before/after benchmark; remaining queue/startup variability is separately observable.
+
+
+### NXR-AGENT-TYPED-PARAMETERS-20261006
+- Status: implemented and activated; live empty-page image-publication acceptance passed after app-dev Local restart (port 51394, PID 1355).
+- Exploration planner requires a concrete assistance_kind for needs_user, repairs preview/ordinary approval requests, and explicitly self-checks authorized compose/upload/publication steps. Existing sensitive-input, CAPTCHA, legal and consequential-action gates remain.
+- Recorded compose/search values become post_text/query with type, title and description. Upload filenames no longer become redundant text inputs; upload steps bind a variable-length attachments file array. Re-inference upgrades generated VALUE_n fields and legacy file bindings while preserving still-used reference parameters.
+- Parameter definitions offer file and file-array types and descriptions. Run editors provide image/video preview cards, add/remove files, multi-select file/Gallery selection and array item editors. Owner-bound metadata resolution validates each stored file; supplied paths are not trusted.
+- Validation: 17 Python parameter/attachment/upload/planner regression tests and 19 Node native-upload/array/confirmation tests passed; JavaScript syntax passed. Live App-Dev Sidebar shows parameter description field, file-array type and its dedicated multi-file editor; legacy single attachment displays preview and removal controls. Live acceptance on 2026-10-06 18:06 started at about:newtab, automatically navigated, uploaded 封面参考.png, entered exact post_text, sent once, and verified the new post with its image; no ordinary-operation confirmation or login handoff occurred. Review v2 approved for recipe arec_2186303385334c9a83261d8fb7f189fa. Published evidence: https://weibo.com/7015980724/RlqUV0TbW. Dedicated attachments file-array editor and post_text type/description verified live. One transient textarea not_found recovered automatically; planner performed three repetitive pre-send inspections.
+
+### NXR-AGENT-BLANK-NAVIGATION-20261006
+- Status: implemented and activated; live navigation and image-publication acceptance passed after exact app-dev Local restart.
+- Live empty-page image-publication test exposed broad current-page normalization dropping its only open step. Removal is now limited to a redundant same-URL initial open in a multi-step HTTP(S) recipe. Blank-page navigation is preserved.
+- Planner distinguishes open navigation from page_access consent/access handling; executor rejects page_access carrying a navigation URL rather than recording false success. Exploration failures display provider/preflight diagnostics already supplied by the API.
+- Validation: actual Source normalizer/compilation regressions (2 passed), JavaScript syntax check. Earlier pre-restart test stopped after no-op page_access retries without publication. After restart, open from about:newtab succeeded; the authorized one-post test completed at https://weibo.com/7015980724/RlqUV0TbW, with exact text and supplied image visually verified. No duplicate publication; generated recipe Review v2 approved. Replay of the saved recipe was not run to avoid another post.
+
+### NXR-AGENT-REVIEW-LIFECYCLE-20261006
+- Status: implemented; Sidebar static refresh applied; Python projection activation and final live verification pending exact app-dev Local restart.
+- Live investigation confirmed recipe arec_2186303385334c9a83261d8fb7f189fa was already committed at revision 3 into adraft_85ac9c7f5be441199c099ce89b8d6a70. Review projection incorrectly mapped committed to awaiting_review, and the pre-commit exploration checkpoint restored the stale Recipe. The repeated approval conflicted with the committed repository state.
+- Preserve approval for tested and committed recipes, expose recipe_status, and make approving the same already-approved revision idempotent. Sidebar renders committed as added to website Agent, disables repeated approval/revision/inference and hides duplicate commit actions. Approval and commit synchronize durable exploration checkpoints; restored checkpoints reconcile with the current server status.
+- Approval buttons display submitting progress. API failures scroll their message into view rather than hiding it above a long Review panel.
+- Verification: 3 Node lifecycle/checkpoint/error-feedback regression tests, 1 Python actual Review projection regression, and JavaScript syntax check passed. Existing posted Weibo was not changed; no additional publication performed for this fix.
+
+### Local event-loop blocking investigation (2026-10-06, NXR-LOCAL-LOOP-BLOCKING-20261006)
+- Status: implemented and activated in app-dev Local PID 10531 / port 57055. Watchdog captured repeated provider_status → ModelShareProviderManager.status → _eligible_model → resolve_package_model → list_package_models stalls, including synchronous SQLite service/package reads and checkpoint validation. Status now scans the catalog once and reuses eligibility/shareability results; GET projection runs in a worker thread. No stale-cache or authorization changes. Bounded watchdog records only Python file/line/function locations, no locals/payloads, at most once per 30 s.
+- Validation: model-sharing regression plus concurrent slow-status/health tests pass. Live 15-sample health latency 1.8–36.7 ms; Helper stayed ready; no blocked-loop warnings in the first 2m42s after activation. CPU spot sample 10.6% versus 87.6% before investigation, indicative rather than a controlled benchmark. No Desktop rebuild or production publication; long-running/multi-client acceptance remains a future release check.
+
+
+### NXR-AGENT-TEST-PARAMETER-LABEL-20261006
+- Status: implemented. Agent parameter editor heading changed from 本次运行参数 to 测试运行参数; matching English label is Test run parameters.
+- Validation: both localization JSON files parse successfully and the shared label key matches the requested text. Static localization change needs Sidebar refresh only.
+
+
+### NXR-AGENT-EDITOR-COMPILED-STEPS-20261006
+- Status: implemented. Saved Agent editor loads persisted generations and shows complete compiled step IR under each source step. Active generation takes precedence; selection uses capability and step IDs rather than position. Missing output is explicit; edits or source revision mismatch mark the displayed output as previous compilation. Successful compilation updates the display.
+- Validation: 4 Node generation-selection, legacy Source-only compilation, stale-output and draft-navigation isolation tests passed; JavaScript syntax and localization JSON checks passed. Live App Dev Sidebar refreshed on port 61916: reopening the saved Weibo Agent compiled its Source-only revision and displayed all 8 steps with full compiled IR. No Agent run or Weibo publication occurred. Save now compiles persisted Source for inspection; this does not activate the generation. Static Sidebar refresh is sufficient; no Local restart or Desktop rebuild needed.
+
+- NXR-AGENT-EDITOR-COMPILED-STEPS-20261006 follow-up: compiled step IR now uses native details/summary, collapsed by default and expandable by clicking its heading. Missing compilation remains plain status text. JavaScript syntax check passed; static refresh only.
+
+- NXR-AGENT-EDITOR-COMPILED-STEPS-20261006 follow-up: step cards also use native details/summary, collapsed by default, showing only name and operation description. Expanding reveals existing editing/actions and the independently collapsed compiled IR. Summary follows name/description edits. JavaScript syntax and 4 compilation display regression checks pass; static refresh only.
+
+### NXR-AGENT-STEP-EXECUTION-OPTIONS-20261006
+- Status: implemented. Every Sidebar step now exposes compile enablement and Simple/Standard/Complex AI strength. Enabled maps to adaptive execution (compiled action first, bounded AI recovery on failure); disabled maps to interpreted execution (fresh cleaned DOM and related windows drive a bounded AI action loop). Browser-step tier metadata persists into IR; interpreted goals need no deterministically recognizable operation. Generation validation/security envelopes remain mandatory. Existing semantic ai.* steps and agent.call retain their runtime contracts.
+- AI planning uses the chosen tier without automatic escalation, resolved arguments and supplied attachments, fresh state before each action, and prior failure evidence to avoid repeating partially completed publication/upload. Restricted/needs_user outcomes do not trigger automatic recovery; previews do not invoke AI; recovery stops after 8 actions. Model/API errors return explicit retryable evidence.
+- Validation: 7 Node tests passed (including 4 existing compilation-display cases); 9 Python compiler/model-selection regressions passed. JavaScript syntax and targeted diff whitespace checks passed. No live Weibo publication or full browser acceptance performed. Imported Python/API changes require app-dev Local restart from Helper, then Sidebar refresh; no Desktop rebuild is required.
+
+### NXR-AGENT-EDITOR-CONTEXT-LEASE-20261006
+- Status: implemented. Agent editor now holds the existing native Sidebar context lease throughout editing, including asynchronous saved-draft loading. Editor and execution leases are independent: completing a test does not release an open editor; closing the editor does not release an active test. Individual-step tests also hold an execution lease until completion. Context events received while protected are deferred instead of clearing run/exploration state, and the latest deferred context applies when both leases are released.
+- Behavior: editing/testing remains bound to the originating tab; related windows opened by the Agent remain available through existing BiDi window observations. Closing the editor after testing restores normal active-tab following. Explicit Sidebar refresh remains a reload escape hatch.
+- Validation: 10 Node checks passed (3 new lease/context protection cases plus 7 compilation/execution regressions); JavaScript syntax and targeted whitespace checks passed. No native/browser build changes and no live browser acceptance in this turn. Refresh Sidebar once to load the static update; no Local restart required for this change.
+
+### NXR-AGENT-CONDITION-BRANCHES-20261006
+- Status: implemented. Condition/classifier steps show true, false and failed transitions; ordinary steps retain success/failed. Compiler accepts string outcomes true/false; classifier routes each explicitly, with legacy success-compatible true routing. Model failure and malformed classifier output follow failed instead of false. Planner documentation now describes the distinct boolean branches.
+- Loop correctness: repeat visits to ordinary AI data steps use fresh per-iteration call IDs, preventing stale model-result reuse. Existing backward transitions and the 100-action cap remain; dedicated counters, foreach/index variables, continue/break and structured loop editing are not implemented in this item.
+- Validation: 7 condition/loop Python tests, 9 compiler/model-selection Python regressions, 4 result-reading regressions, and 10 Node Sidebar editor/execution tests passed. JavaScript syntax and targeted diff checks passed. No live browser test/publication. Restart app-dev Local from Helper and refresh Sidebar for Python/runtime changes; no Desktop rebuild required.
+
+### NXR-AGENT-LOCAL-VARIABLES-20261006
+- Status: implemented. Capability-local JSON-schema variables now support typed defaults or input-derived initial expressions, deterministic assign/condition steps, typed vars bindings and array indexing. Compiler validates declarations/expressions and preserves variables into capability IR; planning/model Source normalization understands the new operations. Browser exploration is explicitly restricted from proposing pure local workflow steps. Invalid capability exports now report compilation errors instead of raising IndexError.
+- Runtime: restricted AST interpreter, no eval/exec or browser/model calls for local steps. Assignments commit atomically; conditions return true/false/failed. Replay rebuilds local state from fixed IR/input and recorded actions without repeating submitted browser actions. Child invocations initialize isolated variables. Existing 100-step budget remains; expression, variable count and JSON data limits bound local work.
+- Sidebar: selectable step types; variable name/type/title/description/default-or-expression editor; dedicated assignment rows and condition expression/branch fields; local variables in browser input binding and Agent-call mapping. Pure local single-step preview/run and initial-variable APIs are owner-scoped, schema-checked, and do not mutate saved Source. Test state can be reset. Source/IR and legacy capability migration retain variable definitions. AI steps retain selected tier and instruction/schema editing; ordinary compilation/fallback contracts remain.
+- Validation: 47 Python tests passed across local variables/API, replay, child scope, conditions, compilation modes, calls and model selection; 14 Node tests passed for local editor/bindings, saved compilation, tab leases and execution options. JavaScript syntax, localization JSON parsing and targeted diff whitespace checks passed. No live browser acceptance or publication in this turn. Documentation: ai2apps/docs/agent-local-variables.md. Restart app-dev Local from Helper, then refresh Sidebar; no Desktop rebuild required.
+- Scope: loops use explicit condition/assignment/backward transitions; no standalone foreach visual container or structured break/continue editor is added.
+
+### NXR-AGENT-GOOGLE-LOOP-ACCEPTANCE-20261006
+- Status: implemented and live verified. Nested dict/list variable bindings now retain capability-local vars; browser read_results accepts an explicit typed items binding without overwriting it from earlier extraction. Compiler validates explicit items, new_tab and bounded delay_ms. Sidebar forwards tab/pacing options to the existing BiDi SDK.
+- SDK: Google search H3 results include external destinations and opaque /goto links, while Google navigation links remain excluded. Optional temporary-tab reads use native BiDi create/navigate/close and restore the originating context; cleanup runs even on read failures. Existing same-tab reading remains compatible. Static SDK cache version advanced.
+- Live acceptance: app-dev run run_638f864da57f4f3b9b0a9b2801cda4a4 completed in approximately 44 seconds. Google query site:developer.mozilla.org WebDriver BiDi, 3 result pages read (1110, 444, 2324 text characters). Variable index ended at 3; check outcomes true/true/true/false. Native tab inventory confirms no MDN result tab remains. Each browser action waited 2500 ms; pages waited 3000 ms before reading and 3000 ms after closing. Evidence: ai2apps/docs/agent-google-loop-test-20261006.json.
+- Validation: 40 Python tests and 15 Node tests passed; JavaScript syntax checks passed. Temporary live UI hook and served test files removed; reproducible driver retained under ai2apps/tests/fixtures/google_loop_test_driver.js. App-dev Local restarted through authenticated Helper control for Python fixes. No Desktop build or publication.
+
+### NXR-WEB-AGENT-FOUNDATIONS-V1-20261007
+- Status: implemented. Eight version-pinned global capabilities are discoverable even from a blank page: web.ensure-login, web.read-page, web.extract-list, web.fill-form, web.upload-files, web.wait-state, web.clear-blockers and web.light-explore. Existing agent.call resolves trusted built-in IR, typed defaults/input/output schemas and generation pins without owner-store lookup or caller-supplied executable IR. Generation/exploration prompts describe selection, site-specific preference, authentication prerequisites and explicit outcome/context handling.
+- SDK: native BiDi temporary-tab reading/stability waits, explicit context tracking, cleanup/restore, public-address validation including redirected URLs, and Readability with cleaned-DOM fallback. Reuses the exact existing licensed Readability source through client-side script.callFunction. No semantic browser backend or JSWindowActor interaction added.
+- AI primitives: blocker cleanup repeatedly observes and classifies before each observed dismissal, bounded by max_dismissals and existing total step budget. Cookie rejection/necessary-only and dismissal of promotions/payment offers preferred; no payment, legal acceptance or paywall bypass. Login/CAPTCHA uses concrete durable assistance. Light exploration and form preparation restrict permitted actions and actual-target labels against publishing, purchasing, deletion and submission. Upload uses existing authorized Gallery asset arrays and hidden file-input support.
+- Validation: 56 Python tests passed across foundations/calls/variables/conditions/model selection, followed by 14 foundation tests passing after adding two blocker failure/budget cases (58 distinct Python cases covered overall). 28 Node tests passed across SDK foundations/result reading and Agent call/editor/execution/local-variable regressions. JavaScript syntax and targeted whitespace checks passed. App-dev Local restarted through authenticated Helper; live fixed Shell recovered with title AI2Apps-App-Dev: App-Dev 127.0.0.1:57973 and connected state. No live end-to-end acceptance of all eight capabilities, Desktop build, or publication.
+- Documentation: ai2apps/docs/web-agent-foundations-v1.md. SDK/Sidebar static refresh loads the client changes. First version uses AI for semantic form/blocker/exploration judgments; extraction heuristics target search/article lists, and complex site lists should use website capabilities.
+
+### NXR-WEB-FOUNDATIONS-GOOGLE-ACCEPTANCE-20261007
+- Status: live verified for web.extract-list and web.read-page. Explicit Google workflow compiled with version-pinned agent.call steps, typed result array, local index and conditional loop. Run run_3885e5e6af68453890be4417185604ba completed in approximately 38 seconds; extracted 5 results and read the first 3 MDN documents, 873/3656/2205 characters. All three used Readability, returned distinct read_context IDs and tab_closed=true, and restored the same Google context. Loop outcomes true/true/true/false; final index 3.
+- Native accessibility inventory verifies only original New Tab and Google search Tab remain. Temporary served test script and Sidebar injection removed; refreshed native Sidebar verifies normal Agent UI restored. Reproducible fixture retained at ai2apps/tests/fixtures/google_foundation_test_driver.js; evidence at ai2apps/docs/agent-google-foundations-test-20261007.json. JavaScript syntax and targeted whitespace checks passed.
+- Scope: test exercises real runtime child capability resolution and client SDK execution with an explicit workflow, not AI automatic Agent generation. No blocking overlay, login, CAPTCHA or paywall appeared, so those capability paths were not live tested in this run. No production publication or Desktop rebuild.
+
+### NXR-WEB-FOUNDATIONS-BLOCKER-COMPOSITION-20261007
+- Status: implemented. web-foundations/2 composes read-page as native BiDi open/retain -> agent.call clear-blockers in the returned context -> extract/close. Cleanup failure routes through a dedicated temporary-tab close step before failure. Light-explore calls clear-blockers before exploration and permits only that capability as a nested read-only AI call when new navigation reveals blockers. Catalog descriptions expose this behavior. Pinned v1 calls preserve legacy IR.
+- Call compiler accepts explicit browser_context; runtime propagates it to child actions with client-side related-context authorization intact. Sidebar isolates nested call checkpoints from outer exploration calls, preventing outer run reuse/deletion. SDK phased finish/close verifies tracked context ownership, avoids repeat navigation, restores original tab and validates public destinations.
+- Validation: 60 Python tests passed across foundations/calls/locals/conditions/model selection. 16 Node tests passed across SDK foundations/calls/AI execution, including phased tab handling, failure cleanup, and nested-call isolation. JavaScript syntax and targeted diff checks passed. No live blocker-site acceptance performed in this turn. Updated ai2apps/docs/web-agent-foundations-v1.md. Restart app-dev Local and refresh Sidebar; no Desktop rebuild/publication.
+
+### NXR-WEB-FOUNDATIONS-SEARCH-ACCEPTANCE-20261007
+- Status: in_progress. Real Google v2 loop completed three MDN reads through open -> clear-blockers -> read/close, restoring the search context (~62 seconds; run_3aa80fe052184209b7826798b800aca0). Evidence saved in ai2apps/docs/agent-google-foundations-v2-test-20261007.json. No actual overlays appeared.
+- Weibo live testing exposed and fixed Firefox wildcard-host scope parsing, missing read-only search-input support (only observed search fields), and internal model-dispatch HTTP 403 caused by the synthetic ai2apps.internal Host being rejected by PublicDeviceBoundary. Agent model/presentation fallback dispatch now retains the actual Local base URL; external Host denial and existing authentication remain intact. AI execution preserves model failure details. Light-explore planning explicitly disallows recursive/delegating calls except clear-blockers; s.weibo.com search navigation shares the explicitly requested Weibo authorization.
+- Validation so far: 39 Node tests passed; local-dispatch regression passed with PublicDeviceBoundary and external Host denial. Broader Agent Platform suite: 16 passed, 2 failed on existing unrelated normalization/privacy-expectation assertions (redundant open and cleaned text sample forwarding); those paths were not changed here. Weibo acceptance still in progress. Python API fix applied after restarting exact app-dev Local through Helper; static Sidebar refresh only for JavaScript. No Desktop rebuild/publication.
+
+- NXR-WEB-FOUNDATIONS-SEARCH-ACCEPTANCE-20261007 completion: Weibo full-site search for 数字人 passed on run_70b811e3f1704b3abb0ddeb9d58a1558. Returned the first three post authors, summaries and exact post links; all three authors and post URLs were matched against observed cleaned-DOM items, and returned context equals the real observed context. Existing authenticated Profile reused; no login assistance, posting or likes. Evidence: ai2apps/docs/agent-weibo-foundations-v2-test-20261007.json. No actual overlay appeared; anonymous/login/blocker dismissal and automatic Agent generation were not exercised.
+- Follow-up fixes: interpreted steps set verify_goal_with_ai so current-page list extraction cannot prematurely complete a larger goal; malformed planner JSON receives one bounded same-tier repair. AI extraction keeps newest structured DOM evidence, removes duplicate snapshots, preserves observed links and context, and uses valid JSON within a 40k evidence budget. This fixed the observed author omission/misattribution caused by raw JSON head/tail truncation. Temporary live-test exports/loader removed and formal Sidebar refreshed.
+- Final validation: 39 targeted Node tests passed; 3 new Python regressions passed (Local/public Host boundary, malformed JSON repair + AI goal verification, and structured evidence/context preservation). Broader earlier Agent Platform run remains 16 passed / 2 unrelated existing assertions failed, as recorded above. Status: implemented with Google and authenticated Weibo live acceptance complete.
+
+
+### NXR-WEBAGENT-JSON-REPAIR-20261007：统一模型 JSON 修复
+
+- 状态：`implemented_activated_app_dev`。共享严格 JSON 解析、修复提示和两次修复预算，规划、Agent 编译/Review、结果展示及 durable ai.extract/ai.classify/ai.transform 接入。JSON 格式与结构错误共用预算，最多三次模型调用；保持所选模型。
+- 修复只重新请求模型，不执行/重放浏览器动作。Durable 修复使用稳定独立 call_id，恢复时复用已完成调用，修复次数写入步骤证据；预算耗尽走既有失败分支。HTTP/模型调用失败不作为 JSON 修复重试。
+- 最终相关回归 63 项通过，新增展示修复和严格非有限数字解析专项共 6 项再次通过（合计 64 个不同用例）；两项先前已记录的无关旧断言显式排除。模型升级回归更新为初次加两次修复失败后才升级。git diff --check 通过。只重启 app-dev Local，新 PID 88900、端口 53871，health HTTP 200；模型测试为坏输出替身，未声称 DeepSeek 实机验收。没有 Cloud 改动、未发布 Desktop。
+
+
+### NXR-WEBAGENT-STEP-CONVERSATION-20261007：步骤 AI 对话修改
+
+- 状态：`implemented_activated_app_dev`。步骤编辑新增独立 AI 对话区，支持多轮、模型强度、建议预览和显式应用；不自动保存/执行。
+- 新增仅返回建议的 /agent-steps/revisions 接口，绑定选中能力与步骤，保留步骤名称及其他 Source，仅替换选中步骤后编译校验整个流程，接入统一两次 JSON/结构修复预算。
+- 应用前比较编辑器快照，拒绝过期建议；对话文本使用 textContent，失败保留输入。10 项前端测试、8 项 Python/API/JSON 修复测试通过，JS 语法及 scoped diff 检查通过。仅重启 app-dev Local，新 PID 14170、端口 53788、health 200；/admin/static/js/agent_mini.js 返回 200 并包含新入口。未宣称真实模型或视觉端到端验收，未发布 Desktop。
+
+
+### NXR-AI-BROWSER-WORKSPACE-20261008：三栏工作台与任务调度
+
+- 2026-10-09：AI Browser 提示条改为视窗顶部 fixed 悬浮层，不随滚动、不占工作台布局空间；成功提示 5 秒、错误提示 8 秒自动关闭，重复提示重置计时，支持手动关闭并在页面销毁时清理定时器。静态资源版本更新；JavaScript 语法检查、17 项工作台测试及提示替换/超时/手动关闭验证通过。前端刷新生效，无需重建 App。
+
+- 2026-10-09 情报中心后台编排迁移完成：公用 WebAgentInvocation + Browser Task admission、schema 87 内部程序持久化、Local Collector 原子 claim/job、后台定时和编译规则复用/验证；前端 HTTP 提交、共享 SSE 观察。旧无能力导出 Agent 自动绑定兼容入口，多能力必须明确选择；后台 Cloud 模型复用既有 actor 身份入口；取消终态禁止被迟到错误复活。总架构与 ai2apps/docs/webagent-background-migration.md 明确为全 App 共用机制。47 项 Python、9 项 Node 定向回归通过。App Dev 真实 run 84ca46ee61314ec985a90b785aa56712 在离开情报页面后完成：跳过16条、读取3篇、生成3篇、知识库同步28→31；4个子Task completed，编译复用4次、fallback/learning_calls均0、来源读取21.757秒。微博第二篇定位失败保守中断，取消后部分结果保存，不宣称所有社交站点验收成功。已重启 app-dev Local、刷新前端，未发布、未改Cloud服务端。
+
+- 2026-10-09（in_progress）：补齐情报中心后台迁移，新增公用 `WebAgentInvocation`、持久内部程序表（schema 87，与同时进行的 visitor_spaces v86 保持连续）、Local `IntelligenceCollector`、原子 claim/job、后台定时与 actor 模型调用；前端采集改为 HTTP 提交及共享 SSE 观察。站点规则复用/漂移回退和后台候选验证、社交来源冷却/筛选纳入统一 Task。架构文档明确所有 AI2Apps App 的公用 WebAgent 机制。定向测试、真实采集及恢复验收进行中，未发布。
+
+
+- 2026-10-09：情报中心旧采集入口修复 Profile 只绑定容器、不自动打开 initial_url 时无法找到专用页面的问题：按 launch 返回的 user_context/referenceContext 显式新建隔离 Tab，校验容器一致，失败关闭自建页面。JS 检查及情报浏览器/规则复用 Node 11 项通过，真实腕表频道更新验收完成：检查 20 条、跳过重复 13 条、读取及生成 3 篇；规则复用 4 次、回退/学习请求均为 0，采集耗时 13.3 秒。情报中心 collect 仍为前端编排，不能视作完整后台采集迁移完成。
+
+- 2026-10-09：修复后台执行情报中心既有 site_extraction Agent 时新 Tab 保持 about:blank 导致 site_scope 拦截：列表规则按已授权 origin/path 初始化目标页，当前位置匹配时不重复导航；正文规则缺少 URL 时沿用规则目标。导航前后均保留作用范围检查，预检不导航。新增空页/复用/预检/越界/重定向及正文兼容回归；22 项后台与情报 Agent 测试通过。已重启 app-dev Local；原有 Fratellowatches 情报列表 Agent 真实网站验收完成，纯编译提取成功返回 20 条，未修改 Agent 配置。
+
+- 2026-10-09：任务详情移除“查看运行记录”与常驻“打开任务页面”按钮，自动展示运行输出，避免手动读取记录把结果替换成完整内部 Run JSON。仅人工协助或中断检查时显示“前往页面处理”。静态页面刷新生效；JS 语法检查及工作台 Node 17 项通过。未重建或发布。
+
+- 2026-10-09 后台执行迁移完成（本项此前的 in_progress 记录为历史阶段）：Local Runner 接管新 AgentRun、能力队列及 Schedule/Workflow 共用的 durable 浏览器动作；前台改为 HTTP 指令 + SSE 观察，禁用 Local-owned 任务的前端领取/执行/响应。共享原生 BiDi SDK 保留 actor/Profile userContext 登录状态，迁入导航/稳定等待、拟人输入、200K 分段、上传入口拦截、规则提取与后台模型规划；动作日志恢复已完成结果，结果未知暂停且禁止重放，人工协助/动态确认持久化。
+- 原生宿主：Helper 支持无 Local HTML 的 app-shell 冷启动，使用与 Launcher 一致的私有进程/automation 描述；关闭 Shell UI 卸载 HTML、保留 protected BiDi/Profile 生命周期，重新打开固定 App 恢复前台。修复冷启动监听就绪竞态与并发启动；未复制 Cookie/数据库，未使用独立磁盘 Agent Profile替代现有登录状态。
+- 验证：86 项定向 Python、28 项 Node、Swift 77 项 Testing + 2 项 XCTest 全通过；原生 AceFox 本地测试站端到端通过（200K Unicode 完整分段输入、入口点击上传、结构化列表、HTTP 客户端关闭后队列完成、SDK 断开重连）；现有 watchesbysjx 能力在关闭 Shell 后两次由 Local 完成并保存 19 条结果。仅 Helper 启动时的无 Local HTML 冷启动/BiDi 验收通过。固定 `AI2Apps-app-dev.app` 按标准脚本重建，app-dev/com.ai2apps.desktop.appdev/cloud/Development/source-root/禁用生产更新合同由 builder 验证，`verify-release-app.sh` 与 `codesign --verify --deep --strict` 通过，活体窗口标题含 App-Dev 与 Local 地址。
+- 迁移文档：`ai2apps/docs/webagent-background-migration.md`。通用完整测试集仍有已有 fixture 与模型调用/JSON repair/抽取函数依赖不一致，不冒充全项目通过。未发布生产，未改 Cloud。定时任务复用后台入口，未在用户数据中新增测试 Schedule；法律同意/验证码等仍需要人工，停止 Local/Helper 或任务原页面消失会中断任务，不等同于关闭工作台。
+
+- 2026-10-09 后台迁移继续（in_progress）：Local Runner 已接管新运行、能力队列和 Schedule 的 durable 浏览器交互；HTTP 命令 + SSE 运行观察，前端 claim/执行入口关闭；Helper 新增同一 app-shell Profile 原生宿主冷启动，关闭 UI 卸载 HTML 并保留 native BiDi 生命周期。Swift 79 项测试通过，Python/Node 定向回归进行中，尚未完成 App Dev 重建与原生端到端验收，不可标记迁移完成。
+
+- 2026-10-09 后台迁移继续（in_progress）：新增 Local 私有共享 BiDi SDK、actor 规划服务、动作持久化日志、后台 Runner 骨架及 schema v84；尚未切换前端执行权，宿主生命周期/队列/恢复/真实浏览器验收未完成。25 项定向 Python 测试通过；未重启/重建 App Dev，未发布。
+
+- 2026-10-09 后台迁移第一阶段，状态 `in_progress`：BrowserTask 状态与工作台事件同事务落库，SSE actor 隔离、初始一致快照、Last-Event-ID 重放、断开释放订阅；新增 Local 生命周期 TaskMonitor，独立于工作台请求更新 Run 终态/等待/失效租约。工作台取消 5 秒全量轮询，用单一 EventSource 更新任务；元数据通过主动刷新、focus 与编辑器修改通知刷新，状态消息不重复携带大输入。
+- 本阶段 22 项 Python（任务/SSE/调用兼容）与 40 项 Node（工作台/拟人输入/恢复/情报中心）定向检查通过；新增后台无 HTTP 查询投影测试。未重启、重建或发布，未做真实 AceFox 无 Shell 运行验收。浏览器动作仍由前端执行；Helper 独立磁盘 Profile 与 Shell userContext 不是相同登录态，禁止直接替换或复制状态。完整后台动作、Profile 宿主、Schedule 与人工协助迁移尚未完成，见 `ai2apps/docs/webagent-background-migration.md`。
+
+- 2026-10-09：长文本输入改为混合分段：500 字以内保留键盘输入，超过阈值每段最多 8192 Unicode 字符通过 BiDi script.callFunction 调用浏览器 insertText 编辑命令；拟人模式仅保留最多 16 个逐字字符和 120–300ms 段间停顿，快速模式直接分段。系统剪贴板不读写，纯文本不会按 HTML 执行。输入前校验编辑器与 maxlength，绑定焦点/节点，逐段检查普通输入框内容，最终校验后才 Enter；失败不自动重复，finally 清理绑定。验证：长文含 Unicode/200K 模拟输入、截断/焦点变化/maxlength、短输入、BiDi 恢复与情报规则复用 Node 19 项通过。真实网站富文本兼容性未实测；不支持 insertText 的编辑器明确失败。静态 SDK 更新，刷新 Shell 即生效，无需重启 Local/重建 App。
+
+- 2026-10-09：Domain 新增 Agent 快速/拟人执行模式（用户隔离持久化，schema 83，默认拟人）。共享 BiDi SDK 按当前网站读取配置，拟人鼠标采用 smoothstep 加减速分段移动，输入按 Unicode 字符分批逐字执行、删除 2000 字截断，并加入操作间隔；上传先拦截文件控件 click/showPicker，点击可见上传入口后向捕获控件提供文件，超时/异常清理拦截且不自动重复点击。长文暂完整分批打字，不触碰系统剪贴板。快速模式省去额外间隔与逐字等待。验证：浏览器/工作台/情报复用 Node 31 项、Domain API/情报规则 Python 12 项通过；上传真实站点端到端尚未验证。需重启 App Dev Local 应用迁移并刷新页面，无需重建 App。
+
+- 2026-10-09：能力新增独立“工作目标/指导”，与简短能力说明分离；空白回退到 Agent 指导。编译时将有效指导固化到对应能力及步骤，浏览器解释执行、失败回退和 AI 数据步骤使用该上下文；旧单流程转换保留指导。验证：能力指导/元信息/基础能力 Python 20 项通过，编辑器与运行上下文 Node 测试通过。Python 更新需重启 App Dev Local，编辑器刷新即可加载。
+
+- 2026-10-09：能力运行参数页顶部增加“返回 Agent”按钮，按当前能力所属 agent_id 返回对应详情，不依赖之前选中的 Agent；按钮不提交表单、不启动任务。JavaScript 语法检查通过，刷新 Shell 生效。
+
+- 2026-10-09：新建能力改为原生模态对话框，下拉选择标准或自定义能力；仅自定义显示名称/说明输入，名称必填，确认后添加并关闭，取消/Escape 不修改现有能力。12 项能力交互与 Recipe 编辑 Node 测试及 JS 语法检查通过，刷新 Shell 生效。
+
+- 2026-10-09：能力模板选择默认隐藏，点击“＋新能力”才展开创建区域，明确提供“创建能力”和“取消”；仅选择模板不修改当前能力，取消不变更 Source，创建后关闭区域。4 项能力编辑交互测试及 JS 语法检查通过，刷新 Shell 生效。
+
+- 2026-10-09：修正能力名称/说明编辑、删除按钮及标准类型选择误放入隐藏 Review 面板的问题，移至共享 Agent 编辑器能力选择下方，普通编辑与探索审核均可见；新增模板归属回归验证，3 项能力编辑测试通过。刷新 Shell 生效。
+
+- 2026-10-09：AI 浏览器侧栏 Agent 和 Domain 卡片“打开”统一进入详情页，展示 Agent 状态及全部能力，显式选择运行/编辑；未启用 Agent 提供启用入口，通过现有编译校验后启用 generation，不自动运行任务。制作草稿提示先审核保存。多能力不再默认打开编辑器。16 项 workspace Node 测试通过；静态资源刷新 Shell 生效。
+
+- 2026-10-09：统一 Agent 编辑器支持能力名称/说明编辑、确认删除及旧单能力 Source 无损升级；新增能力从既有内置能力目录选择或自定义，标准项带入输入输出 Schema 与固定版本 agent.call 步骤，避免重复导出同名能力及新增 ID 冲突。9 项 Node 能力操作/Recipe 编辑测试及 JS 语法检查通过。刷新 Shell 生效，无需重建。
+
+- 2026-10-08：Agent 创建与编辑字段统一为“工作目标/指导”（英文 Work goal / guidance），创建提示明确可提供步骤、预期结果和参数指导；中英文 JSON 解析验证通过。仅本地化文案修改，刷新 Shell 生效。
+
+- 2026-10-08：创建 Recipe/探索沉淀时使用系统 work_simple 模型概括能力名称与说明，保存 capability_metadata 并用于网站能力转换；完整工作目标独立保留，不受命名影响。命名响应校验，模型失败返回可重试错误；无低强度模型时沿用原始元数据。能力元数据、附件沉淀、Recipe 编辑及目标约束相关 23 项测试通过；Python 修改需重启 App Dev Local。
+
+- 2026-10-08：Agent 编辑器展开步骤卡片外框从 1px 加粗至 2px，并加深为 #a8a29e，突出编辑区域；折叠状态保持原样。仅 CSS 与缓存版本修改，刷新 Shell 生效。
+
+- 2026-10-08：统一 Agent 编辑器步骤卡片名称增加本地化序号前缀“步骤-x: ”/“Step-x: ”，重排后按当前顺序更新；仅显示层修改，不改变步骤名称及引用。JavaScript 语法检查通过，刷新 Shell 生效。
+
+- 2026-10-08：Domain 独立持久保留，删除最后一个 Agent/制作草稿不再移除网站；空 Domain 详情显示“删除 Domain”，确认后显式删除，服务端原子检查非空网站并拒绝删除。数据库迁移 82 补全历史网站登记；后续工作台读取及归档保留登记，显式删除后不再从历史归档重建。验证：browser workspace / recipe archive Python 9 项、workspace Node 15 项通过。App Dev 需重启 Local 并刷新 Shell，无需重建。
+
+- 2026-10-08：移除左侧每个 Domain Agent 列表末尾重复的“＋ 新建 Agent”，节省导航垂直空间；保留 Domain 主面板“创建 Agent”。已检查目标按钮唯一移除且主面板入口保留。静态 workspace-22，仅刷新 Shell。
+
+- 2026-10-08：补齐可运行（active）网站 Agent 的 Domain 删除入口，原显示条件只覆盖 editing/compiled。active 使用“删除 Agent”与带名称确认，删除前读最新 revision 后复用 owner-scoped archive API，维持 CAS 与重复请求保护。工作台 14 项 Node 测试通过，覆盖 active 按钮条件、确认名称与归档版本。静态 workspace-21，仅刷新 Shell；本次未删除用户现有 Agent。
+
+- 2026-10-08：修正 Domain 中已提交网站 Agent 的草稿误标。compiled 网站 Agent 显示“已编译 · 待启用”，删除入口与确认文案为“删除 Agent”；只有 Recipe/编辑草稿称“删除草稿”，active 显示“可运行”。不改变提交或启用语义。工作台 13 项 Node 测试及 JS 语法检查通过。静态 workspace-20，仅刷新 Shell。
+
+- 2026-10-08：修复通过 Review 后点击加入网站智能体反复使审核失效。共享编辑器挂载时记录表单标准化后的 Source 基准，以对象键排序/数组原序签名判断真实修改；显示时补齐默认字段与 JSON 键顺序变化不再触发 PATCH/版本递增。同步编辑的审核提示采用同一判定；实际编辑仍保存新版本并使审核失效。Recipe 编辑/Review 生命周期 10 项 Node 测试及 JS 语法检查通过，新增默认字段、键序和审核后实际 commit 请求测试。静态 agent-step-chat-66，刷新 Shell 生效，无需重启/重建。
+
+- 2026-10-08：修复 Domain 草稿删除偶发 revision changed。删除确认前重新读取 actor-scoped 当前草稿记录并使用最新 revision，避免后台轮询更新后卡片回调仍持有旧对象；同草稿请求去重并禁用按钮。确认期间真正发生版本冲突仍保持 CAS 保护，不自动重试删除，刷新列表并显示中文操作提示；已不存在的 Recipe 仅刷新。工作台 12 项 Node 测试及 JS 语法检查通过，覆盖旧对象/新版本、取消、重复点击与 409 不重试。静态 workspace-19，仅刷新 Shell 生效。
+
+- 2026-10-08：Domain 草稿卡片增加“删除草稿”按钮及带名称的确认框，取消不发请求。Recipe 新增 actor-scoped `/agent-recipes/{id}/archive`，校验 expected_revision，使用既有 discarded 状态移出列表并保留原始 Source；拒绝删除 committed Recipe。普通未启用草稿复用已有 archive API。删除后移除同草稿编辑 iframe 并刷新 Domain；已启用 Agent 不显示此入口。工作台 11 项 Node、Recipe 删除/编辑 3 项 Python 与 JS 语法检查通过。静态 workspace-18；需重启 AppDev Local 并刷新 Shell，无需重建。
+
+- 2026-10-08：修复探索制作保存后 Domain 中不可见。AI 浏览器工作台同时读取 `/agent-recipes`，将未提交的制作草稿按 site_key/site_scope 列入 Domain 导航与卡片，标注“制作草稿 · 待审核”，点击通过 recipe_id 恢复原共享编辑器（参数/变量/步骤/Review），避免误当普通 draft_id。已有 committed_draft_id 的记录不重复显示；未改变 Review/提交流程。工作台 10 项 Node 测试及 JS 语法检查通过，新增保存 Recipe 列出和恢复测试。静态缓存 workspace-17，只需刷新 Shell。
+
+- 2026-10-08：AppDev 13:04:45 日志确认探索调用 `/agent-calls/runs` 被旧试运行占用的 Default Profile 并发名额拒绝。补齐该接口的 ValueError 映射，返回 422 `invalid_agent_invocation` 和具体中文原因，避免变成未处理 500 / Internal server error；保留 Profile 并发隔离，不自动取消其他任务。新增真实 API 容量冲突回归测试；WebAgent 调用与工作台共 16 项测试通过。既有目录测试明确设置双调用容量，独立容量测试保持默认每 Profile 单任务。Python 变更需重启 AppDev Local 生效，无需重建。
+
+- 2026-10-08：修复探索后试运行复用已失效 BiDi Tab（`no such frame`）的问题。新试运行/探索前使用原连接的 `browsingContext.getTree` 验证缓存上下文，缺失时仅在所选 Profile 创建新 Tab；并发准备共用同一 Promise，禁止采用无关页面。Mini 编辑器同步更新上下文并释放旧客户端。执行中浏览器异常回报 pending interaction 为 failed，避免残留 waiting_input；不在另一页面自动重放执行中动作。静态资源版本 agent-step-chat-65 / workspace-16。
+  - 验证：Node workspace、recipe editor、AI list output、Profile selection、browser request failure 共 19 项通过；两个 JS 语法检查通过。尚未在真实 AppDev 页面完成端到端复测；静态修改只需刷新 Shell，无需重建 App。
+
+- 2026-10-08 等待状态与 AI 步骤结果续修：工作台 waiting_input 根据 pending interaction 区分等待浏览器响应/等待协助/等待确认，人工协助显示具体 prompt，不修改底层 run 生命周期。修复 executeAIStep complete 丢弃真实执行结果、固定返回当前 URL 的旧缺陷；优先回传实际成功动作结果，提取列表步骤保留 authored_operation，若只观察到 DOM 而未产生结构化 items，则完成前执行列表提取，已有 items 不重读。真实 checkpoint 确认本次 source 是 extract_list，但解释执行输出仅 outcome/context/url；最近完成判断改动暴露此原有路径。10 项 Node 工作台/AI 结果与 16 项 Python 等待分类/编译/Source 回归通过，JS 语法及 scoped diff 检查通过。静态缓存更新；需重启 Local 并刷新，旧 IR 需重新编译；未修改已有 Recipe/运行结果，真实页面试运行待验证。
+
+- 2026-10-08 open 页面就绪等待：原生 BiDi navigate(wait=complete) 返回后默认再等 3000ms，并调用共享 SDK 稳定性等待（最多额外 10 秒，要求非空页面；不能把稳定的空文档判为就绪）。open 编译结果默认 delay_ms=3000，可显式覆盖 0–30000ms，生成规范化保留显式值；旧 IR 执行也使用相同默认。4 项 Node 导航顺序/默认与覆盖/空文档测试及 12 项 Python 目标/编译/Source 编辑回归通过，JS 语法与 scoped diff 检查通过。Mini-Entry/SDK 缓存版本更新；静态刷新加载执行逻辑，编译/API 默认变更需重启 Local。真实网页端到端等待效果待复测，无 Cloud 或原生重建。
+
+- 2026-10-08 重复基础能力提取续修：真实 app-dev 探索记录出现两个不同名 web.extract-list 调用，参数和 17 条完整结果完全相同，仅轮播使 DOM 计数改变。沉淀去重覆盖 builtin:web:extract-list，按相同参数、相同结果及结果 page_url 判定，不依赖名字/自然语言 target/DOM 长度；有页面或实际结果变化仍保留。相同提取再次被规划时，在执行前单独进行目标完成核对，继续必须提供目标原文中的未满足要求与证据缺口，禁止以轮播/重新确认作为理由。已只读复放本次四步 checkpoint，最后一对判为重复；28 项目标/模型调度/附件沉淀回归通过，scoped diff 检查通过。真实模型重跑待验证，未改用户已有 Recipe/Checkpoint，Python API 需重启 app-dev Local 生效，无原生重建/Cloud 改动。
+
+- 2026-10-08 探索完成条件修正：移除依赖“当前页面”等措辞和字段名集合的自动完成捷径，统一由目标、范围、输出及执行证据进行 AI 判断；结果证据增加非空数量、字段类型与有限样本，约束已满足目标后立即结束。移除直接生成 Prompt 强制正文读取/可选总结、假设页面就绪，以及按措辞自动删除显式导航的处理；Review 允许 URL 参数/变量绑定。沉淀仅保守合并紧邻同名、同目标/参数（允许重述已有字段）、页面指纹衔接一致且实际结果完全相同的列表读取，页面/结果变化仍保留。28 项目标/探索模型调用/附件沉淀/Source 编辑 Python 回归通过，scoped diff 检查通过；真实模型探索待复测。Python API 修改需单独重启 app-dev Local 生效，无 Cloud 或原生包改动，不自动改写既有用户 Agent。
+
+- 2026-10-08：修复 Recipe 全流程 AI 修改 Prompt 强制诱导可选 read_results/摘要的问题，改为仅按工作目标与本次反馈修改，列表目标提取后直接结束并返回列表；明确 done/failed/pause 为系统结束目标，不可作为步骤名。编译器增加 reserved_step_name 硬校验，多能力复用同一校验；无效旧流程仍允许提交 AI 修改修复。统一编辑器新增可见可编辑工作目标（source.description），保存后作为修改 Prompt 的当前权威目标，同时保留原始目标上下文。12 项前端、6 项 Python 测试通过，语法/diff 检查通过。Python Local 重启及页面刷新后生效；未自动改写用户现有错误流程，实机新模型修改待复测。
+
+- 2026-10-08：工作台 Agent 编辑器新增带二次确认的“重新开始”。已保存草稿重新读取，探索制作清除当前流程/测试结果并返回目标输入，保留目标/附件/Profile；确认后只取消本编辑器关联运行，取消失败保留编辑器内容，旧探索 checkpoint 标记 cancelled 防止自动恢复。忙碌期间禁用按钮；不删除已保存 Agent。20 项相关 Node 回归通过（最后创建页标题补齐另跑 4 项重置回归），JS/diff 检查通过。静态刷新生效，真实确认/取消操作待实机复测。
+
+- 2026-10-08：AI 浏览器探索制作/编辑测试新增浏览器 Profile 选择，继承工作台初始选择，显示 Profile 名称；显式浏览器动作时按所选 Profile 延迟创建独立测试页。同一编辑器按 Profile 隔离并复用会话，切换保留 Agent 内容，断开旧客户端并清除局部测试状态；运行/探索未结束时禁止切换。Recipe 和普通试运行传递 profile_key 至并发管理。16 项前端测试、双语 JSON/JS 语法及 scoped diff 检查通过；静态刷新生效，无需重启或重建，真实多 Profile 登录状态实机复测待完成。
+
+- 2026-10-08：探索 Recipe 试运行完整化 run_id 调度回执后再驱动浏览器，并保留已创建运行 ID，重复点击继续非终态运行而非占用第二个并发名额；传递实际 profile_key。Recipe 运行并发 ValueError 返回可读 409，不再暴露 500；操作错误滚动到提示。8 项前端及 2 项 API 回归通过。App Dev 现场旧 run_513a18dad700489fba65a0a42444c999 仍 waiting_input，第 0 步原生浏览器交互待处理；点击继续尚未推进，不宣称实机恢复。JS 刷新、Python Local 重启后生效，无需原生重建。
+
+- 2026-10-08：修复探索制作审核重绘时 replaceChildren 移除共用 Agent 编辑器，导致 AI 调整返回新版本后步骤/参数消失并显示 null。保留编辑器 DOM，跨版本更新内容，同版本保留未保存编辑；脚本缓存版本更新。7 项 Recipe 编辑器/审核生命周期 Node 测试及 JS 语法检查通过，含模拟真实 DOM 查询的跨版本回归；静态刷新生效，无需重启，实机完整调整流程待复测。
+
+- 2026-10-08：探索 Recipe 审核复用普通 Agent 的完整编辑面板，统一参数/局部变量/步骤类型/图跳转/编译折叠/AI 单步修改及调试；移除独立编译前后文本卡片与重复测试参数表单。新增受认证 PATCH /agent-recipes/{id}/source，按 owner/revision 保存完整 Source、重新投影编译结果并清除旧批准，允许保存待修复配置但批准/运行仍要求编译有效。审核/整体 AI 修改/试运行/提交前同步编辑内容，试运行用统一输入并支持结束返回 Shell；单步调试使用未保存临时 Draft，未审核不进入已保存菜单；workspace recipe_id 恢复统一编辑器。20 项 Node 回归和 1 项 Python API 测试通过，覆盖共享面板/未保存编辑保持/完整参数变量图保存/旧批准失效/乐观锁/非法跳转及试运行输入。资源 agent-step-chat-57；需重启 App-Dev Local 并刷新，当前用户审核现场未刷新；实机新界面及完整模型调试链路待复测。Test 下次重建。
+
+- 2026-10-08：Domain 创建智能体改为独立宽版布局，仅 workspace_create 生效：Domain/创建标题说明、模型标签与选择同行、大任务目标输入、附件按钮并列、主按钮靠右；窄容器自适应，浏览器侧栏保持原布局。资源 agent-step-chat-56；8 项工作台/创建入口测试、JS/diff 检查通过；App-Dev 实机刷新并打开 watchesbysjx.com 创建页，AX/截图确认新布局完整展示且未启动探索。
+
+- 2026-10-08：Domain 新建 Agent 先输入自然语言目的与测试附件，再显式启动探索制作；不预建空草稿、不提前打开浏览器，复用既有探索/提炼/审核/提交编辑流程。已保存 Agent 编辑入口不变。8 项工作台/创建入口 Node 测试与 JS/diff 检查通过，未实测模型探索。资源 agent-step-chat-55/workspace-13；App-Dev 刷新生效，Test 下次重建。
+
+- 2026-10-08：网站提取规则 origin/path 独立可选，缺省、null、空字符串或空白不限制对应范围，直接提取任务当前页面；填写时继续精确校验，显式 path 对列表/正文统一生效。保留 selector 与规则格式校验，不更改已保存规则。SDK 14 项回归通过，新增实际执行 DOM 提取函数的空范围/单独范围/范围不匹配覆盖；JS 语法及 diff 检查通过。编辑器缓存 browser-foundations-18，App-Dev 刷新生效，Test 需下次重建。
+
+- 2026-10-08 将编辑器单步/全部“预演”改为“检查步骤”：受认证的 /agent-source/check 纯静态校验当前编辑 Source，复用编译器检查配置与跳转；不保存、不创建 generation/run、不调用 AI 补全、不连接或操作网页。逐步显示错误/通过，全部检查汇总；提示说明配置合格不代表真实网页执行成功。前端缓存 agent-step-chat-54，新增 Python/Node 测试各 1 项通过。Python API 需重启 Local，Test 内嵌源码需下次重建。
+
+- 2026-10-08 用户要求同步重建 Dev/Test：Dev 已通过固定 build-dev-app.sh 完成替换并归档旧 App，固定 com.ai2apps.desktop.dev/dev 身份及原生 focus_shell 处理检查通过；Test 已通过固定 build-test-app.sh 完成重建及旧 App 归档；verify-release-app.sh、Dev/Test codesign --verify --deep --strict 均通过，Test 固定 com.ai2apps.desktop.test/test、cloud Runtime、非 Development 合同及嵌入新版 Local 聚焦 API/原生处理检查通过。两实例已恢复启动，Dev 127.0.0.1:63969 与 Test 127.0.0.1:64378 健康检查均 200，实机主窗口已进入首页。仅退出这两个实例的准确 Bundle/Local 进程，未修改或合并实例数据，App-Dev 保持独立。
+
+- 2026-10-08 `implemented_appdev_rebuilt`：WebAgent 工作台手动试运行在终态调用受 Desktop Shell 会话保护的原生 Shell 聚焦通道；原生打包 transform 扩展现有生命周期 broker 的 focus_shell 动作，仅聚焦本实例主窗口，不重新导航。后台任务及等待协助不触发，切换编辑对象后旧测试不抢窗口。7 项 Python/Node 回归测试通过，原生 transform 匹配当前 shell.mjs 且通过 JS 语法检查。用户授权后已用固定 build-app-dev-environment.sh 完成重建并重启；verify-release-app.sh 和 codesign --verify --deep --strict 通过。确认固定 bundle ID、app-dev instance、Development/source-root/cloud Runtime 合同，以及 packaged shell.mjs 包含 focus_shell 分支；实机原生标题 AI2Apps-App-Dev: App-Dev 127.0.0.1:56276，AI 浏览器已恢复打开。完整 WebAgent 测试结束自动返回窗口的实机流程待复测。
+
+- 2026-10-08 Agent 编辑/调试模式隐藏执行结果下方的知识桶、发送到对话及保存到知识库控件；切换模式及运行状态时统一同步，普通运行模式仍可使用。前端缓存版本 agent-step-chat-52，JS 语法和 scoped diff 检查通过，静态刷新生效。
+
+- 2026-10-08 WebAgent 试运行结束后自动滚动并聚焦结果区；无输出时定位运行状态，失败/取消定位错误提示。仅在终态触发，忽略已切换的旧运行，避免轮询过程中打断编辑。前端缓存版本升至 agent-step-chat-51；2 项聚焦目标回归测试及 JS 语法检查通过，真实 App 滚动效果待刷新验证，无需重启 Local。
+
+- 2026-10-08：修复“试运行全部”后端丢弃测试输入：BrowserAgentRunCreateRequest 增加 input 字段，create_draft_run 向执行器传递 request.input，替代固定空对象。create_ir_run 在 schema 校验前统一深拷贝默认值并由显式输入覆盖，非法输入返回 422。验证：14 项 Python 测试通过，新增真实 API 参数转发测试及默认值/显式覆盖/非法值断言，diff 检查通过；测试退出时沙箱 Metal 不可用清理告警但退出码 0。Python 变更需重启 App-Dev Local，未操作用户运行现场。
+
+- 2026-10-08：修复情报中心已验证列表规则在编辑器单步执行报 invalid_extraction_step：SDK 的提取执行接受 compiled/adaptive 两种先执行规则模式，仍拒绝 interpreted、规则类型/operation 不匹配及非法格式。规则漂移转为 not_found 供既有 adaptive AI 回退处理。只读核实用户规则 #content /archives/ 保留，模式被编辑器设为 adaptive。资源 browser-foundations-17 / agent-step-chat-50。验证：16 项 SDK/情报规则回归通过（新增同一 list 规则两种模式执行及负例），JS 语法/diff 通过；未实测网站，未刷新用户编辑现场。
+
+- 2026-10-08：修复 open 编译拒绝已声明 string 输入参数完整引用（如 ${input.url}）；保留缺失/未知参数、相对地址及脚本 URL 拒绝。单步规划规则校验失败时复用步骤 AI revision/JSON repair 链路，按自然语言与声明参数补全后保存并重新验证；整 Agent 编译失败时对当前能力步骤走同一补全路径再编译。新增 open/read_page 目标网址可见属性与 read_page 类型选项。资源 agent-step-chat-49。验证：19 项 Node 回归、12 项 Python Agent Builder 测试、动态 URL 与 4 类非法 URL 断言通过；Python 退出时有沙箱 Metal 不可用清理告警，退出码 0。未真实调用模型/执行网页，未重启 App-Dev Local，Python 更新需重启生效。
+
+- 2026-10-08：修复单步预演/运行保存草稿重绘后卡片折叠，按步骤名称保留展开状态；单步准备、执行结果和异常在当前步骤操作区直接显示并保持展开，避免顶部提示不可见。资源 agent-step-chat-48。验证：JS 语法、diff 检查、工作台 6 项回归、单步执行成功/规划异常状态与上下文锁恢复断言通过；未实际执行用户网页或刷新编辑现场。
+
+- 2026-10-08：步骤类型与名称控件统一为 13px 字号及相同行高，类型下拉采用 700 粗体；使用更具体选择器避免通用 input 字号覆盖。资源 agent-step-chat-47。验证：diff 检查通过；未刷新用户编辑现场，视觉待验证。
+
+- 2026-10-08：步骤类型与步骤名称改为等宽两列同行布局，保留可见 label，统一控件高度并限制最小宽度，减少展开编辑的垂直占用。资源 agent-step-chat-46。验证：JS 语法与 diff 检查通过；未刷新用户编辑现场，视觉待验证。
+
+- 2026-10-08：步骤成功/失败/判断为假跳转由自由文本改为下拉菜单，包含当前能力全部步骤（序号及名称）和 done/failed 两个 Agent 结束结果，支持回跳循环。名称编辑同步刷新候选项；无效历史目标保留并标记“目标步骤不存在”，避免静默替换为结束结果。资源 agent-step-chat-45。验证：JS 语法、diff 检查与工作台 6 项回归通过；未刷新用户编辑现场，实际交互待验证。
+
+- 2026-10-08：步骤编辑为原先仅有 aria-label/placeholder 的属性补充持续可见 label，包括步骤名称、自然语言步骤、子 Agent 能力及参数 JSON、AI 指令/输出 schema、输入绑定/固定值；保留已有标签避免重复，参数绑定切换时同步隐藏固定值标签。字段标题统一 12px。资源 agent-step-chat-44。验证：JS 语法、diff 检查及工作台 6 项回归通过；未刷新用户编辑现场，视觉待验证。
+
+- 2026-10-08：修复编译步骤 Checkbox 被通用文本输入框全宽/高度及 grid 标签样式撑大：为 Mini-Entry Checkbox 固定 16px 尺寸，编译选项采用独立 flex 同行标签。资源 agent-step-chat-43。验证：JS 语法与 diff 检查通过；未刷新用户编辑现场，实际视觉待刷新验证。
+
+- 2026-10-08：参数定义组之间分割线加深为 2px 暖灰色，上下内边距增至 18px，末组不显示底线。资源 agent-step-chat-42。验证：diff 检查通过；未刷新用户编辑现场。
+
+- 2026-10-08：参数定义新增上移/下移按钮，与删除并列，边界禁用；使用 inputs.x-ai2apps-order 数组保存添加/手动调整顺序，避免规范化 JSON 的 sort_keys 改变显示顺序。编辑、测试参数与工作台调用表单统一读取顺序；旧数据按现有顺序回退，新参数追加末尾，删除过滤失效键。资源 agent-step-chat-41 / workspace-11。验证：JS 语法、工作台 6 项回归、排序 JSON 往返及移动/删除/追加顺序断言、diff 检查通过。未刷新用户编辑现场。
+
+- 2026-10-08：参数删除引用错误提示增加关闭按钮（含无障碍标签）与 12 秒自动消失；重复尝试清理旧计时器并重新计时，手动关闭同样取消计时器。资源版本 agent-step-chat-40。验证：JS 语法与 diff 检查通过；未刷新用户编辑现场。
+
+- 2026-10-08：参数删除被引用保护拦截时，在该参数删除按钮附近显示持久错误提示，列出引用步骤名称（含局部变量），并滚动至可见位置，避免顶部通知不可见导致按钮无响应的错觉。实际只读核实 Fratellowatches 情报正文 extract 步骤 arguments.url 引用 ${input.url}；未删除用户参数。资源版本 agent-step-chat-39。验证：JS 语法及工作台 6 项 Node 回归通过；未刷新用户编辑现场，现场交互待验证。
+
+- 2026-10-08：Agent 参数删除防误操作：删除按钮增加明确提示/无障碍名称，二次确认显示参数显示名及键名，并说明定义/默认值随保存移除；检查当前编辑内容中步骤和局部变量引用，包含参数重命名后的引用及嵌套属性，仍被引用则阻止删除。增加中英文文案；资源版本 agent-step-chat-38。验证：JS 语法、中英文 JSON 解析、变更 diff 检查通过；未操作用户参数或刷新编辑现场。
+
+- 2026-10-08：Agent 参数定义编辑新增持续可见的参数名、显示名称、说明、类型、默认值标签，使用原生 label 关联输入控件，填写值后仍能辨认字段含义；改善字段间距与多参数分隔。普通侧栏与工作台编辑器共用。资源版本 agent-step-chat-37。验证：JS 语法及 diff 检查通过；保留用户未保存编辑现场未刷新。
+
+- 2026-10-08：AI 浏览器嵌入的 workspace_editor 专注当前 Agent，隐藏通用指令执行表单与“我的智能体”标题/列表，移除编辑区多余分隔；保留模型选择、运行状态/结果、Agent 编辑与测试控件。普通浏览器侧栏不受影响。CSS/JS 资源版本 agent-step-chat-36。验证：模板解析、JS 语法、变更 diff 检查通过；未刷新现有编辑现场。
+
+- 2026-10-08：Domain 中间栏 Agent 卡片增加独立“打开”按钮，保留“编辑”；单一活动能力进入调用参数界面，未启用或多能力 Agent 进入编辑器，不启动浏览器、不发起任务。资源版本 workspace-10。验证：工作台 Node 回归 6 项通过，包含活动能力/草稿打开路由；JS 语法、模板解析、diff 检查通过。
+
+- 2026-10-08：拆分 Domain 行的展开与选中交互：独立箭头按钮只展开/收起 Agent 列表，名称/图标区域只选择网站并切换中间栏；增加当前 Domain 高亮、展开状态和键盘可聚焦按钮及无障碍标签。资源版本 workspace-9。验证：Jinja 模板解析及变更 diff 检查通过；保留用户编辑现场未刷新。
+
+- 2026-10-08：修复 AI 浏览器刷新图标每 5 秒闪动：将后台同步锁与手动刷新展示状态分开，自动同步不禁用/旋转按钮；手动刷新仍显示进度，并复用正在进行的同步，避免重复请求。资源版本 workspace-8。验证：工作台 Node 测试 5 项通过（新增静默同步、手动进度、请求去重验证）；JS 语法及 diff 检查通过。未刷新用户已有编辑现场。
+
+- 2026-10-08：按用户反馈加宽 AI 浏览器左侧导航：桌面最大宽度 260→300px，1100px 以下 200→230px，850px 以下 180→210px；移动端仍纵向排列。资源版本 workspace-7，变更 diff 检查通过。保留当前未保存编辑现场，未刷新。
+
+- 2026-10-08：编辑 Agent 不再复用任务启动路径，不启动浏览器、不跳转网页、不抢浏览器焦点；通过同源宿主回调延迟到预演/运行/选取页面元素时准备测试上下文，去重并复用同一编辑器测试会话。保存、编译和选择参数无需浏览器。资源版本 workspace-6 / agent-step-chat-35。当前编辑器已打开；自动审批因刷新可能丢失未保存编辑状态而拒绝刷新，保留现场，尚未验证修复后的现场点击。验证：工作台 Node 回归 4 项通过，覆盖编辑零启动、重复编辑不启动、并发测试准备只启动一次及会话复用；两个 JS 文件语法及变更 diff 检查通过。
+
+- 2026-10-08：修复 Domain 导航仅列出已启用能力、遗漏已保存但未启用 Agent 的问题。保留活动能力目录作为运行入口；为没有活动导出的 Agent 增加编辑入口，并区分“已编译 · 待启用”/“待编译”，不自动启用编译产物。前端资源版本 workspace-5。验证：`node --test ai2apps/tests/ai_browser_workspace.test.cjs` 3 项通过（覆盖编译未启用、编辑草稿、多能力无重复及点击进入编辑）；JS 语法及变更文件 diff 检查通过。
+
+- 2026-10-08：AI 浏览器视觉对齐首页与 Studio：使用暖灰画布、独立白色圆角三栏、64px 标题栏与黑色图标，统一中性色分段切换、主按钮、表单、任务状态和空态；保留 Domains / Profiles 两个 Tab 与现有任务/Agent 行为，补齐窄屏布局和键盘焦点样式。前端资源版本更新为 workspace-4；只需刷新 Shell 页面，无需重启 Local 或重建 App。
+  - 验证：Jinja 模板解析、`node --check ai2apps/web/static/js/ai_browser.js`、变更文件 `git diff --check` 通过；在固定 App Dev Shell（端口 62009）刷新，实际截图确认新标题栏、三栏卡片与 Profiles 切换。未执行 Agent、发布内容或修改 Profile 数据。
+
+- 2026-10-08 Domain 图标：schema v81 持久保存添加网站时提取的 favicon。解析首页 icon/apple-touch-icon 声明并回退 favicon.ico，使用现有公开地址/重定向/实际 peer 校验、限时和大小限制；图像归一化为 64px PNG，不加载活动 SVG，不读取浏览器 Cookie。工作台返回本地缓存图标，左栏缺失时显示默认图标；既有 Domain 重新添加可补取。9 项工作台/图标测试通过，JS 语法及差异检查通过。Python API 和 schema 变更需下一次 App-Dev Local 重启生效，无需重建 App。
+
+- 2026-10-08 UI 调整：左栏改为 Domains / Profiles 两个互斥 Tab，各自显示对应列表和添加入口。仅切换导航列表，不重建中间编辑器/执行器，不改变中间当前内容。静态资源版本提升，JavaScript 语法和差异空白检查通过。
+
+- 状态：`implemented_and_verified_in_source`，App-Dev 已激活，未发布 Desktop。AI Browser 改为 Domain/能力和 Profile 导航、参数调用/编辑/状态、跨 Domain 当前任务与最近结果三栏。复用原 Agent Mini-Entry 编辑和执行器，导航切换隐藏独立 iframe，不销毁编辑状态；支持类型参数和文件数组选择。
+- Local schema v80 新增账号隔离的持久任务队列、全局/Profile 配额、原子准入、固定编译 generation、租约、中断/恢复/取消。默认当前账号全 Domain 共 4 个，每 Profile 1 个，上限 16；侧栏/API 根 WebAgent 同样准入，嵌套能力共享名额。所有未结束任务均列出，另保留最近 200 条终态记录。旧单能力 Agent 的目录默认能力名称与调用器兼容。
+- 浏览器控制继续走原生 BiDi Gateway。Shell Profile bootstrap 返回 opaque userContext，新增 bind 只解析 Profile 绑定；SDK 用 getTree/create/navigate 绑定专用任务 Tab 和读取 Profile Tab 数量，不按焦点或 URL 猜测。原生改动位于 `sdk/moz/acefox-firefox-153/browser/components/ai2apps/content/shell.mjs`；下一次生产 AceFox 快照必须包含此修改。
+- 固定 App-Dev 构建脚本已完成构建，verify-release-app 和 codesign --verify --deep --strict 通过，实时原生窗口标题符合 App-Dev 合约。仅通过准确 app-dev Helper 重启 Local；未修改其它实例数据。GUI 验证三栏、能力参数、真实 Profile 状态、队列启动专用浏览器页以及任务失败归档。
+- 验证：31 个 Python 相关测试及 12 个 Node 测试通过；后续增加历史记录不能遮蔽活动任务的回归测试。只读实测旧 Fratellowatches Agent 已启动并执行，其自身步骤走失败分支，不能记为采集成功；实际编辑器导航保留依靠 Node 回归验证，未声称完整线上采集/编辑验收成功。
+- 当前执行器需要 AI Browser App 保持打开；Local 持久队列不是无 UI 的后台 browser worker。90 秒租约、15 秒续约，失联在下次查询/准入时暂停并保留名额，不自动重放未知发布动作。情报中心直接 SDK 采集不是 WebAgent 根运行，暂不在此队列。旧调用方没有 Profile key 时保守计入 default。说明：`ai2apps/docs/ai-browser-workspace.md`。
+
+
+### NXR-GALLERY-PREVIEW-GESTURES-20261008
+
+- 状态：`implemented_and_verified_in_source`，未发布 Desktop；iPhone Safari 双指实机验收待补。
+- Gallery / Studio 共用大图预览支持双指以触点中心缩放（25%–600%）、双指平移和松开一指后连续单指拖动，保留桌面鼠标拖动及原有缩放/复位按钮。图片视口接管触摸，视频/音频原生控件不变；关闭、切图及复位清理手势状态。
+- 修改 `ai2apps/web/static/js/gallery.js`、`gallery.css`、共享预览模板及消费者资源版本。静态改动刷新 Mobile Shell 即可，无需重启 Local 或 Cloud 变更。
+- 验证：新增 5 项手势回归（触点锚定、单/双指切换、缩放上下限、取消/捕获丢失、模板接线），连同 Gallery 长按/拖拽共 10 项 Node 测试通过；JS 语法及 diff 检查通过。未声明真实 iPhone 手势已验收。
+
+
+### NXR-MOBILE-OUTPUT-COLLAPSE-20261008
+
+- 状态：`implemented_and_verified_in_source`，iPhone Safari 实机待复测，未发布 Desktop。
+- Mobile Imagine Studio Output 图片随结果面板滚动逐步缩小到 112px，继续吸顶；回到顶部恢复原高度，图片保持 contain，点击大图及素材操作不变。仅 Mobile 生效，桌面保持原样。
+- 缩小高度以等量底部 margin 保留滚动布局尺寸，避免高度变化反馈导致滚动位置跳动；响应面板尺寸变化和移动/桌面断点切换。变更共享 studio_mobile.js/CSS 及资源版本，无需重启 Local。
+- 验证：Studio Mobile 11 项 Node 测试通过，覆盖缩小、下限、返回顶部、Safari 负滚动偏移、桌面恢复及现有导航/输出流程；JS 语法和 diff 检查通过。未声称 iPhone 实机视觉验收完成。
+
+
+### NXR-MOBILE-REMOVE-SWITCHER-BUTTON-20261008
+
+- 状态：`implemented_in_source`，未发布 Desktop。
+- 按用户要求移除 Mobile Shell 顶栏 App Switcher 按钮；保留底部导航、Apps 入口、连接状态、Owner 退出及现有应用挂载状态逻辑。
+- 修改 `ai2apps/web/templates/mobile.html`，刷新 Shell 生效，无需重启。已检查模板差异及 diff 空白，未新增低价值测试。
+
+
+### NXR-MOBILE-HOME-QUICK-STUDIOS-20261008
+
+- 状态：`implemented_in_source`，未发布 Desktop。
+- Mobile Home 快速启动在原有前四项基础上加入 Imagine、Voice/readaloud、Video 三个 Studio，按 App ID 去重，仅展示服务端目录中实际可用的应用，沿用现有启动逻辑。
+- 修改 mobile.js 与 mobile.html 资源版本；刷新 Shell 生效。JS 语法、6 项 Mobile 导航回归及 diff 检查通过。
+
+
+2026-10-08 SenseVoice 43917最终清理修复标准Docker/Host回归exit0：源码摘要匹配，长短转录/取消恢复/鉴权及drain-resume通过，回执 artifacts/sensevoice-real-cancel-r2/host-receipt.json；签名安装发布仍待完成。
+
+
+### NXR-MOBILE-APP-ACCESS-20261009
+
+- 状态：`in_progress`。设备设置及现有权限收紧已实现并通过测试；自建 App 通用资源/Bridge 接入被自动审批拦截，等待用户明确授权，Cloud 未变更。尚未重启 Local 或发布 Desktop。
+- 账户 → 设备 → 远程访问增加 Mobile 可用应用列表，Owner 本机控制开关，普通成员和 Owner Mobile 租约不能管理。schema v85 的 mobile_app_access 按 Installation/App 保存开关；内置七 App 保持原默认，自建默认关闭并提示待接入。
+- 目录、挂载列表、启动/聚焦、原生页面及 App/Studio 专属接口检查设备策略。保留现有公网白名单，未新增公网资源路径。共享 Studio 素材/模型依赖按 Studio 使用范围保留；不授予其它用户身份、不自动取消已启动任务。
+- 修改 ai2apps/api/remote.py、remote/mobile_apps.py、owner gateways、omlx/admin/routes.py、账户模板/JS/CSS/中英文、schema/config。Python 与 schema 改动需按既定流程重启 Local；无须重建 App。
+- 验证：53 项 Python 测试通过（持久化、Installation 隔离、Owner 设置、非 Owner/手机管理拒绝、目录过滤、关闭后直接打开/重开/API 拒绝、既有 Owner/Studio 回归）；账户 JS 语法、Jinja/JSON 解析通过。无 iPhone 实机验收声明。
+- 交接与审批范围：ai2apps/docs/mobile-app-access-gateway-2026-10-09.md。
+
+
+#### NXR-MOBILE-APP-ACCESS-20261009 后续：Owner 自建 App 通道
+
+- 用户已明确批准本人 Owner 登录会话范围的通用通道，安全边界实现已通过自动审批；此前“等待明确授权”阻塞解除。
+- 新增绑定 Mobile sandbox mount/实例/访问者/启用策略的资源通道及仅 context 方法的 Bridge；公网上要求已验证 Cloud Owner 租约，旧配对会话不能代替，任意方法/额外负载默认拒绝。Shell 对 opaque iframe 加 sandbox 并在服务端握手通过后确认加载。
+- 通用目录/启动动态检查 Mobile sandbox 声明，默认由 AI2APPS_MOBILE_PACKAGE_GATEWAY_READY=1 就绪开关控制；Cloud 未部署时不开通自建 App。未开放管理接口、通用代理或新推理权限。
+- 第一阶段为无需后端能力的 Package 页面；模型/文件/Agent 等能力 Bridge 仍未实现，不能声明全部自建 App 可用。状态保持 in_progress，Cloud 路径部署与实机验收待完成，目标 Local 未重启。
+- 验证：55 项 Python、6 项 Node 通过（新安全通道、匿名/撤销/跨实例/Origin/未授权方法、既有 Owner Studio）。新增就绪门控后重跑 Owner/policy 测试。Cloud 合同已更新 ai2apps/docs/mobile-app-access-gateway-2026-10-09.md。
+
+
+#### NXR-MOBILE-APP-ACCESS-20261009：Cloud 部署后 Dev 激活
+
+- Cloud mobile-app-access-gateway-20261009-v1 已核对。Ready 增加基于可信运行描述路径的同实例配置文件，严格 schema/失败关闭，显式环境变量优先；避免 Helper 环境过滤导致开关丢失。
+- 仅 dev 配置并通过标准 HelperControlClient 重启；PID80734、端口62813、boot8dadc33c-ef75-481f-bbd7-42a9f76a7171。App-Dev/Test 未操作。Chrome 真实 Owner 重新进入 Mobile 成功；Dev 账户远程访问 Mobile 列表实际可见。
+- 44 项 policy/gateway/lease 测试通过。当前无独立 sandbox Package 可测，已询问测试对象；真实 Package、实机租约矩阵和 iPhone Safari 未完成，不将此条记为全面验收。
+
+### NXR-INTELLIGENCE-SOURCE-AGENTS-20261009：信息源指定读取 WebAgent
+- 状态：`implemented`。列表/正文各自绑定 owner-scoped、已启用、编译兼容的单入口 WebAgent generation；默认自动学习复用，指定版本失效不静默降级。统一后台 Task 保持来源 Profile、冷却与历史去重。配置接口、编辑回显、启停保留字段和返回结构检查已接入。
+- 验证：7 项 Python 定向测试与 3 项 Node 自动规则回归通过；JS 语法与 diff 检查通过。旧 API 全量测试 7 项因假 runtime 缺 intelligence_collector 失败（后台迁移后旧测试未适配）。标准 Helper 已重启 App Dev Local，App Dev 64721 原生来源设置显示两个选择器，已启用 Agent 列表加载通过；真实指定 Agent 采集尚未验收。无重建、无发布。
+
+### NXR-INTELLIGENCE-IMAGE-RECOVERY-20261009：统一采集后补图
+- 状态：`implemented`。确认最新 Fratello 两篇文章入库无图片，编译正文规则未开启图片选项。新规则显式提取图片，所有正文路径在入库前归一封面与图集，缺图时通过原来源 Profile 的共享 Task 最多补读一次；保留文字，记录成功/未发现/失败数量，社交补读仍有间隔。
+- 验证：7 项 Python 定向检查通过，覆盖复用已有图片、缺图恢复、不替换正文、无图与异常不丢失文章。已请求标准 App Dev Local 重启，App Dev 65506 历史 Tudor/Armin Strom 两篇已通过原 Profile 补提取，入库 21/6 张图片并设置封面，原生详情已验证；自动分支由定向测试覆盖，本轮未另跑整频道采集。无重建或发布。
+
+### NXR-INTELLIGENCE-KNOWLEDGE-CHAT-20261009：关联知识库参与频道对话
+- 状态：`implemented`。当前 principal 在频道关联桶内使用系统混合/全文检索，空关联不全库检索，失权/删除明确报错；文章和知识库片段统一引用编号，去重同步文章，无文章也可回答。界面显示知识库引用及可展开的版本片段快照。
+- 验证：8 项对话与知识库定向测试通过，JS 语法及 diff 检查通过；真实模型端到端未验收。通过标准 Helper 重启 App Dev Local，未重建或发布。详见 ai2apps/docs/intelligence-center-v1.md。
+
+### NXR-INTELLIGENCE-ENTITY-CATEGORIES-20261009：实体分类展示
+- 状态：`implemented`。实体类型筛选及数量、仅看已关注、按频道记住选择；腕表默认产品，AI 默认模型。加入 model 类型和旧产品模型兼容，档案保持跨频道共享。4 项 Node 与 7 项 Python 检查通过；App Dev 51940 原生腕表频道默认选中产品13（全部20），品牌2、人物2、事件1分类和仅看已关注控件显示正常。通过标准 Helper 重启 Local，无重建或发布。
+
+### NXR-INTELLIGENCE-ENTITY-SELECTION-20261009：实体分类选中样式
+- 状态：`implemented`。修复实体分类 active 规则被 #intel-app 通用按钮样式覆盖；以 aria-pressed 匹配更高优先级的深色底、反白文字及勾选标记，悬停保持选中态。CSS diff 检查通过。仅静态样式，刷新 Shell，无需重启或重建，未发布。
+
+### NXR-INTELLIGENCE-CATEGORY-FOLD-20261009：频道相关分类排序与折叠
+- 状态：`implemented`。移除实体“全部”分类，默认只显示当前分类和展开按钮；展开按频道名称/关注内容规则排序，腕表为产品、品牌、人物优先，AI 模型置后；AI 频道模型优先，体育频道事件优先。选择后收起，保持每频道选择记忆，旧全部偏好回退频道默认。5项 Node 检查及语法/diff 检查通过；App Dev 51940 原生验证仅显示当前分类、腕表展开顺序、选择产品后收起均通过。仅刷新 Shell，无重启、重建或发布。
+
+### NXR-INTELLIGENCE-AI-TAXONOMY-20261009：AI 规划频道实体分类
+- 状态：`app_dev_verified`。删除前端关键词固定排序，频道创建由 AI 规划开放分类名、边界、顺序和默认项；分类及实体归属存频道，实体本体保持共享。已有频道可通过 AI 规划实体分类建立/重规划，采集和实体整理后增量分类。保留单项折叠与无“全部”交互，未归类实体可在待分类查看。9项 Python、3项 Node 定向检查通过；App Dev 53775 真实AI为腕表生成8类并归类20实体（含独立制表师与工坊、机芯与复杂功能），保留AI给出的默认项与顺序，折叠/展开通过。首次Cloud 502未写入半成品，重试成功。无重建或发布。
+
+### NXR-INTELLIGENCE-ENTITY-DISMISS-20261009：实体不感兴趣与持续排除
+- 状态：`implemented`。实体卡片/详情增加不感兴趣，owner 范围跨频道隐藏并停止机会输出；持久保存名称/别名排除，后续抽取命中时跳过且补记新别名，人工归属重定向也尊重忽略。提供已忽略列表及恢复，原文章保留。11项 Python、3项 Node 定向检查通过（含忽略/恢复 API、跨频道后续别名排除）；App Dev 54943 卡片不感兴趣按钮及已忽略入口显示通过，未替用户选择要忽略的真实实体。无重建或发布。
+
+### NXR-INTELLIGENCE-DISMISS-CONFIRM-20261009：实体偏好布局与防误触
+- 状态：`implemented`。详情不感兴趣移至关注复选框同一行，显式 type=button 避免误提交；列表和详情共用确认弹窗，说明实体名称、所有频道范围、阻止重入和恢复入口，取消不发请求。4项 Node 检查通过，语法/diff通过。仅前端刷新，无重启、重建或发布。
+
+### NXR-INTELLIGENCE-ENTITY-IMAGES-20261009：实体相关图片
+- 状态：`implemented`。动态汇集实体引用文章/帖子封面及正文图片，去重并保留来源；列表封面、详情图片集、放大及现有 Gallery 导入，支持指定封面、确认移除关联并持久排除。原文章不变，沿用微博受保护图片代理与原 Profile。12项 Python、5项 Node 定向测试通过，覆盖 owner 隔离、封面切换、重新采集后的排除保留、取消移除无写入。通过标准 Helper 重启 app-dev Local，未重建或发布。
+
+- App Dev 58866 原生界面验证：实体列表封面、详情8张相关图及来源/封面/移除按钮可见；放大图片实际加载成功，现有加入图库入口可用。未修改用户真实图片偏好。
+
+### NXR-INTELLIGENCE-ENTITY-IMAGE-GROUPS-20261009：实体图片按文章聚合
+- 状态：`implemented`。实体详情图片按来源文章/帖子分组，每组只显示一次来源标题和图片数，组内图片保留放大、设为封面、移除关联操作。仅前端展示调整，5项 Node 回归和语法检查通过；无需重启或重建，未发布。
+
+### NXR-INTELLIGENCE-RULE-TOGGLE-20261009：实体规则输入按需展开
+- 状态：`implemented`。机会条件/关注规则改为复选框，未勾选时隐藏输入和保存按钮；已有规则默认展开，收起保留内容。名称、别名、关注状态独立自动保存，串行保存并更新 revision，规则仍显式保存。5项前端回归和语法检查通过。仅静态前端，无重建或发布。
+
+### NXR-INTELLIGENCE-ENTITY-SIDEBAR-20261009：右侧实体详情
+- 状态：`implemented`。实体列表点击后保留中间列表和选中高亮，右侧新增实体详情页签，承载设置、图片、实体对话及事实；删除返回实体列表按钮。详情事件独立绑定，频道切换清空选择，离开实体/机会页恢复右侧对话或文章。6项 Node 回归及语法/diff检查通过。仅模板/前端刷新，无重建或发布。
+
+- App Dev 58866 已刷新验证：点击 Mirage Miroir 后实体列表仍在，右侧实体详情展示名称、规则及10张图片；无返回列表按钮。
+
+### NXR-INTELLIGENCE-COMPACT-ENTITY-IMAGES-20261009：紧凑实体图片网格
+- 状态：`implemented`。实体详情缩略图改为112px高、128px最小列宽、8px间距，去除卡片内层留白；封面/移除按钮叠加图片底部，hover或键盘focus-within显示，触屏常显，保留原确认机制。纯CSS，diff检查通过，无重启、重建或发布。
+
+### NXR-INTELLIGENCE-ENTITY-RELEVANCE-20261009：实体提及与图片归属
+- 状态：`implemented`。AI抽取增加substantive/mention及证据理由，不按提及次数晋升；正式列表默认隐藏mention和旧待整理记录，可显式查看并关注晋升。图片只接纳AI依据提供的图片说明匹配的有效ID，无说明/不确定不兜底；保留手选封面及排除。抽取检查点升级并包含图片变化，旧文章可重新整理且保留共享实体ID。14项Python和6项Node检查通过。标准Helper重启App Dev，无重建或发布。
+
+
+### NXR-PLATFORM-SEARCH-AGENT-20261009：平台通用网页搜索 WebAgent
+
+- 状态：implemented，待真实 Google/Bing 联网验收及后续 Desktop 发布评估。
+- 新增内置 `builtin:web:search` / `web.search`，Google 优先，导航失败或结果不可用转免费 Bing 网页搜索，双引擎不可用失败；查询编码、1–50 条上限、标题/链接/摘要、跳转还原及去重。
+- 使用共享 Local Browser Task 与 compiled/BiDi 路径，无前台执行依赖、无每次 AI 调用；可信 Local `WebAgentInvocation` 支持内置能力调用。现有 HTTP research Tool 暂不改变；Google API provider 为后续扩展，凭据进入平台秘密存储。
+- 文档：`ai2apps/docs/platform-search-agent.md`；验证：49 项 Python 回归、3 项 DOM 搜索结果测试。Python 修改需重启 app-dev Local；无需重建 App。
+
+- 后续完善：已有相同文章版本的档案走保留名称/引文的相关性复核，优先于未建档文章；原始抽取名称错误提示定位具体名称。复核保留全部人工归属后的事实。批次失败仍刷新已保存结果。15项Python、7项Node通过。App Dev真实AI复核：帝舵Black Bay Ceramic=mention、0图片；Supermarine Full Ceramic=substantive、10图片；Mirage Miroir=substantive、3图片。旧档案44条事实已复核。随后未建档DUG文章因模型组合名称不在原文中而被校验拒绝，新文章批量整理未全部完成，已有复核结果已保存。无发布。
+
+### NXR-INTELLIGENCE-ENTITY-NAME-EDITOR-20261009：按需编辑实体名称
+- 状态：`implemented`。实体详情默认隐藏名称/别名表单，点击标题展开并聚焦名称；编辑区右上角×收起并将焦点返回标题。切换实体恢复收起，保留原自动保存，更新后同步详情标题。纯前端，7项Node回归及语法/diff通过，无重启、重建或发布。
+
+### NXR-INTELLIGENCE-ENTITY-DETAIL-FOLDS-20261009：实体详情折叠区
+- 状态：`implemented`。与实体对话、事实时间线、纠正归属改为独立原生details，默认收起；同一实体操作重绘保留展开状态，切换实体恢复收起。时间线保留数量，纠正归属提示先勾选事实，研究反证入口自动展开对话。7项Node回归、语法及diff检查通过。纯前端，无重启、重建或发布。
+
+### NXR-INTELLIGENCE-ENTITY-RULE-FOLD-20261009：关注规则统一折叠样式
+- 状态：`implemented`。机会条件/关注规则移至时间线之后、纠正归属之前，使用同款默认收起details，移除原复选框。规则独立表单只保存rule；时间线事实通过form属性关联归属表单，避免嵌套表单且保持批量移动。7项Node回归、语法/diff检查通过。纯前端，无重启、重建或发布。
+
+### NXR-INTELLIGENCE-RELATED-ARTICLE-LIST-20261009：实体相关文章与原文浏览
+- 状态：`implemented`。相关图片区改为相关文章列表，从事实引用聚合（含无图文章），文章下保留对应实体图片；多来源展示单独入口。标题通过现有Profile生命周期服务和原生BiDi打开原文、激活标签并保留页面，沿用来源Profile，不改变实体详情。缺失信息源明确提示，不切换到错误Profile。8项Node回归及语法/diff检查通过。纯前端，无重启、重建或发布。
+
+### NXR-INTELLIGENCE-RELATED-ARTICLE-META-20261009：相关文章卡片元信息
+- 状态：`implemented`。文章卡片标题独立一行，下一行左侧来源名（无名称回退域名），右侧图片图标及数字；保留多来源原文入口、无障碍图片数量说明与下方缩略图。8项Node回归及语法/diff检查通过。纯前端，无重启、重建或发布。
+
+### NXR-INTELLIGENCE-RELATED-TITLE-ELLIPSIS-20261009：相关文章标题单行省略
+- 状态：`implemented`。相关文章卡片标题单行显示，溢出省略号；原生title悬停提示显示转义后的完整标题。前端语法/diff检查通过。纯前端，无重启、重建或发布。
+
+### NXR-INTELLIGENCE-RELATED-TITLE-TOOLTIP-20261009：页面内完整标题提示
+- 状态：`implemented`。替换Shell中未显示的原生title提示，用页面内tooltip，在标题hover或focus-within时立即显示完整换行标题，保持单行省略；提示文本转义，通过aria-describedby关联。语法/diff检查通过。纯前端，无重启、重建或发布。
+
+### NXR-INTELLIGENCE-ENTITY-FILTER-ROW-20261009：实体筛选同行显示
+- 状态：`implemented`。显示提及记录/待整理与仅看已关注置于同一flex行，统一对齐及间距；极窄空间允许换行。语法/diff检查通过。纯前端，无重启、重建或发布。
+
+### NXR-INTELLIGENCE-SOURCE-RECOMMEND-POSITION-20261009：信息源推荐入口位置
+- 状态：`implemented`。AI推荐信息源从频道顶部操作区移到信息源列表工具栏，紧接添加信息源右侧，仅信息源页显示；沿用原按钮事件与忙碌状态。语法/diff检查通过。模板/前端刷新，无重启、重建或发布。
+
+### NXR-INTELLIGENCE-CHANNEL-CHAT-ENTRY-20261009：精简频道对话入口
+- 状态：`implemented`。宽屏隐藏“立即更新”旁重复的“频道对话”按钮，使用右侧栏入口；850px 及以下侧栏隐藏时保留打开对话按钮。CSS 定向 `git diff --check` 通过。纯前端，无重启、重建或发布。
+
+### NXR-INTELLIGENCE-HEADER-STATUS-CLEANUP-20261009：精简频道首页状态说明
+- 状态：`implemented`。移除频道首页定时采集说明及常驻知识库关联/同步计数；同步失败时仍提供错误与重试入口。操作区与内容导航保留 20px 间距。JS 语法及定向 diff 检查通过；纯前端，无重启、重建或发布。
+
+### NXR-INTELLIGENCE-CHANNEL-ACTIONS-20261009：频道操作入口调整
+- 状态：`implemented`。撰写稿件移至稿件列表顶部，去掉空列表重复入口；立即更新改为频道设置左侧图标。更新/设置使用自定义 Hover-Tip，支持键盘焦点，避免 Shell 原生 title 提示不显示。无频道时隐藏图标组，保留更新禁用逻辑。JS 语法及定向 diff 检查通过；纯前端，无重启、重建或发布。
+
+### NXR-INTELLIGENCE-NAV-COUNT-SPACING-20261009：导航计数间距
+- 状态：`implemented`。频道导航按钮文字与计数间距统一为 2px（按反馈进一步收紧），移除计数额外左边距，避免与通用按钮 gap 叠加。定向 diff 检查通过；纯 CSS，无重启、重建或发布。
+
+### NXR-INTELLIGENCE-SECTION-COUNT-SPACING-20261009：栏目计数间距
+- 状态：`implemented`。补齐文章栏目筛选按钮的计数间距：移除通用 7px gap 与 4px 左边距叠加，改为统一 2px，与上层导航一致。定向 diff 检查通过；纯 CSS，无重启、重建或发布。
+
+### NXR-INTELLIGENCE-SECTION-DRAG-ORDER-20261009：文章栏目拖拽排序
+- 状态：`implemented`。实际栏目支持拖拽前后插入，全部/待归类固定；通过 owner-scoped PUT sections/order 持久化到频道，校验完整无重复 ID 集合。保留栏目 ID 与文章归属，失败提示并维持原顺序。存储持久化/无效集合/用户隔离定向测试通过，JS 语法检查通过。需重启 App Dev Local 加载 API；不重建或发布。
+
+### NXR-INTELLIGENCE-MANUAL-IMPORT-20261009：手动收录文章
+- 状态：`implemented`。更新右侧增加加号及 Hover-Tip；支持 Profile/BiDi URL 读取与 20MB PDF/doc/docx/md/txt/图片上传。正文保留、AI 归类、频道内 URL/文件去重、关联知识库同步；附件 owner 隔离与 MIME 实测判定。图片按原图收录，无 OCR；扫描 PDF 无文字明确失败。3 项 Python 定向测试、7 项卡片测试、JS 语法和 diff 检查通过。App Dev Local 重启加载，无重建或发布；尚未进行原生 Shell 上传实测。
+
+### NXR-INTELLIGENCE-IMAGE-SUMMARY-CHOICE-20261009：图片收录可选 AI 总结
+- 状态：`implemented`。图片上传要求显式选择总结/仅原图；总结通过现有模型调用链发送视觉输入，生成标题摘要正文并标注 AI 图片总结。重复原图可原位升级，失败不静默降级。4 项收录定向测试通过（含 opt-in 和原位升级），JS/diff 检查通过；真实视觉模型效果未实测。App Dev Local 重启加载，不重建发布。
+
+### NXR-INTELLIGENCE-CHANNEL-DIALOG-LAYOUT-20261009：频道设置三段式对话框
+- 状态：`implemented`。频道创建/设置对话框加宽至 760px（窄屏自适应），总高度不超过 90dvh，标题和操作栏固定，中间字段区域独立滚动；错误提示位于底栏。定向 diff 检查通过。纯 HTML/CSS，刷新生效，无重启重建或发布。
+
+### NXR-INTELLIGENCE-SECTION-EDITOR-20261009：频道栏目管理
+- 状态：`implemented`。频道设置支持栏目名称/说明编辑、添加、确认删除；随频道原子保存，取消不提交。最多 32 项，校验非空/唯一名称及 ID；删除保留文章转待归类，栏目快照防覆盖并发修改，采集中阻止修改。7 项栏目与手动收录回归测试通过，JS 语法/diff 检查通过。App Dev Local 重启加载，无重建或发布。
+
+### NXR-INTELLIGENCE-I18N-20261009：情报中心多语言
+- 状态：`implemented`。接入系统语言包，完成简体中文/英文 UI、日期格式和错误提示；其他 UI 语言暂按系统机制回退英文。静态文案翻译不改写文章、实体名或用户输入。频道独立保存 AI 输出语言，支持中简/中繁/英/日/韩/法/德/西/葡巴/俄，后台采集沿用；新频道栏目与实体分类规划传递语言设置。25 项 Python 和 18 项 Node 回归检查通过，最终补丁后 5 项语言/分类测试通过，定向 diff 检查通过。原生 Shell 语言切换和真实模型多语种输出尚未实测。App Dev Local 重启加载，无重建或发布。
+
+### NXR-AI-BROWSER-I18N-20261009：AI Browser 与 WebAgent 编辑器多语言补齐
+- 状态：`implemented`。补齐简中、英文、繁中、日文、韩文、法文、西班牙文、巴西葡语、俄文的工作台、Domain/Profile 管理、任务/并发设置、删除确认、附件/参数、能力编辑、步骤与 Review/探索提示；后台固定任务标签在客户端按语言显示，用户内容保持原文。修正并发设置中与后台执行机制不符的关闭 App 提示。
+- 验证：51 项 Node 定向测试通过，包含九语言键覆盖/动态类型与状态/占位符一致性、英文后台标签显示、工作台与能力编辑及步骤运行回归；九语言共 18 个模板渲染通过，1503 个渲染后的 Alpine 表达式语法检查通过。更新旧测试夹具以提供 structuredClone 和步骤指导上下文，并验证附件绑定复制语义。JS 语法和定向 diff 检查通过。
+- 生效方式：刷新 App Dev Shell 页面加载模板、脚本与语言资源；无需 Local 重启或 App 重建。未进行全部语言的原生 Shell 逐页视觉检查，未发布。
+
+### NXR-AI-BROWSER-COMPACT-DOMAIN-MODE-20261009：紧凑网站执行模式设置
+- 状态：`implemented`。执行模式标题与下拉框同行，移除通用表单 label 的上下 22px 留白；说明独立显示，区域内边距压缩为 12px/16px，下拉框按内容宽度显示。窄屏或长翻译允许自然换行；显式 label 关联与说明 aria-describedby 保留可访问性。
+- 验证：2 项九语言覆盖/占位符与运行标签回归通过，定向 diff 检查通过。纯 HTML/CSS，刷新 Shell 页面生效，无需 Local 重启或 App 重建；未发布。

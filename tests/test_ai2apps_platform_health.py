@@ -87,7 +87,7 @@ def test_embedded_platform_health_uses_existing_omlx_data_root(tmp_path):
     state = ServerState(global_settings=SimpleNamespace(base_path=tmp_path))
 
     with patch("omlx.server._server_state", state):
-        response = TestClient(app).get("/v1/platform/health")
+        response = TestClient(app, base_url="http://127.0.0.1").get("/v1/platform/health")
 
     assert response.status_code == 200
     assert response.json()["database"] == {
@@ -107,7 +107,7 @@ def test_embedded_platform_health_remains_public_with_existing_api_key():
     state = ServerState(api_key="platform-secret")
 
     with patch("omlx.server._server_state", state):
-        client = TestClient(app)
+        client = TestClient(app, base_url="http://127.0.0.1")
         unauthorized = client.get("/v1/platform/health")
         authorized = client.get(
             "/v1/platform/health",
@@ -125,7 +125,7 @@ def test_embedded_platform_requires_local_session_before_validation(tmp_path):
     runtime.start()
     state = ServerState(ai2apps_platform_runtime=runtime)
     with patch("omlx.server._server_state", state):
-        response = TestClient(app).get(
+        response = TestClient(app, base_url="http://127.0.0.1").get(
             "/v1/platform/app-instances/appi_missing/sessions",
             params={"limit": 0},
         )

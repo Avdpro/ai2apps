@@ -9,7 +9,8 @@ import json
 import os
 from collections.abc import Callable, Mapping
 from contextlib import ExitStack, suppress
-from dataclasses import dataclass
+from contextvars import ContextVar
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -38,6 +39,11 @@ from ai2apps.worker_resources import (
     video_upscaling_resource_payload,
 )
 from ai2apps.worker_scheduler import WorkloadClass
+
+
+_SYNC_MODEL_LEASE: ContextVar[tuple[Any, PackageModel] | None] = ContextVar(
+    "model_sync_lease", default=None
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,7 +104,7 @@ class ModelInvocationContext:
         owner_user_id = row["owner_user_id"]
         if owner_user_id is not None:
             try:
-                principal = IdentityRepository(database).principal_for(owner_user_id)
+                principal = IdentityRepository(database).local_principal_for(owner_user_id)
             except IdentityBindingError as error:
                 raise ValueError(
                     "Session owner is not an active installation member"
@@ -187,7 +193,7 @@ class ModelInvocationService:
         if actor_user_id == "local":
             principal = RequestPrincipal.legacy_local()
         else:
-            principal = IdentityRepository(self.runtime.database).principal_for(
+            principal = IdentityRepository(self.runtime.database).local_principal_for(
                 actor_user_id
             )
         return ModelInvocationContext.from_principal(
@@ -218,7 +224,7 @@ class ModelInvocationService:
         from ai2apps.cloud_gateway import proxy_cloud_chat_completion
         from omlx.api.openai_models import ChatCompletionRequest
 
-        principal = IdentityRepository(self.runtime.database).principal_for(context.actor_user_id)
+        principal = IdentityRepository(self.runtime.database).local_principal_for(context.actor_user_id)
         if (principal.installation_id != context.installation_id or
                 principal.membership_epoch != context.membership_epoch):
             raise IdentityBindingError("Agent Session identity changed")
@@ -373,6 +379,45 @@ class ModelInvocationService:
             **self._scheduler_identity(context),
         )
 
+    def invoke_sync_json(
+        self, loop: asyncio.AbstractEventLoop, model_id: str, operation: str,
+        payload: Mapping[str, Any], *, context: ModelInvocationContext | None = None,
+    ) -> dict[str, Any]:
+        """Bridge a Host worker thread to the owning loop; reuse only its own lease."""
+        try:
+            current = asyncio.get_running_loop()
+        except RuntimeError:
+            current = None
+        if current is not None:
+            raise RuntimeError("Synchronous model invocation requires a worker thread")
+        if loop.is_closed() or not loop.is_running():
+            raise RuntimeError("Model invocation event loop is unavailable")
+        if payload.get("stream"):
+            raise ValueError("Synchronous model invocation cannot stream")
+        active = _SYNC_MODEL_LEASE.get()
+
+        async def invoke():
+            if active is not None and active[0] is self and active[1].id == model_id:
+                # The enclosing synchronous callback owns this admitted, ready model.
+                # Prevent proxy re-resolution from reattaching its scheduler.
+                model = replace(active[1], scheduler=None, runtime=None)
+                response = await proxy_package_json(model, operation, payload)
+            else:
+                response = await self.invoke_foreground_json(
+                    model_id, operation, payload, context=context
+                )
+            if response.status_code >= 400:
+                raise ModelInvocationError("model_request_failed",
+                    f"Model Worker returned HTTP {response.status_code}")
+            if len(response.body) > 64 * 1024 * 1024:
+                raise ModelInvocationError("invalid_response", "Model response exceeded limit")
+            value = json.loads(response.body)
+            if not isinstance(value, dict):
+                raise ModelInvocationError("invalid_response", "Model response must be an object")
+            return value
+
+        return asyncio.run_coroutine_threadsafe(invoke(), loop).result()
+
     async def run_background_sync(
         self,
         model_id: str,
@@ -404,10 +449,29 @@ class ModelInvocationService:
                 **self._scheduler_identity(context),
             )
         try:
-            await ensure_package_model_ready(model)
+            model = await ensure_package_model_ready(model)
             if on_admitted is not None:
                 on_admitted()
-            result = await asyncio.to_thread(callback)
+            token = _SYNC_MODEL_LEASE.set((self, model))
+            try:
+                # Cancellation cannot stop a synchronous thread. Drain it before
+                # releasing the lease or allowing another model to be admitted.
+                work = asyncio.create_task(asyncio.to_thread(callback))
+                try:
+                    result = await asyncio.shield(work)
+                except asyncio.CancelledError:
+                    while not work.done():
+                        try:
+                            await asyncio.shield(work)
+                        except asyncio.CancelledError:
+                            continue
+                        except Exception:
+                            break
+                    if not work.cancelled():
+                        work.exception()
+                    raise
+            finally:
+                _SYNC_MODEL_LEASE.reset(token)
             failed = False
             return result
         finally:
@@ -576,10 +640,25 @@ class ModelInvocationService:
             return None
         return None
 
-    async def cancel_request(self, model_id: str, request_id: str) -> None:
+    async def cancel_request(
+        self, model_id: str, request_id: str, *,
+        context: ModelInvocationContext | None = None,
+    ) -> bool:
+        """Return true only when matching queued work was removed before dispatch."""
         model = self.model(model_id)
-        if model is None or model.endpoint is None:
-            return
+        if model is None:
+            return False
+        if context is not None and model.scheduler is not None:
+            if await model.scheduler.cancel_queued_request(
+                model.service_key, request_id, **self._scheduler_identity(context),
+            ):
+                return True
+            if not await model.scheduler.owns_active_request(
+                model.service_key, request_id, **self._scheduler_identity(context),
+            ):
+                return False
+        if model.endpoint is None:
+            return False
         try:
             async with httpx.AsyncClient(timeout=5.0, trust_env=False) as client:
                 await client.delete(
@@ -587,7 +666,8 @@ class ModelInvocationService:
                     headers=dict(model.internal_headers or {}),
                 )
         except httpx.HTTPError:
-            return
+            return False
+        return False
 
     def _require_model(self, model_id: str) -> PackageModel:
         model = self.model(model_id)

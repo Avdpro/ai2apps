@@ -21,4 +21,4 @@
     <div class="knowledge-mini-items" x-show="!isBrowserSidebar"><template x-for="record in items.slice(0,8)" :key="record.item.id"><button @click="openItem(record.item)"><i :data-lucide="kindIcon(record.item.kind)"></i><span><strong x-text="record.item.title"></strong><small x-text="kindLabel(record.item.kind)"></small></span></button></template></div>
 </div>
 {% endblock %}
-{% block scripts %}<script>window.AI2APPS_KNOWLEDGE_ACTOR={{ principal_actor_user_id|tojson }};</script><script src="{{ static('js/browser_bidi_client.js') }}?v=browser-context-5"></script><script src="{{ static('js/knowledge.js') }}?v=browser-context-5"></script>{% endblock %}
+{% block scripts %}<script>window.AI2APPS_KNOWLEDGE_ACTOR={{ principal_actor_user_id|tojson }};</script><script src="{{ static('js/browser_bidi_client.js') }}?v=domain-interaction-2"></script><script src="{{ static('js/knowledge.js') }}?v=browser-context-5"></script>{% endblock %}

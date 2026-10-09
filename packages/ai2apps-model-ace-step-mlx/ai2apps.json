@@ -1,0 +1,82 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/model-ace-step-mlx",
+    "type": "service",
+    "version": "0.1.0",
+    "displayName": "ACE-Step 1.5 Turbo MLX",
+    "description": "Native MLX music generation with optional lyrics, 10–120 seconds; 10.09 GB checkpoint."
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": [
+      "darwin"
+    ],
+    "architectures": [
+      "arm64"
+    ],
+    "minimumOsVersion": "26.2"
+  },
+  "entrypoints": [
+    {
+      "name": "model-worker",
+      "kind": "service",
+      "path": "service.yaml"
+    }
+  ],
+  "permissions": [
+    {
+      "capability": "model-weights.huggingface-cache.read",
+      "reason": "Generate music and effects from a declared checkpoint using Metal.",
+      "required": true
+    },
+    {
+      "capability": "accelerator.metal",
+      "reason": "Generate music and effects from a declared checkpoint using Metal.",
+      "required": true
+    }
+  ],
+  "dependencies": [
+    {
+      "packageId": "ai2apps/runtime-omlx",
+      "version": ">=1.8.9 <2.0.0",
+      "optional": false
+    }
+  ],
+  "files": [],
+  "sbom": {
+    "format": "spdx-json-2.3",
+    "path": "META/sbom.spdx.json"
+  },
+  "discovery": {
+    "kind": "model",
+    "categories": [
+      "speech"
+    ],
+    "tasks": [
+      "music-generation"
+    ]
+  },
+  "modelProfile": {
+    "sizeBytes": 10090327160,
+    "minimumMemoryBytes": 51539607552,
+    "scores": {
+      "speed": 4,
+      "capability": 3
+    },
+    "benchmark": {
+      "label": "10–30 second MLX generation including load, 2026-10-05",
+      "device": "Apple M5 Max 128 GiB"
+    }
+  },
+  "modelInstall": {
+    "serviceKey": "ai2apps.model.ace-step-mlx",
+    "models": [
+      {
+        "id": "ai2apps.model.ace-step-mlx/turbo",
+        "label": "ACE-Step 1.5 Turbo",
+        "recommended": true
+      }
+    ]
+  }
+}

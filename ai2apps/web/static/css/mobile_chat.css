@@ -65,3 +65,6 @@ button, select, textarea { font:inherit; }
 .mchat-session small { margin-top:3px; color:var(--muted); font-size:9px; }
 .mchat-toast { position:fixed; z-index:30; top:calc(70px + env(safe-area-inset-top)); left:50%; max-width:86%; padding:9px 13px; border-radius:10px; background:#292524; color:#fff; font-size:11px; opacity:0; pointer-events:none; transform:translate(-50%,-8px); transition:.18s; }
 .mchat-toast.is-visible { opacity:1; transform:translate(-50%,0); }
+
+/* Authoritative hidden state for unavailable Owner actions and drawers. */
+.mchat [hidden] { display: none !important; }

@@ -86,6 +86,7 @@ from ai2apps.knowledge import (
 )
 from ai2apps.model_invocation import ModelInvocationService
 from ai2apps.model_manager import ModelManagerStore
+from ai2apps.offline import OfflineAccess
 from ai2apps.packages import PackageRepository, ServicePackageManager
 from ai2apps.packages.registry import RegistryPackageManager
 from ai2apps.processes import ProcessManager, install_process_service
@@ -145,6 +146,8 @@ class PlatformRuntime:
     def __init__(self, config: PlatformConfig) -> None:
         self.config = config
         self._database_status = self.status_before_start(config)
+        from ai2apps.codex import CodexManager
+        self.codex = CodexManager()
         self.todo = None
         self.database: PlatformDatabase | None = None
         self.security_identity: LocalSecurityIdentity | None = None
@@ -159,6 +162,7 @@ class PlatformRuntime:
         self.capabilities: CapabilityRepository | None = None
         self.secrets: SecretRepository | None = None
         self.cloud: AI2AppsCloudClient | None = None
+        self.offline_access: OfflineAccess | None = None
         self._browser_cloud_clients: dict[str, AI2AppsCloudClient] = {}
         self._cloud_defaults_task: asyncio.Task | None = None
         self._core_bootstrap_lock = asyncio.Lock()
@@ -167,6 +171,9 @@ class PlatformRuntime:
         self.agent_runtime: AgentRuntime | None = None
         self.agent_builder: AgentBuilderRepository | None = None
         self.agent_schedule_runner: AgentScheduleRunner | None = None
+        self.browser_task_monitor = None
+        self.background_browser_runner = None
+        self.intelligence_collector = None
         self.agent_reliability: AgentReliabilityService | None = None
         self.site_agent_packages: SiteAgentPackageService | None = None
         self.workspace: WorkspaceRepository | None = None
@@ -203,6 +210,7 @@ class PlatformRuntime:
         self.model_share_provider_error = None
         self._retention_stop: asyncio.Event | None = None
         self._retention_task: asyncio.Task[None] | None = None
+        self._loop_diagnostics = None
 
     @staticmethod
     def status_before_start(config: PlatformConfig) -> PlatformDatabaseStatus:
@@ -314,7 +322,10 @@ class PlatformRuntime:
             return
         if retention_interval_seconds <= 0:
             raise ValueError("retention_interval_seconds must be positive")
-        if self.cloud is not None and getattr(self, "model_manager", None) is not None:
+        from ai2apps.loop_diagnostics import LoopDiagnostics
+        self._loop_diagnostics = LoopDiagnostics()
+        self._loop_diagnostics.start()
+        if not self.offline_mode and self.cloud is not None and getattr(self, "model_manager", None) is not None:
             from ai2apps.cloud_defaults import (
                 refresh_cloud_defaults,
                 run_cloud_defaults_refresh,
@@ -345,6 +356,12 @@ class PlatformRuntime:
         from ai2apps.todo.service import TodoService
         self.todo = TodoService(self)
         await self.todo.startup()
+        if self.background_browser_runner is not None:
+            await self.background_browser_runner.startup()
+        if self.browser_task_monitor is not None:
+            await self.browser_task_monitor.startup()
+        if self.intelligence_collector is not None:
+            await self.intelligence_collector.startup()
         if self.agent_schedule_runner is not None:
             await self.agent_schedule_runner.startup()
         if self.upstreams is not None:
@@ -359,11 +376,12 @@ class PlatformRuntime:
             await self.video_tasks.startup()
         if self.readaloud_tasks is not None:
             await self.readaloud_tasks.startup()
-        if self.remote is not None:
+        if self.remote is not None and not self.offline_mode:
             await self.remote.startup()
-        if self.messager_peer_v2 is not None:
+        if self.messager_peer_v2 is not None and not self.offline_mode:
             await self.messager_peer_v2.startup()
-        await self._start_model_share_provider()
+        if not self.offline_mode:
+            await self._start_model_share_provider()
 
     async def _start_model_share_provider(self) -> None:
         """Compose Dashboard-managed Provider offers after Remote and Workers are ready."""
@@ -460,6 +478,10 @@ class PlatformRuntime:
     async def stop_background_tasks(self) -> None:
         """Stop maintenance loops and wait until their current batch completes."""
 
+        if self._loop_diagnostics is not None:
+            await self._loop_diagnostics.stop()
+            self._loop_diagnostics = None
+
         if self._cloud_defaults_task is not None:
             self._cloud_defaults_task.cancel()
             with suppress(asyncio.CancelledError):
@@ -475,8 +497,15 @@ class PlatformRuntime:
             await self.provisioning.shutdown()
         if self.todo is not None:
             await self.todo.shutdown()
+        await self.codex.shutdown()
         if self.agent_schedule_runner is not None:
             await self.agent_schedule_runner.shutdown()
+        if self.intelligence_collector is not None:
+            await self.intelligence_collector.shutdown()
+        if self.background_browser_runner is not None:
+            await self.background_browser_runner.shutdown()
+        if self.browser_task_monitor is not None:
+            await self.browser_task_monitor.shutdown()
         if self.agent_runtime is not None:
             await self.agent_runtime.stop()
         if self.upstreams is not None:
@@ -625,9 +654,13 @@ class PlatformRuntime:
             namespace=security_identity.security_instance_id,
         )
         self.secret_backend = secret_backend
+        self.offline_access = OfflineAccess(
+            database, security_identity.security_instance_id
+        )
         self.model_manager = ModelManagerStore(
             self.config.paths.base_path,
             secret_backend=secret_backend,
+            cloud_defaults_enabled=lambda: not self.offline_mode,
         )
         self.model_manager.migrate_legacy_credentials()
         self.sharing = SharingManager(
@@ -647,6 +680,7 @@ class PlatformRuntime:
             "AI2APPS_CLOUD_BASE_URL", DEFAULT_AI2APPS_CLOUD_BASE_URL
         )
         self.cloud = AI2AppsCloudClient(
+            offline_mode=lambda: self.offline_mode,
             base_url=cloud_base_url,
             session_store=CloudSessionStore(
                 secret_backend,
@@ -853,6 +887,12 @@ class PlatformRuntime:
             model_invocations=self.model_invocations,
         )
         self.agent_schedule_runner = AgentScheduleRunner(self, self.agent_builder)
+        from ai2apps.browser.task_monitor import BrowserTaskMonitor
+        self.browser_task_monitor = BrowserTaskMonitor(self)
+        from ai2apps.browser.background_runner import BackgroundBrowserRunner
+        self.background_browser_runner = BackgroundBrowserRunner(self)
+        from ai2apps.intelligence.collector import IntelligenceCollector
+        self.intelligence_collector = IntelligenceCollector(self)
         self.agent_runtime.bind_run_terminal_handler(
             self.processes.schedule_cancel_by_run
         )
@@ -953,6 +993,10 @@ class PlatformRuntime:
     ) -> dict[str, str]:
         """Resolve the bound installation to its private Cloud Device credential."""
 
+        if self.offline_mode:
+            # BYOK and managed models share the gateway entry point. Carry no
+            # Cloud credentials; the Cloud client rejects managed requests.
+            return {}
         if self.database is None or self.remote is None:
             raise IdentityBindingError("Platform identity runtime is not ready")
         installation = IdentityRepository(self.database).get_installation()
@@ -982,6 +1026,7 @@ class PlatformRuntime:
         if len(self._browser_cloud_clients) >= 64:
             raise RuntimeError("Too many active Cloud browser sessions")
         client = AI2AppsCloudClient(
+            offline_mode=lambda: self.offline_mode,
             base_url=self.cloud.base_url,
             session_store=CloudSessionStore(
                 self.cloud.session_store.backend,
@@ -1015,9 +1060,33 @@ class PlatformRuntime:
             await client.clear_session()
             await client.close()
 
+    @property
+    def offline_mode(self) -> bool:
+        return self.offline_access is not None and self.offline_access.enabled
+
+    async def activate_offline(self) -> tuple[str, RequestPrincipal]:
+        if self.offline_access is None:
+            raise IdentityBindingError("Local runtime is not ready")
+        async with self._core_bootstrap_lock:
+            if self.remote is not None and self.remote.repository.list():
+                raise IdentityBindingError("This device already has a Cloud registration")
+            result = self.offline_access.activate()
+            if self._cloud_defaults_task is not None:
+                self._cloud_defaults_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await self._cloud_defaults_task
+                self._cloud_defaults_task = None
+            if self.remote is not None:
+                await self.remote.shutdown()
+            if self.messager_peer_v2 is not None:
+                await self.messager_peer_v2.shutdown()
+            return result
+
     def legacy_api_key_principal(self) -> RequestPrincipal:
         """Map the installation API key to its bound core account when available."""
 
+        if self.offline_mode:
+            return self.offline_access.principal()
         if self.database is None:
             return RequestPrincipal.legacy_local()
         identities = IdentityRepository(self.database)
@@ -1029,6 +1098,8 @@ class PlatformRuntime:
     def authorize_local_session(self, token: str | None) -> RequestPrincipal | None:
         """Resolve a host-only browser session against the current member projection."""
 
+        if self.offline_mode:
+            return self.offline_access.authorize(token)
         if self.database is None:
             return None
         return IdentityRepository(self.database).authorize_local_session(token)
@@ -1038,6 +1109,9 @@ class PlatformRuntime:
     ) -> tuple[str, RequestPrincipal, bool] | None:
         """Rotate a valid Local session before its device lifetime expires."""
 
+        if self.offline_mode:
+            principal = self.offline_access.authorize(token)
+            return (token, principal, False) if principal is not None else None
         if self.database is None:
             return None
         return IdentityRepository(self.database).refresh_local_session(token)
@@ -1095,6 +1169,9 @@ class PlatformRuntime:
     def revoke_local_session(self, token: str | None) -> None:
         """Revoke one host-only browser session without affecting other members."""
 
+        if self.offline_mode:
+            self.offline_access.revoke(token)
+            return
         if self.database is not None:
             IdentityRepository(self.database).revoke_local_session(token)
 
@@ -1131,6 +1208,8 @@ class PlatformRuntime:
             raise IdentityBindingError("Installation identity runtime is not ready")
         async with self._core_bootstrap_lock:
             identities = IdentityRepository(self.database)
+            if self.offline_mode:
+                raise IdentityBindingError("Account enrollment is unavailable in offline mode")
             if identities.get_installation() is not None:
                 raise IdentityBindingError(
                     "This Local instance already has a Core account"

@@ -3,11 +3,39 @@
 {% block title %}{{ t('account.page_title') }}{% endblock %}
 
 {% block head %}
-<link rel="stylesheet" href="{{ static('css/account.css') }}">
+<link rel="stylesheet" href="{{ static('css/account.css') }}?v=mobile-access-20261009-1">
 {% endblock %}
 
 {% block content %}
 <div class="account-app" x-data="accountApp()" data-app-id="ai2apps.account">
+    <main x-show="offlineMode" x-cloak class="account-offline" aria-labelledby="offline-account-title">
+        <header class="offline-page-heading">
+            <span class="offline-page-label">{{ t('account.title') }}</span>
+            <span class="offline-status"><span aria-hidden="true"></span>{{ t('account.offline.status') }}</span>
+        </header>
+        <section class="offline-hero">
+            <div class="offline-device-mark" aria-hidden="true"><i data-lucide="laptop-minimal"></i></div>
+            <div class="offline-hero-copy">
+                <p class="offline-eyebrow">{{ t('account.offline.eyebrow') }}</p>
+                <h1 id="offline-account-title">{{ t('login.offline.title') }}</h1>
+                <p class="offline-intro">{{ t('account.offline.intro') }}</p>
+                <div class="offline-actions">
+                    <button type="button" class="account-button primary" @click="openOfflineApp('ai2apps.models')"><i data-lucide="sliders-horizontal" aria-hidden="true"></i>{{ t('account.offline.models_action') }}<i data-lucide="arrow-up-right" aria-hidden="true"></i></button>
+                    <button type="button" class="account-button" @click="openOfflineApp('ai2apps.general-chat')">{{ t('account.offline.chat_action') }}<i data-lucide="arrow-right" aria-hidden="true"></i></button>
+                </div>
+            </div>
+        </section>
+        <section class="offline-capabilities" aria-label="{{ t('account.offline.available') }}">
+            <article class="offline-feature"><span class="offline-feature-icon" aria-hidden="true"><i data-lucide="key-round"></i></span><h2>{{ t('account.offline.byok_title') }}</h2><p>{{ t('account.offline.byok_description') }}</p></article>
+            <article class="offline-feature"><span class="offline-feature-icon" aria-hidden="true"><i data-lucide="cpu"></i></span><h2>{{ t('account.offline.local_title') }}</h2><p>{{ t('account.offline.local_description') }}</p></article>
+            <article class="offline-feature"><span class="offline-feature-icon" aria-hidden="true"><i data-lucide="hard-drive"></i></span><h2>{{ t('account.offline.data_title') }}</h2><p>{{ t('account.offline.data_description') }}</p></article>
+        </section>
+        <aside class="offline-account-note">
+            <i data-lucide="cloud-off" aria-hidden="true"></i>
+            <div><h2>{{ t('account.offline.limits_title') }}</h2><p>{{ t('account.offline.limits_description') }}</p></div>
+        </aside>
+    </main>
+    <div x-show="offlineReady && !offlineMode" x-cloak style="display: contents">
     <header class="account-header">
         <span class="account-mark"><i data-lucide="circle-user-round"></i></span>
         <div><div class="account-title">{{ t('account.title') }}</div><div class="account-subtitle">{{ t('account.subtitle') }}</div></div>
@@ -268,7 +296,7 @@
                 </div>
             </section>
             <section x-show="installationAccess==='manager' && activeSection==='devices'" x-cloak class="account-card account-wide">
-                <div class="account-card-head"><div><h2>{{ t('account.remote.title') }}</h2><p>{{ t('account.remote.subtitle') }}</p></div><button class="account-button ml-auto" :disabled="busy" @click="loadRemote()">{{ t('account.action.refresh') }}</button></div>
+                <div class="account-card-head"><div><h2>{{ t('account.remote.title') }}</h2><a href="/apps/ai2apps.visitor-space" class="account-button" target="_top">管理访客空间</a><p>{{ t('account.remote.subtitle') }}</p></div><button class="account-button ml-auto" :disabled="busy" @click="loadRemote()">{{ t('account.action.refresh') }}</button></div>
                 <div class="account-card-body">
                     <div x-show="!hasRemoteEntitlement" class="account-note">{{ t('account.remote.no_entitlement_prefix') }} <code>remote.connect</code>{{ t('account.remote.no_entitlement_suffix') }}</div>
                     <div class="remote-grid">
@@ -287,6 +315,18 @@
                             <div class="remote-device"><strong>{{ t('account.remote.relay_usage') }}</strong><div class="account-meta"><span class="account-pill" x-text="remote.usage.totalBytes?formatBytes(remote.usage.totalBytes):tr('account.remote.not_loaded')"></span><span class="account-pill" x-text="remote.usage.quotaBytes?tr('account.remote.of_quota',{value:formatBytes(remote.usage.quotaBytes)}):tr('account.remote.cloud_quota')"></span></div><small class="account-email" x-text="remote.connector.lastError||tr('account.remote.keychain_note')"></small></div>
                             <div x-show="pairingUrl" class="remote-pair"><strong>{{ t('account.remote.scan_phone') }}</strong><img x-show="pairingQr" class="remote-qr" :src="pairingQr" alt="{{ t('account.remote.pairing_qr_alt') }}"><span class="remote-expiry" x-text="pairingExpiresAt?tr('account.common.expires_at',{time:formatTime(pairingExpiresAt)}):tr('account.remote.expires_five_minutes')"></span><code x-text="pairingUrl"></code><div class="account-actions"><button class="account-button" @click="copyPairing()">{{ t('account.action.copy_link') }}</button><button class="account-button" @click="sharePairing()">{{ t('account.action.share') }}</button></div></div>
                         </div>
+                    </div>
+                    <div class="account-mobile-apps">
+                        <h3>{{ t('account.mobile_apps.title') }}</h3>
+                        <p class="account-email">{{ t('account.mobile_apps.description') }}</p>
+                        <p x-show="mobileAppsLoading" role="status">{{ t('account.mobile_apps.loading') }}</p>
+                        <p x-show="!mobileAppsLoading&&!mobileApps.length">{{ t('account.mobile_apps.empty') }}</p>
+                        <template x-for="item in mobileApps" :key="item.app_key">
+                            <div class="account-mobile-app-row">
+                                <div><strong x-text="item.display_name"></strong><small x-text="item.requiresCloudUpgrade?tr('account.mobile_apps.pending'):(!item.supported?tr('account.mobile_apps.unsupported'):item.description)"></small></div>
+                                <button type="button" class="account-button" role="switch" :aria-checked="item.enabled" :aria-label="item.display_name" :class="item.enabled&&'primary'" :disabled="mobileAppSaving!==null||!item.supported||item.requiresCloudUpgrade" @click="setMobileApp(item,!item.enabled)" x-text="tr(item.enabled?'account.mobile_apps.on':'account.mobile_apps.off')"></button>
+                            </div>
+                        </template>
                     </div>
                 </div>
             </section>
@@ -318,9 +358,10 @@
             </section>
         </div>
     </main>
+    </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ static('js/account.js') }}"></script>
+<script src="{{ static('js/account.js') }}?v=mobile-access-20261009-1"></script>
 {% endblock %}

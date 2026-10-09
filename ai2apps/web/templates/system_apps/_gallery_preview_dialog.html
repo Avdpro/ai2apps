@@ -15,8 +15,8 @@
 
         <div class="gallery-preview-stage">
             <button type="button" class="gallery-preview-nav previous" @click="movePreview(-1)" :disabled="!hasPreviousPreview" title="{{ t('gallery.action.previous') }}"><i data-lucide="chevron-left"></i></button>
-            <div class="gallery-preview-media" :class="previewAsset?.kind">
-                <template x-if="previewAsset?.kind==='image'"><img x-ref="previewImage" :src="contentUrl(previewAsset)" :alt="previewAsset.name" :style="previewImageTransform" draggable="false" @dblclick.prevent="togglePreviewZoom()" @wheel.prevent="wheelPreview($event)" @pointerdown="startPreviewPan($event)" @pointermove="movePreviewPan($event)" @pointerup="endPreviewPan($event)" @pointercancel="endPreviewPan($event)"></template>
+            <div class="gallery-preview-media" :class="previewAsset?.kind" @pointerdown="startPreviewPan($event)" @pointermove="movePreviewPan($event)" @pointerup="endPreviewPan($event)" @pointercancel="endPreviewPan($event)" @lostpointercapture="endPreviewPan($event)">
+                <template x-if="previewAsset?.kind==='image'"><img x-ref="previewImage" :src="contentUrl(previewAsset)" :alt="previewAsset.name" :style="previewImageTransform" draggable="false" @dblclick.prevent="togglePreviewZoom()" @wheel.prevent="wheelPreview($event)"></template>
                 <template x-if="previewAsset?.kind==='video'"><video x-ref="previewVideo" :src="contentUrl(previewAsset)" controls playsinline autoplay></video></template>
                 <template x-if="previewAsset?.kind==='audio'"><div class="gallery-audio-preview"><span><i data-lucide="audio-lines"></i></span><strong x-text="previewAsset.name"></strong><audio x-ref="previewAudio" :src="contentUrl(previewAsset)" controls autoplay></audio></div></template>
                 <template x-if="previewAsset&&!['image','video','audio'].includes(previewAsset.kind)"><div class="gallery-generic-preview"><span><i :data-lucide="assetIcon(previewAsset)"></i></span><strong x-text="previewAsset.name"></strong><p>{{ t('gallery.preview.unavailable') }}</p></div></template>

@@ -243,21 +243,23 @@ def encode_wav_audio(wav_bytes: bytes, response_format: str) -> bytes:
         raise AudioCodecError(f"could not encode {normalized} audio: {exc}") from exc
 
 
-def change_speech_tempo(content: bytes, speed: float) -> bytes:
+def change_speech_tempo(content: bytes, speed: float, *, sample_rate: int = 24_000) -> bytes:
     """Pitch-preserving time stretch using the bundled FFmpeg atempo filter."""
     import math
     import av
 
     if not math.isfinite(speed) or not 0.5 <= speed <= 2.0:
         raise ValueError('Speech speed must be between 0.5 and 2.0')
+    if type(sample_rate) is not int or not 8_000 <= sample_rate <= 192_000:
+        raise ValueError('Speech sample rate is invalid')
     if speed == 1.0:
         return content
-    normalized = decode_audio_to_wav(content, input_format='wav', sample_rate=24000, max_duration_seconds=3600)
+    normalized = decode_audio_to_wav(content, input_format='wav', sample_rate=sample_rate, max_duration_seconds=3600)
     output = io.BytesIO()
     with av.open(io.BytesIO(normalized)) as source, wave.open(output, 'wb') as target:
         target.setnchannels(1)
         target.setsampwidth(2)
-        target.setframerate(24000)
+        target.setframerate(sample_rate)
         graph = None
         def drain():
             while True:
@@ -273,7 +275,7 @@ def change_speech_tempo(content: bytes, speed: float) -> bytes:
                 graph = av.filter.Graph()
                 entry = graph.add_abuffer(sample_rate=frame.sample_rate, format=frame.format.name, layout=frame.layout.name, time_base=frame.time_base)
                 tempo = graph.add('atempo', str(speed))
-                fmt = graph.add('aformat', 'sample_fmts=s16:sample_rates=24000:channel_layouts=mono')
+                fmt = graph.add('aformat', f'sample_fmts=s16:sample_rates={sample_rate}:channel_layouts=mono')
                 sink = graph.add('abuffersink')
                 entry.link_to(tempo)
                 tempo.link_to(fmt)

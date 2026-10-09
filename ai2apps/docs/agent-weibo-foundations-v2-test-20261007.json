@@ -1,0 +1,569 @@
+{
+  "id": "run_70b811e3f1704b3abb0ddeb9d58a1558",
+  "status": "completed",
+  "started_at": "2026-10-06T20:55:48.658557Z",
+  "finished_at": "2026-10-06T20:56:26.826361Z",
+  "result": {
+    "answer": "已在微博全站搜索页（https://s.weibo.com/weibo?q=%E6%95%B0%E5%AD%97%E4%BA%BA）成功打开“数字人”搜索结果，无需登录即可读取。页面显示“找到500条结果，共50页/500条”。前三条相关微博如下：\n\n1. 作者：包容万物恒河水（https://weibo.com/1671109627）。正文摘要：🔻有日本网民表示：“我在2023年说：杭州亚运会开幕式上的‘数字人’成为话题。虽然对它的技术原理很感兴趣，但看到东京奥运会开闭幕式的惨状，以及大阪·关西世博会已经乱成一团，不禁让人觉得日本已经没有国力再轰轰烈烈地办这种大型活动了。😐 爱知·名古屋亚运会运营和选手设施方面意见频出。今…（展开）。可观察到的链接：微博正文 https://weibo.com/1671109627/RiQRCtHci?refer_flag=1001030103_ ；视频 https://video.weibo.com/show?fid=1034:5344930860826649 。\n\n2. 作者：一只小Hola_佳禾（https://weibo.com/5463740740）。正文摘要：眼看明天就是中秋了，最近一直在想怎样过一个不一样的仪式感中秋 昨天晚上八点，准时和孩子一起观看了京东赛博联欢会直播～简直太震撼了‼️沉浸式AI数字人舞台太惊艳，古风神话虚拟人物轮番表演，创意满满、笑点超多，完全不是死板的晚会模式 提前开启了中秋的…（展开）。可观察到的链接：微博正文 https://weibo.com/5463740740/RjA0kqKmi?refer_flag=1001030103_ ；话题 #中秋最野的赛博接财姿势# https://s.weibo.com/weibo?q=%23%E4%B8%AD%E7%A7%8B%E6%9C%80%E9%87%8E%E7%9A%84%E8%B5%9B%E5%8D%9A%E6%8E%A5%E8%B4%A2%E5%A7%BF%E5%8A%BF%23 。\n\n3. 作者：海岛舒服日志（https://weibo.com/9117050594）。正文摘要：欢迎收看 走近科学特别节目： 今日内容：【海岛惊现数字人，行为叵测成谜团】 更多海岛趣事，岛上见🥝: ​。可观察到的链接：微博正文 https://weibo.com/9117050594/RgzcewSQR?refer_flag=1001030103_ ；O网页链接 http://t.cn/AXwixDII ；海岛舒服日志超话 https://huati.weibo.com/k/%E6%B5%B7%E5%B2%9B%E8%88%92%E6%9C%8D%E6%97%A5%E5%BF%97 ；#潮安岛TV# https://s.weibo.com/weibo?q=%23%E6%BD%AE%E5%AE%89%E5%B2%9BTV%23 ；#刘昊然# https://s.weibo.com/weibo?q=%23%E5%88%98%E6%98%8A%E7%84%B6%23 ；#李兰迪# https://s.weibo.com/weibo?q=%23%E6%9D%8E%E5%85%B0%E8%BF%AA%23 ；L海岛舒服日志的微博视频 http://t.cn/AX06DA29 ；视频 https://video.weibo.com/show?fid=1034:5339481998295156 。\n\n说明：本次使用的是全站综合搜索（/weibo?q=数字人），未使用仅搜索关注人的首页高级搜索；仅进行搜索与读取，未发布、未点赞。搜索过程未遇到登录阻挡。",
+    "context": "80d47810-06f4-47d0-89fe-84d07618dac0",
+    "facts": {
+      "actions_not_performed": [
+        "发布",
+        "点赞"
+      ],
+      "actions_performed": [
+        "搜索",
+        "读取"
+      ],
+      "login_required": false,
+      "result_count_text": "找到500条结果，共50页/500条",
+      "search_type": "全站综合搜索（非仅关注人高级搜索）",
+      "search_url": "https://s.weibo.com/weibo?q=%E6%95%B0%E5%AD%97%E4%BA%BA",
+      "top3": [
+        {
+          "author": "包容万物恒河水",
+          "author_url": "https://weibo.com/1671109627",
+          "links": [
+            "https://weibo.com/1671109627/RiQRCtHci?refer_flag=1001030103_",
+            "https://video.weibo.com/show?fid=1034:5344930860826649"
+          ],
+          "post_url": "https://weibo.com/1671109627/RiQRCtHci?refer_flag=1001030103_",
+          "rank": 1,
+          "summary": "🔻有日本网民表示：“我在2023年说：杭州亚运会开幕式上的‘数字人’成为话题。虽然对它的技术原理很感兴趣，但看到东京奥运会开闭幕式的惨状，以及大阪·关西世博会已经乱成一团，不禁让人觉得日本已经没有国力再轰轰烈烈地办这种大型活动了。😐 爱知·名古屋亚运会运营和选手设施方面意见频出。今…（展开）"
+        },
+        {
+          "author": "一只小Hola_佳禾",
+          "author_url": "https://weibo.com/5463740740",
+          "links": [
+            "https://weibo.com/5463740740/RjA0kqKmi?refer_flag=1001030103_",
+            "https://s.weibo.com/weibo?q=%23%E4%B8%AD%E7%A7%8B%E6%9C%80%E9%87%8E%E7%9A%84%E8%B5%9B%E5%8D%9A%E6%8E%A5%E8%B4%A2%E5%A7%BF%E5%8A%BF%23"
+          ],
+          "post_url": "https://weibo.com/5463740740/RjA0kqKmi?refer_flag=1001030103_",
+          "rank": 2,
+          "summary": "眼看明天就是中秋了，最近一直在想怎样过一个不一样的仪式感中秋 昨天晚上八点，准时和孩子一起观看了京东赛博联欢会直播～简直太震撼了‼️沉浸式AI数字人舞台太惊艳，古风神话虚拟人物轮番表演，创意满满、笑点超多，完全不是死板的晚会模式 提前开启了中秋的…（展开）"
+        },
+        {
+          "author": "海岛舒服日志",
+          "author_url": "https://weibo.com/9117050594",
+          "links": [
+            "https://weibo.com/9117050594/RgzcewSQR?refer_flag=1001030103_",
+            "http://t.cn/AXwixDII",
+            "https://huati.weibo.com/k/%E6%B5%B7%E5%B2%9B%E8%88%92%E6%9C%8D%E6%97%A5%E5%BF%97",
+            "https://s.weibo.com/weibo?q=%23%E6%BD%AE%E5%AE%89%E5%B2%9BTV%23",
+            "https://s.weibo.com/weibo?q=%23%E5%88%98%E6%98%8A%E7%84%B6%23",
+            "https://s.weibo.com/weibo?q=%23%E6%9D%8E%E5%85%B0%E8%BF%AA%23",
+            "http://t.cn/AX06DA29",
+            "https://video.weibo.com/show?fid=1034:5339481998295156"
+          ],
+          "post_url": "https://weibo.com/9117050594/RgzcewSQR?refer_flag=1001030103_",
+          "rank": 3,
+          "summary": "欢迎收看 走近科学特别节目： 今日内容：【海岛惊现数字人，行为叵测成谜团】 更多海岛趣事，岛上见🥝: ​"
+        }
+      ]
+    },
+    "url": "https://s.weibo.com/weibo?q=%E6%95%B0%E5%AD%97%E4%BA%BA"
+  },
+  "actions": [
+    {
+      "step": "search@1/explore",
+      "outcome": "success",
+      "operation": "inspect",
+      "ai_actions": [
+        {
+          "operation": "open",
+          "outcome": "success",
+          "url": "https://weibo.com/"
+        },
+        {
+          "operation": "open",
+          "outcome": "success",
+          "url": "https://s.weibo.com/weibo?q=%E6%95%B0%E5%AD%97%E4%BA%BA"
+        }
+      ]
+    },
+    {
+      "step": "search@1/observe",
+      "outcome": "success",
+      "operation": "inspect",
+      "ai_actions": []
+    },
+    {
+      "step": "open",
+      "outcome": "success",
+      "operation": "open",
+      "ai_actions": []
+    },
+    {
+      "step": "search@1/clear@0/observe",
+      "outcome": "success",
+      "operation": "inspect",
+      "ai_actions": []
+    }
+  ],
+  "observed_context": "80d47810-06f4-47d0-89fe-84d07618dac0",
+  "observed_url": "https://s.weibo.com/weibo?q=%E6%95%B0%E5%AD%97%E4%BA%BA",
+  "observed_links": [
+    {
+      "text": "Weibo",
+      "href": "https://s.weibo.com/"
+    },
+    {
+      "text": "NEW",
+      "href": "https://s.weibo.com/"
+    },
+    {
+      "text": "39",
+      "href": "https://s.weibo.com/weibo?q=%E6%95%B0%E5%AD%97%E4%BA%BA"
+    },
+    {
+      "text": "综合",
+      "href": "https://s.weibo.com/weibo?q=%E6%95%B0%E5%AD%97%E4%BA%BA&Refer=weibo_weibo"
+    },
+    {
+      "text": "智搜",
+      "href": "https://s.weibo.com/aisearch?q=%E6%95%B0%E5%AD%97%E4%BA%BA&Refer=weibo_aisearch"
+    },
+    {
+      "text": "实时",
+      "href": "https://s.weibo.com/realtime?q=%E6%95%B0%E5%AD%97%E4%BA%BA&rd=realtime&tw=realtime&Refer=weibo_realtime"
+    },
+    {
+      "text": "用户",
+      "href": "https://s.weibo.com/user?q=%E6%95%B0%E5%AD%97%E4%BA%BA&Refer=weibo_user"
+    },
+    {
+      "text": "视频",
+      "href": "https://s.weibo.com/video?q=%E6%95%B0%E5%AD%97%E4%BA%BA&xsort=hot&hasvideo=1&tw=video&Refer=weibo_video"
+    },
+    {
+      "text": "图片",
+      "href": "https://s.weibo.com/pic?q=%E6%95%B0%E5%AD%97%E4%BA%BA&Refer=weibo_pic"
+    },
+    {
+      "text": "话题",
+      "href": "https://s.weibo.com/topic?q=%E6%95%B0%E5%AD%97%E4%BA%BA&pagetype=topic&topic=1&Refer=weibo_topic"
+    },
+    {
+      "text": "高级搜索",
+      "href": "javascript:;"
+    },
+    {
+      "text": "微博超元星",
+      "href": "https://weibo.com/u/7293120820"
+    },
+    {
+      "text": "热门",
+      "href": "https://s.weibo.com/weibo?q=%E6%95%B0%E5%AD%97%E4%BA%BA&xsort=hot&Refer=hotmore"
+    },
+    {
+      "text": "c",
+      "href": "javascript:void(0);"
+    },
+    {
+      "text": "包容万物恒河水",
+      "href": "https://weibo.com/1671109627?refer_flag=1001030103_"
+    },
+    {
+      "text": "09月19日 18:39",
+      "href": "https://weibo.com/1671109627/RiQRCtHci?refer_flag=1001030103_"
+    },
+    {
+      "text": "微博网页版",
+      "href": "https://app.weibo.com/t/feed/xEsRX"
+    },
+    {
+      "text": "展开c",
+      "href": "https://weibo.com/1671109627/RiQRCtHci?refer_flag=1001030103_"
+    },
+    {
+      "text": "Play Video\nhttps://video.weibo.com/show?fid=1034:5344930860826649",
+      "href": "javascript:void(0);"
+    },
+    {
+      "text": "19",
+      "href": "javascript:void(0);"
+    },
+    {
+      "text": "67",
+      "href": "javascript:void(0);"
+    },
+    {
+      "text": "565",
+      "href": "javascript:void(0);"
+    },
+    {
+      "text": "热门",
+      "href": "https://s.weibo.com/weibo?q=%E6%95%B0%E5%AD%97%E4%BA%BA&xsort=hot&Refer=hotmore"
+    },
+    {
+      "text": "c",
+      "href": "javascript:void(0);"
+    },
+    {
+      "text": "一只小Hola_佳禾",
+      "href": "https://weibo.com/5463740740?refer_flag=1001030103_"
+    },
+    {
+      "text": "09月24日 13:34",
+      "href": "https://weibo.com/5463740740/RjA0kqKmi?refer_flag=1001030103_"
+    },
+    {
+      "text": "iPhone 17 Pro Max",
+      "href": "https://app.weibo.com/t/feed/CDO9b"
+    },
+    {
+      "text": "#中秋最野的赛博接财姿势#",
+      "href": "https://s.weibo.com/weibo?q=%23%E4%B8%AD%E7%A7%8B%E6%9C%80%E9%87%8E%E7%9A%84%E8%B5%9B%E5%8D%9A%E6%8E%A5%E8%B4%A2%E5%A7%BF%E5%8A%BF%23"
+    },
+    {
+      "text": "展开c",
+      "href": "https://weibo.com/5463740740/RjA0kqKmi?refer_flag=1001030103_"
+    },
+    {
+      "text": "2210",
+      "href": "javascript:void(0);"
+    },
+    {
+      "text": "1208",
+      "href": "javascript:void(0);"
+    },
+    {
+      "text": "3514",
+      "href": "javascript:void(0);"
+    },
+    {
+      "text": "热门",
+      "href": "https://s.weibo.com/weibo?q=%E6%95%B0%E5%AD%97%E4%BA%BA&xsort=hot&Refer=hotmore"
+    },
+    {
+      "text": "c",
+      "href": "javascript:void(0);"
+    },
+    {
+      "text": "海岛舒服日志",
+      "href": "https://weibo.com/9117050594?refer_flag=1001030103_"
+    },
+    {
+      "text": "09月04日 18:00",
+      "href": "https://weibo.com/9117050594/RgzcewSQR?refer_flag=1001030103_"
+    },
+    {
+      "text": "海岛舒服日志超话",
+      "href": "https://huati.weibo.com/k/%E6%B5%B7%E5%B2%9B%E8%88%92%E6%9C%8D%E6%97%A5%E5%BF%97"
+    },
+    {
+      "text": "#潮安岛TV#",
+      "href": "https://s.weibo.com/weibo?q=%23%E6%BD%AE%E5%AE%89%E5%B2%9BTV%23"
+    },
+    {
+      "text": "O网页链接",
+      "href": "http://t.cn/AXwixDII"
+    },
+    {
+      "text": "海岛舒服日志超话",
+      "href": "https://huati.weibo.com/k/%E6%B5%B7%E5%B2%9B%E8%88%92%E6%9C%8D%E6%97%A5%E5%BF%97"
+    },
+    {
+      "text": "#刘昊然#",
+      "href": "https://s.weibo.com/weibo?q=%23%E5%88%98%E6%98%8A%E7%84%B6%23"
+    },
+    {
+      "text": "#李兰迪#",
+      "href": "https://s.weibo.com/weibo?q=%23%E6%9D%8E%E5%85%B0%E8%BF%AA%23"
+    },
+    {
+      "text": "L海岛舒服日志的微博视频",
+      "href": "http://t.cn/AX06DA29"
+    },
+    {
+      "text": "Play Video\nhttps://video.weibo.com/show?fid=1034:5339481998295156",
+      "href": "javascript:void(0);"
+    },
+    {
+      "text": "478",
+      "href": "javascript:void(0);"
+    },
+    {
+      "text": "420",
+      "href": "javascript:void(0);"
+    },
+    {
+      "text": "11918",
+      "href": "javascript:void(0);"
+    },
+    {
+      "text": "热门",
+      "href": "https://s.weibo.com/weibo?q=%E6%95%B0%E5%AD%97%E4%BA%BA&xsort=hot&Refer=hotmore"
+    },
+    {
+      "text": "c",
+      "href": "javascript:void(0);"
+    },
+    {
+      "text": "树语treetalk",
+      "href": "https://weibo.com/7942871901?refer_flag=1001030103_"
+    },
+    {
+      "text": "09月21日 12:38",
+      "href": "https://weibo.com/7942871901/Rj7mbuSNU?refer_flag=1001030103_"
+    },
+    {
+      "text": "iPhone 17 Pro Max",
+      "href": "https://app.weibo.com/t/feed/CDO9b"
+    },
+    {
+      "text": "14",
+      "href": "javascript:void(0);"
+    },
+    {
+      "text": "40",
+      "href": "javascript:void(0);"
+    },
+    {
+      "text": "476",
+      "href": "javascript:void(0);"
+    },
+    {
+      "text": "热门",
+      "href": "https://s.weibo.com/weibo?q=%E6%95%B0%E5%AD%97%E4%BA%BA&xsort=hot&Refer=hotmore"
+    },
+    {
+      "text": "c",
+      "href": "javascript:void(0);"
+    },
+    {
+      "text": "Claire小爱",
+      "href": "https://weibo.com/1742884561?refer_flag=1001030103_"
+    },
+    {
+      "text": "10月01日 15:27",
+      "href": "https://weibo.com/1742884561/RkEJAahC0?refer_flag=1001030103_"
+    },
+    {
+      "text": "微博视频号",
+      "href": "sinaweibo://gotovideo?selected_containerid=231557_2024_1&is_url_decode=1&source=video_tail&luicode=10000001&lfid=100017793491874&extension=%7B%22pub_mids%22%3A5349231462450984%7D&source_extension=%7B%22source_code%22%3A%22msg_source_code%3A10000414_232822%7Cmsg_type%3A48%7Cmsg_id%3A5349231462450984%22%7D&redirect_scheme=sinaweibo%3A%2F%2Fvideo%2Fvvs%3Fmid%3D5349231462450984"
+    },
+    {
+      "text": "#宋福韵彩数字人现身数贸会#",
+      "href": "https://s.weibo.com/weibo?q=%23%E5%AE%8B%E7%A6%8F%E9%9F%B5%E5%BD%A9%E6%95%B0%E5%AD%97%E4%BA%BA%E7%8E%B0%E8%BA%AB%E6%95%B0%E8%B4%B8%E4%BC%9A%23"
+    },
+    {
+      "text": "#福传浙里 有AI相伴#",
+      "href": "https://s.weibo.com/weibo?q=%23%E7%A6%8F%E4%BC%A0%E6%B5%99%E9%87%8C%20%E6%9C%89AI%E7%9B%B8%E4%BC%B4%23"
+    },
+    {
+      "text": "展开c",
+      "href": "https://weibo.com/1742884561/RkEJAahC0?refer_flag=1001030103_"
+    },
+    {
+      "text": "Play Video\nhttps://video.weibo.com/show?fid=1034:5349230492188688",
+      "href": "javascript:void(0);"
+    },
+    {
+      "text": "7",
+      "href": "javascript:void(0);"
+    },
+    {
+      "text": "520",
+      "href": "javascript:void(0);"
+    },
+    {
+      "text": "1034",
+      "href": "javascript:void(0);"
+    },
+    {
+      "text": "热门",
+      "href": "https://s.weibo.com/weibo?q=%E6%95%B0%E5%AD%97%E4%BA%BA&xsort=hot&Refer=hotmore"
+    },
+    {
+      "text": "c",
+      "href": "javascript:void(0);"
+    },
+    {
+      "text": "芦迪",
+      "href": "https://weibo.com/5648708876?refer_flag=1001030103_"
+    },
+    {
+      "text": "09月26日 14:00",
+      "href": "https://weibo.com/5648708876/RjT1JBE6R?refer_flag=1001030103_"
+    },
+    {
+      "text": "Xiaomi 14 Ultra",
+      "href": "https://app.weibo.com/t/feed/1pfjbR"
+    },
+    {
+      "text": "#宋福韵彩数字人现身数贸会#",
+      "href": "https://s.weibo.com/weibo?q=%23%E5%AE%8B%E7%A6%8F%E9%9F%B5%E5%BD%A9%E6%95%B0%E5%AD%97%E4%BA%BA%E7%8E%B0%E8%BA%AB%E6%95%B0%E8%B4%B8%E4%BC%9A%23"
+    },
+    {
+      "text": "#福传浙里 有AI相伴#",
+      "href": "https://s.weibo.com/weibo?q=%23%E7%A6%8F%E4%BC%A0%E6%B5%99%E9%87%8C%20%E6%9C%89AI%E7%9B%B8%E4%BC%B4%23"
+    },
+    {
+      "text": "172",
+      "href": "javascript:void(0);"
+    },
+    {
+      "text": "135",
+      "href": "javascript:void(0);"
+    },
+    {
+      "text": "177",
+      "href": "javascript:void(0);"
+    },
+    {
+      "text": "热门",
+      "href": "https://s.weibo.com/weibo?q=%E6%95%B0%E5%AD%97%E4%BA%BA&xsort=hot&Refer=hotmore"
+    },
+    {
+      "text": "c",
+      "href": "javascript:void(0);"
+    },
+    {
+      "text": "央视财经",
+      "href": "https://weibo.com/2258727970?refer_flag=1001030103_"
+    },
+    {
+      "text": "09月27日 22:55",
+      "href": "https://weibo.com/2258727970/Rk5XoAyzk?refer_flag=1001030103_"
+    },
+    {
+      "text": "微博视频号",
+      "href": "sinaweibo://gotovideo?selected_containerid=231557_2024_1&is_url_decode=1&source=video_tail&luicode=10000001&lfid=100017793491874&extension=%7B%22pub_mids%22%3A5347894628712694%7D&source_extension=%7B%22source_code%22%3A%22msg_source_code%3A10000414_232822%7Cmsg_type%3A48%7Cmsg_id%3A5347894628712694%22%7D&redirect_scheme=sinaweibo%3A%2F%2Fvideo%2Fvvs%3Fmid%3D5347894628712694"
+    },
+    {
+      "text": "#央视起底AI数字人仿冒专家带货#",
+      "href": "https://s.weibo.com/weibo?q=%23%E5%A4%AE%E8%A7%86%E8%B5%B7%E5%BA%95AI%E6%95%B0%E5%AD%97%E4%BA%BA%E4%BB%BF%E5%86%92%E4%B8%93%E5%AE%B6%E5%B8%A6%E8%B4%A7%23"
+    },
+    {
+      "text": "#AI数字人带货美瞳翻车#",
+      "href": "https://s.weibo.com/weibo?q=%23AI%E6%95%B0%E5%AD%97%E4%BA%BA%E5%B8%A6%E8%B4%A7%E7%BE%8E%E7%9E%B3%E7%BF%BB%E8%BD%A6%23"
+    },
+    {
+      "text": "展开c",
+      "href": "https://weibo.com/2258727970/Rk5XoAyzk?refer_flag=1001030103_"
+    },
+    {
+      "text": "Play Video\nhttps://video.weibo.com/show?fid=1034:5347875559768091",
+      "href": "javascript:void(0);"
+    },
+    {
+      "text": "74",
+      "href": "javascript:void(0);"
+    },
+    {
+      "text": "38",
+      "href": "javascript:void(0);"
+    },
+    {
+      "text": "190",
+      "href": "javascript:void(0);"
+    },
+    {
+      "text": "热门",
+      "href": "https://s.weibo.com/weibo?q=%E6%95%B0%E5%AD%97%E4%BA%BA&xsort=hot&Refer=hotmore"
+    },
+    {
+      "text": "c",
+      "href": "javascript:void(0);"
+    },
+    {
+      "text": "大象财富",
+      "href": "https://weibo.com/2137096053?refer_flag=1001030103_"
+    },
+    {
+      "text": "09月24日 18:47",
+      "href": "https://weibo.com/2137096053/RjC3gq0xK?refer_flag=1001030103_"
+    },
+    {
+      "text": "iPhone客户端",
+      "href": "https://weibo.com/"
+    },
+    {
+      "text": "展开c",
+      "href": "https://weibo.com/2137096053/RjC3gq0xK?refer_flag=1001030103_"
+    },
+    {
+      "text": "Play Video\nhttps://video.weibo.com/show?fid=1034:5346744469487655",
+      "href": "javascript:void(0);"
+    },
+    {
+      "text": "106",
+      "href": "javascript:void(0);"
+    },
+    {
+      "text": "22",
+      "href": "javascript:void(0);"
+    },
+    {
+      "text": "650",
+      "href": "javascript:void(0);"
+    },
+    {
+      "text": "热门",
+      "href": "https://s.weibo.com/weibo?q=%E6%95%B0%E5%AD%97%E4%BA%BA&xsort=hot&Refer=hotmore"
+    },
+    {
+      "text": "c",
+      "href": "javascript:void(0);"
+    },
+    {
+      "text": "加拉兹_Galazs",
+      "href": "https://weibo.com/5141834910?refer_flag=1001030103_"
+    },
+    {
+      "text": "09月26日 14:07",
+      "href": "https://weibo.com/5141834910/RjT4TvfWh?refer_flag=1001030103_"
+    },
+    {
+      "text": "#宋福韵彩数字人现身数贸会#",
+      "href": "https://s.weibo.com/weibo?q=%23%E5%AE%8B%E7%A6%8F%E9%9F%B5%E5%BD%A9%E6%95%B0%E5%AD%97%E4%BA%BA%E7%8E%B0%E8%BA%AB%E6%95%B0%E8%B4%B8%E4%BC%9A%23"
+    },
+    {
+      "text": "展开c",
+      "href": "https://weibo.com/5141834910/RjT4TvfWh?refer_flag=1001030103_"
+    },
+    {
+      "text": "177",
+      "href": "javascript:void(0);"
+    },
+    {
+      "text": "132",
+      "href": "javascript:void(0);"
+    },
+    {
+      "text": "133",
+      "href": "javascript:void(0);"
+    },
+    {
+      "text": "热门",
+      "href": "https://s.weibo.com/weibo?q=%E6%95%B0%E5%AD%97%E4%BA%BA&xsort=hot&Refer=hotmore"
+    },
+    {
+      "text": "c",
+      "href": "javascript:void(0);"
+    },
+    {
+      "text": "爱可可-爱生活",
+      "href": "https://weibo.com/1402400261?refer_flag=1001030103_"
+    },
+    {
+      "text": "09月27日 12:25",
+      "href": "https://weibo.com/1402400261/Rk1Q4aNra?refer_flag=1001030103_"
+    }
+  ],
+  "checks": {
+    "completed": true,
+    "context_exact": true,
+    "search_url": true,
+    "login_assistance_requested": false,
+    "all_three_post_links_observed": true,
+    "all_three_authors_observed": true
+  },
+  "limitations": [
+    "使用现有已登录 Profile；没有测试匿名搜索或登录协助。",
+    "未出现实际 Blocker；清理能力调用成功，但没有现场关闭遮挡。",
+    "测试通过显式构造 Source 调用基础能力；未验证自动生成完整 Agent。"
+  ],
+  "duration_seconds": 38.167804
+}

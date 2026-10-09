@@ -231,7 +231,7 @@ def test_agent_recipe_is_ai_compiled_and_locally_validated(tmp_path):
     assert "temperature" not in invoke.await_args.args[2]
 
 
-def test_agent_recipe_normalizes_model_dsl_and_drops_redundant_current_page_open(
+def test_agent_recipe_normalizes_model_dsl_and_preserves_navigation_to_another_path(
     tmp_path,
 ):
     runtime, client = _client(tmp_path)
@@ -293,10 +293,11 @@ def test_agent_recipe_normalizes_model_dsl_and_drops_redundant_current_page_open
 
     assert response.status_code == 201, response.text
     source = response.json()["source"]
-    assert [step["operation"] for step in source["steps"]] == ["extract_list"]
-    assert source["steps"][0]["name"] == "extract"
-    assert source["steps"][0]["on"]["success"] == "done"
-    assert source["steps"][0]["arguments"]["fields"] == [
+    assert [step["operation"] for step in source["steps"]] == ["open", "extract_list"]
+    assert source["steps"][0]["arguments"]["url"] == "https://example.com/"
+    assert source["steps"][1]["name"] == "extract"
+    assert source["steps"][1]["on"]["success"] == "done"
+    assert source["steps"][1]["arguments"]["fields"] == [
         "title", "url", "image_url"
     ]
     assert source["outputs"]["type"] == "object"
@@ -403,6 +404,11 @@ def test_exploration_plans_one_step_then_distills_verified_path(tmp_path):
         }), media_type="application/json"),
         Response(content=json.dumps({
             "choices": [{"message": {"content": json.dumps({
+                "decision": "complete", "reason": "Article records satisfy the whole goal."
+            })}}]
+        }), media_type="application/json"),
+        Response(content=json.dumps({
+            "choices": [{"message": {"content": json.dumps({
                 "version": 1,
                 "view": "cards",
                 "title": "Articles",
@@ -436,7 +442,8 @@ def test_exploration_plans_one_step_then_distills_verified_path(tmp_path):
             "link_count": 4,
             "button_count": 0,
             "control_count": 4,
-            "text_sample": "DO NOT FORWARD THIS PRIVATE PAGE TEXT",
+            "text_sample": "OBSERVED PAGE LABELS",
+            "unrelated_secret": "DO NOT FORWARD THIS PRIVATE VALUE",
         },
         "attempts": [],
     }
@@ -448,6 +455,7 @@ def test_exploration_plans_one_step_then_distills_verified_path(tmp_path):
     assert proposal["confirmation"] is None
     first_payload = invoke.await_args_list[0].args[2]
     assert "DO NOT FORWARD" not in json.dumps(first_payload)
+    assert "OBSERVED PAGE LABELS" in json.dumps(first_payload)
 
     attempt = {
         "proposal_id": proposal["proposal_id"],
@@ -470,8 +478,8 @@ def test_exploration_plans_one_step_then_distills_verified_path(tmp_path):
     )
     assert finished.status_code == 200, finished.text
     assert finished.json()["decision"] == "complete"
-    assert finished.json()["model_tier"] == "deterministic"
-    assert invoke.await_count == 1
+    assert finished.json()["model_tier"] == "standard"
+    assert invoke.await_count == 2
 
     distilled = client.post(
         "/v1/platform/agent-explorations/distill",
@@ -492,7 +500,7 @@ def test_exploration_plans_one_step_then_distills_verified_path(tmp_path):
     assert presented.status_code == 200, presented.text
     assert presented.json()["recipe_id"] == distilled.json()["recipe"]["id"]
     assert presented.json()["presentation"]["view"] == "cards"
-    assert invoke.await_count == 2
+    assert invoke.await_count == 3
 
 
 def test_exploration_escalates_invalid_standard_plan_to_complex_model(tmp_path):
@@ -535,7 +543,7 @@ def test_exploration_escalates_invalid_standard_plan_to_complex_model(tmp_path):
         }),
         media_type="application/json",
     )
-    invoke = AsyncMock(side_effect=[invalid_response, invalid_response, valid_response])
+    invoke = AsyncMock(side_effect=[invalid_response, invalid_response, invalid_response, valid_response])
     runtime.model_manager = SimpleNamespace(
         resolve_default_model=lambda purpose: {
             "work_standard": "standard-model",
@@ -575,7 +583,7 @@ def test_exploration_escalates_invalid_standard_plan_to_complex_model(tmp_path):
     assert result["compiled_step"]["interaction"]["profile"] == "precise"
     assert result["model_failures"][0]["tier"] == "standard"
     assert [call.args[0] for call in invoke.await_args_list] == [
-        "standard-model", "standard-model", "complex-model"
+        "standard-model", "standard-model", "standard-model", "complex-model"
     ]
     assert all(
         "temperature" not in call.args[2]
@@ -802,6 +810,12 @@ def test_chat_workflow_schedule_and_knowledge_handoffs(tmp_path):
     )
     assert knowledge.status_code == 201
     assert runtime.knowledge.get_item(_principal(), knowledge.json()["id"]).title == "Agent result"
+
+    # Release the single default Profile slot before dispatching another job.
+    tasks = client.get("/v1/platform/browser-workspace").json()["tasks"]
+    task = next(item for item in tasks if item["run_id"] == run_id)
+    cancelled = client.post(f"/v1/platform/browser-workspace/tasks/{task['id']}/cancel")
+    assert cancelled.status_code == 200, cancelled.text
 
     schedule = client.post(
         "/v1/platform/agent-schedules",

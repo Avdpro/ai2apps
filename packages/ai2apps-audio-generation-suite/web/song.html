@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Song Creation</title><link rel="stylesheet" href="generator.css"><link rel="stylesheet" href="song.css"><script defer src="song.js"></script></head>
+<body data-mode="song"><form id="form">
+<fieldset id="inputs">
+<div class="row"><div><label for="model" data-text="model">Song model</label><select id="model" required></select></div><button type="button" id="install" data-text="install">Install model…</button></div>
+<p class="hint" id="model-note"></p>
+<label for="prompt" data-text="prompt">Musical direction</label><textarea id="prompt" maxlength="2000" required></textarea><p class="hint" data-text="promptHint"></p>
+<label for="lyrics" data-text="lyrics">Lyrics</label><div class="sections" role="group" aria-labelledby="sections-label"><span id="sections-label" data-text="sections">Insert a section</span><button type="button" data-section="Verse" data-text="verse">Verse</button><button type="button" data-section="Chorus" data-text="chorus">Chorus</button><button type="button" data-section="Bridge" data-text="bridge">Bridge</button><button type="button" data-section="Outro" data-text="outro">Outro</button></div>
+<textarea id="lyrics" maxlength="4096" spellcheck="true"></textarea><p class="hint" data-text="lyricsHint"></p>
+<div class="row"><div><label for="planning" data-text="planning">Musical planning</label><select id="planning"><option value="full" data-text="full">Melody and chords</option><option value="melody" data-text="melody">Melody only</option><option value="off" data-text="off">Direct generation</option></select></div><div><label for="limit" data-text="limit">Maximum length (seconds)</label><input id="limit" type="number" min="10" max="120" step="1" value="120" required></div></div>
+<p class="hint" data-text="lengthHint"></p>
+<details id="score-options"><summary data-text="scoreOptions">Use an existing score (optional)</summary><p class="hint" id="score-note" data-text="scoreHint"></p>
+<label for="abc-file" data-text="import">Import ABC score</label><input id="abc-file" type="file" accept=".abc,.txt,text/plain"><p class="hint" id="file-name"></p>
+<label for="abc" data-text="abc">ABC notation</label><textarea id="abc" maxlength="131072" spellcheck="false"></textarea><button type="button" id="clear-score" data-text="clearScore">Clear score</button></details>
+<details><summary data-text="advanced">Advanced</summary><div class="row"><div><label for="seed" data-text="seed">Seed</label><input id="seed" type="number" min="0" max="4294967295" step="1" value="831001" required></div><div><label for="steps" data-text="steps">Synthesis steps</label><input id="steps" type="number" min="1" max="100" step="1" value="32" required></div><div><label for="guidance" data-text="guidance">Guidance (optional)</label><input id="guidance" type="number" min="1" max="10" step="0.01"></div></div><p class="hint" data-text="advancedHint"></p></details>
+</fieldset>
+<div class="actions"><button id="generate" class="primary" type="submit" disabled data-text="generate">Create song</button><button id="cancel" type="button" disabled data-text="cancel">Cancel</button><button id="save" type="button" disabled data-text="save">Save draft</button></div>
+<ol id="stages" aria-label="Generation stages"><li data-stage="0" data-text="stage0">Plan</li><li data-stage="1" data-text="stage1">Generate music</li><li data-stage="2" data-text="stage2">Synthesize</li><li data-stage="3" data-text="stage3">Decode</li><li data-stage="4" data-text="stage4">Save output</li></ol>
+<p id="status" role="status" aria-live="polite"></p><p id="prepared-prompt" class="hint" aria-live="polite"></p><p id="error" role="alert"></p><p class="hint" data-text="outputHint">Results appear in the shared Preview &amp; Output.</p>
+</form></body></html>

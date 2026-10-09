@@ -1,0 +1,39 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/audio-generation-suite",
+    "type": "app",
+    "version": "0.2.1",
+    "displayName": "Music and Sound Effects",
+    "description": "Music, sound effects and YuE2 song creation Mini-Apps for Voice Studio. Requires the Host audio generation workflow broker.",
+    "localizations": {
+      "zh-CN": {
+        "displayName": "音乐与音效",
+        "description": "语音工坊中的音乐、音效生成与 YuE2 歌曲创作；需要支持歌曲工作流的 Host。"
+      }
+    }
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": [
+      "darwin"
+    ],
+    "architectures": [
+      "arm64"
+    ]
+  },
+  "entrypoints": [
+    {
+      "name": "main",
+      "kind": "app",
+      "path": "web/music.html"
+    }
+  ],
+  "permissions": [],
+  "dependencies": [],
+  "files": [],
+  "sbom": {
+    "format": "spdx-json-2.3",
+    "path": "META/sbom.spdx.json"
+  }
+}

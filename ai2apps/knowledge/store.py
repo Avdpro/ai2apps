@@ -662,6 +662,7 @@ class KnowledgeStore:
         bucket_id: str | None = None,
         trusted_source_facets: Sequence[tuple[str, str]] = (),
         parsed_chunks: Sequence[tuple[str, dict[str, object]]] = (),
+        idempotency_key: str | None = None,
     ) -> KnowledgeItem:
         """Save one text representation and synchronously index it with FTS5."""
 
@@ -692,6 +693,10 @@ class KnowledgeStore:
                     bucket.id for bucket in buckets if bucket.system_key == default_key
                 )
         item_id = _new_id("kit")
+        if idempotency_key is not None:
+            import hashlib
+            identity = json.dumps([principal.installation_id, principal.actor_user_id, scope.value, source_app_id, idempotency_key])
+            item_id = 'kit_' + hashlib.sha256(identity.encode()).hexdigest()
         representation_id = _new_id("krp")
         now = utc_now_text()
         facets = tuple(
@@ -717,6 +722,12 @@ class KnowledgeStore:
             if chunk_text.strip()
         ) or ((text, {}),)
         with self.transaction(write=True) as connection:
+            if idempotency_key is not None:
+                existing = connection.execute(_VISIBLE_ITEM_SELECT + " AND i.id=?", self._visibility_args(principal) + (item_id,)).fetchone()
+                if existing is not None:
+                    return self._item(existing)
+                if connection.execute('SELECT 1 FROM knowledge_items WHERE id=?', (item_id,)).fetchone():
+                    raise KnowledgeConflictError('自动同步的知识条目已被删除，不会自动恢复')
             connection.execute(
                 """
                 INSERT INTO knowledge_items (
@@ -872,6 +883,7 @@ class KnowledgeStore:
         expected_revision: int,
         title: str,
         text: str,
+        generated_source_app_id: str | None = None,
         trusted_source_facets: Sequence[tuple[str, str]] = (),
     ) -> KnowledgeItem:
         title = title.strip()
@@ -888,7 +900,7 @@ class KnowledgeStore:
                 raise KnowledgeNotFoundError("knowledge item not found")
             if int(row["revision"]) != expected_revision:
                 raise KnowledgeConflictError("knowledge item revision changed")
-            if row["kind"] != "webpage":
+            if row["kind"] != "webpage" and not (row["kind"] == "artifact" and generated_source_app_id and row["source_app_id"] == generated_source_app_id):
                 raise KnowledgeConflictError("only webpage knowledge can be refreshed")
             new_revision = expected_revision + 1
             representation = connection.execute(

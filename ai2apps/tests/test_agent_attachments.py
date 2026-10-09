@@ -129,6 +129,17 @@ def test_distillation_persists_file_parameter_and_rejects_foreign_attachment(tmp
             source["inputs"]["properties"]["file_1"]["default"]["asset_id"]
             == asset["id"]
         )
+        recipe = response.json()["recipe"]
+        inferred = client.post(
+            f"/v1/platform/agent-recipes/{recipe['id']}/parameters/infer",
+            json={"expected_revision": recipe["revision"]},
+        )
+        assert inferred.status_code == 200, inferred.text
+        inferred_source = inferred.json()["recipe"]["source"]
+        assert inferred_source["provenance"]["attachments"][0]["asset_id"] == asset["id"]
+        # This read-only recipe has no upload step, so unused legacy file
+        # parameters are removed while its original attachment evidence stays.
+        assert "file_1" not in inferred_source["inputs"]["properties"]
         foreign, _ = repository.import_stream(
             "bob",
             io.BytesIO(b"Private"),
@@ -141,4 +152,39 @@ def test_distillation_persists_file_parameter_and_rejects_foreign_attachment(tmp
             json={**payload, "attachments": [foreign["id"]]},
         )
         assert response.status_code == 404, response.text
+    runtime.stop()
+
+
+def test_file_upload_asset_binding_tracks_reusable_parameter():
+    from ai2apps.agent_builder.attachments import add_attachment_parameters
+    source = {"steps": [{"arguments": {"asset_ids": ["asset-original"]}}]}
+    add_attachment_parameters(source, [{"parameter": "file_1", "file": {"asset_id": "asset-original", "url": "/file/original", "name": "image.png"}}])
+    assert source["steps"][0]["arguments"]["asset_ids"] == "${input.attachments}"
+    assert source["inputs"]["properties"]["attachments"]["type"] == "array"
+    assert source["inputs"]["properties"]["attachments"]["items"]["x-ai2apps-file"] is True
+    assert source["provenance"]["attachments"][0]["asset_id"] == "asset-original"
+
+
+def test_upload_array_preserves_other_reference_bindings():
+    attached = [{"parameter": "file_1", "file": {"asset_id": "a", "url": "/owned/a", "name": "a.png"}}]
+    source = {"steps": [{"arguments": {"asset_ids": ["a"]}}, {"arguments": {"url": "/owned/a"}}]}
+    add_attachment_parameters(source, attached)
+    assert source["steps"][0]["arguments"]["asset_ids"] == "${input.attachments}"
+    assert source["steps"][1]["arguments"]["url"] == "${input.file_1.url}"
+    assert "file_1" in source["inputs"]["properties"]
+
+
+def test_file_array_checks_each_owner_and_metadata(tmp_path):
+    runtime = PlatformRuntime(PlatformConfig.from_base_path(tmp_path))
+    runtime.start()
+    repository = GalleryRepository(runtime.database, runtime.config.paths.artifacts_path / "gallery", runtime.events)
+    asset, _ = repository.import_stream("alice", io.BytesIO(b"Reference"), name="a.txt", media_type="text/plain", source_app_id="ai2apps.agents")
+    schema = {"properties": {"attachments": {"type": "array", "x-ai2apps-file": True}}}
+    values = {"attachments": [{"asset_id": asset["id"], "url": "/forged"}]}
+    result = enrich_file_inputs(runtime, "alice", schema, values)
+    assert result["attachments"][0]["url"].endswith(asset["id"] + "/content")
+    with pytest.raises(RepositoryError):
+        enrich_file_inputs(runtime, "bob", schema, values)
+    with pytest.raises(ValueError):
+        enrich_file_inputs(runtime, "alice", schema, {"attachments": ["filename.png"]})
     runtime.stop()

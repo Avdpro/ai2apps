@@ -1,0 +1,14 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "ai2apps-audio-generation-suite-0.2.1",
+  "documentNamespace": "https://ai2apps.com/spdx/audio-generation-suite/0.2.1",
+  "creationInfo": {
+    "created": "2026-09-30T00:00:00Z",
+    "creators": [
+      "Organization: AI2Apps"
+    ]
+  },
+  "packages": []
+}

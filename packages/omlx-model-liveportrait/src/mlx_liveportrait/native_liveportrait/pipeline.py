@@ -7,18 +7,20 @@ from pathlib import Path
 import numpy as np
 
 from ..media import resize_bgr
-from .mlx_appearance_feature_extractor_model import (
-    MlxAppearanceFeatureExtractorModel,
-)
-from .mlx_motion_extractor_model import MlxMotionExtractorModel
-from .mlx_stitching_model import MlxStitchingModel
-from .mlx_warping_spade_model import MlxWarpingSpadeModel
+
 
 
 class NativeMLXLivePortrait:
     """LivePortrait with directly converted official weights and native layers."""
 
     def __init__(self, model_root: str | Path, *, dtype: str = "fp32"):
+        from .mlx_appearance_feature_extractor_model import (
+            MlxAppearanceFeatureExtractorModel,
+        )
+        from .mlx_motion_extractor_model import MlxMotionExtractorModel
+        from .mlx_stitching_model import MlxStitchingModel
+        from .mlx_warping_spade_model import MlxWarpingSpadeModel
+
         if dtype == "fp16":
             raise ValueError("FP16 motion is disabled because it produces non-finite values")
         root = Path(model_root)

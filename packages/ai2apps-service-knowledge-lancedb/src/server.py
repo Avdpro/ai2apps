@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import re
+import socketserver
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -263,14 +264,31 @@ class Handler(BaseHTTPRequestHandler):
         print(json.dumps({"level": "info", "message": format % args}), flush=True)
 
 
+class ThreadingUnixHTTPServer(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
+    daemon_threads = True
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--port", type=int, required=True)
+    transport = parser.add_mutually_exclusive_group(required=True)
+    transport.add_argument("--port", type=int)
+    transport.add_argument("--uds", type=Path)
     args = parser.parse_args()
     data_root = Path(os.environ["AI2APPS_DATA_ROOT"]) / "lancedb"
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
-    server.store = Store(data_root)
-    server.serve_forever()
+    if args.uds is not None:
+        # Host supplies an empty, private directory. Never unlink a pre-existing
+        # socket or other file; concurrent launch must fail instead of hijacking it.
+        server = ThreadingUnixHTTPServer(str(args.uds), Handler)
+        args.uds.chmod(0o600)
+    else:
+        server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+    try:
+        server.store = Store(data_root)
+        server.serve_forever()
+    finally:
+        server.server_close()
+        if args.uds is not None:
+            args.uds.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":

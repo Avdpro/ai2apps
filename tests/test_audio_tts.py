@@ -102,7 +102,7 @@ def server_tts_client():
         mock_state.settings_manager.resolve_model_id = MagicMock(
             side_effect=lambda m, _: m
         )
-        with TestClient(app, raise_server_exceptions=False) as client:
+        with TestClient(app, base_url="http://127.0.0.1", raise_server_exceptions=False) as client:
             yield client, mock_pool
 
 
@@ -718,7 +718,7 @@ class TestTTSModelAliasResolution:
             mock_state.mcp_manager = None
             mock_state.api_key = None
             mock_state.settings_manager = mock_settings_manager
-            with TestClient(app, raise_server_exceptions=False) as client:
+            with TestClient(app, base_url="http://127.0.0.1", raise_server_exceptions=False) as client:
                 response = client.post(
                     "/v1/audio/speech",
                     json={"model": "qwen3-tts", "input": "Hello"},
@@ -749,7 +749,7 @@ class TestTTSModelAliasResolution:
             mock_state.mcp_manager = None
             mock_state.api_key = None
             mock_state.settings_manager = MagicMock()
-            with TestClient(app, raise_server_exceptions=False) as client:
+            with TestClient(app, base_url="http://127.0.0.1", raise_server_exceptions=False) as client:
                 response = client.post(
                     "/v1/audio/speech",
                     json={
@@ -1127,7 +1127,7 @@ class TestTTSVoiceCloneEndpoint:
             mock_state.mcp_manager = None
             mock_state.api_key = None
             mock_state.settings_manager = MagicMock()
-            with TestClient(app, raise_server_exceptions=False) as client:
+            with TestClient(app, base_url="http://127.0.0.1", raise_server_exceptions=False) as client:
                 yield client, mock_pool
 
     def test_ref_audio_base64_accepted(self, clone_client):

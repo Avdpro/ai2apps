@@ -544,3 +544,24 @@ def test_dashboard_has_independent_model_worker_controls():
     assert "operation.status === 'cancelled'" in script
     assert "/cancel`" in script
     assert "idempotencyKey" in script
+
+
+@pytest.mark.asyncio
+async def test_pin_during_eviction_returns_busy_without_changing_preference():
+    from ai2apps.worker_resources import WorkerResourceManager
+    resources=WorkerResourceManager()
+    entered,finish=asyncio.Event(),asyncio.Event()
+    class Manager:
+        async def evict(self,*args,**kwargs):
+            entered.set();await finish.wait();return {'state':'evicted'}
+    task=asyncio.create_task(resources.evict_idle(Manager(),'example.worker',reason='stage_complete',expected_generation=3))
+    await entered.wait()
+    try:
+        app,_supervisor=_app(worker_resources=resources)
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url='http://test') as client:
+            response=await client.post('/v1/platform/workers/example.worker/pin',json={'expectedGeneration':3,'pinned':True})
+        assert response.status_code==409
+        assert response.json()['error']['code']=='worker_busy'
+        assert not resources.is_pinned('example.worker')
+    finally:
+        finish.set();await task

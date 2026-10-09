@@ -80,15 +80,16 @@ def test_model_contract_accepts_video_segmentation_type():
 
 def test_sam21_worker_validates_prompts_without_loading_model(monkeypatch):
     monkeypatch.syspath_prepend(str(PACKAGE / "src"))
+    # Packages intentionally share the worker_adapter filename. Do not reuse
+    # another package's cached module when the entire test suite runs together.
     spec = importlib.util.spec_from_file_location(
-        "ai2apps_sam21_worker_adapter", PACKAGE / "src" / "worker_adapter.py"
+        "sam21_worker_adapter_test", PACKAGE / "src" / "worker_adapter.py"
     )
-    assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    sam21_adapter = module.SAM21Adapter
+    SAM21Adapter = module.SAM21Adapter
 
-    frame, points, labels, threshold, feather = sam21_adapter._parameters(
+    frame, points, labels, threshold, feather = SAM21Adapter._parameters(
         {
             "parameters": json.dumps(
                 {

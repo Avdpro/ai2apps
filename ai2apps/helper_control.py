@@ -64,6 +64,20 @@ class HelperControlClient:
             raise HelperControlError("Helper endpoint descriptor is unsafe")
         return host, port
 
+    def ensure_browser_host(self, *, actor_user_id: str) -> dict[str, Any]:
+        """Start the native shared-Profile host without loading a Local HTML App."""
+        self._validate_actor_user_id(actor_user_id)
+        request = {"version": 1, "request_id": str(uuid.uuid4()), "token": self.token,
+                   "operation": "browser.host.ensure", "actor_user_id": actor_user_id}
+        from dataclasses import replace
+        response = replace(self, timeout_seconds=25)._exchange(request)
+        if response.get("request_id") != request["request_id"] or response.get("ok") is not True:
+            raise HelperControlError(str(response.get("error") or "Browser host launch rejected"))
+        result = response.get("result")
+        if not isinstance(result, dict) or result.get("status") not in ("available", "launched"):
+            raise HelperControlError("Invalid browser host response")
+        return {"status": result["status"]}
+
     def launch_browser_agent(
         self,
         *,

@@ -75,7 +75,6 @@ def test_database_bootstrap_creates_current_platform_schema(tmp_path):
         "tool_descriptors",
         "tool_invocations",
         "agent_concurrency_groups",
-        "agent_deferred_waits",
         "agent_compile_generations",
         "agent_definitions",
         "agent_drafts",
@@ -120,8 +119,6 @@ def test_database_bootstrap_creates_current_platform_schema(tmp_path):
         "capability_requests",
         "coder_projects",
         "coder_threads",
-        "coding_model_reservations",
-        "coding_subagents",
         "document_blobs",
         "attachments",
         "document_blocks",
@@ -201,6 +198,17 @@ def test_database_bootstrap_creates_current_platform_schema(tmp_path):
         "peer_replay_tokens",
         "peer_sessions",
         "registry_install_continuations",
+        "coding_subagents",
+        "agent_deferred_waits",
+        "coding_model_reservations",
+        "browser_task_settings",
+        "browser_domains",
+        "browser_tasks",
+        "browser_action_executions",
+        "browser_profile_bindings",
+        "mobile_app_access",
+        "visitor_spaces",
+        "browser_task_programs",
     }
     assert [(row[0], row[1]) for row in ledger] == [
         (1, "platform_bootstrap"),
@@ -282,6 +290,14 @@ def test_database_bootstrap_creates_current_platform_schema(tmp_path):
         (77, "readaloud_project_asr"),
         (78, "coding_subagent_cooperation"),
         (79, "native_coding_executor_upgrade"),
+        (80, "browser_app_workspace_tasks"),
+        (81, "browser_domain_icons"),
+        (82, "retain_browser_domains"),
+        (83, "browser_domain_interaction_mode"),
+        (84, "browser_background_actions"),
+        (85, "mobile_app_access"),
+        (86, "visitor_spaces"),
+        (87, "shared_webagent_programs"),
     ]
     assert all(row[2].endswith("Z") for row in ledger)
 
@@ -841,7 +857,7 @@ def test_server_lifecycle_boundary_publishes_ready_health(tmp_path):
     with patch("omlx.server._server_state", state):
         start_ai2apps_platform()
         try:
-            response = TestClient(app).get("/v1/platform/health")
+            response = TestClient(app, base_url="http://127.0.0.1").get("/v1/platform/health")
         finally:
             stop_ai2apps_platform()
 
@@ -891,7 +907,7 @@ def test_fastapi_lifespan_starts_and_stops_platform_runtime(tmp_path):
     with (
         patch("omlx.server._server_state", state),
         patch("omlx.utils.network.detect_server_aliases", return_value=[]),
-        TestClient(app) as client,
+        TestClient(app, base_url="http://127.0.0.1") as client,
     ):
         app.dependency_overrides[verify_ai2apps_platform_access] = (
             authorize_test_request

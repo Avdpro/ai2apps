@@ -53,11 +53,13 @@ def mel_spectrogram(waveform: np.ndarray, sample_rate: int = 22050) -> mx.array:
     values = np.pad(np.asarray(waveform, dtype=np.float32), (padding, padding), mode="reflect")
     frames = np.lib.stride_tricks.sliding_window_view(values, window_size)[::hop]
     window = np.hanning(window_size + 1)[:-1].astype(np.float32)
-    spectrum = mx.fft.rfft(mx.array(frames * window[None]), axis=-1)
-    magnitude = mx.sqrt(mx.square(spectrum.real) + mx.square(spectrum.imag) + 1e-9)
-    basis = _slaney_mel_basis(sample_rate, n_fft, 80)
-    mel = mx.array(basis) @ magnitude.T
-    return mx.log(mx.maximum(mel, 1e-5))[None]
+    # FP32 FFT roundoff is amplified in low-energy bins by the logarithm.
+    # Keep the established FP32 window product, then evaluate features in FP64.
+    spectrum = np.fft.rfft((frames * window[None]).astype(np.float64), axis=-1)
+    magnitude = np.sqrt(np.square(spectrum.real) + np.square(spectrum.imag) + 1e-9)
+    basis = _slaney_mel_basis(sample_rate, n_fft, 80).astype(np.float64)
+    mel = basis @ magnitude.T
+    return mx.array(np.log(np.maximum(mel, 1e-5))[None].astype(np.float32))
 
 
 def kaldi_fbank(waveform: np.ndarray, sample_rate: int = 16000) -> mx.array:

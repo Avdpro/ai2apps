@@ -1,0 +1,25 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "ai2apps-model-ace-step-mlx-0.1.0",
+  "documentNamespace": "https://ai2apps.com/spdx/model-ace-step-mlx/0.1.0",
+  "creationInfo": {
+    "creators": [
+      "Organization: AI2Apps"
+    ],
+    "created": "2026-10-05T00:00:00Z"
+  },
+  "packages": [
+    {
+      "name": "ace-step-mlx",
+      "SPDXID": "SPDXRef-Model",
+      "versionInfo": "1e8264a487dd74d4ea327a8250c071558a7cd8f4",
+      "downloadLocation": "https://github.com/Blaizzy/mlx-audio/tree/1e8264a487dd74d4ea327a8250c071558a7cd8f4",
+      "filesAnalyzed": false,
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "copyrightText": "See included LICENSE and META/licenses."
+    }
+  ]
+}

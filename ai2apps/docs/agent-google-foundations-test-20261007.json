@@ -1,0 +1,114 @@
+{
+  "id": "run_3885e5e6af68453890be4417185604ba",
+  "status": "completed",
+  "started_at": "2026-10-06T19:48:49.838700Z",
+  "finished_at": "2026-10-06T19:49:27.562664Z",
+  "error_json": null,
+  "index": 3,
+  "articles": [
+    {
+      "url": "https://developer.mozilla.org/en-US/docs/Web/WebDriver/Reference/BiDi",
+      "title": "WebDriver BiDi reference - WebDriver | MDN",
+      "extraction_method": "readability",
+      "tab_closed": true,
+      "read_context": "5839ff46-72c9-41b0-87f8-bfa88158cadf",
+      "context": "667ff47b-250b-40b1-a77f-cec0213384e9",
+      "characters": 873
+    },
+    {
+      "url": "https://developer.mozilla.org/en-US/docs/Web/WebDriver/Reference/BiDi/Modules",
+      "title": "WebDriver BiDi modules - WebDriver | MDN",
+      "extraction_method": "readability",
+      "tab_closed": true,
+      "read_context": "0b65efee-a291-40b3-b9d0-102df58036ee",
+      "context": "667ff47b-250b-40b1-a77f-cec0213384e9",
+      "characters": 3656
+    },
+    {
+      "url": "https://developer.mozilla.org/en-US/docs/Web/WebDriver/How_to/Create_BiDi_connection",
+      "title": "Create a WebDriver BiDi connection - WebDriver | MDN",
+      "extraction_method": "readability",
+      "tab_closed": true,
+      "read_context": "db5785f7-5da6-4752-88c5-b479a69db560",
+      "context": "667ff47b-250b-40b1-a77f-cec0213384e9",
+      "characters": 2205
+    }
+  ],
+  "outcomes": [
+    {
+      "step": "search",
+      "outcome": "success"
+    },
+    {
+      "step": "results",
+      "outcome": "success"
+    },
+    {
+      "step": "initialize",
+      "outcome": "success"
+    },
+    {
+      "step": "check",
+      "outcome": "true"
+    },
+    {
+      "step": "select",
+      "outcome": "success"
+    },
+    {
+      "step": "read",
+      "outcome": "success"
+    },
+    {
+      "step": "advance",
+      "outcome": "success"
+    },
+    {
+      "step": "check",
+      "outcome": "true"
+    },
+    {
+      "step": "select",
+      "outcome": "success"
+    },
+    {
+      "step": "read",
+      "outcome": "success"
+    },
+    {
+      "step": "advance",
+      "outcome": "success"
+    },
+    {
+      "step": "check",
+      "outcome": "true"
+    },
+    {
+      "step": "select",
+      "outcome": "success"
+    },
+    {
+      "step": "read",
+      "outcome": "success"
+    },
+    {
+      "step": "advance",
+      "outcome": "success"
+    },
+    {
+      "step": "check",
+      "outcome": "false"
+    }
+  ],
+  "query": "site:developer.mozilla.org WebDriver BiDi",
+  "capabilities": [
+    "web.extract-list",
+    "web.read-page"
+  ],
+  "pacing": {
+    "before_browser_action_ms": 2500,
+    "loaded_page_before_read_ms": 3000
+  },
+  "tab_cleanup_verification": "Native accessibility inventory after completion shows original New Tab and Google search Tab only; no MDN result tabs remain.",
+  "test_method": "Explicit workflow compiled and executed through Agent runtime; child browser actions dispatched by native BiDi SDK fixture. This does not test AI automatic generation or blocker cleanup."
+}

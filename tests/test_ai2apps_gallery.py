@@ -279,7 +279,7 @@ def test_gallery_is_a_pinned_user_system_app_with_first_party_surface():
     assert "'stroke-width': 1.3" in icon_script
     assert "20260909-discover-rocket-gallery-b3-2" in base_template
     assert 'data-lucide="gallery-stacked-horizontal"' in template
-    assert 'data-lucide="gallery-stacked-horizontal"' in mini_template
+    assert 'data-lucide="images"' in mini_template
     assert manifest["presentation"]["shell_sidebar"]["status"] == "active"
     assert 'data-app-id="ai2apps.gallery"' in template
     assert "data-client-environment" in template
@@ -309,8 +309,8 @@ def test_gallery_is_a_pinned_user_system_app_with_first_party_surface():
     assert '@contextmenu.prevent.stop="showAssetContextMenu($event,asset)"' in mini_template
     assert '_gallery_asset_context_menu.html' in template
     assert '_gallery_asset_context_menu.html' in mini_template
-    assert "gallery-attachment-dnd-2" in template
-    assert "gallery-attachment-dnd-2" in mini_template
+    assert "preview-gesture-20261008-1" in template
+    assert "preview-gesture-20261008-1" in mini_template
     for action in ("open", "download", "rename", "delete", "copy", "paste", "move"):
         assert f"gallery.action.{action}" in context_menu_template
     assert "contextMoveTargets" in context_menu_template
@@ -341,7 +341,7 @@ def test_gallery_is_a_pinned_user_system_app_with_first_party_surface():
     assert "this.ownsSession = false" in bidi_script
     assert "this.socket?.readyState === WebSocket.OPEN && this.ownsSession" in bidi_script
     assert r"audio)\\//i.test" in bidi_script
-    assert r"replace(/\\n{3,}/g,'\\n\\n')" in bidi_script
+    assert r"replace(/\\n[ \\t]+/g,'\\n')" in bidi_script
     assert "Connect only when a page transfer starts" in script
     assert "syncBrowserPageContext" in script
     assert "Prefer the actual media element" in script
@@ -360,7 +360,8 @@ def test_gallery_is_a_pinned_user_system_app_with_first_party_surface():
     assert "media.closest?.('a[href]')" in bidi_script
     assert "declaredFrequency.get(value)===1" in bidi_script
     assert "linkMatches.length?linkMatches:directMatches" in bidi_script
-    assert "normalizeURL(requestedContext.url) === expected" in bidi_script
+    assert "if (requestedContext) return requested" in bidi_script
+    assert "if (requested) throw new Error" in bidi_script
     assert "application/x-ai2apps-video-artifact" in script
     assert "importArtifactReference" in script
     assert "uri.startsWith('data:image/')" in script

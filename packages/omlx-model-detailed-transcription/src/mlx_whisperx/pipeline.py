@@ -103,7 +103,9 @@ def split_spans(
     return result
 
 
-def clip_segments(segments: list[Segment], duration: float) -> list[Segment]:
+def clip_segments(
+    segments: list[Segment], duration: float, *, preserve_point_words: bool = False
+) -> list[Segment]:
     """Keep the public timeline inside the source audio boundary."""
 
     clipped: list[Segment] = []
@@ -121,7 +123,15 @@ def clip_segments(segments: list[Segment], duration: float) -> list[Segment]:
                 continue
             word_start = max(start, word.start)
             word_end = min(end, word.end)
-            if word_end <= word_start:
+            # Quantized official aligners can place a short word at one time
+            # point. Retain that original point when explicitly requested;
+            # never turn an out-of-range interval into a fabricated point.
+            point_in_bounds = (
+                preserve_point_words
+                and word.start == word.end
+                and start <= word.start <= end
+            )
+            if word_end <= word_start and not point_in_bounds:
                 continue
             word.start = word_start
             word.end = word_end

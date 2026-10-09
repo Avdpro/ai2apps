@@ -89,6 +89,17 @@ class BrowserProfileRepository:
             raise KeyError("Browser Profile not found")
         return BrowserProfile(key, str(row["name"]), False, str(row["created_at"]))
 
+    def rename(self, owner_user_id: str, key: str, name: str) -> BrowserProfile:
+        profile = self.require(owner_user_id, key)
+        if profile.is_default:
+            raise ValueError("The default browser Profile cannot be renamed")
+        normalized = " ".join(name.split())
+        if not 1 <= len(normalized) <= 80:
+            raise ValueError("Profile name must contain 1 to 80 characters")
+        with self.database.transaction(write=True) as connection:
+            connection.execute("UPDATE browser_profiles SET name=?,updated_at=? WHERE owner_user_id=? AND profile_key=?", (normalized, utc_now_text(), owner_user_id, key))
+        return self.require(owner_user_id, key)
+
     def delete(self, owner_user_id: str, key: str) -> None:
         if key == DEFAULT_BROWSER_PROFILE_KEY:
             raise ValueError("The default browser Profile cannot be deleted")

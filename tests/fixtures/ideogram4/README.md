@@ -1,0 +1,1 @@
+sampler_configs.py is copied unchanged from ideogram-oss/ideogram4 commit 990fe1c4e950bb9e9dc90e01c0ad98ba434f83c2, src/ideogram4/sampler_configs.py (Apache-2.0). This fixture pins the upstream sampler contract for CUDA tests.

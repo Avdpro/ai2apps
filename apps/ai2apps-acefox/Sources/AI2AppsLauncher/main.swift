@@ -304,6 +304,11 @@ private func activateRunningAceFoxIfPresent(
     ) else {
         return false
     }
+    let foregroundRequest = configuration.paths.runDirectory.appendingPathComponent("shell-foreground-request.json")
+    if let foregroundData = try? JSONSerialization.data(withJSONObject: ["instance_id": configuration.instanceID.rawValue]) {
+        try? foregroundData.write(to: foregroundRequest, options: .atomic)
+        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: foregroundRequest.path)
+    }
     application.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
     return true
 }

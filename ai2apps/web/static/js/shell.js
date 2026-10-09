@@ -246,7 +246,7 @@
             let detail = 'HTTP ' + response.status;
             try {
                 const body = await response.json();
-                detail = typeof body.detail === 'string' ? body.detail : body.detail?.message || detail;
+                detail = typeof body.detail === 'string' ? body.detail : body.detail?.message || body.error?.message || detail;
             } catch (_) { /* retain status */ }
             const error = new Error(detail);
             error.status = response.status;
@@ -261,6 +261,114 @@
             headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
             body: body === undefined ? undefined : JSON.stringify(body),
         });
+    }
+
+    const homeSpaceDialog = root.querySelector('[data-home-space-dialog]');
+    let homeSpaceRequest = 0;
+    root.querySelector('[data-home-space-open]')?.addEventListener('click', async () => {
+        const version = ++homeSpaceRequest;
+        const message = root.querySelector('[data-home-space-message]');
+        const qr = root.querySelector('[data-home-space-qr]');
+        const link = root.querySelector('[data-home-space-url]');
+        qr.hidden = link.hidden = true;
+        qr.removeAttribute('src');
+        link.removeAttribute('href');
+        link.textContent = '';
+        message.textContent = tr('shell.home.remote.loading');
+        homeSpaceDialog.showModal();
+        try {
+            const result = await request('/v1/platform/cloud/space');
+            if (version !== homeSpaceRequest || !homeSpaceDialog.open) return;
+            const url = new URL(result.spaceUrl);
+            if (url.protocol !== 'https:' || !url.pathname.startsWith('/u/')
+                || !String(result.spaceQrDataUrl).startsWith('data:image/svg+xml;base64,')) {
+                throw new Error(tr('shell.home.remote.qr_error'));
+            }
+            qr.src = result.spaceQrDataUrl;
+            link.href = result.spaceUrl;
+            link.textContent = result.spaceUrl;
+            qr.hidden = link.hidden = false;
+            message.textContent = '';
+        } catch (_) {
+            if (version === homeSpaceRequest && homeSpaceDialog.open) {
+                message.textContent = tr('shell.home.remote.qr_error');
+            }
+        }
+    });
+    homeSpaceDialog?.addEventListener('close', () => { homeSpaceRequest++; });
+
+    const homeRemote = root.querySelector('[data-home-remote-devices]');
+    const homeRemoteError = root.querySelector('[data-home-remote-error]');
+    let homeRemoteBusy = false;
+    let homeRemoteReading = false;
+    let offlineMode = false;
+
+    async function refreshHomeRemote() {
+        if (!homeRemote || homeRemoteReading || homeRemoteBusy) return;
+        if (offlineMode) {
+            homeRemote.textContent = tr('login.offline.account_required');
+            homeRemoteError.hidden = true;
+            return;
+        }
+        homeRemoteReading = true;
+        try {
+            const status = await request('/v1/platform/remote/status');
+            // Cloud reports whether the public proxy is connected; enabled alone is not online.
+            let synchronized = status;
+            let cloudUnavailable = false;
+            if (status.devices?.length) {
+                try { synchronized = await jsonRequest('/v1/platform/remote/devices/reconcile', 'POST'); }
+                catch (_) { cloudUnavailable = true; }
+            }
+            homeRemote.replaceChildren();
+            homeRemoteError.hidden = true;
+            const devices = synchronized.devices || [];
+            if (!devices.length) homeRemote.textContent = tr('shell.home.remote.empty');
+            for (const device of devices) {
+                const row = document.createElement('div');
+                row.className = 'desktop-home-remote-row';
+                const copy = document.createElement('div');
+                copy.className = 'desktop-home-remote-copy';
+                const name = document.createElement('strong');
+                name.textContent = device.displayName;
+                const state = document.createElement('small');
+                const key = device.status !== 'active' ? 'unavailable' : !device.enabled ? 'off'
+                    : cloudUnavailable ? 'unavailable' : device.proxyConnected ? 'connected' : status.connector?.lastError ? 'error' : 'connecting';
+                state.textContent = tr('shell.home.remote.' + key);
+                copy.append(name, state);
+                const toggle = document.createElement('button');
+                toggle.type = 'button';
+                toggle.className = 'desktop-home-remote-switch';
+                toggle.setAttribute('role', 'switch');
+                toggle.setAttribute('aria-label', tr('shell.home.remote.title') + ' · ' + device.displayName);
+                toggle.setAttribute('aria-checked', String(Boolean(device.enabled)));
+                toggle.disabled = !device.enabled && (device.status !== 'active' || !status.connector?.available);
+                toggle.addEventListener('click', async () => {
+                    if (homeRemoteBusy || homeRemoteReading) return;
+                    homeRemoteBusy = true;
+                    homeRemote.querySelectorAll('button').forEach(button => { button.disabled = true; });
+                    homeRemoteError.hidden = true;
+                    state.textContent = tr('shell.home.remote.updating');
+                    let failure = null;
+                    try {
+                        await jsonRequest('/v1/platform/remote/devices/' + encodeURIComponent(device.deviceId)
+                            + (device.enabled ? '/stop' : '/start'), 'POST');
+                    } catch (error) { failure = error; }
+                    finally {
+                        homeRemoteBusy = false;
+                        await refreshHomeRemote();
+                        if (failure) {
+                            homeRemoteError.textContent = failure.message;
+                            homeRemoteError.hidden = false;
+                        }
+                    }
+                });
+                row.append(copy, toggle);
+                homeRemote.append(row);
+            }
+        } catch (_) {
+            homeRemote.textContent = tr('shell.home.remote.refresh_error');
+        } finally { homeRemoteReading = false; }
     }
 
     function provisioningReturnApp(session) {
@@ -311,6 +419,9 @@
         try {
             const result = await request('/admin/api/shell/account-status');
             const state = result.state || 'unavailable';
+            offlineMode = state === 'offline';
+            const spaceButton = root.querySelector('[data-home-space-open]');
+            if (spaceButton) spaceButton.disabled = offlineMode;
             accountButton.classList.toggle('is-signed-in', state === 'signed_in');
             accountButton.classList.toggle('is-unavailable', state === 'unavailable');
             if (state === 'signed_in') {
@@ -320,6 +431,13 @@
                 accountButton.dataset.dockTooltip = currencyTooltip(result.currencies);
                 accountButton.setAttribute('aria-label', result.email
                     ? result.email + ' · Open Account App' : 'Open AI2Apps Account');
+            } else if (state === 'offline') {
+                accountName.textContent = tr('login.offline.title');
+                accountDetail.textContent = tr('login.offline.local_features');
+                accountDetail.hidden = false;
+                delete accountButton.dataset.dockTooltip;
+                accountButton.setAttribute('aria-label', tr('login.offline.title'));
+                refreshHomeRemote();
             } else if (state === 'local_member') {
                 accountName.textContent = result.display_name || 'Local member';
                 accountDetail.textContent = result.role || 'member';
@@ -442,7 +560,7 @@
         const signedInCore = state === 'signed_in' && result.signed_in_user_is_core !== false;
         const localMember = state === 'local_member';
         homeAppsLocked = registered === true && state === 'signed_out';
-        if (signedInCore || localMember || (state === 'signed_in' && registered === true)) {
+        if (state === 'offline' || signedInCore || localMember || (state === 'signed_in' && registered === true)) {
             homeAccount.hidden = true;
             renderHomeApps();
             return;
@@ -926,6 +1044,7 @@
             }
             if (nextBoundary === principalBoundary) return;
             principalBoundary = nextBoundary;
+            homeSpaceDialog?.close();
             await rebuildForPrincipalChange();
         }).catch((error) => showToast('Unable to apply account access: ' + error.message));
         return principalBoundarySync;
@@ -985,6 +1104,7 @@
     }
 
     function showHome(options) {
+        refreshHomeRemote();
         ++launchSequence;
         const previous = framePool.get(currentInstanceId);
         if (previous) {
@@ -1832,6 +1952,10 @@
         await refreshLocalSession();
         await synchronizeAccountBoundary();
         await resumeProvisioningApp();
+        refreshHomeRemote();
+        window.setInterval(() => {
+            if (!currentId && document.visibilityState === 'visible') refreshHomeRemote();
+        }, 10000);
         window.setInterval(synchronizeAccountBoundary, 60 * 1000);
         window.setInterval(refreshLocalSession, 6 * 60 * 60 * 1000);
     }

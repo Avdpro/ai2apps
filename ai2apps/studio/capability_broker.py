@@ -29,6 +29,7 @@ from ai2apps.identity import RequestPrincipal
 from ai2apps.model_invocation import ModelInvocationContext
 from ai2apps.model_providers import PackageModel, list_package_models
 from ai2apps.studio.avatar import AVATAR_CAPABILITY, avatar_models
+from ai2apps.studio.audio_generation import CAPABILITIES as AUDIO_GENERATION_CAPABILITIES, generation_models
 from ai2apps.studio.media_workflows import (
     StudioMediaError,
     audio_duration,
@@ -59,6 +60,10 @@ ORIGINAL_VOICE_PROFILE_ID = "__original_voice__"
 DETAILED_TRANSCRIPTION_MODELS = {
     "compact": "ai2apps.model.detailed-transcription-mlx/compact",
     "quality": "ai2apps.model.detailed-transcription-mlx/quality",
+}
+DETAILED_TRANSCRIPTION_MODEL_IDS = {
+    profile: (model_id, f"ai2apps.model.detailed-transcription-cuda/{profile}")
+    for profile, model_id in DETAILED_TRANSCRIPTION_MODELS.items()
 }
 PUNCTUATION_MODEL_ID = "ai2apps.model.punctuation-restorer/default"
 _CLOSING_QUOTES = "\"'”’」』》】）)]}"
@@ -453,14 +458,19 @@ class StudioCapabilityBroker:
             for model_id in required
         )
 
+    def _detailed_model_for_profile(self, profile: str) -> PackageModel | None:
+        by_id = {model.id: model for model in self._detailed_models(self.runtime)}
+        # Preserve the existing installed Mac provider when both are present;
+        # otherwise select the ready CUDA provider for the same product profile.
+        for model_id in DETAILED_TRANSCRIPTION_MODEL_IDS.get(profile, ()):
+            model = by_id.get(model_id)
+            if model is not None and self._model_stack_ready(self.runtime, model):
+                return model
+        return None
+
     def _preferred_detailed_profile(self) -> str:
-        ready_ids = {
-            model.id
-            for model in self._detailed_models(self.runtime)
-            if self._model_stack_ready(self.runtime, model)
-        }
         for profile in ("compact", "quality"):
-            if DETAILED_TRANSCRIPTION_MODELS[profile] in ready_ids:
+            if self._detailed_model_for_profile(profile) is not None:
                 return profile
         return "compact"
 
@@ -497,6 +507,9 @@ class StudioCapabilityBroker:
             }:
                 models = detailed_models
                 implemented = True
+            elif capability in AUDIO_GENERATION_CAPABILITIES:
+                models = generation_models(self.runtime, capability)
+                implemented = studio_id == "ai2apps.readaloud"
             elif capability == AVATAR_CAPABILITY:
                 models = avatar_models(self.runtime)
                 implemented = studio_id == "ai2apps.video-studio"
@@ -765,15 +778,8 @@ class StudioCapabilityBroker:
             raise StudioCapabilityError(
                 "profile_invalid", "Unknown detailed transcription profile"
             )
-        model = next(
-            (
-                item
-                for item in self._detailed_models(self.runtime)
-                if item.id == model_id
-            ),
-            None,
-        )
-        if model is None or not self._model_stack_ready(self.runtime, model):
+        model = self._detailed_model_for_profile(profile)
+        if model is None:
             raise StudioCapabilityError(
                 "capability_not_ready",
                 "Detailed transcription is not configured on this device",
@@ -1099,17 +1105,20 @@ class StudioCapabilityBroker:
         principal: RequestPrincipal,
         mounted: MountedMiniApp,
         request: Request,
+        purpose: str = "work_standard",
     ) -> str:
         manager = getattr(self.runtime, "model_manager", None)
         model_id = (
-            manager.resolve_default_model("work_standard")
+            manager.resolve_default_model(purpose)
             if manager is not None
             else None
         )
         if not model_id:
             raise StudioCapabilityError(
                 "translation_not_ready",
-                "No Standard model is configured for subtitle translation",
+                f"No model is configured for {purpose}. Open Models > Default models, "
+                "select an enabled BYOK or local chat model, save defaults, and retry.",
+                details={"purpose": purpose},
                 status_code=409,
             )
         payload = {
@@ -1121,6 +1130,9 @@ class StudioCapabilityBroker:
             "temperature": 0,
             "max_tokens": min(8_000, max(512, len(prompt) * 2)),
         }
+        # Simple Task can select a reasoning model that disallows temperature=0.
+        if purpose == "work_simple":
+            payload.pop("temperature", None)
         request_id = f"mini-translation-{uuid.uuid4().hex}"
         invocations = getattr(self.runtime, "model_invocations", None)
         package_model = None if invocations is None else invocations.model(model_id)
@@ -1155,16 +1167,31 @@ class StudioCapabilityBroker:
             headers["x-request-id"] = request_id
             async with httpx.AsyncClient(
                 transport=httpx.ASGITransport(app=request.app),
-                base_url="http://ai2apps.internal",
+                # ASGI stays in-process; use a loopback Host so the public
+                # device boundary still rejects unknown external Hosts.
+                base_url="http://127.0.0.1",
             ) as client:
                 response = await client.post(
                     "/v1/chat/completions", json=payload, headers=headers
                 )
             content = response.content
         if response.status_code >= 400:
+            provider_code = "unknown"
+            try:
+                failure = json.loads(content)
+                detail = failure.get("detail", failure.get("error", {}))
+                code = detail.get("code") if isinstance(detail, dict) else None
+                if isinstance(code, str) and re.fullmatch(r"[A-Za-z0-9_]{1,80}", code):
+                    provider_code = code
+            except (ValueError, TypeError, AttributeError):
+                pass
             raise StudioCapabilityError(
                 "translation_failed",
-                f"Subtitle translation failed with HTTP {response.status_code}",
+                f"Task model {model_id} failed before audio generation "
+                f"(HTTP {response.status_code}, {provider_code})"
+                if purpose == "work_simple" else
+                f"Text transformation failed with HTTP {response.status_code}",
+                details={"purpose": purpose, "upstream_status": response.status_code},
                 status_code=502,
             )
         try:

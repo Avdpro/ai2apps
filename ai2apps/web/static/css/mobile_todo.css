@@ -1,0 +1,44 @@
+*{box-sizing:border-box}body{margin:0;background:#f5f5f3;color:#202020;font:16px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}main{max-width:720px;margin:auto;padding:18px 18px 36px}[hidden]{display:none!important}header,.tools{display:flex;align-items:center;gap:12px;justify-content:space-between}header small{font-size:11px;letter-spacing:.12em;color:#737373}h1{margin:4px 0 12px;font-size:30px}h2{font-size:18px}button,input,select,textarea{font:inherit;border:1px solid #dededb;border-radius:12px;padding:12px;background:white;color:inherit;min-height:44px}button{cursor:pointer}button:disabled{opacity:.5}.primary{background:#202020;color:white}.tools{margin:12px 0}.tools>label,.tools>input{flex:1;min-width:0}label{display:block;font-size:14px;margin:12px 0}label>input,label>textarea,label>select{display:block;width:100%;margin-top:7px}textarea{resize:vertical}.check{display:flex;align-items:center;gap:8px}.check input{width:20px;margin:0;min-height:20px}.task{display:block;width:100%;text-align:left;padding:16px;margin:10px 0;overflow-wrap:anywhere}.task strong,.task small{display:block}.task small{color:#777;margin-top:8px}.task.child{border-left:4px solid #b7c4b8}.empty{padding:30px 8px;text-align:center;color:#777}#notice{position:fixed;z-index:100;left:50%;bottom:calc(16px + env(safe-area-inset-bottom));transform:translateX(-50%);width:max-content;max-width:calc(100% - 32px);margin:0;padding:12px 16px;border-radius:12px;background:rgba(23,23,23,.94);color:#fff;box-shadow:0 4px 20px #0002;font-size:14px;line-height:1.5;overflow-wrap:anywhere;pointer-events:none}#notice:empty{display:none}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:14px/1.6 inherit;background:white;padding:14px;border-radius:12px}.run{border-top:1px solid #ddd;padding-top:12px}#back{margin-bottom:10px}
+
+#tasks{overflow-x:auto;padding-bottom:40px}
+.task-row{position:relative;display:flex;align-items:center;gap:4px;margin:6px 0 6px calc(var(--depth)*18px);min-width:230px}
+.task-row.child::before{content:"";position:absolute;left:-10px;top:-6px;height:calc(50% + 6px);width:10px;border-left:1px solid #bbb;border-bottom:1px solid #bbb;pointer-events:none}
+.task-row .task{flex:1;min-width:0;width:auto;margin:0;padding:12px;text-align:left}
+.task-fold{flex:0 0 36px;min-height:44px;border:0;background:transparent;font-size:24px;padding:0;border-radius:8px}
+.task-fold:disabled{visibility:hidden}.task-fold:focus-visible{outline:2px solid #555}
+.task-row.context-only .task{color:#777;background:#f0f0ee}.task-row.context-only small{color:#777}
+
+.task-progress{font-weight:700;color:#202020}#task-progress-slider{width:100%;padding:0;accent-color:#202020;margin:0 0 12px;touch-action:pan-y}
+
+/* Keep the fold/connector gutter outside the colored task card. */
+.task-row.highlighted .task{background:var(--row-highlight)}
+#highlight-colors{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 16px}
+.highlight-field p{font-size:14px;margin:12px 0 8px}
+.highlight-swatch{width:44px;height:44px;padding:0;border:1px solid #aaa;border-radius:50%;font-size:24px}
+.highlight-swatch[aria-pressed="true"]{outline:2px solid #202020;outline-offset:2px}
+
+.list-actions{display:flex;gap:8px;margin:12px 0}
+.list-actions>button{flex:1;min-width:0;padding:10px 4px;font-size:14px;white-space:nowrap}
+#search-summary{display:flex;align-items:center;gap:8px;margin:12px 0;font-size:14px}
+#search-query{flex:1;min-width:0;overflow-wrap:anywhere}
+#search-dialog{width:calc(100% - 32px);max-width:480px;padding:20px;border:1px solid #dededb;border-radius:20px;color:#202020;background:#fff;box-shadow:0 16px 48px #0003}
+#search-dialog::backdrop{background:#0005}
+#search-dialog h2{margin-top:0}
+.search-actions{display:flex;justify-content:flex-end;gap:12px;margin-top:20px}
+
+.task-heading,.task-subtitle{display:flex;align-items:center;gap:6px}
+.task-heading{align-items:baseline}
+.task-title-link,.row-edit{border:0;background:transparent;border-radius:6px;padding:4px 0;min-height:36px;text-align:left}
+.task-title-link{flex:1;min-width:0;font-weight:700;overflow-wrap:anywhere}
+.task-heading>.row-edit{flex-shrink:0;font-weight:700}
+.task-subtitle{font-size:14px;color:#666;flex-wrap:wrap}
+.task-subtitle>.row-edit{padding:4px 6px}
+.row-edit:focus-visible,.task-title-link:focus-visible{outline:2px solid #555}
+.quick-edit-dialog{width:calc(100% - 32px);max-width:400px;padding:20px;border:1px solid #ddd;border-radius:20px;color:#202020;background:white}
+.quick-edit-dialog::backdrop{background:#0005}
+.quick-edit-dialog h2{margin-top:0}
+.quick-edit-options{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+.quick-edit-options [aria-pressed="true"]{background:#202020;color:white}
+.quick-edit-dialog input[type="range"]{display:block;width:100%;padding:0;margin:16px 0;accent-color:#202020}
+
+html:not([lang^="zh"]) .list-actions>button{font-size:12px;white-space:normal;line-height:1.3}

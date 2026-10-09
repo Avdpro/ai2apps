@@ -268,7 +268,7 @@ class TestResponsesEndpointReaches400:
             fake_pool.check_ttl_expirations = AsyncMock()
             fake_pool.shutdown = AsyncMock()
             srv._server_state.engine_pool = fake_pool
-            with TestClient(app, raise_server_exceptions=False) as client:
+            with TestClient(app, base_url="http://127.0.0.1", raise_server_exceptions=False) as client:
                 with (
                     patch.object(srv, "resolve_model_id", lambda name: name),
                     patch.object(srv, "validate_context_window", lambda *a, **k: None),

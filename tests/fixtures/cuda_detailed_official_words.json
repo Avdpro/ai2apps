@@ -1,0 +1,575 @@
+{
+  "source": "Fixed official Qwen BF16 / NeMo FP32 synthetic engine audit 2026-10-08",
+  "raw_sha256": {
+    "qwen": "1551259ad6394aa27033b394439bfedc9fa04d6d91c8adb046c614c5abd45385",
+    "sortformer": "cb97b8569494ed2d620fb801cfb1dc2b36c17662631413c61506a1d1ec2e6930"
+  },
+  "stages": {
+    "qwen": {
+      "items": [
+        {
+          "text": "Norah walked through the quiet reading room and checked each window. Rain had fallen during the night, but the morning sky was clear. Norah walked through the quiet reading room and checked each window. Rain had fallen during the night, but the morning sky. She placed both objects at the front desk and wrote a short note so that their owner could find them. The first visitor arrived. Blue notebook beside a folded map. She.",
+          "language": "English",
+          "duration": 30.0,
+          "words": [
+            {
+              "text": "Norah",
+              "start_time": 0.24,
+              "end_time": 0.48
+            },
+            {
+              "text": "walked",
+              "start_time": 0.48,
+              "end_time": 0.88
+            },
+            {
+              "text": "through",
+              "start_time": 0.88,
+              "end_time": 1.12
+            },
+            {
+              "text": "the",
+              "start_time": 1.12,
+              "end_time": 1.12
+            },
+            {
+              "text": "quiet",
+              "start_time": 1.12,
+              "end_time": 1.52
+            },
+            {
+              "text": "reading",
+              "start_time": 1.52,
+              "end_time": 1.84
+            },
+            {
+              "text": "room",
+              "start_time": 1.84,
+              "end_time": 2.16
+            },
+            {
+              "text": "and",
+              "start_time": 2.24,
+              "end_time": 2.4
+            },
+            {
+              "text": "checked",
+              "start_time": 2.4,
+              "end_time": 2.64
+            },
+            {
+              "text": "each",
+              "start_time": 2.64,
+              "end_time": 2.88
+            },
+            {
+              "text": "window",
+              "start_time": 2.88,
+              "end_time": 3.2
+            },
+            {
+              "text": "Rain",
+              "start_time": 4.32,
+              "end_time": 4.56
+            },
+            {
+              "text": "had",
+              "start_time": 4.56,
+              "end_time": 4.64
+            },
+            {
+              "text": "fallen",
+              "start_time": 4.64,
+              "end_time": 5.04
+            },
+            {
+              "text": "during",
+              "start_time": 5.04,
+              "end_time": 5.28
+            },
+            {
+              "text": "the",
+              "start_time": 5.28,
+              "end_time": 5.36
+            },
+            {
+              "text": "night",
+              "start_time": 5.36,
+              "end_time": 5.68
+            },
+            {
+              "text": "but",
+              "start_time": 6.0,
+              "end_time": 6.08
+            },
+            {
+              "text": "the",
+              "start_time": 6.08,
+              "end_time": 6.08
+            },
+            {
+              "text": "morning",
+              "start_time": 6.08,
+              "end_time": 6.4
+            },
+            {
+              "text": "sky",
+              "start_time": 6.4,
+              "end_time": 6.72
+            },
+            {
+              "text": "was",
+              "start_time": 6.72,
+              "end_time": 6.88
+            },
+            {
+              "text": "clear",
+              "start_time": 6.88,
+              "end_time": 7.28
+            },
+            {
+              "text": "Norah",
+              "start_time": 8.96,
+              "end_time": 9.44
+            },
+            {
+              "text": "walked",
+              "start_time": 9.44,
+              "end_time": 9.84
+            },
+            {
+              "text": "through",
+              "start_time": 9.84,
+              "end_time": 10.08
+            },
+            {
+              "text": "the",
+              "start_time": 10.08,
+              "end_time": 10.16
+            },
+            {
+              "text": "quiet",
+              "start_time": 10.16,
+              "end_time": 10.56
+            },
+            {
+              "text": "reading",
+              "start_time": 10.56,
+              "end_time": 10.96
+            },
+            {
+              "text": "room",
+              "start_time": 10.96,
+              "end_time": 11.28
+            },
+            {
+              "text": "and",
+              "start_time": 11.6,
+              "end_time": 11.76
+            },
+            {
+              "text": "checked",
+              "start_time": 11.76,
+              "end_time": 12.16
+            },
+            {
+              "text": "each",
+              "start_time": 12.24,
+              "end_time": 12.48
+            },
+            {
+              "text": "window",
+              "start_time": 12.48,
+              "end_time": 12.96
+            },
+            {
+              "text": "Rain",
+              "start_time": 13.6,
+              "end_time": 14.08
+            },
+            {
+              "text": "had",
+              "start_time": 14.08,
+              "end_time": 14.32
+            },
+            {
+              "text": "fallen",
+              "start_time": 14.32,
+              "end_time": 14.8
+            },
+            {
+              "text": "during",
+              "start_time": 14.8,
+              "end_time": 15.04
+            },
+            {
+              "text": "the",
+              "start_time": 15.04,
+              "end_time": 15.12
+            },
+            {
+              "text": "night",
+              "start_time": 15.12,
+              "end_time": 15.6
+            },
+            {
+              "text": "but",
+              "start_time": 15.92,
+              "end_time": 16.08
+            },
+            {
+              "text": "the",
+              "start_time": 16.08,
+              "end_time": 16.16
+            },
+            {
+              "text": "morning",
+              "start_time": 16.16,
+              "end_time": 16.56
+            },
+            {
+              "text": "sky",
+              "start_time": 16.56,
+              "end_time": 16.96
+            },
+            {
+              "text": "She",
+              "start_time": 18.72,
+              "end_time": 18.8
+            },
+            {
+              "text": "placed",
+              "start_time": 18.8,
+              "end_time": 19.2
+            },
+            {
+              "text": "both",
+              "start_time": 19.2,
+              "end_time": 19.52
+            },
+            {
+              "text": "objects",
+              "start_time": 19.52,
+              "end_time": 20.0
+            },
+            {
+              "text": "at",
+              "start_time": 20.0,
+              "end_time": 20.08
+            },
+            {
+              "text": "the",
+              "start_time": 20.08,
+              "end_time": 20.16
+            },
+            {
+              "text": "front",
+              "start_time": 20.16,
+              "end_time": 20.4
+            },
+            {
+              "text": "desk",
+              "start_time": 20.4,
+              "end_time": 20.8
+            },
+            {
+              "text": "and",
+              "start_time": 20.88,
+              "end_time": 20.96
+            },
+            {
+              "text": "wrote",
+              "start_time": 20.96,
+              "end_time": 21.2
+            },
+            {
+              "text": "a",
+              "start_time": 21.2,
+              "end_time": 21.2
+            },
+            {
+              "text": "short",
+              "start_time": 21.2,
+              "end_time": 21.52
+            },
+            {
+              "text": "note",
+              "start_time": 21.52,
+              "end_time": 21.76
+            },
+            {
+              "text": "so",
+              "start_time": 21.92,
+              "end_time": 22.16
+            },
+            {
+              "text": "that",
+              "start_time": 22.16,
+              "end_time": 22.32
+            },
+            {
+              "text": "their",
+              "start_time": 22.32,
+              "end_time": 22.48
+            },
+            {
+              "text": "owner",
+              "start_time": 22.48,
+              "end_time": 22.72
+            },
+            {
+              "text": "could",
+              "start_time": 22.72,
+              "end_time": 22.88
+            },
+            {
+              "text": "find",
+              "start_time": 22.88,
+              "end_time": 23.12
+            },
+            {
+              "text": "them",
+              "start_time": 23.12,
+              "end_time": 23.28
+            },
+            {
+              "text": "The",
+              "start_time": 25.04,
+              "end_time": 25.12
+            },
+            {
+              "text": "first",
+              "start_time": 25.12,
+              "end_time": 25.36
+            },
+            {
+              "text": "visitor",
+              "start_time": 25.36,
+              "end_time": 25.68
+            },
+            {
+              "text": "arrived",
+              "start_time": 25.68,
+              "end_time": 26.0
+            },
+            {
+              "text": "Blue",
+              "start_time": 26.96,
+              "end_time": 27.2
+            },
+            {
+              "text": "notebook",
+              "start_time": 27.2,
+              "end_time": 27.76
+            },
+            {
+              "text": "beside",
+              "start_time": 28.0,
+              "end_time": 28.4
+            },
+            {
+              "text": "a",
+              "start_time": 28.4,
+              "end_time": 28.48
+            },
+            {
+              "text": "folded",
+              "start_time": 28.48,
+              "end_time": 28.88
+            },
+            {
+              "text": "map",
+              "start_time": 28.88,
+              "end_time": 29.2
+            },
+            {
+              "text": "She",
+              "start_time": 29.76,
+              "end_time": 29.92
+            }
+          ],
+          "provider": "official_qwen3_asr",
+          "precision": "bfloat16"
+        },
+        {
+          "text": "Placed both objects at the front desk and wrote a short note so that their owner could find them.",
+          "language": "English",
+          "duration": 6.0,
+          "words": [
+            {
+              "text": "Placed",
+              "start_time": 0.0,
+              "end_time": 0.4
+            },
+            {
+              "text": "both",
+              "start_time": 0.4,
+              "end_time": 0.64
+            },
+            {
+              "text": "objects",
+              "start_time": 0.64,
+              "end_time": 1.2
+            },
+            {
+              "text": "at",
+              "start_time": 1.2,
+              "end_time": 1.36
+            },
+            {
+              "text": "the",
+              "start_time": 1.36,
+              "end_time": 1.36
+            },
+            {
+              "text": "front",
+              "start_time": 1.36,
+              "end_time": 1.76
+            },
+            {
+              "text": "desk",
+              "start_time": 1.76,
+              "end_time": 2.16
+            },
+            {
+              "text": "and",
+              "start_time": 2.4,
+              "end_time": 2.56
+            },
+            {
+              "text": "wrote",
+              "start_time": 2.56,
+              "end_time": 2.72
+            },
+            {
+              "text": "a",
+              "start_time": 2.72,
+              "end_time": 2.8
+            },
+            {
+              "text": "short",
+              "start_time": 2.8,
+              "end_time": 3.12
+            },
+            {
+              "text": "note",
+              "start_time": 3.2,
+              "end_time": 3.52
+            },
+            {
+              "text": "so",
+              "start_time": 3.52,
+              "end_time": 3.76
+            },
+            {
+              "text": "that",
+              "start_time": 3.84,
+              "end_time": 4.0
+            },
+            {
+              "text": "their",
+              "start_time": 4.0,
+              "end_time": 4.16
+            },
+            {
+              "text": "owner",
+              "start_time": 4.16,
+              "end_time": 4.48
+            },
+            {
+              "text": "could",
+              "start_time": 4.48,
+              "end_time": 4.64
+            },
+            {
+              "text": "find",
+              "start_time": 4.64,
+              "end_time": 4.96
+            },
+            {
+              "text": "them",
+              "start_time": 4.96,
+              "end_time": 5.04
+            }
+          ],
+          "provider": "official_qwen3_asr",
+          "precision": "bfloat16"
+        }
+      ]
+    },
+    "sortformer": {
+      "spans": [
+        {
+          "start": 0.0,
+          "end": 3.36,
+          "speaker": "speaker_0"
+        },
+        {
+          "start": 4.32,
+          "end": 7.36,
+          "speaker": "speaker_0"
+        },
+        {
+          "start": 7.92,
+          "end": 8.08,
+          "speaker": "speaker_0"
+        },
+        {
+          "start": 9.04,
+          "end": 11.36,
+          "speaker": "speaker_1"
+        },
+        {
+          "start": 11.6,
+          "end": 13.04,
+          "speaker": "speaker_1"
+        },
+        {
+          "start": 13.68,
+          "end": 15.6,
+          "speaker": "speaker_1"
+        },
+        {
+          "start": 16.0,
+          "end": 17.04,
+          "speaker": "speaker_1"
+        },
+        {
+          "start": 18.72,
+          "end": 23.36,
+          "speaker": "speaker_0"
+        },
+        {
+          "start": 25.04,
+          "end": 26.08,
+          "speaker": "speaker_0"
+        },
+        {
+          "start": 27.04,
+          "end": 27.84,
+          "speaker": "speaker_1"
+        },
+        {
+          "start": 27.92,
+          "end": 29.36,
+          "speaker": "speaker_1"
+        },
+        {
+          "start": 29.76,
+          "end": 35.04,
+          "speaker": "speaker_1"
+        }
+      ],
+      "duration": 36.0,
+      "provider": "official_nemo_sortformer",
+      "precision": "float32",
+      "streaming_settings": {
+        "chunk_len": 340,
+        "chunk_right_context": 40,
+        "fifo_len": 40,
+        "spkcache_update_period": 300,
+        "spkcache_len": 188
+      }
+    }
+  }
+}

@@ -8,6 +8,7 @@ import tempfile
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from fractions import Fraction
 from pathlib import Path
 
 import av
@@ -232,12 +233,13 @@ def write_mp4_chunks_with_audio(
                     )
                 for pixels in rgb:
                     cancel_check()
+                    video_frame = av.VideoFrame.from_ndarray(
+                        np.ascontiguousarray(pixels), format="rgb24"
+                    )
+                    video_frame.pts = frame_count
+                    video_frame.time_base = Fraction(1, fps)
                     frame_count += 1
-                    for packet in video.encode(
-                        av.VideoFrame.from_ndarray(
-                            np.ascontiguousarray(pixels), format="rgb24"
-                        )
-                    ):
+                    for packet in video.encode(video_frame):
                         container.mux(packet)
 
             encode_chunk(first)
@@ -256,6 +258,10 @@ def write_mp4_chunks_with_audio(
                     values, format="fltp", layout="mono"
                 )
                 audio_frame.sample_rate = sample_rate
+                # Explicit input timestamps let the MP4 muxer retain AAC's
+                # negative priming timestamps instead of shifting speech late.
+                audio_frame.pts = offset
+                audio_frame.time_base = Fraction(1, sample_rate)
                 for packet in audio.encode(audio_frame):
                     container.mux(packet)
             for packet in audio.encode():

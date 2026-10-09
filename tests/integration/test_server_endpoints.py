@@ -374,7 +374,7 @@ def client(mock_engine_pool):
     app.dependency_overrides[verify_ai2apps_platform_access] = lambda: True
 
     try:
-        yield TestClient(app)
+        yield TestClient(app, base_url="http://127.0.0.1")
     finally:
         # Restore the process-global FastAPI and server state for other suites.
         _server_state.engine_pool = original_pool
@@ -626,7 +626,7 @@ class TestResponsesEndpoint:
             _server_state.engine_pool = pool
             _server_state.default_model = "test-model"
             _server_state.responses_store = ResponseStore(state_dir=state_dir)
-            client = TestClient(app)
+            client = TestClient(app, base_url="http://127.0.0.1")
 
             response = client.post(
                 "/v1/responses",
@@ -703,7 +703,7 @@ class TestResponsesEndpoint:
             _server_state.engine_pool = pool
             _server_state.default_model = "test-model"
             _server_state.responses_store = ResponseStore(state_dir=state_dir)
-            client = TestClient(app)
+            client = TestClient(app, base_url="http://127.0.0.1")
 
             first = client.post(
                 "/v1/responses",
@@ -760,7 +760,7 @@ class TestResponsesEndpoint:
             _server_state.responses_store = ResponseStore(
                 state_dir=tmp_path / "response-state"
             )
-            client = TestClient(app)
+            client = TestClient(app, base_url="http://127.0.0.1")
 
             response = client.post(
                 "/v1/responses",

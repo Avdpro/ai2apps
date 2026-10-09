@@ -29,11 +29,19 @@ def speaker_for(
 
 
 def assign_speakers(
-    segments: list[Segment], diarization: list[DiarizationSpan]
+    segments: list[Segment], diarization: list[DiarizationSpan], *, point_word_speakers: bool = False
 ) -> list[Segment]:
     for segment in segments:
         for word in segment.words:
             word.speaker = speaker_for(word.start, word.end, diarization)
+            if point_word_speakers and word.start is not None and word.start == word.end:
+                # Official forced alignment can return point words. A point has
+                # no overlap duration, but a unique containing speaker is evidence.
+                # Half-open intervals give a shared boundary to the next turn.
+                speakers = {span.speaker for span in diarization
+                            if span.start <= word.start < span.end}
+                if len(speakers) == 1:
+                    word.speaker = next(iter(speakers))
         word_speakers = [word.speaker for word in segment.words if word.speaker]
         if word_speakers:
             segment.speaker = max(

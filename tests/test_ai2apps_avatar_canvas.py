@@ -57,7 +57,9 @@ def test_crop_coordinates_and_odd_canvas(tmp_path):
     result = compose_video(movie, tmp_path / "result.mp4", canvas)
     with av.open(str(result)) as container:
         stream = container.streams.video[0]
-        assert (stream.width, stream.height) == (321, 181)
+        assert (stream.width, stream.height) == (322, 182)
+        assert stream.codec_context.pix_fmt == "yuv420p"
+        assert stream.codec_context.profile != "High 4:4:4 Predictive"
         assert len(container.streams.audio) == 1
         assert len(list(container.decode(video=0))) == 5
 

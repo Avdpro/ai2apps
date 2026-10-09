@@ -535,7 +535,7 @@ def test_general_chat_local_model_is_optional_device_recommendation() -> None:
         "text.chat.local",
         _apple_device(8),
         recommended=True,
-    )[0]["id"] == "apple-metal-qwen35-2b-4bit"
+    ) == ()
     assert registry.candidates(
         "ai2apps.general-chat",
         "text.chat.local",
@@ -559,7 +559,7 @@ def test_general_chat_local_model_is_optional_device_recommendation() -> None:
         "text.chat.local",
         _apple_device(15),
         recommended=True,
-    )[0]["id"] == "apple-metal-qwen35-2b-4bit"
+    ) == ()
     assert registry.candidates(
         "ai2apps.general-chat",
         "text.chat.local",
@@ -576,13 +576,12 @@ def test_general_chat_local_model_is_optional_device_recommendation() -> None:
     assert reasons == ("至少需要 48 GiB 统一内存",)
     profile_ids = {profile["id"] for profile in capability["profiles"]}
     assert {
-        "apple-metal-qwen35-2b-4bit",
-        "apple-metal-qwen35-08b-4bit",
         "apple-metal-qwen38-27b-nvfp4",
         "apple-metal-qwen38-flash-next-4bit",
         "apple-metal-ornith15-35b-vision-4bit",
         "apple-metal-glm53-flash-4bit-mtp",
     }.issubset(profile_ids)
+    assert not any("qwen35" in profile_id for profile_id in profile_ids)
     recommended_ids = {
         profile["id"]
         for profile in registry.candidates(
@@ -675,7 +674,7 @@ def test_all_acpf_plans_rank_deprecated_provider_last_and_do_not_recommend_it(
     assert provisioner.resolve_plan_ready(reused)["reused"] is True
 
 
-def test_chat_multi_model_plan_merges_simple_and_component_profiles(
+def test_chat_multi_model_plan_merges_supported_profiles(
     tmp_path, monkeypatch
 ) -> None:
     database = PlatformDatabase(tmp_path / "platform.sqlite3")
@@ -690,7 +689,7 @@ def test_chat_multi_model_plan_merges_simple_and_component_profiles(
     )
     monkeypatch.setattr(
         "ai2apps.provisioning.orchestrator.device_profile",
-        lambda: _apple_device(16),
+        lambda: _apple_device(32),
     )
 
     result = provisioner.ensure(
@@ -704,7 +703,7 @@ def test_chat_multi_model_plan_merges_simple_and_component_profiles(
             "operations": ["conversation"],
             "profileIds": [
                 "apple-metal-qwen36-35b-4bit",
-                "apple-metal-qwen35-08b-4bit",
+                "apple-metal-qwen38-27b-nvfp4",
             ],
         },
         intent={},
@@ -714,10 +713,10 @@ def test_chat_multi_model_plan_merges_simple_and_component_profiles(
     components = result["session"]["plan"]["stack"]["components"]
     assert {item.get("model_id") for item in components if item["kind"] == "checkpoint"} == {
         "ai2apps.model.qwen36-35b/qwen3.6-35b-a3b-4bit",
-        "ai2apps.qwen35/qwen3.5-0.8b-4bit",
+        "ai2apps.model.qwen38/qwen3.8-27b-nvfp4",
     }
     assert any(
-        item["kind"] == "package" and item["service_key"] == "ai2apps.qwen35"
+        item["kind"] == "package" and item["service_key"] == "ai2apps.model.qwen38"
         for item in components
     )
 

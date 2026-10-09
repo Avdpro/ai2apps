@@ -34,10 +34,11 @@ from ai2apps.api.ownership import authorize_app_instance
 from ai2apps.cloud_gateway import request_cloud_image
 from ai2apps.gallery import GalleryRepository
 from ai2apps.identity import RequestPrincipal
+from ai2apps.model_capabilities import cloud_model_capabilities
+from ai2apps.model_providers import list_package_models
+from ai2apps.model_invocation import ModelInvocationContext
 from ai2apps.images import ImagineStudioHistoryError, ImagineStudioHistoryRepository
 from ai2apps.images.history import MAX_HISTORY_ITEMS, MAX_IMAGE_BYTES
-from ai2apps.model_invocation import ModelInvocationContext
-from ai2apps.model_providers import list_package_models
 from ai2apps.studio import (
     StudioMiniAppRegistry,
     StudioRepository,
@@ -267,9 +268,30 @@ def create_imagine_studio_router(
                 "is_hidden": not model.checkpoint_ready,
                 "capabilities": list(model.capabilities),
                 "image_capabilities": model.image_capabilities,
-                "image_upscaling_capabilities": getattr(
-                    model, "image_upscaling_capabilities", None
-                ),
+                "image_upscaling_capabilities": getattr(model, "image_upscaling_capabilities", None),
+            })
+        store = getattr(runtime_provider(), "model_manager", None)
+        for model in store.enabled_cloud_models() if store is not None else []:
+            capabilities = cloud_model_capabilities(model)
+            if model.get("protocol") != "openai" or "image_generation" not in capabilities:
+                continue
+            model_id = str(model["id"])
+            gpt_image = model_id.startswith("gpt-image-") or model_id == "chatgpt-image-latest"
+            operations = ["image_generation"]
+            if gpt_image or "image_edit" in capabilities:
+                operations.append("image_edit")
+            data.append({
+                "id": model["gateway_id"],
+                "display_name": f"(BYOK) {model['provider_name']} · {model.get('name') or model_id}",
+                "model_type": "image_generation", "source_type": "byok",
+                "capabilities": operations, "checkpoint_ready": True, "is_hidden": False,
+                "imageOptions": {
+                    "outputFormat": ["png", "jpeg", "webp"] if gpt_image else ["png"],
+                    "quality": ["auto", "low", "medium", "high"] if gpt_image else ["standard"],
+                    "size": {"mode": "fixed", "default": "1024x1024", "auto": False,
+                             "presets": ["1024x1024", "1536x1024", "1024x1536"] if gpt_image else ["1024x1024"]},
+                },
+                "referenceLimits": {"minimum": 1, "maximum": 4},
             })
         return {"data": data}
 
@@ -417,10 +439,10 @@ def create_imagine_studio_router(
     async def upscale_run(
         run_id: str,
         background_tasks: BackgroundTasks,
-        image: Annotated[UploadFile, File()],
-        model_id: Annotated[str, Form()],
-        seed: Annotated[int, Form(ge=0, le=4294967295)] = 0,
-        prompt: Annotated[str, Form(max_length=2048)] = "",
+        image: UploadFile = File(),
+        model_id: str = Form(),
+        seed: int = Form(default=0, ge=0, le=4294967295),
+        prompt: str = Form(default="", max_length=2048),
         app_instance_id: str = Header(alias="X-AI2Apps-App-Instance"),
         principal: RequestPrincipal = principal_dependency,
     ):
@@ -547,6 +569,7 @@ def create_imagine_studio_router(
                     payload,
                     edit=bool(request.image_data_urls),
                     base_path=runtime.config.paths.base_path,
+                    model_manager=getattr(runtime, "model_manager", None),
                     cloud_client=runtime.cloud,
                     cloud_headers=runtime.cloud_ai_authorization_headers(principal),
                 )

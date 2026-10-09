@@ -1,7 +1,7 @@
 {
   "spdxVersion": "SPDX-2.3",
   "SPDXID": "SPDXRef-DOCUMENT",
-  "name": "ai2apps-runtime-omlx-1.8.8",
+  "name": "ai2apps-runtime-omlx-1.8.10",
   "dataLicense": "CC0-1.0",
   "packages": [
     {
@@ -53,7 +53,12 @@
       "downloadLocation": "https://pypi.org/project/mflux/0.19.0/",
       "licenseConcluded": "MIT",
       "licenseDeclared": "MIT",
-      "checksums": [{"algorithm": "SHA256", "checksumValue": "3214044d36dc9e3a371f40ac5206f4449974ad57bc7bd3763385c8ed5abf5e47"}],
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "3214044d36dc9e3a371f40ac5206f4449974ad57bc7bd3763385c8ed5abf5e47"
+        }
+      ],
       "comment": "Installed without dependencies; torch/OpenCV-only optional paths are made lazy by the deterministic AI2Apps mlx-only-v3 patch."
     }
   ]

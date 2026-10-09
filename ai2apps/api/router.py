@@ -41,7 +41,9 @@ from ai2apps.api.upstreams import create_upstream_router
 from ai2apps.api.video_studio import create_video_studio_router
 from ai2apps.api.workers import create_worker_router
 from ai2apps.api.workspace import create_workspace_router
+from ai2apps.api.intelligence import create_intelligence_router
 from ai2apps.api.todo import create_todo_router
+from ai2apps.api.codex import create_codex_router
 
 
 def create_ai2apps_router(
@@ -78,7 +80,9 @@ def create_ai2apps_router(
         )
     )
     if runtime_provider is not None:
+        router.include_router(create_codex_router(runtime_provider, effective_principal_provider))
         router.include_router(create_todo_router(runtime_provider, effective_principal_provider))
+        router.include_router(create_intelligence_router(runtime_provider, effective_principal_provider))
         router.include_router(
             create_cloud_router(runtime_provider, effective_principal_provider)
         )

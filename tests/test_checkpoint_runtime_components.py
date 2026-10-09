@@ -407,13 +407,15 @@ def test_runtime_scheduler_does_not_hide_missing_weights(tmp_path, family, imple
     assert not ready()  # Missing indexed weights must never be accepted.
 
 
+@pytest.mark.parametrize("implementation", ["ai2apps-native-mlx-optimized", "ai2apps-official-cuda-fp8"])
 @pytest.mark.parametrize("missing", [None, "conditional", "unconditional", "text", "vae"])
-def test_ideogram_package_config_and_nested_weights(tmp_path, missing):
+def test_ideogram_package_config_and_nested_weights(tmp_path, missing, implementation):
     import yaml
     from pathlib import Path
     manifest = yaml.safe_load((Path(__file__).parents[1] / "packages/ai2apps-model-ideogram4-mlx/service.yaml").read_text())
     from ai2apps.checkpoint_paths import checkpoint_distribution_cache_key
     model = manifest["models"][0]
+    model["metadata"]["implementation"] = implementation
     snapshot = tmp_path / "models--Comfy-Org--Ideogram-4" / "distributions" / checkpoint_distribution_cache_key(model["weights"]["distribution_id"])
     components = {
         "conditional": "diffusion_models/ideogram4_fp8_scaled.safetensors",

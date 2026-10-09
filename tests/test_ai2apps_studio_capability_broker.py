@@ -1895,3 +1895,28 @@ async def test_subtitle_refinement_requires_declared_capabilities():
             request=Request({'type':'http','app':FastAPI(),'headers':[]}),
             segments=[{'start':0,'end':1,'text':'原文'}], rules='')
     assert error.value.code == 'capability_not_declared'
+
+
+@pytest.mark.asyncio
+async def test_broker_selects_ready_cuda_detailed_profile_and_normalizes_audio(monkeypatch):
+    runtime=_runtime()
+    mac=_model(ready=False)
+    cuda=_model();cuda.id='ai2apps.model.detailed-transcription-cuda/compact'
+    monkeypatch.setattr('ai2apps.studio.capability_broker.list_package_models',lambda _:(mac,cuda))
+    broker=StudioCapabilityBroker(runtime)
+    assert broker._preferred_detailed_profile()=='compact'
+    response=await broker.detailed_transcription(STUDIO_ID,MOUNT_ID,principal=RequestPrincipal.legacy_local(),content=_wav(),filename='meeting.wav',media_type='audio/wav',profile='compact',language='zh',word_timestamps=True,diarization=True)
+    assert response.status_code==200
+    call=runtime.model_invocations.call
+    assert call['model_id']==cuda.id and call['data']['model']==cuda.id
+    assert call['context'].consumer_app_id==MINI_APP_ID
+    with wave.open(io.BytesIO(call['files']['file'][1]),'rb') as wav:
+        assert (wav.getframerate(),wav.getnchannels(),wav.getsampwidth())==(16000,1,2)
+
+
+def test_broker_cuda_profile_requires_internal_checkpoints(monkeypatch):
+    runtime=_runtime();cuda=_model();cuda.id='ai2apps.model.detailed-transcription-cuda/quality'
+    cuda.metadata={'profile':'quality','required_model_ids':['ai2apps.model.detailed-transcription-cuda/diarizer']}
+    monkeypatch.setattr('ai2apps.studio.capability_broker.list_package_models',lambda _:(cuda,))
+    broker=StudioCapabilityBroker(runtime)
+    assert broker._detailed_model_for_profile('quality') is None

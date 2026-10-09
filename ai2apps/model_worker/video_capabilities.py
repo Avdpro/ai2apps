@@ -73,6 +73,12 @@ def validate_video_capabilities(value: Any) -> dict[str, Any]:
             "video_capabilities.operations must be ['video_generation']"
         )
 
+    segments = normalized.get("avatar_segments")
+    if segments is not None and segments != {
+        "schema": "ai2apps.avatar-segment/v1", "planner": "h3-v1", "window_frames": 192,
+    }:
+        raise VideoCapabilitiesError("video_capabilities.avatar_segments is unsupported")
+
     combinations = normalized.get("content_combinations")
     if not isinstance(combinations, list) or not combinations:
         raise VideoCapabilitiesError(

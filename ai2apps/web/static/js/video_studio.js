@@ -9,7 +9,7 @@
     const UPSCALING_INSTALL_MODEL_ID = '__install_upscaling_model__';
     const terminal = new Set(['succeeded', 'failed', 'cancelled', 'expired']);
     const SHELL_STATE_KEY = 'ai2apps-video-studio-shell-v1';
-    const GALLERY_MINI_FALLBACK_URL = '/admin/app-content/ai2apps.gallery?surface=mini';
+    const GALLERY_MINI_FALLBACK_URL = (window.AI2APPS_MOBILE_SURFACE ? '/mobile' : '/admin') + '/app-content/ai2apps.gallery?surface=mini';
     const MINI_APPS = Object.freeze([
         Object.freeze({ id: 'ai2apps.video.text-to-video', mode: 't2v', key: 'video_studio.mini_app.t2v', icon: 'type' }),
         Object.freeze({ id: 'ai2apps.video.image-to-video', mode: 'i2v', key: 'video_studio.mini_app.i2v', icon: 'image' }),
@@ -122,7 +122,7 @@
         get miniApps() { return [...MINI_APPS, ...this.packageMiniApps].map(localizedMiniApp); },
         get selectedProvider() { return this.providers.find(item => item.id === this.modelId) || null; },
         get currentMiniApp() { return this.packageMiniAppId ? (this.miniApps.find(item => item.id === this.packageMiniAppId) || this.miniAppForMode(this.mode)) : this.miniAppForMode(this.mode); },
-        get miniAppChatEnabled() { return Boolean(window.AI2AppsMiniAppChat && this.currentMiniApp && (this.currentMiniApp.source !== 'package' || this.currentMiniApp.chat?.enabled === true)); },
+        get miniAppChatEnabled() { return !window.AI2APPS_MOBILE_SURFACE && Boolean(window.AI2AppsMiniAppChat && this.currentMiniApp && (this.currentMiniApp.source !== 'package' || this.currentMiniApp.chat?.enabled === true)); },
         get isAudioExtractor() { return !this.packageMiniAppId && this.mode === 'x2a'; },
         get isComposer() { return !this.packageMiniAppId && this.mode === 'composer'; },
         get isUpscaler() { return !this.packageMiniAppId && this.mode === 'upscale'; },

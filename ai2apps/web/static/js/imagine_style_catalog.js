@@ -295,7 +295,7 @@
 			id: slug(style.image),
 			image: assetRoot
 				? new URL(style.image.replace(/\.png$/i, '.webp'), assetRoot).href
-				: `/static/images/imagine-studio/styles/${style.image.replace(/\.png$/i, '.webp')}`,
+				: `${window.AI2APPS_MOBILE_SURFACE ? "/mobile/static" : "/static"}/images/imagine-studio/styles/${style.image.replace(/\.png$/i, '.webp')}`,
 		})),
 	}));
 })();

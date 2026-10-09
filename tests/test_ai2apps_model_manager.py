@@ -292,6 +292,24 @@ def test_builtin_cloud_providers_are_always_visible(tmp_path):
     assert all(not item["configured"] for item in providers)
 
 
+@pytest.mark.parametrize("model_id,vision", [
+    ("deepseek-flash", True),
+    ("deepseek-v4-flash", True),
+    ("deepseek-v4-flash-vision-exp", True),
+    ("deepseek-v4-pro", False),
+    ("deepseek-reasoner", False),
+])
+def test_deepseek_cached_models_expose_image_input(tmp_path, model_id, vision):
+    from omlx.admin.routes import _cloud_model_capabilities
+
+    store = ModelManagerStore(tmp_path, secret_backend=MemorySecretBackend())
+    store.put_cloud("deepseek", {"api_key": "test-key", "models": [model_id]})
+    store.set_cloud_model_enabled("deepseek", model_id, True)
+    model = store.enabled_cloud_models()[0]
+    assert ("image_recognition" in _cloud_model_capabilities(model)) is vision
+    assert model["gateway_id"] == f"cloud/deepseek/{model_id}"
+
+
 def test_cloud_secret_is_persisted_but_never_returned(tmp_path):
     store = ModelManagerStore(tmp_path)
 
@@ -567,13 +585,15 @@ def test_fusion_alias_is_persisted_and_preferred_for_display(tmp_path):
     assert stored["fusion"]["alias"] == "Fast Review"
 
 
-def test_sync_openai_compatible_provider_models(tmp_path, monkeypatch):
+@pytest.mark.parametrize("provider_id,base_url", [
+    ("openai", "https://api.openai.com/v1"),
+    ("deepseek", "https://api.deepseek.com"),
+])
+def test_sync_openai_compatible_provider_models(tmp_path, monkeypatch, provider_id, base_url):
     store = ModelManagerStore(tmp_path)
     store.put_cloud(
-        "openai",
+        provider_id,
         {
-            "base_url": "https://api.openai.com/v1",
-            "protocol": "openai",
             "api_key": "sk-secret",
         },
     )
@@ -596,9 +616,9 @@ def test_sync_openai_compatible_provider_models(tmp_path, monkeypatch):
         return Response()
 
     monkeypatch.setattr("ai2apps.model_manager.requests.get", get)
-    provider = store.sync_cloud("openai")
+    provider = store.sync_cloud(provider_id)
 
-    assert captured["url"] == "https://api.openai.com/v1/models"
+    assert captured["url"] == base_url + "/models"
     assert captured["headers"]["Authorization"] == "Bearer sk-secret"
     assert [model["id"] for model in provider["models"]] == ["gpt-a", "gpt-z"]
     assert provider["models_error"] == ""

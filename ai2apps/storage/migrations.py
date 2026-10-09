@@ -4559,6 +4559,37 @@ MIGRATIONS: tuple[Migration, ...] = (
         "UPDATE agent_definitions SET executor_key='builtin:coding-parent',revision=revision+1 WHERE agent_key='ai2apps.app-developer' AND source='builtin' AND executor_key='builtin:general-agent' AND json_extract(manifest_json,'$.builtin')=1",
     )),
 
+    Migration(version=80, name="browser_app_workspace_tasks", statements=(
+        "CREATE TABLE browser_task_settings (owner TEXT PRIMARY KEY, global_limit INTEGER NOT NULL, profile_limit INTEGER NOT NULL)",
+        "CREATE TABLE browser_domains (owner TEXT NOT NULL, domain TEXT NOT NULL, PRIMARY KEY(owner,domain))",
+        "CREATE TABLE browser_tasks (id TEXT PRIMARY KEY, owner TEXT NOT NULL, profile_key TEXT NOT NULL, agent_id TEXT NOT NULL, capability TEXT NOT NULL, generation_id TEXT NOT NULL, name TEXT NOT NULL, input_json TEXT NOT NULL, browser_context_json TEXT NOT NULL, status TEXT NOT NULL, worker TEXT NOT NULL DEFAULT '', lease_until REAL NOT NULL DEFAULT 0, run_id TEXT NOT NULL DEFAULT '', message TEXT NOT NULL DEFAULT '', created_at REAL NOT NULL, updated_at REAL NOT NULL)",
+        "CREATE INDEX browser_tasks_owner_status ON browser_tasks(owner,status,created_at)",
+    )),
+    Migration(version=81, name="browser_domain_icons", statements=(
+        "ALTER TABLE browser_domains ADD COLUMN icon_data_url TEXT NOT NULL DEFAULT ''",
+    )),
+    Migration(version=82, name="retain_browser_domains", statements=(
+        "INSERT OR IGNORE INTO browser_domains(owner,domain) SELECT owner_user_id,site_key FROM agent_drafts WHERE site_key!=''",
+        "INSERT OR IGNORE INTO browser_domains(owner,domain) SELECT owner_user_id,site_key FROM agent_recipes WHERE site_key!=''",
+    )),
+    Migration(version=83, name="browser_domain_interaction_mode", statements=(
+        "ALTER TABLE browser_domains ADD COLUMN interaction_mode TEXT NOT NULL DEFAULT 'natural' CHECK(interaction_mode IN ('fast','natural'))",
+    )),
+    Migration(version=84, name="browser_background_actions", statements=(
+        "ALTER TABLE browser_tasks ADD COLUMN session_id TEXT NOT NULL DEFAULT ''",
+        "CREATE TABLE browser_action_executions (interaction_id TEXT PRIMARY KEY REFERENCES agent_interactions(id), run_id TEXT NOT NULL REFERENCES agent_runs(id), owner TEXT NOT NULL, context_id TEXT NOT NULL, request_hash TEXT NOT NULL, state TEXT NOT NULL CHECK(state IN ('started','completed','uncertain')), response_json TEXT, started_at REAL NOT NULL, finished_at REAL)",
+        "CREATE INDEX browser_action_executions_run ON browser_action_executions(run_id,state)",
+        "CREATE TABLE browser_profile_bindings (owner TEXT NOT NULL, profile_key TEXT NOT NULL, user_context TEXT NOT NULL, PRIMARY KEY(owner,profile_key))",
+    )),
+    Migration(version=85, name="mobile_app_access", statements=(
+        "CREATE TABLE mobile_app_access (installation_id TEXT NOT NULL, app_key TEXT NOT NULL, enabled INTEGER NOT NULL CHECK(enabled IN (0,1)), updated_at TEXT NOT NULL, PRIMARY KEY(installation_id,app_key))",
+    )),
+    Migration(version=86, name="visitor_spaces", statements=(
+        "CREATE TABLE visitor_spaces (installation_id TEXT PRIMARY KEY, enabled INTEGER NOT NULL, version INTEGER NOT NULL, revision INTEGER NOT NULL, epoch INTEGER NOT NULL, draft TEXT NOT NULL, published TEXT, updated_at TEXT NOT NULL)",
+    )),
+    Migration(version=87, name="shared_webagent_programs", statements=(
+        "CREATE TABLE browser_task_programs (task_id TEXT PRIMARY KEY REFERENCES browser_tasks(id), owner TEXT NOT NULL, caller_app_id TEXT NOT NULL, ir_json TEXT NOT NULL CHECK(json_valid(ir_json)))",
+    )),
 )
 
 

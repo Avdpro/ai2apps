@@ -388,6 +388,50 @@ def _chat_chunk(model: str, request_id: str, delta: dict[str, Any], finish: str 
     return f"data: {json.dumps(payload, separators=(',', ':'))}\n\n".encode()
 
 
+async def _check_ai2apps_tool_limit(cloud_client, body, authorization_headers=None):
+    """Honor the authenticated catalog's effective limit without truncating tools."""
+    tools = body.get("tools")
+    if not isinstance(tools, list) or not tools:
+        return
+    try:
+        response = await cloud_client.request(
+            "GET", "/v1/ai/models", headers=authorization_headers or {},
+        )
+        try:
+            if response.status_code != 200:
+                return  # The submission endpoint remains authoritative.
+            payload = response.json()
+        finally:
+            await response.aclose()
+    except (httpx.HTTPError, ValueError):
+        return
+    items = payload.get("items", []) if isinstance(payload, dict) else []
+    if not isinstance(items, list):
+        return
+    for model in items:
+        if not isinstance(model, dict) or model.get("id") != body.get("model"):
+            continue
+        capabilities = model.get("capabilities")
+        if not isinstance(capabilities, dict):
+            return
+        options = capabilities.get("toolOptions")
+        if not isinstance(options, dict):
+            return
+        limit = options.get("maxTools")
+        if type(limit) is not int or limit < 0:
+            return
+        if len(tools) > limit:
+            raise HTTPException(status_code=400, detail={
+                "code": "INVALID_AI_TOOLS",
+                "message": f"Selected model accepts at most {limit} tools; received {len(tools)}. Select fewer authorized tools or another model.",
+                "retryable": False, "param": "tools",
+                "details": {"reason": "tool_count_exceeded", "limit": limit,
+                            "actual": len(tools), "model": body.get("model"),
+                            "protocol": options.get("protocol")},
+            })
+        return
+
+
 async def _proxy_ai2apps_chat_completion(
     request: Any,
     cloud_client: Any,
@@ -397,6 +441,7 @@ async def _proxy_ai2apps_chat_completion(
     if cloud_client is None:
         raise HTTPException(status_code=503, detail="AI2Apps Cloud client is not ready")
     body = _ai2apps_request_body(request)
+    await _check_ai2apps_tool_limit(cloud_client, body, authorization_headers)
     try:
         upstream = await cloud_client.request(
             "POST",
@@ -428,6 +473,9 @@ async def _proxy_ai2apps_chat_completion(
                 )[:1000],
                 "retryable": bool(error.get("retryable", False)),
             }
+            for field in ("param", "details"):
+                if field in error:
+                    detail[field] = error[field]
         except (TypeError, ValueError):
             detail = {
                 "code": "AI2APPS_CLOUD_REQUEST_FAILED",

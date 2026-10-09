@@ -1,7 +1,7 @@
 {
   "schema": "ai2apps.inference-runtime/v1",
   "service_id": "ai2apps.runtime.omlx",
-  "version": "1.8.8",
+  "version": "1.8.10",
   "protocol": "ai2apps-model-worker/v1",
   "capabilities": [
     "mlx",
@@ -27,13 +27,15 @@
     "indextts25",
     "video-generation",
     "video-segmentation",
-    "video-upscaling",
     "video-codecs",
     "image-generation",
     "image-edit",
     "flux2-klein",
     "z-image",
-    "image-upscaling"
+    "video-upscaling",
+    "image-upscaling",
+    "audio-generation-v1",
+    "audio-generation-workflow-v1"
   ],
   "python": "Contents/Resources/Runtime/Python/cpython-3.11/bin/python3.11",
   "python_home": "Contents/Resources/Runtime/Python/cpython-3.11",

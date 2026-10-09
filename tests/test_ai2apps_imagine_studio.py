@@ -79,7 +79,8 @@ def test_imagine_studio_uses_studio_shell_with_builtin_mini_apps():
     assert "filteredMiniApps" in template
     assert 'class="is-mini-search"' not in template and 'class="is-mini-filters"' not in template
     assert "favoriteMiniApps" in script and "recentMiniApps" in script
-    assert "mobileSurface" in template and "is-mobile-nav" in template
+    assert "mobileSurface" in template and "is-mobile-back" in template
+    assert "is-mobile-output" in template
     assert "leftCollapsed" in template and "rightCollapsed" in template
     assert "handleGalleryDrop($event,slot-1)" in template
     assert "@drop.stop.prevent" in template
@@ -256,7 +257,7 @@ def test_imagine_studio_uses_cloud_and_local_image_models_with_capability_aware_
     assert "上传到 AI2Apps Cloud 图像模型处理" in script
     assert "每次发送图片前都会请求确认" in script
     assert "localDisclosure" in script and "(isUpscaleMode||usingLocalModel)?'localDisclosure':'cloudDisclosure'" in template
-    assert "selectedModel.source === 'cloud'" in script
+    assert "['cloud', 'byok'].includes(selectedModel.source)" in script
     assert "configureLocalModel" in script and "tr(configuringLocal?'configuringLocal':'configureLocal')" in template
     assert '<option value="__install_more__"' in template
     assert '<option x-show="!compatibleModels.length" value="" disabled' in template

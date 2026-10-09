@@ -96,6 +96,11 @@
     var initialValue = deviceName.value;
     try {
       var result = await json("/v1/platform/client/bootstrap");
+      document.getElementById("offline-entry").hidden = !result.data.offline_available;
+      if (result.data.offline_mode) {
+        document.getElementById("account-stage").hidden = true;
+        document.getElementById("login-subtitle").textContent = t("login.offline.description");
+      }
       var candidate = String(result.data?.device_name || "").trim();
       if (result.response.ok && candidate && deviceName.value === initialValue) {
         deviceName.value = candidate;
@@ -220,6 +225,21 @@
     passwordInput.value = "";
     clearError();
     setStage("account");
+  });
+
+  document.getElementById("offline-start").addEventListener("click", async function () {
+    var button = this;
+    button.disabled = true;
+    clearError();
+    try {
+      var result = await json("/v1/platform/auth/offline/activate", { method: "POST" });
+      if (!result.response.ok) throw new Error(message(result.data, t("login.account.error")));
+      finish();
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      button.disabled = false;
+    }
   });
 
   setMode("login");

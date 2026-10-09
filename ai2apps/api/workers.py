@@ -26,7 +26,7 @@ from ai2apps.model_providers import estimate_service_models_resident_bytes
 from ai2apps.packages import PackageError
 from ai2apps.packages.models import PackageStatus
 from ai2apps.worker_management import WorkerOperationIdempotencyConflictError
-from ai2apps.worker_resources import MIB, WorkerPinnedLimitError
+from ai2apps.worker_resources import MIB, WorkerPinnedLimitError, WorkerEvictionBusyError
 from ai2apps.worker_scheduler import WorkloadClass
 
 
@@ -582,7 +582,7 @@ def create_worker_router(
             return worker_error(error)
         except WorkerOperationIdempotencyConflictError as error:
             return idempotency_error(error)
-        except WorkerPinnedLimitError as error:
+        except (WorkerPinnedLimitError, WorkerEvictionBusyError) as error:
             return platform_error_response(
                 status_code=409,
                 code=error.code,

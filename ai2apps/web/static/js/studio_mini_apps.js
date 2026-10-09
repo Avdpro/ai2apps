@@ -40,6 +40,26 @@
         };
     }
 
+    function taskModelError(value, locale = document.documentElement.lang) {
+        const detail = value?.detail || value?.error || value;
+        const raw = typeof detail === 'string' ? detail : String(detail?.message || '');
+        const code = ['translation_not_ready', 'translation_failed'].includes(detail?.code) ? detail.code : (/translation_not_ready/.test(raw) ? 'translation_not_ready' : /translation_failed/.test(raw) ? 'translation_failed' : '');
+        if (!['translation_not_ready', 'translation_failed'].includes(code)) return null;
+        const zh = /^zh/i.test(locale || '');
+        const simple = (detail?.details?.purpose || raw).includes('work_simple');
+        const task = zh ? (simple ? '简单任务' : '标准任务') : (simple ? 'Simple Task' : 'Standard Task');
+        if (code === 'translation_not_ready') return zh
+            ? `尚未配置“${task}”模型。请打开“模型 → 默认模型”，为“${task}”选择已启用的 BYOK 或本地聊天模型，点击“保存默认设置”，再重试。脱机模式不能使用 Cloud 默认模型。`
+            : `No ${task} model is configured. Open Models → Default models, select an enabled BYOK or local chat model for ${task}, save the defaults, then retry. Cloud defaults are unavailable in offline mode.`;
+        const status = Number(detail?.details?.upstream_status || raw.match(/HTTP (\d{3})/)?.[1]);
+        const advice = status === 401 || status === 403
+            ? (zh ? '调用被拒绝。请检查 BYOK 密钥及模型访问权限；如果聊天可用而此处仍失败，请反馈此错误以检查系统调用权限。' : 'Access was denied. Check the BYOK key and model permissions. If Chat works but this workflow fails, report this error for a system permission check.')
+            : status === 429
+                ? (zh ? '请求受限。请检查供应商额度或用量限制，稍后重试。' : 'The request was limited. Check provider quota or rate limits, then retry later.')
+                : (zh ? '请检查该模型能否正常聊天；确认供应商连接或本地模型运行状态，或在默认模型设置中换用其他模型后重试。' : 'Check whether the model works in Chat, verify the provider connection or local model status, or choose another default model and retry.');
+        return `${zh ? `“${task}”模型调用失败` : `${task} model request failed`}${status ? ` (HTTP ${status})` : ''}。${advice}`;
+    }
+
     async function payload(response) {
         const value = await response.json().catch(() => null);
         if (!response.ok) throw new Error(value?.error?.message || value?.detail?.message || value?.detail || `Request failed (${response.status})`);
@@ -135,7 +155,8 @@
     const mediaCapabilities = new Set(['video.avatar_generation', 'audio.detailed_transcription', 'audio.source_separation',
         'media.video_subtitles', 'media.video_audio_translation',
         'audio.speaker_voice_replacement', 'media.video_speaker_voice_replacement']);
-    const setupCapabilities = new Set([...mediaCapabilities, 'audio.voice_clone']);
+    const audioGenerationCapabilities = new Set(['audio.music_generation', 'audio.sound_effects_generation', 'audio.song_generation']);
+    const setupCapabilities = new Set([...mediaCapabilities, ...audioGenerationCapabilities, 'audio.voice_clone']);
     const progressCapabilities = new Set([
         'video.avatar_generation',
         'media.video_subtitles',
@@ -160,10 +181,11 @@
         const downloads = new Set();
         const progressSources = new Set();
         let audioRecorder = null;
+        let audioGenerationAbort = null;
         const abort = new AbortController();
         const active = () => !closed && frame.isConnected && frame.src === src && frame.contentWindow === source;
         const close = () => {
-            closed = true; abort.abort();
+            closed = true; abort.abort(); audioGenerationAbort?.abort();
             audioRecorder?.dispose();
             progressSources.forEach(source => source.close()); progressSources.clear();
             channel.port1.close(); observer.disconnect(); localeObserver.disconnect();
@@ -187,8 +209,13 @@
             if (!active()) { close(); return; }
             if (!Number.isSafeInteger(request?.id) || request.id < 1) return;
             const reply = value => { if (active()) channel.port1.postMessage({id: request.id, ...value}); };
+            if (request.operation === 'audio-generation.cancel') {
+                // A private channel may cancel only its own in-flight generation.
+                audioGenerationAbort?.abort(); reply({value: {cancelled: !!audioGenerationAbort}}); return;
+            }
             if (busy) { reply({error: 'A Mini-App operation is already running'}); return; }
             busy = true;
+            if (request.operation === 'audio-generation.generate') audioGenerationAbort = new AbortController();
             try {
                 // Revalidate actor, live mount and signed declaration for every operation,
                 // including draft access; the iframe never receives session credentials.
@@ -197,6 +224,48 @@
                 }));
                 if (!active()) return;
                 if (request.operation === 'probe') reply({value: probe});
+                else if (request.operation === 'audio-generation.models' || request.operation === 'audio-generation.generate') {
+                    if (binding.studioId !== 'ai2apps.readaloud' || !audioGenerationCapabilities.has(request.capability)
+                        || !probe.items?.some(item => item.capability === request.capability)) throw new Error('Capability is not allowed');
+                    if (request.operation === 'audio-generation.models') {
+                        reply({value: await payload(await fetch(`${base}/audio-generation-models?capability=${encodeURIComponent(request.capability)}`,
+                            {credentials: 'same-origin', signal: abort.signal, cache: 'no-store'}))});
+                    } else {
+                        if (!request.payload || JSON.stringify(request.payload).length > (request.capability === 'audio.song_generation' ? 524288 : 20000)) throw new Error('Invalid generation request');
+                        if (audioGenerationAbort.signal.aborted) throw new Error('Generation cancelled');
+                        let invocationId = '';
+                        window.dispatchEvent(new CustomEvent('ai2apps:studio-output-state', {detail: {studioId: binding.studioId, running: true}}));
+                        try {
+                            if (request.capability === 'audio.song_generation') {
+                                const invocation = await payload(await fetch(`${base}/invocations`, {method:'POST', credentials:'same-origin',
+                                    signal:audioGenerationAbort.signal, headers:{'Content-Type':'application/json'},
+                                    body:JSON.stringify({capability:request.capability})}));
+                                if (!/^[0-9a-f]{32}$/.test(invocation.id || '')) throw new Error('Invalid progress invocation');
+                                invocationId = invocation.id;
+                                const eventsUrl = new URL(invocation.eventsUrl, location.origin);
+                                if (eventsUrl.origin !== location.origin || eventsUrl.pathname !== `${base}/invocations/${invocationId}/events`) throw new Error('Invalid progress URL');
+                                progressSource = new EventSource(eventsUrl.href, {withCredentials:true});
+                                progressSources.add(progressSource);
+                                progressSource.addEventListener('progress', event => {
+                                    try { const progress=JSON.parse(event.data);
+                                        if(active() && progress.invocationId===invocationId) channel.port1.postMessage({type:'ai2apps:studio-progress',progress});
+                                    } catch (_) {}
+                                });
+                            }
+                            const result = await payload(await fetch(`${base}/audio-generation`, {method:'POST', credentials:'same-origin',
+                                signal:audioGenerationAbort.signal, headers:{'Content-Type':'application/json',...(invocationId?{'X-AI2Apps-Invocation-ID':invocationId}:{})},
+                                body:JSON.stringify({...request.payload, capability:request.capability})}));
+                            const url = new URL(result.downloadUrl, location.origin);
+                            if (url.origin !== location.origin || !/^\/v1\/platform\/sessions\/[^/]+\/artifacts\/[^/]+\/download$/.test(url.pathname)) throw new Error('Invalid output URL');
+                            window.dispatchEvent(new CustomEvent('ai2apps:studio-output', {detail:{studioId:binding.studioId,miniAppId:binding.miniAppId,result}}));
+                            reply({value:{completed:true, durationSeconds:result.durationSeconds, reachedLimit:result.reachedLimit === true, preparedPrompt:result.preparedPrompt}});
+                        } finally {
+                            if (progressSource) { progressSource.close(); progressSources.delete(progressSource); }
+                            audioGenerationAbort = null;
+                            window.dispatchEvent(new CustomEvent('ai2apps:studio-output-state', {detail:{studioId:binding.studioId,running:false}}));
+                        }
+                    }
+                }
                 else if (['avatar.record.start', 'avatar.record.stop', 'avatar.record.cancel'].includes(request.operation)) {
                     if (binding.studioId !== 'ai2apps.video-studio' || !probe.items?.some(item => item.capability === 'video.avatar_generation')) throw new Error('Capability is not allowed');
                     if (request.operation === 'avatar.record.start') {
@@ -365,7 +434,14 @@
                         signal: abort.signal,
                         headers: {Accept: 'application/json', ...(invocationId ? {'X-AI2Apps-Invocation-ID': invocationId} : {})},
                     });
-                    const responseBody = await response.blob();
+                    let responseBody = await response.blob();
+                    if (!response.ok) {
+                        const failure = await responseBody.text();
+                        let value;
+                        try { value = JSON.parse(failure); } catch (_) { value = failure; }
+                        const message = taskModelError(value);
+                        if (message) responseBody = new Blob([JSON.stringify({detail: {message}})], {type: 'application/json'});
+                    }
                     if (response.status === 202 && request.capability === 'video.avatar_generation') {
                         window.dispatchEvent(new CustomEvent('ai2apps:studio-output', {detail: {studioId: binding.studioId, miniAppId: binding.miniAppId}}));
                     }
@@ -391,6 +467,7 @@
             } catch (error) { reply({error: error?.message || 'Mini-App operation failed'}); }
             finally {
                 busy = false;
+                if (request.operation === 'audio-generation.generate') audioGenerationAbort = null;
                 if (request.operation === 'invoke') {
                     window.dispatchEvent(new CustomEvent('ai2apps:studio-output-state', {detail: {studioId: binding.studioId, running: false}}));
                     if (progressSource && progressSources.has(progressSource)) {
@@ -400,7 +477,7 @@
                 }
             }
         };
-        source.postMessage({type: 'ai2apps:studio-connected', version: 1, locale: document.documentElement?.lang || 'en'}, '*', [channel.port2]);
+        source.postMessage({type: 'ai2apps:studio-connected', version: 1, locale: document.documentElement.lang || 'en'}, '*', [channel.port2]);
     });
 
     window.AI2AppsStudioMiniApps = Object.freeze({
@@ -411,14 +488,14 @@
             return {
                 ...catalog,
                 items: (catalog?.items || []).map(item => item?.source === 'package'
-                    ? localizedDeclaration(item, document.documentElement?.lang)
+                    ? localizedDeclaration(item, document.documentElement.lang)
                     : item),
             };
         },
         async mount(studioId, miniAppId, { placement = 'inline', context = {} } = {}) {
             const instanceId = appInstanceId();
             if (!instanceId) throw new Error('Studio App instance is unavailable');
-            const locale = normalizedLocale(context.locale || document.documentElement?.lang || globalThis.navigator?.language);
+            const locale = normalizedLocale(context.locale || document.documentElement.lang || navigator.language);
             const mountContext = {...context, locale};
             const mount = await payload(await fetch(`/v1/platform/studios/${encodeURIComponent(studioId)}/mini-app-mounts`, {
                 method: 'POST', credentials: 'same-origin',

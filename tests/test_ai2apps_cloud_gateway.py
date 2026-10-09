@@ -26,17 +26,46 @@ class Request:
 
 
 @pytest.mark.asyncio
-async def test_cloud_gateway_uses_external_model_and_strips_local_fields(tmp_path):
+async def test_deepseek_flash_forwards_image_content(tmp_path):
+    store = ModelManagerStore(tmp_path)
+    store.put_cloud("deepseek", {"api_key": "test-key", "models": ["deepseek-flash"]})
+    store.set_cloud_model_enabled("deepseek", "deepseek-flash", True)
+    content = [{"type": "text", "text": "Describe this image"},
+               {"type": "image_url", "image_url": {"url": "https://example.test/image.png"}}]
+    request = Request()
+    request.model = "cloud/deepseek/deepseek-flash"
+    request.model_dump = lambda **_kwargs: {
+        "model": request.model, "stream": False,
+        "messages": [{"role": "user", "content": content}],
+    }
+
+    def handler(upstream):
+        assert str(upstream.url) == "https://api.deepseek.com/chat/completions"
+        body = json.loads(upstream.content)
+        assert body["model"] == "deepseek-flash"
+        assert body["messages"][0]["content"] == content
+        return httpx.Response(200, json={"choices": []})
+
+    response = await proxy_cloud_chat_completion(
+        request, base_path=tmp_path, transport=httpx.MockTransport(handler))
+    assert response.status_code == 200
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider_id,base_url", [
+    ("openai", "https://api.openai.com/v1"),
+    ("deepseek", "https://api.deepseek.com"),
+])
+async def test_cloud_gateway_uses_external_model_and_strips_local_fields(tmp_path, provider_id, base_url):
     store = ModelManagerStore(tmp_path)
     store.put_cloud(
-        "openai",
+        provider_id,
         {
-            "base_url": "https://api.openai.com/v1",
             "api_key": "sk-secret",
             "models": ["gpt-test"],
         },
     )
-    store.set_cloud_model_enabled("openai", "gpt-test", True)
+    store.set_cloud_model_enabled(provider_id, "gpt-test", True)
     captured = {}
 
     def handler(request: httpx.Request):
@@ -49,11 +78,13 @@ async def test_cloud_gateway_uses_external_model_and_strips_local_fields(tmp_pat
             headers={"content-type": "application/json"},
         )
 
+    request = Request()
+    request.model = f"cloud/{provider_id}/gpt-test"
     response = await proxy_cloud_chat_completion(
-        Request(), base_path=tmp_path, transport=httpx.MockTransport(handler)
+        request, base_path=tmp_path, transport=httpx.MockTransport(handler)
     )
 
-    assert captured["url"] == "https://api.openai.com/v1/chat/completions"
+    assert captured["url"] == base_url + "/chat/completions"
     assert captured["authorization"] == "Bearer sk-secret"
     assert captured["body"]["model"] == "gpt-test"
     assert "top_k" not in captured["body"]
@@ -196,13 +227,14 @@ async def test_cloud_gateway_rejects_unselected_model_without_network(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_cloud_gateway_streams_provider_sse(tmp_path):
+@pytest.mark.parametrize("provider_id", ["openai", "deepseek"])
+async def test_cloud_gateway_streams_provider_sse(tmp_path, provider_id):
     store = ModelManagerStore(tmp_path)
     store.put_cloud(
-        "openai",
+        provider_id,
         {"api_key": "sk-secret", "models": ["gpt-test"]},
     )
-    store.set_cloud_model_enabled("openai", "gpt-test", True)
+    store.set_cloud_model_enabled(provider_id, "gpt-test", True)
 
     def handler(request: httpx.Request):
         assert json.loads(request.content)["stream"] is True
@@ -213,6 +245,7 @@ async def test_cloud_gateway_streams_provider_sse(tmp_path):
         )
 
     request = Request()
+    request.model = f"cloud/{provider_id}/gpt-test"
     request.stream = True
     response = await proxy_cloud_chat_completion(
         request, base_path=tmp_path, transport=httpx.MockTransport(handler)

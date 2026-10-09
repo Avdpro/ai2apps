@@ -88,8 +88,8 @@ class ModelShareProviderManager:
         self.discovery_available = False
         self.last_error: str | None = None
 
-    def _eligible_model(self, model_id: str):
-        model = self.invocations.model(model_id)
+    def _eligible_model(self, model_id: str, *, catalog=None):
+        model = self.invocations.model(model_id) if catalog is None else catalog.get(model_id)
         if model is None or not (
             supports_text_conversation(model) or supports_audio_tts(model)
         ):
@@ -118,9 +118,9 @@ class ModelShareProviderManager:
         )
 
     def _shareable_preference(
-        self, preference: ModelShareModelPreference
+        self, preference: ModelShareModelPreference, *, catalog=None
     ) -> ModelShareModelPreference | None:
-        model = self._eligible_model(preference.model_id)
+        model = self._eligible_model(preference.model_id, catalog=catalog)
         if model is None:
             return None
         revision = str(dict(model.weights or {}).get("revision") or "")
@@ -433,12 +433,16 @@ class ModelShareProviderManager:
         configured = {item.model_id: item for item in self.preferences.models()}
         models: list[dict[str, Any]] = []
         catalog = {model.id: model for model in list_package_models(self.invocations.runtime)}
+        shareable_models = {
+            model_id: self._shareable_preference(item, catalog=catalog) is not None
+            for model_id, item in configured.items()
+        }
         for model_id in sorted(set(configured) | set(catalog)):
             item = configured.get(model_id)
             model = catalog.get(model_id)
             controller = self.controllers.get(model_id)
             runtime_status = controller.status() if controller is not None else {}
-            shareable = item is not None and self._shareable_preference(item) is not None
+            shareable = shareable_models.get(model_id, False)
             models.append(
                 {
                     "modelId": model_id,
@@ -449,7 +453,7 @@ class ModelShareProviderManager:
                     "modality": None if model is None else self._modality(model),
                     "calculatorType": self.approved_calculators.get(model_id, "legacy_units_v1"),
                     "selected": bool(item.enabled) if item is not None else False,
-                    "eligible": self._eligible_model(model_id) is not None,
+                    "eligible": self._eligible_model(model_id, catalog=catalog) is not None,
                     "shareable": shareable,
                     "configured": item is not None,
                     "maxConcurrency": item.max_concurrency if item is not None else 1,
@@ -478,13 +482,13 @@ class ModelShareProviderManager:
         return {
             "enabled": self.preferences.device_enabled(),
             "canEnable": any(
-                item.enabled and self._shareable_preference(item) is not None
-                for item in configured.values()
+                item.enabled and shareable_models[model_id]
+                for model_id, item in configured.items()
             ),
             "selectedModelCount": sum(
                 1
-                for item in configured.values()
-                if item.enabled and self._shareable_preference(item) is not None
+                for model_id, item in configured.items()
+                if item.enabled and shareable_models[model_id]
             ),
             "runningModelCount": sum(1 for item in models if item["running"]),
             "rateCardDiscoveryAvailable": self.discovery_available,

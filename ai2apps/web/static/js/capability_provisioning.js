@@ -176,7 +176,7 @@
             '<p class="acpf-choice-note"></p></div>' +
             '<div class="acpf-tiers"></div><div class="acpf-actions acpf-choice-actions"><button type="button" data-choice-action="cancel" class="acpf-secondary">' + tr("取消") + '</button>' +
             '<button type="button" data-choice-action="continue" class="acpf-primary"></button></div></section>';
-        document.body.appendChild(overlay);
+        (document.querySelector('dialog[open]') || document.body).appendChild(overlay);
         overlay.querySelector('#acpf-choice-title').textContent = multiple ? tr('选择要安装的模型') : tr('选择配置档位');
         overlay.querySelector('.acpf-choice-description').textContent = tr(presentation.description);
         overlay.querySelector('.acpf-choice-note').textContent = multiple
@@ -268,7 +268,7 @@
                 '<label class="acpf-license-confirm"><input type="checkbox"> <span></span></label>' +
                 '<div class="acpf-actions"><button type="button" data-license-action="cancel" class="acpf-secondary">' + tr("取消") + '</button>' +
                 '<button type="button" data-license-action="accept" class="acpf-primary" disabled>' + tr("确认许可并继续下载") + '</button></div></section>';
-            document.body.appendChild(overlay);
+            (document.querySelector('dialog[open]') || document.body).appendChild(overlay);
             overlay.querySelector('#acpf-license-title').textContent = license.name || tr('模型许可确认');
             overlay.querySelector('.acpf-license-usage').textContent = tr('用途限制：{0}', license.usagePolicy || tr('以许可条款为准'));
             const terms = overlay.querySelector('.acpf-license-terms');
@@ -282,21 +282,25 @@
             attributionNode.hidden = !attribution;
             const options = overlay.querySelector('.acpf-license-options');
             const optionLabels = {
-                accepted_license_terms: tr('我接受上述许可条款，并将在许可允许的用途范围内使用'),
+                accepted_license_terms: tr('我已阅读并同意上述许可条款，并将在许可允许的用途范围内使用'),
                 obtained_separate_license: tr('我已为预期用途取得权利方的单独许可或授权'),
             };
-            for (const [index, option] of (challenge.acceptanceOptions || []).entries()) {
+            for (const option of (challenge.acceptanceOptions || [])) {
                 const label = document.createElement('label');
                 const input = document.createElement('input');
                 input.type = 'radio'; input.name = `license-decision-${challenge.distributionId}`;
-                input.value = option; input.checked = index === 0;
+                input.value = option; input.checked = false;
                 const text = document.createElement('span'); text.textContent = optionLabels[option] || option;
                 label.append(input, text); options.append(label);
             }
             const checkbox = overlay.querySelector('.acpf-license-confirm input');
             overlay.querySelector('.acpf-license-confirm span').textContent = challenge.attestationText || tr('我确认已同意或获得所需许可。');
             const accept = overlay.querySelector('[data-license-action="accept"]');
-            checkbox.addEventListener('change', () => { accept.disabled = !checkbox.checked; });
+            const updateLicenseConfirmation = () => {
+                accept.disabled = !checkbox.checked || !options.querySelector('input[type="radio"]:checked');
+            };
+            checkbox.addEventListener('change', updateLicenseConfirmation);
+            options.addEventListener('change', updateLicenseConfirmation);
             const consent = await new Promise((resolve, reject) => {
                 overlay.addEventListener('click', event => {
                     const action = event.target.closest('[data-license-action]')?.dataset.licenseAction;
@@ -404,7 +408,7 @@
             '<button type="button" data-action="restart" class="acpf-primary" hidden>' + tr("重启本地服务") + '</button>' +
             '<button type="button" data-action="retry" class="acpf-primary" hidden>' + tr("重试") + '</button>' +
             '<button type="button" data-action="done" class="acpf-primary" hidden>' + tr('完成') + '</button></div></footer></section>';
-        document.body.appendChild(overlay);
+        (document.querySelector('dialog[open]') || document.body).appendChild(overlay);
         render(overlay, session);
         return overlay;
     }
@@ -609,6 +613,7 @@
             clearPending(body.appId);
             return { ...probed, outcome: 'already_ready' };
         }
+        if (window.AI2APPS_MOBILE_SURFACE) throw new Error(document.documentElement.lang.startsWith('zh') ? '请先在 Mac 上安装并配置此模型，再回到手机使用。' : 'Install and configure this model on your Mac, then return to Mobile.');
         if (probed.status === 'unsupported') throw new Error(tr('当前设备不支持此能力'));
         if (installMore && probed.plan) {
             probed.plan.installMore = true;
@@ -636,6 +641,7 @@
     }
 
     async function resume(appId, { capability, actionId } = {}) {
+        if (window.AI2APPS_MOBILE_SURFACE) return null;
         const matches = session => (!capability || session.capability === capability)
             && (!actionId || session.actionId === actionId);
         let pending = null;

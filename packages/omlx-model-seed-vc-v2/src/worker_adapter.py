@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from pathlib import Path
+
+# This adapter runs in its own Worker. ASTRAL's sign quantizer requires
+# full FP32 matmul; set the cached MLX option before importing the backend.
+os.environ["MLX_ENABLE_TF32"] = "0"
 
 import mlx.core as mx
 import numpy as np

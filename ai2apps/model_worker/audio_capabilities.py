@@ -24,6 +24,18 @@ class AudioCapabilitiesError(ValueError):
     pass
 
 
+def reference_audio_sample_rate(capabilities: Mapping[str, Any] | None) -> int:
+    """Declared TTS reference decode rate; legacy Packages retain 24 kHz."""
+    value = (capabilities or {}).get("tts", {}).get("voice_profiles", {}).get(
+        "reference_sample_rate", 24_000
+    )
+    if type(value) is not int or not 8_000 <= value <= 192_000:
+        raise AudioCapabilitiesError(
+            "audio_capabilities.tts.voice_profiles.reference_sample_rate is invalid"
+        )
+    return value
+
+
 def _json_copy(value: Any) -> Any:
     try:
         return json.loads(json.dumps(value))
@@ -325,6 +337,7 @@ def validate_audio_capabilities(value: Any, *, model_type: str) -> dict[str, Any
                     "audio_capabilities.processing.voice_training.output must be voice_bundle"
                 )
     if model_type == "audio_tts":
+        reference_audio_sample_rate(normalized)
         named = normalized.get("tts", {}).get("named_voices", {})
         voices = named.get("voices", [])
         if not isinstance(voices, list) or not all(

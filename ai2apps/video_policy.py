@@ -10,15 +10,25 @@ H3_RESOLUTIONS = (
     "512x512",
     "512x288",
     "288x512",
+    "1024x576",
+    "576x1024",
     "768x768",
     "1024x768",
     "768x1024",
     "1152x768",
     "768x1152",
+    "1280x720",
+    "720x1280",
     "1344x768",
     "768x1344",
 )
 H3_RATIOS = ("1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3")
+# H3's latent grid requires multiples of 32. The 720-pixel side is padded
+# for inference, then center-cropped by the Host before publishing the MP4.
+H3_PADDED_RESOLUTIONS = {
+    "1280x720": (1280, 736),
+    "720x1280": (736, 1280),
+}
 
 
 def _model_identity(model: Any) -> tuple[str, Mapping[str, Any]]:

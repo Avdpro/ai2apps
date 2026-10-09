@@ -1,0 +1,15 @@
+{% extends app_base_template|default("base.html") %}
+{% block title %}访客空间 - AI2Apps{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ static('css/space.css') }}"><link rel="stylesheet" href="{{ static('css/visitor_space_editor.css') }}?v=2">{% endblock %}
+{% block content %}
+<main id="visitor-editor" class="visitor-editor">
+<header class="vs-toolbar"><div><small>AI2APPS</small><h1>访客空间</h1><p>为来访的人准备一个属于你的首页</p></div><button id="vs-toggle" class="visitor-button" disabled>加载中</button></header>
+<p>开启后，任何持有链接的人都可免登录访问已发布内容；私有应用和管理权限不会开放。</p>
+<p id="vs-notice" role="status"></p>
+<section class="vs-panel vs-actions"><div><strong id="vs-state">尚未发布</strong><p>编辑只修改草稿；发布后，访客才能看到新内容。</p></div><button id="vs-save">保存草稿</button><button id="vs-publish" class="visitor-button">发布内容</button></section>
+<section class="vs-panel vs-link"><div><h2>你的空间链接</h2><a id="vs-url" target="_blank" rel="noreferrer"></a><p>与 Owner 私有应用使用同一账户入口，访问权限独立。</p></div><img id="vs-qr" alt="空间链接二维码" width="100" height="100"></section>
+<div class="vs-columns"><section class="vs-panel"><h2>主页内容</h2><label>空间名称<input id="vs-title" maxlength="80"></label><label>空间简介<textarea id="vs-description" maxlength="1000" rows="3"></textarea></label><label>主题<select id="vs-theme"><option value="violet">淡紫</option><option value="ocean">海蓝</option><option value="sand">暖沙</option></select></label><h3>内容卡片</h3><div id="vs-cards"></div><div class="vs-actions"><button data-add="text">添加文字</button><button data-add="link">添加链接</button><button data-add="app">添加应用</button></div><p id="vs-app-note"></p></section>
+<section class="vs-panel vs-preview-panel"><div class="vs-actions"><h2>草稿预览</h2><select id="vs-width" aria-label="预览尺寸"><option value="mobile">手机</option><option value="desktop">桌面</option></select></div><p>与访客主页使用同一渲染器；预览不打开链接或执行应用。</p><div id="vs-preview" class="vs-preview mobile"><div id="vs-preview-content"></div></div></section></div>
+</main>
+<script src="{{ static('js/space.js') }}"></script><script src="{{ static('js/visitor_space_editor.js') }}?v=2"></script>
+{% endblock %}

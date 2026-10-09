@@ -1,0 +1,169 @@
+schema: ai2apps.capability-profiles/v1
+app_id: ai2apps.readaloud
+version: 1
+capabilities:
+  audio.music_generation:
+    trigger: on_action
+    presentation:
+      title: 配置音乐生成
+      description: 选择本地模型；下载前确认模型许可。
+      icon: music
+      confirm_label: 下载并配置
+      ready_label: 已配置
+      steps:
+        runtime: 配置 Runtime
+        provider: 安装模型
+        checkpoint: 下载权重
+        verify: 验证模型
+    requirements:
+      operations:
+      - audio_generation
+      output_formats:
+      - wav
+    profiles:
+    - id: apple-metal-stable-audio-music
+      label: Stable Audio music
+      description: Powered by Stability AI；下载前确认许可。
+      priority: 200
+      device:
+        os:
+        - macos
+        architectures:
+        - arm64
+        accelerator:
+          vendor: apple
+          api: metal
+          unified_memory_gib:
+            minimum: 8
+      recommendation_memory_gib:
+        minimum: 8
+      stack:
+        runtime:
+          package_id: ai2apps/runtime-omlx
+          service_key: ai2apps.runtime.omlx
+          version: '>=1.8.9,<2.0.0'
+        provider:
+          package_id: ai2apps/model-stable-audio-mlx
+          service_key: ai2apps.model.stable-audio-mlx
+          version: '>=0.1.0,<1.0.0'
+        checkpoint:
+          model_id: ai2apps.model.stable-audio-mlx/music
+    - id: apple-metal-ace-step-turbo
+      label: ACE-Step turbo
+      description: 支持歌词；完整时长范围至少 48 GiB 内存。
+      priority: 100
+      device:
+        os:
+        - macos
+        architectures:
+        - arm64
+        accelerator:
+          vendor: apple
+          api: metal
+          unified_memory_gib:
+            minimum: 48
+      recommendation_memory_gib:
+        minimum: 48
+      stack:
+        runtime:
+          package_id: ai2apps/runtime-omlx
+          service_key: ai2apps.runtime.omlx
+          version: '>=1.8.9,<2.0.0'
+        provider:
+          package_id: ai2apps/model-ace-step-mlx
+          service_key: ai2apps.model.ace-step-mlx
+          version: '>=0.1.0,<1.0.0'
+        checkpoint:
+          model_id: ai2apps.model.ace-step-mlx/turbo
+  audio.sound_effects_generation:
+    trigger: on_action
+    presentation:
+      title: 配置音效生成
+      description: 选择本地模型；下载前确认模型许可。
+      icon: music
+      confirm_label: 下载并配置
+      ready_label: 已配置
+      steps:
+        runtime: 配置 Runtime
+        provider: 安装模型
+        checkpoint: 下载权重
+        verify: 验证模型
+    requirements:
+      operations:
+      - audio_generation
+      output_formats:
+      - wav
+    profiles:
+    - id: apple-metal-stable-audio-sfx
+      label: Stable Audio sfx
+      description: Powered by Stability AI；下载前确认许可。
+      priority: 200
+      device:
+        os:
+        - macos
+        architectures:
+        - arm64
+        accelerator:
+          vendor: apple
+          api: metal
+          unified_memory_gib:
+            minimum: 8
+      recommendation_memory_gib:
+        minimum: 8
+      stack:
+        runtime:
+          package_id: ai2apps/runtime-omlx
+          service_key: ai2apps.runtime.omlx
+          version: '>=1.8.9,<2.0.0'
+        provider:
+          package_id: ai2apps/model-stable-audio-mlx
+          service_key: ai2apps.model.stable-audio-mlx
+          version: '>=0.1.0,<1.0.0'
+        checkpoint:
+          model_id: ai2apps.model.stable-audio-mlx/sfx
+  audio.song_generation:
+    trigger: on_action
+    presentation:
+      title: 配置歌曲创作
+      description: 选择支持歌词与乐谱规划的歌曲模型；下载前确认许可。
+      icon: music
+      confirm_label: 下载并配置
+      ready_label: 已配置
+      steps:
+        runtime: 配置 Runtime
+        provider: 安装模型
+        checkpoint: 下载权重
+        verify: 验证模型
+    requirements:
+      operations:
+      - audio_generation
+      output_formats:
+      - wav
+    profiles:
+    - id: apple-metal-yue2
+      label: YuE2
+      description: 歌词、旋律与和声规划；需要已发布的 YuE2 模型 Package。
+      priority: 200
+      device:
+        os:
+        - macos
+        architectures:
+        - arm64
+        accelerator:
+          vendor: apple
+          api: metal
+          unified_memory_gib:
+            minimum: 16
+      recommendation_memory_gib:
+        minimum: 16
+      stack:
+        runtime:
+          package_id: ai2apps/runtime-omlx
+          service_key: ai2apps.runtime.omlx
+          version: '>=1.8.10,<2.0.0'
+        provider:
+          package_id: ai2apps/model-yue2-mlx
+          service_key: ai2apps.model.yue2-mlx
+          version: '>=0.1.0,<1.0.0'
+        checkpoint:
+          model_id: ai2apps.model.yue2-mlx/default

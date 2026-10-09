@@ -326,6 +326,9 @@ def _build_audio_detection_sets():
 AUDIO_STT_MODEL_TYPES, AUDIO_TTS_MODEL_TYPES, AUDIO_STS_MODEL_TYPES = (
     _build_audio_detection_sets()
 )
+# Keep known explicit audio families classified even with an older or absent
+# mlx-audio installation; runtime availability must not turn TTS into chat.
+AUDIO_TTS_MODEL_TYPES.add("fish_qwen3_omni")
 
 # Architecture-based detection — these are checked before model_type and
 # are always static because architecture strings are stable identifiers.

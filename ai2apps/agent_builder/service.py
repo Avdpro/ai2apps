@@ -7,7 +7,6 @@ from typing import Any
 
 from jsonschema import Draft202012Validator
 
-from ai2apps.agents import BROWSER_BUILDER_AGENT_KEY
 from ai2apps.core import ResourceConflictError
 
 from .models import AgentDraftRecord, AgentType, AgentWorkflowRecord
@@ -133,12 +132,24 @@ def create_ir_run(
     capability_name: str | None = None,
     preview: bool = False,
 ):
+    # Resolve after Agent initialization to avoid the authoring/executor import cycle.
+    from ai2apps.agents import BROWSER_BUILDER_AGENT_KEY
+
     schema = ir.get("inputs")
     if isinstance(schema, dict):
+        from copy import deepcopy
+        invocation_input = {
+            **{key: deepcopy(prop["default"]) for key, prop in (schema.get("properties") or {}).items()
+               if isinstance(prop, dict) and "default" in prop},
+            **invocation_input,
+        }
         Draft202012Validator(schema).validate(invocation_input)
     if isinstance(schema, dict) and any(property.get("x-ai2apps-file") for property in (schema.get("properties") or {}).values()):
         from ai2apps.agent_builder.attachments import enrich_file_inputs
         invocation_input = enrich_file_inputs(runtime, owner_user_id or "", schema, invocation_input)
+    if any(step.get("operation") == "agent.call" for step in ir.get("steps", [])):
+        from .calls import resolve_calls
+        ir = resolve_calls(runtime.agent_builder, owner_user_id or "", ir)
     model_manager = getattr(runtime, "model_manager", None)
     ai_model_routes = {
         tier: (
@@ -148,29 +159,56 @@ def create_ir_run(
         )
         for tier in ("simple", "standard", "complex")
     }
-    run, _ = runtime.agents.create_run(
-        session_id=session_id,
-        agent_key=BROWSER_BUILDER_AGENT_KEY,
-        input={
-            "parameters": {
-                "draft_id": draft_id,
-                "generation_id": generation_id,
-                "workflow_id": workflow_id,
-                "ir": ir,
-                "preview": preview,
-                "browser_context": dict(browser_context or {}),
-                "invocation_input": invocation_input,
-                "caller_app_id": caller_app_id,
-                "knowledge_bucket_id": knowledge_bucket_id,
-                "owner_user_id": owner_user_id,
-                "installation_id": installation_id,
-                "capability_name": capability_name,
-                "ai_model_routes": ai_model_routes,
-            }
-        },
-        idempotency_key=idempotency_key,
-        budget={"max_steps": 100, "timeout_seconds": 86_400},
-    )
+    task_store = None
+    task_record = None
+    local_execution = getattr(runtime, "background_browser_runner", None) is not None
+    if owner_user_id and (local_execution or (browser_context and browser_context.get("bidi_context"))):
+        from ai2apps.browser.tasks import BrowserTaskRepository
+        task_store = BrowserTaskRepository(runtime.database, runtime.events)
+        if idempotency_key and idempotency_key.startswith("btask_"):
+            candidate = task_store.get(owner_user_id, idempotency_key)
+            if candidate["status"] != "starting":
+                raise ValueError("Task admission is no longer active")
+            task_record = candidate
+        else:
+            task_record = task_store.reserve_external(
+                owner_user_id, str((browser_context or {}).get("profile_key") or "default"),
+                draft_id or "webagent", capability_name or str(ir.get("name") or "run"),
+                generation_id or "", str(ir.get("name") or capability_name or "WebAgent")[:160],
+                invocation_input, browser_context or {}, key=(session_id + ":" + idempotency_key) if idempotency_key else None,
+            )
+    try:
+        run, _ = runtime.agents.create_run(
+            session_id=session_id,
+            agent_key=BROWSER_BUILDER_AGENT_KEY,
+            input={
+                "parameters": {
+                    "draft_id": draft_id,
+                    "generation_id": generation_id,
+                    "workflow_id": workflow_id,
+                    "ir": ir,
+                    "preview": preview,
+                    "execution_owner": "local" if local_execution else "frontend",
+                    "browser_task_id": task_record["id"] if task_record else None,
+                    "browser_context": dict(browser_context or {}),
+                    "invocation_input": invocation_input,
+                    "caller_app_id": caller_app_id,
+                    "knowledge_bucket_id": knowledge_bucket_id,
+                    "owner_user_id": owner_user_id,
+                    "installation_id": installation_id,
+                    "capability_name": capability_name,
+                    "ai_model_routes": ai_model_routes,
+                }
+            },
+            idempotency_key=idempotency_key,
+            budget={"max_steps": 100, "timeout_seconds": 86_400},
+        )
+    except Exception:
+        if task_store and task_record:
+            task_store.update(owner_user_id, task_record["id"], status="failed", message="创建运行失败")
+        raise
+    if task_store and task_record:
+        task_store.update(owner_user_id, task_record["id"], run_id=run.id, status="running")
     runtime.agent_runtime.wake()
     return run
 

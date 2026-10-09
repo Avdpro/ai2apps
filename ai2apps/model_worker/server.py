@@ -28,6 +28,8 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from starlette.datastructures import UploadFile
 
+from .audio_generation import validate_audio_generation
+
 from .protocol import (
     ModelWorkerArtifact,
     ModelWorkerCheckpoint,
@@ -43,6 +45,7 @@ logger = logging.getLogger(__name__)
 
 PROTOCOL = "ai2apps-model-worker/v1"
 OPERATIONS = {
+    "embeddings": "/v1/embeddings",
     "chat_completions": "/v1/chat/completions",
     "responses": "/v1/responses",
     "image_generation": "/v1/images/generations",
@@ -52,6 +55,7 @@ OPERATIONS = {
     "audio_detailed_transcription": "/v1/audio/transcriptions/detailed",
     "audio_speech": "/v1/audio/speech",
     "audio_process": "/v1/audio/process",
+    "audio_generate": "/v1/audio/generations",
     "audio_voice_training": "/v1/audio/voices/train",
     "video_generation": "/v1/videos/generations",
     "video_segmentation": "/v1/videos/segmentations",
@@ -59,6 +63,7 @@ OPERATIONS = {
 }
 MAX_JSON_BYTES = 32 * 1024 * 1024
 MAX_MULTIPART_FILE_BYTES = 100 * 1024 * 1024
+MAX_VOICE_BUNDLE_BYTES = 512 * 1024 * 1024
 MAX_MEDIA_INPUT_BYTES = 1024 * 1024 * 1024
 LONG_AUDIO_OPERATIONS = {"audio_transcription", "audio_detailed_transcription", "audio_process"}
 LONG_MEDIA_OPERATIONS = LONG_AUDIO_OPERATIONS | {"video_segmentation", "video_upscaling"}
@@ -166,7 +171,8 @@ async def _multipart_payload(
                     # the Worker boundary is PCM WAV.  Keep the trusted extension
                     # because downstream audio engines use it to select a decoder.
                     # The WAV header is still validated below before invocation.
-                    suffix = ".wav" if operation in AUDIO_OPERATIONS else ".part"
+                    is_voice_bundle = operation == "audio_process" and name == "voice"
+                    suffix = ".zip" if is_voice_bundle else (".wav" if operation in AUDIO_OPERATIONS else ".part")
                     destination = root / f"{len(parts):02d}-{uuid.uuid4().hex}{suffix}"
                     digest = hashlib.sha256()
                     size = 0
@@ -176,7 +182,7 @@ async def _multipart_payload(
                             if not chunk:
                                 break
                             size += len(chunk)
-                            file_limit = request_file_limit if name == "file" else MAX_MULTIPART_FILE_BYTES
+                            file_limit = MAX_VOICE_BUNDLE_BYTES if is_voice_bundle else (request_file_limit if name == "file" else MAX_MULTIPART_FILE_BYTES)
                             if size > file_limit:
                                 raise ModelWorkerError(
                                     f"Uploaded {name} exceeds the {file_limit // (1024 * 1024)} MiB request limit",
@@ -188,7 +194,12 @@ async def _multipart_payload(
                     media_type = (
                         value.content_type or "application/octet-stream"
                     ).lower()
-                    if operation in AUDIO_OPERATIONS:
+                    if is_voice_bundle:
+                        import zipfile
+                        if not zipfile.is_zipfile(destination):
+                            raise ModelWorkerError("Invalid trained voice ZIP", code="invalid_voice_bundle", status_code=400)
+                        media_type = "application/zip"
+                    elif operation in AUDIO_OPERATIONS:
                         if media_type not in {
                             "audio/wav",
                             "audio/x-wav",
@@ -570,6 +581,12 @@ def create_app(config_path: str | Path, *, token: str | None = None) -> FastAPI:
                 raise HTTPException(
                     status_code=400, detail="Request body must be an object"
                 )
+        if operation == "audio_generate":
+            try:
+                payload = validate_audio_generation(payload, has_parts=bool(parts))
+            except ModelWorkerError:
+                shutil.rmtree(request_root, ignore_errors=True)
+                raise
         worker_request = ModelWorkerRequest(
             operation=operation,
             payload=payload,
@@ -589,8 +606,13 @@ def create_app(config_path: str | Path, *, token: str | None = None) -> FastAPI:
             result = state["adapter"].invoke(worker_request)
             if inspect.isawaitable(result):
                 result = await result
-        except BaseException:
-            record["status"] = "failed"
+        except BaseException as error:
+            # Explicit adapter cancellation is a terminal cancellation, just as
+            # disconnecting a streaming request is; other errors remain failures.
+            cancelled = isinstance(error, asyncio.CancelledError) or (
+                isinstance(error, ModelWorkerError) and error.status_code == 499
+            )
+            record["status"] = "cancelled" if cancelled else "failed"
             lock.release()
             shutil.rmtree(request_root, ignore_errors=True)
             raise

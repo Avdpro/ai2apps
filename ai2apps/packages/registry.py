@@ -45,7 +45,7 @@ from ai2apps.packages.models import (
 from ai2apps.secrets import SecretRepository
 
 from .contract_v1 import (
-    MAX_ARTIFACT_BYTES,
+    package_size_limit,
     PackageContractError,
     build_package,
     create_key_proof,
@@ -60,14 +60,18 @@ from .contract_v1 import (
     verify_signed_package,
 )
 from .discovery import catalog_discovery, catalog_model_install, catalog_model_profile
+from .platform_compatibility import local_os_version, normalized_architecture
 from .repository_config import AI2APPS_REPOSITORY_FINGERPRINT
 
 # Backwards-compatible public name; the authoritative value lives in the
 # lightweight repository_config module shared by Registry and model adapters.
 DEFAULT_REPOSITORY_FINGERPRINT = AI2APPS_REPOSITORY_FINGERPRINT
 MAX_SUBMISSION_BYTES = 25 * 1024 * 1024
-MAX_PLATFORM_RUNTIME_SUBMISSION_BYTES = 512 * 1024 * 1024
+MAX_PLATFORM_RUNTIME_SUBMISSION_BYTES = 4 * 1024 * 1024 * 1024
 PLATFORM_RUNTIME_PACKAGE_ID = "ai2apps/runtime-omlx"
+PLATFORM_RUNTIME_PACKAGE_IDS = frozenset(
+    {PLATFORM_RUNTIME_PACKAGE_ID, "ai2apps/runtime-cuda-torch"}
+)
 ARTIFACT_PIECES_SCHEMA = "ai2apps.artifact-pieces.v1"
 ARTIFACT_PIECE_MAX_BYTES = 64 * 1024 * 1024
 ARTIFACT_SOURCE_LIMIT = 16
@@ -150,7 +154,10 @@ class RegistryPackageManager:
         )
 
     async def _json(self, method: str, path: str, **kwargs) -> Any:
-        response = await self.cloud.request(method, path, **kwargs)
+        if self._offline_public_read(method, path):
+            response = await self.cloud.request_public(method, path, **kwargs)
+        else:
+            response = await self.cloud.request(method, path, **kwargs)
         try:
             if response.status_code >= 400:
                 try:
@@ -169,6 +176,13 @@ class RegistryPackageManager:
             return response.json()
         finally:
             await response.aclose()
+
+    def _offline_public_read(self, method: str, path: str) -> bool:
+        return (
+            getattr(self.cloud, "offline_mode", lambda: False)() is True
+            and method.upper() == "GET"
+            and path.startswith("/v1/registry/")
+        )
 
     async def _public_json(self, method: str, path: str) -> Any:
         response = await self.cloud.request_public(method, path)
@@ -923,7 +937,11 @@ class RegistryPackageManager:
         expected_hash: str,
         observed: Callable[[dict[str, str], int], None],
     ) -> bytes:
-        client = self.cloud._get_client()
+        client = (
+            self.cloud._get_public_client()
+            if self._offline_public_read("GET", "/v1/registry/artifact")
+            else self.cloud._get_client()
+        )
         current_url = source["url"]
         response: httpx.Response | None = None
         for redirect_count in range(6):
@@ -1339,7 +1357,8 @@ class RegistryPackageManager:
         )
         envelope = await self._json("GET", envelope_path)
         expected_size = int(artifact["size"])
-        if not 1 <= expected_size <= MAX_ARTIFACT_BYTES:
+        size_limit = package_size_limit({"id": package_id, "type": release["packageType"]})
+        if not 1 <= expected_size <= size_limit:
             raise RegistryError(
                 "artifact_size_limit", "Repository artifact exceeds local limits"
             )
@@ -1476,7 +1495,7 @@ class RegistryPackageManager:
             )
             try:
                 response = await asyncio.wait_for(
-                    self.cloud.request(
+                    (self.cloud.request_public if self._offline_public_read("GET", artifact_path) else self.cloud.request)(
                         "GET",
                         artifact_path,
                         stream=True,
@@ -1518,7 +1537,7 @@ class RegistryPackageManager:
                                 "Artifact download stopped making progress",
                             ) from error
                         size += len(chunk)
-                        if size > expected_size or size > MAX_ARTIFACT_BYTES:
+                        if size > expected_size or size > size_limit:
                             raise RegistryError(
                                 "artifact_size_mismatch",
                                 "Artifact exceeded its signed size",
@@ -1598,9 +1617,7 @@ class RegistryPackageManager:
 
     @staticmethod
     def _local_os_version(local_platform: str) -> str:
-        if local_platform == "darwin":
-            return platform.mac_ver()[0]
-        return platform.release()
+        return local_os_version(local_platform)
 
     @classmethod
     def _check_compatibility(cls, compatibility: dict[str, Any]) -> None:
@@ -1615,10 +1632,8 @@ class RegistryPackageManager:
                 details={"current": local_platform, "supported": platforms},
             )
         architectures = compatibility.get("architectures", [])
-        local_arch = {"aarch64": "arm64", "AMD64": "x64", "x86_64": "x64"}.get(
-            platform.machine(), platform.machine()
-        )
-        if architectures and local_arch not in architectures:
+        local_arch = normalized_architecture(platform.machine())
+        if architectures and local_arch not in {normalized_architecture(str(item)) for item in architectures}:
             raise RegistryError(
                 "architecture_incompatible",
                 f"Package does not support {local_arch}",
@@ -1639,7 +1654,7 @@ class RegistryPackageManager:
             if minimum_os and current_os < Version(str(minimum_os)):
                 raise RegistryError(
                     "os_version_too_old",
-                    f"Package requires macOS {minimum_os} or later; this device runs {current_raw}",
+                    f"Package requires {local_platform} {minimum_os} or later; this device runs {current_raw}",
                     details={"current": current_raw, "minimum": str(minimum_os)},
                 )
             if maximum_os and current_os >= Version(str(maximum_os)):
@@ -1932,7 +1947,7 @@ class RegistryPackageManager:
             if (
                 isinstance(runtime, dict)
                 and runtime.get("role") == "inference_provider"
-                and package["id"] != "ai2apps/runtime-omlx"
+                and package["id"] not in PLATFORM_RUNTIME_PACKAGE_IDS
             ):
                 raise RegistryError(
                     "runtime_publisher_denied",
@@ -2550,9 +2565,11 @@ class RegistryPackageManager:
                 "envelope_size_limit", "Signature envelope exceeds 64 KiB"
             )
         package_id = inspected.manifest.get("package", {}).get("id")
+        is_runtime = (package_id in PLATFORM_RUNTIME_PACKAGE_IDS
+                      and inspected.manifest["package"]["type"] == "service")
         size_limit = (
             MAX_PLATFORM_RUNTIME_SUBMISSION_BYTES
-            if package_id == PLATFORM_RUNTIME_PACKAGE_ID
+            if is_runtime
             else MAX_SUBMISSION_BYTES
         )
         if inspected.size > size_limit:
@@ -2563,7 +2580,7 @@ class RegistryPackageManager:
             )
         submission_path = (
             "/v1/platform-runtime-submissions"
-            if package_id == PLATFORM_RUNTIME_PACKAGE_ID
+            if is_runtime
             else "/v1/submissions"
         )
         with inspected.archive_path.open("rb") as artifact:

@@ -25,6 +25,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response, StreamingResponse
 
 from ai2apps.audio_codecs import OUTPUT_MEDIA_TYPES as _SPEECH_RESPONSE_FORMATS
+from ai2apps.model_worker.audio_capabilities import reference_audio_sample_rate
 
 from ..server_metrics import get_server_metrics
 from .audio_models import AudioSpeechRequest, AudioTranscriptionResponse
@@ -228,7 +229,7 @@ def _record_audio_request(model_id: str) -> None:
         logger.warning("Failed to record audio metrics for %s: %s", model_id, exc)
 
 
-async def _read_upload(file: UploadFile) -> bytes:
+async def _read_upload(file: UploadFile, *, max_bytes: int = MAX_AUDIO_UPLOAD_BYTES) -> bytes:
     """Read an uploaded file in chunks, bailing early if it exceeds the limit."""
     chunks: list[bytes] = []
     total = 0
@@ -237,12 +238,12 @@ async def _read_upload(file: UploadFile) -> bytes:
         if not chunk:
             break
         total += len(chunk)
-        if total > MAX_AUDIO_UPLOAD_BYTES:
+        if total > max_bytes:
             raise HTTPException(
                 status_code=413,
                 detail=(
                     f"Audio file exceeds maximum allowed size "
-                    f"({MAX_AUDIO_UPLOAD_BYTES} bytes)"
+                    f"({max_bytes} bytes)"
                 ),
             )
         chunks.append(chunk)
@@ -331,12 +332,14 @@ async def _restore_package_transcription_punctuation(
     )
 
 
-def _decode_ref_audio_base64(request: AudioSpeechRequest) -> bytes | None:
+def _decode_ref_audio_base64(
+    request: AudioSpeechRequest, *, require_transcript: bool = True
+) -> bytes | None:
     """Validate and decode optional base64 ref_audio from a TTS request."""
     if request.ref_audio is None:
         return None
 
-    if not request.ref_text:
+    if require_transcript and not request.ref_text:
         raise HTTPException(
             status_code=400,
             detail="'ref_text' is required when 'ref_audio' is provided "
@@ -957,14 +960,23 @@ def _transcode_speech_output(wav_bytes: bytes, response_format: str) -> bytes:
 async def _package_speech_response(
     response: Response,
     response_format: str,
+    *, pipeline_speed: float = 1.0,
 ) -> Response:
-    if response.status_code >= 400 or response_format == "wav":
+    if response.status_code >= 400 or (response_format == "wav" and pipeline_speed == 1.0):
         return response
     try:
+        content = bytes(response.body)
+        if pipeline_speed != 1.0:
+            import io
+            import wave
+            from ai2apps.audio_codecs import change_speech_tempo
+            with wave.open(io.BytesIO(content), "rb") as audio:
+                sample_rate = audio.getframerate()
+            content = await asyncio.to_thread(
+                change_speech_tempo, content, pipeline_speed, sample_rate=sample_rate
+            )
         content = await asyncio.to_thread(
-            _transcode_speech_output,
-            bytes(response.body),
-            response_format,
+            _transcode_speech_output, content, response_format
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -973,6 +985,8 @@ async def _package_speech_response(
         for key, value in response.headers.items()
         if key.lower() not in {"content-length", "content-type"}
     }
+    if pipeline_speed != 1.0:
+        headers["X-AI2Apps-Feature-Speed"] = "pipeline"
     return Response(
         content=content,
         status_code=response.status_code,
@@ -1006,13 +1020,26 @@ async def create_speech(request: AudioSpeechRequest):
             )
         payload = request.model_dump(mode="json", by_alias=True, exclude_none=True)
         payload["response_format"] = "wav"
+        speed_feature = (package_model.audio_capabilities or {}).get("tts", {}).get("speed", {})
+        pipeline_speed = 1.0
+        if speed_feature.get("mode") == "pipeline" and speed_feature.get("control") == "host_atempo":
+            pipeline_speed = 1.0 if request.speed is None else request.speed
+            if not math.isfinite(pipeline_speed) or not 0.5 <= pipeline_speed <= 2.0:
+                raise HTTPException(status_code=400, detail="Speech speed must be between 0.5 and 2.0")
+            if request.stream and pipeline_speed != 1.0:
+                raise HTTPException(status_code=400, detail="Host tempo processing requires non-streaming speech")
+            payload["speed"] = 1.0
         if request.ref_audio is not None:
-            reference_audio = _decode_ref_audio_base64(request)
+            voice_profiles = (package_model.audio_capabilities or {}).get("tts", {}).get("voice_profiles", {})
+            reference_audio = _decode_ref_audio_base64(
+                request,
+                require_transcript=voice_profiles.get("reference_transcript") != "optional",
+            )
             reference_audio = await _normalize_audio_bytes(
                 reference_audio or b"",
                 filename=f"reference.{request.ref_audio_format or 'wav'}",
                 media_type=None,
-                sample_rate=24_000,
+                sample_rate=reference_audio_sample_rate(package_model.audio_capabilities),
                 max_duration_seconds=300,
             )
             payload.pop("ref_audio", None)
@@ -1030,14 +1057,14 @@ async def create_speech(request: AudioSpeechRequest):
                 },
                 context=_audio_invocation_context(),
             )
-            return await _package_speech_response(response, response_format)
+            return await _package_speech_response(response, response_format, pipeline_speed=pipeline_speed)
         response = await _model_invocations().invoke_foreground_json(
             package_model.id,
             "audio_speech",
             payload,
             context=_audio_invocation_context(),
         )
-        return await _package_speech_response(response, response_format)
+        return await _package_speech_response(response, response_format, pipeline_speed=pipeline_speed)
 
     if not request.input or not request.input.strip():
         raise HTTPException(status_code=400, detail="'input' field must not be empty")
@@ -1149,6 +1176,7 @@ async def create_speech(request: AudioSpeechRequest):
 @router.post("/v1/audio/process")
 async def process_audio(
     file: UploadFile = File(...),
+    voice: UploadFile | None = File(None),
     reference: UploadFile | None = File(None),
     model: str = Form(...),
     task: str | None = Form(None),
@@ -1248,6 +1276,12 @@ async def process_audio(
                 ),
                 "audio/wav",
             )
+        if voice is not None:
+            conversion = (package_model.audio_capabilities or {}).get("processing", {}).get("voice_conversion", {})
+            if "trained_voice" not in conversion.get("target_sources", []):
+                raise HTTPException(status_code=400, detail="Selected model does not accept trained voice bundles")
+            voice_content = await _read_upload(voice, max_bytes=512 * 1024 * 1024)
+            files["voice"] = ("voice.zip", voice_content, "application/zip")
         return await _model_invocations().invoke_foreground_multipart(
             package_model.id,
             "audio_process",
@@ -1255,6 +1289,9 @@ async def process_audio(
             files=files,
             context=_audio_invocation_context(),
         )
+
+    if voice is not None:
+        raise HTTPException(status_code=400, detail="Trained voice bundles require a compatible model Package")
 
     pool = _get_engine_pool()
     from omlx.engine.sts import STSEngine

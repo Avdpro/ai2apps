@@ -157,3 +157,25 @@ Package.
 ## Runtime 1.8.7
 
 Adds the dedicated `video_upscaling` Model Worker operation at `/v1/videos/upscalings` and its bounded capability schema. Native dependencies are unchanged from 1.8.6. Host model catalog support requires the corresponding Desktop source update.
+
+
+## Runtime 1.8.9
+
+Adds the authenticated `audio_generate` Model Worker operation at
+`/v1/audio/generations` and the `audio-generation-v1` capability. Requests
+select `music` or `sound_effects`, require a prompt, model and duration, and
+return WAV through the existing Worker Artifact transport. Bounded lyrics,
+steps, seed and language options are validated before queue admission.
+Reference uploads and streaming are not supported in this revision.
+
+Native dependencies and Python 3.11 remain unchanged from the signed 1.8.8
+release. ACE-Step 1.5 and Stable Audio 3 Small inference were verified with
+these dependencies; model adapters, weights, Host discovery and Voice Studio
+integration ship separately. This Runtime does not bundle the models.
+
+### 1.8.10
+
+Adds `audio-generation-workflow-v1`: explicit audio-generation/v2 requests can
+select natural duration, symbolic planning, inline ABC, generation token limits,
+and guidance. Existing v1 music/SFX behavior and all native dependencies remain
+unchanged. YuE2 implementation and weights belong to its separate model Package.

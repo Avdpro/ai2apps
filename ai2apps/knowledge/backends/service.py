@@ -87,11 +87,13 @@ class ServiceEmbeddingProvider:
         model_id: str,
         dimension: int,
         input_type: str = "query",
+        request_json: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
     ) -> None:
         self.endpoint = endpoint
         self._model_id = model_id
         self._dimension = dimension
         self.input_type = input_type
+        self.request_json = request_json
 
     @property
     def model_id(self) -> str:
@@ -107,20 +109,15 @@ class ServiceEmbeddingProvider:
             model_id=self.model_id,
             dimension=self.dimension,
             input_type="passage",
+            request_json=self.request_json,
         )
 
     def embed(self, texts: Sequence[str]) -> tuple[tuple[float, ...], ...]:
         if not texts:
             return ()
-        value = _post(
-            self.endpoint,
-            "/v1/embeddings",
-            {
-                "model": self.model_id,
-                "input": list(texts),
-                "input_type": self.input_type,
-            },
-        )
+        body = {"model": self.model_id, "input": list(texts), "input_type": self.input_type}
+        value = (self.request_json(body) if self.request_json is not None else
+                 _post(self.endpoint, "/v1/embeddings", body))
         data = value.get("data")
         if not isinstance(data, list) or len(data) != len(texts):
             raise VectorBackendError("Embedding Service returned an invalid batch")

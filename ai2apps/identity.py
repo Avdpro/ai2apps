@@ -739,6 +739,21 @@ class IdentityRepository:
                 (installation.id,),
             )
 
+    def local_principal_for(self, actor_user_id: str) -> RequestPrincipal:
+        """Resolve a persisted local workload owner, including offline owners."""
+
+        from ai2apps.installation_security import LocalSecurityIdentityRepository
+        from ai2apps.offline import OfflineAccess
+
+        if actor_user_id.startswith("offline.") and self.get_installation() is None:
+            security = LocalSecurityIdentityRepository(self.database).get()
+            if security is not None:
+                offline = OfflineAccess(self.database, security.security_instance_id)
+                if offline.enabled and offline.principal().actor_user_id == actor_user_id:
+                    return offline.principal()
+            raise IdentityBindingError("Offline workload owner is not active")
+        return self.principal_for(actor_user_id)
+
     def principal_for(self, cloud_user_id: str) -> RequestPrincipal:
         """Resolve only an active member of the active bound installation."""
 

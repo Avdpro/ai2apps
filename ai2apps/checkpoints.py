@@ -153,7 +153,17 @@ def _verified_distribution_checkpoint_is_complete(
 
     files = verification["files"]
     expected_paths = set(files)
-    if not any(path.endswith(".safetensors") for path in expected_paths):
+    payload_suffixes = (".safetensors",)
+    if model.get("model_type") in {"audio_stt", "audio_processing"}:
+        # Official SenseVoice/FSMN weights use PyTorch .pt. Accept these only
+        # through the complete immutable distribution receipt, never by suffix
+        # alone in the generic unverified-folder probe.
+        payload_suffixes += (".pt",)
+    if model.get("model_type") == "audio_generation":
+        # Stable Audio ships NPZ tensors; only a complete immutable Registry
+        # receipt may authorize this layout (never the generic folder probe).
+        payload_suffixes += (".npz",)
+    if not any(path.endswith(payload_suffixes) for path in expected_paths):
         return False
     actual_paths = {
         path.relative_to(root).as_posix()
@@ -282,7 +292,10 @@ def model_checkpoint_is_complete(path: Path, model: dict[str, Any]) -> bool:
         return True
     metadata = model.get("metadata") or {}
     backend = (metadata.get("family"), metadata.get("implementation"))
-    if backend == ("ideogram4", "ai2apps-native-mlx-optimized"):
+    if backend in {
+        ("ideogram4", "ai2apps-native-mlx-optimized"),
+        ("ideogram4", "ai2apps-official-cuda-fp8"),
+    }:
         # Configuration/tokenizer assets ship in this Package. Every source
         # tensor is nevertheless mandatory; one nested tensor is not enough.
         for relative in _IDEOGRAM_COMPONENTS:

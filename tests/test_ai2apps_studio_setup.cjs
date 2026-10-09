@@ -6,14 +6,14 @@ const vm = require('node:vm'), fs = require('node:fs'), assert = require('node:a
  const storage = new Map();
  let declared = 'audio.detailed_transcription';
  const context = {window: {addEventListener(k, f) {(listeners[k] ||= []).push(f)}, AI2AppsCapabilities:{appInstanceId:()=> 'instance', ensure:async x => {calls.push(x); return {outcome:'configured',session:{id:'s'}}}, acknowledge:async()=>{}}},
- document:{querySelectorAll:()=>[frame]}, location:{origin:'http://local'}, URL, URLSearchParams,
+ document:{documentElement:{lang:'en'},querySelectorAll:()=>[frame]}, location:{origin:'http://local'}, URL, URLSearchParams,
  localStorage:{setItem:(k,v)=>storage.set(k,v),getItem:k=>storage.get(k),removeItem:k=>storage.delete(k)},
  AbortController, MutationObserver:class{observe(){} disconnect(){}},
  MessageChannel:class{constructor(){channel=this;this.port1={postMessage:v=>replies.push(v),close(){}};this.port2={}}},
  fetch:async url=>({ok:true,json:async()=>url.endsWith('/mini-app-mounts')?{id:'mount',content_url:'/frame',app_instance_id:'provider',resource:'web/transcription.html'}:{items:[{capability:declared,ready:false}]}})};
  vm.runInNewContext(fs.readFileSync(require('node:path').join(__dirname, '../ai2apps/web/static/js/studio_mini_apps.js'),'utf8'),context);
- const mount = await context.window.AI2AppsStudioMiniApps.mount('ai2apps.readaloud','transcription');
- frame.src = new URL(mount.content_url, context.location.origin).href;
+ const mounted = await context.window.AI2AppsStudioMiniApps.mount('ai2apps.readaloud','transcription');
+ frame.src = new URL(mounted.content_url, context.location.origin).href;
  for(const f of listeners.message)f({data:{type:'ai2apps:studio-connect',version:1},source,origin:'null'});
  await channel.port1.onmessage({data:{id:1,operation:'setup',capability:'audio.detailed_transcription'}});
  assert.equal(calls.length,1);assert.equal(calls[0].appId,'ai2apps.readaloud');assert.equal(calls[0].capability,'audio.detailed_transcription');assert.equal(replies[0].value.outcome,'configured');

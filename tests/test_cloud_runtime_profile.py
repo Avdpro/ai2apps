@@ -33,7 +33,7 @@ audio_paths = {
 }
 registered_paths = set(omlx.server.app.openapi()["paths"])
 assert audio_paths <= registered_paths
-response = TestClient(omlx.server.app).post(
+response = TestClient(omlx.server.app, base_url="http://127.0.0.1").post(
     "/v1/audio/speech",
     json={"model": "unknown-audio-model", "input": "route probe", "voice": "default"},
 )

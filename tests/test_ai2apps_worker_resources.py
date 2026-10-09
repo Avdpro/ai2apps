@@ -325,3 +325,73 @@ async def test_pressure_sweeper_evicts_one_lru_worker_before_normal_ttl():
             {"reason": "memory_pressure_soft", "expected_generation": 4},
         )
     ]
+
+
+@pytest.mark.asyncio
+async def test_stage_eviction_blocks_admission_pin_and_duplicate_until_finished():
+    import asyncio
+    from ai2apps.worker_resources import WorkerEvictionBusyError
+    manager=WorkerResourceManager(sampler=_memory)
+    entered,finish=asyncio.Event(),asyncio.Event()
+    calls=[]
+    class Packages:
+        async def evict(self,service_key,**kwargs):
+            calls.append((service_key,kwargs));entered.set();await finish.wait()
+            return {'state':'evicted'}
+    pm=Packages()
+    task=asyncio.create_task(manager.evict_idle(pm,'worker.a',reason='stage_complete',expected_generation=7))
+    await entered.wait()
+    assert manager.try_reserve('racing','worker.a',MIB) is None
+    assert manager.try_reserve('unrelated','worker.b',MIB) is not None
+    with pytest.raises(WorkerEvictionBusyError):manager.set_pinned('worker.a',True)
+    with pytest.raises(WorkerEvictionBusyError):
+        await manager.evict_idle(pm,'worker.a',reason='duplicate',expected_generation=7)
+    finish.set();assert await task=={'state':'evicted'}
+    assert calls==[('worker.a',{'reason':'stage_complete','expected_generation':7})]
+    assert manager.try_reserve('next','worker.a',MIB) is not None
+
+
+@pytest.mark.asyncio
+async def test_stage_eviction_rejects_reserved_and_pinned_workers_without_stopping():
+    from unittest.mock import AsyncMock
+    from ai2apps.worker_resources import WorkerEvictionBusyError
+    manager=WorkerResourceManager(sampler=_memory)
+    pm=SimpleNamespace(evict=AsyncMock())
+    assert manager.try_reserve('active','worker.a',MIB) is not None
+    with pytest.raises(WorkerEvictionBusyError):
+        await manager.evict_idle(pm,'worker.a',reason='stage_complete',expected_generation=1)
+    manager.release('active');manager.set_pinned('worker.a',True)
+    with pytest.raises(WorkerEvictionBusyError):
+        await manager.evict_idle(pm,'worker.a',reason='stage_complete',expected_generation=1)
+    pm.evict.assert_not_awaited()
+    assert manager.is_pinned('worker.a')
+
+
+@pytest.mark.asyncio
+async def test_stage_eviction_failure_reopens_admission_and_propagates_generation_error():
+    from unittest.mock import AsyncMock
+    manager=WorkerResourceManager(sampler=_memory)
+    scheduler=SimpleNamespace(notify_resources_changed=AsyncMock())
+    manager.bind_scheduler(scheduler)
+    pm=SimpleNamespace(evict=AsyncMock(side_effect=RuntimeError('stale generation')))
+    with pytest.raises(RuntimeError,match='stale generation'):
+        await manager.evict_idle(pm,'worker.a',reason='stage_complete',expected_generation=1)
+    assert manager.try_reserve('after-error','worker.a',MIB) is not None
+    scheduler.notify_resources_changed.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_stage_eviction_cancellation_joins_before_reopening_admission():
+    import asyncio
+    manager=WorkerResourceManager(sampler=_memory)
+    entered,finish=asyncio.Event(),asyncio.Event()
+    class Packages:
+        async def evict(self,*args,**kwargs):
+            entered.set();await finish.wait();return {'state':'evicted'}
+    task=asyncio.create_task(manager.evict_idle(Packages(),'worker.a',reason='stage_complete',expected_generation=1))
+    await entered.wait();task.cancel();await asyncio.sleep(0)
+    task.cancel();await asyncio.sleep(0)
+    assert not task.done() and manager.try_reserve('during-cancel','worker.a',MIB) is None
+    finish.set()
+    with pytest.raises(asyncio.CancelledError):await task
+    assert manager.try_reserve('after-cancel','worker.a',MIB) is not None

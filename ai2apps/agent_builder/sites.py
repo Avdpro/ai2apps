@@ -57,17 +57,20 @@ def capability_slug(value: str, fallback: str = "run") -> str:
 def capability_from_legacy(source: dict[str, Any], *, legacy_draft_id: str | None = None) -> dict[str, Any]:
     exports = source.get("capability_exports")
     export = exports[0] if isinstance(exports, list) and exports and isinstance(exports[0], dict) else {}
-    title = str(source.get("name") or "Run")
+    metadata = (source.get("provenance") or {}).get("capability_metadata") or {}
+    title = str(metadata.get("title") or source.get("name") or "Run")
     capability_id = capability_slug(str(export.get("name") or title))
     legacy_steps = deepcopy(source.get("steps") or [])
     item = {
         "id": capability_id,
         "name": str(export.get("name") or f"site.{capability_id}"),
         "title": title,
-        "description": str(source.get("description") or export.get("description") or ""),
+        "description": str(metadata.get("description") or source.get("description") or export.get("description") or ""),
+        "working_goal": str(source.get("working_goal") or ""),
         "inputs": deepcopy(source.get("inputs") or export.get("input_schema") or {"type": "object", "properties": {}}),
         "outputs": deepcopy(source.get("outputs") or export.get("output_schema") or {"type": "object", "properties": {}}),
         "steps": legacy_steps,
+        "variables": deepcopy(source.get("variables") or {"type":"object","properties":{}}),
         "fixtures": deepcopy(source.get("fixtures") or []),
         "validators": deepcopy(source.get("validators") or []),
     }

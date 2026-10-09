@@ -242,15 +242,14 @@ async def generate_avatar(
     runtime = broker.runtime
     if getattr(runtime, "video_tasks", None) is None:
         raise _error("capability_broker_unavailable", "Video queue is unavailable", 503)
+    from ai2apps.avatar.providers import maximum_audio_seconds
     try:
         wav = await asyncio.to_thread(
             decode_audio_to_wav,
             content,
             input_format=infer_audio_format(filename, media_type),
             sample_rate=16_000,
-            max_duration_seconds=min(
-                600, model.video_capabilities["duration"]["maximum_seconds"] or 600
-            ),
+            max_duration_seconds=maximum_audio_seconds(model),
         )
         with wave.open(io.BytesIO(wav), "rb") as audio:
             duration = audio.getnframes() / audio.getframerate()

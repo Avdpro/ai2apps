@@ -58,9 +58,13 @@ def _long_empty_audio(content: bytes, *, no_content: bool) -> bool:
         return False
 
 
+def _is_indextts(model_id: str) -> bool:
+    return str(model_id).startswith(("ai2apps.model.indextts25/", "ai2apps.model.indextts25-cuda/"))
+
+
 def speech_chunk_units(model_id: str) -> int:
     # Use the registered Package model identity, never a user-editable display name.
-    if str(model_id).startswith("ai2apps.model.indextts25/"):
+    if _is_indextts(model_id):
         return 120  # Approximately 40 CJK characters; keep clauses together.
     return MAX_SPEECH_UNITS
 
@@ -116,7 +120,7 @@ def _join_audio(parts: list[bytes]) -> bytes:
 async def invoke_speech(invoke, model_id, operation, payload=None, *, data=None, verifier=None, warnings=None, _split_depth=0, _chunk_units=None, **options):
     """Only publish a complete result. Failure/cancellation never exposes partial audio."""
     original = data if data is not None else payload
-    is_indextts = str(model_id).startswith("ai2apps.model.indextts25/")
+    is_indextts = _is_indextts(model_id)
     max_units = _chunk_units or speech_chunk_units(model_id)
     chunks = split_speech_text(original['input'], max_units=max_units)
     if verifier is not None:

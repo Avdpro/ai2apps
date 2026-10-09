@@ -49,6 +49,43 @@ class PeerBrokerClient:
         self._jwks_expires_at = 0.0
         self._jwks_lock = asyncio.Lock()
         self._grants: dict[str, VerifiedPeerGrant] = {}
+        self._capabilities: dict[str, Any] = {}
+        self._capabilities_expires_at = 0.0
+        self._capabilities_lock = asyncio.Lock()
+
+    async def require_protocol(self, protocol: PeerProtocol) -> None:
+        """Discover availability before touching device keys, including on old Clouds."""
+        async with self._capabilities_lock:
+            if time.monotonic() >= self._capabilities_expires_at:
+                payload = {}
+                try:
+                    response = await self.cloud.request("GET", "/v1/peer/capabilities")
+                    try:
+                        if response.status_code == 200:
+                            value = response.json()
+                            if isinstance(value, dict):
+                                payload = value
+                    finally:
+                        await response.aclose()
+                except (httpx.HTTPError, ValueError):
+                    pass
+                self._capabilities = payload
+                refresh = payload.get("refreshAfterSeconds", 300)
+                if type(refresh) not in (int, float) or not 30 <= refresh <= 3600:
+                    refresh = 300
+                self._capabilities_expires_at = time.monotonic() + refresh
+        payload = self._capabilities
+        protocols = payload.get("protocols")
+        if (payload.get("version") == 1 and payload.get("brokerEnabled") is True
+                and isinstance(protocols, dict) and protocols.get(protocol.value) is True):
+            return
+        known = payload.get("version") == 1 and isinstance(protocols, dict)
+        raise PeerBrokerError(
+            "PEER_POLICY_DISABLED" if known else "PEER_CAPABILITIES_UNKNOWN",
+            "Cloud has not enabled this Peer protocol." if known else
+            "Cloud Peer capability discovery is unavailable; key registration is deferred.",
+            status_code=503, retryable=False,
+        )
 
     async def _payload(self, response: httpx.Response) -> dict[str, Any]:
         try:
@@ -97,6 +134,7 @@ class PeerBrokerClient:
             return payload
 
     async def ensure_registered(self, principal: RequestPrincipal, protocol: PeerProtocol) -> dict[str, Any]:
+        await self.require_protocol(protocol)
         headers = self.device_headers(principal)
         local = self.keys.get_or_create(self.device_id, protocol)
         response = await self.cloud.request("GET", f"/v1/peer/device-keys/{protocol.value}", headers=headers)

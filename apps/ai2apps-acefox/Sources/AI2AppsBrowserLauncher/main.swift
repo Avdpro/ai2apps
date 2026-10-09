@@ -111,6 +111,13 @@ do {
         "AI2APPS_DISABLE_REMOTE_SERVER": "1",
         "AI2APPS_APPLICATION_GROUP": applicationGroup,
     ]) { _, required in required }
+    var automationArguments: [String] = []
+    let suppliedArguments = CommandLine.arguments
+    for flag in ["--remote-debugging-port", "--remote-allow-hosts"] {
+        if let index = suppliedArguments.firstIndex(of: flag), index + 1 < suppliedArguments.count {
+            automationArguments += [flag, suppliedArguments[index + 1]]
+        }
+    }
     try launchBrowserChild(
         executable: engine,
         arguments: [
@@ -119,7 +126,7 @@ do {
             "--ai2apps-shell",
             "--ai2apps-instance", instanceID.rawValue,
             "--ai2apps-storage-root", storageRoot.path,
-        ],
+        ] + automationArguments,
         environment: environment,
         descriptorURL: paths.runDirectory.appendingPathComponent("shell.json"),
         instanceID: instanceID

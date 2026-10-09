@@ -550,7 +550,7 @@ class TestExceptionHandlers:
     @pytest.fixture
     def client(self):
         """Create a test client for the FastAPI app."""
-        return TestClient(app, raise_server_exceptions=False)
+        return TestClient(app, base_url="http://127.0.0.1", raise_server_exceptions=False)
 
     def test_http_exception_logged(self, client, caplog):
         """Test that HTTPException responses are logged."""

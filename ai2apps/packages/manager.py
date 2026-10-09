@@ -44,6 +44,7 @@ from .models import (
     PackageError,
     PackageStatus,
 )
+from .platform_compatibility import local_os_version, normalized_architecture
 from .repository import PackageRepository
 from .resolver import ServiceDependencyResolver
 from .runtime import PackageRuntimeBinder
@@ -100,6 +101,9 @@ def _package_checkpoint_repositories(manifest: dict) -> set[str]:
     return repositories
 
 
+HOST_PACKAGE_FEATURES = frozenset({"avatar.segmented-jobs.v1"})
+
+
 class ServicePackageManager:
     def __init__(
         self,
@@ -134,12 +138,9 @@ class ServicePackageManager:
             os_name=platform.system().lower(),
             architecture=platform.machine().lower(),
             python_version=".".join(map(str, sys.version_info[:3])),
-            os_version=(
-                platform.mac_ver()[0]
-                if platform.system() == "Darwin"
-                else platform.release()
-            ),
+            os_version=local_os_version(platform.system().lower()),
             accelerator=_detect_local_accelerator(),
+            features=HOST_PACKAGE_FEATURES,
         )
         self._install_lock = asyncio.Lock()
 
@@ -314,8 +315,8 @@ class ServicePackageManager:
         architectures = value.get("architectures", value.get("architecture", []))
         if isinstance(architectures, str):
             architectures = [architectures]
-        if architectures and context.architecture not in {
-            str(item).lower() for item in architectures
+        if architectures and normalized_architecture(context.architecture) not in {
+            normalized_architecture(str(item)) for item in architectures
         }:
             raise PackageError(
                 "platform_incompatible",

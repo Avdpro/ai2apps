@@ -22,6 +22,21 @@ def emoji_key(value: str) -> str:
     return value.replace("\ufe0f", "").replace("\ufe0e", "")
 
 
+def extract_ai_emoji(text: str, excluded: list[str]) -> str:
+    """Tolerate prose while preserving complete Unicode emoji graphemes."""
+    if not isinstance(text, str):
+        return ""
+    excluded_keys = {emoji_key(value) for value in excluded}
+    for cluster in regex.finditer(r"\X", text):
+        try:
+            emoji = validate_emoji(cluster.group())
+        except ValueError:
+            continue
+        if emoji and emoji_key(emoji) not in excluded_keys:
+            return emoji
+    return ""
+
+
 class Schedule(BaseModel):
     model_config = ConfigDict(extra="forbid")
     auto_execute: bool = True
@@ -76,7 +91,7 @@ class TaskInput(BaseModel):
     status: Literal["not_started", "in_progress", "completed", "paused"] = "not_started"
     progress: int = Field(default=0, ge=0, le=100, strict=True)
     completed: bool = False
-    executor: Literal["internal", "codex", "claude"] = "internal"
+    executor: Literal["internal", "codex", "claude", "codex_desktop"] = "internal"
     model: str = Field(default="", max_length=300)
     working_directory: str = Field(default="", max_length=4096)
     schedule: Schedule = Field(default_factory=Schedule)

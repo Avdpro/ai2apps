@@ -312,6 +312,17 @@ class ServicePackageArchive:
             raise PackageError(
                 "invalid_entrypoint", "runtime.command must be a string array"
             )
+        transport = runtime.get("transport", "tcp")
+        if transport not in {"tcp", "host-unix"}:
+            raise PackageError("invalid_transport", "Unsupported Service transport")
+        if transport == "host-unix":
+            if mode is not ServiceRuntimeMode.MANAGED_PROCESS or protocol != "http-json":
+                raise PackageError("invalid_transport", "host-unix requires a managed HTTP JSON Service")
+            if command.count("--port") != 1 or "--uds" in command:
+                raise PackageError("invalid_transport", "host-unix requires one Host-owned --port placeholder")
+            port_index = command.index("--port")
+            if port_index + 1 >= len(command) or command[port_index + 1] != "{port}":
+                raise PackageError("invalid_transport", "host-unix requires --port {port}")
         entrypoint = runtime.get("entrypoint")
         endpoint = runtime.get("endpoint")
         model_worker = protocol == "ai2apps-model-worker/v1"

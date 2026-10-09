@@ -6,6 +6,7 @@ from pathlib import Path
 
 def compose_video(source_video, output, canvas, *, check=lambda: None, progress=None):
     import av
+    import numpy as np
 
     output = Path(output)
     temporary = output.with_suffix(".partial.mp4")
@@ -18,10 +19,12 @@ def compose_video(source_video, output, canvas, *, check=lambda: None, progress=
                 raise ValueError("Generated video has no frame rate")
             with av.open(str(temporary), "w") as target:
                 encoded = target.add_stream("libx264", rate=rate)
-                encoded.width, encoded.height = canvas.size
-                encoded.pix_fmt = (
-                    "yuv420p" if all(v % 2 == 0 for v in canvas.size) else "yuv444p"
-                )
+                # Browser H.264 decoders require 4:2:0. Preserve source pixels
+                # and extend only the bottom/right edge for odd canvas sizes.
+                width, height = canvas.size
+                encoded.width = width + width % 2
+                encoded.height = height + height % 2
+                encoded.pix_fmt = "yuv420p"
                 encoded.options = {"crf": "18", "preset": "fast"}
                 audio = {
                     stream.index: target.add_stream_from_template(stream)
@@ -39,6 +42,11 @@ def compose_video(source_video, output, canvas, *, check=lambda: None, progress=
                     for frame in packet.decode():
                         check()
                         rgb = canvas.compose(frame.to_ndarray(format="rgb24"))
+                        if width % 2 or height % 2:
+                            rgb = np.pad(
+                                rgb, ((0, height % 2), (0, width % 2), (0, 0)),
+                                mode="edge",
+                            )
                         result = av.VideoFrame.from_ndarray(rgb, format="rgb24")
                         result.pts = frame.pts
                         result.time_base = frame.time_base

@@ -370,8 +370,14 @@ def test_emoji_ai_scoped_preview_and_validation(tmp_path):
     response_text = "🚀"
     assert client.post(url, json=draft).status_code == 502
     assert len(calls) == 7  # Bounded retries, never return a duplicate.
-    response_text = "Here is an emoji: 🎬"
+    response_text = "Here is an emoji: 🎬, alternatively 🧩"
+    assert client.post(url, json=draft).json() == {"emoji": "🧩"}
+    response_text = ["No symbol", "建议使用：👩🏽‍💻"]
+    assert client.post(url, json=draft).json() == {"emoji": "👩🏽‍💻"}
+    response_text = "No symbol"
+    before = len(calls)
     assert client.post(url, json=draft).status_code == 502
+    assert len(calls) == before + 3
     runtime.model_manager = None
     assert client.post(url, json=draft).status_code == 409
 
@@ -716,3 +722,38 @@ def test_highlight_persists_and_clears(store, highlight):
 def test_highlight_rejects_arbitrary_css():
     with pytest.raises(ValueError):
         TaskInput(title='Task', directory_id='dir', highlight='red;display:none')
+
+
+def test_emoji_fallback_preserves_local_origin_and_error(tmp_path):
+    from fastapi import Request
+    from fastapi.responses import JSONResponse
+    s=service(tmp_path)
+    t=task(s.store,'local')
+    runtime=SimpleNamespace(todo=s,model_manager=SimpleNamespace(resolve_default_model=lambda _: 'remote'))
+    app=FastAPI()
+    app.include_router(create_todo_router(lambda:runtime,RequestPrincipal.legacy_local))
+    @app.post('/v1/chat/completions')
+    async def completion(request:Request):
+        assert str(request.base_url)=='http://127.0.0.1:56842/'
+        assert request.headers['origin']=='http://127.0.0.1:56842'
+        assert request.headers['sec-fetch-site']=='same-origin'
+        return JSONResponse({'error':{'message':'Model unavailable'}},status_code=503)
+    client=TestClient(app,base_url='http://127.0.0.1:56842')
+    response=client.post(f"/todo/tasks/{t['id']}/emoji/suggest",json={'title':'Test','description':''},headers={'origin':'http://127.0.0.1:56842','sec-fetch-site':'same-origin'})
+    assert response.status_code==503
+    assert 'Model unavailable' in response.json()['detail']
+
+
+@pytest.mark.parametrize("text,excluded,expected", [
+    ("建议：**👩🏽‍💻**，代表开发", [], "👩🏽‍💻"),
+    ('{"emoji": "🇨🇳"}', [], "🇨🇳"),
+    ("1. 推荐 1️⃣", [], "1️⃣"),
+    ("❤️ 或 🧰", ["❤"], "🧰"),
+    ("🤖🌐", ["🤖"], "🌐"),
+    ("no emoji 123", [], ""),
+    ("🎬", ["🎬"], ""),
+    (None, [], ""),
+])
+def test_extract_ai_emoji(text, excluded, expected):
+    from ai2apps.todo.models import extract_ai_emoji
+    assert extract_ai_emoji(text, excluded) == expected

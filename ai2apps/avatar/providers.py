@@ -34,6 +34,19 @@ def avatar_models(runtime):
     )
 
 
+def maximum_audio_seconds(model):
+    # Total job quota; H3 executes bounded windows within this input duration.
+    from ai2apps.video.tasks import MAX_INPUT_BYTES
+
+    from .segmented_inference import supports_segments
+
+    # Studio normalizes to mono PCM16 at 16 kHz. Reserve the WAV header so
+    # advertised jobs also fit the existing Host/Worker multipart boundary.
+    normalized_audio_limit = (MAX_INPUT_BYTES - 44) // (16_000 * 2)
+    host_limit = min(3600, normalized_audio_limit) if supports_segments(model) else 600
+    return min(host_limit, model.video_capabilities["duration"]["maximum_seconds"] or host_limit)
+
+
 def describe_model(model, *, ready):
     contract = model.video_capabilities
     return {
@@ -46,7 +59,7 @@ def describe_model(model, *, ready):
         ],
         "resolutions": ["source", *contract["geometry"]["resolutions"]],
         "minimumSeconds": contract["duration"]["minimum_seconds"],
-        "maximumSeconds": contract["duration"]["maximum_seconds"],
+        "maximumSeconds": maximum_audio_seconds(model),
         "defaults": {
             "preset": contract["defaults"]["preset"],
             "resolution": "source",
@@ -67,8 +80,7 @@ def plan_portrait(model, *, preset, resolution, duration):
     if resolution not in contract["geometry"]["resolutions"]:
         raise ValueError("所选模型不支持此分辨率")
     bounds = contract["duration"]
-    # Bound Host audio decoding even when the provider supports unbounded segments.
-    maximum = min(600, bounds["maximum_seconds"] or 600)
+    maximum = maximum_audio_seconds(model)
     if not bounds["minimum_seconds"] <= duration <= maximum:
         raise ValueError(
             f"音频时长须在 {bounds['minimum_seconds']:g} 至 {maximum:g} 秒之间"

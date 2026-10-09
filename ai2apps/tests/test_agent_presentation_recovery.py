@@ -79,7 +79,7 @@ async def test_invalid_path_repaired_once_without_modifying_results():
     payload = invoke.await_args_list[1].args[2]
     assert "data_path does not exist" in payload["messages"][-1]["content"]
     assert payload["max_tokens"] == 3000
-    assert invoke.await_args_list[1].kwargs["request_id"] == "recovery-check-repair"
+    assert invoke.await_args_list[1].kwargs["request_id"] == "recovery-check-repair-1"
 
 
 @pytest.mark.asyncio
@@ -95,11 +95,11 @@ async def test_truncated_json_repaired_once(caplog):
 @pytest.mark.asyncio
 async def test_repeated_invalid_schema_reports_safe_diagnostics(caplog):
     invalid = {**VALID, "html": "PRIVATE RESPONSE CONTENT"}
-    response, invoke = await present([completion(invalid), completion(invalid)])
+    response, invoke = await present([completion(invalid) for _ in range(3)])
     body = json.loads(response.body)
     assert response.status_code == 422
-    assert invoke.await_count == 2
-    assert body["error"]["details"]["attempts"] == 2
+    assert invoke.await_count == 3
+    assert body["error"]["details"]["attempts"] == 3
     assert "html" in body["error"]["details"]["reason"]
     assert "PRIVATE RESPONSE CONTENT" not in response.body.decode()
     assert "PRIVATE RESPONSE CONTENT" not in caplog.text

@@ -3,21 +3,21 @@
 {% block title %}AI2Apps Mobile{% endblock %}
 
 {% block head %}
-<link rel="stylesheet" href="{{ mobile_static('css/mobile.css') }}">
+<link rel="stylesheet" href="{{ mobile_static('css/mobile.css') }}?v=owner-resume-20261007-1">
 {% endblock %}
 
 {% block content %}
+{% set receiving_handoff = request.url.path in ["/mobile/member/complete", "/mobile/complete"] %}
 <div id="ai2apps-mobile" class="mobile-shell" data-view="home">
     <header class="mobile-topbar">
         <button class="mobile-brand" type="button" data-mobile-action="home" aria-label="AI2Apps Home">
             <img src="{{ mobile_static('favicon.svg') }}" alt="">
             <span><small>AI2Apps</small><strong data-mobile-title>Mobile</strong></span>
         </button>
-        <span class="mobile-connection" title="Connected to this Mac">
-            <i data-lucide="wifi"></i><span>Local</span>
+        <span class="mobile-connection" title="Connection status">
+            <i data-lucide="wifi"></i><span>{{ "Connecting" if receiving_handoff else ("Owner" if owner_home else "Local") }}</span>
         </span>
-        <button class="mobile-round-button" type="button" data-mobile-action="switcher"
-                aria-label="Open App Switcher"><i data-lucide="panels-top-left"></i></button>
+        {% if owner_home %}<button class="mobile-round-button" type="button" data-owner-logout aria-label="退出 Owner 会话" title="退出 Owner 会话"><i data-lucide="log-out"></i></button>{% endif %}
     </header>
 
     <main class="mobile-main">
@@ -25,8 +25,8 @@
             <div class="mobile-hero">
                 <p class="mobile-eyebrow">This Mac</p>
                 <h1>Your AI Apps,<br>ready when you are.</h1>
-                <p>Everything runs on this Mac. Remote access will plug into the same private Mobile Shell.</p>
-                <div class="mobile-hero-status"><span></span> Connected on local network</div>
+                <p>Everything runs on this Mac. {% if owner_home %}Your private Chat is ready over your secure Owner connection.{% else %}Remote access uses the same private Mobile Shell.{% endif %}</p>
+                <div class="mobile-hero-status"><span></span> {{ "正在验证访问授权…" if receiving_handoff else ("Owner session connected" if owner_home else "Connected on local network") }}</div>
             </div>
 
             <section class="mobile-section" aria-labelledby="mobile-quick-title">
@@ -35,11 +35,14 @@
                     <button type="button" data-mobile-action="launcher">See all</button>
                 </div>
                 <div class="mobile-home-apps" data-mobile-home-apps></div>
+                {% if receiving_handoff and request.state.owner_home_url is defined and request.state.owner_home_url %}
+                <a href="{{ request.state.owner_home_url }}" class="mobile-reauthorize" hidden>返回账户页面，重新授权</a>
+                {% endif %}
             </section>
 
             <section class="mobile-activity-card">
                 <span class="mobile-activity-icon"><i data-lucide="sparkles"></i></span>
-                <div><strong>Mobile Shell is ready</strong><small>Dock, Launcher and App switching are running locally.</small></div>
+                <div><strong>{{ "Your private Home" if owner_home else "Mobile Shell is ready" }}</strong><small>{{ "Chat and its history stay on this Mac. Sign out to end access." if owner_home else "Dock, Launcher and App switching are running locally." }}</small></div>
                 <i data-lucide="chevron-right"></i>
             </section>
         </section>
@@ -100,5 +103,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ mobile_static('js/mobile.js') }}"></script>
+<script src="{{ mobile_static('js/mobile.js') }}?v=package-owner-20261009-2"></script>
 {% endblock %}

@@ -7,7 +7,7 @@ from __future__ import annotations
 import hashlib
 import os
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from typing import Any
 from urllib.parse import urlparse
 
@@ -94,10 +94,12 @@ class AI2AppsCloudClient:
         base_url: str | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
         timeout: httpx.Timeout | None = None,
+        offline_mode: Callable[[], bool] | None = None,
     ) -> None:
         self.base_url = resolve_cloud_base_url(base_url)
         self.session_store = session_store
         self.transport = transport
+        self.offline_mode = offline_mode or (lambda: False)
         self.timeout = timeout or httpx.Timeout(
             connect=15.0, read=3600.0, write=120.0, pool=30.0
         )
@@ -105,6 +107,8 @@ class AI2AppsCloudClient:
         self._public_client: httpx.AsyncClient | None = None
 
     def _get_client(self) -> httpx.AsyncClient:
+        if self.offline_mode():
+            raise RuntimeError("Authenticated Cloud transport is unavailable in offline mode")
         if self._client is None:
             cookies = httpx.Cookies()
             session = self.session_store.load()
@@ -154,6 +158,12 @@ class AI2AppsCloudClient:
     ) -> httpx.Response:
         if not path.startswith("/v1/"):
             raise ValueError("Cloud API requests must use a /v1/ path")
+        if self.offline_mode():
+            return httpx.Response(
+                403,
+                request=httpx.Request(method, self.base_url + path),
+                json={"error": {"code": "offline_mode", "message": "This feature requires an AI2Apps account and is unavailable in offline mode."}},
+            )
         client = self._get_client()
         request = client.build_request(
             method,
@@ -175,21 +185,33 @@ class AI2AppsCloudClient:
         path: str,
         *,
         headers: Mapping[str, str] | None = None,
+        params: Mapping[str, Any] | None = None,
+        stream: bool = False,
     ) -> httpx.Response:
         """Call an anonymous public Cloud endpoint without account cookies."""
 
         if not path.startswith("/v1/"):
             raise ValueError("Cloud API requests must use a /v1/ path")
+        client = self._get_public_client()
+        request = client.build_request(method, path, headers=headers, params=params)
+        return await client.send(request, stream=stream)
+
+    def _get_public_client(self) -> httpx.AsyncClient:
+        """Return an anonymous transport, including redirected artifact reads."""
         if self._public_client is None:
+            async def strip_credentials(request: httpx.Request) -> None:
+                request.headers.pop("cookie", None)
+                request.headers.pop("authorization", None)
+
             self._public_client = httpx.AsyncClient(
                 base_url=self.base_url,
                 follow_redirects=False,
                 timeout=self.timeout,
                 transport=self.transport,
                 headers={"Accept": "application/json"},
+                event_hooks={"request": [strip_credentials]},
             )
-        request = self._public_client.build_request(method, path, headers=headers)
-        return await self._public_client.send(request)
+        return self._public_client
 
     async def clear_session(self) -> None:
         self.session_store.clear()

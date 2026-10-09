@@ -70,6 +70,7 @@ def test_browser_agent_launch_uses_authenticated_actor() -> None:
         "status": "launched",
         "profile_id": "a" * 64,
         "pid": 42,
+        "user_context": None,
     }
     assert helper.actor_user_id == "user-123"
     assert helper.initial_url == "https://example.com/"

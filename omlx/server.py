@@ -584,6 +584,7 @@ async def verify_ai2apps_platform_access(
         ("POST", "/v1/platform/auth/handoff/exchange"),
         ("POST", "/v1/platform/auth/cloud-member/activate"),
         ("POST", "/v1/platform/auth/core/bootstrap"),
+        ("POST", "/v1/platform/auth/offline/activate"),
     }
     if (request.method, request.url.path) in public_bootstrap_routes:
         return True
@@ -1053,6 +1054,30 @@ set_admin_getters(
 )
 app.include_router(admin_router)
 app.include_router(shell_router)
+
+from ai2apps.web.public_boundary import PublicDeviceBoundary
+from ai2apps.remote import space as personal_space_module
+
+def _public_remote_manager():
+    runtime = get_ai2apps_platform_runtime()
+    return None if runtime is None else getattr(runtime, "remote", None)
+
+app.add_middleware(PublicDeviceBoundary, manager_provider=_public_remote_manager)
+personal_space_module.SPACE_GATEWAY_READY = True
+
+# Owner Home has an isolated Chat adapter. General authentication dependencies
+# never recognize its cookie or grant. Only these two typed handlers are exported.
+from ai2apps.web.owner_home_gateway import configure as configure_owner_home
+
+async def _owner_home_models(principal):
+    return await list_models(Response(), principal)
+
+async def _owner_home_completion(payload, request, principal):
+    return await create_chat_completion(ChatCompletionRequest.model_validate(payload), request, principal)
+
+configure_owner_home(get_ai2apps_platform_runtime, _owner_home_models, _owner_home_completion)
+from ai2apps.remote import owner_home as owner_home_module
+owner_home_module.READY = True
 
 
 @app.exception_handler(_RedirectToLogin)

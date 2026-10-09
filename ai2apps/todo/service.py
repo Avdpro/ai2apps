@@ -38,7 +38,11 @@ class TodoService:
             )
         for row in rows:
             data = json.loads(row["data"])
-            if data.get("agent_run_id"):
+            if data.get('desktop_native') and data.get('native_marker'):
+                job = asyncio.create_task(self.watch_desktop_native(row['id'], data))
+                self.jobs[row['id']] = job
+                job.add_done_callback(lambda _, id=row['id']: self._job_done(id))
+            elif data.get("agent_run_id"):
                 job = asyncio.create_task(self.watch_internal(row["id"], data["agent_run_id"]))
                 self.jobs[row["id"]] = job
                 job.add_done_callback(lambda _, id=row["id"]: self._job_done(id))
@@ -83,10 +87,22 @@ class TodoService:
             if principal.actor_user_id != owner:
                 raise ValueError("Task owner is no longer available")
             return principal
-        return IdentityRepository(self.runtime.database).principal_for(owner)
+        return IdentityRepository(self.runtime.database).local_principal_for(owner)
+
+    def desktop_access(self, owner):
+        from ai2apps.apps.access import APP_CODER_USE, has_app_capability
+        self.authorize_codex(owner)
+        if not has_app_capability(self.principal(owner), APP_CODER_USE):
+            raise ValueError('Coder permission required')
+
+    def desktop_binding(self, owner, task):
+        tasks = self.store.snapshot(owner)['tasks']
+        return self.codex_bridge.effective_binding(task, {t['id']:t for t in tasks})[0]
 
     def executors(self):
+        from ai2apps.codex.transport import CodexDesktop
         return [
+            {"id":"codex_desktop", "name":"Codex Desktop", "available":bool(CodexDesktop.executable())},
             {
                 "id": "internal",
                 "name": "AI2Apps Harness",
@@ -119,7 +135,18 @@ class TodoService:
         task = self.store.get(owner, task_id)
         if task.get("archived_at") or task.get("deleted_at"):
             raise ValueError("Restore this project before executing")
-        if task["executor"] != "internal":
+        if task["executor"] == "codex_desktop":
+            from ai2apps.codex.transport import CodexDesktop
+            self.desktop_access(owner)
+            binding = self.desktop_binding(owner, task)
+            if binding.get('host_id','local') != 'local':
+                raise ValueError('Only local Codex projects are supported')
+            cwd = binding.get('project_path')
+            if not cwd or not Path(cwd).is_absolute() or not Path(cwd).is_dir():
+                raise ValueError('Choose an existing Codex project directory')
+            if not CodexDesktop.executable(): raise ValueError('Codex is not installed')
+            task = {**task, 'codex':binding, 'working_directory':cwd}
+        elif task["executor"] != "internal":
             if not has_app_capability(principal, APP_CODER_USE):
                 raise ValueError("Coder permission required for external execution")
             if not self.executable(task["executor"]):
@@ -389,6 +416,42 @@ class TodoService:
                 id, "failed", error=("Execution timed out after 1 hour" if isinstance(error, TimeoutError) else str(error)), finished_at=now_text()
             )
 
+    async def watch_desktop_native(self, id, data):
+        def update(status, **fields):
+            self.store.run_update(id, status, **fields)
+            if 'output' in fields:
+                root = self.store.root / 'runs' / id
+                root.mkdir(parents=True, exist_ok=True)
+                (root / 'output.txt').write_text(fields['output'])
+        await self.runtime.codex.resume_native(data['codex_thread_id'], data['native_marker'], update)
+
+    async def execute_desktop(self, id, owner, task, prompt, run_root):
+        from .models import TaskInput
+        self.desktop_access(owner)
+        output = ''
+        def update(status, **fields):
+            nonlocal output
+            output = fields.get('output', output)
+            self.store.run_update(id, status, **fields)
+        def bind_sync(thread_id):
+            current = self.store.get(owner, task['id'])
+            if current.get('codex', {}).get('thread_id'):
+                raise ValueError('Conversation binding changed while queued; retry')
+            binding = {**task['codex'], 'thread_id':thread_id, 'thread_title':task['title']}
+            self.store.save(owner, {**{k:current[k] for k in TaskInput.model_fields}, 'codex':binding}, current['id'], current['revision'])
+        async def bind(thread_id):
+            await asyncio.to_thread(bind_sync, thread_id)
+        try:
+            await self.runtime.codex.execute(id, owner, cwd=task['working_directory'],
+                title=task['title'], prompt=prompt, thread_id=task['codex'].get('thread_id'),
+                model=task['model'], writable_roots=[run_root], on_update=update, on_thread=bind)
+        finally:
+            await asyncio.to_thread((run_root/'output.txt').write_text, output)
+
+    def desktop_reply(self, owner, token, decision=None, answers=None):
+        self.desktop_access(owner)
+        return self.runtime.codex.reply(owner, token, decision, answers)
+
     async def execute_terminal(self, id, owner, task, prompt, run_root):
         manager = self.runtime.terminal
         executable = self.executable(task["executor"])
@@ -484,11 +547,14 @@ class TodoService:
                 )
                 await self.watch_internal(id, agent_id)
                 return
-            await self.execute_terminal(id, owner, task, prompt, run_root)
+            if task['executor'] == 'codex_desktop':
+                await self.execute_desktop(id, owner, task, prompt, run_root)
+            else:
+                await self.execute_terminal(id, owner, task, prompt, run_root)
         except asyncio.CancelledError:
             with self.store.connect() as db:
                 row = db.execute("SELECT data FROM runs WHERE id=?", (id,)).fetchone()
-            durable_agent = bool(row and json.loads(row["data"]).get("agent_run_id"))
+            durable_agent = bool(row and (json.loads(row["data"]).get("agent_run_id") or json.loads(row["data"]).get("desktop_native")))
             if not durable_agent:
                 self.store.run_update(id, "interrupted", finished_at=now_text())
             # Keep the durable Agent ID/status discoverable for startup recovery.
@@ -518,6 +584,8 @@ class TodoService:
         if row["status"] not in ACTIVE:
             return
         data = json.loads(row["data"])
+        if data.get('desktop_native'):
+            raise ValueError('This run is owned by Codex Desktop. Stop it or remove the queued message in Desktop; Todo will follow its result.')
         if data.get("agent_run_id"):
             self.runtime.agent_runtime.cancel(data["agent_run_id"])
             # Keep the watcher and slot until the Harness confirms termination.

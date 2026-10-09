@@ -219,6 +219,7 @@ class AgentBuilderRepository:
             row = connection.execute(
                 """SELECT * FROM agent_drafts WHERE owner_user_id=? AND site_key=?
                    AND agent_type='web' AND status!='archived'
+                   AND json_extract(source_json,'$.provenance.intelligence_recipe_key') IS NULL
                    ORDER BY CASE WHEN active_generation_id IS NULL THEN 1 ELSE 0 END,
                             updated_at DESC,id LIMIT 1""",
                 (owner_user_id, key),
@@ -270,6 +271,26 @@ class AgentBuilderRepository:
                 (owner_user_id, utc_now_text()),
             ).fetchall()
         return tuple(self._recipe(row) for row in rows)
+
+    def archive_recipe(self, recipe_id: str, owner_user_id: str, *, expected_revision: int) -> AgentRecipeRecord:
+        with self.database.transaction(write=True) as connection:
+            row = connection.execute(
+                "SELECT * FROM agent_recipes WHERE id=? AND owner_user_id=?",
+                (recipe_id, owner_user_id),
+            ).fetchone()
+            if row is None:
+                raise ResourceNotFoundError("agent_recipe", recipe_id)
+            if row["revision"] != expected_revision:
+                raise ResourceConflictError("Agent recipe revision changed")
+            if row["site_key"]:
+                connection.execute("INSERT OR IGNORE INTO browser_domains(owner,domain) VALUES(?,?)", (owner_user_id, row["site_key"]))
+            if row["status"] == "committed":
+                raise ResourceConflictError("Committed Agent recipe cannot be deleted as a draft")
+            connection.execute(
+                "UPDATE agent_recipes SET status='discarded',revision=revision+1,updated_at=? WHERE id=? AND owner_user_id=?",
+                (utc_now_text(), recipe_id, owner_user_id),
+            )
+        return self.get_recipe(recipe_id, owner_user_id)
 
     def revise_recipe(
         self,
@@ -486,6 +507,9 @@ class AgentBuilderRepository:
             groups: dict[str, list[Any]] = {}
             for row in rows:
                 source = json.loads(row["source_json"])
+                # App-owned extraction generations retain separate health/version lifecycles.
+                if source.get("provenance", {}).get("intelligence_recipe_key"):
+                    continue
                 # Previewing and testing may need a durable record for evidence,
                 # but it must not become a menu item or be merged into a Site
                 # Agent until the user explicitly saves it.
@@ -549,6 +573,7 @@ class AgentBuilderRepository:
     ) -> AgentDraftRecord:
         now = utc_now_text()
         with self.database.transaction(write=True) as connection:
+            connection.execute("INSERT OR IGNORE INTO browser_domains(owner,domain) SELECT owner_user_id,site_key FROM agent_drafts WHERE id=? AND owner_user_id=? AND site_key!=''", (draft_id, owner_user_id))
             result = connection.execute(
                 """
                 UPDATE agent_drafts SET status='archived',revision=revision+1,

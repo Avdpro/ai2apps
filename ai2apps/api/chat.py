@@ -25,6 +25,7 @@ class ChatAppResponse(BaseModel):
     status: str
     selected_thread_id: str | None
     collection_revision: int
+    api_default_model_id: str | None = None
 
     @classmethod
     def from_record(cls, record: BuiltinChatRecord) -> ChatAppResponse:
@@ -178,7 +179,13 @@ def create_chat_router(
         if isinstance(repository, JSONResponse):
             return repository
         try:
-            return ChatAppResponse.from_record(repository.ensure_builtin())
+            response = ChatAppResponse.from_record(repository.ensure_builtin())
+            store = getattr(runtime_provider(), "model_manager", None)
+            policy = store.cloud_default_policy() if store is not None else {}
+            default = policy.get("apiDefault") or {}
+            if default.get("modelId"):
+                response.api_default_model_id = "cloud/" + default["modelId"]
+            return response
         except RepositoryError as error:
             return repository_error_response(error)
 

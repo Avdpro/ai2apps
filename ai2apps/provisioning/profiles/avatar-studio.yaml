@@ -130,3 +130,219 @@ capabilities:
           version: '>=0.1.0,<1.0.0'
         checkpoint:
           model_id: ai2apps.model.avtr1-mlx/default
+    - id: apple-metal-h3-avatar-lightx2v-4step-4bit
+      label: MiniMax H3 Portrait 4-step Turbo Q4
+      description: H3 分段长视频与口型精修，4 步速度优先；至少 64 GiB 统一内存。
+      priority: 40
+      device:
+        os:
+        - macos
+        architectures:
+        - arm64
+        accelerator:
+          vendor: apple
+          api: metal
+          unified_memory_gib:
+            minimum: 64
+      recommendation_memory_gib:
+        minimum: 64
+      stack:
+        runtime:
+          package_id: ai2apps/runtime-omlx
+          service_key: ai2apps.runtime.omlx
+          version: '>=1.8.8,<2.0.0'
+        provider:
+          package_id: ai2apps/model-minimax-h3
+          service_key: ai2apps.model.minimax-h3
+          version: '>=0.11.0,<1.0.0'
+        checkpoint:
+          model_id: ai2apps.model.minimax-h3/avatar-lightx2v-4step-4bit
+    - id: apple-metal-h3-avatar-base-4bit
+      label: MiniMax H3 Portrait 50-step Q4
+      description: H3 分段长视频与口型精修，50 步生成较慢；至少 64 GiB 统一内存。
+      priority: 30
+      device:
+        os:
+        - macos
+        architectures:
+        - arm64
+        accelerator:
+          vendor: apple
+          api: metal
+          unified_memory_gib:
+            minimum: 64
+      recommendation_memory_gib:
+        minimum: 64
+      stack:
+        runtime:
+          package_id: ai2apps/runtime-omlx
+          service_key: ai2apps.runtime.omlx
+          version: '>=1.8.8,<2.0.0'
+        provider:
+          package_id: ai2apps/model-minimax-h3
+          service_key: ai2apps.model.minimax-h3
+          version: '>=0.11.0,<1.0.0'
+        checkpoint:
+          model_id: ai2apps.model.minimax-h3/avatar-base-4bit
+    - id: apple-metal-h3-avatar-base-8bit
+      label: MiniMax H3 Portrait FL2VA Q8
+      description: H3 分段长视频与口型精修，50 步生成较慢；至少 64 GiB 统一内存。
+      priority: 29
+      device:
+        os:
+        - macos
+        architectures:
+        - arm64
+        accelerator:
+          vendor: apple
+          api: metal
+          unified_memory_gib:
+            minimum: 64
+      recommendation_memory_gib:
+        minimum: 64
+      stack:
+        runtime:
+          package_id: ai2apps/runtime-omlx
+          service_key: ai2apps.runtime.omlx
+          version: '>=1.8.8,<2.0.0'
+        provider:
+          package_id: ai2apps/model-minimax-h3
+          service_key: ai2apps.model.minimax-h3
+          version: '>=0.11.0,<1.0.0'
+        checkpoint:
+          model_id: ai2apps.model.minimax-h3/avatar-base-8bit
+    - id: apple-metal-h3-avatar-ref2va-4bit
+      label: MiniMax H3 Portrait Ref2VA Q4
+      description: H3 分段长视频与口型精修，50 步生成较慢；至少 64 GiB 统一内存。
+      priority: 28
+      device:
+        os:
+        - macos
+        architectures:
+        - arm64
+        accelerator:
+          vendor: apple
+          api: metal
+          unified_memory_gib:
+            minimum: 64
+      recommendation_memory_gib:
+        minimum: 64
+      stack:
+        runtime:
+          package_id: ai2apps/runtime-omlx
+          service_key: ai2apps.runtime.omlx
+          version: '>=1.8.8,<2.0.0'
+        provider:
+          package_id: ai2apps/model-minimax-h3
+          service_key: ai2apps.model.minimax-h3
+          version: '>=0.11.0,<1.0.0'
+        checkpoint:
+          model_id: ai2apps.model.minimax-h3/avatar-ref2va-4bit
+    - id: apple-metal-h3-avatar-ref2va-8bit
+      label: MiniMax H3 Portrait Ref2VA Q8
+      description: H3 分段长视频与口型精修，50 步生成较慢；至少 64 GiB 统一内存。
+      priority: 27
+      device:
+        os:
+        - macos
+        architectures:
+        - arm64
+        accelerator:
+          vendor: apple
+          api: metal
+          unified_memory_gib:
+            minimum: 64
+      recommendation_memory_gib:
+        minimum: 64
+      stack:
+        runtime:
+          package_id: ai2apps/runtime-omlx
+          service_key: ai2apps.runtime.omlx
+          version: '>=1.8.8,<2.0.0'
+        provider:
+          package_id: ai2apps/model-minimax-h3
+          service_key: ai2apps.model.minimax-h3
+          version: '>=0.11.0,<1.0.0'
+        checkpoint:
+          model_id: ai2apps.model.minimax-h3/avatar-ref2va-8bit
+    - id: apple-metal-h3-avatar-lightx2v-8step-4bit
+      label: MiniMax H3 Portrait LightX2V 8-step Q4
+      description: H3 分段长视频与口型精修，8 步生成；至少 64 GiB 统一内存。
+      priority: 39
+      device:
+        os:
+        - macos
+        architectures:
+        - arm64
+        accelerator:
+          vendor: apple
+          api: metal
+          unified_memory_gib:
+            minimum: 64
+      recommendation_memory_gib:
+        minimum: 64
+      stack:
+        runtime:
+          package_id: ai2apps/runtime-omlx
+          service_key: ai2apps.runtime.omlx
+          version: '>=1.8.8,<2.0.0'
+        provider:
+          package_id: ai2apps/model-minimax-h3
+          service_key: ai2apps.model.minimax-h3
+          version: '>=0.11.0,<1.0.0'
+        checkpoint:
+          model_id: ai2apps.model.minimax-h3/avatar-lightx2v-8step-4bit
+    - id: apple-metal-h3-avatar-openvdn-dmd8-4bit
+      label: MiniMax H3 Portrait OpenVDN DMD8 Q4
+      description: H3 分段长视频与口型精修，8 步生成；至少 64 GiB 统一内存。
+      priority: 38
+      device:
+        os:
+        - macos
+        architectures:
+        - arm64
+        accelerator:
+          vendor: apple
+          api: metal
+          unified_memory_gib:
+            minimum: 64
+      recommendation_memory_gib:
+        minimum: 64
+      stack:
+        runtime:
+          package_id: ai2apps/runtime-omlx
+          service_key: ai2apps.runtime.omlx
+          version: '>=1.8.8,<2.0.0'
+        provider:
+          package_id: ai2apps/model-minimax-h3
+          service_key: ai2apps.model.minimax-h3
+          version: '>=0.11.0,<1.0.0'
+        checkpoint:
+          model_id: ai2apps.model.minimax-h3/avatar-openvdn-dmd8-4bit
+    - id: apple-metal-h3-avatar-openvdn-stageb50-4bit
+      label: MiniMax H3 Portrait OpenVDN Stage-B50 Q4
+      description: H3 分段长视频与口型精修，50 步生成较慢；至少 64 GiB 统一内存。
+      priority: 26
+      device:
+        os:
+        - macos
+        architectures:
+        - arm64
+        accelerator:
+          vendor: apple
+          api: metal
+          unified_memory_gib:
+            minimum: 64
+      recommendation_memory_gib:
+        minimum: 64
+      stack:
+        runtime:
+          package_id: ai2apps/runtime-omlx
+          service_key: ai2apps.runtime.omlx
+          version: '>=1.8.8,<2.0.0'
+        provider:
+          package_id: ai2apps/model-minimax-h3
+          service_key: ai2apps.model.minimax-h3
+          version: '>=0.11.0,<1.0.0'
+        checkpoint:
+          model_id: ai2apps.model.minimax-h3/avatar-openvdn-stageb50-4bit

@@ -1,0 +1,148 @@
+schema: ai2apps.app/v1
+id: ai2apps.audio-generation-suite
+name: Music and Sound Effects
+description: Generate music, sound effects and songs locally in Voice Studio.
+version: 0.2.1
+publisher:
+  id: ai2apps
+instances:
+  mode: singleton
+  scope: user
+entry:
+  kind: sandbox
+  resource: web/music.html
+navigation:
+  launcher: false
+localizations:
+  zh-CN:
+    name: 音乐与音效
+    description: 在语音工坊本地生成音乐、音效与歌曲。
+mini_apps:
+- schema: ai2apps.mini-app/v1
+  id: ai2apps.audio-generation.music
+  name: Music Generation
+  version: 0.2.1
+  kind: clip
+  icon: music
+  description: Create audio from a description. Results appear in the shared Preview
+    & Output.
+  localizations:
+    zh-CN:
+      name: 音乐生成
+      description: 根据文字描述生成声音，结果进入共享预览与输出。
+  catalog:
+    categories:
+    - audio
+  entry:
+    kind: sandbox
+    resource: web/music.html
+    placements:
+    - inline
+    - sidebar
+  placements:
+  - studio: ai2apps.readaloud
+    category: audio-tools
+    order: 10
+  outputs:
+  - id: audio
+    kind: audio
+    final: true
+  requirements:
+    capabilities:
+    - audio.music_generation
+  chat:
+    schema: ai2apps.mini-app-chat/v1
+    enabled: true
+    system_prompt: Explain this Mini-App using its help. Do not claim to run or modify
+      it.
+    context:
+      transport: studio-bridge
+    help:
+      resource: help/music/help.md
+      max_bytes: 32768
+    tools: []
+- schema: ai2apps.mini-app/v1
+  id: ai2apps.audio-generation.sfx
+  name: Sound Effects
+  version: 0.2.1
+  kind: clip
+  icon: audio-waveform
+  description: Create audio from a description. Results appear in the shared Preview
+    & Output.
+  localizations:
+    zh-CN:
+      name: 音效生成
+      description: 根据文字描述生成声音，结果进入共享预览与输出。
+  catalog:
+    categories:
+    - audio
+  entry:
+    kind: sandbox
+    resource: web/sfx.html
+    placements:
+    - inline
+    - sidebar
+  placements:
+  - studio: ai2apps.readaloud
+    category: audio-tools
+    order: 11
+  outputs:
+  - id: audio
+    kind: audio
+    final: true
+  requirements:
+    capabilities:
+    - audio.sound_effects_generation
+  chat:
+    schema: ai2apps.mini-app-chat/v1
+    enabled: true
+    system_prompt: Explain this Mini-App using its help. Do not claim to run or modify
+      it.
+    context:
+      transport: studio-bridge
+    help:
+      resource: help/sfx/help.md
+      max_bytes: 32768
+    tools: []
+- schema: ai2apps.mini-app/v1
+  id: ai2apps.audio-generation.song
+  name: Song Creation
+  version: 0.2.1
+  kind: project
+  icon: music
+  description: Compose songs with lyrics, musical planning and an optional ABC score.
+  localizations:
+    zh-CN:
+      name: 歌曲创作
+      description: 编辑歌词、规划旋律与和声，或导入乐谱生成歌曲。
+  catalog:
+    categories:
+    - audio
+  entry:
+    kind: sandbox
+    resource: web/song.html
+    placements:
+    - inline
+    - sidebar
+  placements:
+  - studio: ai2apps.readaloud
+    category: audio-tools
+    order: 9
+  outputs:
+  - id: audio
+    kind: audio
+    final: true
+  requirements:
+    capabilities:
+    - audio.song_generation
+  chat:
+    schema: ai2apps.mini-app-chat/v1
+    enabled: true
+    system_prompt: Explain this Mini-App using its help. Do not claim to run or modify
+      it.
+    context:
+      transport: studio-bridge
+    help:
+      resource: help/song/help.md
+      max_bytes: 32768
+    tools: []

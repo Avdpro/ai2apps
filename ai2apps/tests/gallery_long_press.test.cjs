@@ -1,0 +1,14 @@
+const test=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs');
+function setup(){const timers=new Map();let next=0;const context={window:{setTimeout(fn){timers.set(++next,fn);return next;},clearTimeout(id){timers.delete(id);}},console,Date};vm.createContext(context);vm.runInContext(fs.readFileSync(__dirname+'/../web/static/js/gallery.js','utf8'),context);const app=context.window.galleryApp();const opened=[];app.showAssetContextMenu=(e,a)=>{opened.push(a.id);app.cancelAssetHold();};const event=(extra={})=>({pointerType:'touch',isPrimary:true,pointerId:1,clientX:40,clientY:50,target:{closest:()=>null},...extra});return {app,opened,event,fire(){for(const fn of [...timers.values()])fn();},timers};}
+test('touch hold opens existing asset menu and consumes only its following click',()=>{const f=setup(),asset={id:'one'};f.app.startAssetHold(f.event(),asset);f.fire();assert.deepEqual(f.opened,['one']);let blocked=0;f.app.suppressAssetHoldClick({preventDefault(){blocked++;},stopImmediatePropagation(){blocked++;}},asset);assert.equal(blocked,2);f.app.suppressAssetHoldClick({preventDefault(){blocked++;},stopImmediatePropagation(){blocked++;}},asset);assert.equal(blocked,2);});
+test('scroll movement and pointer cancellation cancel pending hold',()=>{for(const cancel of [a=>a.moveAssetHold({pointerId:1,clientX:60,clientY:50}),a=>a.cancelAssetHold()]){const f=setup();f.app.startAssetHold(f.event(),{id:'one'});cancel(f.app);f.fire();assert.equal(f.opened.length,0);}});
+test('mouse and interactive child controls retain original behavior',()=>{for(const extra of [{pointerType:'mouse'},{isPrimary:false},{target:{closest:()=>({})}}]){const f=setup();f.app.startAssetHold(f.event(extra),{id:'one'});f.fire();assert.equal(f.opened.length,0);}});
+test('short tap cancels timer; a new intentional touch clears suppression',()=>{const f=setup(),asset={id:'one'};f.app.startAssetHold(f.event(),asset);f.app.cancelAssetHold();f.fire();assert.equal(f.opened.length,0);f.app.startAssetHold(f.event(),asset);f.fire();f.app.startAssetHold(f.event(),asset);assert.equal(f.app.heldAssetClick,null);});
+
+test('touch drag handle starts only after movement and sends one continuous drag',()=>{
+ const f=setup(),sent=[];f.app.notifyStudioDrag=(phase,asset,event,touch)=>sent.push({phase,id:asset.id,touch});
+ const target={setPointerCapture(){},hasPointerCapture:()=>true,releasePointerCapture(){}};
+ const e=f.event({currentTarget:target,preventDefault(){}});
+ f.app.startGalleryTouchDrag(e,{id:'one'});f.app.moveGalleryTouchDrag({...e,clientX:44});assert.equal(sent.length,0);
+ f.app.moveGalleryTouchDrag({...e,clientX:60});f.app.endGalleryTouchDrag({...e,clientX:70});assert.deepEqual(sent.map(x=>x.phase),['start','move','end']);assert.equal(sent.every(x=>x.touch),true);assert.equal(f.app.galleryTouchDrag,null);
+});

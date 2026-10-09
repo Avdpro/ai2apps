@@ -47,14 +47,22 @@ class SeedVCV2:
         ).astype(np.float32)
 
     def _tokens(self, waveform_16k: np.ndarray, *, narrow: bool = False) -> mx.array:
-        hidden = self.hubert(mx.array(waveform_16k[None]))
         if narrow:
             self._ensure_voice_path()
         extractor = self.astral_narrow if narrow else self.astral_wide
         assert extractor is not None
-        tokens = extractor(hidden)[1]
-        mx.eval(tokens)
-        return tokens
+        pieces = []
+        position = 0
+        # Same fixed upstream v2 30-second / 5-second-overlap contract as CUDA.
+        while position < len(waveform_16k):
+            start = max(0, position - 5 * 16000)
+            end = min(len(waveform_16k), position + (30 if position == 0 else 25) * 16000)
+            hidden = self.hubert(mx.array(waveform_16k[None, start:end]))
+            tokens = extractor(hidden)[1][:, 0 if position == 0 else 250:]
+            mx.eval(tokens)
+            pieces.append(tokens)
+            position = end
+        return mx.concatenate(pieces, axis=1)
 
     def _ensure_voice_path(self) -> None:
         if self.ar is not None:
@@ -91,7 +99,7 @@ class SeedVCV2:
         seed: int = 0,
     ) -> np.ndarray:
         source = np.asarray(source, dtype=np.float32)
-        target = np.asarray(target, dtype=np.float32)
+        target = np.asarray(target, dtype=np.float32)[:25 * self.sample_rate]
         source_16k = self._resample(source, self.sample_rate, 16000)
         target_16k = self._resample(target, self.sample_rate, 16000)
         source_mel = mel_spectrogram(source)
@@ -107,10 +115,17 @@ class SeedVCV2:
             source_narrow = self._reduce_duration(self._tokens(source_16k, narrow=True))
             target_narrow = self._reduce_duration(self._tokens(target_16k, narrow=True))
             assert self.ar_regulator is not None and self.ar is not None
-            condition = self.ar_regulator(
-                mx.concatenate((target_narrow, source_narrow), axis=1)
-            )
-            output_tokens = self.ar.generate_greedy(condition, target_wide)
+            chunk_size = 1500 - target_narrow.shape[-1]
+            if chunk_size <= 0:
+                raise ValueError("Reference exceeds AR content context")
+            pieces = []
+            for index, start in enumerate(range(0, source_narrow.shape[-1], chunk_size)):
+                condition = self.ar_regulator(mx.concatenate((target_narrow, source_narrow[:, start:start + chunk_size]), axis=1))
+                piece = self.ar.generate(condition, target_wide, seed=(seed + index) % 2**32)
+                if piece.shape[-1] == 0:
+                    raise RuntimeError("AR produced an empty content segment")
+                pieces.append(piece)
+            output_tokens = mx.concatenate(pieces, axis=1)
             output_length = max(
                 1,
                 int(
@@ -124,23 +139,36 @@ class SeedVCV2:
             raise ValueError("mode must be 'timbre' or 'voice'")
         output_condition = self.cfm_regulator(output_tokens, output_length)
         prompt_condition = self.cfm_regulator(target_wide, target_mel.shape[-1])
-        condition = mx.concatenate((prompt_condition, output_condition), axis=1)
-        prompt = target_mel
         style = self._style(target_16k)
         mx.random.seed(seed)
-        noise = mx.random.normal((1, 80, condition.shape[1]))
-        generated = solve_euler(
-            self.dit,
-            noise,
-            mx.array([condition.shape[1]]),
-            prompt,
-            condition,
-            style,
-            steps=diffusion_steps,
-            cfg_rate=guidance,
-            sway_sampling=True,
-        )
-        generated = generated[..., target_mel.shape[-1] :]
-        waveform = self.vocoder(generated.astype(mx.float32))
-        mx.eval(waveform)
-        return np.asarray(waveform[0, 0])
+        window = (self.sample_rate // 256) * 30 - target_mel.shape[-1]
+        overlap = 16
+        if window <= overlap:
+            raise ValueError("Reference leaves no diffusion context")
+        chunks = []
+        position = 0
+        while position < output_length:
+            end = min(output_length, position + window)
+            condition = mx.concatenate((prompt_condition, output_condition[:, position:end]), axis=1)
+            noise = mx.random.normal((1, 80, condition.shape[1]))
+            generated = solve_euler(
+                self.dit, noise, mx.array([condition.shape[1]]), target_mel,
+                condition, style, steps=diffusion_steps, cfg_rate=guidance,
+                sway_sampling=True,
+            )
+            generated = generated[..., target_mel.shape[-1]:]
+            waveform = self.vocoder(generated.astype(mx.float32))
+            mx.eval(waveform)
+            wave = np.asarray(waveform[0, 0]).copy()
+            if not np.isfinite(wave).all():
+                raise RuntimeError("nonfinite vocoder output")
+            if chunks:
+                count = min(overlap * 256, len(wave))
+                fade = np.sin(np.linspace(0, np.pi / 2, overlap * 256)) ** 2
+                wave[:count] = chunks[-1][-overlap * 256:][:count] * (1 - fade[:count]) + wave[:count] * fade[:count]
+                chunks[-1] = chunks[-1][:-overlap * 256]
+            chunks.append(wave)
+            if end == output_length:
+                break
+            position = end - overlap
+        return np.concatenate(chunks)

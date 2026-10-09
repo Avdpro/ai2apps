@@ -173,6 +173,11 @@ def test_runtime_registers_authoritative_builtin_app_catalog(tmp_path):
         "ai2apps.models",
         "ai2apps.agents",
         "ai2apps.trust-center",
+        "ai2apps.todo",
+        "ai2apps.gallery",
+        "ai2apps.imagine-studio",
+        "ai2apps.readaloud",
+        "ai2apps.video-studio",
         "ai2apps.general-chat",
         "ai2apps.messager",
         "ai2apps.settings",
@@ -222,6 +227,11 @@ def test_mobile_catalog_is_explicit_and_excludes_desktop_only_apps(tmp_path):
         "ai2apps.general-chat",
         "ai2apps.knowledge",
         "ai2apps.trust-center",
+        "ai2apps.todo",
+        "ai2apps.gallery",
+        "ai2apps.imagine-studio",
+        "ai2apps.readaloud",
+        "ai2apps.video-studio",
     }
     assert catalog["ai2apps.general-chat"]["entry_source"] == "mobile_entry"
     assert catalog["ai2apps.general-chat"]["mobile_renderer"] == "host"
@@ -249,6 +259,8 @@ def test_builtin_app_catalog_and_launch_are_filtered_by_role(tmp_path):
     }
 
     assert member_catalog == {
+        "ai2apps.todo",
+        "ai2apps.intelligence",
         "ai2apps.account",
         "ai2apps.ai-browser",
         "ai2apps.gallery",
@@ -257,7 +269,6 @@ def test_builtin_app_catalog_and_launch_are_filtered_by_role(tmp_path):
         "ai2apps.knowledge",
         "ai2apps.messager",
         "ai2apps.readaloud",
-        "ai2apps.todo",
         "ai2apps.video-studio",
     }
     assert "ai2apps.coder" in developer_catalog
@@ -772,6 +783,7 @@ async def test_app_api_enforces_principal_catalog_and_launch_policy(tmp_path):
         "ai2apps.video-studio",
         "ai2apps.imagine-studio",
         "ai2apps.todo",
+        "ai2apps.intelligence",
     ]
     assert denied.status_code == 403
     assert denied.json()["error"]["code"] == "app_access_denied"

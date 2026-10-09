@@ -29,6 +29,7 @@ class _Indexer:
 def _runtime(indexer, gateway):
     value = object.__new__(KnowledgePackageRuntime)
     value.indexer = indexer
+    value.embedding_model_id = "ai2apps.model.multilingual-e5-small/default"
     value.retriever = object()
     value.runtime = SimpleNamespace(model_invocations=gateway)
     value._worker_lock = threading.Lock()
@@ -142,3 +143,42 @@ async def test_shutdown_waits_for_active_index_chunk_inside_gateway():
     finish.set()
     await asyncio.wait_for(shutdown, timeout=1)
     assert completed["value"] is True
+
+
+@pytest.mark.parametrize("backend,model,generation", [
+    ("mlx", "ai2apps.model.multilingual-e5-small/default", "lancedb_e5_small_5030c762_v1"),
+    ("cuda", "ai2apps.model.multilingual-e5-small-cuda/default", "lancedb_e5_small_cuda_614241f6_fp32_v1"),
+])
+def test_embedding_binding_separates_index_and_query(backend,model,generation):
+    runtime=KnowledgePackageRuntime(object(),object(),embedding_backend=backend)
+    query=runtime.retriever.embedding_provider
+    passage=runtime.indexer.embedding_provider
+    assert runtime.embedding_model_id==query.model_id==passage.model_id==model
+    assert query.input_type=="query" and passage.input_type=="passage"
+    assert query.endpoint.service_key==model.rsplit("/",1)[0]
+    assert runtime.indexer.generation==runtime.retriever.vector_backend.generation==generation
+    assert model in runtime.indexer.profile_id
+
+
+@pytest.mark.parametrize("platform,backend",[("linux","cuda"),("darwin","mlx")])
+def test_embedding_default_matches_service_platform(monkeypatch,platform,backend):
+    import ai2apps.knowledge.runtime as module
+    monkeypatch.setattr(module.sys,"platform",platform)
+    actual=KnowledgePackageRuntime(object(),object())
+    expected=KnowledgePackageRuntime(object(),object(),embedding_backend=backend)
+    assert actual.embedding_model_id==expected.embedding_model_id
+    assert actual.indexer.profile_id==expected.indexer.profile_id
+
+
+@pytest.mark.asyncio
+async def test_cuda_index_admission_uses_cuda_model():
+    seen=[]
+    class Gateway:
+        async def run_background_sync(self, model_id, callback, **options):
+            seen.append(model_id)
+            options["on_admitted"]()
+            return callback()
+    value=_runtime(_Indexer(),Gateway())
+    value.embedding_model_id="ai2apps.model.multilingual-e5-small-cuda/default"
+    await value._run_index()
+    assert seen==[value.embedding_model_id]

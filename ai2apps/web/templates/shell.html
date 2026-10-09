@@ -84,6 +84,21 @@
                         <span class="desktop-home-status-mark"><i data-lucide="sparkles"></i></span>
                         <div><strong>{{ t('shell.home.status.title') }}</strong><small>{{ t('shell.home.status.prefix') }}<span data-desktop-device-label>{{ desktop_device_label | default('Device', true) }}</span>{{ t('shell.home.status.suffix') }}</small></div>
                         <span class="desktop-home-online"><i data-lucide="wifi"></i> {{ t('shell.home.status.local') }}</span>
+                        <section class="desktop-home-remote" aria-label="{{ t('shell.home.remote.title') }}">
+                            <strong>{{ t('shell.home.remote.title') }}</strong>
+                            <div data-home-remote-devices aria-live="polite">{{ t('shell.home.remote.loading') }}</div>
+                            <p data-home-remote-error role="status" hidden></p>
+                            <button type="button" class="desktop-home-remote-settings" data-home-space-open>{{ t('shell.home.remote.show_qr') }}</button>
+                            <dialog class="desktop-home-space-dialog" data-home-space-dialog aria-labelledby="home-space-title">
+                                <h2 id="home-space-title">{{ t('shell.home.remote.account_url') }}</h2>
+                                <p>{{ t('shell.home.remote.account_hint') }}</p>
+                                <p data-home-space-message role="status"></p>
+                                <img data-home-space-qr hidden alt="{{ t('shell.home.remote.account_url') }}" width="240" height="240">
+                                <a data-home-space-url hidden target="_blank" rel="noopener noreferrer"></a>
+                                <form method="dialog"><button class="desktop-home-remote-settings">{{ t('shell.home.remote.close') }}</button></form>
+                            </dialog>
+                            <button type="button" class="desktop-home-remote-settings" data-shell-action="account">{{ t('shell.home.remote.settings') }}</button>
+                        </section>
                     </div>
                 </section>
 

@@ -96,7 +96,7 @@ def test_openai_models_hides_markitdown_by_default():
     state.global_settings = GlobalSettings()
 
     with patch("omlx.server._server_state", state):
-        client = TestClient(app, raise_server_exceptions=False)
+        client = TestClient(app, base_url="http://127.0.0.1", raise_server_exceptions=False)
         response = client.get("/v1/models")
 
     assert response.status_code == 200
@@ -110,7 +110,7 @@ def test_openai_models_includes_markitdown_when_exposed():
     state.global_settings = _settings_with_markitdown_model()
 
     with patch("omlx.server._server_state", state):
-        client = TestClient(app, raise_server_exceptions=False)
+        client = TestClient(app, base_url="http://127.0.0.1", raise_server_exceptions=False)
         response = client.get("/v1/models")
 
     assert response.status_code == 200
@@ -125,7 +125,7 @@ def test_openai_models_hides_markitdown_when_disabled():
     state.global_settings.integrations.markitdown_enabled = False
 
     with patch("omlx.server._server_state", state):
-        client = TestClient(app, raise_server_exceptions=False)
+        client = TestClient(app, base_url="http://127.0.0.1", raise_server_exceptions=False)
         response = client.get("/v1/models")
 
     assert response.status_code == 200
@@ -140,7 +140,7 @@ def test_openai_models_hides_markitdown_when_not_exposed():
     state.global_settings.integrations.markitdown_expose_model = False
 
     with patch("omlx.server._server_state", state):
-        client = TestClient(app, raise_server_exceptions=False)
+        client = TestClient(app, base_url="http://127.0.0.1", raise_server_exceptions=False)
         response = client.get("/v1/models")
 
     assert response.status_code == 200
@@ -160,7 +160,7 @@ def test_markitdown_chat_completion_converts_file(monkeypatch):
     monkeypatch.setattr("omlx.api.markitdown.convert_file_to_markdown", fake_convert)
 
     with patch("omlx.server._server_state", state):
-        client = TestClient(app, raise_server_exceptions=False)
+        client = TestClient(app, base_url="http://127.0.0.1", raise_server_exceptions=False)
         response = client.post(
             "/v1/chat/completions",
             json={
@@ -186,7 +186,7 @@ def test_markitdown_chat_completion_uses_latest_user_turn(monkeypatch):
     monkeypatch.setattr("omlx.api.markitdown.convert_file_to_markdown", fake_convert)
 
     with patch("omlx.server._server_state", state):
-        client = TestClient(app, raise_server_exceptions=False)
+        client = TestClient(app, base_url="http://127.0.0.1", raise_server_exceptions=False)
         response = client.post(
             "/v1/chat/completions",
             json={
@@ -217,7 +217,7 @@ def test_markitdown_chat_completion_disabled_returns_404():
     state.global_settings.integrations.markitdown_enabled = False
 
     with patch("omlx.server._server_state", state):
-        client = TestClient(app, raise_server_exceptions=False)
+        client = TestClient(app, base_url="http://127.0.0.1", raise_server_exceptions=False)
         response = client.post(
             "/v1/chat/completions",
             json={
@@ -237,7 +237,7 @@ def test_markitdown_chat_completion_hidden_model_returns_404():
     state.global_settings.integrations.markitdown_expose_model = False
 
     with patch("omlx.server._server_state", state):
-        client = TestClient(app, raise_server_exceptions=False)
+        client = TestClient(app, base_url="http://127.0.0.1", raise_server_exceptions=False)
         response = client.post(
             "/v1/chat/completions",
             json={

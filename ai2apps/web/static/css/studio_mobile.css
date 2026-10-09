@@ -1,0 +1,25 @@
+.sm-nav{display:none}.sm-sheet{width:min(460px,calc(100% - 24px));max-height:80dvh;margin:auto auto 12px;padding:18px;border:1px solid #e4e4e7;border-radius:20px;background:#fff;color:#18181b;box-shadow:0 12px 60px #0003}.sm-sheet::backdrop{background:#18181b80}.sm-sheet h2{font-size:17px;margin:0 0 14px}.sm-sheet button{display:block;width:100%;min-height:48px;text-align:left;padding:12px;border:0;border-radius:10px;margin:4px 0;background:#f5f5f7;color:inherit;font-size:16px}.sm-sheet button:disabled{opacity:.4}.sm-sheet input{box-sizing:border-box;width:100%;font-size:16px;padding:12px;border:1px solid #ddd;border-radius:10px}.sm-assets{max-height:48dvh;overflow:auto}.sm-sheet button:focus-visible{outline:2px solid #6366f1}
+@media(max-width:760px){
+[data-mobile-studio-mounted] .ra-mobile-nav,[data-mobile-studio-mounted] .is-mobile-back,[data-mobile-studio-mounted] .is-mobile-output{display:none!important}
+.sm-mobile .studio-header{flex-shrink:0;min-height:64px;padding:10px 12px;gap:8px;background:#faf9fd;box-sizing:border-box}
+.sm-mobile .studio-header-brand{flex:1;min-width:0}.sm-mobile .studio-header-brand h1{font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sm-mobile .studio-header-logo,.sm-mobile .studio-header-actions{display:none!important}.sm-mobile .sm-nav{display:inline-flex;align-items:center;justify-content:center;width:auto;padding:8px 12px;min-height:44px;font-size:13px}.sm-mobile .sm-nav[hidden]{display:none!important}.sm-mobile .sm-output{background:#312e81;color:white;border-color:#312e81}
+.sm-mobile>.vs-shell,.sm-mobile>.ra-studio-shell{display:block!important;padding:12px!important;box-sizing:border-box;min-width:0}
+.sm-mobile [data-sm-panel]{position:relative!important;left:auto!important;right:auto!important;top:auto!important;bottom:auto!important;width:100%!important;height:100%!important;max-height:100%!important;min-height:0!important;margin:0!important;grid-column:auto!important;box-sizing:border-box;overflow:auto;}
+.sm-mobile[data-sm-page=library] [data-sm-panel=library]{display:flex!important;flex-direction:column}
+.sm-mobile[data-sm-page=create] [data-sm-panel=create],.sm-mobile[data-sm-page=output] [data-sm-panel=output]{display:block!important}
+.sm-mobile:not([data-sm-page=library]) [data-sm-panel=library],.sm-mobile:not([data-sm-page=create]) [data-sm-panel=create],.sm-mobile:not([data-sm-page=output]) [data-sm-panel=output]{display:none!important}
+.sm-mobile input,.sm-mobile select,.sm-mobile textarea{font-size:16px;max-width:100%;box-sizing:border-box}.sm-mobile .vs-controls,.sm-mobile .ra-form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.sm-mobile .ra-pipeline-workspace{padding:14px}.sm-mobile .vs-preview video{width:100%;max-height:50dvh}.sm-mobile .vs-preview-actions{flex-wrap:wrap}.sm-mobile .ra-training-layout,.sm-mobile .ra-voice-layout{grid-template-columns:1fr}.sm-mobile .vs-mini-app-card,.sm-mobile .ra-pipeline-card{min-height:72px}
+}
+
+@media(max-width:760px){.sm-mobile .vs-preview-actions{display:none!important}.sm-mobile .ra-audio-preview:not([data-sm-playing]) .ra-audio-controls{display:none}.sm-mobile .ra-audio-drag-hint{display:none}.sm-mobile .vs-preview,.sm-mobile .vs-audio-preview,.sm-mobile .ra-audio-preview{cursor:pointer}}
+
+@media(max-width:760px){.sm-mobile.sm-gallery-drag>.vs-shell,.sm-mobile.sm-gallery-drag>.ra-studio-shell{position:relative}.sm-mobile.sm-gallery-drag [data-sm-panel=library]{display:flex!important;position:absolute!important;inset:12px!important;opacity:0;pointer-events:none;z-index:-1}.sm-mobile.sm-gallery-drag [data-sm-panel=create]{display:block!important}.sm-drop-target{outline:3px solid #6366f1!important;outline-offset:3px;background-color:#eef2ff!important}}
+.sm-drag-ghost{position:fixed;z-index:10000;pointer-events:none;transform:translate(-50%,calc(-100% - 18px));max-width:240px;padding:10px 14px;border-radius:12px;color:white;background:#312e81;box-shadow:0 5px 25px #0003;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* Reserve the removed height in flow so scroll-driven collapse never feeds back
+   into scrollTop. The image remains sticky and fully contained at compact size. */
+@media(max-width:760px){
+.sm-mobile .is-studio-shell .vs-render-workspace>.is-image-preview.sm-collapsing-preview:not(.empty){height:calc(var(--sm-preview-expanded) - var(--sm-preview-shrink,0px));min-height:0;max-height:none;margin-bottom:calc(var(--sm-preview-margin,0px) + var(--sm-preview-shrink,0px));overflow-anchor:none}
+.sm-mobile .vs-render-workspace{overflow-anchor:none}
+}

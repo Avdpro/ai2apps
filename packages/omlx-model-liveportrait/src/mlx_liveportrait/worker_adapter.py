@@ -160,11 +160,23 @@ class MLXLivePortraitAdapter:
             raise ValueError(f"{role} multipart input is required") from error
 
     @staticmethod
+    def _paste_face(target, generated, matrix, **kwargs):
+        return paste_face(target, generated, matrix, **kwargs)
+
+    @staticmethod
     def _crop(detector, image, role: str):
         detections = detector.detect(image)
         if not detections:
             raise ValueError(f"{role} does not contain a detectable face")
         return align_face(image, max(detections, key=_area).landmarks, 256)
+
+    def _driving_crop(self, detector, tracker, frame, parameters):
+        tracks = tracker.update(detector.detect(frame))
+        visible = [item for item in tracks if item.missed == 0]
+        if not visible:
+            return None
+        crop, _ = align_face(frame, max(visible, key=_area).landmarks, 256)
+        return crop
 
     @staticmethod
     def _parameters(payload: dict, operation: str) -> dict:
@@ -325,7 +337,7 @@ class MLXLivePortraitAdapter:
                 output = (
                     generated
                     if parameters["crop_only"]
-                    else paste_face(
+                    else self._paste_face(
                         source,
                         generated,
                         source_matrix * (generated.shape[1] / source_crop.shape[1]),
@@ -405,12 +417,8 @@ class MLXLivePortraitAdapter:
                             code="generation_cancelled",
                             status_code=409,
                         )
-                    tracks = tracker.update(detector.detect(frame))
-                    visible = [item for item in tracks if item.missed == 0]
-                    if visible:
-                        driving_crop, _ = align_face(
-                            frame, max(visible, key=_area).landmarks, 256
-                        )
+                    driving_crop = self._driving_crop(detector, tracker, frame, parameters)
+                    if driving_crop is not None:
                         driving_state = pipeline.prepare_driving(driving_crop)
                         if anchor is None:
                             anchor = driving_state
@@ -423,7 +431,7 @@ class MLXLivePortraitAdapter:
                         last = (
                             generated
                             if parameters["crop_only"]
-                            else paste_face(
+                            else self._paste_face(
                                 source,
                                 generated,
                                 source_matrix

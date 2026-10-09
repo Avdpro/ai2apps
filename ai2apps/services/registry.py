@@ -227,7 +227,7 @@ class ToolGateway:
         owner_user_id = row["owner_user_id"]
         if owner_user_id is not None:
             try:
-                principal = IdentityRepository(self.database).principal_for(owner_user_id)
+                principal = IdentityRepository(self.database).local_principal_for(owner_user_id)
             except IdentityBindingError:
                 principal = None
             if principal is not None:

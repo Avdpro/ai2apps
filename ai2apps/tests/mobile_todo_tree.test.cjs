@@ -1,0 +1,5 @@
+const test=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs');
+const ctx={};vm.runInNewContext(fs.readFileSync('web/static/js/mobile_todo.js','utf8').split('(() => {')[0],ctx);
+const tasks=[{id:'child',parent_id:'root',title:'Needle',position:0},{id:'other',title:'Other',position:2},{id:'root',title:'Root',position:1,status:'completed'},{id:'grand',parent_id:'child',title:'Grand',position:0}];
+test('tree groups descendants before next sibling and retains completed parent context',()=>{const rows=ctx.mobileTodoTree(tasks,'',false,new Set());assert.equal(rows.map(r=>r.task.id).join(','),'root,child,grand,other');assert.equal(rows.map(r=>r.depth).join(','),'0,1,2,0');assert.equal(rows[0].contextOnly,true);});
+test('collapse hides subtree and search expands matching path',()=>{assert.equal(ctx.mobileTodoTree(tasks,'',true,new Set(['root'])).map(r=>r.task.id).join(','),'root,other');const rows=ctx.mobileTodoTree(tasks,'needle',false,new Set(['root']));assert.equal(rows.map(r=>r.task.id).join(','),'root,child');assert.equal(rows[0].contextOnly,true);});

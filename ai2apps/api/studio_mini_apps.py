@@ -56,6 +56,7 @@ BUILTIN_MINI_APPS = {
 MAX_CAPABILITY_UPLOAD_BYTES = 1024 * 1024 * 1024
 MAX_REFERENCE_UPLOAD_BYTES = 100 * 1024 * 1024
 PROGRESS_PHASE_RANGES = {
+    "audio.song_generation": ((0, 0),) * 5,
     "video.avatar_generation": ((0, 10), (10, 95), (95, 100)),
     "media.video_subtitles": ((0, 15), (15, 45), (45, 70), (70, 90), (90, 100)),
     "media.video_audio_translation": (
@@ -68,6 +69,21 @@ PROGRESS_PHASE_RANGES = {
     ),
 }
 PROGRESS_CAPABILITIES = frozenset(PROGRESS_PHASE_RANGES)
+
+
+class AudioGenerationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    capability: Literal["audio.music_generation", "audio.sound_effects_generation", "audio.song_generation"]
+    model: str = Field(min_length=1, max_length=512)
+    prompt: str = Field(min_length=1, max_length=2000)
+    duration: float | None = Field(default=None, ge=1, le=120, allow_inf_nan=False)
+    lyrics: str = Field(default="", max_length=4096)
+    seed: int = Field(default=42, ge=0, le=4294967295)
+    steps: int = Field(default=8, ge=1, le=100)
+    request_schema: str = Field(default="ai2apps.audio-generation/v1", alias="schema")
+    duration_mode: Literal["fixed", "auto"] = "fixed"
+    generation: dict | None = None
+    language: str = Field(default="unknown", max_length=16)
 
 
 def _phase_percent(capability: str, phase_index: int, status: str, percent: int) -> int:
@@ -501,7 +517,12 @@ def create_studio_mini_app_router(
                 status_code=409,
                 detail={"code": error.code, "message": str(error)},
             ) from error
-        return {**mount, "content_url": _content_url(mount)}
+        content_url = _content_url(mount)
+        if principal.authentication_type == "owner_home_lease":
+            if mount["renderer"] != "sandbox":
+                raise HTTPException(422, "Mobile Studio requires a sandbox Mini-App")
+            content_url = content_url.replace("/admin/api/shell/app-instances/", "/mobile/app-content/studio-resource/", 1)
+        return {**mount, "content_url": content_url}
 
     @router.get("/{studio_id}/mini-app-mounts/{mount_id}/capabilities")
     def probe_mini_app_capabilities(
@@ -599,6 +620,59 @@ def create_studio_mini_app_router(
                 status_code=409,
                 detail={"code": error.code, "message": str(error)},
             ) from error
+
+    @router.get("/{studio_id}/mini-app-mounts/{mount_id}/audio-generation-models")
+    def list_audio_generation_models(studio_id: str, mount_id: str, capability: str,
+                                     principal: RequestPrincipal = principal_dependency):
+        from ai2apps.studio.audio_generation import model_options
+        runtime, _ = manager()
+        try:
+            return model_options(StudioCapabilityBroker(runtime), studio_id, mount_id, principal, capability)
+        except StudioCapabilityError as error:
+            raise capability_error(error) from error
+
+    @router.post("/{studio_id}/mini-app-mounts/{mount_id}/audio-generation")
+    async def invoke_audio_generation(studio_id: str, mount_id: str, body: AudioGenerationRequest,
+                                     request: Request, principal: RequestPrincipal = principal_dependency):
+        from ai2apps.studio.audio_generation import generate
+        runtime, _ = manager()
+        try:
+            invocation_id = request.headers.get("X-AI2Apps-Invocation-ID")
+            scope = progress_scope(principal, studio_id, mount_id, body.capability)
+            if invocation_id:
+                record = invocation_progress.get(invocation_id, scope[:4])
+                if record is None or record.scope != scope or record.terminal:
+                    raise HTTPException(status_code=404, detail="Invocation was not found")
+            tasks = set()
+            phases = {"plan": 0, "abc": 0, "semantic": 1, "synthesis": 2, "synthesize": 2,
+                      "decode": 3, "vae": 3, "saving": 4, "complete": 4}
+            last_phase = None
+            def progress(value):
+                nonlocal last_phase
+                phase = str(value.get("phase", "")).lower()
+                if phase not in phases or not invocation_id or phase == last_phase:
+                    return
+                last_phase = phase
+                task = asyncio.create_task(invocation_progress.publish(invocation_id, scope,
+                    phase_index=phases[phase], status="running", percent=0, detail=phase))
+                tasks.add(task)
+            try:
+                result = await generate(StudioCapabilityBroker(runtime), studio_id, mount_id,
+                    principal=principal, request=request, capability=body.capability,
+                    payload=body.model_dump(exclude={"capability"}, exclude_unset=True, by_alias=True),
+                    progress=progress)
+                if tasks:
+                    await asyncio.gather(*tasks)
+                await invocation_progress.publish(invocation_id, scope, phase_index=4,
+                    status="completed", percent=100, detail="complete")
+                return result
+            except BaseException:
+                if tasks:
+                    await asyncio.gather(*tasks, return_exceptions=True)
+                await invocation_progress.fail(invocation_id, scope, "Generation stopped")
+                raise
+        except StudioCapabilityError as error:
+            raise capability_error(error) from error
 
     @router.post("/{studio_id}/mini-app-mounts/{mount_id}/invocations", status_code=201)
     async def create_mini_app_invocation_progress(

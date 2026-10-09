@@ -70,8 +70,23 @@ class CheckpointConsentRequiredError(CheckpointDownloadError):
         super().__init__("checkpoint license consent is required before download")
 
 
+def _release_checkpoint_file_pages(source: Any) -> None:
+    """Best-effort advice for large completed scans, never global cache eviction."""
+    if not hasattr(os, "posix_fadvise") or not hasattr(os, "POSIX_FADV_DONTNEED"):
+        return
+    with suppress(OSError):
+        info = os.fstat(source.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_size < 64 * 1024 * 1024:
+            return
+        # Newly copied/downloaded pages may still be dirty. Advice alone can
+        # leave them resident; sync this file only before releasing clean pages.
+        os.fsync(source.fileno())
+        os.posix_fadvise(source.fileno(), 0, 0, os.POSIX_FADV_DONTNEED)
+
+
 def _sha256_file(
-    path: Path, progress: Callable[[int], None] | None = None
+    path: Path, progress: Callable[[int], None] | None = None,
+    *, release_page_cache: bool = False,
 ) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as source:
@@ -79,6 +94,8 @@ def _sha256_file(
             digest.update(chunk)
             if progress is not None:
                 progress(len(chunk))
+        if release_page_cache:
+            _release_checkpoint_file_pages(source)
     return digest.hexdigest()
 
 
@@ -980,7 +997,8 @@ def plan_checkpoint_pieces(
 class CheckpointCache:
     """Source-agnostic cache paths with verified-only atomic promotion."""
 
-    def __init__(self, root: str | Path):
+    def __init__(self, root: str | Path, *, release_page_cache: bool = False):
+        self.release_page_cache = release_page_cache
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.root.chmod(0o700)
@@ -988,6 +1006,9 @@ class CheckpointCache:
             directory = self.root / name
             directory.mkdir(parents=True, exist_ok=True, mode=0o700)
             directory.chmod(0o700)
+
+    def _hash_file(self, path: Path, progress: Callable[[int], None] | None = None) -> str:
+        return _sha256_file(path, progress, release_page_cache=self.release_page_cache)
 
     def try_acquire_distribution_lock(
         self, manifest: CheckpointDistributionManifest
@@ -1078,7 +1099,7 @@ class CheckpointCache:
                 blob.is_symlink()
                 or not blob.is_file()
                 or blob.stat().st_size != checkpoint_file.size
-                or _sha256_file(blob) != checkpoint_file.sha256
+                or self._hash_file(blob) != checkpoint_file.sha256
             ):
                 raise CheckpointManifestError("verified cache blob is corrupt")
             blobs[checkpoint_file.path] = blob
@@ -1091,7 +1112,7 @@ class CheckpointCache:
         if not source.is_file() or source.stat().st_size != size:
             raise CheckpointManifestError("partial file size does not match manifest")
         expected = _digest(sha256, "file digest")
-        actual = _sha256_file(source)
+        actual = self._hash_file(source)
         if actual != expected:
             raise CheckpointManifestError("partial file digest does not match manifest")
         destination = self.blob_path(expected)
@@ -1099,7 +1120,7 @@ class CheckpointCache:
         if destination.exists():
             if (
                 destination.stat().st_size != size
-                or _sha256_file(destination) != expected
+                or self._hash_file(destination) != expected
             ):
                 raise CheckpointManifestError("verified cache blob is corrupt")
             source.unlink()
@@ -1147,7 +1168,7 @@ class CheckpointCache:
                     or blob.is_symlink()
                     or not blob.is_file()
                     or blob.stat().st_size != checkpoint_file.size
-                    or _sha256_file(blob) != checkpoint_file.sha256
+                    or self._hash_file(blob) != checkpoint_file.sha256
                 ):
                     raise CheckpointManifestError(
                         f"snapshot blob is not verified: {checkpoint_file.path}"
@@ -1223,6 +1244,9 @@ class CheckpointCache:
             temporary.unlink()
             try:
                 _clone_or_copy_file(resolved, temporary)
+                if self.release_page_cache:
+                    with resolved.open("rb") as copied_source:
+                        _release_checkpoint_file_pages(copied_source)
                 blobs[checkpoint_file.path] = self.promote_verified_file(
                     temporary,
                     sha256=checkpoint_file.sha256,
@@ -1398,9 +1422,8 @@ class CheckpointCache:
                 return False
         return True
 
-    @classmethod
     def _snapshot_matches(
-        cls, manifest: CheckpointDistributionManifest, snapshot: Path,
+        self, manifest: CheckpointDistributionManifest, snapshot: Path,
         *, allow_local_metadata: bool = False,
         progress: Callable[[dict[str, Any]], None] | None = None,
     ) -> bool:
@@ -1435,7 +1458,7 @@ class CheckpointCache:
                 or not valid_local_checkpoint_metadata(snapshot, actual_files - expected_files)
             ):
                 return False
-        if verification.is_file() and cls._snapshot_verification_matches(
+        if verification.is_file() and self._snapshot_verification_matches(
             manifest, snapshot
         ):
             if progress is not None:
@@ -1486,13 +1509,13 @@ class CheckpointCache:
                 target.is_symlink()
                 or not target.is_file()
                 or target.stat().st_size != checkpoint_file.size
-                or _sha256_file(target, report_file_progress)
+                or self._hash_file(target, report_file_progress)
                 != checkpoint_file.sha256
             ):
                 return False
             completed_bytes += checkpoint_file.size
         with suppress(OSError):
-            cls._write_snapshot_verification(manifest, snapshot)
+            self._write_snapshot_verification(manifest, snapshot)
         return True
 
 

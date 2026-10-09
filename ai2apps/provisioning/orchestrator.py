@@ -122,8 +122,10 @@ class CapabilityProvisioner:
                 resolved = candidate.resolve()
                 if resolved != resolved_cache_root:
                     unique_legacy_roots[resolved] = None
+            release_page_cache = os.environ.get("AI2APPS_CHECKPOINT_RELEASE_PAGE_CACHE") == "1"
             legacy_caches = tuple(
-                CheckpointCache(candidate) for candidate in unique_legacy_roots
+                CheckpointCache(candidate, release_page_cache=release_page_cache)
+                for candidate in unique_legacy_roots
             )
             self.checkpoint_acquisition = CheckpointAcquisitionService(
                 registry=CheckpointRegistryClient(
@@ -131,7 +133,7 @@ class CapabilityProvisioner:
                     root=registry_root,
                     repository_fingerprint=registry_packages.repository_fingerprint,
                 ),
-                cache=CheckpointCache(cache_root),
+                cache=CheckpointCache(cache_root, release_page_cache=release_page_cache),
                 legacy_caches=legacy_caches,
             )
 

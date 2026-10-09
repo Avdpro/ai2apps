@@ -1,0 +1,138 @@
+[
+  {
+    "package": "gcc-13",
+    "version": "13.3.0-6ubuntu2~24.04",
+    "page": "https://launchpad.net/ubuntu/+source/gcc-13/13.3.0-6ubuntu2~24.04",
+    "files": [
+      {
+        "file": "gcc-13_13.3.0-6ubuntu2~24.04.dsc",
+        "url": "https://launchpad.net/ubuntu/+archive/primary/+sourcefiles/gcc-13/13.3.0-6ubuntu2~24.04/gcc-13_13.3.0-6ubuntu2~24.04.dsc",
+        "sha256": "6e5adac98297d6c684fd4e41b0acf2a2a18129e5e6cd326d5e04d82ed8c01f1b",
+        "size": 39532
+      },
+      {
+        "file": "gcc-13_13.3.0.orig.tar.gz",
+        "url": "https://launchpad.net/ubuntu/+archive/primary/+sourcefiles/gcc-13/13.3.0-6ubuntu2~24.04/gcc-13_13.3.0.orig.tar.gz",
+        "sha256": "3b85d91bf38d1b858d9d01134f4046b3359731968ed4e6e912d29717a35d1a46",
+        "size": 92761021
+      },
+      {
+        "file": "gcc-13_13.3.0-6ubuntu2~24.04.debian.tar.xz",
+        "url": "https://launchpad.net/ubuntu/+archive/primary/+sourcefiles/gcc-13/13.3.0-6ubuntu2~24.04/gcc-13_13.3.0-6ubuntu2~24.04.debian.tar.xz",
+        "sha256": "41938c62c861203f7aa25875117946ec2f23ebfe59988253c44aa096529a0793",
+        "size": 646192
+      }
+    ],
+    "verification": "HTTPS official source descriptor; all source files match descriptor SHA256 and size; OpenPGP signature not yet verified"
+  },
+  {
+    "package": "binutils",
+    "version": "2.42-4ubuntu2.5",
+    "page": "https://launchpad.net/ubuntu/+source/binutils/2.42-4ubuntu2.5",
+    "files": [
+      {
+        "file": "binutils_2.42-4ubuntu2.5.dsc",
+        "url": "https://launchpad.net/ubuntu/+archive/primary/+sourcefiles/binutils/2.42-4ubuntu2.5/binutils_2.42-4ubuntu2.5.dsc",
+        "sha256": "e8f6b431a2c6201e674dbdf43263890c64722eb10b827e0b883059e55acdc8ed",
+        "size": 10148
+      },
+      {
+        "file": "binutils_2.42.orig.tar.xz",
+        "url": "https://launchpad.net/ubuntu/+archive/primary/+sourcefiles/binutils/2.42-4ubuntu2.5/binutils_2.42.orig.tar.xz",
+        "sha256": "f6e4d41fd5fc778b06b7891457b3620da5ecea1006c6a4a41ae998109f85a800",
+        "size": 27567160
+      },
+      {
+        "file": "binutils_2.42-4ubuntu2.5.debian.tar.xz",
+        "url": "https://launchpad.net/ubuntu/+archive/primary/+sourcefiles/binutils/2.42-4ubuntu2.5/binutils_2.42-4ubuntu2.5.debian.tar.xz",
+        "sha256": "e287e73a0d06f25bae4ee5bb1480ef2b4dbb6c6966053625b5aa292dfa58cfec",
+        "size": 178692
+      }
+    ],
+    "verification": "HTTPS official source descriptor; all source files match descriptor SHA256 and size; OpenPGP signature not yet verified"
+  },
+  {
+    "package": "glibc",
+    "version": "2.39-0ubuntu8.6",
+    "page": "https://launchpad.net/ubuntu/+source/glibc/2.39-0ubuntu8.6",
+    "files": [
+      {
+        "file": "glibc_2.39-0ubuntu8.6.dsc",
+        "url": "https://launchpad.net/ubuntu/+archive/primary/+sourcefiles/glibc/2.39-0ubuntu8.6/glibc_2.39-0ubuntu8.6.dsc",
+        "sha256": "e2efb9f2671cb499824faa481a6f10e53ade6ea190d1a2aed4089112d7cd5f6a",
+        "size": 9387
+      },
+      {
+        "file": "glibc_2.39.orig.tar.xz",
+        "url": "https://launchpad.net/ubuntu/+archive/primary/+sourcefiles/glibc/2.39-0ubuntu8.6/glibc_2.39.orig.tar.xz",
+        "sha256": "f77bd47cf8170c57365ae7bf86696c118adb3b120d3259c64c502d3dc1e2d926",
+        "size": 18520988
+      },
+      {
+        "file": "glibc_2.39.orig.tar.xz.asc",
+        "url": "https://launchpad.net/ubuntu/+archive/primary/+sourcefiles/glibc/2.39-0ubuntu8.6/glibc_2.39.orig.tar.xz.asc",
+        "sha256": "2cce427ef7933c17379f5514e4f0ccf8dffae5bf8c72f0f7e0bf8b8401f34be5",
+        "size": 833
+      },
+      {
+        "file": "glibc_2.39-0ubuntu8.6.debian.tar.xz",
+        "url": "https://launchpad.net/ubuntu/+archive/primary/+sourcefiles/glibc/2.39-0ubuntu8.6/glibc_2.39-0ubuntu8.6.debian.tar.xz",
+        "sha256": "257ba238aed36ffc4016493f0bea10ebc851e56135ba5b39117af8b914c76892",
+        "size": 467000
+      }
+    ],
+    "verification": "HTTPS official source descriptor; all source files match descriptor SHA256 and size; OpenPGP signature not yet verified"
+  },
+  {
+    "package": "linux",
+    "version": "6.8.0-86.87",
+    "page": "https://launchpad.net/ubuntu/+source/linux/6.8.0-86.87",
+    "files": [
+      {
+        "file": "linux_6.8.0-86.87.dsc",
+        "url": "https://launchpad.net/ubuntu/+archive/primary/+sourcefiles/linux/6.8.0-86.87/linux_6.8.0-86.87.dsc",
+        "sha256": "2f2819d1efc4c1899ff10ccc5dbe9f15b250c8b1b266983aa75c41d4500f4ef2",
+        "size": 9321
+      },
+      {
+        "file": "linux_6.8.0.orig.tar.gz",
+        "url": "https://launchpad.net/ubuntu/+archive/primary/+sourcefiles/linux/6.8.0-86.87/linux_6.8.0.orig.tar.gz",
+        "sha256": "26512115972bdf017a4ac826cc7d3e9b0ba397d4f85cd330e4e4ff54c78061c8",
+        "size": 230060117
+      },
+      {
+        "file": "linux_6.8.0-86.87.diff.gz",
+        "url": "https://launchpad.net/ubuntu/+archive/primary/+sourcefiles/linux/6.8.0-86.87/linux_6.8.0-86.87.diff.gz",
+        "sha256": "0064af387b5afdba9fd7ca1e6b66c957e3be69979fddf182a5c521249d24fd43",
+        "size": 6062866
+      }
+    ],
+    "verification": "HTTPS official source descriptor; all source files match descriptor SHA256 and size; OpenPGP signature not yet verified"
+  },
+  {
+    "package": "python3.12",
+    "version": "3.12.3-1ubuntu0.17",
+    "page": "https://launchpad.net/ubuntu/+source/python3.12/3.12.3-1ubuntu0.17",
+    "files": [
+      {
+        "file": "python3.12_3.12.3-1ubuntu0.17.dsc",
+        "url": "https://launchpad.net/ubuntu/+archive/primary/+sourcefiles/python3.12/3.12.3-1ubuntu0.17/python3.12_3.12.3-1ubuntu0.17.dsc",
+        "sha256": "941700b999737d869b80c3b5a0adc0996a0fd760b982e18551bd2104da779384",
+        "size": 3916
+      },
+      {
+        "file": "python3.12_3.12.3.orig.tar.xz",
+        "url": "https://launchpad.net/ubuntu/+archive/primary/+sourcefiles/python3.12/3.12.3-1ubuntu0.17/python3.12_3.12.3.orig.tar.xz",
+        "sha256": "56bfef1fdfc1221ce6720e43a661e3eb41785dd914ce99698d8c7896af4bdaa1",
+        "size": 20625068
+      },
+      {
+        "file": "python3.12_3.12.3-1ubuntu0.17.debian.tar.xz",
+        "url": "https://launchpad.net/ubuntu/+archive/primary/+sourcefiles/python3.12/3.12.3-1ubuntu0.17/python3.12_3.12.3-1ubuntu0.17.debian.tar.xz",
+        "sha256": "17b15629cb10825924cf7b85055255080ec773133ae0f8b8ce5ea2eec90dd200",
+        "size": 302472
+      }
+    ],
+    "verification": "HTTPS official source descriptor; all source files match descriptor SHA256 and size; OpenPGP signature not yet verified"
+  }
+]

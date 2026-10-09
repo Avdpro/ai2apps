@@ -18,7 +18,7 @@ from ai2apps.core import (
     parse_utc,
     utc_now_text,
 )
-from ai2apps.extensions import UnitKind
+from ai2apps.extensions.models import UnitKind
 from ai2apps.packages.contract_v1 import build_package
 
 from .compiler import COMPILER_VERSION, compile_source

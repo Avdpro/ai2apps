@@ -177,3 +177,45 @@ class SeedVCAR:
         if not output:
             return mx.zeros((1, 0), dtype=mx.int32)
         return mx.stack(output, axis=1)
+
+    def generate(
+        self, condition: mx.array, target_tokens: mx.array, *, seed: int = 0,
+        max_new_tokens: int = 4000, min_new_tokens: int = 10,
+        top_p: float = .7, temperature: float = .7, repetition_penalty: float = 1.5,
+    ) -> mx.array:
+        """Fixed upstream sampling policy, with a request-local random key."""
+        import math
+        if type(max_new_tokens) is not int or max_new_tokens < 1:
+            raise ValueError('max_new_tokens must be positive')
+        if type(min_new_tokens) is not int or not 0 <= min_new_tokens < max_new_tokens:
+            raise ValueError('invalid min_new_tokens')
+        if not all(math.isfinite(x) for x in (top_p, temperature, repetition_penalty)) or not 0 < top_p <= 1 or temperature <= 0 or repetition_penalty < 1:
+            raise ValueError('invalid sampling controls')
+        embeddings, positions = self.prompt(condition, target_tokens)
+        logits, caches = self.forward(embeddings, positions)
+        output = []
+        key = mx.random.key(seed)
+        position = int(target_tokens.shape[-1]) + 1
+        for index in range(max_new_tokens):
+            scores = logits[0, -1]
+            if output:
+                previous = mx.concatenate(output).astype(mx.int32)
+                values = scores[previous]
+                scores[previous] = mx.where(values < 0, values * repetition_penalty, values / repetition_penalty)
+            if index < min_new_tokens:
+                scores = mx.concatenate((scores[:-1], mx.array([-float('inf')])))
+            indices = mx.argsort(-scores)
+            values = scores[indices]
+            remove = mx.cumsum(mx.softmax(values)) > top_p
+            remove[0] = False
+            filtered = mx.where(remove, -float('inf'), values)
+            scores = filtered[mx.argsort(indices)] / temperature
+            key, draw_key = mx.random.split(key)
+            token = mx.random.categorical(scores, key=draw_key).astype(mx.int32).reshape(1)
+            mx.eval(token)
+            if int(token.item()) == self.config.vocabulary - 1:
+                return mx.stack(output, axis=1) if output else mx.zeros((1, 0), dtype=mx.int32)
+            output.append(token)
+            logits, caches = self.forward(self.embed_tokens(token[:, None]), mx.array([[position]], dtype=mx.int32), caches)
+            position += 1
+        raise RuntimeError('Seed-VC AR generation reached token limit without EOS')

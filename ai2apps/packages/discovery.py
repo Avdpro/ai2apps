@@ -488,6 +488,8 @@ def catalog_model_profile(value: dict[str, Any]) -> dict[str, object] | None:
     raw = manifest.get("modelProfile")
     if not isinstance(raw, dict) and isinstance(value.get("modelProfile"), dict):
         raw = value["modelProfile"]
+    if not isinstance(raw, dict) and isinstance(value.get("package"), dict):
+        raw = value["package"].get("modelProfile")
     if isinstance(raw, dict):
         candidate = {key: raw.get(key) for key in ("sizeBytes", "minimumMemoryBytes", "scores", "benchmark")}
         if "runtimeMemoryBytes" in raw:
@@ -529,9 +531,15 @@ def catalog_model_install(value: dict[str, Any]) -> dict[str, object] | None:
     raw = manifest.get("modelInstall")
     if not isinstance(raw, dict) and isinstance(value.get("modelInstall"), dict):
         raw = value["modelInstall"]
+    if not isinstance(raw, dict) and isinstance(value.get("package"), dict):
+        raw = value["package"].get("modelInstall")
     if isinstance(raw, dict):
         try:
-            resolved = validate_model_install(raw)
+            if not set(raw).issubset({"serviceKey", "models", "source"}):
+                raise ValueError("unexpected model installation metadata")
+            resolved = validate_model_install(
+                {key: raw.get(key) for key in ("serviceKey", "models")}
+            )
         except ValueError:
             resolved = None
         if resolved is not None:
@@ -619,6 +627,8 @@ def catalog_discovery(value: dict[str, Any]) -> dict[str, object] | None:
     raw = manifest.get("discovery")
     if not isinstance(raw, dict) and isinstance(value.get("discovery"), dict):
         raw = value["discovery"]
+    if not isinstance(raw, dict) and isinstance(value.get("package"), dict):
+        raw = value["package"].get("discovery")
     package_id, version, package_type = _catalog_package_identity(
         value,
         manifest_package=package,

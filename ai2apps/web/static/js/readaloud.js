@@ -2,7 +2,7 @@
     'use strict';
     const API = '/v1/platform/readaloud';
     const APP_ID = 'ai2apps.readaloud';
-    const GALLERY_MINI_FALLBACK_URL = '/admin/app-content/ai2apps.gallery?surface=mini';
+    const GALLERY_MINI_FALLBACK_URL = (window.AI2APPS_MOBILE_SURFACE ? '/mobile' : '/admin') + '/app-content/ai2apps.gallery?surface=mini';
     const FALLBACK_MINI_APPS = Object.freeze([
         Object.freeze({ id: 'ai2apps.audio.quick-read', mode: 'quick', key: 'readaloud.pipeline.quick', capability: 'audio.speech_generation', icon: 'volume-2' }),
         Object.freeze({ id: 'ai2apps.audio.voice-design', mode: 'voice', key: 'readaloud.pipeline.voice', capability: 'audio.voice_clone', icon: 'users-round' }),
@@ -338,7 +338,7 @@
             await this.openProject(projectId, false);
         },
         get currentMiniApp() { return this.packageMiniAppId ? (this.miniApps.find(item => item.id === this.packageMiniAppId) || this.miniApps[0]) : (this.miniApps.find(item => item.mode === (this.pipelineMode === 'training' ? 'voice' : this.pipelineMode)) || this.miniApps[0]); },
-        get miniAppChatEnabled() { return Boolean(window.AI2AppsMiniAppChat && this.currentMiniApp && (this.currentMiniApp.source !== 'package' || this.currentMiniApp.chat?.enabled === true)); },
+        get miniAppChatEnabled() { return !window.AI2APPS_MOBILE_SURFACE && Boolean(window.AI2AppsMiniAppChat && this.currentMiniApp && (this.currentMiniApp.source !== 'package' || this.currentMiniApp.chat?.enabled === true)); },
         get currentRun() { if(this.lineAudioArtifact)return null; return this.runs.find(item => item.id === this.selectedRunId) || this.runs[0] || null; },
         get currentArtifact() { if(this.lineAudioArtifact)return this.lineAudioArtifact; return this.currentRun?.artifacts?.find(item => item.id === this.selectedArtifactId) || this.currentRun?.artifacts?.[0] || null; },
         get runActive() { return ['queued', 'running', 'waiting_input'].includes(this.currentRun?.status); },
@@ -360,7 +360,15 @@
         isFavorite(id) { return this.favoriteMiniApps.includes(id); },
         toggleFavorite(id) { this.favoriteMiniApps = this.isFavorite(id) ? this.favoriteMiniApps.filter(value => value !== id) : [...this.favoriteMiniApps, id]; try { localStorage.setItem('ai2apps.readaloud.favorites', JSON.stringify(this.favoriteMiniApps)); } catch (_) {} },
         miniAppStatusLabel(ready) { const zh = document.documentElement.lang.startsWith('zh'); return ready ? (zh ? '可用 · 切换收藏' : 'Available · Toggle favorite') : (zh ? '需要下载依赖' : 'Dependencies need download'); },
+        starting: false,
+        startupError: '',
         async init() {
+            this.starting = true; this.startupError = '';
+            try { await this.initializeStudio(); }
+            catch (error) { this.startupError = error?.message || String(error); this.fail(error); }
+            finally { this.starting = false; }
+        },
+        async initializeStudio() {
             try { const saved = JSON.parse(localStorage.getItem('ai2apps.readaloud.favorites') || '[]'); this.favoriteMiniApps = Array.isArray(saved) ? saved : []; } catch (_) {}
             this.setupMiniAppChat();
             window.addEventListener('beforeunload', () => { this.saveDraft().catch(() => {}); this.cleanup(); }, { once: true });
@@ -370,23 +378,27 @@
             window.addEventListener('resize', () => this.applyResponsiveLayout());
             this.applyResponsiveLayout();
             try { this.miniAppDefinitions = (await request('/mini-apps')).items || []; } catch (_) {}
-            await this.refreshAllPackageMiniAppReadiness();
+            this.refreshAllPackageMiniAppReadiness().catch(error => this.fail(error));
             const pendingMiniApp = window.AI2AppsStudioMiniApps?.pendingSetup(APP_ID)?.miniAppId;
             const rememberedId = pendingMiniApp || localStorage.getItem('ai2apps.readaloud.active-mini-app');
             const rememberedMiniApp = rememberedId === 'ai2apps.audio.ensemble-drama' ? 'ai2apps.audio.audiobook' : rememberedId;
             const remembered = this.miniApps.find(item => item.id === (rememberedMiniApp === 'ai2apps.audio.character-training' ? 'ai2apps.audio.voice-design' : rememberedMiniApp));
             if (remembered?.source === 'package') await this.mountPackageMiniApp(remembered);
             else if (remembered) this.pipelineMode = remembered.mode;
-            await this.refresh();
-            if (!this.packageMiniAppId) { await this.loadDraft(this.currentMiniApp.id); if (rememberedMiniApp === 'ai2apps.audio.character-training') { await this.loadDraft(rememberedMiniApp); this.pipelineMode = 'training'; this.showVoiceForm = true; } }
+            await Promise.all([
+                this.refresh(false),
+                this.packageMiniAppId ? Promise.resolve() : this.loadDraft(this.currentMiniApp.id)
+            ]);
+            if (rememberedMiniApp === 'ai2apps.audio.character-training') { await this.loadDraft(rememberedMiniApp); this.pipelineMode = 'training'; this.showVoiceForm = true; }
             if (this.leftView === 'assets') this.mountGalleryMini();
             if (this.leftView === 'chat') this.mountMiniAppChat();
             await this.restoreProject();
-            await this.refreshRuns();
-            await this.refreshQuickHistory();
-            await this.refreshTrainingHistory();
-            await this.refreshOutputs();
-            await this.probeCapabilities();
+            this.starting = false;
+            const background = await Promise.allSettled([
+                this.refreshRuns(), this.refreshQuickHistory(), this.refreshTrainingHistory(),
+                this.refreshOutputs(), this.probeCapabilities()
+            ]);
+            background.forEach(result => { if (result.status === 'rejected') this.fail(result.reason); });
             try {
                 const resumed = await window.AI2AppsStudioMiniApps?.resumeSetup(APP_ID, this.miniApps.filter(item => item.source === 'package'));
                 if (resumed?.status === 'ready') {
@@ -514,13 +526,13 @@
             throw new Error('Unknown Mini-App Tool');
         },
 
-        async refresh() {
+        async refresh(restore = true) {
             this.busy = true; this.notice = '';
             try {
                 const [projects, providers, voices] = await Promise.all([request('/projects'), request('/providers'), request('/voice-profiles')]);
                 this.projects = projects.items || []; this.providers = providers.items || []; this.voiceProfiles = voices.items || []; this.normalizeVoiceDesignBinding();
                 if (!this.speechProviders.some(item => item.id === this.selectedTtsModel)) this.selectedTtsModel = this.speechProviders.find(item => item.ready)?.id || this.speechProviders[0]?.id || '';
-                await this.restoreProject();
+                if (restore) await this.restoreProject();
                 this.icons();
             } catch (error) { this.fail(error); } finally { this.busy = false; }
         },
@@ -555,7 +567,14 @@
             finally { this.deletingCharacter = false; }
         },
         closeCharacterForm() { if (this.recordingTraining) this.stopTrainingRecording(); this.pipelineMode = 'voice'; this.showVoiceForm = false; this.scheduleDraft(); },
-        async selectMiniApp(id) { const item = this.miniApps.find(value => value.id === id); if (!item) return; if (!this.packageMiniAppId) await this.saveDraft(); localStorage.setItem('ai2apps.readaloud.active-mini-app', item.id); if (this.leftView !== 'chat') this.leftView = 'mini-apps'; if (item.source === 'package') { await this.mountPackageMiniApp(item); if (!this.miniAppChatEnabled && this.leftView === 'chat') this.leftView = 'mini-apps'; return; } this.packageChatBridge?.dispose(); this.packageChatBridge = null; this.packageMiniAppId = ''; this.packageMiniAppUrl = ''; this.packageMiniAppError = ''; this.resetProjectDraft(); this.pipelineMode = item.mode; if (item.mode === 'drama') this.tab = 'script'; if (item.mode === 'voice') this.showVoiceForm = false; await this.loadDraft(item.id); await this.restoreProject(); this.chatController?.changed(); this.emitBridge('mini-app.ready', { miniAppId: item.id, version: item.version }); this.icons(); },
+        async selectMiniApp(id) {
+            if (this.starting) return;
+            this.starting = true; this.startupError = '';
+            try { await this.activateMiniApp(id); }
+            catch (error) { this.startupError = error?.message || String(error); this.fail(error); }
+            finally { this.starting = false; }
+        },
+        async activateMiniApp(id) { const item = this.miniApps.find(value => value.id === id); if (!item) return; if (!this.packageMiniAppId) await this.saveDraft(); localStorage.setItem('ai2apps.readaloud.active-mini-app', item.id); if (this.leftView !== 'chat') this.leftView = 'mini-apps'; if (item.source === 'package') { await this.mountPackageMiniApp(item); if (!this.miniAppChatEnabled && this.leftView === 'chat') this.leftView = 'mini-apps'; return; } this.packageChatBridge?.dispose(); this.packageChatBridge = null; this.packageMiniAppId = ''; this.packageMiniAppUrl = ''; this.packageMiniAppError = ''; this.resetProjectDraft(); this.pipelineMode = item.mode; if (item.mode === 'drama') this.tab = 'script'; if (item.mode === 'voice') this.showVoiceForm = false; await this.loadDraft(item.id); await this.restoreProject(); this.chatController?.changed(); this.emitBridge('mini-app.ready', { miniAppId: item.id, version: item.version }); this.icons(); },
         miniAppReady(item) { if (item?.source === 'package') return this.packageMiniAppReadiness[item.id] === true; return item?.capability === 'audio.voice_clone' ? this.voiceCloneReady : this.speechReady; },
         async refreshAllPackageMiniAppReadiness() {
             try { this.packageMiniAppReadiness = await window.AI2AppsStudioMiniApps?.readiness(APP_ID) || {}; }

@@ -1,0 +1,8 @@
+const test=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs');
+const context={window:{addEventListener(){}}};
+vm.runInNewContext(fs.readFileSync(__dirname+'/../web/static/js/browser_bidi_client.js','utf8'),context);
+const Client=context.window.AI2AppsBiDi.AI2AppsPageClient;
+function fixture(inputs){const calls=[];const c=new Client({});c.contextId='tab-1';c.interactionSettings=async()=>({interaction_mode:'fast'});c.snapshot=async()=>({file_inputs:inputs});c.connection={command:async(method,args)=>{calls.push({method,args});return {result:{sharedId:'native-input'}};}};return {c,calls};}
+test('hidden observed file input receives all attachment paths through native BiDi',async()=>{const {c,calls}=fixture([{ref:'e27',type:'file',visible:false,multiple:true}]);const result=await c.setAttachmentFiles('e27',['/tmp/a.png','/tmp/b.png']);assert.equal(result.file_count,2);assert.equal(calls[1].method,'input.setFiles');assert.equal(calls[1].args.context,'tab-1');assert.deepEqual(Array.from(calls[1].args.files),['/tmp/a.png','/tmp/b.png']);assert.equal(calls[1].args.element.sharedId,'native-input');});
+test('ambiguous or disabled upload controls are not guessed',async()=>{for(const inputs of [[{ref:'e1'},{ref:'e2'}],[{ref:'e1',disabled:true}]]){const {c,calls}=fixture(inputs);assert.equal(await c.setAttachmentFiles('图片',['/tmp/a.png']),null);assert.equal(calls.length,0);}});
+test('exact observed ref resolves one of multiple upload inputs',async()=>{const {c,calls}=fixture([{ref:'e1'},{ref:'e2'}]);assert.equal((await c.setAttachmentFiles('e2',['/tmp/a.png'])).target_ref,'e2');assert.equal(calls[0].args.arguments[0].value,'e2');});

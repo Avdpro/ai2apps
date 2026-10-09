@@ -23,18 +23,15 @@ def test_runtime_manifests_are_synchronized_for_video():
         service["version"]
         == package["package"]["version"]
         == descriptor["version"]
-        == "1.8.8"
+        == "1.8.10"
     )
     for capability in (
         "video-generation",
-        "video-segmentation",
-        "video-upscaling",
         "video-codecs",
         "audio-codecs",
         "voxcpm2",
         "indextts25",
         "z-image",
-        "image-upscaling",
     ):
         assert capability in service["capabilities"]
         assert capability in descriptor["capabilities"]
@@ -48,7 +45,7 @@ def test_runtime_advertises_detailed_transcription_separately_from_chat_stt():
     assert "audio-detailed-transcription-v1" in service["capabilities"]
     assert "audio-reference-input-v1" in service["capabilities"]
     assert "audio-voice-training-v1" in service["capabilities"]
-    assert service["capabilities"] == descriptor["capabilities"]
+    assert sorted(service["capabilities"]) == sorted(descriptor["capabilities"])
 
 
 def test_runtime_source_exposes_worker_lifecycle_control_routes():

@@ -645,6 +645,11 @@ def create_agent_router(
         runtime = _runtime_or_error(runtime_provider)
         if isinstance(runtime, JSONResponse):
             return runtime
+        run = runtime.agents.get_run(run_id)
+        if run.input.get('parameters', {}).get('execution_owner') == 'local':
+            interaction = next((item for item in runtime.agents.list_interactions(run_id) if item.id == interaction_id), None)
+            if interaction and interaction.request.get('control') == 'browser_bidi_action':
+                return JSONResponse(status_code=409, content={'detail': 'Browser actions are owned by Local'})
         try:
             runtime.agents.respond_interaction(
                 run_id,

@@ -170,3 +170,9 @@
 .ra-quick-asr{display:grid;gap:8px;margin:4px 0 8px}.readaloud-app .ra-quick-asr-toggle{display:flex;flex-direction:row;align-items:center;justify-content:flex-start;gap:8px;margin:0}.readaloud-app .ra-quick-asr-toggle input[type=checkbox]{width:16px;height:16px;min-height:0;flex:0 0 16px;margin:0;padding:0}.readaloud-app .ra-quick-asr-help{display:block;text-align:left;margin:0;color:var(--ra-muted);line-height:1.5}.ra-quick-asr-model{max-width:360px}
 
 .ra-segment-index{display:flex;flex-direction:column;align-items:center;gap:8px}.ra-segment-index .ra-line-select{width:16px;height:16px;min-width:16px;margin:0;padding:0;accent-color:var(--ra-accent);cursor:pointer}
+
+.ra-startup { display:flex; align-items:center; gap:12px; padding:24px; }
+.ra-startup p { margin:6px 0 0; color:#737373; font-size:13px; }
+.ra-startup-spinner { width:20px; height:20px; flex:none; border:2px solid #ddd; border-top-color:#333; border-radius:50%; animation:ra-startup-spin 1s linear infinite; }
+@keyframes ra-startup-spin { to { transform:rotate(360deg); } }
+@media (prefers-reduced-motion:reduce) { .ra-startup-spinner { animation:none; } }

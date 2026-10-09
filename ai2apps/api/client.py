@@ -80,6 +80,8 @@ class ClientBootstrapResponse(BaseModel):
     boot_id: str
     shell_path: Literal["/v1/platform/client/shell"]
     capabilities: list[str]
+    offline_mode: bool = False
+    offline_available: bool = False
 
 
 class BrowserAgentLaunchRequest(BaseModel):
@@ -87,6 +89,7 @@ class BrowserAgentLaunchRequest(BaseModel):
 
 
 class BrowserAgentLaunchResponse(BaseModel):
+    user_context: str | None = None
     status: Literal["launched", "focused"]
     profile_id: str
     pid: int
@@ -139,7 +142,7 @@ def _request_shell_browser_action(
     profile_key: str,
     profile_name: str,
     is_default: bool,
-    action: Literal["open", "delete"],
+    action: Literal["open", "delete", "bind"],
     initial_url: str | None,
 ) -> dict[str, Any]:
     """Ask the running AppShell to perform its native browser-window action."""
@@ -292,7 +295,7 @@ def create_client_router(
         response_model=ClientBootstrapResponse,
         summary="Bootstrap an AI2Apps desktop client",
     )
-    async def client_bootstrap() -> ClientBootstrapResponse:
+    async def client_bootstrap(request: Request) -> ClientBootstrapResponse:
         runtime = runtime_provider() if runtime_provider is not None else None
         security_identity = None if runtime is None else runtime.security_identity
         installation_id = (
@@ -319,6 +322,11 @@ def create_client_router(
             boot_id=str(current_supervision_boot_id()),
             shell_path=_SHELL_PATH,
             capabilities=capabilities,
+            offline_mode=bool(runtime is not None and getattr(runtime, "offline_mode", False)),
+            offline_available=bool(
+                ready and is_desktop_shell_request(request)
+                and IdentityRepository(runtime.database).get_installation() is None
+            ),
         )
 
     @router.post(
@@ -421,6 +429,7 @@ def create_client_router(
         status: str,
         pid: int,
         error: str | None = None,
+        user_context: str | None = None,
     ) -> dict[str, Any]:
         _require_helper_authorization(request)
         try:
@@ -429,6 +438,7 @@ def create_client_router(
                 status=status,
                 pid=pid,
                 error=error,
+                user_context=user_context,
             )
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -441,6 +451,20 @@ def create_client_router(
 
     if principal_provider is not None:
         principal_dependency = Depends(principal_provider)
+
+        @router.post("/client/shell/focus", include_in_schema=False)
+        async def focus_desktop_shell(request: Request, principal: RequestPrincipal = principal_dependency):
+            if not is_desktop_shell_request(request):
+                raise HTTPException(status_code=403, detail="Desktop shell session required")
+            request_id = shell_browser_window_broker.enqueue(
+                action="focus_shell",
+                profile_key=shell_browser_profile_key(principal.actor_user_id, "default"),
+                profile_name="Shell", is_default=True,
+            )
+            try:
+                return await asyncio.to_thread(shell_browser_window_broker.wait, request_id)
+            except (RuntimeError, TimeoutError) as exc:
+                raise HTTPException(status_code=503, detail=str(exc)) from exc
 
         @router.get(
             "/client/browser-profile",
@@ -521,6 +545,28 @@ def create_client_router(
                 raise HTTPException(status_code=422, detail=str(exc)) from exc
             return ManagedBrowserProfileResponse.model_validate(profile.as_dict())
 
+        @router.post("/client/browser-profiles/{profile_key}/binding")
+        async def bind_browser_profile(profile_key: str, principal: RequestPrincipal = principal_dependency):
+            try:
+                profile = browser_profile_repository().require(principal.actor_user_id, profile_key)
+                return await asyncio.to_thread(_request_shell_browser_action, principal.actor_user_id,
+                    profile.key, profile.name, profile.is_default, "bind", None)
+            except KeyError as error:
+                raise HTTPException(404, str(error)) from error
+            except (RuntimeError, TimeoutError, ValueError) as error:
+                raise HTTPException(503, str(error)) from error
+
+        @router.patch("/client/browser-profiles/{profile_key}", response_model=ManagedBrowserProfileResponse)
+        async def rename_browser_profile(profile_key: str, body: CreateBrowserProfileRequest,
+                                         principal: RequestPrincipal = principal_dependency):
+            try:
+                profile = browser_profile_repository().rename(principal.actor_user_id, profile_key, body.name)
+                return ManagedBrowserProfileResponse.model_validate(profile.as_dict())
+            except ValueError as error:
+                raise HTTPException(422, str(error)) from error
+            except KeyError as error:
+                raise HTTPException(404, str(error)) from error
+
         @router.post(
             "/client/browser-profiles/{profile_key}/launch",
             response_model=BrowserAgentLaunchResponse,
@@ -564,6 +610,12 @@ def create_client_router(
                 profile = repository.require(principal.actor_user_id, profile_key)
                 if profile_key == "default":
                     raise ValueError("The default browser Profile cannot be deleted")
+                from ai2apps.browser.tasks import BrowserTaskRepository, TERMINAL
+                runtime = runtime_provider()
+                if any(t['profile_key'] == profile_key and t['status'] not in TERMINAL
+                       for t in BrowserTaskRepository(runtime.database).list(principal.actor_user_id)):
+                    raise HTTPException(409, "Profile has unfinished WebAgent tasks")
+
                 await asyncio.to_thread(
                     _request_shell_browser_action,
                     principal.actor_user_id,

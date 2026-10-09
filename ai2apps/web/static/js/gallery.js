@@ -32,11 +32,16 @@
     window.galleryApp = function () { return {
         tr,
         collections: [], assets: [], selectedCollectionId: 'recent', selectedIds: [], selectionOperation: 'copy', targetCollectionId: '', search: '', kind: '', view: 'grid', loading: true, busy: false, notice: '', noticeTone: '', noticeTimer: null, creatingCollection: false, newCollectionName: '', newCollectionKind: 'custom', draggedAssetId: null, dragStartedAt: 0, hostMessageHandler: null, keyboardHandler: null, clipboardStorageHandler: null, clientEnvironment: 'browser', surface: 'full',
+        assetHold: null, assetHoldTimer: null, heldAssetClick: null, touchInteraction: false, galleryTouchDrag: null,
         contextMenuOpen: false, contextMenuAsset: null, contextMenuX: 0, contextMenuY: 0, contextMoveOpen: false, contextClipboard: null,
         pageContext: null, isBrowserSidebar: false, pageClient: null, browserDrag: null, browserMediaImportPromise: null, browserImportStage: '', browserImportProgress: 0,
         previewReadOnly: false,
-        previewAsset: null, previewZoom: 1, previewPanX: 0, previewPanY: 0, previewPanStart: null, previewRenaming: false, previewName: '', previewSavingName: false,
+        previewAsset: null, previewZoom: 1, previewPanX: 0, previewPanY: 0, previewPanStart: null, previewPointers: {}, previewRenaming: false, previewName: '', previewSavingName: false,
+        initialized: false,
         async init() {
+            // Alpine calls init automatically; legacy templates also use x-init.
+            if (this.initialized) return;
+            this.initialized = true;
             this.clientEnvironment = this.$root?.dataset?.clientEnvironment || 'browser';
             this.surface = this.$root?.dataset?.gallerySurface || 'full';
             const browserParams = new URLSearchParams(window.location.hash.slice(1));
@@ -308,6 +313,7 @@
             }, window.location.origin);
         },
         cleanup() {
+            this.cancelAssetHold();
             if (this.hostMessageHandler) window.removeEventListener('message', this.hostMessageHandler);
             if (this.keyboardHandler) window.removeEventListener('keydown', this.keyboardHandler);
             if (this.clipboardStorageHandler) window.removeEventListener('storage', this.clipboardStorageHandler);
@@ -395,7 +401,7 @@
                 window.parent.postMessage({ type: 'ai2apps.gallery.preview-close' }, window.location.origin);
                 return;
             }
-            this.previewAsset = null; this.previewRenaming = false; this.previewPanStart = null;
+            this.previewAsset = null; this.previewRenaming = false; this.clearPreviewGesture();
             document.body.style.overflow = '';
         },
         movePreview(delta) {
@@ -445,7 +451,7 @@
             else this.previewZoom = 2;
         },
         wheelPreview(event) { this.changePreviewZoom(event.deltaY < 0 ? .25 : -.25); },
-        resetPreviewTransform() { this.previewZoom = 1; this.previewPanX = 0; this.previewPanY = 0; this.previewPanStart = null; },
+        resetPreviewTransform() { this.previewZoom = 1; this.previewPanX = 0; this.previewPanY = 0; this.clearPreviewGesture(); },
         previewPanBounds() {
             const image = this.$refs.previewImage;
             const viewport = image?.parentElement;
@@ -473,24 +479,57 @@
             this.previewPanX = Math.max(-bounds.x, Math.min(bounds.x, this.previewPanX));
             this.previewPanY = Math.max(-bounds.y, Math.min(bounds.y, this.previewPanY));
         },
+        clearPreviewGesture() { this.previewPointers = {}; this.previewPanStart = null; },
+        rebasePreviewGesture() {
+            const points = Object.values(this.previewPointers);
+            if (!points.length) { this.previewPanStart = null; return; }
+            const start = { panX: this.previewPanX, panY: this.previewPanY, zoom: this.previewZoom };
+            if (points.length === 1) {
+                this.previewPanStart = { ...start, x: points[0].x, y: points[0].y };
+                return;
+            }
+            const [a, b] = points;
+            const rect = this.$refs.previewImage.getBoundingClientRect();
+            this.previewPanStart = { ...start,
+                x: (a.x + b.x) / 2, y: (a.y + b.y) / 2,
+                distance: Math.max(1, Math.hypot(b.x - a.x, b.y - a.y)),
+                centerX: (rect.left + rect.right) / 2 - this.previewPanX,
+                centerY: (rect.top + rect.bottom) / 2 - this.previewPanY,
+            };
+        },
         startPreviewPan(event) {
             if (this.previewAsset?.kind !== 'image') return;
             if (event.button != null && event.button !== 0) return;
-            const bounds = this.previewPanBounds();
-            if (!bounds.x && !bounds.y) return;
-            this.previewPanStart = { x: event.clientX, y: event.clientY, panX: this.previewPanX, panY: this.previewPanY, pointerId: event.pointerId };
+            event.preventDefault();
+            this.previewPointers[event.pointerId] = { x: event.clientX, y: event.clientY };
+            this.rebasePreviewGesture();
             event.currentTarget.setPointerCapture?.(event.pointerId);
         },
         movePreviewPan(event) {
-            if (!this.previewPanStart || event.pointerId !== this.previewPanStart.pointerId) return;
-            this.previewPanX = this.previewPanStart.panX + event.clientX - this.previewPanStart.x;
-            this.previewPanY = this.previewPanStart.panY + event.clientY - this.previewPanStart.y;
+            if (!this.previewPointers[event.pointerId] || !this.previewPanStart) return;
+            event.preventDefault();
+            this.previewPointers[event.pointerId] = { x: event.clientX, y: event.clientY };
+            const points = Object.values(this.previewPointers), start = this.previewPanStart;
+            if (points.length > 1) {
+                const [a, b] = points;
+                this.previewZoom = Math.max(.25, Math.min(6,
+                    start.zoom * Math.hypot(b.x - a.x, b.y - a.y) / start.distance));
+                const ratio = this.previewZoom / start.zoom;
+                // Keep the image point under the fingers anchored as their midpoint moves.
+                this.previewPanX = (a.x + b.x) / 2 - start.centerX - (start.x - start.centerX - start.panX) * ratio;
+                this.previewPanY = (a.y + b.y) / 2 - start.centerY - (start.y - start.centerY - start.panY) * ratio;
+            } else {
+                this.previewPanX = start.panX + points[0].x - start.x;
+                this.previewPanY = start.panY + points[0].y - start.y;
+            }
             this.clampPreviewPan();
         },
         endPreviewPan(event) {
-            if (!this.previewPanStart || event.pointerId !== this.previewPanStart.pointerId) return;
-            event.currentTarget.releasePointerCapture?.(event.pointerId);
-            this.previewPanStart = null;
+            if (!this.previewPointers[event.pointerId]) return;
+            delete this.previewPointers[event.pointerId];
+            this.rebasePreviewGesture();
+            if (event.currentTarget.hasPointerCapture?.(event.pointerId))
+                event.currentTarget.releasePointerCapture(event.pointerId);
         },
         downloadAsset(event, asset) {
             if (!asset) { event.preventDefault(); return; }
@@ -513,7 +552,34 @@
         get canMoveContextAsset() {
             return Boolean(this.contextMenuAsset) && this.canMoveFromCurrent && this.contextMoveTargets.length > 0;
         },
+        startAssetHold(event, asset) {
+            this.cancelAssetHold(); this.heldAssetClick = null;
+            this.touchInteraction = ['touch', 'pen'].includes(event.pointerType);
+            if (!['touch', 'pen'].includes(event.pointerType) || event.isPrimary === false || event.target.closest('button,a,input,select,textarea')) return;
+            const hold = { id: event.pointerId, x: event.clientX, y: event.clientY, assetId: asset.id };
+            this.assetHold = hold;
+            this.assetHoldTimer = window.setTimeout(() => {
+                if (this.assetHold?.id !== hold.id) return;
+                this.heldAssetClick = { id: asset.id, until: Date.now() + 1500 };
+                this.showAssetContextMenu({ clientX: hold.x, clientY: hold.y }, asset);
+            }, 550);
+        },
+        moveAssetHold(event) {
+            const hold = this.assetHold;
+            if (hold && (event.pointerId !== hold.id || Math.hypot(event.clientX-hold.x, event.clientY-hold.y) > 10)) this.cancelAssetHold();
+        },
+        cancelAssetHold() {
+            if (this.assetHoldTimer !== null) window.clearTimeout(this.assetHoldTimer);
+            this.assetHoldTimer = null; this.assetHold = null;
+        },
+        suppressAssetHoldClick(event, asset) {
+            const held = this.heldAssetClick;
+            this.heldAssetClick = null;
+            if (held?.id === asset.id && Date.now() < held.until) { event.preventDefault(); event.stopImmediatePropagation(); }
+        },
         showAssetContextMenu(event, asset) {
+            if (this.assetHold) this.heldAssetClick = { id: asset?.id, until: Date.now() + 1500 };
+            this.cancelAssetHold();
             this.contextMenuAsset = asset;
             this.contextMoveOpen = false;
             this.contextMenuOpen = true;
@@ -634,8 +700,34 @@
         },
         async dropOnCollection(event, collection) { if (collection.id === 'recent' || collection.system_key === 'trash') return; if (event.dataTransfer?.files?.length) return this.importFiles(event.dataTransfer.files, collection.id); const assetId = event.dataTransfer?.getData('application/x-ai2apps-gallery-asset') || this.draggedAssetId; if (!assetId) return; try { await request(`/collections/${encodeURIComponent(collection.id)}/assets/${encodeURIComponent(assetId)}`, { method: 'POST' }); await this.loadCollections(); this.success(tr('gallery.success.copied_to', { name: this.collectionName(collection) })); } catch (error) { this.fail(error); } },
         toggleAsset(asset, event) { const additive = event?.metaKey || event?.ctrlKey || event?.shiftKey; if (!additive && !this.selectedIds.includes(asset.id)) this.selectedIds = [asset.id]; else if (this.selectedIds.includes(asset.id)) this.selectedIds = this.selectedIds.filter(id => id !== asset.id); else this.selectedIds = [...this.selectedIds, asset.id]; if (this.selectedIds.length) { this.ensureSelectionTarget(); this.notifyAssetSelection(asset); } else this.targetCollectionId = ''; this.$nextTick(() => window.lucide?.createIcons()); },
-        dragAsset(event, asset) { this.draggedAssetId = asset.id; this.dragStartedAt = Date.now(); event.dataTransfer.effectAllowed = 'copyMove'; event.dataTransfer.setData('application/x-ai2apps-gallery-asset', asset.id); event.dataTransfer.setData('application/x-ai2apps-gallery-assets', JSON.stringify(this.selectedIds.includes(asset.id) ? this.selectedIds : [asset.id])); event.dataTransfer.setData('application/x-ai2apps-gallery-kind', asset.kind); event.dataTransfer.setData('text/plain', asset.name); if (!this.isBrowserSidebar) event.dataTransfer.setData('text/uri-list', new URL(this.contentUrl(asset), window.location.origin).href); if (this.isBrowserSidebar) { const token = crypto.randomUUID(); event.dataTransfer.setData('application/x-ai2apps-gallery-drop-token', token); this.browserDrag = {token, assetId: asset.id, armPromise: this.ensureBrowserPageClient().then(client => client.armGalleryAssetDrop(token))}; } },
+        notifyStudioDrag(phase, asset, event, touch = false) {
+            if (this.surface !== 'mini-entry' || this.isBrowserSidebar || window.parent === window) return;
+            window.parent.postMessage({type:'ai2apps.gallery.studio-drag', phase, touch,
+                asset:{id:asset.id,name:asset.name,kind:asset.kind,mediaType:asset.media_type||asset.mediaType||''},
+                x:Number(event?.clientX||0),y:Number(event?.clientY||0)},window.location.origin);
+        },
+        startGalleryTouchDrag(event, asset) {
+            if (!['touch','pen'].includes(event.pointerType) || event.isPrimary===false) return;
+            this.cancelAssetHold(); this.touchInteraction=true;
+            this.galleryTouchDrag={pointerId:event.pointerId,x:event.clientX,y:event.clientY,asset,started:false};
+            event.currentTarget.setPointerCapture(event.pointerId);
+        },
+        moveGalleryTouchDrag(event) {
+            const drag=this.galleryTouchDrag;if(!drag||drag.pointerId!==event.pointerId)return;
+            if(!drag.started&&Math.hypot(event.clientX-drag.x,event.clientY-drag.y)<8)return;
+            event.preventDefault();
+            if(!drag.started){drag.started=true;this.notifyStudioDrag('start',drag.asset,event,true);}
+            this.notifyStudioDrag('move',drag.asset,event,true);
+        },
+        endGalleryTouchDrag(event, cancelled=false) {
+            const drag=this.galleryTouchDrag;if(!drag||drag.pointerId!==event.pointerId)return;
+            this.galleryTouchDrag=null;
+            if(drag.started)this.notifyStudioDrag(cancelled?'cancel':'end',drag.asset,event,true);
+            if(event.currentTarget.hasPointerCapture?.(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId);
+        },
+        dragAsset(event, asset) { this.notifyStudioDrag('start',asset,event); this.draggedAssetId = asset.id; this.dragStartedAt = Date.now(); event.dataTransfer.effectAllowed = 'copyMove'; event.dataTransfer.setData('application/x-ai2apps-gallery-asset', asset.id); event.dataTransfer.setData('application/x-ai2apps-gallery-assets', JSON.stringify(this.selectedIds.includes(asset.id) ? this.selectedIds : [asset.id])); event.dataTransfer.setData('application/x-ai2apps-gallery-kind', asset.kind); event.dataTransfer.setData('text/plain', asset.name); if (!this.isBrowserSidebar) event.dataTransfer.setData('text/uri-list', new URL(this.contentUrl(asset), window.location.origin).href); if (this.isBrowserSidebar) { const token = crypto.randomUUID(); event.dataTransfer.setData('application/x-ai2apps-gallery-drop-token', token); this.browserDrag = {token, assetId: asset.id, armPromise: this.ensureBrowserPageClient().then(client => client.armGalleryAssetDrop(token))}; } },
         async finishBrowserAssetDrag(asset) {
+            this.notifyStudioDrag('end',asset);
             const active = this.browserDrag;
             this.browserDrag = null;
             if (!this.isBrowserSidebar || !active || active.assetId !== asset.id) return;
@@ -724,7 +816,7 @@
             closePreview() {
                 this.previewAsset = null;
                 this.assets = [];
-                this.previewPanStart = null;
+                this.clearPreviewGesture();
                 document.body.style.overflow = this.previousOverflow;
                 this.returnFocus?.focus?.({ preventScroll: true });
             },

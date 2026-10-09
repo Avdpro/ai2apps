@@ -550,7 +550,12 @@ async def test_registry_verifies_and_caches_package_lifecycle_snapshot(tmp_path)
     await cloud.close()
 
 
-def test_registry_rejects_non_reserved_inference_runtime_package_id(tmp_path):
+@pytest.mark.parametrize("package_id,allowed", [
+    ("ai2apps/runtime-omlx", True),
+    ("ai2apps/runtime-cuda-torch", True),
+    ("example/runtime-cuda-torch", False),
+])
+def test_registry_inference_runtime_package_identity(tmp_path, package_id, allowed):
     source = _service_source(tmp_path)
     service_path = source / "service.yaml"
     service = yaml.safe_load(service_path.read_text(encoding="utf-8"))
@@ -560,9 +565,14 @@ def test_registry_rejects_non_reserved_inference_runtime_package_id(tmp_path):
         "role": "inference_provider",
         "descriptor": "META/runtime-manifest.json",
     }
+    service["capabilities"] = ["model-worker-v1"]
     (source / "META").mkdir()
     (source / "META" / "runtime-manifest.json").write_text("{}")
     service_path.write_text(yaml.safe_dump(service, sort_keys=False))
+    manifest_path = source / "ai2apps.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["package"]["id"] = package_id
+    manifest_path.write_text(json.dumps(manifest))
     artifact_path = tmp_path / "unofficial-runtime.ai2service"
     inspected = build_package(source, artifact_path)
     manager = RegistryPackageManager(
@@ -574,13 +584,16 @@ def test_registry_rejects_non_reserved_inference_runtime_package_id(tmp_path):
         repository_fingerprint="ab" * 32,
     )
 
-    with pytest.raises(RegistryError) as error:
-        manager._service_bundle(
-            inspected,
-            {"payload": {"publisherId": "third-party"}, "signature": {}},
-        )
-
-    assert error.value.code == "runtime_publisher_denied"
+    envelope = {"payload": {"publisherId": "fixture", "publisherKeyId": "fixture-key"},
+                "signature": {}}
+    # Signature verification precedes this conversion; this exercises only the
+    # exact reserved Package identity guard, not publisher authentication.
+    if allowed:
+        manager._service_bundle(inspected, envelope)
+    else:
+        with pytest.raises(RegistryError) as error:
+            manager._service_bundle(inspected, envelope)
+        assert error.value.code == "runtime_publisher_denied"
 
 
 def test_registry_reports_signed_os_compatibility_before_install(monkeypatch):
@@ -1519,11 +1532,18 @@ async def test_checkpoint_publishing_workflow_proxies_cloud_state_transitions(tm
 
 
 @pytest.mark.asyncio
-async def test_platform_runtime_submission_uses_admin_large_artifact_route(tmp_path):
+@pytest.mark.parametrize("package_id,expected_route", [
+    ("ai2apps/runtime-omlx", "/v1/platform-runtime-submissions"),
+    ("ai2apps/runtime-cuda-torch", "/v1/platform-runtime-submissions"),
+    ("example/runtime-cuda-torch", "/v1/submissions"),
+])
+async def test_platform_runtime_submission_uses_admin_large_artifact_route(
+    tmp_path, package_id, expected_route
+):
     source = _service_source(tmp_path)
     manifest_path = source / "ai2apps.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    manifest["package"]["id"] = "ai2apps/runtime-omlx"
+    manifest["package"]["id"] = package_id
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
     artifact_path = tmp_path / "runtime.ai2service"
     build_package(source, artifact_path)
@@ -1551,7 +1571,7 @@ async def test_platform_runtime_submission_uses_admin_large_artifact_route(tmp_p
 
     await manager.submit(str(artifact_path), {})
 
-    assert paths == ["/v1/platform-runtime-submissions"]
+    assert paths == [expected_route]
     await cloud.close()
 
 
@@ -2350,3 +2370,41 @@ async def test_artifact_two_race_wins_select_source_and_failure_reopens_race(
         else:
             assert all(ids == ['cloud'] for index, ids in calls if index >= 5)
             assert events[-1]['preferredSourceId'] == 'cloud'
+
+
+@pytest.mark.parametrize('version_id,expected', [('24.04', None), ('22.04', 'os_version_too_old'), ('', 'os_version_unknown')])
+def test_linux_compatibility_uses_distribution_not_kernel(monkeypatch, version_id, expected):
+    monkeypatch.setattr('ai2apps.packages.registry.platform.system', lambda: 'Linux')
+    monkeypatch.setattr('ai2apps.packages.registry.platform.machine', lambda: 'aarch64')
+    monkeypatch.setattr('ai2apps.packages.registry.platform.release', lambda: '6.11.0-1016-nvidia')
+    monkeypatch.setattr('ai2apps.packages.registry.platform.freedesktop_os_release', lambda: {'ID': 'ubuntu', 'VERSION_ID': version_id})
+    compatibility = {'ai2apps': '>=0.1.0 <2.0.0', 'platforms': ['linux'],
+                     'architectures': ['arm64'], 'minimumOsVersion': '24.4'}
+    if expected is None:
+        RegistryPackageManager._check_compatibility(compatibility)
+    else:
+        with pytest.raises(RegistryError) as error:
+            RegistryPackageManager._check_compatibility(compatibility)
+        assert error.value.code == expected
+
+
+def test_catalog_detail_preserves_signed_cuda_install_and_memory_projection():
+    # New IDs have no legacy fallback; use the Cloud detail response shape.
+    declaration = {
+        "serviceKey": "ai2apps.model.qwen38",
+        "models": [{"id": "ai2apps.model.qwen38/qwen3.8-27b-nvfp4",
+                    "label": "Qwen3.8 CUDA", "recommended": True}],
+    }
+    profile = {"sizeBytes": 23444503536, "minimumMemoryBytes": 85899345920,
+               "scores": {"speed": 1, "capability": 5},
+               "benchmark": {"label": "BF16 baseline", "device": "DGX Spark"}}
+    detail = {"package": {"packageId": "ai2apps/model-qwen38-cuda",
+              "packageType": "service", "latestVersion": "0.1.0",
+              "modelInstall": declaration, "modelProfile": profile,
+              "discovery": {"kind": "model", "categories": ["multimodal"],
+                            "tasks": ["image-understanding"]}}, "releases": []}
+    result = RegistryPackageManager._decorate_catalog_compatibility(detail)
+    assert result["modelInstall"]["models"] == declaration["models"]
+    assert result["modelProfile"]["minimumMemoryBytes"] == 85899345920
+    assert result["discovery"]["categories"] == ["multimodal"]
+    assert RegistryPackageManager._decorate_catalog_compatibility(result) == result

@@ -90,7 +90,7 @@ def audio_client():
 
     with (
         patch("omlx.api.audio_routes._get_engine_pool", return_value=mock_pool),
-        TestClient(app, raise_server_exceptions=False) as client,
+        TestClient(app, base_url="http://127.0.0.1", raise_server_exceptions=False) as client,
     ):
         yield client, mock_pool
 
@@ -255,7 +255,7 @@ def server_audio_client():
         mock_state.settings_manager.resolve_model_id = MagicMock(
             side_effect=lambda m, _: m
         )
-        with TestClient(app, raise_server_exceptions=False) as client:
+        with TestClient(app, base_url="http://127.0.0.1", raise_server_exceptions=False) as client:
             yield client, mock_pool
 
 
@@ -1165,7 +1165,7 @@ class TestSTTModelAliasResolution:
             mock_state.mcp_manager = None
             mock_state.api_key = None
             mock_state.settings_manager = MagicMock()
-            with TestClient(app, raise_server_exceptions=False) as client:
+            with TestClient(app, base_url="http://127.0.0.1", raise_server_exceptions=False) as client:
                 response = client.post(
                     "/v1/audio/transcriptions",
                     data={"model": "whisper"},
@@ -1197,7 +1197,7 @@ class TestSTTModelAliasResolution:
             mock_state.mcp_manager = None
             mock_state.api_key = None
             mock_state.settings_manager = MagicMock()
-            with TestClient(app, raise_server_exceptions=False) as client:
+            with TestClient(app, base_url="http://127.0.0.1", raise_server_exceptions=False) as client:
                 response = client.post(
                     "/v1/audio/transcriptions",
                     data={"model": "Qwen3-ASR-1.7B-bf16"},

@@ -1285,11 +1285,84 @@ shell_router = APIRouter(tags=["apps"])
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 static_dir = STATIC_DIR
 MOBILE_STATIC_FILES = frozenset({
+    'css/capability_provisioning.css',
+    'css/gallery.css',
+    'css/imagine_studio.css',
+    'css/mini_app_chat.css',
+    'css/readaloud.css',
+    'css/studio_mini_apps.css',
+    'css/studio_mobile.css',
+    'css/video_composer.css',
+    'images/imagine-studio/styles/3DRender_256.webp',
+    'images/imagine-studio/styles/8bit_256.webp',
+    'images/imagine-studio/styles/Acrylic_256.webp',
+    'images/imagine-studio/styles/Anime_256.webp',
+    'images/imagine-studio/styles/ArtDeco_256.webp',
+    'images/imagine-studio/styles/ArtNouveau_256.webp',
+    'images/imagine-studio/styles/Baroque_256.webp',
+    'images/imagine-studio/styles/BlackWhite_256.webp',
+    'images/imagine-studio/styles/Cartoon_256.webp',
+    'images/imagine-studio/styles/Charcoal_256.webp',
+    'images/imagine-studio/styles/ClashRoyale_256.webp',
+    'images/imagine-studio/styles/ComicBook_256.webp',
+    'images/imagine-studio/styles/Cubism_256.webp',
+    'images/imagine-studio/styles/Cyberpunk_256.webp',
+    'images/imagine-studio/styles/DigitalPainting_256.webp',
+    'images/imagine-studio/styles/Disney_256.webp',
+    'images/imagine-studio/styles/Documentary_256.webp',
+    'images/imagine-studio/styles/Doodle_256.webp',
+    'images/imagine-studio/styles/FantasyRPG_256.webp',
+    'images/imagine-studio/styles/FilmPhoto_256.webp',
+    'images/imagine-studio/styles/FlatDesign_256.webp',
+    'images/imagine-studio/styles/Ghibli_256.webp',
+    'images/imagine-studio/styles/GlitchArt_256.webp',
+    'images/imagine-studio/styles/Gothic_256.webp',
+    'images/imagine-studio/styles/Graffiti_256.webp',
+    'images/imagine-studio/styles/Hyperrealism_256.webp',
+    'images/imagine-studio/styles/Impressionism_256.webp',
+    'images/imagine-studio/styles/InkWash_256.webp',
+    'images/imagine-studio/styles/Isometric_256.webp',
+    'images/imagine-studio/styles/LowPoly_256.webp',
+    'images/imagine-studio/styles/Macro_256.webp',
+    'images/imagine-studio/styles/Manga_256.webp',
+    'images/imagine-studio/styles/Minimalism_256.webp',
+    'images/imagine-studio/styles/OilPainting_256.webp',
+    'images/imagine-studio/styles/Papercut_256.webp',
+    'images/imagine-studio/styles/Photorealistic_256.webp',
+    'images/imagine-studio/styles/Pixar_256.webp',
+    'images/imagine-studio/styles/PixelArt_256.webp',
+    'images/imagine-studio/styles/Polaroid_256.webp',
+    'images/imagine-studio/styles/PopArt_256.webp',
+    'images/imagine-studio/styles/PostImpressionism_256.webp',
+    'images/imagine-studio/styles/Realism_256.webp',
+    'images/imagine-studio/styles/Rococo_256.webp',
+    'images/imagine-studio/styles/Steampunk_256.webp',
+    'images/imagine-studio/styles/Surrealism_256.webp',
+    'images/imagine-studio/styles/Synthwave_256.webp',
+    'images/imagine-studio/styles/UkiyoE_256.webp',
+    'images/imagine-studio/styles/Vaporwave_256.webp',
+    'images/imagine-studio/styles/VectorArt_256.webp',
+    'images/imagine-studio/styles/Watercolor_256.webp',
+    'images/imagine-studio/styles/Woodcut_256.webp',
+    'js/browser_bidi_client.js',
+    'js/capability_provisioning.js',
+    'js/gallery.js',
+    'js/imagine_adjust.js',
+    'js/imagine_studio.js',
+    'js/imagine_style_catalog.js',
+    'js/mini_app_chat.js',
+    'js/readaloud.js',
+    'js/studio_audio_recorder.js',
+    'js/studio_mini_apps.js',
+    'js/studio_mobile.js',
+    'js/studio_task_menu.js',
     "favicon.svg",
     "css/mobile.css",
     "css/mobile_app.css",
     "css/app-readability.css",
     "css/mobile_chat.css",
+    "css/mobile_todo.css",
+    "css/mobile_library.css",
     "css/tailwind.css",
     "css/dashboard.css",
     "css/account.css",
@@ -1305,8 +1378,11 @@ MOBILE_STATIC_FILES = frozenset({
     "js/lucide.min.js",
     "js/marked.umd.js",
     "js/mobile.js",
+    "js/owner_session.js",
     "js/mobile_app.js",
     "js/mobile_chat.js",
+    "js/mobile_todo.js",
+    "js/mobile_library.js",
     "js/purify.min.js",
     "js/trust_center.js",
     "js/video_studio.js",
@@ -1349,6 +1425,7 @@ _SYSTEM_APP_MANIFESTS_BY_ID = {
     manifest["id"]: manifest for manifest in SYSTEM_APP_MANIFESTS
 }
 _DASHBOARD_APP_TABS = {
+    "ai2apps.intelligence": "intelligence",
     "ai2apps.todo": "todo",
     "ai2apps.dashboard": "status",
     "ai2apps.account": "account",
@@ -1359,6 +1436,7 @@ _DASHBOARD_APP_TABS = {
     "ai2apps.readaloud": "readaloud",
     "ai2apps.video-studio": "video-studio",
     "ai2apps.imagine-studio": "imagine-studio",
+    "ai2apps.visitor-space": "visitor-space",
     "ai2apps.sharing": "sharing",
     "ai2apps.models": "models",
     "ai2apps.environment": "environment",
@@ -1372,6 +1450,7 @@ _DASHBOARD_APP_TABS = {
     "ai2apps.benchmark": "bench",
 }
 _DASHBOARD_APP_TEMPLATES = {
+    "ai2apps.intelligence": "system_apps/intelligence.html",
     "ai2apps.todo": "system_apps/todo.html",
     "ai2apps.dashboard": "system_apps/dashboard.html",
     "ai2apps.account": "system_apps/account.html",
@@ -1382,6 +1461,7 @@ _DASHBOARD_APP_TEMPLATES = {
     "ai2apps.readaloud": "system_apps/readaloud.html",
     "ai2apps.video-studio": "system_apps/video_studio.html",
     "ai2apps.imagine-studio": "system_apps/imagine_studio.html",
+    "ai2apps.visitor-space": "system_apps/visitor_space.html",
     "ai2apps.sharing": "system_apps/sharing.html",
     "ai2apps.models": "system_apps/models.html",
     "ai2apps.environment": "system_apps/environment.html",
@@ -1398,6 +1478,7 @@ _LEGACY_DASHBOARD_TAB_APPS = {
     tab: app_id for app_id, tab in _DASHBOARD_APP_TABS.items()
 }
 _HOST_APP_ENTRIES = {
+    "ai2apps:system/intelligence": "/admin/app-content/ai2apps.intelligence",
     "ai2apps:system/todo": "/admin/app-content/ai2apps.todo",
     "ai2apps:system/dashboard": "/admin/app-content/ai2apps.dashboard",
     "ai2apps:system/account": "/admin/app-content/ai2apps.account",
@@ -1410,6 +1491,7 @@ _HOST_APP_ENTRIES = {
     "ai2apps:system/readaloud": "/admin/app-content/ai2apps.readaloud",
     "ai2apps:system/video-studio": "/admin/app-content/ai2apps.video-studio",
     "ai2apps:system/imagine-studio": "/admin/app-content/ai2apps.imagine-studio",
+    "ai2apps:system/visitor-space": "/admin/app-content/ai2apps.visitor-space",
     "ai2apps:system/sharing": "/admin/app-content/ai2apps.sharing",
     "ai2apps:system/models": "/admin/app-content/ai2apps.models",
     "ai2apps:system/environment": "/admin/app-content/ai2apps.environment",
@@ -1425,6 +1507,9 @@ _HOST_APP_ENTRIES = {
     "ai2apps:system/chat-mini": "/admin/chat-mini",
     "ai2apps:system/agent-mini": "/admin/agent-mini",
     "ai2apps:mobile/chat": "/mobile/chat",
+    "ai2apps:mobile/todo": "/mobile/todo",
+    "ai2apps:mobile/knowledge": "/mobile/knowledge",
+    "ai2apps:mobile/gallery": "/mobile/gallery",
 }
 
 
@@ -2152,7 +2237,10 @@ async def desktop_home(
 
 
 async def _mobile_access_dependency(request: Request):
-    return await _require_mobile_access(request)
+    principal = await _require_mobile_access(request)
+    from ai2apps.remote.mobile_apps import require_mobile_path
+    require_mobile_path(_get_platform_runtime(), principal, request.url.path)
+    return principal
 
 
 @shell_router.get("/mobile", response_class=HTMLResponse)
@@ -2162,7 +2250,7 @@ async def mobile_shell(
 ):
     """Render the Mobile Shell for a local admin or device-scoped session."""
     del access
-    return templates.TemplateResponse(request, "mobile.html", {})
+    return templates.TemplateResponse(request, "mobile.html", {"owner_home": request.scope.get("ai2apps_owner_home_authority") is not None})
 
 
 @shell_router.get("/mobile/static/{path:path}")
@@ -2246,6 +2334,9 @@ def _remote_manager():
 
 
 def _local_mobile_admin(request: Request) -> bool:
+    from ai2apps.web.public_boundary import local_host
+    if not local_host(request.headers.get("host", "")):
+        return False
     settings = _get_global_settings() if _get_global_settings is not None else None
     return bool(settings and settings.auth.skip_api_key_verification) or verify_session(request)
 
@@ -2262,6 +2353,10 @@ def _local_mobile_principal(request: Request) -> RequestPrincipal:
 
 
 async def _require_mobile_access(request: Request) -> RequestPrincipal:
+    from ai2apps.web.owner_home_gateway import authority
+    grant = authority(request)
+    if grant is not None:
+        return grant[0].principal(grant[1])
     if _local_mobile_admin(request):
         request.state.ai2apps_mobile_local_session = None
         return _local_mobile_principal(request)
@@ -2298,6 +2393,9 @@ def _mobile_mount_payload(manager, mount: dict[str, Any]) -> dict[str, Any]:
         payload["content_url"] = "/mobile/app-content/" + content_url.removeprefix("/admin/app-content/")
     elif content_url.startswith("/admin/chat"):
         payload["content_url"] = "/mobile/chat"
+    if mount.get("renderer") == "sandbox":
+        payload["content_url"] = (f"/mobile/app-resource/{quote(mount['id'], safe='')}/"
+            f"{quote(mount['app_instance_id'], safe='')}/{quote(str(mount['resource']), safe='/')}")
     return payload
 
 
@@ -2414,6 +2512,9 @@ async def shell_account_status(
         "principal_is_core": principal.is_core,
         "principal_membership_epoch": principal.membership_epoch,
     }
+    if getattr(runtime, "offline_mode", False):
+        return {**account_context, "state": "offline", "display_name": "Offline",
+                "account_features_available": False}
     if not principal.is_core:
         return {
             **account_context,
@@ -2741,15 +2842,57 @@ async def remote_mobile_session_exchange(request: Request, payload: dict[str, An
     return response
 
 
+from ai2apps.web.owner_home_gateway import OWNER_APPS as OWNER_MOBILE_APPS
+
+
+def _mobile_app_enabled(principal, app_key):
+    from ai2apps.remote.mobile_apps import app_enabled, LEGACY_APPS, package_gateway_ready
+    if not app_enabled(_get_platform_runtime(), principal, app_key):
+        return False
+    if app_key in LEGACY_APPS:
+        return True
+    if not principal.is_core or not package_gateway_ready():
+        return False
+    return any(item['app_key'] == app_key and item.get('mobile_renderer') == 'sandbox'
+               for item in _shell_manager().list_mobile_apps(principal=principal))
+
+from ai2apps.web.mobile_todo import create_mobile_todo_router
+
+shell_router.include_router(create_mobile_todo_router(
+    lambda: _get_platform_runtime() if _get_platform_runtime else None,
+    _mobile_access_dependency,
+    lambda request, principal: templates.TemplateResponse(
+        request, "mobile_todo.html",
+        {"owner_home": principal.authentication_type == "owner_home_lease"},
+        headers={"Cache-Control": "no-store", "Content-Security-Policy":
+                 "default-src 'self'; frame-ancestors 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"},
+    ),
+))
+
+
+from ai2apps.web.mobile_library import create_mobile_library_router
+shell_router.include_router(create_mobile_library_router(
+    lambda: _get_platform_runtime() if _get_platform_runtime else None,
+    _mobile_access_dependency,
+    lambda request, principal, library: templates.TemplateResponse(
+        request, "mobile_library.html",
+        {"owner_home": principal.authentication_type == "owner_home_lease", "library": library},
+        headers={"Cache-Control": "no-store", "Content-Security-Policy":
+                 "default-src 'self'; img-src 'self'; media-src 'self'; frame-ancestors 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"},
+    ),
+))
+
+
 @shell_router.get("/v1/mobile/apps")
 async def remote_mobile_app_catalog(
     principal: RequestPrincipal = Depends(_mobile_access_dependency),
 ):
     return {
-        "items": _shell_manager().list_mobile_apps(
+        "items": [item for item in _shell_manager().list_mobile_apps(
             principal=principal,
             locale=_current_ui_language(),
         )
+            if _mobile_app_enabled(principal, item["app_key"])]
     }
 
 
@@ -2763,6 +2906,7 @@ async def remote_mobile_mounts(
             "items": [
                 _mobile_mount_payload(manager, item)
                 for item in manager.list_mobile_mounts(principal=principal)
+                if _mobile_app_enabled(principal, item["app_key"])
             ]
         }
     except (RepositoryError, ExtensionError) as error:
@@ -2776,6 +2920,8 @@ async def remote_mobile_open_app(
 ):
     manager = _shell_manager()
     try:
+        if not _mobile_app_enabled(principal, app_key):
+            raise HTTPException(403, "Owner App route denied")
         instance, home, created = manager.launch_app(app_key, principal=principal)
         mount = manager.mount_mobile(
             instance.id,
@@ -2795,6 +2941,8 @@ async def remote_mobile_focus_app(
 ):
     manager = _shell_manager()
     try:
+        if not _mobile_app_enabled(principal, manager.instance_entry(instance_id, principal=principal)["app_key"]):
+            raise HTTPException(403, "Owner App instance denied")
         manager.focus_instance(instance_id, principal=principal)
         return _mobile_mount_payload(
             manager, manager.mount_mobile(instance_id, principal=principal)
@@ -2809,9 +2957,81 @@ async def remote_mobile_unmount(
     principal: RequestPrincipal = Depends(_mobile_access_dependency),
 ):
     try:
+        if not _mobile_app_enabled(principal, _shell_manager().mount_entry(mount_id, principal=principal)["app_key"]):
+            raise HTTPException(403, "Owner App mount denied")
         return _shell_manager().unmount(mount_id, principal=principal)
     except (RepositoryError, ExtensionError) as error:
         _shell_lifecycle_error(error)
+
+
+def _mobile_package_mount(request, principal, mount_id, instance_id=None):
+    from ai2apps.web.owner_home_gateway import authority
+    from ai2apps.web.public_boundary import local_host
+    # Legacy pairing does not substitute for the Cloud Owner identity check.
+    if not principal.is_core or (not local_host(request.headers.get('host', '')) and authority(request) is None):
+        raise HTTPException(403, "Owner login required")
+    manager = _shell_manager()
+    try:
+        mount = manager.mount_entry(mount_id, principal=principal)
+        if (mount.get("placement") != "mobile" or mount.get("renderer") != "sandbox"
+                or (instance_id is not None and mount["app_instance_id"] != instance_id)
+                or not _mobile_app_enabled(principal, mount["app_key"])):
+            raise HTTPException(403, "Mobile resource mount denied")
+        return mount
+    except (RepositoryError, ExtensionError) as error:
+        _shell_lifecycle_error(error)
+
+
+@shell_router.get("/mobile/app-resource/{mount_id}/{instance_id}/{resource:path}")
+async def mobile_package_resource(request: Request, mount_id: str, instance_id: str, resource: str,
+                                  principal: RequestPrincipal = Depends(_mobile_access_dependency)):
+    _mobile_package_mount(request, principal, mount_id, instance_id)
+    response = await shell_app_resource(request, instance_id, resource, mount_id, principal)
+    response.headers["Content-Security-Policy"] = _sandbox_app_resource_csp(str(request.base_url).rstrip('/'), development=False) + "; frame-ancestors 'self'"
+    return response
+
+
+@shell_router.post("/v1/mobile/app-mounts/{mount_id}/bridge")
+async def mobile_package_bridge(request: Request, mount_id: str,
+                                principal: RequestPrincipal = Depends(_mobile_access_dependency)):
+    mount = _mobile_package_mount(request, principal, mount_id)
+    body = await request.json()
+    if not isinstance(body, dict) or set(body) - {'method'}:
+        raise HTTPException(422, "Invalid Mobile bridge request")
+    if body.get('method') == 'context':
+        return {"appId": mount['app_key'], "instanceId": mount['app_instance_id'],
+                "viewMountId": mount['id'], "surface": "mobile", "capabilities": []}
+    # No arbitrary URLs, tools or implicit desktop capabilities cross this boundary.
+    raise HTTPException(403, "Mobile capability is not granted")
+
+
+@shell_router.get("/mobile/app-content/studio-resource/{instance_id}/resources/{resource:path}")
+async def mobile_studio_resource(
+    request: Request, instance_id: str, resource: str, mount_id: str,
+    principal: RequestPrincipal = Depends(_mobile_access_dependency),
+):
+    from ai2apps.web.owner_studio_gateway import STUDIO_APPS
+    if not principal.is_core:
+        raise HTTPException(403, "Owner Studio access required")
+    manager = _shell_manager()
+    try:
+        mount = manager.mount_entry(mount_id, principal=principal)
+        context = mount.get("context") or {}
+        studio_id = context.get("studioId")
+        studio_instance = context.get("studioInstanceId")
+        if (studio_id not in STUDIO_APPS or not studio_instance
+                or mount["app_instance_id"] != instance_id
+                or mount.get("renderer") != "sandbox"):
+            raise HTTPException(403, "Studio resource mount denied")
+        entry = manager.instance_entry(studio_instance, principal=principal)
+        if entry.get("app_key") != studio_id:
+            raise HTTPException(403, "Studio instance mismatch")
+    except (RepositoryError, ExtensionError) as error:
+        _shell_lifecycle_error(error)
+    response = await shell_app_resource(request, instance_id, resource, mount_id, principal)
+    policy = response.headers.get("Content-Security-Policy", "default-src 'none'")
+    response.headers["Content-Security-Policy"] = policy + "; frame-ancestors 'self'"
+    return response
 
 
 @shell_router.get("/mobile/app-content/{app_id}", response_class=HTMLResponse)
@@ -2820,6 +3040,13 @@ async def remote_mobile_app_content(
     app_id: str,
     principal: RequestPrincipal = Depends(_mobile_access_dependency),
 ):
+    from ai2apps.web.owner_studio_gateway import STUDIO_APPS
+    # Reject unavailable/privileged Apps before consulting device exposure state.
+    _require_system_app_access(app_id, principal)
+    if app_id in STUDIO_APPS and not principal.is_core:
+        raise HTTPException(403, "Owner Studio access required")
+    if not _mobile_app_enabled(principal, app_id):
+        raise HTTPException(403, "Owner App route denied")
     return _system_app_content_response(
         request,
         app_id,
@@ -2838,7 +3065,7 @@ async def remote_mobile_chat(
     return templates.TemplateResponse(
         request,
         "mobile_chat.html",
-        {},
+        {"owner_home": principal.authentication_type == "owner_home_lease"},
         headers={
             "Content-Security-Policy": (
                 "default-src 'self'; frame-ancestors 'self'; object-src 'none'; "
@@ -2855,6 +3082,9 @@ def _mobile_internal_headers() -> dict[str, str]:
 
 
 def _mobile_proxy_auth_headers(request: Request) -> dict[str, str]:
+    from ai2apps.web.owner_home_gateway import MARKER
+    if request.scope.get(MARKER) is not None:
+        raise HTTPException(403, "Owner authority cannot use the general proxy")
     local_session = getattr(request.state, "ai2apps_mobile_local_session", None)
     if isinstance(local_session, str) and local_session:
         runtime = _get_platform_runtime() if _get_platform_runtime is not None else None
@@ -2881,6 +3111,9 @@ async def _mobile_platform_proxy(
     headers: dict[str, str] | None = None,
 ) -> Response:
     """Call one allowlisted Platform API from the cookie-authenticated gateway."""
+    from ai2apps.web.owner_home_gateway import authority, chat_proxy
+    if authority(request) is not None:
+        return await chat_proxy(request, method, path, payload)
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=request.app),
         base_url="http://ai2apps.mobile.internal",
@@ -3039,6 +3272,9 @@ async def remote_mobile_models(
     principal: RequestPrincipal = Depends(_mobile_access_dependency),
 ):
     _require_system_app_access("ai2apps.general-chat", principal)
+    from ai2apps.web.owner_home_gateway import authority, models
+    if authority(request) is not None:
+        return await models(request)
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=request.app),
         base_url="http://ai2apps.mobile.internal",
@@ -3078,6 +3314,9 @@ async def remote_mobile_chat_completions(
         "temperature": payload.get("temperature", 0.7),
         "max_tokens": min(max_tokens, 8192),
     }
+    from ai2apps.web.owner_home_gateway import authority, completion
+    if authority(request) is not None:
+        return await completion(request, forwarded)
     client = httpx.AsyncClient(
         transport=httpx.ASGITransport(app=request.app),
         base_url="http://ai2apps.mobile.internal",
@@ -3596,6 +3835,7 @@ async def shell_app_resource(
         origin = str(request.base_url).rstrip("/")
         development = (
             entry.get("source") == "development"
+            and not request.url.path.startswith("/mobile/")
             and os.environ.get("AI2APPS_ALLOW_DEVELOPMENT_RUNTIME") == "1"
         )
         headers["Content-Security-Policy"] = _sandbox_app_resource_csp(
@@ -4207,10 +4447,17 @@ def _system_app_content_response(
     # avoid a broad routing refactor. Long-lived API credentials are never
     # rendered into system App HTML.
     del include_api_key
+    headers = {}
+    if mobile_surface:
+        headers = {"Cache-Control": "no-store", "Content-Security-Policy":
+            "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; "
+            "frame-src 'self'; frame-ancestors 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"}
     return templates.TemplateResponse(
         request,
         template_name,
         context,
+        headers=headers,
     )
 
 
@@ -4728,36 +4975,7 @@ def _development_model_display_name(
     return f"Dev: {path}"
 
 
-def _cloud_model_capabilities(model: dict[str, Any]) -> set[str]:
-    """Normalize provider metadata and conservative name hints for routing."""
-
-    raw = model.get("capabilities")
-    capabilities = {
-        re.sub(r"(?<!^)(?=[A-Z])", "_", str(key)).lower().replace("-", "_")
-        for key, enabled in (raw.items() if isinstance(raw, dict) else [])
-        if enabled
-    }
-    if isinstance(raw, dict) and raw.get("imageInput"):
-        capabilities.add("image_recognition")
-    text = " ".join(
-        str(model.get(key) or "").lower() for key in ("id", "name")
-    )
-    if any(token in text for token in ("gpt-image", "dall-e", "imagen", "flux")):
-        capabilities.add("image_generation")
-    if any(token in text for token in ("sora", "veo", "video-generation", "video_gen")):
-        capabilities.add("video_generation")
-    if any(token in text for token in ("whisper", "transcribe", "speech-to-text", "asr")):
-        capabilities.add("speech_recognition")
-    if any(
-        token in text
-        for token in ("vision", "-vl", "gemini", "claude", "gpt-4", "gpt-5")
-    ):
-        capabilities.add("image_recognition")
-    if not capabilities.intersection(
-        {"image_generation", "video_generation", "speech_recognition"}
-    ):
-        capabilities.add("work")
-    return capabilities
+from ai2apps.model_capabilities import cloud_model_capabilities as _cloud_model_capabilities
 
 
 async def _ai2apps_cloud_provider(
@@ -10818,3 +11036,12 @@ async def remove_upload_task(task_id: str, is_admin: bool = Depends(require_admi
     if not success:
         raise HTTPException(status_code=404, detail="Task not found or still active")
     return {"success": True}
+
+
+from ai2apps.web.space_routes import create_space_router
+
+shell_router.include_router(create_space_router(
+    _remote_manager,
+    mobile_renderer=lambda request: templates.TemplateResponse(request, "mobile.html", {}),
+    extension_provider=lambda: _get_platform_runtime().extension_manager,
+))

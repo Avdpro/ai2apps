@@ -7,7 +7,7 @@ function harness(fail=false) {
   const handlers = {};
   const emoji = {value:'',setCustomValidity(v){this.error=v;},reportValidity(){},addEventListener(k,fn){handlers[k]=fn;}};
   const priority = {value:'C',addEventListener(k,fn){handlers['priority:'+k]=fn;}};
-  const form = {elements:{emoji,priority,status:{value:'not_started',addEventListener(k,fn){handlers['status:'+k]=fn;}},progress:{value:'0',blur(){this.blurred=true;},reportValidity(){return true;},addEventListener(k,fn){handlers['progress:'+k]=fn;}},title:{value:'Unsaved title'}}};
+  const form = {elements:{emoji,priority,executor:{value:'internal',addEventListener(k,fn){handlers['executor:'+k]=fn;}},status:{value:'not_started',addEventListener(k,fn){handlers['status:'+k]=fn;}},progress:{value:'0',blur(){this.blurred=true;},reportValidity(){return true;},addEventListener(k,fn){handlers['progress:'+k]=fn;}},title:{value:'Unsaved title'}}};
   const task = {id:'one',title:'Saved title',description:'Saved description',emoji:'',priority:'C',status:'not_started',progress:0,revision:1};
   const calls=[],errors=[];
   const slider={value:'0',blur(){this.blurred=true;},focus(){},addEventListener(k,fn){handlers['slider:'+k]=fn;}};
@@ -62,3 +62,5 @@ test('progress slider previews while dragging and saves on commit',async()=>{
   assert.equal(h.slider.blurred,true);assert.equal(h.form.elements.progress.blurred,true);
   assert.equal(h.context.dirty,false);
 });
+
+test('executor changes autosave without saving unrelated draft fields',async()=>{const h=harness();h.form.elements.executor.value='codex_desktop';h.handlers['executor:change']();await h.context.fieldSaveQueue;assert.equal(h.calls[0].executor,'codex_desktop');assert.equal(h.calls[0].title,'Saved title');assert.equal(h.context.state.tasks[0].executor,'codex_desktop');});

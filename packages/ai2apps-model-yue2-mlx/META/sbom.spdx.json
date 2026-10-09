@@ -1,0 +1,25 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "ai2apps-model-yue2-mlx-0.1.0",
+  "documentNamespace": "https://ai2apps.com/spdx/model-yue2-mlx/0.1.0",
+  "creationInfo": {
+    "creators": [
+      "Organization: AI2Apps"
+    ],
+    "created": "2026-10-06T00:00:00Z"
+  },
+  "packages": [
+    {
+      "name": "yue2-mlx",
+      "SPDXID": "SPDXRef-Model",
+      "versionInfo": "3d21f8f5d31be867f4c3b2e6beafb0f2e52f8c10",
+      "downloadLocation": "https://github.com/multimodal-art-projection/YuE/tree/3d21f8f5d31be867f4c3b2e6beafb0f2e52f8c10",
+      "filesAnalyzed": false,
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "copyrightText": "See included LICENSE and META/licenses."
+    }
+  ]
+}

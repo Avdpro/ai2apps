@@ -128,7 +128,7 @@ class TestModelsListAudio:
             mock_state.settings_manager.get_settings.return_value = MagicMock(
                 model_alias=None, is_hidden=False
             )
-            with TestClient(app, raise_server_exceptions=False) as client:
+            with TestClient(app, base_url="http://127.0.0.1", raise_server_exceptions=False) as client:
                 yield client, mock_pool
 
     @pytest.fixture
@@ -149,7 +149,7 @@ class TestModelsListAudio:
             mock_state.settings_manager.get_settings.return_value = MagicMock(
                 model_alias=None, is_hidden=False
             )
-            with TestClient(app, raise_server_exceptions=False) as client:
+            with TestClient(app, base_url="http://127.0.0.1", raise_server_exceptions=False) as client:
                 yield client, mock_pool
 
     def test_models_list_returns_200(self, client_with_stt):

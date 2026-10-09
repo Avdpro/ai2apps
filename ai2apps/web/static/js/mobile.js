@@ -20,6 +20,8 @@
     const switcherEmpty = root.querySelector('[data-mobile-switcher-empty]');
     const toast = root.querySelector('.mobile-toast');
 
+    let catalogReady = false;
+    let bootError = "应用列表尚未加载完成，请稍候。";
     let apps = [];
     let appsById = new Map();
     let mounts = new Map();
@@ -36,7 +38,10 @@
     }
 
     function icon(name) {
-        const safe = /^[a-z0-9-]{1,48}$/.test(name || '') ? name : 'app-window';
+        let safe = /^[a-z0-9-]{1,48}$/.test(name || '') ? name : 'app-window';
+        if (safe === 'gallery-stacked-horizontal') safe = 'images';
+        const key = safe.replace(/(^|-)([a-z])/g, (_, prefix, letter) => letter.toUpperCase());
+        if (window.lucide?.icons && !window.lucide.icons[key]) safe = 'app-window';
         return '<i data-lucide="' + safe + '"></i>';
     }
 
@@ -55,8 +60,10 @@
         }, options || {}));
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
-            const detail = payload.detail;
-            throw new Error(typeof detail === 'string' ? detail : detail?.message || 'Request failed');
+            const detail = payload.detail || payload.error?.message;
+            const error = new Error(typeof detail === 'string' ? detail : detail?.message || ('Request failed (HTTP ' + response.status + ')'));
+            error.status = response.status;
+            throw error;
         }
         return payload;
     }
@@ -72,7 +79,11 @@
         return {
             id: item.app_key,
             name: item.display_name || item.app_key,
-            description: item.description || '',
+            description: document.body.dataset.ownerHome && item.app_key === 'ai2apps.general-chat'
+                ? (document.documentElement.lang.startsWith('zh')
+                    ? '文字聊天，历史记录保留在你的 Mac。'
+                    : 'Text chat, with history kept on your Mac.')
+                : item.description || '',
             navigation: item.navigation || { icon: 'app-window', category: 'Apps' },
             instances: Array.isArray(item.instances) ? item.instances : [],
             renderer: item.mobile_renderer,
@@ -90,7 +101,13 @@
         )).join('');
         launcherEmpty.hidden = visible.length > 0;
 
-        homeApps.innerHTML = apps.slice(0, 4).map((app) => (
+        const quickStartIds = new Set(apps.slice(0, 4).map((app) => app.id));
+        for (const id of ['ai2apps.imagine-studio', 'ai2apps.readaloud', 'ai2apps.video-studio']) {
+            quickStartIds.add(id);
+        }
+        const quickStartApps = Array.from(quickStartIds)
+            .map((id) => apps.find((app) => app.id === id)).filter(Boolean);
+        homeApps.innerHTML = quickStartApps.map((app) => (
             '<button class="mobile-home-app" type="button" data-mobile-app="' + escapeHtml(app.id) + '">' +
             appIcon(app) + '<strong>' + escapeHtml(app.name) + '</strong><small>' +
             escapeHtml(app.description || app.navigation.category) + '</small></button>'
@@ -213,15 +230,33 @@
             const frame = document.createElement('iframe');
             const token = crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random();
             frame.className = 'mobile-app-frame';
+            if(mount.renderer==='sandbox')frame.setAttribute('sandbox','allow-scripts allow-forms allow-downloads');
             frame.title = app.name;
             frame.allow = 'clipboard-read; clipboard-write';
             frame.referrerPolicy = 'same-origin';
-            frame.addEventListener('load', () => { if (activeAppId === app.id) loading.hidden = true; });
-            record = { frame, token, mountId: mount.id, instanceId: mount.app_instance_id, lastUsed: Date.now() };
+            frame.addEventListener('load', () => {
+                let documentReady = false;
+                try {
+                    const doc = frame.contentDocument;
+                    if (doc?.URL === 'about:blank') return;
+                    documentReady = Boolean(doc?.body?.children.length && doc.contentType === 'text/html');
+                } catch (_) { /* A blocked iframe may expose no same-origin document. */ }
+                documentReady = documentReady || Boolean(record.ready);
+                record.loaded = documentReady;
+                record.failed = !documentReady;
+                if (activeAppId === app.id && frames.get(app.id) === record) {
+                    loading.hidden = true;
+                    errorView.hidden = documentReady;
+                    if (!documentReady) errorMessage.textContent = '应用页面未能加载，可能被公网嵌入策略阻止。请返回 Home 重试；若持续出现，请检查设备和 Cloud 网关。';
+                }
+            });
+            record = { frame, token, renderer: mount.renderer, loaded: false, mountId: mount.id, instanceId: mount.app_instance_id, lastUsed: Date.now() };
             frames.set(app.id, record);
             frameHost.appendChild(frame);
             frame.src = framedUrl(mount.content_url, token, mount);
         }
+        loading.hidden = Boolean(record.loaded || record.failed);
+        if (record.failed) { errorView.hidden = false; errorMessage.textContent = '应用页面未能加载，请关闭此 App 后重试；若持续出现，请检查公网嵌入策略。'; }
         record.lastUsed = Date.now();
         record.frame.hidden = false;
         record.frame.contentWindow?.postMessage({ type: 'ai2apps.host.activate', mountToken: record.token }, '*');
@@ -232,6 +267,7 @@
     }
 
     async function openApp(appId, push) {
+        if (!catalogReady) { showToast(bootError); return; }
         const app = appsById.get(appId);
         if (!app) return showToast('This App is not Mobile Ready');
         const requestId = ++sequence;
@@ -241,12 +277,24 @@
         closeOverlays();
         try {
             const existing = mounts.get(appId);
-            const mount = await request(
-                existing
-                    ? '/v1/mobile/app-instances/' + encodeURIComponent(existing.app_instance_id) + '/focus'
-                    : '/v1/mobile/apps/' + encodeURIComponent(appId) + '/open',
-                { method: 'POST' }
-            );
+            let mount;
+            try {
+                mount = await request(
+                    existing
+                        ? '/v1/mobile/app-instances/' + encodeURIComponent(existing.app_instance_id) + '/focus'
+                        : '/v1/mobile/apps/' + encodeURIComponent(appId) + '/open',
+                    { method: 'POST' }
+                );
+            } catch (error) {
+                // A retained Mobile tab can outlive its server-side App instance.
+                // Recover once through the normal authorized App opening route.
+                if (!existing || error.status !== 404 || requestId !== sequence) throw error;
+                mounts.delete(appId);
+                const stale = frames.get(appId);
+                stale?.frame.remove();
+                frames.delete(appId);
+                mount = await request('/v1/mobile/apps/' + encodeURIComponent(appId) + '/open', {method:'POST'});
+            }
             if (requestId !== sequence) return;
             displayMount(app, Object.assign(mount, { lastUsed: Date.now() }), push);
         } catch (error) {
@@ -287,10 +335,17 @@
         const message = event.data || {};
         if (message.mountToken !== record.token || message.instanceId !== record.instanceId) return;
         if (message.type === 'ai2apps.shell.ready') {
+            let context={surface:'mobile'};
+            if(record.renderer==='sandbox'){
+                try {context=await request('/v1/mobile/app-mounts/'+encodeURIComponent(record.mountId)+'/bridge',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({method:'context'})});}
+                catch(error){record.failed=true;loading.hidden=true;errorView.hidden=false;errorMessage.textContent=error.message;return;}
+                record.ready=true;record.loaded=true;record.failed=false;
+                if(frames.get(activeAppId)===record){loading.hidden=true;errorView.hidden=true;}
+            }
             event.source.postMessage({
                 type: 'ai2apps.host.context', mountToken: record.token,
                 instanceId: record.instanceId, viewMountId: record.mountId,
-                context: { surface: 'mobile' },
+                context,
             }, '*');
         } else if (message.type === 'ai2apps.shell.open-launcher') {
             openOverlay('launcher');
@@ -299,7 +354,7 @@
         } else if (message.type === 'ai2apps.shell.set-title' && typeof message.title === 'string') {
             title.textContent = message.title.slice(0, 80);
         } else if (message.type === 'ai2apps.shell.close') {
-            await closeApp(activeAppId);
+            await closeApp(Array.from(frames.entries()).find(([,item])=>item===record)?.[0]);
             sendBridgeResponse(event.source, message, true, { closed: true });
         } else if (message.requestId) {
             sendBridgeResponse(event.source, message, false, null, {
@@ -333,14 +388,18 @@
             const fragment = new URLSearchParams(location.hash.slice(1));
             const handoff = fragment.get('handoff');
             if (handoff) {
-                history.replaceState(null, '', '/mobile/complete');
-                await request('/v1/mobile/session/exchange', {
+                const memberHandoff = location.pathname === '/mobile/member/complete';
+                history.replaceState(null, '', location.pathname);
+                await request(memberHandoff ? '/v1/mobile/member-session/exchange' : '/v1/mobile/session/exchange', {
                     method: 'POST',
                     headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
                     body: JSON.stringify({ handoff: handoff }),
                 });
                 location.replace('/mobile');
                 return;
+            }
+            if (location.pathname === '/mobile/member/complete' || location.pathname === '/mobile/complete') {
+                throw new Error('授权交接已失效，请返回扫码后的账户页面，重新点击“进入我的应用”。');
             }
             const [catalog, restored] = await Promise.all([
                 request('/v1/mobile/apps'),
@@ -351,13 +410,21 @@
             (restored.items || []).forEach((mount, index) => {
                 if (appsById.has(mount.app_key)) mounts.set(mount.app_key, Object.assign(mount, { lastUsed: Date.now() - index }));
             });
+            catalogReady = true;
             renderCatalog('');
             renderDock();
             const appId = new URLSearchParams(location.hash.slice(1)).get('app');
             if (appId && appsById.has(appId)) openApp(appId, false);
             else showHome(false);
         } catch (error) {
-            homeApps.innerHTML = '<p class="mobile-empty">Mobile Apps are unavailable: ' + escapeHtml(error.message) + '</p>';
+            bootError = error.message;
+            homeApps.innerHTML = '<p class="mobile-empty">' + escapeHtml(bootError) + '</p>';
+            const connection = root.querySelector('.mobile-connection');
+            connection.textContent = '未连接';
+            root.querySelector('.mobile-hero-status').textContent = '未能完成连接，请重新进入';
+            root.querySelector('.mobile-activity-card').hidden = true;
+            const reauthorize = root.querySelector('.mobile-reauthorize');
+            if (reauthorize) reauthorize.hidden = false;
         }
         refreshIcons();
     }

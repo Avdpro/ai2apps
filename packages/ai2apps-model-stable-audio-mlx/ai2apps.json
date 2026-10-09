@@ -1,0 +1,88 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/model-stable-audio-mlx",
+    "type": "service",
+    "version": "0.1.1",
+    "displayName": "Stable Audio 3 Small MLX",
+    "description": "Native MLX text-to-music and sound effects, 1–120 seconds. Powered by Stability AI. Weight download requires acceptance of Stability AI and Gemma terms."
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": [
+      "darwin"
+    ],
+    "architectures": [
+      "arm64"
+    ],
+    "minimumOsVersion": "26.2"
+  },
+  "entrypoints": [
+    {
+      "name": "model-worker",
+      "kind": "service",
+      "path": "service.yaml"
+    }
+  ],
+  "permissions": [
+    {
+      "capability": "model-weights.huggingface-cache.read",
+      "reason": "Generate music and effects from a declared checkpoint using Metal.",
+      "required": true
+    },
+    {
+      "capability": "accelerator.metal",
+      "reason": "Generate music and effects from a declared checkpoint using Metal.",
+      "required": true
+    }
+  ],
+  "dependencies": [
+    {
+      "packageId": "ai2apps/runtime-omlx",
+      "version": ">=1.8.9 <2.0.0",
+      "optional": false
+    }
+  ],
+  "files": [],
+  "sbom": {
+    "format": "spdx-json-2.3",
+    "path": "META/sbom.spdx.json"
+  },
+  "discovery": {
+    "kind": "model",
+    "categories": [
+      "speech"
+    ],
+    "tasks": [
+      "music-generation",
+      "sound-effects-generation"
+    ]
+  },
+  "modelProfile": {
+    "sizeBytes": 1704751891,
+    "minimumMemoryBytes": 8589934592,
+    "scores": {
+      "speed": 5,
+      "capability": 3
+    },
+    "benchmark": {
+      "label": "10–30 second MLX generation including load, 2026-10-05",
+      "device": "Apple M5 Max 128 GiB"
+    }
+  },
+  "modelInstall": {
+    "serviceKey": "ai2apps.model.stable-audio-mlx",
+    "models": [
+      {
+        "id": "ai2apps.model.stable-audio-mlx/music",
+        "label": "Music / 音乐",
+        "recommended": true
+      },
+      {
+        "id": "ai2apps.model.stable-audio-mlx/sfx",
+        "label": "Sound Effects / 音效",
+        "recommended": false
+      }
+    ]
+  }
+}

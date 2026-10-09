@@ -29,6 +29,15 @@ class TodoStore:
                 CREATE INDEX IF NOT EXISTS run_owner ON runs(owner,task_id);
             """)
 
+        from .activity import install
+        with self.connect() as db:
+            install(db)
+
+    def activity(self, owner, **options):
+        from .activity import query
+        with self.connect() as db:
+            return query(db, owner, **options)
+
     @contextmanager
     def connect(self):
         db = sqlite3.connect(self.root / "todo.sqlite3", timeout=10)
@@ -185,9 +194,18 @@ class TodoStore:
                 if p["directory_id"] != data["directory_id"]:
                     raise ValueError("Parent must belong to the same directory")
                 parent = p["parent_id"]
+            if old and old["directory_id"] == data["directory_id"] and old["parent_id"] == data["parent_id"]:
+                # Editing content must never change the manual sibling order.
+                data["position"] = old.get("position", 0)
+            else:
+                siblings = [json.loads(row["data"]) for row in db.execute(
+                    "SELECT data FROM tasks WHERE owner=?", (owner,))]
+                data["position"] = max((t.get("position", 0) for t in siblings
+                    if t.get("directory_id") == data["directory_id"]
+                    and t.get("parent_id") == data["parent_id"]), default=-1) + 1
             id = id or uuid.uuid4().hex
             db.execute(
-                "INSERT OR REPLACE INTO tasks VALUES(?,?,?,?,?,?)",
+                "INSERT INTO tasks VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data,revision=excluded.revision,next_due=excluded.next_due",
                 (
                     id,
                     owner,
@@ -345,6 +363,42 @@ class TodoStore:
         with self.connect() as db:
             db.execute("DELETE FROM attachments WHERE id=? AND owner=?", (id, owner))
             self._touch(db, owner, attachment["task_id"])
+
+    def review_run(self, owner, id, decision, revision):
+        if decision not in ("completed", "continue"):
+            raise ValueError("Invalid review decision")
+        with self.connect() as db:
+            row = db.execute("SELECT * FROM runs WHERE id=? AND owner=?", (id, owner)).fetchone()
+            if not row:
+                raise KeyError("Run not found")
+            data = json.loads(row["data"])
+            if data.get("review"):
+                if data["review"]["decision"] != decision:
+                    raise ValueError("Run was already reviewed")
+                return data["review"]
+            if row["status"] != "ended":
+                raise ValueError("Only ended runs can be reviewed")
+            latest = db.execute("SELECT id FROM runs WHERE owner=? AND task_id=? ORDER BY rowid DESC LIMIT 1", (owner, row["task_id"])).fetchone()
+            if latest["id"] != id:
+                raise ValueError("Review the latest execution instead")
+            task = self.task(db.execute("SELECT * FROM tasks WHERE id=? AND owner=?", (row["task_id"], owner)).fetchone())
+            if task["revision"] != revision:
+                raise ValueError("Project changed; refresh before reviewing")
+            if task.get("archived_at") or task.get("deleted_at"):
+                raise ValueError("Restore the project before reviewing")
+            now = now_text()
+            updated = {**task}
+            if decision == "completed":
+                updated.update(status="completed", progress=100, completed=True,
+                               completed_at=task.get("completed_at") or now)
+            else:
+                updated.update(status="in_progress", completed=False, completed_at=None,
+                               progress=0 if task["progress"] == 100 else task["progress"])
+            updated.update(updated_at=now, update_time_estimated=False)
+            data["review"] = {"decision": decision, "reviewed_at": now, "reviewed_by": owner}
+            db.execute("UPDATE tasks SET data=?,revision=revision+1 WHERE id=? AND owner=?", (json.dumps(updated), task["id"], owner))
+            db.execute("UPDATE runs SET data=? WHERE id=? AND owner=?", (json.dumps(data), id, owner))
+            return data["review"]
 
     def run_update(self, id, status, **values):
         with self.connect() as db:

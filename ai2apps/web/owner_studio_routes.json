@@ -1,0 +1,652 @@
+[
+  {
+    "module": "imagine_studio",
+    "method": "GET",
+    "path": "/v1/platform/imagine-studio/models"
+  },
+  {
+    "module": "imagine_studio",
+    "method": "GET",
+    "path": "/v1/platform/imagine-studio/mini-apps"
+  },
+  {
+    "module": "imagine_studio",
+    "method": "GET",
+    "path": "/v1/platform/imagine-studio/drafts/{mini_app_id:path}"
+  },
+  {
+    "module": "imagine_studio",
+    "method": "PUT",
+    "path": "/v1/platform/imagine-studio/drafts/{mini_app_id:path}"
+  },
+  {
+    "module": "imagine_studio",
+    "method": "GET",
+    "path": "/v1/platform/imagine-studio/runs"
+  },
+  {
+    "module": "imagine_studio",
+    "method": "DELETE",
+    "path": "/v1/platform/imagine-studio/runs/{run_id}"
+  },
+  {
+    "module": "imagine_studio",
+    "method": "POST",
+    "path": "/v1/platform/imagine-studio/runs"
+  },
+  {
+    "module": "imagine_studio",
+    "method": "PATCH",
+    "path": "/v1/platform/imagine-studio/runs/{run_id}"
+  },
+  {
+    "module": "imagine_studio",
+    "method": "POST",
+    "path": "/v1/platform/imagine-studio/runs/{run_id}/upscale"
+  },
+  {
+    "module": "imagine_studio",
+    "method": "POST",
+    "path": "/v1/platform/imagine-studio/runs/{run_id}/execute"
+  },
+  {
+    "module": "imagine_studio",
+    "method": "GET",
+    "path": "/v1/platform/imagine-studio/results"
+  },
+  {
+    "module": "imagine_studio",
+    "method": "POST",
+    "path": "/v1/platform/imagine-studio/results"
+  },
+  {
+    "module": "imagine_studio",
+    "method": "POST",
+    "path": "/v1/platform/imagine-studio/results/chunks"
+  },
+  {
+    "module": "imagine_studio",
+    "method": "POST",
+    "path": "/v1/platform/imagine-studio/batch-output/chunks"
+  },
+  {
+    "module": "imagine_studio",
+    "method": "GET",
+    "path": "/v1/platform/imagine-studio/results/{result_id}/content"
+  },
+  {
+    "module": "imagine_studio",
+    "method": "POST",
+    "path": "/v1/platform/imagine-studio/artifacts/{artifact_id}/gallery"
+  },
+  {
+    "module": "imagine_studio",
+    "method": "DELETE",
+    "path": "/v1/platform/imagine-studio/results/{result_id}"
+  },
+  {
+    "module": "imagine_studio",
+    "method": "DELETE",
+    "path": "/v1/platform/imagine-studio/results"
+  },
+  {
+    "module": "video_studio",
+    "method": "GET",
+    "path": "/v1/platform/video-studio/mini-apps"
+  },
+  {
+    "module": "video_studio",
+    "method": "GET",
+    "path": "/v1/platform/video-studio/upscaling/models"
+  },
+  {
+    "module": "video_studio",
+    "method": "GET",
+    "path": "/v1/platform/video-studio/upscaling/jobs"
+  },
+  {
+    "module": "video_studio",
+    "method": "POST",
+    "path": "/v1/platform/video-studio/upscaling/jobs"
+  },
+  {
+    "module": "video_studio",
+    "method": "POST",
+    "path": "/v1/platform/video-studio/upscaling/jobs/{job_id}/{action}"
+  },
+  {
+    "module": "video_studio",
+    "method": "GET",
+    "path": "/v1/platform/video-studio/studio-drafts/{mini_app_id:path}"
+  },
+  {
+    "module": "video_studio",
+    "method": "PUT",
+    "path": "/v1/platform/video-studio/studio-drafts/{mini_app_id:path}"
+  },
+  {
+    "module": "video_studio",
+    "method": "GET",
+    "path": "/v1/platform/video-studio/runs"
+  },
+  {
+    "module": "video_studio",
+    "method": "GET",
+    "path": "/v1/platform/video-studio/runs/{run_id}"
+  },
+  {
+    "module": "video_studio",
+    "method": "POST",
+    "path": "/v1/platform/video-studio/runs"
+  },
+  {
+    "module": "video_studio",
+    "method": "POST",
+    "path": "/v1/platform/video-studio/composer/sources"
+  },
+  {
+    "module": "video_studio",
+    "method": "POST",
+    "path": "/v1/platform/video-studio/composer/sources/import"
+  },
+  {
+    "module": "video_studio",
+    "method": "GET",
+    "path": "/v1/platform/video-studio/composer/mask-models"
+  },
+  {
+    "module": "video_studio",
+    "method": "POST",
+    "path": "/v1/platform/video-studio/composer/person-masks"
+  },
+  {
+    "module": "video_studio",
+    "method": "POST",
+    "path": "/v1/platform/video-studio/composer/projects/import"
+  },
+  {
+    "module": "video_studio",
+    "method": "POST",
+    "path": "/v1/platform/video-studio/composer/projects/export"
+  },
+  {
+    "module": "video_studio",
+    "method": "GET",
+    "path": "/v1/platform/video-studio/composer/sources/{source_id}/content"
+  },
+  {
+    "module": "video_studio",
+    "method": "POST",
+    "path": "/v1/platform/video-studio/runs/{run_id}/compose"
+  },
+  {
+    "module": "video_studio",
+    "method": "POST",
+    "path": "/v1/platform/video-studio/runs/{run_id}/extract-audio"
+  },
+  {
+    "module": "video_studio",
+    "method": "POST",
+    "path": "/v1/platform/video-studio/runs/{run_id}/cancel"
+  },
+  {
+    "module": "video_studio",
+    "method": "GET",
+    "path": "/v1/platform/video-studio/providers"
+  },
+  {
+    "module": "video_studio",
+    "method": "POST",
+    "path": "/v1/platform/video-studio/drafts"
+  },
+  {
+    "module": "video_studio",
+    "method": "GET",
+    "path": "/v1/platform/video-studio/drafts/{draft_id}"
+  },
+  {
+    "module": "video_studio",
+    "method": "GET",
+    "path": "/v1/platform/video-studio/drafts/{draft_id}/frames/{which}"
+  },
+  {
+    "module": "video_studio",
+    "method": "DELETE",
+    "path": "/v1/platform/video-studio/drafts/{draft_id}"
+  },
+  {
+    "module": "video_studio",
+    "method": "DELETE",
+    "path": "/v1/platform/video-studio/tasks/{task_id}"
+  },
+  {
+    "module": "video_studio",
+    "method": "DELETE",
+    "path": "/v1/platform/video-studio/runs/{run_id}"
+  },
+  {
+    "module": "video_studio",
+    "method": "POST",
+    "path": "/v1/platform/video-studio/tasks/{task_id}/retry"
+  },
+  {
+    "module": "readaloud",
+    "method": "POST",
+    "path": "/v1/platform/readaloud/training/materials"
+  },
+  {
+    "module": "readaloud",
+    "method": "POST",
+    "path": "/v1/platform/readaloud/training/materials/from-gallery/{asset_id}"
+  },
+  {
+    "module": "readaloud",
+    "method": "GET",
+    "path": "/v1/platform/readaloud/training/materials/{asset_id}/content"
+  },
+  {
+    "module": "readaloud",
+    "method": "GET",
+    "path": "/v1/platform/readaloud/mini-apps"
+  },
+  {
+    "module": "readaloud",
+    "method": "GET",
+    "path": "/v1/platform/readaloud/drafts/{mini_app_id:path}"
+  },
+  {
+    "module": "readaloud",
+    "method": "PUT",
+    "path": "/v1/platform/readaloud/drafts/{mini_app_id:path}"
+  },
+  {
+    "module": "readaloud",
+    "method": "GET",
+    "path": "/v1/platform/readaloud/runs"
+  },
+  {
+    "module": "readaloud",
+    "method": "DELETE",
+    "path": "/v1/platform/readaloud/runs/{run_id}"
+  },
+  {
+    "module": "readaloud",
+    "method": "GET",
+    "path": "/v1/platform/readaloud/runs/{run_id}"
+  },
+  {
+    "module": "readaloud",
+    "method": "POST",
+    "path": "/v1/platform/readaloud/runs"
+  },
+  {
+    "module": "readaloud",
+    "method": "POST",
+    "path": "/v1/platform/readaloud/runs/{run_id}/cancel"
+  },
+  {
+    "module": "readaloud",
+    "method": "GET",
+    "path": "/v1/platform/readaloud/outputs"
+  },
+  {
+    "module": "readaloud",
+    "method": "GET",
+    "path": "/v1/platform/readaloud/separation/history"
+  },
+  {
+    "module": "readaloud",
+    "method": "GET",
+    "path": "/v1/platform/readaloud/quick-read/history"
+  },
+  {
+    "module": "readaloud",
+    "method": "POST",
+    "path": "/v1/platform/readaloud/quick-read"
+  },
+  {
+    "module": "readaloud",
+    "method": "GET",
+    "path": "/v1/platform/readaloud/providers"
+  },
+  {
+    "module": "readaloud",
+    "method": "GET",
+    "path": "/v1/platform/readaloud/projects"
+  },
+  {
+    "module": "readaloud",
+    "method": "POST",
+    "path": "/v1/platform/readaloud/projects"
+  },
+  {
+    "module": "readaloud",
+    "method": "GET",
+    "path": "/v1/platform/readaloud/projects/{project_id}"
+  },
+  {
+    "module": "readaloud",
+    "method": "PATCH",
+    "path": "/v1/platform/readaloud/projects/{project_id}"
+  },
+  {
+    "module": "readaloud",
+    "method": "POST",
+    "path": "/v1/platform/readaloud/design/profiles"
+  },
+  {
+    "module": "readaloud",
+    "method": "POST",
+    "path": "/v1/platform/readaloud/design/preview"
+  },
+  {
+    "module": "readaloud",
+    "method": "POST",
+    "path": "/v1/platform/readaloud/design/profiles/{profile_id}/convert"
+  },
+  {
+    "module": "readaloud",
+    "method": "DELETE",
+    "path": "/v1/platform/readaloud/audio-history/{artifact_id}"
+  },
+  {
+    "module": "readaloud",
+    "method": "GET",
+    "path": "/v1/platform/readaloud/training/history"
+  },
+  {
+    "module": "readaloud",
+    "method": "POST",
+    "path": "/v1/platform/readaloud/training/profiles"
+  },
+  {
+    "module": "readaloud",
+    "method": "POST",
+    "path": "/v1/platform/readaloud/training/preview"
+  },
+  {
+    "module": "readaloud",
+    "method": "DELETE",
+    "path": "/v1/platform/readaloud/voice-profiles/{profile_id}"
+  },
+  {
+    "module": "readaloud",
+    "method": "GET",
+    "path": "/v1/platform/readaloud/voice-profiles"
+  },
+  {
+    "module": "readaloud",
+    "method": "POST",
+    "path": "/v1/platform/readaloud/voice-profiles"
+  },
+  {
+    "module": "readaloud",
+    "method": "POST",
+    "path": "/v1/platform/readaloud/projects/{project_id}/characters"
+  },
+  {
+    "module": "readaloud",
+    "method": "POST",
+    "path": "/v1/platform/readaloud/projects/{project_id}/source/analyze"
+  },
+  {
+    "module": "readaloud",
+    "method": "POST",
+    "path": "/v1/platform/readaloud/projects/{project_id}/source/apply"
+  },
+  {
+    "module": "readaloud",
+    "method": "PATCH",
+    "path": "/v1/platform/readaloud/projects/{project_id}/characters/{character_id}"
+  },
+  {
+    "module": "readaloud",
+    "method": "DELETE",
+    "path": "/v1/platform/readaloud/projects/{project_id}/characters/{character_id}"
+  },
+  {
+    "module": "readaloud",
+    "method": "POST",
+    "path": "/v1/platform/readaloud/projects/{project_id}/segments"
+  },
+  {
+    "module": "readaloud",
+    "method": "PATCH",
+    "path": "/v1/platform/readaloud/projects/{project_id}/segments/{segment_id}"
+  },
+  {
+    "module": "readaloud",
+    "method": "POST",
+    "path": "/v1/platform/readaloud/projects/{project_id}/dialogue"
+  },
+  {
+    "module": "readaloud",
+    "method": "GET",
+    "path": "/v1/platform/readaloud/projects/{project_id}/dialogue"
+  },
+  {
+    "module": "readaloud",
+    "method": "GET",
+    "path": "/v1/platform/readaloud/projects/{project_id}/segments/{segment_id}/audio/content"
+  },
+  {
+    "module": "readaloud",
+    "method": "GET",
+    "path": "/v1/platform/readaloud/projects/{project_id}/segments/{segment_id}/audio"
+  },
+  {
+    "module": "readaloud",
+    "method": "POST",
+    "path": "/v1/platform/readaloud/projects/{project_id}/segments/{segment_id}/move/{direction}"
+  },
+  {
+    "module": "readaloud",
+    "method": "DELETE",
+    "path": "/v1/platform/readaloud/projects/{project_id}/segments/{segment_id}"
+  },
+  {
+    "module": "readaloud",
+    "method": "POST",
+    "path": "/v1/platform/readaloud/projects/{project_id}/render"
+  },
+  {
+    "module": "readaloud",
+    "method": "GET",
+    "path": "/v1/platform/readaloud/render-jobs"
+  },
+  {
+    "module": "readaloud",
+    "method": "GET",
+    "path": "/v1/platform/readaloud/render-jobs/{job_id}"
+  },
+  {
+    "module": "readaloud",
+    "method": "POST",
+    "path": "/v1/platform/readaloud/render-jobs/{job_id}/cancel"
+  },
+  {
+    "module": "readaloud",
+    "method": "POST",
+    "path": "/v1/platform/readaloud/render-jobs/{job_id}/retry"
+  },
+  {
+    "module": "studio_mini_apps",
+    "method": "GET",
+    "path": "/v1/platform/studios/{studio_id}/mini-apps"
+  },
+  {
+    "module": "studio_mini_apps",
+    "method": "GET",
+    "path": "/v1/platform/studios/{studio_id}/mini-app-capabilities"
+  },
+  {
+    "module": "studio_mini_apps",
+    "method": "POST",
+    "path": "/v1/platform/studios/{studio_id}/mini-app-mounts"
+  },
+  {
+    "module": "studio_mini_apps",
+    "method": "GET",
+    "path": "/v1/platform/studios/{studio_id}/mini-app-mounts/{mount_id}/capabilities"
+  },
+  {
+    "module": "studio_mini_apps",
+    "method": "GET",
+    "path": "/v1/platform/studios/{studio_id}/mini-app-mounts/{mount_id}/avatar/{resource}"
+  },
+  {
+    "module": "studio_mini_apps",
+    "method": "POST",
+    "path": "/v1/platform/studios/{studio_id}/mini-app-mounts/{mount_id}/avatar/jobs/{job_id}/{action}"
+  },
+  {
+    "module": "studio_mini_apps",
+    "method": "GET",
+    "path": "/v1/platform/studios/{studio_id}/mini-app-mounts/{mount_id}/characters"
+  },
+  {
+    "module": "studio_mini_apps",
+    "method": "GET",
+    "path": "/v1/platform/studios/{studio_id}/mini-app-mounts/{mount_id}/voice-clone-models"
+  },
+  {
+    "module": "studio_mini_apps",
+    "method": "GET",
+    "path": "/v1/platform/studios/{studio_id}/mini-app-mounts/{mount_id}/audio-generation-models"
+  },
+  {
+    "module": "studio_mini_apps",
+    "method": "POST",
+    "path": "/v1/platform/studios/{studio_id}/mini-app-mounts/{mount_id}/audio-generation"
+  },
+  {
+    "module": "studio_mini_apps",
+    "method": "POST",
+    "path": "/v1/platform/studios/{studio_id}/mini-app-mounts/{mount_id}/invocations"
+  },
+  {
+    "module": "studio_mini_apps",
+    "method": "GET",
+    "path": "/v1/platform/studios/{studio_id}/mini-app-mounts/{mount_id}/invocations/{invocation_id}/events"
+  },
+  {
+    "module": "studio_mini_apps",
+    "method": "POST",
+    "path": "/v1/platform/studios/{studio_id}/mini-app-mounts/{mount_id}/exports"
+  },
+  {
+    "module": "studio_mini_apps",
+    "method": "POST",
+    "path": "/v1/platform/studios/{studio_id}/mini-app-mounts/{mount_id}/subtitle-refinement"
+  },
+  {
+    "module": "studio_mini_apps",
+    "method": "POST",
+    "path": "/v1/platform/studios/{studio_id}/mini-app-mounts/{mount_id}/capabilities/{capability}/invoke"
+  },
+  {
+    "module": "gallery",
+    "method": "GET",
+    "path": "/v1/platform/gallery/collections"
+  },
+  {
+    "module": "gallery",
+    "method": "POST",
+    "path": "/v1/platform/gallery/collections"
+  },
+  {
+    "module": "gallery",
+    "method": "GET",
+    "path": "/v1/platform/gallery/assets"
+  },
+  {
+    "module": "gallery",
+    "method": "POST",
+    "path": "/v1/platform/gallery/assets/import"
+  },
+  {
+    "module": "gallery",
+    "method": "POST",
+    "path": "/v1/platform/gallery/assets/import-artifact/{session_id}/{artifact_id}"
+  },
+  {
+    "module": "gallery",
+    "method": "GET",
+    "path": "/v1/platform/gallery/assets/{asset_id}"
+  },
+  {
+    "module": "gallery",
+    "method": "GET",
+    "path": "/v1/platform/gallery/assets/{asset_id}/content"
+  },
+  {
+    "module": "gallery",
+    "method": "POST",
+    "path": "/v1/platform/gallery/assets/{asset_id}/resource-handles"
+  },
+  {
+    "module": "gallery",
+    "method": "GET",
+    "path": "/v1/platform/gallery/resource-handles/{handle_id}/content"
+  },
+  {
+    "module": "workspace",
+    "method": "GET",
+    "path": "/v1/platform/sessions/{session_id}/artifacts/{artifact_id}/download"
+  },
+  {
+    "module": "cloud",
+    "method": "GET",
+    "path": "/v1/platform/cloud/ai/defaults"
+  },
+  {
+    "module": "cloud",
+    "method": "GET",
+    "path": "/v1/platform/cloud/ai/models"
+  },
+  {
+    "module": "gallery",
+    "method": "DELETE",
+    "path": "/v1/platform/gallery/collections/{collection_id}"
+  },
+  {
+    "module": "gallery",
+    "method": "PATCH",
+    "path": "/v1/platform/gallery/assets/{asset_id}"
+  },
+  {
+    "module": "gallery",
+    "method": "POST",
+    "path": "/v1/platform/gallery/collections/{collection_id}/assets/{asset_id}"
+  },
+  {
+    "module": "gallery",
+    "method": "DELETE",
+    "path": "/v1/platform/gallery/collections/{collection_id}/assets/{asset_id}"
+  },
+  {
+    "module": "gallery",
+    "method": "PUT",
+    "path": "/v1/platform/gallery/collections/{collection_id}/order"
+  },
+  {
+    "module": "gallery",
+    "method": "POST",
+    "path": "/v1/platform/gallery/assets/{asset_id}/trash"
+  },
+  {
+    "module": "gallery",
+    "method": "POST",
+    "path": "/v1/platform/gallery/assets/{asset_id}/restore"
+  },
+  {
+    "module": "gallery",
+    "method": "DELETE",
+    "path": "/v1/platform/gallery/assets/{asset_id}"
+  },
+  {
+    "module": "provisioning",
+    "method": "POST",
+    "path": "/v1/platform/capabilities/probe"
+  }
+]

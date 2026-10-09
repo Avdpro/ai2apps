@@ -71,6 +71,7 @@ MODEL_TYPES = frozenset(
         "image_upscaling",
         "audio_stt",
         "audio_tts",
+        "audio_generation",
         "audio_processing",
         "audio_detailed_transcription",
         "video_generation",
@@ -89,6 +90,7 @@ DEFAULT_CAPABILITIES: dict[str, tuple[str, ...]] = {
     "image_upscaling": ("image_upscaling",),
     "audio_stt": ("speech_recognition",),
     "audio_tts": ("speech_generation",),
+    "audio_generation": ("audio_generation",),
     "audio_processing": ("audio_processing",),
     "audio_detailed_transcription": (
         "speech_recognition",
@@ -108,6 +110,7 @@ DEFAULT_PATHS = {
     "image_upscaling": "/v1/images/upscalings",
     "audio_transcription": "/v1/audio/transcriptions",
     "audio_speech": "/v1/audio/speech",
+    "audio_generate": "/v1/audio/generations",
     "audio_process": "/v1/audio/process",
     "audio_voice_training": "/v1/audio/voices/train",
     "audio_detailed_transcription": "/v1/audio/transcriptions/detailed",
@@ -292,7 +295,7 @@ def validate_package_models(
             raw.get("weights"), field=f"models[{index}].weights"
         )
         audio_capabilities = None
-        if model_type.startswith("audio_"):
+        if model_type.startswith("audio_") and model_type != "audio_generation":
             try:
                 audio_capabilities = validate_audio_capabilities(
                     raw.get("audio_capabilities")
@@ -362,6 +365,35 @@ def validate_package_models(
             raise ModelProviderContractError(
                 f"models[{index}].metadata must contain JSON values"
             ) from exc
+        if model_type == "audio_generation":
+            generation = metadata.get("audio_generation")
+            if not isinstance(generation, dict):
+                raise ModelProviderContractError("audio_generation metadata is required")
+            if generation.get("schema") != "ai2apps.audio-generation-capabilities/v1":
+                raise ModelProviderContractError("Unsupported audio generation capability schema")
+            low, high = generation.get("minimum_duration"), generation.get("maximum_duration")
+            if (not isinstance(generation.get("task"), str)
+                or generation.get("task") not in {"music", "sound_effects"}
+                or type(low) not in (int, float) or type(high) not in (int, float)
+                or not 1 <= low <= high <= 600
+                or type(generation.get("lyrics")) is not bool
+                or (generation["task"] == "sound_effects" and generation["lyrics"])
+                or generation.get("output_formats") != ["wav"]
+                or "audio_generation" not in capabilities):
+                raise ModelProviderContractError("Invalid audio generation capabilities")
+        if model_type == "audio_generation" and "preferred_prompt_language" in generation:
+            if generation["preferred_prompt_language"] != "en":
+                raise ModelProviderContractError("Unsupported preferred audio prompt language")
+        if model_type == "audio_generation" and "workflow" in generation:
+            modes = generation.get("planning_modes")
+            limit = generation.get("max_semantic_tokens")
+            if (generation["workflow"] != "ai2apps.song-generation/v1"
+                or generation["task"] != "music" or not generation["lyrics"]
+                or not isinstance(modes, list) or not modes
+                or any(not isinstance(m, str) or m not in {"full", "melody", "off"} for m in modes)
+                or len(modes) != len(set(modes))
+                or type(limit) is not int or not 1 <= limit <= 15000):
+                raise ModelProviderContractError("Invalid song generation capabilities")
         try:
             reasoning = validate_reasoning_capabilities(metadata.get("reasoning"))
         except ReasoningCapabilitiesError as exc:
@@ -1105,13 +1137,24 @@ async def proxy_package_json(
     try:
         model = await _ensure_package_model_ready(model)
         client = httpx.AsyncClient(
-            timeout=httpx.Timeout(300.0, connect=15.0), trust_env=False
+            # Video workers can take over two hours on Spark before returning an artifact.
+            # Keep connection/upload bounds while allowing a bounded render wait.
+            timeout=httpx.Timeout(300.0, connect=15.0,
+                                  read=14400.0 if operation == "video_generation" else 300.0),
+            trust_env=False
         )
+        worker_headers = dict(model.internal_headers or {})
+        worker_request_id = request_id or body.get("idempotencyKey")
+        if worker_request_id is None and lease is not None:
+            worker_request_id = lease.ticket.request_id
+        if worker_request_id is not None:
+            worker_headers = {k: v for k, v in worker_headers.items() if k.lower() != "x-request-id"}
+            worker_headers["x-request-id"] = str(worker_request_id)
         request = client.build_request(
             "POST",
             model.endpoint + path,
             json=body,
-            headers=dict(model.internal_headers or {}),
+            headers=worker_headers,
         )
         response = await client.send(request, stream=bool(body.get("stream")))
     except httpx.HTTPError as exc:
@@ -1142,7 +1185,8 @@ async def proxy_package_json(
                 await response.aclose()
                 await client.aclose()
                 if lease is not None:
-                    await lease.release(failed=failed)
+                    await lease.release(failed=failed and response.status_code != 499,
+                                        cancelled=response.status_code == 499)
 
         return StreamingResponse(
             chunks(),
@@ -1163,7 +1207,7 @@ async def proxy_package_json(
     await response.aclose()
     await client.aclose()
     if lease is not None:
-        await lease.release(failed=status >= 400)
+        await lease.release(failed=status >= 400 and status != 499, cancelled=status == 499)
     return Response(content=content, status_code=status, headers=headers)
 
 
@@ -1245,14 +1289,25 @@ async def proxy_package_multipart(
     try:
         model = await _ensure_package_model_ready(model)
         client = httpx.AsyncClient(
-            timeout=httpx.Timeout(300.0, connect=15.0), trust_env=False
+            # Video workers can take over two hours on Spark before returning an artifact.
+            # Keep connection/upload bounds while allowing a bounded render wait.
+            timeout=httpx.Timeout(300.0, connect=15.0,
+                                  read=14400.0 if operation == "video_generation" else 300.0),
+            trust_env=False
         )
+        worker_headers = dict(model.internal_headers or {})
+        worker_request_id = request_id or fields.get("idempotencyKey")
+        if worker_request_id is None and lease is not None:
+            worker_request_id = lease.ticket.request_id
+        if worker_request_id is not None:
+            worker_headers = {k: v for k, v in worker_headers.items() if k.lower() != "x-request-id"}
+            worker_headers["x-request-id"] = str(worker_request_id)
         request = client.build_request(
             "POST",
             model.endpoint + path,
             data=fields,
             files=files,
-            headers=dict(model.internal_headers or {}),
+            headers=worker_headers,
         )
         response = await client.send(request, stream=stream)
     except httpx.HTTPError as exc:
@@ -1283,7 +1338,8 @@ async def proxy_package_multipart(
                 await response.aclose()
                 await client.aclose()
                 if lease is not None:
-                    await lease.release(failed=failed)
+                    await lease.release(failed=failed and response.status_code != 499,
+                                        cancelled=response.status_code == 499)
 
         return StreamingResponse(
             chunks(),
@@ -1304,7 +1360,7 @@ async def proxy_package_multipart(
     await response.aclose()
     await client.aclose()
     if lease is not None:
-        await lease.release(failed=status >= 400)
+        await lease.release(failed=status >= 400 and status != 499, cancelled=status == 499)
     return Response(
         content=content,
         status_code=status,

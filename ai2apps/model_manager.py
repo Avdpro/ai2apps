@@ -8,7 +8,7 @@ import os
 import re
 import threading
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -62,6 +62,13 @@ BUILTIN_CLOUD_PROVIDERS: tuple[dict[str, Any], ...] = (
         "protocol": "openai",
         "builtin": True,
     },
+    {
+        "id": "deepseek",
+        "name": "DeepSeek",
+        "base_url": "https://api.deepseek.com",
+        "protocol": "openai",
+        "builtin": True,
+    },
 )
 
 MODEL_SOURCE_LOCAL_RUNTIME = "local_runtime"
@@ -95,8 +102,10 @@ class ModelManagerStore:
         base_path: str | Path,
         *,
         secret_backend: SecretBackend | None = None,
+        cloud_defaults_enabled: Callable[[], bool] | None = None,
     ):
         self.base_path = Path(base_path).expanduser().resolve()
+        self.cloud_defaults_enabled = cloud_defaults_enabled or (lambda: True)
         self.fusion_dir = self.base_path / "fusion"
         self.cloud_path = self.base_path / "ai2apps" / "cloud-providers.json"
         self.defaults_path = self.base_path / "ai2apps" / "default-models.json"
@@ -206,6 +215,8 @@ class ModelManagerStore:
         })
 
     def cloud_default_policy(self) -> dict[str, Any]:
+        if not self.cloud_defaults_enabled():
+            return {}
         from ai2apps.cloud_defaults import CACHE_SECONDS, validate_policy
         try:
             cached = json.loads(self.cloud_defaults_path.read_text(encoding="utf-8"))
@@ -387,6 +398,19 @@ class ModelManagerStore:
                             "enabled": str(item["id"]) in enabled_ids,
                         }
                     )
+            # DeepSeek's model inventory can omit capability metadata. Apply
+            # the documented image-input contract on read, including old caches.
+            # https://api-docs.deepseek.com/guides/vision/
+            if provider_id == "deepseek":
+                for model in models:
+                    if model["id"] in {
+                        "deepseek-flash", "deepseek-v4-flash",
+                        "deepseek-v4-flash-vision-exp",
+                    }:
+                        model["capabilities"] = {
+                            **(model.get("capabilities") or {}),
+                            "imageInput": True,
+                        }
             # Provider APIs commonly return an arbitrary order.  Keep the
             # newest dated models first and place legacy/undated entries last.
             # Sorting here also upgrades already-cached provider inventories,

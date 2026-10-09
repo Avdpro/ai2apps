@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import stat
 import zipfile
 from dataclasses import dataclass
@@ -41,6 +42,16 @@ REPOSITORY_PREFIX = b"AI2APPS-REPOSITORY-SNAPSHOT-V1\n"
 PACKAGE_LIFECYCLE_PREFIX = b"AI2APPS-PACKAGE-LIFECYCLE-V1\n"
 KEY_PROOF_PREFIX = b"AI2APPS-PUBLISHER-KEY-PROOF-V1\n"
 MAX_ARTIFACT_BYTES = 1_073_741_824
+MAX_RUNTIME_ARTIFACT_BYTES = 4_294_967_296
+OFFICIAL_RUNTIME_PACKAGE_IDS = frozenset({"ai2apps/runtime-omlx", "ai2apps/runtime-cuda-torch"})
+
+def package_size_limit(package: dict[str, Any]) -> int:
+    """Resource bound only; publisher authority still requires signature/registry checks."""
+    return (MAX_RUNTIME_ARTIFACT_BYTES
+            if package.get("type") == "service" and package.get("id") in OFFICIAL_RUNTIME_PACKAGE_IDS
+            else MAX_ARTIFACT_BYTES)
+
+
 MAX_MANIFEST_BYTES = 1_048_576
 MAX_FILES = 10_000
 
@@ -545,7 +556,7 @@ def validate_manifest(value: Any) -> dict[str, Any]:
         file_paths.add(path)
         if not isinstance(item["sha256"], str) or not _SHA256.fullmatch(item["sha256"]):
             raise PackageContractError("manifest_invalid", "File digest is invalid")
-        if not isinstance(item["size"], int) or isinstance(item["size"], bool) or not 0 <= item["size"] <= MAX_ARTIFACT_BYTES:
+        if not isinstance(item["size"], int) or isinstance(item["size"], bool) or not 0 <= item["size"] <= package_size_limit(package):
             raise PackageContractError("manifest_invalid", "File size is invalid")
     for entry in entrypoints:
         if entry["path"] not in file_paths:
@@ -585,9 +596,42 @@ def hash_artifact(path: str | Path, *, max_bytes: int = MAX_ARTIFACT_BYTES) -> t
     return digest.hexdigest(), size
 
 
-def inspect_package(path: str | Path) -> InspectedContractPackage:
+def inspect_package(path: str | Path, *, max_bytes: int | None = None) -> InspectedContractPackage:
     source = Path(path).resolve(strict=True)
-    artifact_sha256, artifact_size = hash_artifact(source)
+    # Before unsigned build inspection, read only the bounded root manifest to
+    # select the exact identity's budget. Verified callers additionally bind the
+    # ceiling to the authenticated envelope before any ZIP parsing.
+    ceiling = MAX_RUNTIME_ARTIFACT_BYTES if max_bytes is None else max_bytes
+    if not 1 <= source.stat().st_size <= ceiling:
+        raise PackageContractError("artifact_size_limit", "Package artifact size is outside limits")
+    try:
+        with zipfile.ZipFile(source) as archive:
+            for entry in archive.infolist():
+                _safe_archive_path(entry.filename.rstrip("/"))
+            roots = [info for info in archive.infolist() if info.filename == "ai2apps.json"]
+            if not roots:
+                raise PackageContractError("manifest_missing", "Archive must contain root ai2apps.json")
+            if len(roots) != 1:
+                raise PackageContractError("duplicate_archive_path", "Duplicate root manifest")
+            if len(archive.infolist()) > MAX_FILES + 1:
+                raise PackageContractError("archive_file_limit", "Package has too many files")
+            if roots[0].flag_bits & 1:
+                raise PackageContractError("archive_encrypted", "Encrypted root manifest")
+            if (roots[0].external_attr >> 16) & 0o170000 not in {0, stat.S_IFREG}:
+                raise PackageContractError("archive_entry_forbidden", "Non-regular root manifest")
+            if roots[0].file_size > MAX_MANIFEST_BYTES:
+                raise PackageContractError("manifest_size_limit", "ai2apps.json exceeds 1 MiB")
+            with archive.open(roots[0]) as stream:
+                root_bytes = stream.read(MAX_MANIFEST_BYTES + 1)
+            if len(root_bytes) > MAX_MANIFEST_BYTES:
+                raise PackageContractError("manifest_size_limit", "ai2apps.json exceeds 1 MiB")
+            root_manifest = validate_manifest(json.loads(root_bytes.decode("utf-8")))
+    except zipfile.BadZipFile as error:
+        raise PackageContractError("archive_invalid", "Package is not a valid ZIP archive") from error
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise PackageContractError("manifest_invalid", "ai2apps.json must be valid UTF-8 JSON") from error
+    limit = min(ceiling, package_size_limit(root_manifest["package"]))
+    artifact_sha256, artifact_size = hash_artifact(source, max_bytes=limit)
     try:
         with zipfile.ZipFile(source) as archive:
             infos = archive.infolist()
@@ -612,16 +656,29 @@ def inspect_package(path: str | Path) -> InspectedContractPackage:
                 if info.flag_bits & 0x1:
                     raise PackageContractError("archive_encrypted", f"Encrypted entry: {name}")
                 expanded += info.file_size
-                if expanded > MAX_ARTIFACT_BYTES:
+                if expanded > limit:
                     raise PackageContractError("archive_expansion_limit", "Expanded package is too large")
-                content = archive.read(info)
+                digest = hashlib.sha256()
+                actual_size = 0
+                header = b""
+                capture = bytearray()
+                with archive.open(info) as stream:
+                    while chunk := stream.read(1024 * 1024):
+                        actual_size += len(chunk)
+                        if actual_size > info.file_size or actual_size > limit:
+                            raise PackageContractError("archive_expansion_limit", "Expanded file is too large")
+                        digest.update(chunk)
+                        if len(header) < 4:
+                            header = (header + chunk)[:4]
+                        if name == "ai2apps.json":
+                            if actual_size > MAX_MANIFEST_BYTES:
+                                raise PackageContractError("manifest_size_limit", "ai2apps.json exceeds 1 MiB")
+                            capture.extend(chunk)
                 if name == "ai2apps.json":
-                    if len(content) > MAX_MANIFEST_BYTES:
-                        raise PackageContractError("manifest_size_limit", "ai2apps.json exceeds 1 MiB")
-                    manifest_bytes = content
+                    manifest_bytes = bytes(capture)
                 else:
-                    files[name] = ContractFile(name, hashlib.sha256(content).hexdigest(), len(content))
-                    file_headers[name] = content[:4]
+                    files[name] = ContractFile(name, digest.hexdigest(), actual_size)
+                    file_headers[name] = header
     except zipfile.BadZipFile as error:
         raise PackageContractError("archive_invalid", "Package is not a valid ZIP archive") from error
     if manifest_bytes is None:
@@ -646,7 +703,10 @@ def inspect_package(path: str | Path) -> InspectedContractPackage:
         entrypoint = manifest["entrypoints"][0]["path"]
         try:
             with zipfile.ZipFile(source) as archive:
-                raw_service = archive.read(entrypoint)
+                if archive.getinfo(entrypoint).file_size > MAX_MANIFEST_BYTES:
+                    raise PackageContractError("service_entrypoint_invalid", "Service definition exceeds 1 MiB")
+                with archive.open(entrypoint) as stream:
+                    raw_service = stream.read(MAX_MANIFEST_BYTES + 1)
             if entrypoint.lower().endswith(".json"):
                 service_manifest = json.loads(raw_service.decode("utf-8"))
             else:
@@ -738,7 +798,7 @@ def _validate_signature_envelope(envelope: Any) -> dict[str, Any]:
         raise PackageContractError("envelope_invalid", "Signed package identity is invalid")
     if artifact["mediaType"] != PACKAGE_TYPES[package["type"]][1] or not isinstance(artifact["sha256"], str) or not _SHA256.fullmatch(artifact["sha256"]):
         raise PackageContractError("envelope_invalid", "Signed artifact identity is invalid")
-    if not isinstance(artifact["size"], int) or isinstance(artifact["size"], bool) or not 1 <= artifact["size"] <= MAX_ARTIFACT_BYTES:
+    if not isinstance(artifact["size"], int) or isinstance(artifact["size"], bool) or not 1 <= artifact["size"] <= package_size_limit(package):
         raise PackageContractError("envelope_invalid", "Signed artifact size is invalid")
     if not isinstance(manifest["sha256"], str) or not _SHA256.fullmatch(manifest["sha256"]):
         raise PackageContractError("envelope_invalid", "Signed manifest digest is invalid")
@@ -762,11 +822,12 @@ def verify_signed_package(
         )
     except InvalidSignature as error:
         raise PackageContractError("publisher_signature_invalid", "Publisher signature verification failed") from error
-    actual_sha256, actual_size = precomputed_hash or hash_artifact(path)
+    limit = package_size_limit(envelope["payload"]["package"])
+    actual_sha256, actual_size = precomputed_hash or hash_artifact(path, max_bytes=limit)
     artifact = envelope["payload"]["artifact"]
     if actual_sha256 != artifact["sha256"] or actual_size != artifact["size"]:
         raise PackageContractError("artifact_digest_mismatch", "Signed artifact digest or size does not match bytes")
-    inspected = inspect_package(path)
+    inspected = inspect_package(path, max_bytes=limit)
     payload = envelope["payload"]
     identity = inspected.manifest["package"]
     if (
@@ -1013,8 +1074,15 @@ def build_package(
         ):
             continue
         _safe_archive_path(relative)
-        content = file.read_bytes()
-        rows.append({"path": relative, "sha256": hashlib.sha256(content).hexdigest(), "size": len(content)})
+        digest = hashlib.sha256()
+        size = 0
+        with file.open("rb") as stream:
+            while chunk := stream.read(1024 * 1024):
+                size += len(chunk)
+                if size > package_size_limit(manifest.get("package", {})):
+                    raise PackageContractError("artifact_size_limit", "Source file exceeds Package limit")
+                digest.update(chunk)
+        rows.append({"path": relative, "sha256": digest.hexdigest(), "size": size})
     if package_type == "app" and (source_path / "app.yaml").is_file():
         try:
             import yaml
@@ -1099,7 +1167,7 @@ def build_package(
                 )
         if is_model_worker_service(service_manifest):
             native_paths = native_payload_paths(
-                (row["path"], (source_path / row["path"]).read_bytes()[:4])
+                (row["path"], _file_header(source_path / row["path"]))
                 for row in rows
             )
             declarations = service_manifest.get("native_artifacts", [])
@@ -1147,9 +1215,17 @@ def build_package(
                 info = zipfile.ZipInfo(row["path"])
                 info.date_time = (1980, 1, 1, 0, 0, 0)
                 info.external_attr = 0o100644 << 16
-                archive.writestr(info, (source_path / row["path"]).read_bytes(), compress_type=zipfile.ZIP_DEFLATED)
+                info.compress_type = zipfile.ZIP_DEFLATED
+                info.file_size = row["size"]
+                with (source_path / row["path"]).open("rb") as payload, archive.open(info, "w") as target:
+                    shutil.copyfileobj(payload, target, length=1024 * 1024)
         os.replace(temporary, output_path)
     finally:
         if temporary.exists():
             temporary.unlink()
     return inspect_package(output_path)
+
+
+def _file_header(path: Path) -> bytes:
+    with path.open("rb") as stream:
+        return stream.read(4)

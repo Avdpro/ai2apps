@@ -52,6 +52,8 @@ def test_system_app_catalog_covers_legacy_omlx_surfaces():
         "ai2apps.coder",
         "ai2apps.benchmark",
         "ai2apps.todo",
+        "ai2apps.intelligence",
+        "ai2apps.visitor-space",
     }
     assert all(app["singleton"] for app in admin_routes.SYSTEM_APPS)
 
@@ -72,12 +74,13 @@ def test_default_dock_contains_core_creation_apps():
         "ai2apps.video-studio",
         "ai2apps.imagine-studio",
         "ai2apps.todo",
+        "ai2apps.intelligence",
     }
     manifests = {manifest["id"]: manifest for manifest in SYSTEM_APP_MANIFESTS}
     assert manifests["ai2apps.readaloud"]["name"] == "Voice Studio"
 
 
-def test_discover_uses_builtin_satellite_dish_without_dock_rebuilds():
+def test_discover_uses_builtin_radar_without_dock_rebuilds():
     manifests = {manifest["id"]: manifest for manifest in SYSTEM_APP_MANIFESTS}
     icon_script = (WEB_ROOT / "static/js/ai2apps_icons.js").read_text()
     base_template = (WEB_ROOT / "templates/base.html").read_text()
@@ -87,8 +90,8 @@ def test_discover_uses_builtin_satellite_dish_without_dock_rebuilds():
         WEB_ROOT / "templates/system_apps/discover.html"
     ).read_text()
 
-    assert manifests["ai2apps.discover"]["navigation"]["icon"] == "satellite-dish"
-    assert "SatelliteDish" in lucide_script
+    assert manifests["ai2apps.discover"]["navigation"]["icon"] == "radar"
+    assert "Radar" in lucide_script
     assert "const icons = window.ai2appsIcons" in icon_script
     assert "icons.DiscoverRocket" not in icon_script
     assert "window.ai2appsIcons?.[key] || lucide.icons[key]" in base_template
@@ -97,7 +100,7 @@ def test_discover_uses_builtin_satellite_dish_without_dock_rebuilds():
     assert "function updateDockSelection()" in shell_script
     assert "wrap.dataset.dockDragId === currentId" in shell_script
     assert shell_script.count("updateDockSelection();") == 2
-    assert "data-lucide=\"satellite-dish\"" in discover_template
+    assert "data-lucide=\"radar\"" in discover_template
     assert "data-lucide=\"discover-rocket\"" not in discover_template
     assert "data-lucide=\"compass\"" not in discover_template
 
@@ -122,7 +125,7 @@ def test_incomplete_system_apps_are_visible_but_marked_unavailable():
 
 
 def test_shell_router_exposes_singleton_and_instance_urls():
-    paths = {route.path for route in admin_routes.shell_router.routes}
+    paths = {route.path for route in admin_routes.shell_router.routes if hasattr(route, "path")}
     assert "/" in paths
     assert "/apps/{app_id}" in paths
     assert "/apps/{app_id}/instances/{instance_id}" in paths
@@ -1046,6 +1049,7 @@ def test_member_shell_exposes_only_member_apps_and_no_system_control():
         "ai2apps.video-studio",
         "ai2apps.imagine-studio",
         "ai2apps.todo",
+        "ai2apps.intelligence",
     }
     assert context["can_manage_system"] is False
 
@@ -1388,7 +1392,7 @@ def test_dashboard_capabilities_have_independent_host_entries(
                 {"t": ANY, "locale_json": ANY, "current_lang": ANY}
             )
         templates.TemplateResponse.assert_called_once_with(
-            request, template_name, context
+            request, template_name, context, headers={}
         )
 
 
@@ -1595,8 +1599,7 @@ def test_discover_compares_local_and_cloud_versions_for_upgrades():
     assert "compareVersions(cloud, local) > 0" in script
     assert "localVersionLabel(item)" in source
     assert "cloudVersionLabel(item)" in source
-    assert 'x-show="showUpgrade(item)"' in source
-    assert "showUpgrade(item)" in script
+    assert "hasUpgrade(item)&&!pendingRestart(item)" in source
     assert "discover.action.upgrade" in source
     assert "isInstalled(item.packageId)&&!hasUpgrade(item)" in source
     assert "isModelReady(item)" in source
@@ -1653,7 +1656,7 @@ def test_home_entry_i18n_keys_exist_in_every_supported_locale():
     template = (WEB_ROOT / "templates" / "shell.html").read_text()
     script = (WEB_ROOT / "static" / "js" / "shell.js").read_text()
     keys = set(re.findall(
-        r"(?:t|tr)\(['\"](shell\.[a-zA-Z0-9_.]+)",
+        r"(?:t|tr)\(['\"](shell\.[a-zA-Z0-9_.]+[a-zA-Z0-9_])['\"]",
         template + script,
     ))
 

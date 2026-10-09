@@ -105,7 +105,7 @@
 {% block content %}
 <div class="discover-app" x-data="discoverApp()" x-init="init()" data-app-id="ai2apps.discover">
     <header class="discover-header">
-        <span class="discover-mark"><i data-lucide="satellite-dish"></i></span>
+        <span class="discover-mark"><i data-lucide="radar"></i></span>
         <div><div class="discover-title">{{ t('discover.header.title') }}</div><div class="discover-subtitle">{{ t('discover.header.subtitle') }}</div></div>
         <button class="discover-button discover-refresh" :disabled="busy" @click="reload()"><i data-lucide="refresh-cw" class="w-3 h-3"></i> {{ t('discover.action.refresh') }}</button>
     </header>

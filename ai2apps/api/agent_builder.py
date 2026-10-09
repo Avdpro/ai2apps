@@ -8,6 +8,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+from jsonschema.exceptions import ValidationError
 
 from ai2apps.agent_builder import (
     AgentDraftRecord,
@@ -29,6 +30,10 @@ from ai2apps.core import RepositoryError
 from ai2apps.identity import RequestPrincipal
 
 
+class AgentSourceCheckRequest(BaseModel):
+    source: dict[str, Any]
+
+
 class AgentDraftCreateRequest(BaseModel):
     agent_type: AgentType = AgentType.WEB
     name: str = Field(min_length=1, max_length=160)
@@ -46,6 +51,12 @@ class AgentDraftPatchRequest(BaseModel):
     agent_type: AgentType | None = None
 
 
+class LocalStepEvaluateRequest(BaseModel):
+    input: dict[str, Any] = Field(default_factory=dict)
+    variables: dict[str, Any] | None = None
+    steps: dict[str, Any] = Field(default_factory=dict)
+
+
 class StepEvidenceCreateRequest(BaseModel):
     outcome: StepOutcome
     evidence: dict[str, Any] = Field(default_factory=dict)
@@ -56,6 +67,7 @@ class StepEvidenceCreateRequest(BaseModel):
 
 
 class BrowserAgentRunCreateRequest(BaseModel):
+    input: dict[str, Any] = Field(default_factory=dict)
     preview: bool = False
     browser_context: dict[str, Any] = Field(default_factory=dict)
     capability_id: str | None = None
@@ -243,6 +255,18 @@ def create_agent_builder_router(
             ],
         }
 
+    @router.post("/agent-source/check")
+    def check_agent_source(
+        request: AgentSourceCheckRequest,
+        principal: RequestPrincipal = principal_dependency,
+    ):
+        """Validate source without saving, creating a run, or accessing a browser."""
+        try:
+            result = compile_source(request.source)
+            return {"valid": result.valid, "report": result.report}
+        except ValueError as error:
+            return {"valid": False, "report": {"errors": [{"path": "source", "code": "invalid_source", "message": str(error)}], "warnings": []}}
+
     @router.post("/agent-drafts", response_model=AgentDraftResponse, status_code=201)
     def create_draft(
         request: AgentDraftCreateRequest,
@@ -335,6 +359,46 @@ def create_agent_builder_router(
                 code="invalid_agent_draft",
                 message=str(error),
             )
+
+    @router.post("/agent-drafts/{draft_id}/steps/{step_name}/evaluate")
+    def evaluate_local_step(draft_id: str, step_name: str, request: LocalStepEvaluateRequest,
+                            capability_id: str | None = Query(default=None),
+                            principal: RequestPrincipal = principal_dependency):
+        from ai2apps.agent_builder.variables import initialize_variables, execute_local_step, bounded
+        from jsonschema import Draft202012Validator, ValidationError
+        store = repository()
+        if isinstance(store, JSONResponse): return store
+        try:
+            draft = store.get_draft(draft_id, principal.actor_user_id)
+            compiled = compile_source(draft.source)
+            if not compiled.valid:
+                return platform_error_response(status_code=422, code="invalid_agent_source", message="Compile the Agent source first", details=compiled.report)
+            ir = capability_ir(compiled.ir, capability_id)
+            step = next((s for s in ir.get("steps", []) if s["id"] == step_name), None)
+            if step_name and (not step or step["operation"] not in {"assign", "condition"}):
+                return platform_error_response(status_code=422, code="not_local_data_step", message="Select an assignment or condition step")
+            inputs = {**{k:v["default"] for k,v in ir.get("inputs", {}).get("properties", {}).items() if "default" in v}, **request.input}
+            Draft202012Validator(ir.get("inputs", {})).validate(inputs)
+            schema = ir.get("variables") or {"type":"object","properties":{}}
+            values = initialize_variables(schema, inputs)
+            if request.variables is not None:
+                if set(request.variables) != set(values): raise ValueError("Test variables must match declared variables")
+                for key,value in request.variables.items(): Draft202012Validator(schema["properties"][key]).validate(value)
+                values = bounded(request.variables)
+            if not step_name:
+                return {"outcome":"success", "variables":values}
+            result, values = execute_local_step(step, inputs, values, bounded(request.steps), schema)
+            return {**result, "variables":values}
+        except RepositoryError as error:
+            return repository_error_response(error)
+        except (ValueError, ValidationError) as error:
+            return platform_error_response(status_code=422, code="invalid_test_variables", message=str(error)[:500])
+
+    @router.post("/agent-drafts/{draft_id}/variables/evaluate")
+    def evaluate_initial_variables(draft_id: str, request: LocalStepEvaluateRequest,
+                                   capability_id: str | None = Query(default=None),
+                                   principal: RequestPrincipal = principal_dependency):
+        return evaluate_local_step(draft_id, "", request, capability_id, principal)
 
     @router.post(
         "/agent-drafts/{draft_id}/steps/{step_name}/plan",
@@ -454,7 +518,7 @@ def create_agent_builder_router(
                 runtime,
                 session_id=session_id,
                 ir=capability_ir(result.ir, request.capability_id),
-                invocation_input={},
+                invocation_input=request.input,
                 draft_id=draft.id,
                 generation_id=draft.active_generation_id,
                 browser_context=request.browser_context,
@@ -469,7 +533,7 @@ def create_agent_builder_router(
                 draft_id=draft.id,
                 generation_id=draft.active_generation_id,
             )
-        except (RepositoryError, ValueError) as error:
+        except (RepositoryError, ValueError, ValidationError) as error:
             if isinstance(error, RepositoryError):
                 return repository_error_response(error)
             return platform_error_response(
@@ -530,7 +594,11 @@ def create_agent_builder_router(
     ):
         runtime = runtime_provider()
         try:
-            browser_run(runtime, run_id, principal)
+            run = browser_run(runtime, run_id, principal)
+            if run.input.get('parameters', {}).get('execution_owner') == 'local':
+                interaction = next((item for item in runtime.agents.list_interactions(run_id) if item.id == interaction_id), None)
+                if interaction and interaction.request.get('control') == 'browser_bidi_action':
+                    raise ValueError('Browser actions are owned by Local; the UI may only respond to human interactions')
             response = request.get("response")
             response_id = request.get("response_id")
             if not isinstance(response, dict) or not isinstance(response_id, str):

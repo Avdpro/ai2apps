@@ -7,3 +7,38 @@ input:focus, select:focus, textarea:focus { outline:none; box-shadow:0 0 0 2px r
 @media (max-width: 760px) {
     button, input, select, textarea { font-size:16px; }
 }
+
+/* Recovery styles must be external: public Shell CSP rejects inline styles. */
+.owner-recovery {
+    position:fixed; inset:0; z-index:10000; box-sizing:border-box;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    min-height:100%; overflow:auto; padding:32px 22px;
+    padding-top:max(32px, env(safe-area-inset-top));
+    padding-bottom:max(32px, env(safe-area-inset-bottom));
+    color:#202124; text-align:center; font-family:Inter,-apple-system,BlinkMacSystemFont,sans-serif;
+    background:radial-gradient(ellipse at 90% 0%,#e6e8fb 0%,transparent 50%),
+        radial-gradient(ellipse at 0% 95%,#eee7dd 0%,transparent 50%),#f5f5f3;
+    -webkit-font-smoothing:antialiased;
+}
+.owner-recovery section {
+    flex-shrink:0; box-sizing:border-box; width:100%; max-width:380px;
+    padding:36px 26px 28px; border:1px solid #ffffff; border-radius:30px;
+    background:#ffffffeb; box-shadow:0 16px 50px #2725380a;
+}
+.owner-recovery .owner-recovery-logo {
+    display:block; width:54px; height:54px; margin:0 auto 16px;
+}
+.owner-recovery small { display:block; font-size:11px; color:#797982; letter-spacing:.18em; font-weight:700; }
+.owner-recovery h1 { font-size:25px; font-weight:650; line-height:1.35; letter-spacing:-.7px; margin:20px 0 12px; outline:none; }
+.owner-recovery p { color:#74747c; font-size:15px; font-weight:400; line-height:1.8; margin:0 0 28px; }
+.owner-recovery a,.owner-recovery button {
+    display:block; box-sizing:border-box; width:100%; padding:16px 12px;
+    border:0; border-radius:16px; background:#272438; color:#fff;
+    font:600 16px/1.4 Inter,-apple-system,sans-serif; text-decoration:none;
+    box-shadow:0 5px 12px #27243812; cursor:pointer; -webkit-tap-highlight-color:transparent;
+}
+.owner-recovery a:visited {color:#fff;}
+.owner-recovery a:active,.owner-recovery button:active {background:#3c3657;}
+.owner-recovery a:focus-visible,.owner-recovery button:focus-visible {outline:3px solid #b9b0df;outline-offset:4px;}
+.owner-recovery-footnote { margin-top:24px; font-size:12px; color:#929199; }
+@media (max-height:500px) { .owner-recovery {justify-content:flex-start;} .owner-recovery section {padding-top:24px;} }

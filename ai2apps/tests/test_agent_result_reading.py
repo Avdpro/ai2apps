@@ -127,7 +127,7 @@ async def test_durable_cloud_model_uses_session_owner_without_http_cookie(monkey
         model_invocation,
         "IdentityRepository",
         lambda _: SimpleNamespace(
-            principal_for=lambda actor: principal if actor == "owner" else None
+            local_principal_for=lambda actor: principal if actor == "owner" else None
         ),
     )
     received = {}

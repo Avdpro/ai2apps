@@ -1,7 +1,7 @@
 (function () {
     'use strict';
     window.AI2APPS_MOBILE_SURFACE = true;
-    window._t = window._t || {};
+    try { window._t = JSON.parse(document.getElementById("mobile-app-locale")?.textContent || "{}"); } catch (_) { window._t = {}; }
     window.t = window.t || function (key) { return window._t[key] !== undefined ? window._t[key] : key; };
     try {
         var stored = localStorage.getItem('omlx-chat-theme');

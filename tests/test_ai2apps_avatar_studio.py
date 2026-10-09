@@ -34,6 +34,14 @@ def test_optional_provider_stacks_and_generic_package():
         PRO,
         "ai2apps.model.echomimic-v3-mlx/default",
         "ai2apps.model.avtr1-mlx/default",
+        "ai2apps.model.minimax-h3/avatar-lightx2v-4step-4bit",
+        "ai2apps.model.minimax-h3/avatar-base-4bit",
+        "ai2apps.model.minimax-h3/avatar-base-8bit",
+        "ai2apps.model.minimax-h3/avatar-ref2va-4bit",
+        "ai2apps.model.minimax-h3/avatar-ref2va-8bit",
+        "ai2apps.model.minimax-h3/avatar-lightx2v-8step-4bit",
+        "ai2apps.model.minimax-h3/avatar-openvdn-dmd8-4bit",
+        "ai2apps.model.minimax-h3/avatar-openvdn-stageb50-4bit",
     ]
     js = (source / "web/avatar.js").read_text()
     assert "flashhead" not in js.lower() and "echomimic" not in js.lower()
@@ -300,6 +308,20 @@ def test_mount_context_cannot_override_authorized_studio(monkeypatch):
             mini_app_id="avatar", context={"studioInstanceId": "another-instance"}
         ),
         studio_instance_id="authorized-instance",
-        principal=SimpleNamespace(),
+        principal=SimpleNamespace(authentication_type="local_session"),
     )
     assert captured["context"]["studioInstanceId"] == "authorized-instance"
+
+
+def test_long_avatar_quota_requires_explicit_segment_protocol(setup):
+    models = setup[-1]
+    model = models[0]
+    model.video_capabilities['duration']['maximum_seconds'] = 3600
+    assert providers.maximum_audio_seconds(model) == 600
+    model.video_capabilities['avatar_segments'] = {
+        'schema':'ai2apps.avatar-segment/v1', 'planner':'h3-v1', 'window_frames':192}
+    assert providers.maximum_audio_seconds(model) == 3276
+    assert providers.describe_model(model,ready=True)['maximumSeconds'] == 3276
+    providers.plan_portrait(model,preset='',resolution='',duration=3276)
+    with pytest.raises(ValueError):
+        providers.plan_portrait(model,preset='',resolution='',duration=3276.01)

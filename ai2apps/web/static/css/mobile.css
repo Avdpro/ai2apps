@@ -127,3 +127,7 @@ button { -webkit-tap-highlight-color: transparent; }
     .mobile-stage, .mobile-frame-host, .mobile-loading, .mobile-error { background: #171717; }.mobile-error h2 { color: #f5f5f4; }
     .mobile-sheet { background: #1c1c1b; }.mobile-search input { color: white; }.mobile-switcher-close { color: #d4d4d4; background: #333; }
 }
+
+/* A failed authorization must not retain ready-state cards. */
+.mobile-shell [hidden] { display: none !important; }
+.mobile-reauthorize { display: block; padding: 14px; border-radius: 14px; background: #171717; color: white; text-align: center; text-decoration: none; }

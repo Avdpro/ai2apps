@@ -55,6 +55,13 @@ def transform(source: str) -> str:
         return;
       }
       const descriptor = await IOUtils.readJSON(descriptorPath);''', "Helper restart detection")
+    source = replace_once(source,
+        '      if (request.action == "open") {',
+        r'''      if (request.action == "focus_shell") {
+        // Native focus is restricted to the authenticated Local lifecycle broker.
+        focusAI2AppsWindow(window);
+        await completeShellBrowserRequest(request, "focused");
+      } else if (request.action == "open") {''', "return to Shell after editor test")
     return source
 
 

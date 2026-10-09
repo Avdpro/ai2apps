@@ -99,8 +99,12 @@ vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../ai2apps/web/static/j
     assert.equal(app.outputAudioUrl, '/v1/platform/sessions/session/artifacts/audio/download');
     assert.equal(app.audioTasks[0].id,'audio');
   }
-  app.packageMiniAppId='ai2apps.media-voice.source-separation';
-  assert.equal(app.outputAudioUrl, '/v1/platform/sessions/session/artifacts/audio/download');
+  for (const miniAppId of ['ai2apps.media-voice.source-separation','ai2apps.audio-generation.music','ai2apps.audio-generation.sfx','ai2apps.audio-generation.song']) {
+    app.packageMiniAppId=miniAppId;
+    assert.equal(app.outputAudioUrl, '/v1/platform/sessions/session/artifacts/audio/download');
+    assert.equal(app.selectedOutput.id,'audio');
+    assert.equal(app.audioTasks[0].id,'audio');
+  }
   app.packageMiniAppId='';app.pipelineMode='quick';
   await app.generateQuickRead();
   assert.equal(app.quickTasks.length, 2);
@@ -480,6 +484,38 @@ vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../ai2apps/web/static/j
     pending[1].resolve();
     await regenerate;
     assert.equal(line.text, 'new words');
+  }
+  {
+    const startup = context.window.readAloudApp();
+    context.window.AI2AppsCapabilities = undefined;
+    context.window.addEventListener = () => {};
+    context.localStorage.getItem = () => null;
+    startup.setupMiniAppChat = startup.applyResponsiveLayout = startup.icons = () => {};
+    startup.fail = error => {throw error;};
+    context.fetch = async () => ({ok:true,json:async()=>({items:[]})});
+    startup.refreshAllPackageMiniAppReadiness = () => new Promise(() => {});
+    let restores=0, draftLoaded=false, refreshed=false;
+    startup.refresh = async restore => {assert.equal(restore,false);refreshed=true;};
+    startup.loadDraft = async () => {draftLoaded=true;};
+    startup.restoreProject = async () => {assert.ok(refreshed && draftLoaded);restores++;};
+    const background=[];
+    for(const name of ['refreshRuns','refreshQuickHistory','refreshTrainingHistory','refreshOutputs','probeCapabilities']) {
+      startup[name]=()=>{assert.equal(startup.starting,false);return new Promise(resolve=>background.push(resolve));};
+    }
+    const boot=startup.init();
+    assert.equal(startup.starting,true);
+    await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(restores,1,'startup loads project detail once');
+    assert.equal(background.length,5,'independent background loads start concurrently');
+    background.forEach(resolve=>resolve());
+    await boot;
+    assert.equal(startup.starting,false);
+    let finish;
+    startup.activateMiniApp=()=>new Promise(resolve=>{finish=resolve;});
+    const switching=startup.selectMiniApp('book');
+    assert.equal(startup.starting,true);
+    finish();await switching;
+    assert.equal(startup.starting,false);
   }
   console.log('Voice Studio: project isolation and project-free Quick Read generation passed');
 })().catch(error => { console.error(error); process.exitCode = 1; });

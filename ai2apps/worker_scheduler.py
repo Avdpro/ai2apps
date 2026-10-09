@@ -66,11 +66,11 @@ class SchedulerLease:
         self.ticket = ticket
         self._released = False
 
-    async def release(self, *, failed: bool = False) -> None:
+    async def release(self, *, failed: bool = False, cancelled: bool = False) -> None:
         if self._released:
             return
         self._released = True
-        await self.scheduler._release(self.ticket.id, failed=failed)
+        await self.scheduler._release(self.ticket.id, failed=failed, cancelled=cancelled)
 
     async def __aenter__(self) -> SchedulerLease:
         return self
@@ -317,7 +317,53 @@ class WorkerJobScheduler:
             self._dispatch_locked()
             return True
 
-    async def _release(self, ticket_id: str, *, failed: bool) -> None:
+    async def owns_active_request(
+        self, service_key: str, request_id: str, *, actor_id: str,
+        app_id: str | None, session_id: str | None,
+    ) -> bool:
+        if not actor_id or not request_id:
+            return False
+        async with self._lock:
+            return any(
+                (ticket.service_key, ticket.request_id, ticket.actor_id,
+                 ticket.app_id, ticket.session_id)
+                == (service_key, request_id, actor_id, app_id, session_id)
+                for ticket in self._active.values()
+            )
+
+    async def cancel_queued_request(
+        self, service_key: str, request_id: str, *, actor_id: str,
+        app_id: str | None, session_id: str | None,
+    ) -> bool:
+        """Cancel matching queued work only; never release an active lease."""
+        if not actor_id or not request_id:
+            return False
+        async with self._lock:
+            # A reused request ID may identify both active and queued work.
+            # Never report "queue-only" cancellation while a matching lease is
+            # active: the caller must retain its Worker join/cleanup path.
+            if any((ticket.service_key, ticket.request_id, ticket.actor_id,
+                    ticket.app_id, ticket.session_id)
+                   == (service_key, request_id, actor_id, app_id, session_id)
+                   for ticket in self._active.values()):
+                return False
+            matches = [ticket for ticket in self._queued.values()
+                       if (ticket.service_key, ticket.request_id, ticket.actor_id,
+                           ticket.app_id, ticket.session_id)
+                       == (service_key, request_id, actor_id, app_id, session_id)]
+            for ticket in matches:
+                self._queued.pop(ticket.id)
+                ticket.status = QueueTicketStatus.CANCELLED
+                ticket.completed_at = self._clock()
+                self._cancelled += 1
+                waiter = self._waiters.pop(ticket.id, None)
+                if waiter is not None and not waiter.done():
+                    waiter.cancel()
+            if matches:
+                self._dispatch_locked()
+            return bool(matches)
+
+    async def _release(self, ticket_id: str, *, failed: bool, cancelled: bool = False) -> None:
         async with self._lock:
             ticket = self._active.pop(ticket_id, None)
             if ticket is None:
@@ -325,10 +371,13 @@ class WorkerJobScheduler:
             if self.resource_manager is not None:
                 self.resource_manager.release(ticket_id)
             ticket.status = (
+                QueueTicketStatus.CANCELLED if cancelled else
                 QueueTicketStatus.FAILED if failed else QueueTicketStatus.SUCCEEDED
             )
             ticket.completed_at = self._clock()
-            if failed:
+            if cancelled:
+                self._cancelled += 1
+            elif failed:
                 self._failed += 1
             else:
                 self._completed += 1

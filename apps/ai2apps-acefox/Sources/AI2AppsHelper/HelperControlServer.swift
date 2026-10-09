@@ -251,7 +251,7 @@ final class HelperControlServer: @unchecked Sendable {
         }
         guard request.version == 1,
               [
-                  "browser.launch",
+                  "browser.host.ensure", "browser.launch",
                   "browser.release",
                   "browser.delete",
                   "browser.renew",

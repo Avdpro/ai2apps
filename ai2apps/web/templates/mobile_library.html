@@ -1,0 +1,18 @@
+{% extends "mobile_base.html" %}
+{% block title %}{{ "知识库" if library == "knowledge" else "图库" }} · AI2Apps{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ mobile_static('css/mobile_library.css') }}">{% endblock %}
+{% block content %}
+<main id="library" data-library="{{ library }}">
+<header><div><small>AI2APPS</small><h1>{{ "知识库" if library == "knowledge" else "图库" }}</h1></div><button id="refresh" type="button">刷新</button></header>
+<p id="notice" role="status" aria-live="polite"></p>
+<section id="browse">
+<form id="search-form"><input id="query" type="search" aria-label="搜索" placeholder="{{ '搜索知识内容' if library == 'knowledge' else '搜索文件名' }}"><button type="submit">搜索</button></form>
+<div class="filters"><select id="collection" aria-label="{{ '知识桶' if library == 'knowledge' else '相册' }}"><option value="">全部</option></select>{% if library == 'gallery' %}<select id="kind" aria-label="媒体类型"><option value="">图片和视频</option><option value="image">图片</option><option value="video">视频</option></select>{% endif %}</div>
+<p id="count"></p><div id="items" class="{{ 'grid' if library == 'gallery' else 'list' }}"></div>
+</section>
+<section id="detail" hidden><button id="back" type="button">‹ 返回列表</button><h2 id="item-title"></h2><p id="item-info"></p>
+{% if library == 'knowledge' %}<button id="collect" type="button">收藏到手机收藏</button><article id="reading"></article>{% else %}<div id="preview"></div><button id="fullscreen" type="button">全屏预览</button><dialog id="media-dialog"><button id="close-fullscreen" type="button" aria-label="关闭全屏">关闭</button><div id="full-media"></div></dialog><a id="download" class="button" download>保存原文件</a><p class="hint">视频格式支持取决于手机浏览器；无法播放时可保存原文件。</p>{% endif %}
+</section>
+</main>
+{% endblock %}
+{% block scripts %}<script src="{{ mobile_static('js/mobile_library.js') }}"></script>{% endblock %}

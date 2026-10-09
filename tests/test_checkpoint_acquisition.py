@@ -641,3 +641,38 @@ def test_worker_snapshot_regenerates_receipt_without_rehashing_hardlinks(
         snapshot / "model.safetensors"
     ).stat().st_ino
     assert (worker / ".ai2apps/verification.json").stat().st_ino != original_receipt_inode
+
+
+def test_opt_in_page_cache_advice_covers_source_and_hashes(tmp_path, monkeypatch):
+    payload=b'verified tensor'
+    manifest=_manifest(payload)
+    source=tmp_path/'source';source.mkdir();(source/'model.safetensors').write_bytes(payload)
+    advised=[]
+    monkeypatch.setattr(checkpoint_distribution,'_release_checkpoint_file_pages',lambda f:advised.append(Path(f.name)))
+    ordinary=CheckpointCache(tmp_path/'ordinary')
+    ordinary.import_local_snapshot(manifest,source)
+    assert not advised
+    selected=CheckpointCache(tmp_path/'selected',release_page_cache=True)
+    snapshot=selected.import_local_snapshot(manifest,source)
+    assert source/'model.safetensors' in advised
+    assert selected.blob_path(manifest.files[0].sha256) in advised
+    assert selected.verified_snapshot(manifest)==snapshot
+    assert (snapshot/'model.safetensors').read_bytes()==payload
+    (source/'model.safetensors').write_bytes(b'corrupt tensor!')
+    with pytest.raises(checkpoint_distribution.CheckpointManifestError):
+        selected.import_local_snapshot(manifest,source)
+
+
+def test_page_cache_advice_is_file_scoped_and_best_effort(tmp_path, monkeypatch):
+    path=tmp_path/'large';path.touch()
+    calls=[]
+    monkeypatch.setattr(checkpoint_distribution.os,'fstat',lambda fd:SimpleNamespace(st_mode=0o100444,st_size=64*1024*1024))
+    monkeypatch.setattr(checkpoint_distribution.os,'fsync',lambda fd:calls.append(('sync',fd)))
+    monkeypatch.setattr(checkpoint_distribution.os,'POSIX_FADV_DONTNEED',4,raising=False)
+    monkeypatch.setattr(checkpoint_distribution.os,'posix_fadvise',lambda *args:calls.append(('advice',*args)),raising=False)
+    with path.open('rb') as f:
+        checkpoint_distribution._release_checkpoint_file_pages(f)
+        assert calls==[('sync',f.fileno()),('advice',f.fileno(),0,0,4)]
+        def unavailable(*args):raise OSError('unsupported')
+        monkeypatch.setattr(checkpoint_distribution.os,'posix_fadvise',unavailable)
+        checkpoint_distribution._release_checkpoint_file_pages(f)

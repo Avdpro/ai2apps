@@ -6,12 +6,12 @@ import asyncio
 import json
 from collections.abc import AsyncIterator
 
-from ai2apps.api.models import EventResponse
 from ai2apps.events.bus import EventNotificationBus
 from ai2apps.events.store import EventStore
 
 
 def encode_sse_event(event) -> str:
+    from ai2apps.api.models import EventResponse
     payload = EventResponse.from_record(event).model_dump(mode="json")
     return (
         f"id: {event.sequence}\n"

@@ -117,3 +117,33 @@ def test_inference_preserves_existing_optional_inputs_and_is_idempotent():
     assert schema["required"] == ["query"]
     assert schema["properties"]["limit"]["default"] == 10
     assert _parameterize_exploration_steps(steps, schema) == schema
+
+
+def test_post_text_is_semantic_and_upload_filename_is_not_text_parameter():
+    steps = [
+        {"operation": "input", "desc": "填写微博正文", "target": {"intent": "发布框"}, "arguments": {"value": "过年了"}},
+        {"operation": "input", "desc": "上传封面", "arguments": {"asset_ids": ["asset"], "value": "封面.png"}},
+    ]
+    schema = _parameterize_exploration_steps(steps)
+    assert list(schema["properties"]) == ["post_text"]
+    assert schema["properties"]["post_text"]["description"] == "填写微博正文"
+    assert schema["properties"]["post_text"]["title"] == "发布正文"
+    assert "value" not in steps[1]["arguments"]
+
+
+def test_legacy_generated_names_upgrade_without_filename_parameter():
+    schema = {"properties": {"value_1": {"type": "string", "default": "正文"}, "value_2": {"type": "string", "default": "图.png"}}, "required": ["value_1", "value_2"]}
+    steps = [{"operation": "input", "desc": "发布微博 ${input.value_1}", "arguments": {"value": "${input.value_1}"}}, {"operation": "input", "desc": "上传 ${input.value_2}", "arguments": {"value": "${input.value_2}", "asset_ids": ["a"]}}]
+    result = _parameterize_exploration_steps(steps, schema)
+    assert list(result["properties"]) == ["post_text"]
+    assert result["required"] == ["post_text"]
+    assert "value" not in steps[1]["arguments"]
+
+
+def test_recorded_file_binding_resolves_legacy_object_and_array():
+    from ai2apps.api.agent_platform import _recorded_attachment_id
+    props = {"file_1": {"default": {"asset_id": "a"}}, "files": {"default": [{"asset_id": "b"}, {"asset_id": "c"}]}}
+    assert _recorded_attachment_id("${input.file_1.asset_id}", props) == "a"
+    assert _recorded_attachment_id("${input.file_1[0].asset_id}", props) == "a"
+    assert _recorded_attachment_id("${input.files[1].asset_id}", props) == "c"
+    assert _recorded_attachment_id("${input.files[7].asset_id}", props) == "${input.files[7].asset_id}"

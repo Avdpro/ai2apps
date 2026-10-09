@@ -23,6 +23,9 @@
 
     let threads = [];
     let current = null;
+    let apiDefaultModel = "";
+    let lastActiveModel = "";
+    const threadModels = new Map();
     let content = null;
     let mode = 'chat';
     let attachments = [];
@@ -134,6 +137,11 @@
         )).join('');
     }
 
+    function chooseModel(saved, inherited) {
+        const available = new Set(Array.from(model.options, option => option.value).filter(Boolean));
+        return [saved, inherited, apiDefaultModel].find(id => id && available.has(id)) || '';
+    }
+
     async function loadContent(thread) {
         if (busy) return;
         current = thread;
@@ -145,6 +153,9 @@
         try {
             content = await request('/v1/mobile/chat/threads/' + encodeURIComponent(thread.id) + '/content');
             current = content.thread;
+            const saved = threadModels.get(current.id) || content.session_metadata?.mobile_model_id;
+            model.value = chooseModel(saved, '');
+            if (model.value) lastActiveModel = model.value;
             title.textContent = current.title || 'New chat';
             renderMessages();
         } finally { idle(); }
@@ -166,7 +177,7 @@
         try {
             const thread = await request('/v1/mobile/chat/threads', {
                 method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-                body: JSON.stringify({ title: '' }),
+                body: JSON.stringify({ title: '', session_metadata: { mobile_model_id: chooseModel('', model.value || lastActiveModel) } }),
             });
             threads.unshift(thread);
             await loadContent(thread);
@@ -177,8 +188,31 @@
     async function loadModels() {
         try {
             const payload = await request('/v1/mobile/models', { cache: 'no-store' });
-            const items = (payload.data || []).filter((item) => item?.id);
-            model.innerHTML = items.map((item) => '<option value="' + escapeHtml(item.id) + '">' + escapeHtml(item.identity?.displayName || item.display_name || item.name || item.id) + '</option>').join('');
+            const items = (payload.data || []).filter((item) => {
+                if (!item?.id || item.is_hidden || item.load_failed || item.checkpoint_ready === false) return false;
+                const type = String(item.model_type || item.modelType || '').toLowerCase();
+                if (type.startsWith('audio_') || ['embedding','reranker','image_generation','video_generation','text_to_speech','speech_to_text'].includes(type)) return false;
+                if (item.source_type === 'fusion' || item.owned_by === 'ai2apps-fusion') return true;
+                const caps = item.capabilities;
+                if (Array.isArray(caps)) {
+                    const names = caps.map(name => String(name).toLowerCase());
+                    if (names.some(name => ['conversation','chat','chat_completions'].includes(name))) return true;
+                    if (names.some(name => ['audio_generation','image_generation','video_generation','speech_to_text','text_to_speech','text_to_video','image_to_video','synchronized_audio','embedding','reranking'].includes(name))) return false;
+                } else if (caps && typeof caps === 'object') {
+                    if (['conversation','chat','chatCompletions','chat_completions'].some(name => caps[name] === true)) return true;
+                    if (caps.text === false || ['imageGeneration','videoGeneration','speechGeneration','speechRecognition'].some(name => caps[name] === true && caps.text !== true)) return false;
+                }
+                return true;
+            });
+            const unique = new Map(items.map(item => [item.id, item]));
+            if (apiDefaultModel && !unique.has(apiDefaultModel)) {
+                const original = unique.get(apiDefaultModel.replace('cloud/ai2apps/', 'cloud/'));
+                if (original) unique.set(apiDefaultModel, {...original, id:apiDefaultModel, display_name:(original.display_name || original.name || original.id) + ' (API Default)', identity:null});
+            }
+            items.splice(0, items.length, ...Array.from(unique.values()).sort((a,b) =>
+                (Number(!!b.is_favorite)-Number(!!a.is_favorite)) ||
+                (a.display_name || a.identity?.displayName || a.name || a.id).localeCompare(b.display_name || b.identity?.displayName || b.name || b.id, undefined, {sensitivity:'base'})));
+            model.innerHTML = '<option value="" selected>Choose a chat model</option>' + items.map((item) => '<option value="' + escapeHtml(item.id) + '">' + escapeHtml(item.identity?.displayName || item.display_name || item.name || item.id) + '</option>').join('');
             if (!items.length) model.innerHTML = '<option value="">No models available</option>';
         } catch (error) {
             model.innerHTML = '<option value="">Models unavailable</option>';
@@ -261,7 +295,7 @@
             body: JSON.stringify({
                 expected_revision: content.thread.revision,
                 title: proposedTitle == null ? current.title : proposedTitle,
-                session_metadata: Object.assign({}, content.session_metadata || {}, { last_surface: 'mobile' }),
+                session_metadata: Object.assign({}, content.session_metadata || {}, { last_surface: 'mobile', mobile_model_id: model.value }),
                 messages: messages.map((item) => ({ role: item.role, content: item.content, metadata: item.metadata || {} })),
             }),
         });
@@ -284,39 +318,76 @@
         const response = await fetch('/v1/mobile/chat/completions', {
             method: 'POST', credentials: 'same-origin',
             headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-            body: JSON.stringify({ model: model.value, messages: nextMessages.map(({ role, content }) => ({ role, content })), stream: true }),
+            body: JSON.stringify({ model: model.value, messages: nextMessages.map(({ role, content }) => ({ role, content })), stream: true, temperature: null }),
         });
         if (!response.ok) {
             const payload = await response.json().catch(() => ({}));
             throw new Error(payload.detail || 'Chat request failed');
         }
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
         let generated = '';
-        while (true) {
-            const result = await reader.read();
-            if (result.done) break;
-            buffer += decoder.decode(result.value, { stream: true });
-            const lines = buffer.split('\n');
-            buffer = lines.pop();
-            for (const line of lines) {
-                if (!line.startsWith('data: ')) continue;
-                const data = line.slice(6).trim();
-                if (data === '[DONE]') continue;
-                try {
-                    const delta = JSON.parse(data).choices?.[0]?.delta || {};
-                    if (typeof delta.reasoning_content === 'string') working('AI is reasoning', 'Planning the response', 58);
-                    if (typeof delta.content === 'string') {
-                        generated += delta.content;
-                        answer.copy.textContent = generated;
-                        working('AI is responding', 'Streaming from this Mac', 76);
-                        list.scrollTop = list.scrollHeight;
-                    }
-                } catch (_) {}
+        try {
+            generated = await readChatReply(response, (text, reasoning) => {
+                if (reasoning) working('AI is reasoning', 'Planning the response', 58);
+                else {
+                    answer.copy.textContent = text;
+                    working('AI is responding', 'Streaming from this Mac', 76);
+                    list.scrollTop = list.scrollHeight;
+                }
+            });
+            await persist(nextMessages.concat({ role: 'assistant', content: generated, metadata: { surface: 'mobile' } }));
+        } catch (error) {
+            answer.node.remove();
+            throw error;
+        }
+    }
+
+    async function readChatReply(response, update) {
+        let generated = '';
+        function consume(payload) {
+            if (payload.error) throw new Error(typeof payload.error === 'string' ? payload.error : payload.error.message || 'AI 回复失败，请重试。');
+            const choice = payload.choices?.[0];
+            const delta = choice?.delta || choice?.message || {};
+            const cloud = delta.ai2apps_cloud;
+            if (cloud?.phase === 'failed') {
+                const failure = cloud.error || cloud;
+                throw new Error(failure.message || failure.code || 'Cloud 请求失败，请重试。');
+            }
+            if (typeof delta.reasoning_content === 'string') update('', true);
+            const text = typeof delta.content === 'string' ? delta.content
+                : Array.isArray(delta.content) ? delta.content.filter(part => part?.type === 'text' || part?.type === 'output_text').map(part => typeof part.text === 'string' ? part.text : '').join('') : '';
+            if (text) {
+                generated += text;
+                update(generated, false);
             }
         }
-        await persist(nextMessages.concat({ role: 'assistant', content: generated, metadata: { surface: 'mobile' } }));
+        if ((response.headers.get('content-type') || '').includes('application/json')) {
+            consume(await response.json());
+        } else {
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            function line(value) {
+                if (!value.startsWith('data:')) return;
+                const data = value.slice(5).trim();
+                if (!data || data === '[DONE]') return;
+                let payload;
+                try { payload = JSON.parse(data); }
+                catch (_) { throw new Error('AI 回复格式异常，请重试。'); }
+                consume(payload);
+            }
+            try {
+                while (true) {
+                    const result = await reader.read();
+                    buffer += result.done ? decoder.decode() : decoder.decode(result.value, {stream:true});
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop();
+                    for (const value of lines) line(value);
+                    if (result.done) { if (buffer) line(buffer); break; }
+                }
+            } finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
+        }
+        if (!generated.trim()) throw new Error('AI 未返回可显示的回复，请重试或更换模型。');
+        return generated;
     }
 
     async function agentRun(text, richContent) {
@@ -350,6 +421,7 @@
         if (mode === 'agent' && !agent.value) return notify('Choose an Agent first');
         busy = true;
         send.disabled = true;
+        model.disabled = true;
         input.value = '';
         input.style.height = 'auto';
         const selectedAttachments = attachments.slice();
@@ -362,18 +434,34 @@
             attachments = [];
             renderAttachments();
         } catch (error) {
+            try { await refreshThreads(current?.id); } catch (_) {}
             addMessage('error', error.message, { error: true });
             notify(error.message);
-            try { await refreshThreads(current?.id); } catch (_) {}
         } finally {
             busy = false;
             send.disabled = false;
+            model.disabled = false;
             idle();
             input.focus();
         }
     }
 
-    form.addEventListener('submit', (event) => { event.preventDefault(); submit(); });
+    model.addEventListener('change', async () => {
+        if (busy || !current || !content) return;
+        const previous = content.session_metadata?.mobile_model_id || '';
+        busy = true;
+        model.disabled = true;
+        try {
+            await persist(content.messages || []);
+            threadModels.set(current.id, model.value);
+            lastActiveModel = model.value;
+        } catch (error) {
+            model.value = chooseModel(previous, '');
+            notify(error.message);
+        } finally { busy = false; model.disabled = false; }
+    });
+
+    form.addEventListener('submit' , (event) => { event.preventDefault(); submit(); });
     input.addEventListener('compositionstart', () => { composing = true; });
     input.addEventListener('compositionend', () => { composing = false; compositionEndedAt = performance.now(); });
     input.addEventListener('keydown', (event) => {
@@ -392,8 +480,12 @@
     attachmentsView.addEventListener('click', (event) => { const button = event.target.closest('[data-remove-attachment]'); if (!button) return; attachments.splice(Number(button.dataset.removeAttachment), 1); renderAttachments(); });
     sessionList.addEventListener('click', (event) => { const button = event.target.closest('[data-thread-id]'); const thread = threads.find((item) => item.id === button?.dataset.threadId); if (thread) loadContent(thread).catch((error) => notify(error.message)); });
 
-    Promise.all([loadModels(), loadAgents(), request('/v1/mobile/chat/state')])
-        .then((results) => refreshThreads(results[2].selected_thread_id))
+    request('/v1/mobile/chat/state')
+        .then(async (state) => {
+            apiDefaultModel = state.api_default_model_id || '';
+            await Promise.all([loadModels(), document.body.dataset.ownerHome ? Promise.resolve() : loadAgents()]);
+            return refreshThreads(state.selected_thread_id);
+        })
         .catch((error) => { idle(); notify(error.message); });
     icons();
 })();

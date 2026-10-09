@@ -1,9 +1,8 @@
-"""MLX face-analysis and face-swap experiments.
-
-The experiment deliberately lives outside the AI2Apps App and Runtime until
-numerical parity, performance, and checkpoint distribution terms are known.
-"""
-
-from .onnx_mlx import MLXOnnxGraph
-
+"""Shared face media helpers; accelerator modules load only when requested."""
 __all__ = ["MLXOnnxGraph"]
+
+def __getattr__(name):
+    if name == "MLXOnnxGraph":
+        from .onnx_mlx import MLXOnnxGraph
+        return MLXOnnxGraph
+    raise AttributeError(name)

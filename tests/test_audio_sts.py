@@ -105,7 +105,7 @@ def server_sts_client():
         mock_state.settings_manager.resolve_model_id = MagicMock(
             side_effect=lambda m, _: m
         )
-        with TestClient(app, raise_server_exceptions=False) as client:
+        with TestClient(app, base_url="http://127.0.0.1", raise_server_exceptions=False) as client:
             yield client, mock_pool
 
 
@@ -122,7 +122,7 @@ def audio_sts_client():
     mock_pool = _make_mock_pool()
 
     with patch("omlx.api.audio_routes._get_engine_pool", return_value=mock_pool):
-        with TestClient(app, raise_server_exceptions=False) as client:
+        with TestClient(app, base_url="http://127.0.0.1", raise_server_exceptions=False) as client:
             yield client, mock_pool
 
 
@@ -228,7 +228,7 @@ class TestSTSEndpointBasic:
             patch("omlx.api.audio_routes._model_invocations", return_value=invocations),
             patch("omlx.api.audio_routes._audio_invocation_context", return_value=None),
         ):
-            with TestClient(app) as client:
+            with TestClient(app, base_url="http://127.0.0.1") as client:
                 response = client.post(
                     "/v1/audio/process",
                     files={"file": ("audio.wav", TINY_WAV, "audio/wav")},
@@ -273,7 +273,7 @@ class TestSTSEndpointBasic:
             patch("omlx.api.audio_routes._model_invocations", return_value=invocations),
             patch("omlx.api.audio_routes._audio_invocation_context", return_value=None),
         ):
-            with TestClient(app) as client:
+            with TestClient(app, base_url="http://127.0.0.1") as client:
                 response = client.post(
                     "/v1/audio/process",
                     files={
@@ -328,7 +328,7 @@ class TestSTSEndpointBasic:
             patch("omlx.api.audio_routes._package_model", return_value=package_model),
             patch("omlx.api.audio_routes._model_invocations", return_value=invocations),
             patch("omlx.api.audio_routes._audio_invocation_context", return_value=None),
-            TestClient(app) as client,
+            TestClient(app, base_url="http://127.0.0.1") as client,
         ):
             response = client.post(
                 "/v1/audio/voices/train",
@@ -372,7 +372,7 @@ class TestSTSEndpointBasic:
         app.include_router(router)
         package_model = MagicMock(id="example.rvc/voice", model_type="audio_processing")
         with patch("omlx.api.audio_routes._package_model", return_value=package_model):
-            with TestClient(app) as client:
+            with TestClient(app, base_url="http://127.0.0.1") as client:
                 response = client.post(
                     "/v1/audio/process",
                     files={"file": ("audio.wav", TINY_WAV, "audio/wav")},
@@ -463,7 +463,7 @@ class TestSTSModelAliasResolution:
             mock_state.mcp_manager = None
             mock_state.api_key = None
             mock_state.settings_manager = MagicMock()
-            with TestClient(app, raise_server_exceptions=False) as client:
+            with TestClient(app, base_url="http://127.0.0.1", raise_server_exceptions=False) as client:
                 response = client.post(
                     "/v1/audio/process",
                     data={"model": "denoise"},
@@ -490,7 +490,7 @@ class TestSTSModelAliasResolution:
             mock_state.mcp_manager = None
             mock_state.api_key = None
             mock_state.settings_manager = MagicMock()
-            with TestClient(app, raise_server_exceptions=False) as client:
+            with TestClient(app, base_url="http://127.0.0.1", raise_server_exceptions=False) as client:
                 response = client.post(
                     "/v1/audio/process",
                     data={"model": "MossFormer2-SE"},
@@ -736,3 +736,29 @@ class TestSTSIntegrationLFM2:
             asyncio.run(engine.stop())
         except Exception as e:
             pytest.skip(f"Could not run integration test: {e}")
+
+
+@pytest.mark.parametrize('supported', [True, False])
+def test_host_trained_voice_upload_requires_declared_capability(supported):
+    from fastapi import FastAPI, Response
+    from omlx.api.audio_routes import router
+    app = FastAPI()
+    app.include_router(router)
+    model = MagicMock(id='example.rvc/voice', model_type='audio_processing')
+    model.audio_capabilities = {'processing': {'voice_conversion': {
+        'target_sources': ['trained_voice'] if supported else ['named_voice']}}}
+    invocation = MagicMock()
+    invocation.invoke_foreground_multipart = AsyncMock(return_value=Response(TINY_WAV, media_type='audio/wav'))
+    with patch('omlx.api.audio_routes._package_model', return_value=model), \
+         patch('omlx.api.audio_routes._model_invocations', return_value=invocation), \
+         patch('omlx.api.audio_routes._audio_invocation_context', return_value=None):
+        with TestClient(app, base_url="http://127.0.0.1") as client:
+            response = client.post('/v1/audio/process', data={'model': model.id}, files={
+                'file': ('source.wav', TINY_WAV, 'audio/wav'),
+                'voice': ('voice.zip', b'opaque voice bytes', 'application/zip')})
+    assert response.status_code == (200 if supported else 400)
+    if supported:
+        assert invocation.invoke_foreground_multipart.await_args.kwargs['files']['voice'] == (
+            'voice.zip', b'opaque voice bytes', 'application/zip')
+    else:
+        invocation.invoke_foreground_multipart.assert_not_awaited()

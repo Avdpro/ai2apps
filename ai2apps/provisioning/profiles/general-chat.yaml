@@ -86,40 +86,6 @@ capabilities:
           runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.7.0,<2.0.0"}
           provider: {package_id: ai2apps/model-qwen36-35b, service_key: ai2apps.model.qwen36-35b, version: ">=0.3.1,<1.0.0"}
           checkpoint: {model_id: ai2apps.model.qwen36-35b/qwen3.6-35b-a3b-4bit}
-      - id: apple-metal-qwen35-2b-4bit
-        label: Qwen3.5 2B 4-bit · 轻量多模态
-        description: 轻量聊天和图片理解模型，推荐用于 8–15 GiB 设备。
-        priority: 115
-        device:
-          os: [macos]
-          architectures: [arm64]
-          accelerator:
-            vendor: apple
-            api: metal
-            unified_memory_gib: {minimum: 8}
-        recommendation_memory_gib: {minimum: 8, maximum_exclusive: 16}
-        stack:
-          components:
-            - {id: provider, kind: package, phase: provider, package_id: ai2apps/model-qwen35, service_key: ai2apps.qwen35, version: ">=0.1.1,<1.0.0"}
-            - {id: checkpoint, kind: checkpoint, phase: checkpoint, model_id: ai2apps.qwen35/qwen3.5-2b-4bit}
-            - {id: verify, kind: verify, phase: verify, service_key: ai2apps.qwen35, capabilities: [conversation]}
-      - id: apple-metal-qwen35-08b-4bit
-        label: Qwen3.5 0.8B 4-bit · 超轻量多模态
-        description: 更小的聊天和图片理解模型，适合 8 GiB 设备快速启动。
-        priority: 94
-        recommended: false
-        device:
-          os: [macos]
-          architectures: [arm64]
-          accelerator:
-            vendor: apple
-            api: metal
-            unified_memory_gib: {minimum: 8}
-        stack:
-          components:
-            - {id: provider, kind: package, phase: provider, package_id: ai2apps/model-qwen35, service_key: ai2apps.qwen35, version: ">=0.1.1,<1.0.0"}
-            - {id: checkpoint, kind: checkpoint, phase: checkpoint, model_id: ai2apps.qwen35/qwen3.5-0.8b-4bit}
-            - {id: verify, kind: verify, phase: verify, service_key: ai2apps.qwen35, capabilities: [conversation]}
       - id: apple-metal-qwen38-27b-nvfp4
         label: Qwen3.8 27B NVFP4 · 多模态
         description: 新一代 27B 多模态本地模型，支持聊天和图片理解；推荐用于 32–63 GiB 设备。

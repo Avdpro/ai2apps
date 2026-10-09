@@ -5928,22 +5928,26 @@
                     attributionNode.textContent = attribution ? `必要署名：${attribution}` : '';
                     attributionNode.hidden = !attribution;
                     const labels = {
-                        accepted_license_terms: '我接受许可条款，并将在许可允许的用途范围内使用',
+                        accepted_license_terms: '我已阅读并同意许可条款，并将在许可允许的用途范围内使用',
                         obtained_separate_license: '我已为预期用途取得权利方的单独许可或授权',
                     };
                     const options = overlay.querySelector('[data-license-options]');
-                    for (const [index, option] of (challenge.acceptanceOptions || []).entries()) {
+                    for (const option of (challenge.acceptanceOptions || [])) {
                         const row = document.createElement('label'); row.className = 'flex items-start gap-2 text-xs';
                         const input = document.createElement('input'); input.type = 'radio';
                         input.name = `models-license-${challenge.distributionId}`; input.value = option;
-                        input.checked = index === 0; input.className = 'mt-0.5 accent-neutral-900';
+                        input.checked = false; input.className = 'mt-0.5 accent-neutral-900';
                         const copy = document.createElement('span'); copy.textContent = labels[option] || option;
                         row.append(input, copy); options.append(row);
                     }
                     const checkbox = overlay.querySelector('[data-license-confirm]');
                     const accept = overlay.querySelector('[data-license-action="accept"]');
                     overlay.querySelector('[data-license-attestation]').textContent = challenge.attestationText || '我确认已经同意或获得所需许可。';
-                    checkbox.addEventListener('change', () => { accept.disabled = !checkbox.checked; });
+                    const updateLicenseConfirmation = () => {
+                        accept.disabled = !checkbox.checked || !options.querySelector('input[type="radio"]:checked');
+                    };
+                    checkbox.addEventListener('change', updateLicenseConfirmation);
+                    options.addEventListener('change', updateLicenseConfirmation);
                     const consent = await new Promise((resolve, reject) => {
                         overlay.addEventListener('click', event => {
                             const action = event.target.closest('[data-license-action]')?.dataset.licenseAction;

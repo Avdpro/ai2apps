@@ -10,9 +10,64 @@ from ai2apps.cloud_client import AI2AppsCloudClient, CloudSessionStore
 from ai2apps.secrets import MemorySecretBackend
 from scripts.publish_signed_registry_artifact import (
     browser_session_namespace,
+    resume_signed_submission,
     source_collection_path,
     source_response,
+    withdraw_signed_submission,
 )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status,expected", [("candidate", ["request", "approve", "publish"]), ("review_pending", ["approve", "publish"]), ("approved", ["publish"]), ("published", []), ("withdrawn", [])])
+async def test_resume_only_executes_remaining_steps(status, expected) -> None:
+    calls = []
+    class Manager:
+        async def submission(self, submission_id):
+            return {"releaseStatus": status, **({"withdrawal": {"reason": "Fix"}} if status == "withdrawn" else {})}
+        async def request_review(self, submission_id):
+            calls.append("request")
+        async def review_submission(self, submission_id, decision, note):
+            assert decision == "approved"
+            calls.append("approve")
+        async def publish_submission(self, submission_id):
+            calls.append("publish")
+    if status == "withdrawn":
+        with pytest.raises(RuntimeError, match="SUBMISSION_WITHDRAWN"):
+            await resume_signed_submission(Manager(), "test-id", "Verified")
+    else:
+        await resume_signed_submission(Manager(), "test-id", "Verified")
+    assert calls == expected
+
+
+@pytest.mark.asyncio
+async def test_withdrawal_uses_exact_candidate_and_does_not_publish() -> None:
+    calls = []
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        assert request.url.path == "/v1/publisher-submissions/32a6d1c0-acdc-44f5-bf09-54865f251a5b/withdraw"
+        assert request.method == "POST"
+        import json
+        assert json.loads(request.read()) == {"expectedArtifactSha256": "a" * 64, "reason": "Fix identity"}
+        return httpx.Response(200, json={"releaseStatus": "rejected", "withdrawal": {"reason": "Fix identity"}})
+    cloud = AI2AppsCloudClient(base_url="https://cloud.example", session_store=CloudSessionStore(MemorySecretBackend(), "https://cloud.example"), transport=httpx.MockTransport(handler))
+    try:
+        result = await withdraw_signed_submission(cloud, "32a6d1c0-acdc-44f5-bf09-54865f251a5b", "a" * 64, " Fix identity ")
+        assert result["withdrawn"]["releaseStatus"] == "rejected"
+        with pytest.raises(ValueError):
+            await withdraw_signed_submission(cloud, "../other", "a" * 64, "Fix")
+        assert len(calls) == 1
+    finally:
+        await cloud.close()
+
+
+@pytest.mark.asyncio
+async def test_withdrawal_error_preserves_request_id() -> None:
+    cloud = AI2AppsCloudClient(base_url="https://cloud.example", session_store=CloudSessionStore(MemorySecretBackend(), "https://cloud.example"), transport=httpx.MockTransport(lambda request: httpx.Response(409, json={"error": {"code": "PUBLISHED_VERSION_IMMUTABLE", "message": "Conflict", "requestId": "test-conflict-123"}})))
+    try:
+        with pytest.raises(RuntimeError, match="PUBLISHED_VERSION_IMMUTABLE.*test-conflict-123"):
+            await withdraw_signed_submission(cloud, "32a6d1c0-acdc-44f5-bf09-54865f251a5b", "a" * 64, "Fix")
+    finally:
+        await cloud.close()
 
 
 def test_browser_session_namespace_reads_newest_cookie_from_wal(tmp_path) -> None:

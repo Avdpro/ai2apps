@@ -18,7 +18,27 @@ from ai2apps.storage.records import canonical_json
 
 _SYSTEM_APP_MANIFESTS_BASE: tuple[dict[str, Any], ...] = (
     {
+        "schema": "ai2apps.app/v1", "id": "ai2apps.visitor-space", "name": "Visitor Space",
+        "description": "Edit, preview and publish your visitor space", "version": "1.0.0",
+        "instances": {"mode": "singleton", "scope": "user"},
+        "access": {"capabilities": ["app.system.manage"]},
+        "entry": {"kind": "host", "resource": "ai2apps:system/visitor-space"},
+        "navigation": {"category": "System", "icon": "globe", "order": 17, "pinned_default": False},
+        "state": {"version": 1, "defaults": {}},
+    },
+    {
+        "schema": "ai2apps.app/v1", "id": "ai2apps.intelligence", "name": "Intelligence Center",
+        "description": "Follow interests, monitor sources and read evidence-backed briefings",
+        "version": "0.1.0", "instances": {"mode": "singleton", "scope": "user"},
+        "access": {"capabilities": ["app.use"]},
+        "entry": {"kind": "host", "resource": "ai2apps:system/intelligence"},
+        "navigation": {"category": "Productivity", "icon": "satellite-dish", "order": 43, "pinned_default": True},
+        "state": {"version": 1, "defaults": {}},
+    },
+    {
         "schema": "ai2apps.app/v1", "id": "ai2apps.todo", "name": "Todo",
+        "mobile": {"ready": True},
+        "mobile_entry": {"kind": "host", "resource": "ai2apps:mobile/todo"},
         "description": "Project trees, attachments, Agent execution and schedules",
         "version": "0.1.0", "instances": {"mode": "singleton", "scope": "user"},
         "access": {"capabilities": ["app.use"]},
@@ -126,7 +146,7 @@ _SYSTEM_APP_MANIFESTS_BASE: tuple[dict[str, Any], ...] = (
         "entry": {"kind": "host", "resource": "ai2apps:system/discover"},
         "navigation": {
             "category": "System",
-            "icon": "satellite-dish",
+            "icon": "radar",
             "order": 22,
             "pinned_default": True,
         },
@@ -238,6 +258,8 @@ _SYSTEM_APP_MANIFESTS_BASE: tuple[dict[str, Any], ...] = (
     {
         "schema": "ai2apps.app/v1",
         "id": "ai2apps.gallery",
+        "mobile": {"ready": True},
+        "mobile_entry": {"kind": "host", "resource": "ai2apps:mobile/gallery"},
         "name": "Gallery",
         "description": "Manage local AI-generated images, video, audio, web, and files",
         "version": "0.1.0",
@@ -268,6 +290,7 @@ _SYSTEM_APP_MANIFESTS_BASE: tuple[dict[str, Any], ...] = (
     {
         "schema": "ai2apps.app/v1",
         "id": "ai2apps.knowledge",
+        "mobile_entry": {"kind": "host", "resource": "ai2apps:mobile/knowledge"},
         "name": "Knowledge",
         "description": "Save, search, and cite private or Local shared knowledge",
         "version": "0.1.0",
@@ -291,6 +314,7 @@ _SYSTEM_APP_MANIFESTS_BASE: tuple[dict[str, Any], ...] = (
     {
         "schema": "ai2apps.app/v1",
         "id": "ai2apps.readaloud",
+        "mobile": {"ready": True},
         "name": "Voice Studio",
         "description": "Create local-first narration, audiobooks, and multi-character audio",
         "version": "0.1.0",
@@ -308,6 +332,7 @@ _SYSTEM_APP_MANIFESTS_BASE: tuple[dict[str, Any], ...] = (
     {
         "schema": "ai2apps.app/v1",
         "id": "ai2apps.video-studio",
+        "mobile": {"ready": True},
         "name": "Video Studio",
         "description": "Create local videos with installed AI2Apps video models",
         "version": "0.1.0",
@@ -325,6 +350,7 @@ _SYSTEM_APP_MANIFESTS_BASE: tuple[dict[str, Any], ...] = (
     {
         "schema": "ai2apps.app/v1",
         "id": "ai2apps.imagine-studio",
+        "mobile": {"ready": True},
         "name": "Imagine Studio",
         "description": "Create and edit images with Cloud and local AI Mini-Apps",
         "version": "0.1.0",
@@ -430,9 +456,11 @@ _SYSTEM_APP_MANIFESTS_BASE: tuple[dict[str, Any], ...] = (
 )
 
 _SYSTEM_APP_ZH: dict[str, tuple[str, str, str]] = {
+    "ai2apps.intelligence": ("情报中心", "追踪兴趣与信息源，阅读有据可查的情报简报", "效率工具"),
     "ai2apps.todo": ("待办", "项目树、附件、智能体执行与定时计划", "效率工具"),
     "ai2apps.dashboard": ("仪表盘", "系统状态与运行时概览", "系统"),
     "ai2apps.account": ("账户", "连接可选的 AI2Apps 账户并管理云端积分", "系统"),
+    "ai2apps.visitor-space": ("访客空间", "编辑、预览并发布对外开放的空间", "系统"),
     "ai2apps.sharing": ("共享", "在局域网中共享选定的本地模型和工具", "系统"),
     "ai2apps.models": ("模型", "安装、配置和管理模型", "AI 与模型"),
     "ai2apps.environment": ("环境检查", "验证硬件、依赖、存储与模型运行条件", "AI 与模型"),

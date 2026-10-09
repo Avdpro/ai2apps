@@ -22,6 +22,10 @@ from ai2apps.qr import svg_qr_data_url
 from ai2apps.remote import RemoteAccessError
 
 
+class MobileAppAccessRequest(BaseModel):
+    enabled: bool
+
+
 class RegisterRemoteDeviceRequest(BaseModel):
     display_name: str = Field(alias="displayName", min_length=1, max_length=120)
 
@@ -111,6 +115,97 @@ def create_remote_router(
             return platform_error_response(status_code=504, code="cloud_timeout", message="AI2Apps Cloud did not respond in time", retryable=True)
         except httpx.HTTPError:
             return platform_error_response(status_code=502, code="cloud_unavailable", message="AI2Apps Cloud is unavailable", retryable=True)
+
+    def mobile_owner(principal):
+        if not principal.is_core or principal.authentication_type in {"owner_home_lease", "remote_session"}:
+            raise HTTPException(403, "Manage Mobile Apps from the device Owner account")
+        return principal
+
+    def visitor_state(principal):
+        from ai2apps.remote.visitor_space import VisitorSpaceStore
+        mobile_owner(principal)
+        return VisitorSpaceStore(runtime_provider().database)
+
+    @router.get("/visitor-space")
+    async def visitor_settings(principal=Depends(principal_provider)):
+        from ai2apps.remote.visitor_space import eligible_apps, app_gateway_ready
+        state = visitor_state(principal).get(principal.installation_id)
+        state['apps'] = eligible_apps(runtime_provider().extension_manager, principal)
+        state['appGatewayReady'] = app_gateway_ready()
+        import uuid
+        try:
+            user_id = str(uuid.UUID(principal.actor_user_id))
+        except (ValueError, TypeError, AttributeError):
+            user_id = None
+        state['userUrl'] = 'https://coder.ai2apps.com/u/' + user_id if user_id else None
+        state['qr'] = svg_qr_data_url(state['userUrl']) if state['userUrl'] else None
+        return state
+
+    @router.put("/visitor-space/draft")
+    async def visitor_draft(body: dict, principal=Depends(principal_provider)):
+        try:
+            return visitor_state(principal).update(principal.installation_id, body.get('version'), draft=body.get('draft', {}))
+        except ValueError as error:
+            raise HTTPException(409, str(error)) from None
+
+    @router.post("/visitor-space/publish")
+    async def visitor_publish(body: dict, principal=Depends(principal_provider)):
+        from ai2apps.remote.visitor_space import build_snapshot, eligible_apps
+        store = visitor_state(principal)
+        try:
+            state = store.get(principal.installation_id)
+            published = build_snapshot(state['draft'], eligible_apps(runtime_provider().extension_manager, principal))
+            result = store.update(principal.installation_id, body.get('version'), published=published)
+        except ValueError as error:
+            raise HTTPException(409, str(error)) from None
+
+        manager().space.revoke()
+        await manager().refresh_space_capability()
+        return result
+
+    @router.put("/visitor-space/enabled")
+    async def visitor_enabled(body: dict, principal=Depends(principal_provider)):
+        store = visitor_state(principal)
+        if type(body.get('enabled')) is not bool:
+            raise HTTPException(422, 'Invalid enabled value')
+        try:
+            result = store.update(principal.installation_id, body.get('version'), enabled=body['enabled'])
+        except ValueError as error:
+            raise HTTPException(409, str(error)) from None
+        manager().space.revoke()
+        await manager().refresh_space_capability()
+        return result
+
+    @router.get("/mobile-apps")
+    async def mobile_apps(principal=Depends(principal_provider)):
+        from ai2apps.remote.mobile_apps import MobileAppPolicy, LEGACY_APPS, package_gateway_ready
+        mobile_owner(principal)
+        runtime = runtime_provider()
+        policy = MobileAppPolicy(runtime.database)
+        items = runtime.extension_manager.list_mobile_apps(principal=principal)
+        return {"items": [{**item,
+            "enabled": policy.enabled(principal.installation_id, item["app_key"]),
+            "supported": item["app_key"] in LEGACY_APPS or item.get("mobile_renderer") == "sandbox",
+            "requiresCloudUpgrade": item["app_key"] not in LEGACY_APPS and not package_gateway_ready(),
+        } for item in items]}
+
+    @router.put("/mobile-apps/{app_key}")
+    async def update_mobile_app(app_key: str, body: MobileAppAccessRequest,
+                                principal=Depends(principal_provider)):
+        from ai2apps.remote.mobile_apps import MobileAppPolicy, LEGACY_APPS, package_gateway_ready
+        mobile_owner(principal)
+        runtime = runtime_provider()
+        item = next((item for item in runtime.extension_manager.list_mobile_apps(principal=principal)
+                     if item["app_key"] == app_key), None)
+        if item is None:
+            raise HTTPException(404, "Mobile App not found")
+        if body.enabled and app_key not in LEGACY_APPS:
+            if item.get("mobile_renderer") != "sandbox":
+                raise HTTPException(409, "Mobile renderer not supported")
+            if not package_gateway_ready():
+                raise HTTPException(409, "Custom App remote transport is pending activation")
+        MobileAppPolicy(runtime.database).set_enabled(principal.installation_id, app_key, body.enabled)
+        return {"app_key": app_key, "enabled": body.enabled}
 
     @router.get("/status")
     async def status():

@@ -2327,7 +2327,7 @@ class TestCORSMiddleware:
                 global_settings=settings,
             )
 
-            client = TestClient(app)
+            client = TestClient(app, base_url="http://127.0.0.1")
             resp = client.options(
                 "/v1/models",
                 headers={

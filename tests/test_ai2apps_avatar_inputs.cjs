@@ -9,7 +9,8 @@ class Element {
  const elements=new Map(),get=id=>{if(!elements.has(id))elements.set(id,new Element());return elements.get(id)};
  const listeners={},parent={},requests=[],revoked=[];
  const model={id:'provider/lite',label:'Lite',ready:true,presets:[{id:'standard',label:'Standard'}],resolutions:['512x512'],minimumSeconds:0,maximumSeconds:60,defaults:{preset:'standard',resolution:'512x512'}};
- const port={postMessage(req){requests.push(req);let value=req.operation==='avatar.models'?{items:[model]}:req.operation==='avatar.jobs'?{items:[]}:req.operation==='avatar.record.start'?{maxSeconds:59}:req.operation==='avatar.record.stop'?{body:new Blob(['recorded'],{type:'audio/webm'}),name:'recorded.webm'}:req.operation==='invoke'?{status:422,body:new Blob([JSON.stringify({error:{message:'decoded audio exceeds the duration limit'}})])}:req.operation==='avatar.input.read'?{body:new Blob(['media'],{type:req.kind==='image'?'image/png':'audio/wav'}),name:req.kind==='image'?'gallery.png':'output.wav'}:{};queueMicrotask(()=>port.onmessage({data:{id:req.id,value}}));}};
+ let catalog=[model];
+ const port={postMessage(req){requests.push(req);let value=req.operation==='avatar.models'?{items:catalog}:req.operation==='avatar.jobs'?{items:[]}:req.operation==='avatar.record.start'?{maxSeconds:59}:req.operation==='avatar.record.stop'?{body:new Blob(['recorded'],{type:'audio/webm'}),name:'recorded.webm'}:req.operation==='invoke'?{status:422,body:new Blob([JSON.stringify({error:{message:'decoded audio exceeds the duration limit'}})])}:req.operation==='avatar.input.read'?{body:new Blob(['media'],{type:req.kind==='image'?'image/png':'audio/wav'}),name:req.kind==='image'?'gallery.png':'output.wav'}:{};queueMicrotask(()=>port.onmessage({data:{id:req.id,value}}));}};
  const ctx={URLSearchParams,Event:class {constructor(type){this.type=type}},navigator:{language:'zh-CN'},document:{getElementById:get,createElement:()=>new Element(),body:{},documentElement:{},querySelectorAll:()=>[]},window:{location:{search:''},parent,dispatchEvent:e=>listeners[e.type]?.(e),addEventListener:(k,v)=>listeners[k]=v,removeEventListener(){}},File,Blob,URL:{createObjectURL:()=> 'blob:test',revokeObjectURL:u=>revoked.push(u)},ResizeObserver:class{observe(){}},setInterval(){},clearInterval(){},setTimeout};
  for(const file of ['locales.js','i18n.js']) vm.runInNewContext(fs.readFileSync(require('node:path').join(__dirname,'../packages/ai2apps-avatar-studio-suite/web',file),'utf8'),ctx);
  vm.runInNewContext(fs.readFileSync(require('node:path').join(__dirname,'../packages/ai2apps-avatar-studio-suite/web/avatar.js'),'utf8'),ctx);
@@ -47,5 +48,25 @@ class Element {
  assert.match(get('speech-name').textContent,/recorded.webm/); assert.equal(get('speech-details').hidden,false);
  get('speech-clear').onclick(); assert.equal(get('speech-details').hidden,true);
  assert(revoked.length>1);
+ // A refreshed signed catalog can expose all H3 aliases without Mini-App code changes.
+ const variants=['base-4bit','base-8bit','ref2va-4bit','ref2va-8bit','lightx2v-4step-4bit','lightx2v-8step-4bit','openvdn-dmd8-4bit','openvdn-stageb50-4bit'];
+ catalog=variants.map(name=>({...model,id:'ai2apps.model.minimax-h3/avatar-'+name,label:name,maximumSeconds:3276,presets:[{id:'strict',label:'Standard'}],defaults:{preset:'strict',resolution:'512x512'}}));
+ get('model').value='__install_model__';await get('model').onchange();
+ assert.equal(get('model').children.length,9); // Eight models and the install action.
+ await get('speech-slot').listeners.drop(event(new File(['long-audio'],'long.wav',{type:'audio/wav'})));
+ get('speech-preview').duration=69;await get('speech-preview').onloadedmetadata();
+ for(const candidate of catalog){
+   get('model').value=candidate.id;await get('model').onchange();
+   assert.equal(get('generate').disabled,false);
+   assert.match(get('model-limits').textContent,/3276 seconds/);
+   const before=requests.filter(r=>r.operation==='invoke').length;
+   await get('avatar-form').onsubmit({preventDefault(){}});
+   const invoked=requests.filter(r=>r.operation==='invoke');assert.equal(invoked.length,before+1);
+   assert.equal(invoked.at(-1).fields.find(([key])=>key==='avatar_model_id')[1],candidate.id);
+   assert.equal(invoked.at(-1).fields.find(([key])=>key==='profile')[1],'strict');
+ }
+ catalog[0].ready=false;get('model').value='__install_model__';await get('model').onchange();
+ get('model').value=catalog[0].id;await get('model').onchange();assert.equal(get('generate').disabled,true);
+ console.log('PASS: eight H3 choices preserve selected model ID, allow 69-second input, and reject unready models');
  console.log('PASS: model ACPF option, Finder/Gallery drop handlers, previews, clearing and type rejection');
 })().catch(e=>{console.error(e);process.exitCode=1});

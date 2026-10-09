@@ -394,6 +394,16 @@ class InteractiveArchive:
                                 "invalid_studio_mini_app_placement",
                                 "Studio Mini-App placement is invalid",
                             )
+            open_entry = manifest.get("open_entry")
+            if open_entry is not None:
+                resource = open_entry.get("resource") if isinstance(open_entry, dict) else None
+                if (not isinstance(open_entry, dict) or set(open_entry) - {"kind", "resource", "capabilities"}
+                        or open_entry.get("kind") != "sandbox" or open_entry.get("capabilities", []) != []
+                        or not isinstance(resource, str) or resource not in files
+                        or resource.startswith("/") or "\\" in resource
+                        or ".." in PurePosixPath(resource).parts
+                        or str(PurePosixPath(resource).parent) == "."):
+                    raise ExtensionError("invalid_open_entry", "Open-Entry requires a zero-capability sandbox resource in its own directory")
             mobile = manifest.get("mobile")
             if mobile is not None and (
                 not isinstance(mobile, dict)

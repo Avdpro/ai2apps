@@ -115,6 +115,11 @@ class TestIsHelperModelConfig:
 class TestDetectModelType:
     """Tests for detect_model_type function."""
 
+    def test_detect_fish_s2_pro_as_tts(self, tmp_path):
+        # Actual S2 Pro config has this type and no architectures field.
+        (tmp_path / "config.json").write_text(json.dumps({"model_type": "fish_qwen3_omni"}))
+        assert detect_model_type(tmp_path) == "audio_tts"
+
     def test_detect_llm_model(self, tmp_path):
         """Test detection of LLM model."""
         config = {

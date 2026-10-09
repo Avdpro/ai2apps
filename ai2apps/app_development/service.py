@@ -395,7 +395,7 @@ class AppDevelopmentManager:
         if context.actor_user_id in {None, "local"}:
             principal = RequestPrincipal.legacy_local()
         else:
-            principal = IdentityRepository(self.runtime.database).principal_for(
+            principal = IdentityRepository(self.runtime.database).local_principal_for(
                 context.actor_user_id
             )
         self._task(context.session_id, principal)

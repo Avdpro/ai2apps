@@ -83,6 +83,8 @@ private func validatePackagedRuntime(arguments: HelperArguments) throws {
 
 @MainActor
 private final class HelperDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+    private var nativeBrowserHostStarting = false
+
     private struct BrowserAgentAuditEvent: Codable {
         let version = 1
         let timestamp: Date
@@ -1061,6 +1063,65 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate, NSMenuDeleg
                     requestID: request.requestID,
                     result: HelperControlResult(status: "resetting")
                 )
+            }
+            if request.operation == "browser.host.ensure" {
+                let launchDeadline = Date().addingTimeInterval(20)
+                while nativeBrowserHostStarting, Date() < launchDeadline {
+                    try await Task.sleep(for: .milliseconds(100))
+                }
+                if runningAI2AppsShellApplication() != nil {
+                    return .success(requestID: request.requestID,
+                        result: HelperControlResult(status: "available"))
+                }
+                guard !nativeBrowserHostStarting else {
+                    throw ContractError.invalidField(field: "browser.host", reason: "Native host launch still in progress")
+                }
+                nativeBrowserHostStarting = true
+                defer { nativeBrowserHostStarting = false }
+                guard let executable = arguments.aceFoxExecutable,
+                      arguments.appBundleURL != nil else {
+                    throw ContractError.invalidField(field: "browser.host", reason: "Native host unavailable")
+                }
+                let shellBundle = executable.deletingLastPathComponent()
+                    .deletingLastPathComponent().deletingLastPathComponent()
+                let automation = try BrowserAgentAutomation(
+                    port: Self.availableLoopbackPort(), token: Self.randomToken())
+                let configuration = NSWorkspace.OpenConfiguration()
+                configuration.activates = false
+                configuration.addsToRecentItems = false
+                configuration.createsNewApplicationInstance = true
+                configuration.arguments = ["--remote-debugging-port", String(automation.port),
+                    "--remote-allow-hosts", "localhost,127.0.0.1"]
+                configuration.environment = ProcessInfo.processInfo.environment.merging([
+                    "AI2APPS_APP_SHELL": "1", "AI2APPS_DISABLE_REMOTE_SERVER": "1",
+                    "AI2APPS_REMOTE_AGENT_TOKEN": automation.token,
+                    "AI2APPS_BROWSER_ROLE": "shell", "AI2APPS_BACKGROUND_HOST": "1",
+                ]) { _, required in required }
+                let application = try await openBrowserApplication(at: shellBundle, configuration: configuration)
+                // The packaged Shell uses acefox-bin directly, as does Launcher.
+                // Publish the same private descriptors so the Gateway attaches to
+                // this exact native process rather than a stale prior session.
+                try ContractCodec.save(
+                    ShellAutomationDescriptor(instanceID: arguments.instanceID,
+                        port: automation.port, token: automation.token,
+                        processID: application.processIdentifier),
+                    to: paths.runDirectory.appendingPathComponent("shell-automation.json")
+                )
+                try ContractCodec.save(
+                    ShellRunDescriptor(instanceID: arguments.instanceID,
+                        processID: application.processIdentifier,
+                        appBundlePath: arguments.appBundleURL!.standardizedFileURL.path,
+                        executablePath: executable.resolvingSymlinksInPath().path),
+                    to: paths.runDirectory.appendingPathComponent("shell.json")
+                )
+                while runningAI2AppsShellApplication() == nil, Date() < launchDeadline {
+                    try await Task.sleep(for: .milliseconds(100))
+                }
+                guard runningAI2AppsShellApplication() != nil else {
+                    throw ContractError.invalidField(field: "browser.host", reason: "Native host did not become ready")
+                }
+                return .success(requestID: request.requestID,
+                    result: HelperControlResult(status: "launched"))
             }
             let profileKey = request.browserProfileKey ?? "default"
             let profileID = try BrowserAgentProfileID.derive(

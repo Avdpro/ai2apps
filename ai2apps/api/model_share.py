@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+import asyncio
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
@@ -72,7 +73,7 @@ def create_model_share_router(
                 "offerId": None,
                 "lastError": None if runtime is None else getattr(runtime, "model_share_provider_error", None),
             }
-        return controller.status()
+        return await asyncio.to_thread(controller.status)
 
     @router.post("/provider/activate")
     async def activate_provider(

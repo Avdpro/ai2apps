@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
@@ -173,7 +174,7 @@ def install_knowledge_service(
             )
             retrieval = {"mode": "fts5"}
         else:
-            hits, diagnostics = await invoke(
+            hits, diagnostics = await asyncio.to_thread(
                 active_retriever.search,
                 principal,
                 arguments["query"],

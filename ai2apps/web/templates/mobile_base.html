@@ -7,10 +7,12 @@
     <link rel="icon" type="image/svg+xml" href="{{ mobile_static('favicon.svg') }}">
     <link rel="stylesheet" href="{{ mobile_static('fonts/inter/inter.css') }}">
     <script src="{{ mobile_static('js/lucide.min.js') }}"></script>
+    {% if owner_home %}<link rel="stylesheet" href="{{ mobile_static('css/mobile_app.css') }}?v=owner-recovery-20261009-1">{% endif %}
     {% block head %}{% endblock %}
 </head>
-<body>
+<body{% if owner_home %} data-owner-home="true"{% endif %}>
     {% block content %}{% endblock %}
+    {% if owner_home %}<script src="{{ mobile_static('js/owner_session.js') }}?v=owner-recovery-20261009-1"></script>{% endif %}
     {% block scripts %}{% endblock %}
 </body>
 </html>

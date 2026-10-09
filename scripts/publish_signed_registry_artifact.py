@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import re
 import sqlite3
 from pathlib import Path
 from urllib.parse import quote
@@ -19,6 +20,7 @@ from ai2apps.cloud_client import (
 from ai2apps.config import PlatformConfig
 from ai2apps.packages.registry import RegistryPackageManager
 from ai2apps.secrets.factory import create_secret_backend
+
 if __package__:
     from .registry_browser_session import live_browser_session_namespace
 else:
@@ -91,10 +93,45 @@ async def source_response(
                 str(error.get("code") or f"source_request_failed_{response.status_code}")
                 + ": "
                 + str(error.get("message") or "Package source request failed")
+                + (" [requestId=" + str(error["requestId"]) + "]" if error.get("requestId") else "")
             )
         return {"result": value, "etag": response.headers.get("etag")}
     finally:
         await response.aclose()
+
+
+async def withdraw_signed_submission(cloud, submission_id: str, expected_sha256: str, reason: str) -> dict:
+    if not re.fullmatch(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}", submission_id):
+        raise ValueError("Invalid withdrawal submission ID")
+    if not re.fullmatch(r"[0-9a-f]{64}", expected_sha256) or not reason.strip() or len(reason.strip()) > 2000:
+        raise ValueError("Withdrawal requires exact SHA-256 and 1-2000 character reason")
+    response = await source_response(
+        cloud, "POST", f"/v1/publisher-submissions/{submission_id}/withdraw",
+        body={"expectedArtifactSha256": expected_sha256, "reason": reason.strip()},
+    )
+    return {"submission_id": submission_id, "withdrawn": response["result"]}
+
+
+async def resume_signed_submission(manager, submission_id: str, review_note: str) -> dict:
+    current = await manager.submission(submission_id)
+    current = current.get("submission", current)
+    if current.get("withdrawal"):
+        raise RuntimeError("SUBMISSION_WITHDRAWN: use the corrected submission ID")
+    status = current.get("releaseStatus")
+    requested = reviewed = None
+    if status == "candidate":
+        requested = await manager.request_review(submission_id)
+        status = "review_pending"
+    if status == "review_pending":
+        reviewed = await manager.review_submission(submission_id, "approved", review_note)
+        status = "approved"
+    if status == "approved":
+        published = await manager.publish_submission(submission_id)
+    elif status == "published":
+        published = {"submission": current, "already_published": True}
+    else:
+        raise RuntimeError(f"INVALID_RELEASE_TRANSITION: cannot resume submission in {status!r}")
+    return {"review_requested": requested, "reviewed": reviewed, "published": published}
 
 
 async def publish(
@@ -121,6 +158,9 @@ async def publish(
     source_idempotency_key: str | None,
     reject_submission: bool,
     browser_live: bool = False,
+    withdraw_submission: bool = False,
+    expected_artifact_sha256: str | None = None,
+    withdraw_reason: str | None = None,
 ) -> dict:
     config = PlatformConfig.from_base_path(base_path)
     assert config.paths is not None
@@ -194,6 +234,10 @@ async def publish(
                     idempotency_key=source_idempotency_key,
                 )
             raise ValueError(f"Unsupported source action: {source_action}")
+        if withdraw_submission:
+            return await withdraw_signed_submission(
+                cloud, submission_id or "", expected_artifact_sha256 or "", withdraw_reason or ""
+            )
         if reject_submission:
             if submission_id is None:
                 raise ValueError("--reject-submission requires --submission-id")
@@ -217,18 +261,13 @@ async def publish(
             if not isinstance(submission_id, str) or not submission_id:
                 raise RuntimeError("Cloud submission did not return a submission id")
             requested = await manager.request_review(submission_id)
-        reviewed = await manager.review_submission(
-            submission_id,
-            "approved",
-            review_note,
-        )
-        published = await manager.publish_submission(submission_id)
+        resumed = await resume_signed_submission(manager, submission_id, review_note)
         return {
             "submission_id": submission_id,
             "submitted": submitted,
-            "review_requested": requested,
-            "reviewed": reviewed,
-            "published": published,
+            "review_requested": requested or resumed["review_requested"],
+            "reviewed": resumed["reviewed"],
+            "published": resumed["published"],
         }
     finally:
         await cloud.close()
@@ -272,7 +311,18 @@ def main() -> None:
         "--review-note",
         default="Verified signed and notarized production Runtime release.",
     )
+    parser.add_argument("--withdraw-submission", action="store_true", help="Withdraw a never-published candidate; does not submit, review or publish replacement bytes")
+    parser.add_argument("--expected-artifact-sha256")
+    parser.add_argument("--withdraw-reason")
     args = parser.parse_args()
+    if args.withdraw_submission and (
+        not args.submission_id or not args.expected_artifact_sha256 or not args.withdraw_reason
+        or args.reject_submission or args.list_only or args.publishers_only or args.sources_package_id
+        or args.artifact or args.envelope
+    ):
+        parser.error("withdraw requires submission-id, expected-artifact-sha256 and withdraw-reason, without other actions or artifact/envelope")
+    if not args.withdraw_submission and (args.expected_artifact_sha256 or args.withdraw_reason):
+        parser.error("withdrawal parameters require --withdraw-submission")
     if bool(args.sources_package_id) != bool(args.sources_version):
         parser.error("--sources-package-id and --sources-version must be used together")
     if args.source_action and not args.sources_package_id:
@@ -340,6 +390,9 @@ def main() -> None:
             source_idempotency_key=args.source_idempotency_key,
             reject_submission=args.reject_submission,
             browser_live=args.browser_live,
+            withdraw_submission=args.withdraw_submission,
+            expected_artifact_sha256=args.expected_artifact_sha256,
+            withdraw_reason=args.withdraw_reason,
         )
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))

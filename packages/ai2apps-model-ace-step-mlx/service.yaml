@@ -1,0 +1,82 @@
+schema: ai2apps.service/v1
+id: ai2apps.model.ace-step-mlx
+name: ACE-Step 1.5 Turbo MLX
+description: Native MLX music generation with optional lyrics, 10–120 seconds; 10.09
+  GB checkpoint.
+version: 0.1.0
+publisher:
+  id: ai2apps
+license:
+  id: MIT
+  name: MIT License
+  path: LICENSE
+attribution:
+  notice: META/NOTICE.md
+  source: https://github.com/Blaizzy/mlx-audio/tree/1e8264a487dd74d4ea327a8250c071558a7cd8f4
+  checkpoint: https://huggingface.co/Avdpro/ACE-Step-1.5-Turbo-MLX/tree/ea6bb1523660feb518563f203314528294880d1f
+runtime:
+  mode: process
+  protocol: ai2apps-model-worker/v1
+  provider: ai2apps.runtime.omlx
+  adapter: src/worker_adapter.py:create_adapter
+models:
+- id: ai2apps.model.ace-step-mlx/turbo
+  display_name: ACE-Step 1.5 Turbo
+  model_type: audio_generation
+  upstream_id: ace-step-1.5-turbo
+  capabilities:
+  - audio_generation
+  weights:
+    provider: huggingface
+    repo_id: Avdpro/ACE-Step-1.5-Turbo-MLX
+    revision: ea6bb1523660feb518563f203314528294880d1f
+    preparation:
+      recipe: native
+    distribution_id: dist_ai2apps_ace_step15_turbo_mlx_v1
+  metadata:
+    family: ace-step
+    estimated_resident_bytes: 38654705664
+    audio_generation:
+      schema: ai2apps.audio-generation-capabilities/v1
+      task: music
+      minimum_duration: 10
+      maximum_duration: 120
+      lyrics: true
+      output_formats:
+      - wav
+      variant: ace-step-1.5-turbo
+capabilities:
+- audio-generation
+requires:
+  services:
+  - id: ai2apps.runtime.omlx
+    version: '>=1.8.9,<2.0.0'
+    optional: false
+    capabilities:
+    - mlx
+    - model-worker-v1
+    - metal
+    - audio-generation-v1
+  python: '>=3.11,<3.14'
+permissions:
+  network:
+    outbound: false
+  model_weights:
+    huggingface_cache: read
+    reason: Read only the declared immutable audio generation checkpoint.
+  accelerator:
+    metal: true
+    reason: Generate audio using native MLX on Apple GPU.
+compatibility:
+  os:
+  - macos
+  architectures:
+  - arm64
+  minimum_os_version: '26.2'
+health:
+  path: /health
+  startup_timeout_seconds: 120
+restart:
+  max_attempts: 2
+  base_delay_seconds: 1
+tools: []

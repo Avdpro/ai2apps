@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Todo · AI2Apps{% endblock %}
-{% block head %}<link rel="stylesheet" href="{{ static('css/todo.css') }}">{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ static('css/capability_provisioning.css') }}"><link rel="stylesheet" href="{{ static('css/todo.css') }}">{% endblock %}
 {% block content %}
 <div id="todo-app" class="todo-app">
   <header class="todo-app-header">
@@ -34,15 +34,26 @@
   </div>
 </div>
 <div id="todo-tooltip" class="todo-tooltip" role="tooltip" hidden></div>
+<dialog id="desktop-binding-dialog" class="todo-dialog">
+<form id="desktop-binding-form"><h2>Codex Desktop</h2>
+<label><span id="desktop-directory-label"></span><select id="desktop-projects" required></select></label>
+<label id="desktop-custom-directory" hidden><span id="desktop-custom-label"></span><input id="desktop-directory" required autocomplete="off"></label>
+<button id="desktop-load-threads" type="button"></button>
+<label><span id="desktop-thread-label"></span><select id="desktop-thread"></select></label>
+<button id="desktop-more-threads" type="button" hidden></button>
+<p id="desktop-binding-note" class="todo-help"></p><p id="desktop-binding-error" role="status"></p>
+<footer><button id="desktop-binding-cancel" type="button"></button><button id="desktop-binding-save" class="todo-primary" type="submit"></button></footer>
+</form></dialog>
 <dialog id="codex-dialog" class="todo-dialog"><h2>Codex</h2><p id="codex-state"></p><pre id="codex-config" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre><p class="todo-help">首次连接后，使用插件安装脚本的 --connection 参数指定上方路径。凭据仅保存在本机，不要复制文件内容。重新连接会撤销旧凭据。</p><footer><button id="codex-close">关闭</button><button id="codex-disconnect">断开连接</button><button id="codex-connect" class="todo-primary">连接 Codex</button></footer></dialog>
 <dialog id="backup-dialog" class="todo-dialog"><h2 data-i18n="importTodo"></h2><p id="backup-summary"></p><p class="todo-help" data-i18n="backupHelp"></p><div id="backup-items"></div><footer><button id="backup-cancel" data-i18n="cancel"></button><button id="backup-confirm" class="todo-primary" data-i18n="confirmImport"></button></footer></dialog>
 <dialog id="name-dialog" class="todo-dialog"><form method="dialog"><h2 id="dialog-title"></h2><input id="dialog-name" maxlength="200" required autofocus aria-labelledby="dialog-title">
+<div id="todo-title-voice"><button type="button" data-todo-dictate="dialog-name">🎙 语音输入标题</button></div>
 <fieldset id="dialog-task-fields" hidden>
 <label for="dialog-priority" data-i18n="priority"></label>
 <select id="dialog-priority"><option>U</option><option>S</option><option>A</option><option>B</option><option selected>C</option><option>D</option></select>
 <p class="todo-help" data-i18n="priorityOrder"></p>
 <label for="dialog-description" data-i18n="description"></label>
-<textarea id="dialog-description" rows="5" maxlength="100000" data-placeholder="descriptionHint"></textarea>
-</fieldset><footer><button id="dialog-cancel" type="button" data-i18n="cancel"></button><button type="submit" value="save" class="todo-primary" data-i18n="create"></button></footer></form></dialog>
+<textarea id="dialog-description" rows="5" maxlength="100000" data-placeholder="descriptionHint"></textarea><button type="button" data-todo-dictate="dialog-description">🎙 语音输入内容</button>
+</fieldset><p id="todo-dictation-status" class="todo-help" role="status"></p><footer><button id="dialog-cancel" type="button" data-i18n="cancel"></button><button type="submit" value="save" class="todo-primary" data-i18n="create"></button></footer></form></dialog>
 {% endblock %}
-{% block scripts %}<script src="{{ static('js/mini_app_chat.js') }}"></script><script src="{{ static('js/todo.js') }}"></script>{% endblock %}
+{% block scripts %}<script src="{{ static('js/capability_provisioning.js') }}"></script><script src="{{ static('js/studio_audio_recorder.js') }}"></script><script src="{{ static('js/todo_dictation.js') }}"></script><script src="{{ static('js/mini_app_chat.js') }}"></script><script src="{{ static('js/todo.js') }}"></script><script src="{{ static('js/todo_layout.js') }}"></script>{% endblock %}

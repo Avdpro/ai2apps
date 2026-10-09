@@ -221,3 +221,75 @@ def test_incomplete_index_and_unsafe_zip_are_rejected(tmp_path):
     with pytest.raises(PackageContractError) as error:
         inspect_package(archive)
     assert error.value.code == "unsafe_archive_path"
+
+
+@pytest.mark.parametrize('identity,kind,limit', [
+    ('ai2apps/runtime-cuda-torch', 'service', 4294967296),
+    ('ai2apps/runtime-omlx', 'service', 4294967296),
+    ('ai2apps/runtime-cuda-torch', 'app', 1073741824),
+    ('other/runtime-cuda-torch', 'service', 1073741824),
+])
+def test_runtime_contract_exact_identity_bound(identity, kind, limit):
+    from ai2apps.packages.contract_v1 import package_size_limit
+    assert package_size_limit({'id': identity, 'type': kind}) == limit
+
+
+def test_runtime_large_file_streams_and_signature_gates_zip(tmp_path, monkeypatch):
+    import ai2apps.packages.contract_v1 as contract
+    from pathlib import Path
+    # Scale the bounds to exercise both real IO and both ceilings cheaply.
+    monkeypatch.setattr(contract, 'MAX_ARTIFACT_BYTES', 4096)
+    monkeypatch.setattr(contract, 'MAX_RUNTIME_ARTIFACT_BYTES', 4 * 1024 * 1024)
+    source = _model_worker_source(tmp_path)
+    manifest_path = source / 'ai2apps.json'
+    manifest = json.loads(manifest_path.read_text())
+    manifest['package']['id'] = 'ai2apps/runtime-cuda-torch'
+    manifest_path.write_text(json.dumps(manifest))
+    (source / 'payload.dat').write_bytes(b'x' * (2 * 1024 * 1024))
+    original = Path.read_bytes
+    def bounded_read(path):
+        assert path.name != 'payload.dat', 'payload must be streamed'
+        return original(path)
+    monkeypatch.setattr(Path, 'read_bytes', bounded_read)
+    archive = tmp_path / 'runtime.ai2service'
+    inspected = build_package(source, archive)
+    private, public, _ = generate_publisher_key()
+    envelope = create_signature_envelope(inspected, private, publisher_id='fixture', publisher_key_id='fixture')
+    assert verify_signed_package(archive, envelope, public).sha256 == inspected.sha256
+    # Ordinary identity cannot inherit the larger file/expansion budget.
+    manifest['package']['id'] = 'example/model-worker'
+    manifest_path.write_text(json.dumps(manifest))
+    with pytest.raises(PackageContractError, match='limit'):
+        build_package(source, tmp_path / 'ordinary.ai2service')
+    envelope['payload']['package']['id'] = 'ai2apps/runtime-omlx'
+    monkeypatch.setattr(contract, 'inspect_package', lambda *a, **k: pytest.fail('ZIP opened before signature'))
+    with pytest.raises(PackageContractError) as error:
+        verify_signed_package(archive, envelope, public)
+    assert error.value.code == 'publisher_signature_invalid'
+
+
+@pytest.mark.parametrize('package_id,size,accepted', [
+    ('ai2apps/runtime-cuda-torch', 4294967296, True),
+    ('ai2apps/runtime-cuda-torch', 4294967297, False),
+    ('ai2apps/runtime-omlx', 4294967296, True),
+    ('example/model-worker', 1073741824, True),
+    ('example/model-worker', 1073741825, False),
+])
+def test_manifest_and_envelope_size_boundaries(tmp_path, package_id, size, accepted):
+    import ai2apps.packages.contract_v1 as contract
+    source = _model_worker_source(tmp_path)
+    built = build_package(source, tmp_path / 'model.ai2service')
+    manifest = json.loads(json.dumps(built.manifest))
+    manifest['package']['id'] = package_id
+    manifest['files'][0]['size'] = size
+    private, _, _ = generate_publisher_key()
+    envelope = create_signature_envelope(built, private, publisher_id='fixture', publisher_key_id='fixture')
+    envelope['payload']['package']['id'] = package_id
+    envelope['payload']['artifact']['size'] = size
+    for validate, value in [(contract.validate_manifest, manifest),
+                            (contract._validate_signature_envelope, envelope)]:
+        if accepted:
+            validate(value)
+        else:
+            with pytest.raises(PackageContractError):
+                validate(value)

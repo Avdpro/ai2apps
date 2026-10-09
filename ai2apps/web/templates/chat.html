@@ -2613,7 +2613,7 @@
                                     x-text="currentStream()?.fusionTrace ? 'Generator draft' : (currentStream()?.finalContent ? window.t('chat.thinking_label') : window.t('chat.thinking_progress'))"></span>
                                 <span x-show="!currentStream()?.fusionTrace && Number(currentStream()?._thinkTokens || 0) > 0"
                                     class="text-[10px] ml-auto mr-2" style="color:var(--text-tertiary);"
-                                    x-text="`${currentStream()._thinkTokens} ${window.t('chat.stats.token_suffix')}`"></span>
+                                    x-text="`${currentStream()?._thinkTokens || 0} ${window.t('chat.stats.token_suffix')}`"></span>
                                 <svg class="thinking-toggle"
                                     :class="{ collapsed: !currentStream()?.streamingThinkingOpen }" viewBox="0 0 24 24"
                                     fill="none" stroke="currentColor" stroke-width="2">

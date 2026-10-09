@@ -1321,3 +1321,16 @@ async def test_upgrade_cannot_break_unchanged_active_dependent(tmp_path):
     assert (
         runtime.package_repository.active("example.base").package_digest == first_digest
     )
+
+
+@pytest.mark.parametrize('machine,declared', [('aarch64', 'arm64'), ('arm64', 'aarch64'), ('x86_64', 'x64')])
+def test_service_architecture_aliases_preserve_incompatible_rejection(tmp_path, machine, declared):
+    from ai2apps.packages import CompatibilityContext
+    runtime = _runtime(tmp_path)
+    runtime.package_manager.compatibility = CompatibilityContext(
+        os_name='linux', architecture=machine, python_version='3.12.3', os_version='24.04')
+    package = SimpleNamespace(manifest=SimpleNamespace(raw={'requires': {}}))
+    runtime.package_manager._check_requirements({'architectures': [declared]}, package)
+    with pytest.raises(PackageError, match='architecture'):
+        runtime.package_manager._check_requirements({'architectures': ['unrelated-cpu']}, package)
+    runtime.stop()

@@ -34,6 +34,8 @@ class CompileGenerationStatus(StrEnum):
 
 class StepOutcome(StrEnum):
     SUCCESS = "success"
+    TRUE = "true"
+    FALSE = "false"
     NOT_FOUND = "not_found"
     RETRYABLE_ERROR = "retryable_error"
     NEEDS_USER = "needs_user"

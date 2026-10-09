@@ -30,6 +30,11 @@ if configured_framework_site := os.environ.get(
         raise RuntimeError("AI2Apps trusted framework site-packages must be absolute")
     sys.path.insert(1, str(framework_site))
 
+from ai2apps.model_worker.runtime_profiles import framework_profile
+
+if selected_profile := framework_profile(_PLATFORM_ROOT.parent, sys.argv[1:]):
+    sys.path.insert(1, str(selected_profile))
+
 from ai2apps.model_worker.server import main
 
 

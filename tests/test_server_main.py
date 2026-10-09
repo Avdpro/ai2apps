@@ -90,7 +90,7 @@ def test_admin_api_key_setup_is_retired(module_entry):
     from fastapi.testclient import TestClient
 
     server, _ = module_entry
-    client = TestClient(server.app)
+    client = TestClient(server.app, base_url="http://127.0.0.1")
     resp = client.post(
         "/admin/api/setup-api-key",
         json={"api_key": "test-key-1234", "api_key_confirm": "test-key-1234"},

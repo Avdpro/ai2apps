@@ -116,6 +116,10 @@ class WorkerResourceUnavailableError(RuntimeError):
         self.retry_after_seconds = retry_after_seconds
 
 
+class WorkerEvictionBusyError(RuntimeError):
+    code = "worker_busy"
+
+
 class WorkerPinnedLimitError(RuntimeError):
     code = "worker_pinned_limit"
 
@@ -251,6 +255,8 @@ def estimate_request_transient_bytes(
             payload.get("resolution", payload.get("size")), bytes_per_pixel=32
         )
         return max(3 * GIB, geometry * 16 + safe_file_bytes * 4)
+    if operation == "audio_generate":
+        return max(4 * GIB, safe_file_bytes * 6)
     if operation in {"audio_transcription", "audio_speech", "audio_process"}:
         return max(512 * MIB, safe_file_bytes * 6)
     if operation == "audio_voice_training":
@@ -386,6 +392,8 @@ class WorkerResourceManager:
         self._pinned.add(service_key)
 
     def assert_can_pin(self, service_key: str, pinned: bool) -> None:
+        if pinned and service_key in self._evicting:
+            raise WorkerEvictionBusyError("Worker eviction is already in progress")
         if (
             pinned
             and service_key not in self._pinned
@@ -403,6 +411,40 @@ class WorkerResourceManager:
             reservation.service_key == service_key
             for reservation in self._reservations.values()
         )
+
+    async def evict_idle(
+        self, package_manager, service_key: str, *, reason: str,
+        expected_generation: int,
+    ) -> dict:
+        """Reclaim an unpinned, unreserved Worker through the existing manager.
+
+        Admission is closed before yielding. Supervisor still verifies the exact
+        generation and live Worker request counts; this does not authorize force
+        stopping a busy Worker or changing the user's pin preference.
+        """
+        if (self.active_for_worker(service_key) or service_key in self._pinned
+                or service_key in self._evicting):
+            raise WorkerEvictionBusyError("Reserved, pinned or evicting Worker cannot be reclaimed")
+        self._evicting.add(service_key)
+        eviction = asyncio.create_task(package_manager.evict(
+            service_key, reason=reason, expected_generation=expected_generation,
+        ))
+        try:
+            cancelled = None
+            while not eviction.done():
+                try:
+                    await asyncio.shield(eviction)
+                except asyncio.CancelledError as error:
+                    cancelled = error
+            if cancelled is not None:
+                with suppress(BaseException):
+                    eviction.result()
+                raise cancelled
+            return eviction.result()
+        finally:
+            self._evicting.discard(service_key)
+            if self._scheduler is not None:
+                await self._scheduler.notify_resources_changed()
 
     async def sweep_once(self, package_manager) -> tuple[str, ...]:
         """Evict idle Workers by TTL or one LRU victim under memory pressure."""
@@ -492,20 +534,14 @@ class WorkerResourceManager:
         if under_pressure:
             ordered_candidates = ordered_candidates[:1]
         for _last_used, _memory, service_key, generation in ordered_candidates:
-            if self.active_for_worker(service_key) or service_key in self._pinned:
+            if (self.active_for_worker(service_key) or service_key in self._pinned
+                    or service_key in self._evicting):
                 continue
-            self._evicting.add(service_key)
-            try:
-                await package_manager.evict(
-                    service_key,
-                    reason=eviction_reason,
-                    expected_generation=generation,
-                )
-                evicted.append(service_key)
-            finally:
-                self._evicting.discard(service_key)
-                if self._scheduler is not None:
-                    await self._scheduler.notify_resources_changed()
+            await self.evict_idle(
+                package_manager, service_key, reason=eviction_reason,
+                expected_generation=generation,
+            )
+            evicted.append(service_key)
         return tuple(evicted)
 
     async def start(self, package_manager) -> None:

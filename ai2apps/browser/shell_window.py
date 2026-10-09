@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import secrets
 import threading
 import time
 from dataclasses import dataclass
 from typing import Any, Literal
 
-ShellBrowserAction = Literal["open", "delete"]
+_LOGGER = logging.getLogger(__name__)
+
+ShellBrowserAction = Literal["open", "delete", "bind", "focus_shell"]
 
 
 def shell_browser_profile_key(actor_user_id: str, profile_key: str) -> str:
@@ -32,6 +35,7 @@ class _ShellBrowserRequest:
     is_default: bool
     initial_url: str | None
     created_at: float
+    claimed_at: float | None = None
     state: str = "pending"
     result: dict[str, Any] | None = None
     error: str | None = None
@@ -81,6 +85,9 @@ class ShellBrowserWindowBroker:
             if request is None:
                 return None
             request.state = "claimed"
+            request.claimed_at = time.monotonic()
+            _LOGGER.info("Browser window handoff claimed request=%s action=%s queue_ms=%.1f",
+                         request.id, request.action, (request.claimed_at - request.created_at) * 1000)
             return {
                 "request_id": request.id,
                 "action": request.action,
@@ -97,6 +104,7 @@ class ShellBrowserWindowBroker:
         status: str,
         pid: int,
         error: str | None = None,
+        user_context: str | None = None,
     ) -> dict[str, Any]:
         with self._condition:
             request = self._requests.get(request_id)
@@ -106,11 +114,17 @@ class ShellBrowserWindowBroker:
                 request.state = "failed"
                 request.error = (error or "AppShell could not complete the request")[:500]
             else:
-                allowed = {"open": {"launched", "focused"}, "delete": {"deleted"}}
+                allowed = {"open": {"launched", "focused"}, "delete": {"deleted"}, "bind": {"bound"}, "focus_shell": {"focused"}}
                 if status not in allowed[request.action] or pid <= 1:
                     raise ValueError("Shell browser result is invalid")
                 request.state = "complete"
                 request.result = {"status": status, "pid": pid}
+                if user_context:
+                    request.result["user_context"] = user_context[:200]
+            now = time.monotonic()
+            _LOGGER.info("Browser window handoff finished request=%s status=%s total_ms=%.1f shell_ms=%.1f",
+                         request.id, status, (now - request.created_at) * 1000,
+                         (now - (request.claimed_at or request.created_at)) * 1000)
             self._condition.notify_all()
             return self._status(request)
 
@@ -128,7 +142,12 @@ class ShellBrowserWindowBroker:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     request.state = "failed"
-                    request.error = "AppShell did not acknowledge the browser request"
+                    request.error = ("AppShell accepted the browser request but did not finish opening the window"
+                                     if request.claimed_at is not None else
+                                     "AppShell did not acknowledge the browser request")
+                    _LOGGER.warning("Browser window handoff timed out request=%s claimed=%s total_ms=%.1f",
+                                    request.id, request.claimed_at is not None,
+                                    (time.monotonic() - request.created_at) * 1000)
                     raise TimeoutError(request.error)
                 self._condition.wait(remaining)
 

@@ -12,11 +12,13 @@ from urllib.parse import urlparse
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError, ValidationError
 
-COMPILER_VERSION = "ai2apps-site-agent-p1.2/1"
+COMPILER_VERSION = "ai2apps-site-agent-p1.4/1"
 POLICY_VERSION = "ai2apps-web-action-policy-p1/1"
 TERMINALS = frozenset({"done", "failed", "pause"})
 OUTCOMES = (
     "success",
+    "true",
+    "false",
     "skipped",
     "not_found",
     "retryable_error",
@@ -26,14 +28,17 @@ OUTCOMES = (
 )
 OPERATIONS = frozenset(
     {
+        "assign",
+        "condition",
         "open",
         "page_access",
         "inspect",
         "extract_list",
-        "read_results",
+        "read_results", "read_page", "wait_state",
         "ai.classify",
         "ai.extract",
         "ai.transform",
+        "agent.call",
         "approval",
         "click",
         "delete",
@@ -118,13 +123,13 @@ def _parsed_transitions(description: str) -> dict[str, str]:
 
 def _effect(operation: str) -> str:
     if operation in {
-        "inspect", "extract_list", "read_results", "complete", "ai.classify", "ai.extract",
+        "assign", "condition", "inspect", "extract_list", "read_results", "complete", "ai.classify", "ai.extract",
         "ai.transform", "approval",
     }:
         return "read"
     if operation == "delete":
         return "destructive"
-    if operation in {"open", "page_access", "click", "input", "hover", "scroll"}:
+    if operation in {"open", "read_page", "wait_state", "page_access", "click", "input", "hover", "scroll", "agent.call"}:
         return "interact"
     return "restricted"
 
@@ -173,6 +178,14 @@ def _compile_single_source(source: dict[str, Any]) -> CompileResult:
             errors.append(
                 {"path": path, "code": "invalid_json_schema", "message": error.message}
             )
+
+    from .variables import validate_variables, validate_expression
+    variables = source.get("variables") or {"type": "object", "properties": {}}
+    try:
+        validate_variables(variables)
+    except Exception as error:
+        errors.append({"path":"variables", "code":"invalid_variables", "message":str(error)[:500]})
+        variables = {"type":"object", "properties":{}}
 
     capability_exports = source.get("capability_exports") or []
     if not isinstance(capability_exports, list):
@@ -235,6 +248,8 @@ def _compile_single_source(source: dict[str, Any]) -> CompileResult:
         name = str(step.get("name") or "").strip()
         if not name:
             errors.append({"path": f"steps.{index}.name", "code": "name_required"})
+        elif name in TERMINALS:
+            errors.append({"path": f"steps.{index}.name", "code": "reserved_step_name"})
         elif name in names:
             errors.append({"path": f"steps.{index}.name", "code": "duplicate_name"})
         names.append(name)
@@ -246,7 +261,11 @@ def _compile_single_source(source: dict[str, Any]) -> CompileResult:
             continue
         name = str(step.get("name") or f"step-{index + 1}").strip()
         description = str(step.get("desc") or "").strip()
+        execution = step.get("execution")
+        requested_mode = execution.get("mode") if isinstance(execution, dict) else execution
         operation = _operation(step)
+        if requested_mode == "interpreted" and not str(operation or "").startswith("ai.") and operation not in {"agent.call", "assign", "condition"}:
+            operation = "inspect"  # Runtime AI resolves the authored goal against fresh DOM.
         if operation is None:
             errors.append(
                 {
@@ -257,7 +276,33 @@ def _compile_single_source(source: dict[str, Any]) -> CompileResult:
             )
             continue
         arguments = dict(step.get("arguments") or {})
+        if operation in {"assign", "condition"}:
+            try:
+                if operation == "condition":
+                    if set(arguments) != {"expression"}: raise ValueError("Condition needs only expression")
+                    validate_expression(arguments.get("expression"), variables["properties"])
+                else:
+                    assignments = arguments.get("assignments")
+                    if set(arguments) != {"assignments"} or not isinstance(assignments, list) or not 1 <= len(assignments) <= 32:
+                        raise ValueError("Assignment step needs 1–32 assignments")
+                    for assignment in assignments:
+                        if not isinstance(assignment, dict) or set(assignment) != {"variable", "expression"} or assignment["variable"] not in variables["properties"]:
+                            raise ValueError("Assignment must target a declared variable")
+                        validate_expression(assignment["expression"], variables["properties"])
+            except (ValueError, TypeError, KeyError) as error:
+                errors.append({"path":f"steps.{index}.arguments", "code":"invalid_local_expression", "message":str(error)})
+        if operation == "agent.call":
+            for key in ("agent_id", "capability"):
+                if not isinstance(arguments.get(key), str) or not arguments[key].strip() or "${" in arguments[key]:
+                    errors.append({"path": f"steps.{index}.arguments.{key}", "code": "agent_call_reference_required"})
+            if not isinstance(arguments.get("parameters", {}), dict):
+                errors.append({"path": f"steps.{index}.arguments.parameters", "code": "agent_call_parameters_invalid"})
+            if set(arguments) - {"agent_id", "capability", "generation_id", "parameters", "browser_context"}:
+                errors.append({"path": f"steps.{index}.arguments", "code": "agent_call_unknown_argument"})
         if operation == "open":
+            delay = arguments.setdefault("delay_ms", 3000)
+            if isinstance(delay, bool) or not isinstance(delay, (int, float)) or not 0 <= delay <= 30000:
+                errors.append({"path": f"steps.{index}.arguments.delay_ms", "code": "open_delay_invalid"})
             url = str(arguments.get("url") or "").strip()
             if not url:
                 match = re.search(r"https?://[^\s，。]+", description)
@@ -265,7 +310,10 @@ def _compile_single_source(source: dict[str, Any]) -> CompileResult:
                 if url:
                     arguments["url"] = url
             parsed_url = urlparse(url) if url else None
-            if (
+            binding = re.fullmatch(r"\$\{input\.([A-Za-z_][A-Za-z0-9_]*)\}", url)
+            dynamic_url = bool(binding and (inputs.get("properties") or {}).get(
+                binding.group(1), {}).get("type") == "string")
+            if not dynamic_url and (
                 parsed_url is None
                 or parsed_url.scheme not in {"http", "https"}
                 or not parsed_url.netloc
@@ -282,8 +330,16 @@ def _compile_single_source(source: dict[str, Any]) -> CompileResult:
                 not isinstance(when.get("equals"), bool)):
             errors.append({"path": f"steps.{index}.when", "code": "invalid_condition"})
         if operation == "read_results":
-            if not isinstance(arguments.get("from_step"), str) or arguments["from_step"] not in names[:index]:
+            if "items" not in arguments and (not isinstance(arguments.get("from_step"), str) or arguments["from_step"] not in names[:index]):
                 errors.append({"path": f"steps.{index}.arguments.from_step", "code": "prior_result_required"})
+            if "items" in arguments and not (isinstance(arguments["items"], list) or
+                    isinstance(arguments["items"], str) and re.fullmatch(r"\$\{(?:input|vars|steps)\.[a-zA-Z0-9_.-]+\}", arguments["items"])):
+                errors.append({"path": f"steps.{index}.arguments.items", "code": "read_items_invalid"})
+            if "new_tab" in arguments and not isinstance(arguments["new_tab"], bool):
+                errors.append({"path": f"steps.{index}.arguments.new_tab", "code": "read_tab_mode_invalid"})
+            delay = arguments.get("delay_ms", 0)
+            if not isinstance(delay, int) or isinstance(delay, bool) or not 0 <= delay <= 10000:
+                errors.append({"path": f"steps.{index}.arguments.delay_ms", "code": "read_delay_invalid"})
             limit = arguments.get("limit", 3)
             if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 5:
                 errors.append({"path": f"steps.{index}.arguments.limit", "code": "read_limit_invalid"})
@@ -298,6 +354,9 @@ def _compile_single_source(source: dict[str, Any]) -> CompileResult:
                 if index + 1 < len(steps) and isinstance(steps[index + 1], dict)
                 else "done"
             )
+        if operation == "condition":
+            transitions.setdefault("true", transitions.pop("success", "done"))
+            transitions.setdefault("false", "failed")
         transitions.setdefault("failed", "failed")
         normalized_transitions: dict[str, str] = {}
         for outcome, target in transitions.items():
@@ -320,7 +379,7 @@ def _compile_single_source(source: dict[str, Any]) -> CompileResult:
                     }
                 )
             normalized_transitions[outcome] = target
-        effect = _effect(operation)
+        effect = "interact" if requested_mode == "interpreted" and operation == "inspect" else _effect(operation)
         effects.add(effect)
         execution = step.get("execution")
         if isinstance(execution, dict):
@@ -335,12 +394,16 @@ def _compile_single_source(source: dict[str, Any]) -> CompileResult:
                 {"path": f"steps.{index}.execution.mode", "code": "invalid_mode"}
             )
             mode = "adaptive"
+        if operation in {"assign", "condition"}:
+            mode = "compiled"  # Pure local computation never invokes an AI or browser.
         compiled_steps.append(
             {
                 "id": name,
                 "source_index": index,
                 "description": description,
+                "working_goal": str(source.get("working_goal") or source.get("description") or "").strip(),
                 "operation": operation,
+                **({"authored_operation": _operation(step)} if requested_mode == "interpreted" else {}),
                 "mode": mode,
                 "effect": effect,
                 "target": _target_hint(step),
@@ -348,8 +411,7 @@ def _compile_single_source(source: dict[str, Any]) -> CompileResult:
                 **({"when": dict(when)} if isinstance(when, dict) else {}),
                 **(
                     {"ai": dict(step["ai"])}
-                    if operation.startswith("ai.")
-                    and isinstance(step.get("ai"), dict)
+                    if isinstance(step.get("ai"), dict)
                     else {}
                 ),
                 "interaction": {
@@ -369,6 +431,8 @@ def _compile_single_source(source: dict[str, Any]) -> CompileResult:
             }
         )
 
+        if isinstance(step.get("ai"), dict) and step["ai"].get("tier", "standard") not in {"simple", "standard", "complex"}:
+            errors.append({"path": f"steps.{index}.ai.tier", "code": "invalid_ai_tier"})
         if operation.startswith("ai."):
             ai = step.get("ai")
             tier = str(ai.get("tier") or "") if isinstance(ai, dict) else ""
@@ -480,11 +544,13 @@ def _compile_single_source(source: dict[str, Any]) -> CompileResult:
         "compiler_version": COMPILER_VERSION,
         "policy_version": POLICY_VERSION,
         "name": str(source.get("name") or "Untitled Agent"),
+        "working_goal": str(source.get("working_goal") or source.get("description") or "").strip(),
         "site_scope": site_scope,
         "start": compiled_steps[0]["id"] if compiled_steps else None,
         "effects": sorted(effects),
         "inputs": inputs,
         "outputs": outputs,
+        "variables": variables,
         "capability_exports": normalized_exports,
         "validators": validators,
         "steps": compiled_steps,
@@ -553,11 +619,13 @@ def compile_source(source: dict[str, Any]) -> CompileResult:
             "schema": "ai2apps.agent-source/v1",
             "agent_type": source.get("agent_type", "web"),
             "name": capability.get("title") or capability_id,
-            "description": capability.get("description", ""),
+            "description": source.get("description", ""),
+            "working_goal": str(capability.get("working_goal") or "").strip() or str(source.get("working_goal") or source.get("description") or "").strip(),
             "site_scope": source.get("site_scope", []),
             "inputs": capability.get("inputs") or {"type": "object", "properties": {}},
             "outputs": capability.get("outputs") or {"type": "object", "properties": {}},
             "steps": capability.get("steps", []),
+            "variables": capability.get("variables", source.get("variables", {"type":"object","properties":{}})),
             "fixtures": capability.get("fixtures", []),
             "validators": capability.get("validators", []),
             "capability_exports": [
@@ -593,9 +661,10 @@ def compile_source(source: dict[str, Any]) -> CompileResult:
             "source_digest": digest,
         }
         compiled.append(capability_ir)
-        export = dict(result.ir["capability_exports"][0])
-        export["capability_id"] = capability_id
-        exports.append(export)
+        if result.ir["capability_exports"]:
+            export = dict(result.ir["capability_exports"][0])
+            export["capability_id"] = capability_id
+            exports.append(export)
 
     if not compiled and not errors:
         errors.append({"path": "capabilities", "code": "enabled_capability_required"})

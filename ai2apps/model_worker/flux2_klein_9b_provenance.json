@@ -1,0 +1,21 @@
+{
+  "source": {
+    "type": "modelscope",
+    "repoId": "black-forest-labs/FLUX.2-klein-9B",
+    "revision": "429fffab3014811a56c21359f408a155e0bda9e1",
+    "access": "public_anonymous"
+  },
+  "files": [
+    {
+      "path": "scheduler/scheduler_config.json",
+      "size": 486,
+      "sha256": "067afb012cef64553a763447d1efd93daeffcc0123ca7e25b09f8de20b90762e"
+    },
+    {
+      "path": "LICENSE.md",
+      "size": 18158,
+      "sha256": "468d9f4332c0c895e9132c035982a40a12750092603a2e910913cb49aa887d3b"
+    }
+  ],
+  "scope": "Pinned scheduler and license supplement; signed weight distribution unchanged"
+}

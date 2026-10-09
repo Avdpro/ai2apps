@@ -518,8 +518,11 @@ class ManagedServiceSupervisor:
         host_loopback_transport: bool = False,
         port: int | None = None,
         unix_socket: Path | None = None,
+        host_unix_transport: bool = False,
     ) -> tuple[str, ...]:
         system = platform.system()
+        if host_unix_transport and system != "Linux":
+            raise PackageError("unsupported_platform", "host-unix transport requires Linux")
         if system == "Darwin":
             executable = Path("/usr/bin/sandbox-exec")
             if not executable.is_file():
@@ -591,7 +594,9 @@ class ManagedServiceSupervisor:
             return (str(executable), "-f", str(profile), "--", *command)
         if system == "Linux":
             docker = shutil.which("docker")
-            if cuda and docker is not None and host_loopback_transport:
+            if host_unix_transport and docker is None:
+                raise PackageError("sandbox_unavailable", "host-unix transport requires Docker")
+            if docker is not None and (host_unix_transport or (cuda and host_loopback_transport)):
                 if port is None:
                     raise PackageError(
                         "sandbox_configuration_invalid",
@@ -611,6 +616,7 @@ class ManagedServiceSupervisor:
                     network=network,
                     read_only_roots=read_only_roots,
                     unix_socket=unix_socket,
+                    cuda=cuda,
                 )
             bwrap = shutil.which("bwrap")
             if bwrap is None:
@@ -708,6 +714,7 @@ class ManagedServiceSupervisor:
         network: bool,
         read_only_roots: tuple[Path, ...],
         unix_socket: Path,
+        cuda: bool = True,
     ) -> tuple[str, ...]:
         image = os.environ.get("AI2APPS_CUDA_WORKER_IMAGE", "ubuntu:24.04")
         inspected = subprocess.run(
@@ -741,11 +748,11 @@ class ManagedServiceSupervisor:
             f"{os.getuid()}:{os.getgid()}",
             "--network",
             "bridge" if network else "none",
-            "--gpus",
-            "all",
             "--tmpfs",
             "/tmp:rw,nosuid,nodev,noexec,size=1g",
         ]
+        if cuda:
+            value.extend(("--gpus", "all"))
         for name in (
             "PATH",
             "HOME",
@@ -853,6 +860,7 @@ class ManagedServiceSupervisor:
         runtime = manifest["runtime"]
         command = runtime.get("command", [])
         is_model_worker = package.protocol == "ai2apps-model-worker/v1"
+        host_unix_transport = runtime.get("transport") == "host-unix"
         runtime_provider = manifest.get("runtime", {}).get("provider")
         resolved_runtime = None
         if runtime_provider is not None:
@@ -1003,8 +1011,7 @@ class ManagedServiceSupervisor:
             / "ai2apps-workers"
             / f"worker-{port}.sock"
             if platform.system() == "Linux"
-            and is_model_worker
-            and allow_cuda
+            and (host_unix_transport or (is_model_worker and allow_cuda))
             and shutil.which("docker") is not None
             else None
         )
@@ -1031,6 +1038,7 @@ class ManagedServiceSupervisor:
             host_loopback_transport=is_model_worker,
             port=port,
             unix_socket=docker_socket,
+            host_unix_transport=host_unix_transport,
         )
         environment = {
             "PATH": "/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin",
@@ -1055,8 +1063,15 @@ class ManagedServiceSupervisor:
                 # command directly, so no trusted launcher is present to add
                 # the immutable framework layer to sys.path. Model Worker v1
                 # performs this bootstrap inside its Host-owned launcher.
-                environment["PYTHONPATH"] = str(
-                    resolved_runtime.framework_site_packages
+                from ai2apps.model_worker.runtime_profiles import framework_profile_for_service
+
+                selected_profile = framework_profile_for_service(
+                    resolved_runtime.root, service_key
+                )
+                environment["PYTHONPATH"] = os.pathsep.join(
+                    str(path) for path in (
+                        selected_profile, resolved_runtime.framework_site_packages
+                    ) if path is not None
                 )
         if allow_cuda and Path("/usr/local/cuda").is_dir():
             environment["LD_LIBRARY_PATH"] = (
@@ -1363,6 +1378,14 @@ class ManagedServiceSupervisor:
                     "activeRequests": snapshot["activeRequests"],
                     "queuedRequests": snapshot["queuedRequests"],
                 },
+            )
+        # Snapshot retrieval yields: a concurrent restart may have replaced the
+        # Worker since the first generation check. Never stop that replacement.
+        self.assert_worker_generation(service_key, expected_generation)
+        if self._live.get(service_key) is not managed:
+            raise PackageError(
+                "worker_generation_conflict",
+                "Model Worker changed during idle verification",
             )
         await self.stop(service_key)
         self._evicted[service_key] = reason

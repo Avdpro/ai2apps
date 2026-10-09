@@ -18,14 +18,14 @@
     <div class="mchat-controls">
         <div class="mchat-mode" role="group" aria-label="Run mode">
             <button class="is-active" type="button" data-mobile-chat-mode="chat"><i data-lucide="message-circle"></i>Chat</button>
-            <button type="button" data-mobile-chat-mode="agent"><i data-lucide="bot"></i>Agent</button>
+            <button type="button" data-mobile-chat-mode="agent"{% if owner_home %} hidden disabled{% endif %}><i data-lucide="bot"></i>Agent</button>
         </div>
         <select data-mobile-chat-model aria-label="Model"><option>Loading models…</option></select>
         <select data-mobile-chat-agent aria-label="Agent" hidden><option>Loading Agents…</option></select>
     </div>
 
     <main class="mchat-list" data-mobile-chat-list>
-        <div class="mchat-empty"><i data-lucide="sparkles"></i><h1>Chat with this Mac</h1><p>Sessions, attachments and Agent runs stay on your Mac. Your local API key is never sent to the phone.</p></div>
+        <div class="mchat-empty"><i data-lucide="sparkles"></i><h1>Chat with this Mac</h1><p>{% if owner_home %}Chat sessions stay on your Mac. This Owner entry currently supports text chat.{% else %}Sessions, attachments and Agent runs stay on your Mac. Your local API key is never sent to the phone.{% endif %}</p></div>
     </main>
 
     <div class="mchat-status" data-mobile-chat-status hidden role="status" aria-live="polite">
@@ -37,7 +37,7 @@
         <div class="mchat-attachments" data-mobile-chat-attachments hidden></div>
         <div class="mchat-box">
             <input type="file" multiple hidden data-mobile-chat-file accept="image/png,image/jpeg,image/webp,.pdf,.docx,.pptx,.xlsx,.csv,.json,.html,.txt,.md">
-            <button class="mchat-attach" type="button" data-mobile-chat-attach aria-label="Add attachment"><i data-lucide="paperclip"></i></button>
+            <button class="mchat-attach" type="button" data-mobile-chat-attach{% if owner_home %} hidden disabled{% endif %} aria-label="Add attachment"><i data-lucide="paperclip"></i></button>
             <textarea rows="1" maxlength="12000" placeholder="Message AI2Apps" aria-label="Message" data-mobile-chat-input></textarea>
             <button class="mchat-send" aria-label="Send" data-mobile-chat-send><i data-lucide="arrow-up"></i></button>
         </div>
@@ -53,4 +53,4 @@
     <div class="mchat-toast" data-mobile-chat-toast role="alert"></div>
 </div>
 {% endblock %}
-{% block scripts %}<script src="{{ mobile_static('js/mobile_chat.js') }}"></script>{% endblock %}
+{% block scripts %}<script src="{{ mobile_static('js/mobile_chat.js') }}?v=chat-catalog-20261008-1"></script>{% endblock %}

@@ -247,6 +247,8 @@ fi
   --archive "${SHELL_APP}/Contents/Resources/browser/omni.ja"
 /usr/bin/python3 "${SCRIPT_DIR}/apply-shell-navigation.py" \
   --archive "${SHELL_APP}/Contents/Resources/browser/omni.ja"
+/usr/bin/python3 "${SCRIPT_DIR}/apply-background-browser-host.py" \
+  --archive "${SHELL_APP}/Contents/Resources/browser/omni.ja"
 /usr/bin/python3 "${SCRIPT_DIR}/apply-sidebar-refresh.py" \
   --archive "${SHELL_APP}/Contents/Resources/browser/omni.ja"
 

@@ -166,6 +166,7 @@
     window.accountApp = function () {
         return {
             mode: 'login', signedIn: false, cloudUnavailable: false, busy: false,
+            offlineMode: false, offlineReady: false,
             activeSection: 'overview',
             user: null, currencyAssets: [], currencyBalances: [], providerBalances: [], entitlements: [], ledger: [], capacityPolicy: null,
             profile: null,
@@ -187,6 +188,7 @@
             inviteEmail: '', inviteRole: 'member', invitation: null, invitationCreating: false,
             policy: null, policyEtag: '', policyOwnerPassword: '',
             policyDraft: { allowedAppIds: '', allowedModelIds: '', defaultMonthlyPointLimit: '', defaultConcurrencyLimit: 1, offlineGraceSeconds: 0 },
+            mobileApps: [], mobileAppsLoading: false, mobileAppSaving: null,
             remote: { devices: [], connector: {}, usage: {} }, remoteName: tr('account.remote.this_mac'), pairingUrl: '', pairingQr: '', pairingExpiresAt: '', remotePolling: false, remotePollTimer: null,
             registrationNotice: '',
             promotionCode: '', promotionSubmitting: false, promotionAttempt: null,
@@ -198,10 +200,21 @@
             tr,
 
             async init() {
+                try {
+                    const response = await fetch('/v1/platform/client/bootstrap', { credentials: 'same-origin' });
+                    if (response.ok) this.offlineMode = (await response.json()).offline_mode === true;
+                } catch (_) { /* Existing account restore handles availability errors. */ }
+                finally { this.offlineReady = true; }
+                if (this.offlineMode) return;
                 await this.loadLocalIdentity();
                 if (this.localIdentity?.isCore) await this.loadLanguage();
                 if (!this.localIdentity || this.localIdentity.isCore) await this.restore();
                 this.beginRemotePolling();
+            },
+            openOfflineApp(appId) {
+                if (!['ai2apps.models', 'ai2apps.general-chat'].includes(appId)) return;
+                if (window.ai2appsShell?.openEntry) return window.ai2appsShell.openEntry({ appId });
+                window.location.assign('/apps/' + encodeURIComponent(appId));
             },
             clearNotice() { this.message = ''; this.messageTone = 'error'; },
             success(text) { this.message = text; this.messageTone = 'success'; },
@@ -1107,7 +1120,20 @@
                 } catch (error) { this.fail(error); }
                 finally { this.adminPassword = ''; this.busy = false; }
             },
+            async loadMobileApps() {
+                this.mobileAppsLoading=true;
+                try { this.mobileApps=(await remoteRequest('/mobile-apps')).items||[]; }
+                catch(error){this.mobileApps=[];if(error.status!==401&&error.status!==403)this.fail(error);}
+                finally {this.mobileAppsLoading=false;}
+            },
+            async setMobileApp(item, enabled) {
+                this.mobileAppSaving=item.app_key;
+                try {const result=await remoteRequest('/mobile-apps/'+encodeURIComponent(item.app_key),{method:'PUT',body:{enabled}});item.enabled=result.enabled;}
+                catch(error){this.fail(error);}
+                finally{this.mobileAppSaving=null;}
+            },
             async loadRemote() {
+                await this.loadMobileApps();
                 try {
                     const status = await remoteRequest('/status');
                     this.remote.devices = status.devices || [];

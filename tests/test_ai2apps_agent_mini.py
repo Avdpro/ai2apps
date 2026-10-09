@@ -93,7 +93,7 @@ def test_agent_mini_keeps_new_and_previewed_drafts_out_of_the_saved_menu():
     assert "api('/agent-drafts'" not in create_body
     assert ".filter(savedForMenu)" in mini
     assert "await persistDraft();" in mini
-    assert "return persistDraft({explicit: true});" in mini
+    assert "await persistDraft({explicit: true});" in mini
 
 
 def test_agent_mini_can_archive_the_current_agent_after_confirmation():
@@ -143,13 +143,14 @@ def test_agent_mini_renders_completed_run_results_and_restores_the_latest_run():
     assert "function resultFromRun(run)" in mini
     assert "function renderRunResult(run)" in mini
     assert "Array.isArray(result?.items)" in mini
-    assert "renderRun(runs.items[0]);" in mini
+    assert "renderRun(pageRuns[0]);" in mini
+    assert "renderRun(resumable);" in mini
 
 
 def test_exploration_clears_a_restored_stale_run_card():
     mini = (ROOT / "ai2apps/web/static/js/agent_mini.js").read_text()
 
-    start = mini.index("async function startExploration(goal)")
+    start = mini.index("async function startExploration(goal, resume = false)")
     reset = mini.index("renderRun(null);", start)
     exploration_state = mini.index("state.exploration = {", start)
 
@@ -210,7 +211,7 @@ def test_agent_mini_reviews_source_and_ir_before_recipe_commit():
     assert "function renderRecipeReview()" in mini
     assert "'/review/revisions'" in mini
     assert "'/review/approve'" in mini
-    assert "$('#agent-review-commit').hidden = !approved" in mini
+    assert "$('#agent-review-commit').hidden = committed || !approved" in mini
     assert "await loadRecipeReview();" in mini
 
 
@@ -223,17 +224,18 @@ def test_agent_mini_runs_a_bounded_one_step_exploration_timeline():
 
     assert 'id="agent-exploration"' in template
     assert 'id="agent-exploration-timeline"' in template
-    assert "async function startExploration(goal)" in mini
+    assert "async function startExploration(goal, resume = false)" in mini
     assert "maxSteps: 12" in mini
     assert "'/agent-explorations/next'" in mini
     assert "'/agent-explorations/distill'" in mini
     assert "function explorationActionNeedsConfirmation" in mini
-    assert "['open', 'page_access', 'click', 'input', 'hover', 'delete']" in mini
+    assert "step.operation === 'delete' || step.operation === 'approval' || step.operation === 'open'" in mini
+    assert "purchase|pay|checkout|authorize|agree|accept" in mini
     assert "await execute(step, false" in mini
     assert "'agent.mini.exploration_model': 'Model'" in mini
     assert "'agent.mini.exploration_model': '模型'" in mini
     assert "status.textContent = statusText(exploration.status)" in mini
-    assert "status.textContent = statusText(review.status)" in mini
+    assert "status.textContent = statusText(committed ? 'committed' : review.status)" in mini
     assert "successful steps`" not in mini
     assert "compiled steps`" not in mini
     assert "async explorationObservation()" in client
@@ -245,6 +247,6 @@ def test_agent_mini_pins_sidebar_context_during_browser_orchestration():
     assert "function setContextPinned(pinned)" in mini
     assert "fragment.set('agent_context_lock', '1')" in mini
     assert "fragment.delete('agent_context_lock')" in mini
-    assert "async function startExploration(goal) {\n        setContextPinned(true);" in mini
-    assert "async function driveRun() {" in mini
+    assert "async function startExploration(goal, resume = false) {\n        setContextPinned(true);" in mini
+    assert "async function driveRun(resumeAssistance = false) {" in mini
     assert "setContextPinned(false);\n        await refreshDrafts()" in mini

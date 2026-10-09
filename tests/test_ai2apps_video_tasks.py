@@ -6,6 +6,8 @@ from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
 
+import av
+import numpy as np
 import pytest
 from PIL import Image
 
@@ -14,6 +16,7 @@ from ai2apps.events import EventNotificationBus, EventStore
 from ai2apps.storage import PlatformDatabase
 from ai2apps.video import VideoGenerationError, VideoTaskManager
 from ai2apps.video_policy import (
+    H3_PADDED_RESOLUTIONS,
     H3_RATIOS,
     H3_RESOLUTIONS,
     effective_video_capabilities,
@@ -118,6 +121,103 @@ def test_h3_effective_capabilities_expose_safe_native_resolutions():
     assert capabilities["geometry"]["ratios"] == list(H3_RATIOS)
     assert capabilities["defaults"]["resolution"] == "512x512"
     assert capabilities["defaults"]["steps"] == 8
+    assert {"1024x576", "576x1024", "1280x720", "720x1280"}.issubset(H3_RESOLUTIONS)
+    assert H3_PADDED_RESOLUTIONS == {
+        "1280x720": (1280, 736), "720x1280": (736, 1280),
+    }
+
+
+@pytest.mark.parametrize("resolution,ratio", [
+    ("1024x576", "16:9"), ("576x1024", "9:16"),
+    ("1280x720", "16:9"), ("720x1280", "9:16"),
+])
+def test_h3_new_resolutions_pass_host_request_validation(tmp_path, resolution, ratio):
+    manager = _manager(tmp_path)
+    model = manager._model("example/video")
+    model.id = "ai2apps.model.minimax-h3/fl2va-4bit"
+    model.metadata = {"family": "minimax-h3"}
+    effective = manager._effective_request({
+        "resolution": resolution, "ratio": ratio,
+        "content": [{"type": "text", "role": "prompt", "text": "landscape"}],
+    }, model)
+    assert effective["resolution"] == resolution
+    assert (effective["width"], effective["height"]) == tuple(map(int, resolution.split("x")))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("resolution,expected_padded", [
+    ("1280x720", (1280, 736)), ("720x1280", (736, 1280)),
+])
+async def test_h3_720p_uses_aligned_worker_canvas_and_crops_result(
+    tmp_path, monkeypatch, resolution, expected_padded,
+):
+    from ai2apps.video import geometry
+
+    calls = {}
+
+    class Gateway:
+        async def invoke_background_to_file(self, _model_id, _operation, body, target, **options):
+            calls["body"] = body
+            options["on_admitted"]()
+            target.write_bytes(b"padded")
+
+    def crop(source, destination, *, width, height, check):
+        check()
+        calls["crop"] = (width, height)
+        assert source.read_bytes() == b"padded"
+        destination.write_bytes(b"cropped")
+        return destination
+
+    monkeypatch.setattr(geometry, "crop_video_canvas", crop)
+    manager = object.__new__(VideoTaskManager)
+    manager.root = tmp_path
+    manager.runtime = SimpleNamespace(model_invocations=Gateway())
+    manager._row = lambda _task_id: {"cancel_requested_at": None, "invocation_actor_id": "actor"}
+    manager._update = lambda *_args, **_kwargs: None
+    (tmp_path / "run").mkdir()
+    model = SimpleNamespace(id="ai2apps.model.minimax-h3/openvdn-dmd8-4bit",
+                            metadata={"family": "minimax-h3-openvdn"})
+    width, height = (int(value) for value in resolution.split("x"))
+    output = await manager._invoke("run", model, {
+        "resolution": resolution, "width": width, "height": height,
+    }, [])
+    assert (calls["body"]["width"], calls["body"]["height"]) == expected_padded
+    assert calls["crop"] == (width, height)
+    assert output.read_bytes() == b"cropped"
+
+
+def test_crop_video_canvas_preserves_frame_count_and_audio(tmp_path):
+    from ai2apps.video.geometry import crop_video_canvas
+
+    source, destination = tmp_path / "padded.mp4", tmp_path / "cropped.mp4"
+    with av.open(str(source), "w", format="mp4") as container:
+        video = container.add_stream("libx264", rate=24)
+        video.width, video.height, video.pix_fmt = 128, 96, "yuv420p"
+        audio = container.add_stream("aac", rate=24000)
+        audio.layout = "mono"
+        for index in range(3):
+            pixels = np.zeros((96, 128, 3), dtype=np.uint8)
+            pixels[16:80, :, 0] = 90 + index
+            frame = av.VideoFrame.from_ndarray(pixels, format="rgb24")
+            frame.pts = index
+            for packet in video.encode(frame):
+                container.mux(packet)
+            sound = av.AudioFrame.from_ndarray(np.zeros((1, 1000), dtype=np.float32),
+                                               format="fltp", layout="mono")
+            sound.sample_rate, sound.pts = 24000, index * 1000
+            for packet in audio.encode(sound):
+                container.mux(packet)
+        for packet in video.encode():
+            container.mux(packet)
+        for packet in audio.encode():
+            container.mux(packet)
+    crop_video_canvas(source, destination, width=128, height=64, check=lambda: None)
+    with av.open(str(destination)) as result:
+        assert (result.streams.video[0].width, result.streams.video[0].height) == (128, 64)
+        frames = list(result.decode(result.streams.video[0]))
+        assert len(frames) == 3
+        assert frames[0].to_ndarray(format="rgb24")[:, :, 0].mean() > 80
+        assert len(result.streams.audio) == 1
 
 
 def test_effective_capabilities_ignore_invalid_recommended_steps():
@@ -575,3 +675,91 @@ async def test_video_manual_delete_rejects_active_and_foreign_tasks(tmp_path):
     manager.delete(task['id'],actor_id='actor-1')
     assert not source.exists() and not (manager.root/task['id']).exists()
     assert gallery.asset_path('actor-1',asset['id'])[1].read_bytes()==b'video-delete-test'
+
+
+@pytest.mark.asyncio
+async def test_segmented_avatar_shutdown_requeues_and_restart_resumes(tmp_path):
+    from ai2apps.avatar.segments import SCHEMA
+    manager = _manager(tmp_path)
+    model = manager._model("example/video")
+    model.capabilities = ("avatar_video",)
+    model.metadata = {}
+    model.video_capabilities["avatar_segments"] = {
+        "schema": SCHEMA, "planner": "h3-v1", "window_frames": 192}
+    manager.runtime.package_manager = SimpleNamespace(packages=SimpleNamespace(
+        active=lambda _: SimpleNamespace(package_digest="fixed-package")))
+    started = asyncio.Event()
+    async def blocked(*args):
+        started.set()
+        await asyncio.Event().wait()
+    manager._invoke = blocked
+    await manager.startup()
+    task = await manager.create({"model": model.id, "content": [
+        {"type":"text", "role":"prompt", "text":"portrait"}]},actor_id="actor-1")
+    await asyncio.wait_for(started.wait(), 2)
+    await manager.shutdown()
+    row = manager._row(task["id"])
+    assert row["status"] == "queued"
+    assert row["cancel_requested_at"] is None
+    assert json.loads(row["request_json"])["_avatar_model"]["package"] == "fixed-package"
+    started.clear()
+    await manager.startup()
+    await asyncio.wait_for(started.wait(), 2)
+    await manager.shutdown()
+    assert manager._row(task["id"])["status"] == "queued"
+
+
+@pytest.mark.asyncio
+async def test_explicit_cancel_during_shutdown_is_not_requeued(tmp_path):
+    from ai2apps.avatar.segments import SCHEMA
+    manager = _manager(tmp_path)
+    model = manager._model("example/video")
+    model.capabilities = ("avatar_video",)
+    model.metadata = {}
+    model.video_capabilities["avatar_segments"] = {
+        "schema": SCHEMA, "planner": "h3-v1", "window_frames": 192}
+    manager.runtime.package_manager = SimpleNamespace(packages=SimpleNamespace(
+        active=lambda _: SimpleNamespace(package_digest="fixed-package")))
+    started = asyncio.Event()
+    async def blocked(*args):
+        started.set()
+        await asyncio.Event().wait()
+    manager._invoke = blocked
+    await manager.startup()
+    task = await manager.create({"model": model.id, "content": [
+        {"type":"text", "role":"prompt", "text":"portrait"}]},actor_id="actor-1")
+    await asyncio.wait_for(started.wait(), 2)
+    cancel = manager.cancel
+    async def concurrent(task_id, **kwargs):
+        result = await cancel(task_id, **kwargs)
+        with manager.database.transaction(write=True) as connection:
+            connection.execute("UPDATE video_generation_tasks SET cancel_requested_at=? WHERE id=?",
+                               ("2026-10-06T00:00:00Z", task_id))
+        return result
+    manager.cancel = concurrent
+    await manager.shutdown()
+    assert manager._row(task["id"])["status"] == "cancelled"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("frame_count", [1, 400])
+async def test_source_video_is_frozen_and_retryable(tmp_path, frame_count):
+    manager = _manager(tmp_path)
+    model = manager._model("example/video")
+    model.video_capabilities["content_combinations"] = [{"required": [
+        {"type": "video_url", "role": "source_video", "min": 1, "max": 1}], "optional": []}]
+    path=tmp_path/"source.mp4"
+    with av.open(str(path),"w") as output:
+        stream=output.add_stream("libx264",rate=25);stream.width=32;stream.height=32;stream.pix_fmt="yuv420p"
+        for _ in range(frame_count):
+            for packet in stream.encode(av.VideoFrame.from_ndarray(np.zeros((32,32,3),dtype=np.uint8),format="rgb24")):output.mux(packet)
+        for packet in stream.encode():output.mux(packet)
+    with pytest.raises(VideoGenerationError, match="between 2 and 15"):
+        manager._validate_media(path.read_bytes(),"video/mp4","video_url","reference_video")
+    original=await manager.create({"model":model.id,"content":[{"type":"video_url","role":"source_video","video_url":{"url":"multipart://movie"}}]},actor_id="actor-1",uploads={"movie":("source.mp4",path.read_bytes(),"video/mp4")})
+    await manager.cancel(original["id"],actor_id="actor-1")
+    retried=await manager.retry(original["id"],actor_id="actor-1")
+    for task in (original,retried):
+        manifest=json.loads(manager._row(task["id"])["input_manifest_json"])
+        assert len(manifest)==1 and manifest[0]["part_name"]=="source_video"
+        assert (manager.root/task["id"]/manifest[0]["path"]).read_bytes()==path.read_bytes()

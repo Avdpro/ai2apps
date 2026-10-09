@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const source = fs.readFileSync(__dirname + '/../web/static/js/agent_mini.js', 'utf8');
-const context = {tr:(key,values={})=>key+JSON.stringify(values)};
+const context = {structuredClone,tr:(key,values={})=>key+JSON.stringify(values)};
 vm.runInNewContext(source.slice(source.indexOf('    function parameterValue('),source.indexOf('    function renderParameters(')) +
  source.slice(source.indexOf('    function resolveInput('),source.indexOf('    async function execute(')) +
  '\nglobalThis.convert=parameterValue;globalThis.resolve=resolveInput;globalThis.read=readInputFields;', context);

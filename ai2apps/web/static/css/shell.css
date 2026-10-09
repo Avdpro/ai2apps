@@ -406,3 +406,26 @@ body {
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+.desktop-home-remote { width: 100%; margin-top: 24px; padding-top: 20px; border-top: 1px solid #e5e5e5; }
+.desktop-home-remote > strong { font-size: 14px; }
+[data-home-remote-devices] { margin-top: 12px; font-size: 12px; color: #737373; }
+.desktop-home-remote-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; }
+.desktop-home-remote-copy { min-width: 0; overflow-wrap: anywhere; }
+.desktop-home-remote-copy strong { color: #262626; font-size: 12px; }
+.desktop-home-remote-copy small { margin-top: 4px; font-size: 11px; }
+.desktop-home-remote-switch { flex: 0 0 38px; width: 38px; height: 22px; padding: 3px; border: 0; border-radius: 20px; background: #a3a3a3; cursor: pointer; }
+.desktop-home-remote-switch::after { content: ''; display: block; width: 16px; height: 16px; border-radius: 50%; background: white; transition: transform 150ms; }
+.desktop-home-remote-switch[aria-checked="true"] { background: #16845b; }
+.desktop-home-remote-switch[aria-checked="true"]::after { transform: translateX(16px); }
+.desktop-home-remote-switch:disabled { opacity: .45; cursor: default; }
+.desktop-home-remote-switch:focus-visible { outline: 2px solid #171717; outline-offset: 3px; }
+.desktop-home-remote-settings { margin-top: 14px; padding: 0; border: 0; background: none; color: #525252; text-decoration: underline; cursor: pointer; font: inherit; font-size: 12px; }
+[data-home-remote-error] { color: #b42318; font-size: 12px; overflow-wrap: anywhere; }
+
+.desktop-home-space-dialog { width: min(380px, calc(100vw - 48px)); padding: 28px; border: 1px solid #e5e5e5; border-radius: 22px; text-align: center; color: #262626; }
+.desktop-home-space-dialog::backdrop { background: rgba(0,0,0,.35); }
+.desktop-home-space-dialog h2 { margin: 0; font-size: 20px; }
+.desktop-home-space-dialog p { font-size: 13px; line-height: 1.6; color: #737373; }
+.desktop-home-space-dialog img { max-width: 100%; height: auto; margin: 12px auto; }
+.desktop-home-space-dialog a { overflow-wrap: anywhere; font-size: 12px; color: #525252; }

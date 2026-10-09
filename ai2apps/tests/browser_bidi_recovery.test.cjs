@@ -79,7 +79,7 @@ test('Agent discards disconnected client and reconnects before the next task', a
         async connect() {}
         async pageState() {return {title: 'Test'};}
     }
-    const context = {state: {client: null, context: {}, contextRevision: 1}, window: {AI2AppsBiDi: {AI2AppsPageClient: PageClient}}};
+    const context = {ensureWorkspaceBrowserContext:async()=>{},state: {client: null, context: {}, contextRevision: 1}, window: {AI2AppsBiDi: {AI2AppsPageClient: PageClient}}};
     vm.runInNewContext(clientSource + '\nglobalThis.obtainClient = client;', context);
     const first = await context.obtainClient();
     assert.equal(await context.obtainClient(), first);

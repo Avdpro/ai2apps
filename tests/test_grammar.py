@@ -1094,7 +1094,7 @@ class TestListGrammarParsers:
         app = FastAPI()
         app.include_router(router)
         app.dependency_overrides[require_admin] = lambda: True
-        yield TestClient(app)
+        yield TestClient(app, base_url="http://127.0.0.1")
         app.dependency_overrides.clear()
 
     def test_returns_list_from_xgrammar(self, client):

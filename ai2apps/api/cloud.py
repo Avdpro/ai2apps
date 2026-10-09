@@ -341,6 +341,26 @@ def _transport_error(error: httpx.HTTPError) -> JSONResponse:
     return _apply_browser_cookie(response)
 
 
+def _space_response_with_qr(response: Response) -> Response:
+    if response.status_code >= 400:
+        return response
+    try:
+        payload = json.loads(bytes(response.body))
+        url = payload["spaceUrl"]
+        parsed = urlsplit(url)
+        if (parsed.scheme != "https" or not parsed.netloc
+                or parsed.username is not None or parsed.password is not None
+                or parsed.query or parsed.fragment
+                or parsed.path != "/u/" + str(payload["ownerUserId"])):
+            raise ValueError("unexpected account space URL")
+        return _apply_browser_cookie(JSONResponse(
+            content={"spaceUrl": url, "spaceQrDataUrl": svg_qr_data_url(url)},
+            headers={"Cache-Control": "no-store"},
+        ))
+    except (KeyError, TypeError, ValueError):
+        raise HTTPException(status_code=502, detail="Invalid account space URL")
+
+
 def _invitation_response_with_qr(response: Response) -> Response:
     if response.status_code >= 400:
         return response
@@ -833,6 +853,10 @@ def create_cloud_router(
     @router.get("/auth/me", dependencies=core_account_only)
     async def auth_me():
         return await call("GET", "/v1/auth/me")
+
+    @router.get("/space", dependencies=core_account_only)
+    async def get_space():
+        return _space_response_with_qr(await call("GET", "/v1/space"))
 
     @router.get("/profile", dependencies=core_account_only)
     async def get_profile():

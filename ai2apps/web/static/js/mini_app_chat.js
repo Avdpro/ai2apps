@@ -73,6 +73,8 @@
     function createStudioController(options) {
         const channel = channelId();
         let frame = null;
+        let boundIframe = null;
+        const currentFrame = () => boundIframe ? boundIframe.contentWindow : frame;
         let disposed = false;
 
         async function describe() {
@@ -105,7 +107,8 @@
         }
 
         async function onMessage(event) {
-            if (disposed || event.origin !== window.location.origin || (frame && event.source !== frame)) return;
+            const target = currentFrame();
+            if (disposed || event.origin !== window.location.origin || (target && event.source !== target) || (boundIframe && !target)) return;
             const message = event.data || {};
             if (message.type !== REQUEST || message.channel !== channel || !message.id) return;
             if (!frame) frame = event.source;
@@ -128,13 +131,15 @@
             schema: SCHEMA,
             url() {
                 const hash = new URLSearchParams({ mini_app_chat: '1', mini_app_chat_channel: channel });
-                return `/admin/chat-mini#${hash}`;
+                // A new channel must load a new document, even when Firefox restores the iframe.
+                // Changing only the fragment leaves the old entry running with its old channel.
+                return `/admin/chat-mini?mini_app_chat_channel=${encodeURIComponent(channel)}#${hash}`;
             },
-            bind(iframe) { frame = iframe?.contentWindow || null; },
+            bind(iframe) { boundIframe = iframe || null; frame = iframe?.contentWindow || null; },
             changed() {
-                frame?.postMessage({ type: CHANGED, channel }, window.location.origin);
+                currentFrame()?.postMessage({ type: CHANGED, channel }, window.location.origin);
             },
-            dispose() { disposed = true; frame = null; window.removeEventListener('message', onMessage); },
+            dispose() { disposed = true; boundIframe = null; frame = null; window.removeEventListener('message', onMessage); },
         };
     }
 

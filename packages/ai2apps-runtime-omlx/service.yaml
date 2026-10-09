@@ -3,7 +3,7 @@ id: ai2apps.runtime.omlx
 name: AI2Apps oMLX Runtime
 description: Official signed MLX/oMLX execution Runtime for isolated AI2Apps Model
   Workers.
-version: 1.8.8
+version: 1.8.10
 publisher:
   id: ai2apps
 runtime:
@@ -42,6 +42,8 @@ capabilities:
 - flux2-klein
 - z-image
 - image-upscaling
+- audio-generation-v1
+- audio-generation-workflow-v1
 requires:
   services: []
 permissions:

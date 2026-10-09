@@ -5,9 +5,10 @@ const vm=require('node:vm');
 const source=fs.readFileSync(__dirname+'/../web/static/js/agent_mini.js','utf8');
 async function initialize(runs,options){
  const rendered=[];
- const state={presentations:new Map([['old',{}]]),resultMode:'ai',run:{id:'old'},client:null,context:{}};
- const context={state,notice(){},renderRun:run=>{state.run=run;rendered.push(run);},api:async path=>path.startsWith('/agent-draft-runs')?{items:runs}:{items:[]},refreshDrafts:async()=>{},loadBuilderModels:async()=>{},$:()=>({replaceChildren(){}}),Option:function(){},tr:key=>key,client:async()=>({pageState:async()=>({})}),driveRun(){},URL,location:{href:'http://localhost/admin/agent-mini'}};
- vm.runInNewContext(source.slice(source.indexOf('    async function initialize('),source.indexOf('    function contextKey('))+'\nglobalThis.initialize=initialize;',context);
+ runs.forEach(run=>run.input={parameters:{browser_context:{bidi_context:'tab-1'}}});
+ const state={presentations:new Map([['old',{}]]),resultMode:'ai',run:{id:'old'},client:null,context:{bidi_context:'tab-1'}};
+ const context={restoreExplorationCheckpoint:async()=>false,state,notice(){},renderRun:run=>{state.run=run;rendered.push(run);},api:async path=>path.startsWith('/agent-draft-runs')?{items:runs}:{items:[]},refreshDrafts:async()=>{},loadBuilderModels:async()=>{},$:()=>({replaceChildren(){}}),Option:function(){},tr:key=>key,client:async()=>({pageState:async()=>({})}),driveRun(){},URL,location:{href:'http://localhost/admin/agent-mini'}};
+ vm.runInNewContext(source.slice(source.indexOf('    function runMatchesContext('),source.indexOf('    function contextIsWebPage('))+source.slice(source.indexOf('    async function initialize('),source.indexOf('    function contextKey('))+'\nglobalThis.initialize=initialize;',context);
  await context.initialize(options);return {state,rendered};
 }
 test('explicit refresh clears prior results and does not restore completed history',async()=>{

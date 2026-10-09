@@ -553,3 +553,75 @@ def test_developer_id_runtime_uses_gatekeeper_without_xcode(
         )
         for command in commands
     )
+
+
+def test_linux_cpu_unix_service_uses_network_none_docker(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setattr("ai2apps.packages.supervisor.platform.system", lambda: "Linux")
+    monkeypatch.setattr("ai2apps.packages.supervisor.shutil.which", lambda _: "/usr/bin/docker")
+    monkeypatch.setattr(
+        "ai2apps.packages.supervisor.subprocess.run",
+        lambda *_args, **_kwargs: SimpleNamespace(returncode=0),
+    )
+    package = tmp_path / "package"
+    data = tmp_path / "data"
+    temporary = tmp_path / "temporary"
+    for path in (package, data, temporary):
+        path.mkdir()
+    supervisor = object.__new__(ManagedServiceSupervisor)
+
+    command = supervisor._sandbox_command(
+        ("/runtime/python", "--port", "18765"),
+        package,
+        data,
+        temporary,
+        network=False,
+        cuda=False,
+        host_unix_transport=True,
+        host_loopback_transport=True,
+        port=18765,
+        unix_socket=data / "model-worker.sock",
+    )
+
+    assert command[:3] == ("/usr/bin/docker", "run", "--rm")
+    assert "none" in command
+    assert "--publish" not in command
+    assert "--gpus" not in command
+    assert command[-2:] == ("--uds", str(data / "model-worker.sock"))
+
+
+@pytest.mark.parametrize('command', [[], ['python','--port','123'], ['python','--port','{port}','--uds','/tmp/x']])
+def test_host_unix_rejects_non_host_owned_port(command):
+    value = manifest(ROOT / 'packages/ai2apps-service-knowledge-lancedb')
+    value['runtime']['transport'] = 'host-unix'
+    value['runtime']['command'] = command
+    with pytest.raises(PackageError) as error:
+        ServicePackageArchive._manifest(value)
+    assert error.value.code == 'invalid_transport'
+
+
+def test_host_unix_accepts_explicit_generic_http_transport():
+    value = manifest(ROOT / 'packages/ai2apps-service-knowledge-lancedb')
+    value['runtime']['transport'] = 'host-unix'
+    parsed = ServicePackageArchive._manifest(value)
+    assert parsed.raw['runtime']['transport'] == 'host-unix'
+
+
+def test_host_unix_does_not_fallback_to_unreachable_network_namespace(tmp_path, monkeypatch):
+    monkeypatch.setattr('ai2apps.packages.supervisor.platform.system', lambda: 'Linux')
+    monkeypatch.setattr('ai2apps.packages.supervisor.shutil.which', lambda _: None)
+    supervisor = object.__new__(ManagedServiceSupervisor)
+    with pytest.raises(PackageError) as error:
+        supervisor._sandbox_command(('python','--port','1234'),tmp_path,tmp_path,tmp_path,
+            network=False,host_unix_transport=True,port=1234,unix_socket=tmp_path/'worker.sock')
+    assert error.value.code == 'sandbox_unavailable'
+
+
+def test_host_unix_rejects_unsupported_host_platform(tmp_path, monkeypatch):
+    monkeypatch.setattr('ai2apps.packages.supervisor.platform.system', lambda: 'Darwin')
+    supervisor = object.__new__(ManagedServiceSupervisor)
+    with pytest.raises(PackageError) as error:
+        supervisor._sandbox_command(('python','--port','1234'),tmp_path,tmp_path,tmp_path,
+            network=False,host_unix_transport=True,port=1234,unix_socket=tmp_path/'worker.sock')
+    assert error.value.code == 'unsupported_platform'

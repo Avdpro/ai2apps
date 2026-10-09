@@ -59,7 +59,7 @@ def _list_ids(state) -> list[str]:
             patch("omlx.server._server_state", state),
             patch("omlx.server.get_max_context_window", return_value=None),
         ):
-            client = TestClient(app, raise_server_exceptions=False)
+            client = TestClient(app, base_url="http://127.0.0.1", raise_server_exceptions=False)
             response = client.get("/v1/models")
     finally:
         if previous is None:

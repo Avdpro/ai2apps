@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import unicodedata
 import uuid
 
@@ -22,6 +23,17 @@ def _terminal_punctuation(text: str) -> str:
         return value
     has_cjk = any("\u3400" <= character <= "\u9fff" for character in value)
     return value + ("。" if has_cjk else ".")
+
+
+def _punctuation_style(source: str, candidate: str) -> str:
+    # The bilingual CT model emits Chinese marks even for English-only input.
+    # Preserve mixed-language text; never rewrite words or numeric expressions.
+    if not re.search(r"[A-Za-z]", source) or re.search(
+        r"[\u3400-\u9fff\u3040-\u30ff\uac00-\ud7af]", source
+    ):
+        return candidate
+    candidate = candidate.translate(str.maketrans("，。！？；：", ",.!?;:"))
+    return re.sub(r"([,.!?;:])(?=[A-Za-z])", r"\1 ", candidate)
 
 
 class PunctuationAdapter:
@@ -97,7 +109,7 @@ class PunctuationAdapter:
             raise ModelWorkerError("Punctuation input must not be empty")
         restorer = await self._restorer_for(model_id)
         candidate = await asyncio.to_thread(restorer.add_punctuation, source.strip())
-        candidate = str(candidate or "").strip()
+        candidate = _punctuation_style(source, str(candidate or "").strip())
         preserved = bool(candidate) and _signature(candidate) == _signature(source)
         output = candidate if preserved else _terminal_punctuation(source)
         completion_id = f"chatcmpl-punc-{uuid.uuid4().hex}"

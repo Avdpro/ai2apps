@@ -339,3 +339,53 @@ async def test_background_video_multipart_preserves_structured_fields(tmp_path, 
     assert seen["flag"] == b"false" and seen["seed"] == b"0"
     assert seen["reference_00_image"] == b"portrait"
     assert output.read_bytes() == b"video"
+
+
+@pytest.mark.asyncio
+async def test_active_cancellation_releases_once_and_admits_next_request():
+    scheduler=WorkerJobScheduler()
+    first=await scheduler.acquire('test',WorkloadClass.LOCAL_FOREGROUND)
+    pending=asyncio.create_task(scheduler.acquire('test',WorkloadClass.LOCAL_FOREGROUND))
+    await asyncio.sleep(0)
+    assert not pending.done()
+    await first.release(cancelled=True)
+    await first.release(failed=True)
+    second=await asyncio.wait_for(pending,1)
+    await second.release()
+    state=await scheduler.snapshot()
+    assert state['cancelled']==1 and state['completed']==1 and state['failed']==0
+    assert state['running']==state['queued']==0
+
+
+@pytest.mark.asyncio
+async def test_queued_request_cancel_is_bound_to_service_actor_app_and_session():
+    scheduler=WorkerJobScheduler()
+    owner=dict(actor_id='alice',app_id='studio',session_id='session-a')
+    blocker=await scheduler.acquire('worker',WorkloadClass.LOCAL_FOREGROUND,request_id='active-id',**owner)
+    queued=asyncio.create_task(scheduler.acquire('worker',WorkloadClass.LOCAL_FOREGROUND,request_id='same-id',**owner))
+    await asyncio.sleep(0)
+    for field,value in [('actor_id','bob'),('app_id','other'),('session_id','other')]:
+        wrong={**owner,field:value}
+        assert not await scheduler.cancel_queued_request('worker','same-id',**wrong)
+        assert not await scheduler.owns_active_request('worker','same-id',**wrong)
+    assert not await scheduler.cancel_queued_request('other-worker','same-id',**owner)
+    assert await scheduler.cancel_queued_request('worker','same-id',**owner)
+    with pytest.raises(asyncio.CancelledError):await queued
+    assert await scheduler.owns_active_request('worker','active-id',**owner)
+    state=await scheduler.snapshot()
+    assert state['running']==1 and state['queued']==0 and state['cancelled']==1
+    await blocker.release()
+
+
+@pytest.mark.asyncio
+async def test_reused_active_request_id_cannot_be_reported_as_queue_only_cancel():
+    scheduler=WorkerJobScheduler()
+    owner=dict(actor_id='alice',app_id='studio',session_id='session')
+    lease=await scheduler.acquire('worker',WorkloadClass.LOCAL_FOREGROUND,request_id='same',**owner)
+    queued=asyncio.create_task(scheduler.acquire('worker',WorkloadClass.LOCAL_FOREGROUND,request_id='same',**owner))
+    await asyncio.sleep(0)
+    assert not await scheduler.cancel_queued_request('worker','same',**owner)
+    state=await scheduler.snapshot();assert state['running']==state['queued']==1
+    queued.cancel()
+    with pytest.raises(asyncio.CancelledError):await queued
+    await lease.release()

@@ -13,7 +13,7 @@
     const ADJUSTMENT_PRESETS_KEY = 'ai2apps.imagine-studio.adjustment-presets.v1';
     const ADJUSTMENT_LOCK_KEY = 'ai2apps.imagine-studio.adjustment-lock.v1';
     const ADJUSTMENT_SELECTED_PRESET_KEY = 'ai2apps.imagine-studio.adjustment-selected-preset.v1';
-    const GALLERY_MINI_FALLBACK_URL = '/admin/app-content/ai2apps.gallery?surface=mini';
+    const GALLERY_MINI_FALLBACK_URL = (window.AI2APPS_MOBILE_SURFACE ? '/mobile' : '/admin') + '/app-content/ai2apps.gallery?surface=mini';
     const DEFAULT_CLOUD_MODEL = 'cloud/ai2apps/openai/gpt-image-2';
     const STYLE_TRANSFER_INSTRUCTION = 'Restyle the source image in the selected visual style. Preserve the main subject, identity, pose, composition, geometry, and important content unless the additional instructions explicitly request a change. Change the visual rendering, materials, lighting, color treatment, and texture to match the target style.';
     const GROUP_PHOTO_INSTRUCTION = 'Create one natural, coherent group photograph containing every person from the person reference images exactly once. Preserve each person\'s recognizable identity, facial features, apparent age, skin tone, hairstyle, and body characteristics. Keep the people distinct: do not merge identities, duplicate anyone, omit anyone, or introduce extra people. Use the final reference image only as the background when a background image is supplied. Make lighting, scale, perspective, shadows, eye lines, anatomy, and contact between people physically consistent.';
@@ -30,7 +30,7 @@
         presets: ['1024x1024', '1536x1024', '1024x1536'],
     };
     const TRANSLATIONS = {
-        zh: {
+        zh: { mobileBack: '返回', mobileOutput: '输出',
             productStudioName: '商品摄影棚', productStudioSummary: '为商品打造布景、灯光与展示构图', productStudioDescription: '以商品照片为参考生成展示图；Logo、标签与外形需人工核对，不保证像素级保真。', productStudioAction: '拍摄商品图', productStudioRun: '商品摄影', productStudioPlaceholder: '可选：需要保留的细节、道具或禁止出现的元素。',
             stickerName: '表情包工坊', stickerSummary: '把人物或宠物变成专属表情贴纸', stickerDescription: '上传参考照片，选择表情，生成独立白底贴纸。支持整组生成与单张重做。', stickerAction: '制作表情', stickerRun: '表情贴纸', stickerPlaceholder: '可选：希望保留的配饰、服装或其他细节。',
             samplingSteps: '采样步数', redrawStrength: '重绘强度', zImageHint: 'Z-Image Turbo 默认 8 步。图生图是重绘而非指令编辑；请描述目标画面。强度越高，原图变化越大。', localEditRun: '本地图片编辑', localGenerateRun: '本地图片生成',
@@ -47,7 +47,7 @@
             groupPhotoPerson: '人物 {number}', groupPhotoBackgroundImage: '背景图', groupPhotoBackground: '背景描述', groupPhotoBackgroundPlaceholder: '没有背景图时必填，例如：傍晚的海边草坪，远处有暖色灯串。', groupPhotoAtmosphere: '气氛', groupPhotoAtmospherePlaceholder: '例如：温暖、亲密、自然抓拍、轻松欢乐。', groupPhotoPose: '姿势与互动', groupPhotoPosePlaceholder: '例如：三人并肩站立，中间人物挽着两侧人物，大家看向镜头。', groupPhotoRequirements: '至少添加 2 张人物图；背景图与背景描述任选其一。最多支持 3 人。', groupPhotoNeedPeople: '请至少添加 2 张人物图片。', groupPhotoNeedBackground: '请添加背景图，或填写背景描述。',
             requestFailed: '请求失败 ({status})', cannotRead: '无法读取 {name}', cannotReadDimensions: '无法读取图片尺寸。', resultNotDraggable: '生成结果不是可拖拽的图片数据。', invalidSize: '请输入有效的宽度和高度。', maxEdge: '宽和高均不能超过 {max}px。', alignedSize: '宽和高必须是 {value} 的倍数。', minPixels: '总像素不能少于 {value}。', maxPixels: '总像素不能超过 {value}。', maxAspect: '长短边比例不能超过 {value}:1。', onlyFixed: '当前 Cloud 版本只支持三个固定尺寸。', sourceAspectUnsupported: '原图比例超过 Cloud 支持的 {value}:1，已改用 Auto 尺寸。', invalidSlot: '图片 Slot 只接受 PNG、JPEG 或 WebP。', uploadConfirm: '本次生成会将提示词和 {count} 张所选图片上传到 AI2Apps Cloud 图像模型处理。是否继续？', noCloudImage: 'Cloud 模型没有返回可用图片。', historySaveFailed: '图片已生成，但本地历史保存失败：{error}', missingInstance: '缺少 App Instance，无法保存生成历史。', deleteOneConfirm: '从 Imagine Studio 历史中永久删除这张图片？', clearAllConfirm: '永久清空 Imagine Studio 的全部生成历史？此操作不可恢复。', invalidHistoryUrl: '历史图片地址无效。', dragFailed: '无法拖拽这张图片：{error}', galleryNoAsset: 'Gallery 没有返回资产 ID。', addedToGallery: '已加入 Gallery · {name}', downloadStarted: '下载已开始，请在浏览器下载列表中查看。', miniNoUrl: 'Gallery Mini Entry 未返回可用地址。', miniLoadFailed: '无法载入 Gallery Mini Entry。', currentGalleryOnly: '只接受当前 Gallery 中的图片素材。', readGalleryFailed: '无法读取 Gallery 素材 ({status})', appImageOnly: 'Imagine Studio 的素材 Slot 只接受图片。',
         },
-        en: {
+        en: { mobileBack: 'Back', mobileOutput: 'Output',
             productStudioName: 'Product Photo Studio', productStudioSummary: 'Stage, light and compose product photographs', productStudioDescription: 'Generate product scenes from a photo. Review logos, labels and geometry; pixel-exact preservation is not guaranteed.', productStudioAction: 'Create product photo', productStudioRun: 'Product photography', productStudioPlaceholder: 'Optional: details to preserve, props or elements to avoid.',
             stickerName: 'Sticker Workshop', stickerSummary: 'Personal stickers from people or pets', stickerDescription: 'Create separate white-background stickers from a reference photo, one at a time or as a set.', stickerAction: 'Create sticker', stickerRun: 'Sticker', stickerPlaceholder: 'Optional: accessories, clothing or details to preserve.',
             samplingSteps: 'Sampling steps', redrawStrength: 'Redraw strength', zImageHint: 'Z-Image Turbo defaults to 8 steps. Img2Img redraws rather than follows edit instructions: describe the desired image. Higher strength changes more of the source.', localEditRun: 'Local image edit', localGenerateRun: 'Local image generation',
@@ -340,6 +340,20 @@
     portraitTheme('festival','christmas','圣诞','Christmas greeting','圣诞树旁~beside a Christmas tree|冬日小屋~winter cabin','冬日针织衫~winter knitwear|节日礼服~festive formal outfit','手捧礼物~holding a wrapped gift|微笑祝福~smiling warmly');
     portraitTheme('festival','newyear','新年','New Year celebration','庆典影棚~celebration studio|夜景灯光~festive night lights','晚礼服~evening formalwear|节日休闲装~festive casual outfit','庆祝~celebrating|挥手祝福~waving a greeting');
     for (const [key,zh,en] of [['portraitCareer','职业形象照','Professional portrait'],['portraitSport','体育运动','Sports'],['portraitCinema','电影剧照','Movie still'],['portraitChinese','国风写真','Chinese-style portrait'],['portraitFestival','节日纪念／祝福','Celebrations / greetings'],['portraitTheme','职业／运动／主题','Profession / sport / theme'],['portraitThemeScene','场景','Scene'],['portraitThemeOutfit','着装／装备','Outfit / equipment'],['portraitThemeAction','动作','Action'],['portraitThemeCustom','自定义','Custom'],['portraitGreeting','祝福文字（可选）','Greeting text (optional)'],['portraitGearNotice','护具可能遮挡脸部；优先保留人物身份，运动画面请检查动作及装备是否合理。','Protective gear may obscure the face. Review identity, action and equipment in the result.']]) { TRANSLATIONS.zh[key]=zh;TRANSLATIONS.en[key]=en; }
+    Object.assign(TRANSLATIONS.zh, {
+        byokGenerate: 'BYOK 生成', byokGenerating: 'BYOK 生成中',
+        byokDisclosure: '提示词和所选图片将直接发送至所选 BYOK 供应商。',
+        byokSubmitHint: '使用你的 API Key 直连供应商；完成后可下载或加入 Gallery 当前目录',
+        byokUploadConfirm: '本次生成会将提示词和 {count} 张所选图片直接发送至所选 BYOK 供应商。是否继续？',
+        modelHint: '可选择 BYOK、Cloud 或已安装的本地绘图模型',
+    });
+    Object.assign(TRANSLATIONS.en, {
+        byokGenerate: 'BYOK generation', byokGenerating: 'Generating with BYOK',
+        byokDisclosure: 'Your prompt and selected images go directly to the selected BYOK provider.',
+        byokSubmitHint: 'Connect directly with your API key; download results or add them to Gallery',
+        byokUploadConfirm: 'Send your prompt and {count} selected images directly to the selected BYOK provider?',
+        modelHint: 'Choose a BYOK, Cloud, or installed local image model',
+    });
     function normalizedLocale(value) { return String(value || '').toLowerCase().startsWith('zh') ? 'zh' : 'en'; }
     function translate(locale, key, values = {}) {
         let text = TRANSLATIONS[normalizedLocale(locale)]?.[key] || TRANSLATIONS.en[key] || key;
@@ -612,12 +626,12 @@
         notice: '', noticeTone: 'error', noticeTimer: null, clientEnvironment: 'browser', galleryMiniUrl: '', galleryMiniMountId: '', galleryMiniLoading: false, galleryMiniError: '', galleryMessageHandler: null, hostContextHandler: null,
         chatController: null, chatMiniUrl: '', packageChatBridge: null,
         galleryActiveCollectionId: 'recent', galleryActiveCollectionName: 'Recent', galleryDragActive: false, gallerySlotTarget: null,
-        favoriteMiniApps: [], recentMiniApps: [], leftCollapsed: false, rightCollapsed: false, mobileSurface: 'create', draftTimer: null,
+        favoriteMiniApps: [], recentMiniApps: [], leftCollapsed: false, rightCollapsed: false, mobileSurface: 'library', mobileReturnSurface: 'library', mobileViewport: window.innerWidth <= 760, draftTimer: null,
         packageMiniAppId: '', packageMiniAppUrl: '', packageMiniAppMountId: '', packageMiniAppLoading: false, packageMiniAppError: '', packageMiniAppReadiness: {}, packageMiniAppSetupBusy: false,
 
         get currentMiniApp() { return this.miniApps.find(item => item.id === this.miniAppId) || this.miniApps[0]; },
         get currentMiniAppReady() { return this.currentMiniApp?.source !== 'package' || this.packageMiniAppReadiness[this.currentMiniApp.id] === true; },
-        get miniAppChatEnabled() { return Boolean(window.AI2AppsMiniAppChat && this.currentMiniApp && (this.currentMiniApp.source !== 'package' || this.currentMiniApp.chat?.enabled === true)); },
+        get miniAppChatEnabled() { return !window.AI2APPS_MOBILE_SURFACE && Boolean(window.AI2AppsMiniAppChat && this.currentMiniApp && (this.currentMiniApp.source !== 'package' || this.currentMiniApp.chat?.enabled === true)); },
         get isAdjustMode() { return this.currentMiniApp.mode === 'adjust'; },
         get isStyleTransferMode() { return this.currentMiniApp.mode === 'style-transfer'; },
         get isGroupPhotoMode() { return this.currentMiniApp.mode === 'group-photo'; },
@@ -705,6 +719,7 @@
             this.clientEnvironment = this.$root?.dataset?.clientEnvironment || 'browser';
             await this.refreshPackageMiniApps();
             this.restorePreferences();
+            if (this.mobileViewport) this.leftView = 'mini-apps';
             const pendingPackageMiniAppId = window.AI2AppsStudioMiniApps?.pendingSetup(APP_ID)?.miniAppId;
             if (this.miniApps.some(item => item.source === 'package' && item.id === pendingPackageMiniAppId)) this.miniAppId = pendingPackageMiniAppId;
             if (this.currentMiniApp?.source === 'package') await this.mountPackageMiniApp(this.currentMiniApp);
@@ -736,7 +751,10 @@
             if (this.leftView === 'chat') this.mountMiniAppChat();
         },
         cleanup() { if (this.draftTimer) clearTimeout(this.draftTimer); if (this.noticeTimer) clearTimeout(this.noticeTimer); if (this.adjustRenderFrame) cancelAnimationFrame(this.adjustRenderFrame); this.chatController?.dispose(); this.packageChatBridge?.dispose(); disposeRenderableImage(this.adjustBitmap); if (this.galleryMessageHandler) window.removeEventListener('message', this.galleryMessageHandler); if (this.hostContextHandler) window.removeEventListener('ai2apps:host-context', this.hostContextHandler); this.referencePreviews.forEach(url => { if (url) URL.revokeObjectURL(url); }); },
-        tr(key, values) { return translate(this.locale, key, values); },
+        tr(key, values) {
+            const byokKey = { cloudGenerate: 'byokGenerate', cloudGenerating: 'byokGenerating', cloudDisclosure: 'byokDisclosure', cloudSubmitHint: 'byokSubmitHint', uploadConfirm: 'byokUploadConfirm' }[key];
+            return translate(this.locale, byokKey && this.selectedModel?.source === 'byok' ? byokKey : key, values);
+        },
         localizedName(item) { return item?.name?.[this.locale === 'zh' ? 'CN' : 'EN'] || item?.name?.EN || ''; },
         openStyleDialog() {
             this.pendingStyle = this.style;
@@ -895,7 +913,7 @@
                 const imageFile = await canvasFile(canvas, filename);
                 stage = this.tr('savingArtifact');
                 await this.persistResult({ runId: run.id, miniAppId: this.miniAppId, pipelineId: 'adjust-image', title: this.currentMiniApp.name, prompt: '', size: `${rendered.naturalWidth}x${rendered.naturalHeight}`, modelId: 'local/image-adjustments', modelLabel: this.tr('localAdjustments'), quality: 'lossless', format: 'png', imageFile, filename });
-                await this.updateRun(run.id, 'succeeded', 100, this.tr('completed')); await this.refreshRuns(); this.selectRun(this.runs.find(item => item.id === run.id)); this.success(this.tr('completed'));
+                await this.updateRun(run.id, 'succeeded', 100, this.tr('completed')); await this.refreshRuns(); this.selectRun(this.runs.find(item => item.id === run.id)); this.openMobileOutput(); this.success(this.tr('completed'));
             } catch (error) {
                 const failure = new Error(`${stage}: ${error?.message || String(error)}`);
                 if (run) { try { await this.updateRun(run.id, 'failed', 100, this.tr('failed'), { code: 'image_adjustment_failed', message: failure.message }); } catch (_) {} }
@@ -1016,7 +1034,17 @@
             localStorage.setItem(DISCOVERY_KEY, JSON.stringify({ favorites: this.favoriteMiniApps, recent: this.recentMiniApps.slice(0, 8) }));
         },
         toggleColumn(column) { if (column === 'left') this.leftCollapsed = !this.leftCollapsed; else this.rightCollapsed = !this.rightCollapsed; this.persistPreferences(); this.icons(); },
-        mobileVisible(surface) { return window.innerWidth > 760 || this.mobileSurface === surface; },
+        mobileVisible(surface) { return !this.mobileViewport || this.mobileSurface === surface; },
+        openMobileOutput() {
+            if (this.mobileSurface !== 'output') this.mobileReturnSurface = this.mobileSurface;
+            this.mobileSurface = 'output';
+            this.icons();
+        },
+        mobileBack() {
+            if (this.mobileSurface === 'output') this.mobileSurface = this.mobileReturnSurface;
+            else { this.mobileSurface = 'library'; this.leftView = 'mini-apps'; }
+            this.icons();
+        },
         isFavorite(id) { return this.favoriteMiniApps.includes(id); },
         toggleFavorite(id) { this.favoriteMiniApps = this.isFavorite(id) ? this.favoriteMiniApps.filter(value => value !== id) : [id, ...this.favoriteMiniApps]; this.persistPreferences(); this.icons(); },
         miniAppName(id) { return this.miniApps.find(item => item.id === id)?.name || id || '' },
@@ -1065,7 +1093,8 @@
                 const run = this.runs.find(item => item.id === runId);
                 if (!run || this.isActiveRun(run)) continue;
                 this.selectRun(run);
-                if (run.status === 'succeeded' || run.status === 'cancelled') return run;
+                if (run.status === 'succeeded') { this.openMobileOutput(); return run; }
+                if (run.status === 'cancelled') return run;
                 throw new Error(run.error?.message || this.tr('failed'));
             }
         },
@@ -1117,8 +1146,7 @@
             return capability;
         },
         async loadModelCatalog({ requireLocal = false } = {}) {
-            const cloudFallback = { id: DEFAULT_CLOUD_MODEL, label: '(Cloud) OpenAI · GPT Image 2', source: 'cloud', operations: ['image_generation', 'image_edit'], formats: ['png', 'jpeg', 'webp'], qualities: ['auto', 'low', 'medium', 'high'], sizeCapability: structuredClone(LEGACY_SIZE_CAPABILITY), pricingVersion: '' };
-            let cloudModels = [cloudFallback], localModels = [];
+            let cloudModels = [], localModels = [], byokModels = [];
             const [cloudResult, localResult] = await Promise.allSettled([
                 fetch(CLOUD_MODELS_API, { credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' } }).then(responsePayload),
                 fetch(LOCAL_MODELS_API, { credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' } }).then(responsePayload),
@@ -1131,10 +1159,15 @@
                     qualities: Array.isArray(model.imageOptions?.quality) && model.imageOptions.quality.length ? model.imageOptions.quality : ['auto'],
                     sizeCapability: this.cloudSizeCapability(model), pricingVersion: String(model.pricingVersion || ''),
                 }));
-                if (!cloudModels.some(model => model.id === DEFAULT_CLOUD_MODEL)) cloudModels.unshift(cloudFallback);
             }
             if (requireLocal && localResult.status === 'rejected') throw localResult.reason;
             if (localResult.status === 'fulfilled') {
+                byokModels = (localResult.value.data || []).filter(model => model?.source_type === 'byok' && !model.is_hidden).map(model => ({
+                    id: model.id, label: model.display_name || model.id, source: 'byok',
+                    operations: model.capabilities || [], referenceLimits: model.referenceLimits,
+                    formats: model.imageOptions?.outputFormat || ['png'], qualities: model.imageOptions?.quality || ['auto'],
+                    sizeCapability: this.cloudSizeCapability(model), pricingVersion: '',
+                }));
                 localModels = (localResult.value.data || []).filter(model => (model?.model_type === 'image_generation' || model?.capabilities?.includes('image_upscaling')) && model?.source_type === 'package' && model?.checkpoint_ready !== false && !model?.is_hidden).map(model => ({
                     id: model.id, label: model.identity?.displayName || model.display_name || model.id, source: 'local',
                     operations: Array.isArray(model.image_capabilities?.operations) ? model.image_capabilities.operations : (model.capabilities || []).filter(value => ['image_generation', 'image_edit', 'image_upscaling'].includes(value)),
@@ -1143,7 +1176,7 @@
                 }));
             }
             const preferredModelId = this.modelId;
-            this.models = [...cloudModels, ...localModels];
+            this.models = [...byokModels, ...cloudModels, ...localModels];
             this.modelId = '';
             await this.$nextTick();
             this.modelId = this.compatibleModels.some(model => model.id === preferredModelId) ? preferredModelId : (this.compatibleModels[0]?.id || '');
@@ -1263,7 +1296,7 @@
             return index < 2 ? this.tr('required') : this.tr('optional');
         },
         showLeftView(view) { this.leftView = view === 'assets' ? 'assets' : (view === 'chat' && this.miniAppChatEnabled ? 'chat' : 'mini-apps'); if (this.leftView === 'assets' && !this.galleryMiniUrl) this.mountGalleryMini(); if (this.leftView === 'chat') this.mountMiniAppChat(); this.persistPreferences(); this.icons(); },
-        async selectMiniApp(id) { if (this.generating || this.stickerBatchBusy) return; const selected = this.miniApps.find(item => item.id === id); if (!selected || selected.status !== 'ready') return; if (!this.packageMiniAppId) await this.saveDraft().catch(() => {}); disposeRenderableImage(this.adjustBitmap); this.adjustBitmap = null; this.miniAppId = id; if (this.leftView !== 'chat') this.leftView = 'mini-apps'; this.recentMiniApps = [id, ...this.recentMiniApps.filter(value => value !== id)].slice(0, 8); if (selected.source === 'package') { await this.mountPackageMiniApp(selected); if (!this.miniAppChatEnabled && this.leftView === 'chat') this.leftView = 'mini-apps'; this.persistPreferences(); this.mobileSurface = 'create'; return; } this.packageChatBridge?.dispose(); this.packageChatBridge = null; this.packageMiniAppId = ''; this.packageMiniAppUrl = ''; this.packageMiniAppError = ''; this.referenceFiles = []; this.referencePreviews.forEach(url => { if (url) URL.revokeObjectURL(url); }); this.referencePreviews = []; this.referenceDimensions = []; this.referenceAssets = []; const draft = await this.loadDraft(id); this.trimReferences(); this.reconcileSelectedModel(); if (this.prefersOpenAIModel && !draft?.modelId) { this.preferOpenAIEditingModel(); this.applySelectedModelCapability(); } if (['edit', 'style-transfer', 'group-photo'].includes(this.currentMiniApp.mode) && this.referenceDimensions[0]) this.matchEditAspect(this.referenceDimensions[0]); this.chatController?.changed(); this.persistPreferences(); this.mobileSurface = 'create'; this.icons(); },
+        async selectMiniApp(id) { if (this.mobileViewport && id === this.miniAppId) { this.mobileSurface = 'create'; this.icons(); return; } if (this.generating || this.stickerBatchBusy) return; const selected = this.miniApps.find(item => item.id === id); if (!selected || selected.status !== 'ready') return; if (!this.packageMiniAppId) await this.saveDraft().catch(() => {}); disposeRenderableImage(this.adjustBitmap); this.adjustBitmap = null; this.miniAppId = id; if (this.leftView !== 'chat') this.leftView = 'mini-apps'; this.recentMiniApps = [id, ...this.recentMiniApps.filter(value => value !== id)].slice(0, 8); if (selected.source === 'package') { await this.mountPackageMiniApp(selected); if (!this.miniAppChatEnabled && this.leftView === 'chat') this.leftView = 'mini-apps'; this.persistPreferences(); this.mobileSurface = 'create'; return; } this.packageChatBridge?.dispose(); this.packageChatBridge = null; this.packageMiniAppId = ''; this.packageMiniAppUrl = ''; this.packageMiniAppError = ''; this.referenceFiles = []; this.referencePreviews.forEach(url => { if (url) URL.revokeObjectURL(url); }); this.referencePreviews = []; this.referenceDimensions = []; this.referenceAssets = []; const draft = await this.loadDraft(id); this.trimReferences(); this.reconcileSelectedModel(); if (this.prefersOpenAIModel && !draft?.modelId) { this.preferOpenAIEditingModel(); this.applySelectedModelCapability(); } if (['edit', 'style-transfer', 'group-photo'].includes(this.currentMiniApp.mode) && this.referenceDimensions[0]) this.matchEditAspect(this.referenceDimensions[0]); this.chatController?.changed(); this.persistPreferences(); this.mobileSurface = 'create'; this.icons(); },
         async refreshPackageMiniApps() {
             try {
                 const catalog = await window.AI2AppsStudioMiniApps?.list(APP_ID);
@@ -1458,7 +1491,7 @@
                 this.fail(new Error(`This model requires ${selectedModel.referenceLimits.minimum}–${selectedModel.referenceLimits.maximum} reference images.`));
                 return;
             }
-            if (editing && selectedModel.source === 'cloud' && !(options.stickerBatch && this.stickerBatchBusy) && !window.confirm(this.tr('uploadConfirm', { count: references.length }))) return;
+            if (editing && ['cloud', 'byok'].includes(selectedModel.source) && !(options.stickerBatch && this.stickerBatchBusy) && !window.confirm(this.tr('uploadConfirm', { count: references.length }))) return;
             this.generating = true; this.dismissNotice();
             const id = globalThis.crypto?.randomUUID?.() || `image-${Date.now()}`;
             const requestedSize = this.requestedSize;
@@ -1471,7 +1504,7 @@
                 run = await this.createRun(input, retryOf);
                 this.runs = [run, ...this.runs]; this.selectRun(run);
                 const imageDataUrls = editing ? await Promise.all(references.map(readDataUrl)) : [];
-                if (selectedModel.source === 'cloud') {
+                if (['cloud', 'byok'].includes(selectedModel.source)) {
                     await this.executeCloudRun(run.id, { model: selectedModel.id, prompt: submittedPrompt, size: requestedSize, quality: this.quality, outputFormat: this.format, ...(editing ? { imageDataUrls } : {}) });
                     serverManaged = true;
                     const completedRun = await this.waitForRun(run.id);
@@ -1490,7 +1523,7 @@
                 if (!String(image?.dataUrl || '').startsWith('data:image/')) throw new Error(this.tr('noCloudImage'));
                 const saved = await this.persistResult({ runId: run.id, miniAppId: this.miniAppId, pipelineId: this.currentMiniApp.legacyId, title: this.currentMiniApp.name, prompt: this.prompt.trim(), size: image.size || requestedSize, modelId: selectedModel.id, modelLabel: selectedModel.label.replace(/^AI2Apps (Cloud|Local) · /, ''), imageUrl: image.dataUrl, filename: this.resultFilename(id) });
                 await this.updateRun(run.id, 'succeeded', 100, this.tr('completed'));
-                await this.refreshRuns(); this.selectRun(this.runs.find(item => item.id === run.id));
+                await this.refreshRuns(); this.selectRun(this.runs.find(item => item.id === run.id)); this.openMobileOutput();
                 try { window.ai2appsShell?.accountChanged?.(); } catch (_) {}
                 return this.runs.find(item => item.id === run.id);
             } catch (error) {

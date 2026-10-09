@@ -26,6 +26,10 @@ from ai2apps.identity import (
 )
 from ai2apps.secrets import SecretBackend
 
+from . import space as space_module
+from .space import PersonalSpace
+from .owner_home import OwnerHome
+from .security import RemoteTokenError
 from .frpc import RemoteFrpcSupervisor
 from .models import RemoteDeviceRecord, RemoteMobileSession
 from .repository import RemoteDeviceRepository
@@ -51,10 +55,12 @@ logger = logging.getLogger(__name__)
 
 
 class RemoteAccessError(RuntimeError):
-    def __init__(self, status_code: int, code: str, message: str) -> None:
+    def __init__(self, status_code: int, code: str, message: str, *, details=None, retry_after=None) -> None:
         super().__init__(message)
         self.status_code = status_code
         self.code = code
+        self.details = details if isinstance(details, dict) else {}
+        self.retry_after = retry_after
 
 
 class RemoteAccessManager:
@@ -74,6 +80,8 @@ class RemoteAccessManager:
         self.secret_backend = secret_backend
         self.client_version = client_version
         self.sessions = RemoteSessionStore()
+        self.space = PersonalSpace(self)
+        self.owner_home = OwnerHome(self)
         self.frpc = frpc or RemoteFrpcSupervisor(None, secret_backend)
         self.identity_repository = identity_repository
         if access_projection_interval_seconds <= 0:
@@ -95,6 +103,7 @@ class RemoteAccessManager:
                 response.status_code,
                 str(error.get("code") or "REMOTE_REQUEST_FAILED"),
                 str(error.get("message") or f"Remote request failed ({response.status_code})"),
+                details=error.get("details"), retry_after=response.headers.get("retry-after"),
             )
         if not isinstance(value, dict):
             raise RemoteAccessError(502, "REMOTE_RESPONSE_INVALID", "Cloud returned an invalid remote response")
@@ -538,6 +547,17 @@ class RemoteAccessManager:
         elif error.code in suspended:
             self.identity_repository.deactivate_installation("suspended")
 
+    async def refresh_space_capability(self) -> None:
+        if not space_module.SPACE_GATEWAY_READY:
+            return
+        for device in self.repository.list():
+            if device.enabled and device.status == "active":
+                try:
+                    await self.space.declare(device)
+                    await self.owner_home.declare(device)
+                except (RemoteAccessError, RemoteTokenError, httpx.HTTPError):
+                    logger.warning("Personal space capability declaration failed")
+
     async def _run_access_projection_refresh(self) -> None:
         assert self._access_projection_stop is not None
         while not self._access_projection_stop.is_set():
@@ -551,6 +571,7 @@ class RemoteAccessManager:
             try:
                 await self._enforce_connector_credential_lifetime()
                 await self.refresh_access_projection()
+                await self.refresh_space_capability()
             except (RemoteAccessError, httpx.HTTPError):
                 logger.warning(
                     "AI2Apps installation access projection refresh failed",
@@ -594,6 +615,7 @@ class RemoteAccessManager:
             await self.frpc.start(record)
             restarted = self.repository.set_enabled(device_id, True)
             assert restarted is not None
+            await self.refresh_space_capability()
             return restarted
         return record
 
@@ -697,9 +719,12 @@ class RemoteAccessManager:
         await self.frpc.start(device)
         record = self.repository.set_enabled(device_id, True)
         assert record is not None
+        await self.refresh_space_capability()
         return record
 
     async def stop(self, device_id: str | None = None) -> RemoteDeviceRecord | None:
+        self.space.revoke()
+        self.owner_home.clear()
         await self.frpc.stop()
         if device_id is None:
             return None
@@ -721,6 +746,7 @@ class RemoteAccessManager:
                 "Initial AI2Apps installation access projection refresh failed",
                 exc_info=True,
             )
+        await self.refresh_space_capability()
         if self._access_projection_task is None:
             self._access_projection_stop = asyncio.Event()
             self._access_projection_task = asyncio.create_task(
@@ -737,6 +763,8 @@ class RemoteAccessManager:
         self._access_projection_stop = None
         await self.frpc.stop()
         self.sessions.clear()
+        self.space.revoke()
+        self.owner_home.clear()
 
     async def redact(
         self, device_id: str, *, cloud: AI2AppsCloudClient | None = None
@@ -835,7 +863,8 @@ class RemoteAccessManager:
             ) from error
 
     async def exchange_member_handoff(
-        self, *, handoff: str
+        self, *, handoff: str, client_scope: str = "desktop",
+        lifetime: timedelta | None = None,
     ) -> tuple[str, RequestPrincipal]:
         """Exchange a one-use Cloud handoff for a durable local member session."""
 
@@ -927,7 +956,10 @@ class RemoteAccessManager:
                 status="active",
                 membership_epoch=int(claims["membership_epoch"]),
             )
-        token, _ = self.identity_repository.create_local_session(actor_user_id)
+        session_options = {"client_scope": client_scope}
+        if lifetime is not None:
+            session_options["lifetime"] = lifetime
+        token, _ = self.identity_repository.create_local_session(actor_user_id, **session_options)
         return token, self.identity_repository.principal_for(actor_user_id)
 
     async def activate_current_cloud_member(

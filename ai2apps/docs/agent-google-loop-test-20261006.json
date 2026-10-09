@@ -1,0 +1,98 @@
+{
+  "run_id": "run_638f864da57f4f3b9b0a9b2801cda4a4",
+  "status": "completed",
+  "started_at": "2026-10-06T14:25:29.788080Z",
+  "finished_at": "2026-10-06T14:26:13.373790Z",
+  "draft_id": "adraft_c92a2aff45364130a9ed338b312a6606",
+  "query": "site:developer.mozilla.org WebDriver BiDi",
+  "index": 3,
+  "articles": [
+    {
+      "url": "https://developer.mozilla.org/en-US/docs/Web/WebDriver/Reference/BiDi",
+      "title": "WebDriver BiDi reference - WebDriver | MDN",
+      "characters": 1110
+    },
+    {
+      "url": "https://developer.mozilla.org/en-US/docs/Web/WebDriver/Reference/BiDi/Modules/emulation",
+      "title": "emulation module - WebDriver | MDN",
+      "characters": 444
+    },
+    {
+      "url": "https://developer.mozilla.org/en-US/docs/Web/WebDriver/How_to/Create_BiDi_connection",
+      "title": "Create a WebDriver BiDi connection - WebDriver | MDN",
+      "characters": 2324
+    }
+  ],
+  "outcomes": [
+    {
+      "step": "search",
+      "outcome": "success"
+    },
+    {
+      "step": "results",
+      "outcome": "success"
+    },
+    {
+      "step": "initialize",
+      "outcome": "success"
+    },
+    {
+      "step": "check",
+      "outcome": "true"
+    },
+    {
+      "step": "select",
+      "outcome": "success"
+    },
+    {
+      "step": "read",
+      "outcome": "success"
+    },
+    {
+      "step": "advance",
+      "outcome": "success"
+    },
+    {
+      "step": "check",
+      "outcome": "true"
+    },
+    {
+      "step": "select",
+      "outcome": "success"
+    },
+    {
+      "step": "read",
+      "outcome": "success"
+    },
+    {
+      "step": "advance",
+      "outcome": "success"
+    },
+    {
+      "step": "check",
+      "outcome": "true"
+    },
+    {
+      "step": "select",
+      "outcome": "success"
+    },
+    {
+      "step": "read",
+      "outcome": "success"
+    },
+    {
+      "step": "advance",
+      "outcome": "success"
+    },
+    {
+      "step": "check",
+      "outcome": "false"
+    }
+  ],
+  "pacing": {
+    "before_browser_action_ms": 2500,
+    "loaded_page_before_read_ms": 3000,
+    "after_close_ms": 3000
+  },
+  "tab_cleanup_verification": "Native accessibility tab inventory after completion contains Google search tabs and original tabs; no MDN result tab remains."
+}

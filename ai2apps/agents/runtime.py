@@ -43,6 +43,20 @@ from .tool_recovery import error_result, model_visible, recoverable
 
 logger = logging.getLogger(__name__)
 
+
+def _model_error_retryable(error: Exception) -> bool:
+    """Preserve provider retry policy instead of retrying every model failure."""
+    explicit = getattr(error, "retryable", None)
+    if isinstance(explicit, bool):
+        return explicit
+    detail = getattr(error, "detail", None)
+    if isinstance(detail, dict) and isinstance(detail.get("retryable"), bool):
+        return detail["retryable"]
+    status = getattr(error, "status_code", None)
+    if isinstance(status, int) and 400 <= status < 500:
+        return status in {408, 429}
+    return True
+
 AgentExecutor = Callable[
     [AgentExecutionContext],
     AgentAction | Awaitable[AgentAction],
@@ -899,7 +913,7 @@ class AgentRuntime:
                         run_id,
                         "model_provider_error",
                         str(error),
-                        retryable=True,
+                        retryable=_model_error_retryable(error),
                     )
                     return
                 await asyncio.to_thread(

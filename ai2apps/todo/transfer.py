@@ -208,7 +208,7 @@ def merge_backup(store, owner, content, expected=None):
                 payload['directory_id'] = dir_ids[t['directory_id']]
                 payload['parent_id'] = mapping.get(t['parent_id'])
                 due = None if payload.get('archived_at') or payload.get('deleted_at') else next_due(payload['schedule'], now)
-                db.execute('INSERT OR REPLACE INTO tasks VALUES(?,?,?,?,?,?)', (task_id, owner, json.dumps(payload), old['revision']+1 if old else 1, due.isoformat() if due else None, t['created_at']))
+                db.execute('INSERT INTO tasks VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data,revision=excluded.revision,next_due=excluded.next_due,created_at=excluded.created_at', (task_id, owner, json.dumps(payload), old['revision']+1 if old else 1, due.isoformat() if due else None, t['created_at']))
                 db.execute('DELETE FROM attachments WHERE owner=? AND task_id=?', (owner, task_id))
             # Immutable old blobs remain available to existing execution snapshots.
             for a in backup['attachments']:

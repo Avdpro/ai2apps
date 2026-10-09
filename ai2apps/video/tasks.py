@@ -38,7 +38,9 @@ from ai2apps.model_providers import (
 from ai2apps.storage import PlatformDatabase
 from ai2apps.storage.repositories import AppRepository, SessionRepository
 from ai2apps.video_policy import (
+    H3_PADDED_RESOLUTIONS,
     effective_video_capabilities,
+    is_h3_video_model,
     is_temporarily_disabled_video_model,
 )
 from ai2apps.workspace import WorkspaceRepository
@@ -117,7 +119,7 @@ class VideoTaskManager:
             ).fetchall()
             for row in rows:
                 request = json.loads(row["request_json"])
-                resumable = request.get("preset") == "exact"
+                resumable = request.get("preset") == "exact" or bool(request.get("_avatar_model"))
                 if row["id"] and resumable:
                     connection.execute(
                         "UPDATE video_generation_tasks SET status='queued', "
@@ -138,14 +140,28 @@ class VideoTaskManager:
         self._dispatcher = asyncio.create_task(self._dispatch(), name="ai2apps-video-tasks")
         for row in rows:
             request = json.loads(row["request_json"])
-            if request.get("preset") == "exact":
+            if request.get("preset") == "exact" or request.get("_avatar_model"):
                 self._queue.put_nowait(str(row["id"]))
 
     async def shutdown(self) -> None:
         self._closing = True
         running = tuple(self._running)
         for task_id in running:
+            row = self._row(task_id)
+            resume = (row is not None and not row["cancel_requested_at"]
+                      and bool(json.loads(row["request_json"]).get("_avatar_model")))
             await self.cancel(task_id, actor_id=None, shutdown=True)
+            job = self._running.get(task_id)
+            if job is not None:
+                with suppress(asyncio.CancelledError):
+                    await job
+            if resume:
+                with self.database.transaction(write=True) as connection:
+                    connection.execute(
+                        "UPDATE video_generation_tasks SET status='queued', cancel_requested_at=NULL, "
+                        "completed_at=NULL, error_json=NULL, updated_at=? WHERE id=? "
+                        "AND status='cancelled' AND cancel_requested_at IS NULL",
+                        (utc_now_text(), task_id))
         if self._dispatcher is not None:
             self._dispatcher.cancel()
             with suppress(asyncio.CancelledError):
@@ -338,6 +354,11 @@ class VideoTaskManager:
             worker, manifest = await self._freeze_inputs(
                 effective, task_root, uploads or {}
             )
+            from ai2apps.avatar.segmented_inference import supports_segments, model_identity
+            if supports_segments(model):
+                worker["_avatar_model"] = model_identity(self.runtime, model)
+            else:
+                worker.pop("_avatar_model", None)
             canonical = {
                 "request": effective,
                 "inputs": [{k: v for k, v in item.items() if k != "path"} for item in manifest],
@@ -417,6 +438,7 @@ class VideoTaskManager:
             "first_frame": "first_frame",
             "last_frame": "last_frame",
             "driving_audio": "audio",
+            "source_video": "source_video",
         }
         for index, item in enumerate(payload["content"]):
             if not isinstance(item, dict):
@@ -601,7 +623,9 @@ class VideoTaskManager:
                             else None
                         )
                     )
-                    if duration is not None and not 2.0 <= duration <= 15.1:
+                    if role == "source_video" and duration is not None and duration <= 0:
+                        raise VideoGenerationError("invalid_media", "Source video duration must be positive")
+                    if role != "source_video" and duration is not None and not 2.0 <= duration <= 15.1:
                         raise VideoGenerationError(
                             "unsupported_parameter",
                             "Reference video and audio duration must be between 2 and 15 seconds",
@@ -674,6 +698,11 @@ class VideoTaskManager:
         output = task_root / "result.mp4"
         body = dict(request)
         avatar_mode = body.pop("avatar_output_mode", "crop")
+        requested_resolution = str(body.get("resolution") or "")
+        padded_geometry = (H3_PADDED_RESOLUTIONS.get(requested_resolution)
+                           if is_h3_video_model(model) else None)
+        if padded_geometry is not None:
+            body["width"], body["height"] = padded_geometry
         files = {
             item["part_name"]: (
                 item["filename"],
@@ -719,6 +748,12 @@ class VideoTaskManager:
             files[part_name] = (crop_path.name, crop_path, "image/png")
 
         def worker_progress(value):
+            if padded_geometry is not None and isinstance(value, dict):
+                value = dict(value)
+                current, total = value.get("current"), value.get("total")
+                if isinstance(current, int) and isinstance(total, int) and total > 0:
+                    value["current"] = min(95, round(95 * current / total))
+                    value["total"] = 100
             if canvas is not None and isinstance(value, dict):
                 value = dict(value)
                 percent = value.get("percent")
@@ -726,23 +761,45 @@ class VideoTaskManager:
                     value["percent"] = max(0, min(100, percent)) * 0.9
             self._update(task_id, progress=value)
 
-        await invocations.invoke_background_to_file(
-            model.id,
-            "video_generation",
-            body,
-            output,
-            files=files,
-            request_id=task_id,
-            cancel_requested=cancelled,
-            progress=worker_progress,
-            on_admitted=lambda: self._update(
-                task_id,
-                status="running",
-                progress={"phase": "starting", "current": 0, "total": 1},
-                started_at=utc_now_text(),
-            ),
-            **({"context": context} if context is not None else {}),
-        )
+        from ai2apps.avatar.segmented_inference import supports_segments, invoke_segmented
+        if supports_segments(model):
+            # Retry may reuse only the same actor's terminal task. Packets are
+            # still independently checked against the new frozen identity.
+            retry_of = (body.get("metadata") or {}).get("retry_of")
+            previous = self._row(retry_of, row["actor_id"]) if isinstance(retry_of, str) and row else None
+            source_cache = self.root / retry_of / "avatar-segments" if previous is not None else None
+            target_cache = task_root / "avatar-segments"
+            if (previous is not None and previous["status"] in {"failed", "cancelled", "expired"}
+                    and json.loads(previous["request_json"]).get("_avatar_model") == body.get("_avatar_model")
+                    and source_cache.is_dir() and not source_cache.is_symlink()
+                    and not target_cache.exists()):
+                from ai2apps.avatar.segmented_inference import copy_verified_cache
+                await asyncio.to_thread(copy_verified_cache, source_cache, target_cache)
+            await invoke_segmented(
+                self.runtime, model, body, files, output,
+                root=task_root / "avatar-segments", task_id=task_id,
+                frozen_model=body.get("_avatar_model"), cancelled=cancelled,
+                progress=worker_progress,
+                admitted=lambda: self._update(task_id, status="running", started_at=utc_now_text()),
+                context=context)
+        else:
+            await invocations.invoke_background_to_file(
+                model.id,
+                "video_generation",
+                body,
+                output,
+                files=files,
+                request_id=task_id,
+                cancel_requested=cancelled,
+                progress=worker_progress,
+                on_admitted=lambda: self._update(
+                    task_id,
+                    status="running",
+                    progress={"phase": "starting", "current": 0, "total": 1},
+                    started_at=utc_now_text(),
+                ),
+                **({"context": context} if context is not None else {}),
+            )
         if canvas is not None:
             import threading
 
@@ -763,6 +820,35 @@ class VideoTaskManager:
                 output = await asyncio.shield(work)
             except asyncio.CancelledError:
                 stopped.set()
+                while not work.done():
+                    try:
+                        await asyncio.shield(work)
+                    except asyncio.CancelledError:
+                        continue
+                    except Exception:
+                        break
+                if not work.cancelled():
+                    work.exception()
+                raise
+        if padded_geometry is not None:
+            from ai2apps.video.geometry import crop_video_canvas
+
+            requested_width, requested_height = (
+                int(value) for value in requested_resolution.split("x", 1)
+            )
+            self._update(task_id, progress={"phase": "crop", "current": 95, "total": 100})
+
+            def check_crop():
+                if cancelled():
+                    raise VideoGenerationError("generation_cancelled", "Video crop cancelled")
+
+            work = asyncio.create_task(asyncio.to_thread(
+                crop_video_canvas, output, task_root / "result-cropped.mp4",
+                width=requested_width, height=requested_height, check=check_crop,
+            ))
+            try:
+                output = await asyncio.shield(work)
+            except asyncio.CancelledError:
                 while not work.done():
                     try:
                         await asyncio.shield(work)
@@ -975,6 +1061,7 @@ class VideoTaskManager:
             "first_frame": "image_url", "last_frame": "image_url",
             "driving_audio": "audio_url", "reference_image": "image_url",
             "reference_video": "video_url", "reference_audio": "audio_url",
+            "source_video": "video_url",
         }
         uploads: dict[str, tuple[str, bytes, str]] = {}
         task_root = (self.root / task_id).resolve()
@@ -987,6 +1074,7 @@ class VideoTaskManager:
             part_name = str(descriptor.get("part_name") or "")
             role = reference_roles.get(part_name) or {
                 "first_frame": "first_frame", "last_frame": "last_frame", "audio": "driving_audio",
+                "source_video": "source_video",
             }.get(part_name)
             item_type = role_types.get(str(role))
             source = (task_root / str(descriptor.get("path") or "")).resolve()
@@ -1027,19 +1115,22 @@ class VideoTaskManager:
             return self._response(row)
         if row["status"] == "cancelled":
             return self._response(row)
-        now = utc_now_text()
-        with self.database.transaction(write=True) as connection:
-            if row["status"] == "queued":
-                connection.execute(
-                    "UPDATE video_generation_tasks SET status='cancelled',cancel_requested_at=?,"
-                    "completed_at=?,updated_at=? WHERE id=?",
-                    (now, now, now, task_id),
-                )
-            else:
-                connection.execute(
-                    "UPDATE video_generation_tasks SET cancel_requested_at=?,updated_at=? WHERE id=?",
-                    (now, now, task_id),
-                )
+        # Shutdown interrupts computation without recording a user cancellation.
+        # A concurrent explicit cancel remains authoritative during requeue.
+        if not shutdown:
+            now = utc_now_text()
+            with self.database.transaction(write=True) as connection:
+                if row["status"] == "queued":
+                    connection.execute(
+                        "UPDATE video_generation_tasks SET status='cancelled',cancel_requested_at=?,"
+                        "completed_at=?,updated_at=? WHERE id=?",
+                        (now, now, now, task_id),
+                    )
+                else:
+                    connection.execute(
+                        "UPDATE video_generation_tasks SET cancel_requested_at=?,updated_at=? WHERE id=?",
+                        (now, now, task_id),
+                    )
         running = self._running.get(task_id)
         if running is not None:
             if row["status"] == "queued":

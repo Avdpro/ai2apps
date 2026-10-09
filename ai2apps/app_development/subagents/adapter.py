@@ -182,7 +182,7 @@ def install(manager):
             principal = (
                 RequestPrincipal.legacy_local()
                 if context.actor_user_id in {None, "local"}
-                else IdentityRepository(runtime.database).principal_for(
+                else IdentityRepository(runtime.database).local_principal_for(
                     context.actor_user_id
                 )
             )

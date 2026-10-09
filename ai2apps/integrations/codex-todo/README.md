@@ -63,3 +63,39 @@ for a deterministic diagnostic without starting a model. Do not print config
 file contents. Tests exercise real MCP subprocess/loopback traffic with temporary
 accounts and stores, revocation/restart, revision conflicts, owner isolation,
 inheritance, and backup round-trips.
+
+## Todo → Codex Desktop (App Server)
+
+Todo's **Execution → Codex Desktop → Choose project / conversation** connects through
+an installed local Codex App Server. It reads saved Desktop project names and primary directories through the shared
+read-only metadata adapter, with conversation-directory fallback. Choosing a project
+automatically loads its conversations. Users can bind an existing conversation or
+choose to create one when executing.
+A local directory can also be entered for a project with no previous conversations.
+Saving a binding validates the conversation's directory, uses optimistic revisions,
+and selects the `codex_desktop` executor without sending a prompt.
+
+Execution uses Todo's FIFO queue (default three slots). New conversations are
+created via App Server and saved before the first turn. Existing conversations are
+sent through the native `codex queue` command, so Desktop retains writer ownership.
+Unique run markers correlate queued messages with read-only turn history; output
+and terminal timestamps update Todo. Restart resumes observation without resending.
+Desktop-owned approvals, replies and stopping are handled in Desktop; Todo provides
+an open-conversation link. New App Server conversations retain in-panel approvals.
+Turn completion is `ended` pending user confirmation, never automatic task completion.
+
+The feature uses the system Codex service and requires Coder permission. Todo MCP
+pairing is independent and is not required for outbound Desktop integration. Only local
+paths/hosts are supported. It does not open Cloud tunnels, read Desktop private
+SQLite files, or silently approve actions. API calls are made by Local, not by
+borrowing private Codex Desktop tool credentials. App Server `notLoaded` is not a
+Desktop-wide idle indication; Todo does not use it to infer external activity.
+Native messages wait in Desktop’s queue; Todo does not seize its writer.
+
+Validation on 2026-10-05: the transport listed the current AI2Apps conversation and
+completed an ephemeral, read-only, no-tools fixed-reply turn. Automated tests cover
+binding revisions/directory matching, new/resumed runs, approvals, cancellation,
+connection loss, and slot cleanup. Native App-Dev selector rendering was checked;
+its running Local still requires a restart to load the new Python routes.
+
+System architecture and API contract: [Codex service](../../codex/README.md).

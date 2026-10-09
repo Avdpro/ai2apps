@@ -352,7 +352,16 @@ class CheckpointRegistryClient:
         return manifest
 
     async def _json(self, method: str, path: str, *, limit: int) -> Any:
-        response = await self.cloud.request(method, path)
+        anonymous_read = (
+            getattr(self.cloud, "offline_mode", lambda: False)() is True
+            and method.upper() == "GET"
+            and (
+                path == "/v1/registry/repository-key"
+                or path.startswith("/v1/checkpoint-distributions/")
+            )
+        )
+        request = self.cloud.request_public if anonymous_read else self.cloud.request
+        response = await request(method, path)
         try:
             if response.status_code >= 400:
                 raise CheckpointRegistryError(

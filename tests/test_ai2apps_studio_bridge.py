@@ -18,7 +18,7 @@ const source = {postMessage(message, origin, ports) { transferred = ports[0]; }}
 const frame = {src:'', contentWindow:source, isConnected:true, dataset:{}, style:{},
   addEventListener(name, fn) { this[name] = fn; }, removeEventListener(name, fn) { if(this[name] === fn) delete this[name]; }};
 global.location = {origin:'http://localhost:1234', hash:''};
-global.document = {querySelector:()=>null, querySelectorAll:()=>[frame]};
+global.document = {documentElement:{lang:'en'},querySelector:()=>null, querySelectorAll:()=>[frame]};
 global.window = {AI2AppsCapabilities:{appInstanceId:()=> 'owner',ensure:async (...args)=>{ensures.push(args);return {outcome:'cancelled'};}}, addEventListener:(name, fn)=>listeners.push(fn), dispatchEvent:()=>{}};
 global.localStorage = {getItem:key=>store.get(key)||null,setItem:(key,value)=>store.set(key,value),removeItem:key=>store.delete(key)};
 global.MutationObserver = class {observe(){} disconnect(){}};
@@ -29,7 +29,9 @@ global.fetch = async (url, options) => {
  fetches.push([url,options]);
  if(url.endsWith('/mini-app-mounts')) return Response.json({id:'mount',app_instance_id:'provider',resource:'web/a.html',content_url:'/admin/resource?mount_id=mount'});
  if(!authorized) return Response.json({detail:'Signed out'}, {status:401});
- if(url.endsWith('/capabilities')) return Response.json({items:[{capability:'audio.source_separation'},{capability:'media.video_subtitles'},{capability:'media.video_audio_translation'},{capability:'audio.speech_generation'},{capability:'audio.voice_clone'}]});
+ if(url.endsWith('/capabilities')) return Response.json({items:[{capability:'audio.source_separation'},{capability:'media.video_subtitles'},{capability:'media.video_audio_translation'},{capability:'audio.speech_generation'},{capability:'audio.voice_clone'},{capability:'audio.music_generation'}]});
+ if(url.includes('/audio-generation-models?')) return Response.json({items:[{id:'music',ready:true}]});
+ if(url.endsWith('/audio-generation')) return Response.json({downloadUrl:'/v1/platform/sessions/s/artifacts/a/download'});
  if(url.endsWith('/characters')) return Response.json({items:[{id:'voice-1',name:'Narrator',ready:true}]});
  if(url.endsWith('/voice-clone-models')) return Response.json({items:[{id:'clone-1',name:'Clone',ready:true}]});
  if(url.endsWith('/invocations')) return Response.json({id:'0123456789abcdef0123456789abcdef',eventsUrl:'/v1/platform/studios/ai2apps.readaloud/mini-app-mounts/mount/invocations/0123456789abcdef0123456789abcdef/events'});
@@ -48,7 +50,7 @@ vm.runInThisContext(fs.readFileSync('ai2apps/web/static/js/studio_mini_apps.js',
  assert.ok(transferred);
  let id=0;
  const call = data=>new Promise(resolve=>{transferred.receive=resolve;transferred.send({id:++id,...data});});
- assert.equal((await call({operation:'probe'})).value.items.length,5);
+ assert.equal((await call({operation:'probe'})).value.items.length,6);
  assert.equal((await call({operation:'characters.list'})).value.items[0].name,'Narrator');
  assert.equal((await call({operation:'voice-clone-models.list'})).value.items[0].id,'clone-1');
  assert.equal((await call({operation:'setup',capability:'audio.voice_clone',installMore:true})).value.outcome,'cancelled');
@@ -87,6 +89,10 @@ vm.runInThisContext(fs.readFileSync('ai2apps/web/static/js/studio_mini_apps.js',
  assert.notEqual(eventSources[1].closed,true);
  eventSources[1].listeners.progress({data:JSON.stringify({invocationId:'0123456789abcdef0123456789abcdef',phaseIndex:5,status:'completed',percent:100,phasePercent:100})});
  assert.equal(eventSources[1].closed,true);
+ assert.equal((await call({operation:'audio-generation.models',capability:'audio.music_generation'})).value.items[0].id,'music');
+ assert.match((await call({operation:'audio-generation.models',capability:'audio.sound_effects_generation'})).error,/not allowed/);
+ assert.equal((await call({operation:'audio-generation.generate',capability:'audio.music_generation',payload:{model:'music',prompt:'piano',duration:10}})).value.completed,true);
+ assert.equal(JSON.parse(fetches.at(-1)[1].body).capability,'audio.music_generation');
  frame.load();
  transferred=undefined;
  connect({source,origin:'null',data:{type:'ai2apps:studio-connect',version:1}});

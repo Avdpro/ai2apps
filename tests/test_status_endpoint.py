@@ -11,7 +11,7 @@ from omlx.server import ServerState, app
 
 @pytest.fixture
 def client():
-    return TestClient(app)
+    return TestClient(app, base_url="http://127.0.0.1")
 
 
 class TestStatusEndpoint:

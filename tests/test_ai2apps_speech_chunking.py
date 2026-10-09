@@ -118,7 +118,8 @@ async def test_asr_unavailable_warns_without_losing_audio():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("verify", [False, True])
-async def test_indextts_long_clause_is_bounded_before_generation_and_asr(verify):
+@pytest.mark.parametrize("model_id", ["ai2apps.model.indextts25/fp16", "ai2apps.model.indextts25-cuda/fp16"])
+async def test_indextts_long_clause_is_bounded_before_generation_and_asr(verify, model_id):
     from ai2apps.readaloud.speech import speech_chunk_units
     text = "凡是有钱的单身汉，总想娶位太太，这已经成了一条举世公认的真理。这样的单身汉，每逢新搬到一个地方，四邻八舍虽然完全不了解他的性情如何，见解如何，可是，既然这样的一条真理早已在人们心目中根深蒂固，因此人们总是把他看作自己某一个女儿理所应得的一笔财产。"
     calls, checked = [], []
@@ -129,7 +130,7 @@ async def test_indextts_long_clause_is_bounded_before_generation_and_asr(verify)
     async def verifier(expected, audio, index, attempt):
         checked.append(expected)
         return 1.0
-    result = await invoke_speech(invoke, 'ai2apps.model.indextts25/fp16', 'audio_speech',
+    result = await invoke_speech(invoke, model_id, 'audio_speech',
         data={'input': text}, files={'reference_audio': ('ref.wav', b'reference', 'audio/wav')},
         request_id='bounded', verifier=verifier if verify else None)
     assert result.status_code == 200
@@ -154,7 +155,8 @@ def long_wav(value=0, seconds=11):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize('empty_asr', [False, True])
-async def test_indextts_blank_long_audio_recovers_with_subsegments(empty_asr):
+@pytest.mark.parametrize("model_id", ["ai2apps.model.indextts25/fp16", "ai2apps.model.indextts25-cuda/fp16"])
+async def test_indextts_blank_long_audio_recovers_with_subsegments(empty_asr, model_id):
     from ai2apps.readaloud.speech import SpeechVerification
     text = '这样的单身汉，每逢新搬到一个地方。'
     calls, verification_ids = [], []
@@ -169,7 +171,7 @@ async def test_indextts_blank_long_audio_recovers_with_subsegments(empty_asr):
         verification_ids.append((index, attempt))
         return SpeechVerification(0 if expected == text else 1, no_content=empty_asr and expected == text)
     warnings = []
-    result = await invoke_speech(invoke, 'ai2apps.model.indextts25/fp16', 'audio_speech',
+    result = await invoke_speech(invoke, model_id, 'audio_speech',
         data={'input': text, 'speed': 0.9}, files={'reference_audio': ('ref.wav', b'reference', 'audio/wav')},
         request_id='recover', verifier=verify, warnings=warnings)
     assert result.status_code == 200 and warnings == []
@@ -184,6 +186,9 @@ async def test_indextts_blank_long_audio_recovers_with_subsegments(empty_asr):
 @pytest.mark.asyncio
 @pytest.mark.parametrize('model,seconds,value,score', [
     ('ai2apps.model.voxcpm2/8bit', 11, 0, 0),
+    ('ai2apps.model.indextts25-cuda/fp16', 10, 0, 0),
+    ('ai2apps.model.indextts25-cuda/fp16', 11, 2000, 0.2),
+    ('ai2apps.model.indextts25-cuda/fp16', 11, 2000, 1),
     ('ai2apps.model.indextts25/fp16', 10, 0, 0),
     ('ai2apps.model.indextts25/fp16', 11, 2000, 0.2),
     ('ai2apps.model.indextts25/fp16', 11, 2000, 1),
@@ -202,14 +207,15 @@ async def test_adaptive_split_only_for_long_empty_indextts(model, seconds, value
 
 
 @pytest.mark.asyncio
-async def test_adaptive_split_is_bounded_and_continues_after_blank_audio():
+@pytest.mark.parametrize("model_id", ["ai2apps.model.indextts25/fp16", "ai2apps.model.indextts25-cuda/fp16"])
+async def test_adaptive_split_is_bounded_and_continues_after_blank_audio(model_id):
     calls = []
     async def invoke(model, operation, payload, **kwargs):
         calls.append(payload['input'])
         return Response(wav(2000) if payload['input'] == '下一句。' else long_wav())
     async def verify(text, *args): return 1 if text == '下一句。' else 0
     warnings = []
-    result = await invoke_speech(invoke, 'ai2apps.model.indextts25/fp16', 'audio_speech',
+    result = await invoke_speech(invoke, model_id, 'audio_speech',
         {'input': '这是没有声音的长句子，需要再拆成更短的句子。下一句。'},
         request_id='bounded', verifier=verify, warnings=warnings)
     assert result.status_code == 200 and calls[-1] == '下一句。'
@@ -218,7 +224,8 @@ async def test_adaptive_split_is_bounded_and_continues_after_blank_audio():
 
 
 @pytest.mark.asyncio
-async def test_subdivision_failure_preserves_parent_and_continues():
+@pytest.mark.parametrize("model_id", ["ai2apps.model.indextts25/fp16", "ai2apps.model.indextts25-cuda/fp16"])
+async def test_subdivision_failure_preserves_parent_and_continues(model_id):
     text = '你好世界，这是一个句子。'
     calls = []
     async def invoke(model, operation, payload, **kwargs):
@@ -230,20 +237,21 @@ async def test_subdivision_failure_preserves_parent_and_continues():
         return Response(b'failed', status_code=503)
     async def verify(text, *args): return 0
     warnings = []
-    result = await invoke_speech(invoke, 'ai2apps.model.indextts25/fp16', 'audio_speech',
+    result = await invoke_speech(invoke, model_id, 'audio_speech',
         {'input': text + '下一句。'}, request_id='fallback', verifier=verify, warnings=warnings)
     assert result.status_code == 200 and calls[-1] == '下一句。'
     assert any('细分生成失败' in warning for warning in warnings)
 
 
 @pytest.mark.asyncio
-async def test_indextts_silence_recovery_without_asr_and_cancel_propagation():
+@pytest.mark.parametrize("model_id", ["ai2apps.model.indextts25/fp16", "ai2apps.model.indextts25-cuda/fp16"])
+async def test_indextts_silence_recovery_without_asr_and_cancel_propagation(model_id):
     text = '这样的单身汉，每逢新搬到一个地方。'
     calls = []
     async def invoke(model, operation, payload, **kwargs):
         calls.append(payload['input'])
         return Response(long_wav() if payload['input'] == text else wav(2000))
-    result = await invoke_speech(invoke, 'ai2apps.model.indextts25/fp16', 'audio_speech',
+    result = await invoke_speech(invoke, model_id, 'audio_speech',
         {'input': text}, request_id='no-asr')
     assert result.status_code == 200
     assert ''.join(calls[1:]) == text
@@ -252,5 +260,5 @@ async def test_indextts_silence_recovery_without_asr_and_cancel_propagation():
             return Response(long_wav())
         raise asyncio.CancelledError()
     with pytest.raises(asyncio.CancelledError):
-        await invoke_speech(cancel, 'ai2apps.model.indextts25/fp16', 'audio_speech',
+        await invoke_speech(cancel, model_id, 'audio_speech',
             {'input': text}, request_id='cancel')

@@ -183,3 +183,42 @@
     .remote-qr { display:block; width:min(232px,100%); aspect-ratio:1; margin:12px auto 8px; padding:10px; border-radius:14px; background:#fff; }
     .remote-expiry { display:block; color:#a3a3a3; font-size:9px; text-align:center; }
     @media(max-width:760px){.account-header{padding:13px 16px}.account-status{display:none}.account-main{padding-top:20px}.account-sections{margin-left:-2px;margin-right:-2px}.account-section-button{padding:9px 11px}.account-profile,.remote-grid,.policy-form,.profile-form{grid-template-columns:1fr}.profile-span-two{grid-column:auto}.profile-social-form,.primary-device-setting,.this-device-settings,.account-promotion-form{grid-template-columns:1fr}.this-device-settings .account-button{width:100%}.profile-social-form .account-button,.account-promotion-form .account-button{width:100%}.profile-actions{align-items:flex-start;flex-direction:column}.account-points{grid-template-columns:1fr}.account-auth{padding:21px}.account-card-body{padding:15px}.account-ledger:not(.member-table):not(.invitation-table) th:nth-child(3),.account-ledger:not(.member-table):not(.invitation-table) td:nth-child(3){display:none}.member-invite,.member-role-verification,.member-quota-editor,.binding-message,.device-management-note{grid-template-columns:1fr}.member-invite .account-button{width:100%}.member-quota,.member-quota-head,.policy-actions{align-items:flex-start;flex-direction:column}.policy-actions{grid-column:auto}.invitation-result-head,.pending-invitations-head{align-items:flex-start;flex-direction:column}}
+
+/* Accountless desktop: a complete local workspace state, not an auth error. */
+.account-offline { width:min(960px,calc(100% - 64px)); margin:0 auto; padding:44px 0 64px; }
+.offline-page-heading { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:28px; }
+.offline-page-label { font-size:14px; font-weight:650; color:var(--account-muted); }
+.offline-status { display:inline-flex; align-items:center; gap:7px; font-size:11px; font-weight:600; color:#42634f; }
+.offline-status > span { width:6px; height:6px; border-radius:50%; background:#649773; }
+.offline-hero { display:flex; align-items:flex-start; gap:30px; padding:42px; border:1px solid var(--account-line); border-radius:24px; background:#fff; box-shadow:0 8px 30px rgba(23,23,23,.025); }
+.offline-device-mark { display:grid; place-items:center; flex:0 0 76px; height:76px; border:1px solid #e6e5e3; border-radius:23px; background:linear-gradient(150deg,#f8f8f7,#eeefec); color:#444c46; }
+.offline-device-mark svg { width:34px; height:34px; stroke-width:1.4; }
+.offline-eyebrow { margin:0 0 8px; color:var(--account-muted); font-size:11px; font-weight:600; letter-spacing:.07em; }
+.offline-hero h1 { margin:0; font-size:32px; line-height:1.25; letter-spacing:-.035em; font-weight:700; }
+.offline-intro { max-width:530px; margin:14px 0 0; color:#737373; font-size:13px; line-height:1.85; }
+.offline-actions { display:flex; flex-wrap:wrap; gap:10px; margin-top:26px; }
+.offline-actions .account-button { display:inline-flex; align-items:center; justify-content:center; gap:9px; min-height:42px; padding:10px 16px; font-size:12px; border-radius:11px; }
+.offline-actions svg { width:15px; height:15px; }
+.offline-actions .account-button:focus-visible { outline:2px solid #737373; outline-offset:4px; }
+.offline-capabilities { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; margin-top:20px; }
+.offline-feature { padding:25px 25px 27px; border:1px solid var(--account-line); border-radius:18px; background:rgba(255,255,255,.7); }
+.offline-feature-icon { display:block; color:#606862; margin-bottom:20px; }
+.offline-feature-icon svg { width:21px; height:21px; stroke-width:1.6; }
+.offline-feature h2 { margin:0 0 9px; font-size:13px; font-weight:650; }
+.offline-feature p { margin:0; color:var(--account-muted); font-size:12px; line-height:1.8; }
+.offline-account-note { display:flex; align-items:flex-start; gap:13px; margin:27px 4px 0; color:#8a8a86; }
+.offline-account-note > svg { width:17px; height:17px; flex-shrink:0; margin-top:2px; }
+.offline-account-note h2 { margin:0 0 5px; color:#737373; font-size:11px; font-weight:600; }
+.offline-account-note p { margin:0; font-size:11px; line-height:1.75; }
+@media (max-width:640px) {
+    .account-offline { width:calc(100% - 32px); padding:24px 0 36px; }
+    .offline-page-heading { margin-bottom:18px; }
+    .offline-hero { flex-direction:column; padding:26px; gap:22px; border-radius:20px; }
+    .offline-device-mark { flex-basis:auto; width:60px; height:60px; border-radius:18px; }
+    .offline-hero h1 { font-size:28px; }
+    .offline-capabilities { grid-template-columns:1fr; gap:12px; }
+    .offline-feature { padding:22px; }
+    .offline-feature-icon { margin-bottom:13px; }
+}
+
+.account-mobile-apps{margin-top:24px;padding-top:20px;border-top:1px solid var(--account-line,#e4e4e7)}.account-mobile-app-row{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:14px 0;border-bottom:1px solid #eee}.account-mobile-app-row>div{min-width:0}.account-mobile-app-row small{display:block;margin-top:5px;color:#71717a;font-size:13px;line-height:1.5}.account-mobile-app-row button{flex-shrink:0;min-width:64px;min-height:44px}

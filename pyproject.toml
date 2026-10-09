@@ -333,8 +333,10 @@ namespaces = false
     "third_party/*",
 ]
 "ai2apps.browser" = ["readability.js"]
+"ai2apps.model_worker" = ["flux2_klein_9b_scheduler.json", "flux2_klein_9b_provenance.json", "flux2_klein_9b_LICENSE.md"]
 "ai2apps.provisioning" = ["profiles/*.yaml"]
 "ai2apps.web" = [
+    "owner_studio_routes.json",
     "templates/**/*.html",
     "static/**/*",
     "i18n/*.json",

@@ -379,7 +379,11 @@ class OmlxTTSAdapter(OmlxAudioAdapterBase):
             voice = synthesis_voice
         named_voices = self.audio_feature(model, "tts", "named_voices")
         declared_voices = named_voices.get("voices", [])
-        if voice:
+        # Inline speaker tags identify dialogue roles rather than preset voices.
+        inline_speakers = dialogue is not None and self.audio_feature(
+            model, "tts", "multi_speaker"
+        ).get("control") == "inline_speaker_tags"
+        if voice and not inline_speakers:
             self.require_feature(
                 model, "tts", "named_voices", requested=True
             )

@@ -270,3 +270,44 @@ async def test_registry_does_not_use_expired_cached_index_offline(tmp_path) -> N
 
     with pytest.raises(CheckpointRegistryError, match="expired"):
         await client.trusted_index()
+
+
+@pytest.mark.asyncio
+async def test_accountless_registry_uses_anonymous_transport_and_verifies_signatures(tmp_path):
+    from ai2apps.cloud_client import AI2AppsCloudClient, CloudSessionStore
+    from ai2apps.secrets import MemorySecretBackend
+    fixture = _fixture()
+    calls = []
+    values = {
+        "/v1/registry/repository-key": {"publicKeyPem": fixture["repository_public"]},
+        "/v1/checkpoint-distributions/index/latest": fixture["index"],
+        "/v1/checkpoint-distributions/dist_registry_test": fixture["distribution"],
+    }
+    def handle(request):
+        assert "cookie" not in request.headers
+        assert "authorization" not in request.headers
+        calls.append(request.url.path)
+        return httpx.Response(200, json=values[request.url.path],
+                              headers={"Set-Cookie": "ai2apps_session=do-not-replay; Path=/"})
+    cloud = AI2AppsCloudClient(
+        base_url="https://cloud.example",
+        session_store=CloudSessionStore(MemorySecretBackend(), "https://cloud.example"),
+        transport=httpx.MockTransport(handle), offline_mode=lambda: True,
+    )
+    cloud.session_store.save("do-not-load")
+    client = CheckpointRegistryClient(cloud=cloud, root=tmp_path,
+                                     repository_fingerprint=fixture["repository_fingerprint"])
+    try:
+        result = await client.distribution("dist_registry_test")
+        assert result.digest == fixture["manifest"].digest
+        assert calls == list(values)
+        # Anonymous access must still enforce the signed index.
+        fixture["index"]["payload"]["version"] += 1
+        with pytest.raises(CheckpointRegistryError, match="signature"):
+            await client.trusted_index()
+        count = len(calls)
+        with pytest.raises(CheckpointRegistryError):
+            await client._json("POST", "/v1/checkpoint-distributions/new", limit=1024)
+        assert len(calls) == count
+    finally:
+        await cloud.close()

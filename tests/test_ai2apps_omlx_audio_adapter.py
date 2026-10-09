@@ -457,11 +457,15 @@ async def test_omlx_tts_adapter_allows_optional_reference_transcript(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_omlx_tts_adapter_maps_multi_speaker_dialogue(tmp_path):
+@pytest.mark.parametrize("inline", [False, True])
+async def test_omlx_tts_adapter_maps_multi_speaker_dialogue(tmp_path, inline):
     context = _context(tmp_path, "example.audio/tts")
     tts = context.models[0]["audio_capabilities"]["tts"]
     tts["multi_speaker"] = {"mode": "native"}
     tts["named_voices"]["voices"] = ["alice", "bob"]
+    if inline:
+        tts["multi_speaker"]["control"] = "inline_speaker_tags"
+        tts["named_voices"] = {"mode": "unsupported", "voices": []}
     adapter = _TTSAdapter(context)
     await adapter.invoke(
         ModelWorkerRequest(
@@ -525,3 +529,15 @@ def test_voxcpm2_package_adapter_combines_controls_with_standard_priority():
         "Mandatory delivery controls override conflicting earlier style: "
         "sound genuinely happy and warm; speak faster than normal."
     )
+
+
+@pytest.mark.asyncio
+async def test_dialogue_presets_still_require_declared_voice(tmp_path):
+    context = _context(tmp_path, 'example.audio/tts')
+    context.models[0]['audio_capabilities']['tts']['multi_speaker'] = {'mode': 'native'}
+    adapter = _TTSAdapter(context)
+    with pytest.raises(ModelWorkerError, match='Voice is not available'):
+        await adapter.invoke(ModelWorkerRequest('audio_speech', {
+            'model': 'upstream/audio',
+            'dialogue': [{'voice': 'unknown', 'text': 'Hello'}],
+        }, 'invalid-preset'))

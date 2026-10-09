@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from ai2apps.api.errors import platform_error_response
@@ -123,6 +123,32 @@ def create_auth_router(
             "membershipEpoch": principal.membership_epoch,
             "isCore": principal.is_core,
         }
+
+    @router.post("/offline/activate", status_code=201)
+    async def activate_offline(request: Request, response: Response):
+        from ai2apps.api.client import is_desktop_shell_request
+
+        # Loopback reachability alone cannot mint an administrator session.
+        enforce_same_origin_cookie_request(request)
+        if (
+            not is_desktop_shell_request(request)
+            or request.url.hostname not in {"127.0.0.1", "localhost", "::1"}
+            or request.client is None
+            or request.client.host not in {"127.0.0.1", "::1"}
+        ):
+            raise HTTPException(status_code=403, detail="Trusted local desktop Shell required")
+        runtime = runtime_provider()
+        if runtime is None:
+            raise HTTPException(status_code=503, detail="Local runtime is not ready")
+        try:
+            token, principal = await runtime.activate_offline()
+        except IdentityBindingError as error:
+            return platform_error_response(
+                status_code=409, code="offline_mode_unavailable",
+                message=str(error), retryable=False,
+            )
+        response.headers["Cache-Control"] = "no-store"
+        return establish_local_session(request, response, token, principal)
 
     @router.post("/handoff/exchange", status_code=201)
     async def exchange_handoff(

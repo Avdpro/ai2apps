@@ -11,7 +11,8 @@ function setup(url) {
         contextId: 'bound-tab', pageState: async () => ({url: state.page.url}),
         connection: {command: async (method, params) => {commands.push({method, params}); state.page.url = params.url;}},
     };
-    const context = {URL, state, client: async () => bidi};
+    bidi.waitForStability = async () => ({ready: true});
+    const context = {URL, state, client: async () => bidi, setTimeout: callback => {callback(); return 0;}};
     const parts = [
         source.slice(source.indexOf('    function pageScope()'), source.indexOf('    function normalizedStep(')),
         source.slice(source.indexOf('    function scopeAllows('), source.indexOf('    async function client()')),

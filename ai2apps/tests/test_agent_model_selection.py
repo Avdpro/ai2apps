@@ -146,8 +146,11 @@ def test_builder_uses_explicit_model_or_selected_task_tier(tmp_path):
 
         async def invoke_foreground_json(self, model_id, endpoint, payload, **kwargs):
             called.append((model_id, payload["model"]))
+            result = ({"title": "Read evidence", "description": "Summarize actual evidence."}
+                      if payload["messages"][0]["content"].startswith("Name a browser Agent capability")
+                      else source())
             return JSONResponse(
-                {"choices": [{"message": {"content": json.dumps(source())}}]}
+                {"choices": [{"message": {"content": json.dumps(result)}}]}
             )
 
     runtime.model_invocations = Invocations()
@@ -176,5 +179,6 @@ def test_builder_uses_explicit_model_or_selected_task_tier(tmp_path):
             },
         )
         assert response.status_code == 201, response.text
-        assert called[-1] == (expected, expected)
+        assert called[-2] == (expected, expected)
+        assert called[-1] == ("work_simple-model", "work_simple-model")
     runtime.stop()
