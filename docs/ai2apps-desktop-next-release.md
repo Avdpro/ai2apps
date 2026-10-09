@@ -1,8 +1,19 @@
 # AI2Apps Desktop 下一版 Release 台账
 
+### NXR-RELEASE-2259-20261009：Desktop 0.1.5 Build 2259
+
+- 状态：`released_pending_target_mac`。2026-10-09 11:27（北京时间）完成 Apple 公证、GitHub/ModelScope 双源发布、Cloud 完整下载/Range/摘要预检、0% 登记及 100% 扩灰。当前生产基线为 0.1.5 / 2259。
+- 源码 `0c318c71b5eadd99fe61db395da5a90da4801cd7`，clean worktree 构建并已推送 main；GitHub tag `v0.1.5-build2259`，MS 不可变 revision `3e1bf46de8c02aaf9dbd23015458c03a5c722569`。
+- 最终 DMG 268922700 bytes（约 256.5 MiB），SHA-256 `fcfaef3675d39151d34d6a71cefa97bd091d2fff7a7392757a8258e87511f6b7`。Apple submission `22f9c7eb-40f9-49e2-a0d4-d32d6c8cc14a` Accepted；签名/staple/Gatekeeper/metadata 配对通过。
+- 生产清单摘要 `9ea49e72e57215baaa63d5489394c97c5daa417661dde9784530932c2783da74`，同一 rollout ID `build2259-test`，10000 basis points。GET/HEAD 200、条件请求 304、无 Set-Cookie、六个既有 API 200；容器 healthy/restart 0、最近 15 分钟 error/fatal 0。审计记录 26/27，2258 回退点保留。
+- 范围以 `docs/ai2apps-desktop-2259-scope-audit.json` 的构建前快照、源码提交和回执中的实际 Bundle 比较为准。完整纳入 Desktop 的情报中心/后台 WebAgent、Todo/Codex、音乐音效歌曲 Host、H3 分段任务、Mobile/访客客户端与脱机/BYOK；不含新 Spark/CUDA 部署和未发布模型实验。模型 Runtime/权重仍独立下载，就绪开关与用户启用策略不变。
+- 回执：`docs/ai2apps-desktop-0.1.5-build2259-release-2026-10-09.json`。该回执列出的源码实现为 included；本台账后续旧“未发布”等文字属于历史。实机/真实模型/权限期限等剩余验收不自动关闭，目标 Mac 升级闭环仍待验收；仅 2258→2259 资格检查为 eligible。
+- 本轮未重建 Dev/App-Dev/Test，未读取 Dev Cookie。只清理服务器本次内存盘临时工件，正式双源、本地制品、审计与历史保留。
+- 已知发布工程问题继续延期：GitHub CI runner 缺少 av，PyPI 工作流拒绝 Desktop tag 与 Package 版本格式不匹配；均与前版一致，不能称 GitHub CI 全绿。Homebrew/Dependency Graph 成功；完整本机回归与各日志见回执。
+
 ### NXR-RELEASE-2259-PREFLIGHT-20261009：发布回归合同核对
 
-- 状态：in_progress，生产仍为 0.1.4 / 2258；未构建、公证或发布 2259。
+- 状态：发布前检查已完成，2259 已发布；以下保留发布前调查与修复历史，以本文件顶部发布回执为准。
 - 用户选择先修复回归、发布完整 2259；独立候选位于 /private/tmp/ai2apps-release-2258 的 codex/release-2259 分支。Spark/CUDA 与未发布模型实验不纳入；候选源码版本为 0.1.5，尚未提交/构建。初始及增量文件清单保存在 /private/tmp/ai2apps-2259-source-inventory-initial.json 与 /private/tmp/ai2apps-2259-source-inventory.json。
 - 本轮修复：情报中心测试改用真实后台 Runtime，并独立验证前端 finish/progress 对 Local 拥有任务返回 409；旧 finish 合同仅用 legacy 记录测试。浏览器/Studio 测试补齐页面稳定等待、语言化 URL、DOM 和隔离 Tab 身份。服务器测试明确回环 Host，不放宽公网路由边界。数据库清单补齐 78–87；保留迁移账本完整性和 2258 SDPA provider reset 修复。
 - 产品补丁：Mobile App 内容路由先校验角色/可用性，再访问设备开放策略；补齐 ACPF 音乐/音效/歌曲/放大中英文提示以及首页公网入口七种语言与状态文案。
@@ -4081,13 +4092,13 @@
 
 固定上游 revision `92196c8e11f7b6cf2b7493e037d8c5345c559216`；官方 Hub 客户端下载配置返回 `GatedRepoError`，当前账号访问不足。没有读取/输出 Cookie、没有签名或发布，没有填写占位 distribution ID。待获得上游权重访问后完成固定双源字节核验、完整许可证/SBOM/source lock、签名分发、客户端安装映射、真实 managed install 和 Package 发布。候选 README 明确标注不可发布状态。
 
-当前生产基线：AI2Apps `0.1.0` Build `2249`
+当前生产基线：AI2Apps `0.1.5` Build `2259`；清单 SHA-256 `9ea49e72e57215baaa63d5489394c97c5daa417661dde9784530932c2783da74`
 
 生产清单：`https://coder.ai2apps.com/updates/stable.json`
 
-基线回执：`docs/ai2apps-desktop-build-2249-release-receipt-2026-09-03.md`
+基线回执：`docs/ai2apps-desktop-0.1.5-build2259-release-2026-10-09.json`
 
-候选 Build：尚未分配；构建时必须严格大于 `2249`
+候选 Build：尚未分配；构建时必须严格大于 `2259`
 
 ## 1. 用途
 
