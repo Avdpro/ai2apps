@@ -247,12 +247,12 @@
         const mobileDialogs = new Set();
         const progressSources = new Set();
         let audioRecorder = null;
-        let audioGenerationAbort = null;
+        let audioGenerationAbort = null, llmAbort = null;
         let webPollTimer = null;
         const abort = new AbortController();
         const active = () => !closed && frame.isConnected && frame.src === src && frame.contentWindow === source;
         const close = () => {
-            closed = true; abort.abort(); audioGenerationAbort?.abort();
+            closed = true; abort.abort(); audioGenerationAbort?.abort(); llmAbort?.abort();
             clearTimeout(webPollTimer);
             mobileDialogs.forEach(dialog=>dialog.remove());mobileDialogs.clear();
             audioRecorder?.dispose();
@@ -330,6 +330,7 @@
             if (!active()) { close(); return; }
             if (!Number.isSafeInteger(request?.id) || request.id < 1) return;
             const reply = value => { if (active()) channel.port1.postMessage({id: request.id, ...value}); };
+            if (request.operation === 'llm.cancel') { llmAbort?.abort(); reply({value:{cancelled:!!llmAbort}}); return; }
             if (request.operation === 'audio-generation.cancel') {
                 // A private channel may cancel only its own in-flight generation.
                 audioGenerationAbort?.abort(); reply({value: {cancelled: !!audioGenerationAbort}}); return;
@@ -337,6 +338,7 @@
             if (busy) { reply({error: 'A Mini-App operation is already running'}); return; }
             busy = true;
             if (request.operation === 'audio-generation.generate') audioGenerationAbort = new AbortController();
+            if (request.operation === 'llm.complete') llmAbort = new AbortController();
             try {
                 // Revalidate actor, live mount and signed declaration for every operation,
                 // including draft access; the iframe never receives session credentials.
@@ -344,7 +346,14 @@
                     credentials: 'same-origin', cache: 'no-store', signal: abort.signal,
                 }));
                 if (!active()) return;
-                if (request.operation === 'asset.pick') {
+                if (request.operation === 'llm.complete') {
+                    if (!probe.items?.some(item => item.capability === 'llm.text')) throw new Error('llm.text is required');
+                    reply({value: await payload(await fetch(`${base}/llm`, {
+                        method:'POST', credentials:'same-origin', signal:llmAbort.signal,
+                        headers:{'Content-Type':'application/json'}, body:JSON.stringify(request.payload || {})
+                    }))});
+                }
+                else if (request.operation === 'asset.pick') {
                     if (!['image/png,image/jpeg,image/webp','image/*','audio/*','video/*'].includes(request.accept)) throw new Error('Invalid asset types');
                     reply({value: await window.AI2AppsMobileStudio.pickAsset(frame, {accept:request.accept,signal:abort.signal})});
                 }
@@ -620,7 +629,7 @@
                         credentials: 'same-origin', cache: 'no-store', signal: abort.signal,
                     }))});
                 }
-                else if (['subtitle.refine', 'subtitle.profiles.get', 'subtitle.profiles.set'].includes(request.operation)) {
+                else if (['subtitle.profiles.get', 'subtitle.profiles.set'].includes(request.operation)) {
                     if (!probe.items?.some(item => item.capability === 'media.video_subtitles')) throw new Error('Subtitle access is not allowed');
                     const profileKey = storageKey + ':correction-profiles';
                     if (request.operation === 'subtitle.profiles.get') reply({value: JSON.parse(localStorage.getItem(profileKey) || '[]')});
@@ -629,10 +638,6 @@
                         if (!Array.isArray(profiles) || profiles.length > 100 || profiles.some(p => !p || typeof p.id !== 'string' || p.id.length > 100 || typeof p.name !== 'string' || !p.name.trim() || p.name.length > 100 || typeof p.rules !== 'string' || p.rules.length > 8000)) throw new Error('Invalid correction profiles');
                         localStorage.setItem(profileKey, JSON.stringify(profiles.map(({id,name,rules}) => ({id,name,rules}))));
                         reply({value: null});
-                    } else {
-                        const body = JSON.stringify({segments: request.segments, rules: request.rules});
-                        if (new TextEncoder().encode(body).length > 2 * 1024 * 1024) throw new Error('Subtitle text exceeds 2 MiB');
-                        reply({value: await payload(await fetch(`${base}/subtitle-refinement`, {method:'POST', credentials:'same-origin', signal:abort.signal, headers:{'Content-Type':'application/json'}, body}))});
                     }
                 }
                 else if (request.operation === 'draft.get') {
@@ -754,6 +759,7 @@
             finally {
                 busy = false;
                 if (request.operation === 'audio-generation.generate') audioGenerationAbort = null;
+                if (request.operation === 'llm.complete') llmAbort = null;
                 if (request.operation === 'invoke') {
                     window.dispatchEvent(new CustomEvent('ai2apps:studio-output-state', {detail: {studioId: binding.studioId, running: false}}));
                     if (progressSource && progressSources.has(progressSource)) {

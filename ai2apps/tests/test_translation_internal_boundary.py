@@ -24,9 +24,14 @@ async def test_translation_uses_local_boundary_and_preserves_authentication():
         extension_manager=None,
         model_manager=SimpleNamespace(resolve_default_model=lambda _: 'cloud/openai/test-model'),
     ))
-    request = SimpleNamespace(app=app, headers={'cookie': 'ai2apps_local_session_test=test-session'})
-    result = await broker._translation_completion(
-        'Hello', system='Translate', principal=None, mounted=None, request=request,
+    async def connected():
+        return False
+    request = SimpleNamespace(app=app, headers={'cookie': 'ai2apps_local_session_test=test-session'}, is_disconnected=connected)
+    mounted = SimpleNamespace(mount={'id': 'mount-test', 'context': {'studioId': 'ai2apps.video-studio'}},
+                              capabilities={'llm.text'}, declaration={'llm': {}})
+    broker.mounted_mini_app = lambda *_args, **_kwargs: mounted
+    result = await broker._mini_app_completion(
+        'Hello', system='Translate', principal=None, mounted=mounted, request=request,
     )
     assert result == '翻译成功'
     assert seen[0]['model'] == 'cloud/openai/test-model'

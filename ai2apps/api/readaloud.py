@@ -9,7 +9,7 @@ from typing import Any, Literal
 
 from fastapi import Request, APIRouter, Depends, Header, HTTPException, Query, UploadFile, File
 from fastapi.responses import JSONResponse, Response, FileResponse
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field
 
 from ai2apps.api.errors import platform_error_response, repository_error_response
 from ai2apps.api.health import PlatformRuntimeProvider
@@ -17,7 +17,7 @@ from ai2apps.api.identity import PrincipalProvider, resolve_request_principal
 from ai2apps.api.ownership import authorize_app_instance
 from ai2apps.core import RepositoryError, ResourceNotFoundError, utc_now_text
 from ai2apps.gallery import GalleryRepository
-from ai2apps.readaloud.source_analysis import SourceAnalysisRequest, SourceApplyRequest, analysis_messages, parse_completion, validate_proposal, dialogue_issues
+from ai2apps.readaloud.source_analysis import SourceApplyRequest
 from ai2apps.readaloud.speech import invoke_speech, speech_verifier
 from ai2apps.readaloud.materials import VoiceMaterials
 from ai2apps.readaloud.training import requirements as training_requirements, prepare as prepare_training, combined_reference
@@ -43,8 +43,8 @@ VOICE_RIGHTS_POLICY_VERSION = "ai2apps.voice-rights/v1"
 READALOUD_STUDIO_ID = "ai2apps.readaloud"
 READALOUD_MINI_APPS: tuple[dict[str, Any], ...] = (
     {"schema": "ai2apps.mini-app/v1", "id": "ai2apps.audio.quick-read", "version": "1.0.0", "kind": "clip", "mode": "quick", "icon": "volume-2", "title_key": "readaloud.mini_app.quick.name", "summary_key": "readaloud.mini_app.quick.summary", "description_key": "readaloud.mini_app.quick.description", "entry": {"kind": "host-adapter", "adapter": "quick-read"}, "ui": {"minimum_width": 520, "drop_targets": [{"id": "script", "accepts": ["text"]}]}, "placements": [{"studio": READALOUD_STUDIO_ID, "category": "quick", "order": 10}], "inputs": [{"id": "script", "kind": "text", "required": True}], "outputs": [{"id": "speech", "kind": "audio", "final": True}], "executor": {"pipelines": ["ai2apps.pipeline.speech-generation"]}, "requirements": {"capabilities": ["audio.speech_generation"]}},
-    {"schema": "ai2apps.mini-app/v1", "id": "ai2apps.audio.audiobook", "version": "1.0.0", "kind": "project", "mode": "audiobook", "icon": "book-headphones", "title_key": "readaloud.mini_app.audiobook.name", "summary_key": "readaloud.mini_app.audiobook.summary", "description_key": "readaloud.mini_app.audiobook.description", "entry": {"kind": "host-adapter", "adapter": "audiobook"}, "ui": {"minimum_width": 520, "drop_targets": [{"id": "book", "accepts": ["text"]}]}, "placements": [{"studio": READALOUD_STUDIO_ID, "category": "projects", "order": 30}], "inputs": [{"id": "book", "kind": "text", "required": True}], "outputs": [{"id": "chapters", "kind": "audio", "final": True}], "executor": {"pipelines": ["ai2apps.pipeline.speech-generation"]}, "requirements": {"capabilities": ["audio.speech_generation"]}},
-    {"schema": "ai2apps.mini-app/v1", "id": "ai2apps.audio.ensemble-drama", "version": "1.0.0", "kind": "project", "mode": "drama", "icon": "users-round", "title_key": "readaloud.mini_app.drama.name", "summary_key": "readaloud.mini_app.drama.summary", "description_key": "readaloud.mini_app.drama.description", "entry": {"kind": "host-adapter", "adapter": "ensemble-drama"}, "ui": {"minimum_width": 520, "drop_targets": [{"id": "script", "accepts": ["text", "project"]}]}, "placements": [{"studio": READALOUD_STUDIO_ID, "category": "projects", "order": 30}], "inputs": [{"id": "script", "kind": "project", "required": True}], "outputs": [{"id": "dialogue", "kind": "audio", "final": True}], "executor": {"pipelines": ["ai2apps.pipeline.speech-generation"]}, "requirements": {"capabilities": ["audio.speech_generation"]}},
+    {"schema": "ai2apps.mini-app/v1", "id": "ai2apps.audio.audiobook", "version": "1.0.0", "kind": "project", "mode": "audiobook", "icon": "book-headphones", "title_key": "readaloud.mini_app.audiobook.name", "summary_key": "readaloud.mini_app.audiobook.summary", "description_key": "readaloud.mini_app.audiobook.description", "entry": {"kind": "host-adapter", "adapter": "audiobook"}, "ui": {"minimum_width": 520, "drop_targets": [{"id": "book", "accepts": ["text"]}]}, "placements": [{"studio": READALOUD_STUDIO_ID, "category": "projects", "order": 30}], "inputs": [{"id": "book", "kind": "text", "required": True}], "outputs": [{"id": "chapters", "kind": "audio", "final": True}], "executor": {"pipelines": ["ai2apps.pipeline.speech-generation"]}, "requirements": {"capabilities": ["audio.speech_generation", {"capability":"llm.text","optional":True}]}},
+    {"schema": "ai2apps.mini-app/v1", "id": "ai2apps.audio.ensemble-drama", "version": "1.0.0", "kind": "project", "mode": "drama", "icon": "users-round", "title_key": "readaloud.mini_app.drama.name", "summary_key": "readaloud.mini_app.drama.summary", "description_key": "readaloud.mini_app.drama.description", "entry": {"kind": "host-adapter", "adapter": "ensemble-drama"}, "ui": {"minimum_width": 520, "drop_targets": [{"id": "script", "accepts": ["text", "project"]}]}, "placements": [{"studio": READALOUD_STUDIO_ID, "category": "projects", "order": 30}], "inputs": [{"id": "script", "kind": "project", "required": True}], "outputs": [{"id": "dialogue", "kind": "audio", "final": True}], "executor": {"pipelines": ["ai2apps.pipeline.speech-generation"]}, "requirements": {"capabilities": ["audio.speech_generation", {"capability":"llm.text","optional":True}]}},
     {"schema": "ai2apps.mini-app/v1", "id": "ai2apps.audio.voice-design", "version": "1.0.0", "kind": "project", "mode": "voice", "icon": "users-round", "title_key": "readaloud.mini_app.voice.name", "summary_key": "readaloud.mini_app.voice.summary", "description_key": "readaloud.mini_app.voice.description", "entry": {"kind": "host-adapter", "adapter": "voice-design"}, "ui": {"minimum_width": 520, "drop_targets": [{"id": "reference", "accepts": ["audio", "voice-profile"]}]}, "placements": [{"studio": READALOUD_STUDIO_ID, "category": "voices", "order": 20}], "inputs": [{"id": "voice_spec", "kind": "project", "required": True}], "outputs": [{"id": "voice_profile", "kind": "voice-profile", "final": True}], "executor": {"pipelines": ["ai2apps.pipeline.voice-design"]}, "requirements": {"capabilities": ["audio.voice_clone"]}},
     {"schema": "ai2apps.mini-app/v1", "id": "ai2apps.audio.character-training", "version": "1.0.0", "kind": "project", "mode": "training", "icon": "mic-2", "title_key": "readaloud.mini_app.training.name", "summary_key": "readaloud.mini_app.training.summary", "description_key": "readaloud.mini_app.training.description", "entry": {"kind": "host-adapter", "adapter": "character-training"}, "ui": {"minimum_width": 520, "drop_targets": [{"id": "reference_audio", "accepts": ["audio"]}]}, "placements": [{"studio": READALOUD_STUDIO_ID, "category": "voices", "order": 50}], "inputs": [{"id": "reference_audio", "kind": "audio", "required": True}], "outputs": [{"id": "training_material", "kind": "voice-profile", "final": True}], "executor": {"pipelines": ["ai2apps.pipeline.voice-training"]}, "requirements": {"capabilities": ["audio.voice_clone"]}},
 )
@@ -1082,69 +1082,6 @@ def create_readaloud_router(
                 )
             )
         )
-
-    @router.post('/projects/{project_id}/source/analyze')
-    async def analyze_source(project_id: str, request: SourceAnalysisRequest, http_request: Request,
-                             principal: RequestPrincipal = principal_dependency):
-        runtime = runtime_provider()
-        try:
-            project = repository().get_project(principal.actor_user_id, project_id)
-            if not request.text.strip():
-                raise ValueError('Enter source text.')
-            messages = analysis_messages(project, request.text, request.after_id)
-        except RepositoryError as error:
-            return repository_error_response(error)
-        except ValueError as error:
-            raise HTTPException(422, str(error)) from error
-        manager = getattr(runtime, 'model_manager', None)
-        model_id = request.model_id or (manager.resolve_default_model('work_standard') if manager else None)
-        if not model_id:
-            raise HTTPException(409, 'No model is configured for Standard tasks. Configure it in Models first.')
-        payload = {'model':model_id, 'messages':messages, 'max_tokens':16000, 'stream':False}
-        request_id = 'readaloud-source-' + uuid.uuid4().hex
-        try:
-            async with asyncio.timeout(180):
-                invocations = getattr(runtime, 'model_invocations', None)
-                model = invocations.model(model_id) if invocations else None
-                for attempt in range(2):
-                    if model is not None and 'chat_completions' in getattr(model, 'endpoints', {}):
-                        response = await invocations.invoke_foreground_json(model.id, 'chat_completions', payload, request_id=request_id,
-                            context=invocations.context_for_actor(principal.actor_user_id, session_id=request_id, consumer_app_id=READALOUD_STUDIO_ID))
-                        content = bytes(response.body)
-                    else:
-                        import httpx
-                        headers = {key:value for key,value in http_request.headers.items() if key.lower() in {'authorization','cookie','x-api-key','x-ai2apps-app-id','x-ai2apps-installation-id'}}
-                        headers['x-request-id'] = request_id
-                        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=http_request.app), base_url='http://ai2apps.internal', timeout=180) as client:
-                            response = await client.post('/v1/chat/completions', json=payload, headers=headers)
-                        content = response.content
-                    if response.status_code >= 400:
-                        raise HTTPException(502, f'Standard tasks AI returned HTTP {response.status_code}.')
-                    proposal = parse_completion(content, [actor['id'] for actor in project['characters']])
-                    validate_proposal(proposal, project)
-                    issues = dialogue_issues(proposal, project)
-                    if not issues:
-                        break
-                    if attempt:
-                        raise ValueError('AI repeated dialogue in narration. Please try another analysis model.')
-                    payload['messages'] = messages + [
-                        {'role':'assistant', 'content':proposal.model_dump_json()},
-                        {'role':'user', 'content':'Correct the complete proposal. Preserve all non-duplicated dialogue and meaningful narration. Remove redundant attribution tags. Fix these issues and return the full JSON only: ' + json.dumps(issues, ensure_ascii=False)},
-                    ]
-                    request_id += '-repair'
-        except TimeoutError as error:
-            raise HTTPException(504, 'AI analysis timed out. Try a smaller section.') from error
-        except ValidationError as error:
-            issues = error.errors(include_url=False, include_input=False)
-            details = '; '.join('.'.join(map(str, issue['loc'])) + ': ' + issue['msg'] for issue in issues[:3])
-            raise HTTPException(422, 'AI returned an incomplete or invalid proposal. Please analyze again. ' + details) from error
-        except (ValueError, KeyError, IndexError, TypeError, AttributeError) as error:
-            raise HTTPException(422, 'Invalid AI analysis: ' + str(error)[:300]) from error
-        except HTTPException:
-            raise
-        except Exception as error:
-            raise HTTPException(502, 'Standard tasks AI could not complete the analysis. Please retry.') from error
-        return {**proposal.model_dump(), 'revision':project['revision'], 'after_id':request.after_id, 'batch_id':uuid.uuid4().hex, 'model_id':model_id}
 
     @router.post('/projects/{project_id}/source/apply')
     def apply_source(project_id: str, request: SourceApplyRequest, principal: RequestPrincipal = principal_dependency):

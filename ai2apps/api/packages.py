@@ -248,7 +248,7 @@ def _registry_error(error: RegistryError | PackageContractError) -> JSONResponse
         upstream_status = error.details.get("status")
         status = (
             upstream_status
-            if upstream_status in {400, 401, 403, 404, 409, 413, 422, 429, 503}
+            if upstream_status in {400, 401, 403, 404, 409, 410, 413, 422, 429, 503}
             else None
         )
     status = status or 422
@@ -569,6 +569,40 @@ def create_package_router(
                 retryable=False,
             )
         return manager.for_cloud(cloud)
+
+    @router.get("/packages/catalog/capabilities")
+    async def registry_discovery_capabilities():
+        manager = registry_or_error()
+        if isinstance(manager, JSONResponse):
+            return manager
+        try:
+            return JSONResponse(await manager.discovery_capabilities(), headers={"Cache-Control": "no-store"})
+        except RegistryError as error:
+            return _registry_error(error)
+
+    @router.get("/packages/catalog/content")
+    async def registry_content_catalog(
+        content: str = Query(default="all", pattern="^(all|app|mini-app)$"),
+        type: str | None = Query(default=None, pattern="^(app|agent|service)$"),
+        q: str = Query(default="", max_length=200),
+        mini_app_category: str | None = Query(default=None, max_length=64),
+        studio: str | None = Query(default=None, max_length=160),
+        publisher: str | None = None,
+        sort: str = Query(default="recommended", pattern="^(recommended|relevance|rating|newest)$"),
+        limit: int = Query(default=24, ge=1, le=100),
+        cursor: str | None = None,
+    ):
+        manager = registry_or_error()
+        if isinstance(manager, JSONResponse):
+            return manager
+        try:
+            result = await manager.content_catalog(
+                content=content, type=type, q=q, mini_app_category=mini_app_category,
+                studio=studio, publisher=publisher, sort=sort, limit=limit, cursor=cursor,
+            )
+            return JSONResponse(result, headers={"Cache-Control": "no-store"})
+        except RegistryError as error:
+            return _registry_error(error)
 
     @router.get("/packages/catalog/search")
     async def registry_search(

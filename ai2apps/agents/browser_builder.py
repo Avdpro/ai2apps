@@ -278,6 +278,11 @@ def browser_builder_executor(context: AgentExecutionContext):
                 "temperature": 0,
                 "max_tokens": int(ai.get("max_tokens") or 2000),
             }
+            from ai2apps.task_llm import task_payload
+            model_request = task_payload(model_id, model_request['messages'], tier,
+                max_tokens=model_request['max_tokens'])
+            model_request['_ai2apps_task_route'] = {
+                'complexity': tier, 'profile': parameters.get('model_profile', 'normal')}
             repair_budget = JsonRepairBudget()
             invalid_error = None
             for repair_index in range(MAX_JSON_REPAIRS + 1):

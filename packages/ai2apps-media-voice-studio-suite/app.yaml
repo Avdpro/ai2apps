@@ -2,7 +2,7 @@ schema: ai2apps.app/v1
 id: ai2apps.media-voice-studio-suite
 name: Media Voice Studio Suite
 description: Local-first transcription, separation, voice replacement, dubbing, and subtitle tools.
-version: 0.2.1
+version: 0.2.2
 publisher:
   id: ai2apps
 instances:
@@ -27,7 +27,7 @@ mini_apps:
   - schema: ai2apps.mini-app/v1
     id: ai2apps.media-voice.source-separation
     name: Voice and Background Separation
-    version: 0.2.1
+    version: 0.2.2
     kind: clip
     icon: split
     description: Separate vocals or dialogue from music and background audio.
@@ -69,7 +69,7 @@ mini_apps:
   - schema: ai2apps.mini-app/v1
     id: ai2apps.media-voice.transcription
     name: Detailed Transcription
-    version: 0.2.1
+    version: 0.2.2
     kind: project
     icon: captions
     description: Create timestamped transcripts, detect speakers, and let the user assign names.
@@ -112,7 +112,7 @@ mini_apps:
   - schema: ai2apps.mini-app/v1
     id: ai2apps.media-voice.audio-speaker-replacement
     name: Audio Speaker Voice Replacement
-    version: 0.2.1
+    version: 0.2.2
     kind: project
     icon: audio-lines
     description: Replace one selected speaker in an audio recording with an authorized target voice.
@@ -155,7 +155,7 @@ mini_apps:
   - schema: ai2apps.mini-app/v1
     id: ai2apps.media-voice.video-subtitles
     name: Video Subtitles and Translation
-    version: 0.2.1
+    version: 0.2.2
     kind: project
     icon: subtitles
     description: Generate, translate, export, or burn subtitles into a video.
@@ -184,7 +184,7 @@ mini_apps:
       capabilities:
         - media.video_subtitles
         - audio.detailed_transcription
-        - {capability: text.translation, optional: true}
+        - {capability: llm.text, optional: true}
         - media.subtitle.export
         - media.video.subtitle_burn_in
     chat:
@@ -198,7 +198,7 @@ mini_apps:
   - schema: ai2apps.mini-app/v1
     id: ai2apps.media-voice.video-audio-translation
     name: Video Audio Translation
-    version: 0.2.1
+    version: 0.2.2
     kind: project
     icon: languages
     description: Translate a single narrator and dub with a Voice Studio Character or a temporary clone of the original voice.
@@ -227,7 +227,7 @@ mini_apps:
       capabilities:
         - media.video_audio_translation
         - audio.detailed_transcription
-        - text.translation
+        - llm.text
         - audio.source_separation
         - audio.speech_generation
         - {capability: audio.voice_clone, optional: true}
@@ -244,7 +244,7 @@ mini_apps:
   - schema: ai2apps.mini-app/v1
     id: ai2apps.media-voice.video-speaker-replacement
     name: Video Speaker Voice Replacement
-    version: 0.2.1
+    version: 0.2.2
     kind: project
     icon: refresh-cw
     description: Replace one selected speaker in a video while preserving its picture and ambience.

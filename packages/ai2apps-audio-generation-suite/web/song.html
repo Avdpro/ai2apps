@@ -1,10 +1,11 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Song Creation</title><link rel="stylesheet" href="generator.css"><link rel="stylesheet" href="song.css"><script defer src="song.js"></script></head>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Song Creation</title><link rel="stylesheet" href="generator.css"><link rel="stylesheet" href="song.css"><script defer src="prompt.js"></script><script defer src="song.js"></script></head>
 <body data-mode="song"><form id="form">
 <fieldset id="inputs">
 <div class="row"><div><label for="model" data-text="model">Song model</label><select id="model" required></select></div><button type="button" id="install" data-text="install">Install model…</button></div>
 <p class="hint" id="model-note"></p>
 <label for="prompt" data-text="prompt">Musical direction</label><textarea id="prompt" maxlength="2000" required></textarea><p class="hint" data-text="promptHint"></p>
+<label class="translate-style"><input id="translate-style" type="checkbox" checked><span data-text="translateStyle">Translate style prompt to English</span></label><p class="hint" data-text="translateHint">Lyrics stay in their original language. Uncheck to use the original style prompt.</p>
 <label for="lyrics" data-text="lyrics">Lyrics</label><div class="sections" role="group" aria-labelledby="sections-label"><span id="sections-label" data-text="sections">Insert a section</span><button type="button" data-section="Verse" data-text="verse">Verse</button><button type="button" data-section="Chorus" data-text="chorus">Chorus</button><button type="button" data-section="Bridge" data-text="bridge">Bridge</button><button type="button" data-section="Outro" data-text="outro">Outro</button></div>
 <textarea id="lyrics" maxlength="4096" spellcheck="true"></textarea><p class="hint" data-text="lyricsHint"></p>
 <div class="row"><div><label for="planning" data-text="planning">Musical planning</label><select id="planning"><option value="full" data-text="full">Melody and chords</option><option value="melody" data-text="melody">Melody only</option><option value="off" data-text="off">Direct generation</option></select></div><div><label for="limit" data-text="limit">Maximum length (seconds)</label><input id="limit" type="number" min="10" max="120" step="1" value="120" required></div></div>

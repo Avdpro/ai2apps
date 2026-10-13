@@ -53,7 +53,7 @@ def fixture(monkeypatch,*,fail=False,song=False,english=True):
     async def completion(self, prompt, **kw):
         assert kw["purpose"] == "work_simple"
         return json.dumps({"prompt": "Polished: " + json.loads(prompt)["description"]})
-    monkeypatch.setattr(StudioCapabilityBroker, "_translation_completion", completion)
+    monkeypatch.setattr(StudioCapabilityBroker, "_task_completion", completion)
     model=SimpleNamespace(id='model/music',display_name='Music',model_type='audio_generation',endpoint=None,
         checkpoint_ready=True,endpoints={'audio_generate':'/v1/audio/generations'},metadata={'audio_generation':{'task':'music','minimum_duration':1,'maximum_duration':120,'lyrics':False}})
     monkeypatch.setattr(generation,'list_package_models',lambda runtime:(model,))
@@ -204,45 +204,8 @@ def test_song_filter_and_acpf_targets(monkeypatch):
     assert profile['profiles'][0]['stack']['provider']['package_id']=='ai2apps/model-yue2-mlx'
     assert profile['profiles'][0]['stack']['runtime']['version']=='>=1.8.10,<2.0.0'
 
-@pytest.mark.asyncio
-async def test_prompt_preparation_every_request_and_lyrics_preserved(monkeypatch):
-    app, saved, invoked = fixture(monkeypatch, song=True)
-    calls = []
-    async def completion(self, prompt, **kw):
-        calls.append((json.loads(prompt), kw['purpose']))
-        return json.dumps({'prompt': 'A large crowd applauding enthusiastically.'})
-    monkeypatch.setattr(StudioCapabilityBroker, '_translation_completion', completion)
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url='http://test') as c:
-        for prompt in ('雷鸣般的掌声', 'Loud applause'):
-            response = await c.post(f'/studios/{STUDIO_ID}/mini-app-mounts/{MOUNT_ID}/audio-generation', json=SONG|{'prompt':prompt})
-            assert response.status_code == 200, response.text
-            assert response.json()['preparedPrompt'] == 'A large crowd applauding enthusiastically.'
-    assert len(calls) == 2 and all(x[1] == 'work_simple' for x in calls)
-    assert [x[0]['description'] for x in calls] == ['雷鸣般的掌声','Loud applause']
-    assert all(x[2]['lyrics'] == SONG['lyrics'] for x in invoked)
-    assert all(x[2]['prompt'] == 'A large crowd applauding enthusiastically.' for x in invoked)
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize('response', ['broken', '{}', '{"prompt":""}', json.dumps({'prompt':'x'*2001})])
-async def test_invalid_preparation_never_invokes_audio(monkeypatch, response):
-    app, saved, invoked = fixture(monkeypatch)
-    async def completion(*args, **kw): return response
-    monkeypatch.setattr(StudioCapabilityBroker, '_translation_completion', completion)
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url='http://test') as c:
-        r=await c.post(f'/studios/{STUDIO_ID}/mini-app-mounts/{MOUNT_ID}/audio-generation',json={'capability':CAP,'model':'model/music','prompt':'Rain','duration':1})
-    assert r.status_code == 502 and not invoked and not saved
 
-@pytest.mark.asyncio
-async def test_cancel_during_prompt_preparation(monkeypatch):
-    cancelled=asyncio.Event();started=asyncio.Event();finished=asyncio.Event()
-    async def completion(*args, **kw):
-        started.set()
-        try: await asyncio.Event().wait()
-        finally: finished.set()
-    job=asyncio.create_task(generation.prepare_prompt(SimpleNamespace(_translation_completion=completion), 'Rain',task=CAP, principal=None,mounted=None,request=None,cancelled=cancelled))
-    await started.wait();cancelled.set()
-    with pytest.raises(StudioCapabilityError) as error: await job
-    assert error.value.status_code == 499 and finished.is_set()
 
 @pytest.mark.asyncio
 async def test_simple_task_missing_configuration_is_explicit():
@@ -250,18 +213,9 @@ async def test_simple_task_missing_configuration_is_explicit():
     def resolve(purpose): purposes.append(purpose); return None
     broker=StudioCapabilityBroker(SimpleNamespace(extension_manager=Extensions(), model_manager=SimpleNamespace(resolve_default_model=resolve)))
     with pytest.raises(StudioCapabilityError) as error:
-        await broker._translation_completion('test',system='test',principal=None,mounted=None,request=None,purpose='work_simple')
+        await broker._task_completion('test',system='test',principal=None,mounted=None,request=None,purpose='work_simple')
     assert purposes == ['work_simple'] and error.value.status_code == 409
 
-@pytest.mark.asyncio
-async def test_task_failure_does_not_fall_back_to_original(monkeypatch):
-    app,saved,invoked=fixture(monkeypatch)
-    async def completion(*args, **kw):
-        raise StudioCapabilityError('translation_not_ready','Configure Simple Task',status_code=409)
-    monkeypatch.setattr(StudioCapabilityBroker,'_translation_completion',completion)
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url='http://test') as c:
-        r=await c.post(f'/studios/{STUDIO_ID}/mini-app-mounts/{MOUNT_ID}/audio-generation',json={'capability':CAP,'model':'model/music','prompt':'Rain','duration':1})
-    assert r.status_code == 409 and not invoked and not saved
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize('status', [200, 502])
@@ -280,11 +234,11 @@ async def test_simple_task_real_asgi_gateway_contract(status):
     request=SimpleNamespace(app=app,headers={})
     if status == 502:
         with pytest.raises(StudioCapabilityError) as error:
-            await broker._translation_completion('雷鸣般的掌声',system='Translate',principal=None,mounted=None,request=request,purpose='work_simple')
+            await broker._task_completion('雷鸣般的掌声',system='Translate',principal=None,mounted=None,request=request,purpose='work_simple')
         assert 'AI_PROVIDER_ERROR' in str(error.value)
         assert 'private upstream diagnostic' not in str(error.value)
     else:
-        result=await broker._translation_completion('雷鸣般的掌声',system='Translate',principal=None,mounted=None,request=request,purpose='work_simple')
+        result=await broker._task_completion('雷鸣般的掌声',system='Translate',principal=None,mounted=None,request=request,purpose='work_simple')
         assert json.loads(result)['prompt']=='Enthusiastic applause'
     assert seen[0]['model']=='cloud/openai/gpt-5.6-luna'
     assert 'temperature' not in seen[0]
@@ -293,7 +247,7 @@ async def test_simple_task_real_asgi_gateway_contract(status):
 async def test_model_without_language_preference_preserves_chinese(monkeypatch):
     app,saved,invoked=fixture(monkeypatch,english=False)
     async def forbidden(*args,**kwargs): raise AssertionError('Should not call a Task model')
-    monkeypatch.setattr(StudioCapabilityBroker,'_translation_completion',forbidden)
+    monkeypatch.setattr(StudioCapabilityBroker,'_task_completion',forbidden)
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url='http://test') as c:
         r=await c.post(f'/studios/{STUDIO_ID}/mini-app-mounts/{MOUNT_ID}/audio-generation',json={'capability':CAP,'model':'model/music','prompt':'舒缓的中文民谣','duration':1})
     assert r.status_code==200,r.text
@@ -320,61 +274,51 @@ def test_sound_effect_probe_skips_unrelated_model_families(monkeypatch):
     assert result['items'][0]['ready'] is False
 
 
+
+
+
 @pytest.mark.asyncio
-@pytest.mark.parametrize('model_id', [
-    'ai2apps.model.stable-audio-mlx/music', 'ai2apps.model.stable-audio-mlx/sfx',
-    'ai2apps.model.stable-audio-cuda/music', 'ai2apps.model.stable-audio-cuda/sfx',
-])
-async def test_legacy_stable_audio_translates_without_language_metadata(monkeypatch, model_id):
-    app, saved, invoked = fixture(monkeypatch, english=False)
-    model = generation.list_package_models(None)[0]
-    model.id = model_id
-    async def translate(self, prompt, **kw):
-        assert kw['purpose'] == 'work_simple'
-        assert json.loads(prompt)['description'] == '跑车启动'
-        return json.dumps({'prompt':'A sports car engine starting.'})
-    monkeypatch.setattr(StudioCapabilityBroker, '_translation_completion', translate)
+async def test_generic_llm_endpoint_and_audio_pass_through(monkeypatch):
+    app, saved, invoked = fixture(monkeypatch, song=True)
+    original=Extensions.list_studio_mini_apps
+    def declarations(self,*a,**kw):
+        items=original(self,*a,**kw)
+        items[0]['requirements']['capabilities'].append('llm.text')
+        return items
+    monkeypatch.setattr(Extensions,'list_studio_mini_apps',declarations)
+    seen=[]
+    async def complete(self,prompt,**kw):seen.append(kw);return 'English piano'
+    monkeypatch.setattr(StudioCapabilityBroker,'_task_completion',complete)
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url='http://test') as c:
         base=f'/studios/{STUDIO_ID}/mini-app-mounts/{MOUNT_ID}'
-        options=await c.get(base+'/audio-generation-models',params={'capability':CAP})
-        assert options.json()['items'][0]['preferredPromptLanguage'] == 'en'
-        response=await c.post(base+'/audio-generation',json={'capability':CAP,'model':model_id,'prompt':'跑车启动','duration':1})
-        assert response.status_code == 200
-        assert response.json()['preparedPrompt'] == 'A sports car engine starting.'
-    assert invoked[0][2]['prompt'] == 'A sports car engine starting.'
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize('model_id', ['ai2apps.model.yue2-mlx/default', 'ai2apps.model.yue2-cuda/default'])
-async def test_deferred_yue2_style_keeps_original_prompt(monkeypatch, model_id):
-    app, saved, invoked = fixture(monkeypatch, song=True, english=False)
-    generation.list_package_models(None)[0].id = model_id
-    async def translate(self, prompt, **kw):
-        raise AssertionError('Deferred YuE2 preprocessing must not run')
-    monkeypatch.setattr(StudioCapabilityBroker, '_translation_completion', translate)
-    payload = SONG | {'model': model_id, 'prompt': '轻柔钢琴独奏', 'lyrics': '[Verse]\n月光照着家乡'}
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test') as c:
-        base = f'/studios/{STUDIO_ID}/mini-app-mounts/{MOUNT_ID}'
-        options = await c.get(base+'/audio-generation-models', params={'capability':'audio.song_generation'})
-        assert options.json()['items'][0]['preferredPromptLanguage'] is None
-        response = await c.post(base+'/audio-generation', json=payload)
-    assert response.status_code == 200, response.text
-    assert response.json()['preparedPrompt'] == '轻柔钢琴独奏'
-    assert invoked[0][2]['prompt'] == response.json()['preparedPrompt']
-    assert invoked[0][2]['lyrics'] == payload['lyrics']
-    assert invoked[0][2]['generation'] == payload['generation']
-
+        reply=await c.post(base+'/llm',json={'prompt':'钢琴'})
+        assert reply.status_code==200,reply.text
+        assert reply.json()['text']=='English piano'
+        assert seen[0]['purpose']=='work_simple'
+        bad=await c.post(base+'/llm',json={'prompt':'x','model':'force-model'})
+        assert bad.status_code==422
+        generated=await c.post(base+'/audio-generation',json=SONG|{'prompt':'原文'})
+        assert generated.status_code==200,generated.text
+        assert invoked[0][2]['prompt']=='原文' and len(seen)==1
 
 @pytest.mark.asyncio
-async def test_deferred_song_translation_option_is_rejected(monkeypatch):
-    app, saved, invoked = fixture(monkeypatch, song=True)
-    async def forbidden(*args, **kwargs):
-        raise AssertionError('Explicit opt-out must skip translation')
-    monkeypatch.setattr(StudioCapabilityBroker, '_translation_completion', forbidden)
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test') as c:
-        url=f'/studios/{STUDIO_ID}/mini-app-mounts/{MOUNT_ID}/audio-generation'
-        response=await c.post(url,json=SONG|{'translate_style':False,'prompt':'钢琴独奏'})
-        assert response.status_code==422,response.text
-        assert not invoked
-        invalid=await c.post(url,json=SONG|{'translate_style':'false'})
-        assert invalid.status_code==422
+async def test_builtin_llm_scoped_to_instance_and_declaration(monkeypatch):
+    from fastapi import HTTPException
+    app, _, _ = fixture(monkeypatch)
+    def access(self, instance, principal):
+        if instance != 'owned': raise HTTPException(404, 'Not found')
+    monkeypatch.setattr(Extensions,'require_instance_access',access,raising=False)
+    monkeypatch.setattr(Extensions,'instance_entry',lambda self,*a,**kw:{'app_key':STUDIO_ID},raising=False)
+    seen=[]
+    async def complete(self,prompt,**kw):seen.append(kw);return '{}'
+    monkeypatch.setattr(StudioCapabilityBroker,'_task_completion',complete)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url='http://test') as c:
+        url=f'/studios/{STUDIO_ID}/mini-apps/ai2apps.audio.audiobook/llm'
+        body={'prompt':'text','complexity':'standard','profile':'privacy'}
+        assert (await c.post(url,json=body)).status_code==422
+        assert (await c.post(url,json=body,headers={'X-AI2Apps-App-Instance':'foreign'})).status_code==404
+        response=await c.post(url,json=body,headers={'X-AI2Apps-App-Instance':'owned'})
+        assert response.status_code==200,response.text
+        assert seen[0]['purpose']=='work_standard' and seen[0]['profile']=='privacy'
+        denied=await c.post(url.replace('ai2apps.audio.audiobook','ai2apps.audio.quick-read'),json=body,headers={'X-AI2Apps-App-Instance':'owned'})
+        assert denied.status_code==403

@@ -385,9 +385,9 @@
     "path": "/v1/platform/readaloud/projects/{project_id}/characters"
   },
   {
-    "module": "readaloud",
+    "module": "studio_mini_apps",
     "method": "POST",
-    "path": "/v1/platform/readaloud/projects/{project_id}/source/analyze"
+    "path": "/v1/platform/studios/{studio_id}/mini-apps/{mini_app_id}/llm"
   },
   {
     "module": "readaloud",
@@ -597,7 +597,7 @@
   {
     "module": "studio_mini_apps",
     "method": "POST",
-    "path": "/v1/platform/studios/{studio_id}/mini-app-mounts/{mount_id}/subtitle-refinement"
+    "path": "/v1/platform/studios/{studio_id}/mini-app-mounts/{mount_id}/llm"
   },
   {
     "module": "studio_mini_apps",

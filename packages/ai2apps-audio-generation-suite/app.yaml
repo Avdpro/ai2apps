@@ -2,7 +2,7 @@ schema: ai2apps.app/v1
 id: ai2apps.audio-generation-suite
 name: Music and Sound Effects
 description: Generate music, sound effects and songs locally in Voice Studio.
-version: 0.2.1
+version: 0.2.2
 publisher:
   id: ai2apps
 instances:
@@ -21,7 +21,7 @@ mini_apps:
 - schema: ai2apps.mini-app/v1
   id: ai2apps.audio-generation.music
   name: Music Generation
-  version: 0.2.1
+  version: 0.2.2
   kind: clip
   icon: music
   description: Create audio from a description. Results appear in the shared Preview
@@ -49,6 +49,8 @@ mini_apps:
     final: true
   requirements:
     capabilities:
+    - capability: llm.text
+      optional: true
     - audio.music_generation
   chat:
     schema: ai2apps.mini-app-chat/v1
@@ -64,7 +66,7 @@ mini_apps:
 - schema: ai2apps.mini-app/v1
   id: ai2apps.audio-generation.sfx
   name: Sound Effects
-  version: 0.2.1
+  version: 0.2.2
   kind: clip
   icon: audio-waveform
   description: Create audio from a description. Results appear in the shared Preview
@@ -92,6 +94,8 @@ mini_apps:
     final: true
   requirements:
     capabilities:
+    - capability: llm.text
+      optional: true
     - audio.sound_effects_generation
   chat:
     schema: ai2apps.mini-app-chat/v1
@@ -107,7 +111,7 @@ mini_apps:
 - schema: ai2apps.mini-app/v1
   id: ai2apps.audio-generation.song
   name: Song Creation
-  version: 0.2.1
+  version: 0.2.2
   kind: project
   icon: music
   description: Compose songs with lyrics, musical planning and an optional ABC score.
@@ -134,6 +138,8 @@ mini_apps:
     final: true
   requirements:
     capabilities:
+    - capability: llm.text
+      optional: true
     - audio.song_generation
   chat:
     schema: ai2apps.mini-app-chat/v1

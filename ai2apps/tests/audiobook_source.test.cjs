@@ -1,0 +1,12 @@
+const vm=require('node:vm'),fs=require('node:fs'),assert=require('node:assert/strict');
+const env={window:{},crypto:require('node:crypto').webcrypto};vm.runInNewContext(fs.readFileSync('web/static/js/audiobook_source.js','utf8'),env);
+const a=env.window.AudiobookSource;
+const project={revision:3,characters:[{id:'n',name:'Narrator',role:'narrator'},{id:'m',name:'Mrs',role:'female_lead'}],segments:Array.from({length:30},(_,i)=>({id:String(i),text:'x'.repeat(1200),speakerId:'n',emotion:'neutral'}))};
+const c=a.context(project,'Source','14');assert.equal(c.before.length,8);assert.equal(c.after.length,8);assert.equal(c.before[0].text.length,1000);assert.throws(()=>a.context(project,'x','missing'));
+const parsed=a.parse(JSON.stringify({actors:[{key:'woman',name:'Woman',voice_profile_id:'invented'}],lines:[{speaker_id:'woman',text:'Hello'}]}),project);assert.equal(parsed.actors[0].voice_profile_id,null);assert.equal(parsed.lines[0].speaker_id,parsed.actors[0].key);
+assert.throws(()=>a.parse('{"actors":[],"lines":[{"text":"x","speaker_id":"foreign"}]}',project));assert.throws(()=>a.parse('{truncated',project));
+(async()=>{let calls=[];const text='的确租出去了，朗格太太刚刚上这儿来过。';
+const result=await a.analyze(project,'Source',null,async p=>{calls.push(p);return {text:JSON.stringify({actors:[],lines:calls.length===1?[{speaker_id:'n',text:'“'+text+'”'},{speaker_id:'m',text}]:[{speaker_id:'m',text}]})}},'privacy');
+assert.equal(calls.length,2);assert.equal(calls[0].complexity,'standard');assert.equal(calls[0].profile,'privacy');assert.ok(JSON.parse(calls[1].prompt).repair.length);assert.equal(result.lines.length,1);assert.equal(result.revision,3);assert.match(result.batch_id,/^[a-f0-9]{32}$/);assert.equal(project.segments.length,30);
+await assert.rejects(()=>a.analyze(project,'x',null,async()=>({text:'{}'})));
+console.log('Audiobook source context, alias safety, repair, routing and review-only tests passed');})();

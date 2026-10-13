@@ -3,6 +3,12 @@
 日期：2026-10-13。状态：**待 Cloud 实施与部署**，不是已上线接口说明。
 本文优先于旧 Mini-App discovery 需求稿中的分类与兼容建议。本次仅修改文档，未改 Cloud 或客户端。
 
+> 2026-10-14 状态更新：Cloud 已部署 OpenAPI 1.66.0、索引 revision 1；11 个历史版本验签回填，
+> 当前 3 个套件共 10 个组件。实施接口为能力发现 `/v1/registry` + 独立 `/v1/registry/content`，
+> 不是在旧 search/recommendations 上隐式改变返回形状。以下保留为原需求；具体协议以 Cloud
+> `docs/mini-app-discovery-client-handoff-2026-10-14.md` 为准。Desktop B 接入已实现并通过
+> 匿名生产目录读取验证，真实干净实例 UI/安装全链验收仍待完成，见 Desktop 台账 20261014 条目。
+
 ## 1. 问题与交付目标
 
 Mini-App 安装载体仍为 `package.type=app`，不新增 Package 类型或安装生命周期。

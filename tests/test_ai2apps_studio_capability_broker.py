@@ -28,6 +28,15 @@ from ai2apps.studio.capability_broker import (
 STUDIO_ID = "ai2apps.readaloud"
 MOUNT_ID = "mount_test_detailed"
 MINI_APP_ID = "ai2apps.media-voice.transcription"
+VIDEO_LLM_POLICY = {
+    "schema": "ai2apps.media-voice-llm/v1",
+    "translate": {"system": "Translate and return JSON", "instruction": "Translate each subtitle_texts item to target_language; preserve full-width Chinese punctuation. Return a JSON array."},
+    "shorten": {"system": "Shorten and return JSON", "instruction": "Shorten translation to target_seconds while preserving meaning. Return a JSON array."},
+}
+
+
+async def _still_connected():
+    return False
 
 
 def test_video_audio_translation_progress_uses_six_phase_ranges():
@@ -183,7 +192,7 @@ class VideoSubtitleExtensionManager(FakeExtensionManager):
             "capabilities": [
                 "media.video_subtitles",
                 "audio.detailed_transcription",
-                "text.translation",
+                "llm.text",
                 "media.subtitle.export",
                 "media.video.subtitle_burn_in",
             ]
@@ -206,7 +215,7 @@ class VideoAudioTranslationExtensionManager(FakeExtensionManager):
             "capabilities": [
                 "media.video_audio_translation",
                 "audio.detailed_transcription",
-                "text.translation",
+                "llm.text",
                 "audio.source_separation",
                 "audio.speech_generation",
                 {"capability": "audio.voice_clone", "optional": True},
@@ -479,7 +488,7 @@ def test_video_audio_translation_probe_requires_media_stack_and_character_tts(
     assert items["media.video_audio_translation"]["ready"] is True
     assert items["audio.speech_generation"]["ready"] is True
     assert items["audio.voice_clone"]["ready"] is True
-    assert items["text.translation"]["ready"] is True
+    assert items["llm.text"]["ready"] is True
 
 
 def test_voice_clone_model_catalog_exposes_only_request_scoped_reference_models(
@@ -575,6 +584,7 @@ async def test_video_audio_translation_uses_one_character_and_preserves_backgrou
         source_language="en",
         target_language="zh",
         voice_profile_id="voice-1",
+        llm_policy=VIDEO_LLM_POLICY,
         progress=progress,
     )
 
@@ -678,6 +688,7 @@ async def test_video_audio_translation_clones_original_voice_without_character(
         target_language="zh",
         voice_profile_id="__original_voice__",
         voice_clone_model_id=clone_model.id,
+        llm_policy=VIDEO_LLM_POLICY,
     )
 
     assert bytes(response.body) == b"translated mp4"
@@ -757,6 +768,7 @@ async def test_video_audio_translation_retries_shorter_text_then_model_speed(
         source_language="en",
         target_language="zh",
         voice_profile_id="voice-1",
+        llm_policy=VIDEO_LLM_POLICY,
     )
 
     assert bytes(response.body) == b"translated mp4"
@@ -844,6 +856,7 @@ async def test_video_audio_translation_retries_tts_until_asr_back_listening_pass
         target_language="zh",
         voice_profile_id="voice-1",
         asr_verification=True,
+        llm_policy=VIDEO_LLM_POLICY,
     )
 
     assert bytes(response.body) == b"translated mp4"
@@ -907,8 +920,8 @@ def test_probe_marks_optional_capability_without_blocking_required_readiness(
         STUDIO_ID, principal=RequestPrincipal.legacy_local()
     )[0]
     declaration["requirements"]["capabilities"] = [
-        {"capability": "text.translation", "optional": True}
-        if item == "text.translation"
+        {"capability": "llm.text", "optional": True}
+        if item == "llm.text"
         else item
         for item in declaration["requirements"]["capabilities"]
     ]
@@ -923,10 +936,10 @@ def test_probe_marks_optional_capability_without_blocking_required_readiness(
         STUDIO_ID, MOUNT_ID, principal=RequestPrincipal.legacy_local()
     )
     translation = next(
-        item for item in result["items"] if item["capability"] == "text.translation"
+        item for item in result["items"] if item["capability"] == "llm.text"
     )
 
-    assert translation["ready"] is False
+    assert translation["ready"] is True
     assert translation["required"] is False
 
 
@@ -1455,7 +1468,7 @@ async def test_subtitle_translation_batches_through_configured_cloud_route():
     @app.post("/v1/chat/completions")
     async def complete(payload: dict):
         calls.append(payload)
-        texts = json.loads(payload["messages"][1]["content"].split("\n", 1)[1])
+        texts = json.loads(payload["messages"][1]["content"].split("\n", 1)[1])["subtitle_texts"]
         return {
             "choices": [
                 {
@@ -1468,7 +1481,7 @@ async def test_subtitle_translation_batches_through_configured_cloud_route():
             ]
         }
 
-    runtime = _runtime()
+    runtime = _runtime(extension_manager=VideoSubtitleExtensionManager())
     runtime.model_manager = SimpleNamespace(
         resolve_default_model=lambda purpose: (
             "cloud/openai/standard" if purpose == "work_standard" else None
@@ -1477,7 +1490,7 @@ async def test_subtitle_translation_batches_through_configured_cloud_route():
     mounted = StudioCapabilityBroker(runtime).mounted_mini_app(
         STUDIO_ID, MOUNT_ID, principal=RequestPrincipal.legacy_local()
     )
-    request = Request({"type": "http", "app": app, "headers": []})
+    request = SimpleNamespace(app=app, headers={}, is_disconnected=_still_connected)
 
     result = await StudioCapabilityBroker(runtime)._translate_segments(
         [{"text": f"line {index}."} for index in range(45)],
@@ -1485,6 +1498,7 @@ async def test_subtitle_translation_batches_through_configured_cloud_route():
         principal=RequestPrincipal.legacy_local(),
         mounted=mounted,
         request=request,
+        llm_policy=VIDEO_LLM_POLICY,
     )
 
     assert len(calls) == 2
@@ -1500,14 +1514,14 @@ async def test_subtitle_translation_recovers_when_model_changes_batch_item_count
 
     @app.post("/v1/chat/completions")
     async def complete(payload: dict):
-        texts = json.loads(payload["messages"][1]["content"].split("\n", 1)[1])
+        texts = json.loads(payload["messages"][1]["content"].split("\n", 1)[1])["subtitle_texts"]
         batch_sizes.append(len(texts))
         translated = [f"译:{text.removesuffix('.')}" for text in texts]
         if len(texts) == 4:
             translated.pop()
         return {"choices": [{"message": {"content": json.dumps(translated)}}]}
 
-    runtime = _runtime()
+    runtime = _runtime(extension_manager=VideoSubtitleExtensionManager())
     runtime.model_manager = SimpleNamespace(
         resolve_default_model=lambda purpose: (
             "cloud/openai/standard" if purpose == "work_standard" else None
@@ -1516,7 +1530,7 @@ async def test_subtitle_translation_recovers_when_model_changes_batch_item_count
     mounted = StudioCapabilityBroker(runtime).mounted_mini_app(
         STUDIO_ID, MOUNT_ID, principal=RequestPrincipal.legacy_local()
     )
-    request = Request({"type": "http", "app": app, "headers": []})
+    request = SimpleNamespace(app=app, headers={}, is_disconnected=_still_connected)
 
     result = await StudioCapabilityBroker(runtime)._translate_segments(
         [{"text": f"line {index}."} for index in range(4)],
@@ -1524,6 +1538,7 @@ async def test_subtitle_translation_recovers_when_model_changes_batch_item_count
         principal=RequestPrincipal.legacy_local(),
         mounted=mounted,
         request=request,
+        llm_policy=VIDEO_LLM_POLICY,
     )
 
     assert batch_sizes == [4, 2, 2]
@@ -1538,7 +1553,7 @@ async def test_subtitle_translation_rejoins_single_item_split_by_model():
     async def complete(_payload: dict):
         return {"choices": [{"message": {"content": json.dumps(["前半句", "后半句"])}}]}
 
-    runtime = _runtime()
+    runtime = _runtime(extension_manager=VideoSubtitleExtensionManager())
     runtime.model_manager = SimpleNamespace(
         resolve_default_model=lambda purpose: (
             "cloud/openai/standard" if purpose == "work_standard" else None
@@ -1547,7 +1562,7 @@ async def test_subtitle_translation_rejoins_single_item_split_by_model():
     mounted = StudioCapabilityBroker(runtime).mounted_mini_app(
         STUDIO_ID, MOUNT_ID, principal=RequestPrincipal.legacy_local()
     )
-    request = Request({"type": "http", "app": app, "headers": []})
+    request = SimpleNamespace(app=app, headers={}, is_disconnected=_still_connected)
 
     result = await StudioCapabilityBroker(runtime)._translate_segments(
         [{"text": "One complete sentence."}],
@@ -1555,6 +1570,7 @@ async def test_subtitle_translation_rejoins_single_item_split_by_model():
         principal=RequestPrincipal.legacy_local(),
         mounted=mounted,
         request=request,
+        llm_policy=VIDEO_LLM_POLICY,
     )
 
     assert result == ["前半句 后半句。"]
@@ -1848,53 +1864,35 @@ async def test_text_export_validates_mount_and_json_and_publishes_current_edits(
         assert response.status_code in (403, 404)
         assert len(saved) == 1
 
-@pytest.mark.asyncio
-async def test_subtitle_refinement_preserves_timing_metadata_and_input(monkeypatch):
-    runtime = _runtime(extension_manager=VideoSubtitleExtensionManager())
-    broker = StudioCapabilityBroker(runtime)
-    original = [
-        {'start': 0, 'end': 1, 'text': 'AI to Apps 有三种功能', 'speaker': 'A', 'words': [{'word':'AI'}]},
-        {'start': 1, 'end': 2, 'text': '', 'speaker': 'A'},
-        {'start': 2, 'end': 3, 'text': '谢谢。', 'words': [{'word':'谢谢'}]},
-    ]
-    async def completion(prompt, **kwargs):
-        data = json.loads(prompt)
-        assert data['correction_rules'] == '品牌写作 Ai2Apps；使用阿拉伯数字'
-        assert len(data['subtitle_texts']) == 2
-        return json.dumps(['Ai2Apps 有3种功能', '谢谢。'], ensure_ascii=False)
-    monkeypatch.setattr(broker, '_translation_completion', completion)
-    result = await broker.refine_subtitles(STUDIO_ID, MOUNT_ID, principal=RequestPrincipal.legacy_local(),
-        request=Request({'type':'http', 'app':FastAPI(), 'headers':[]}), segments=original,
-        rules='品牌写作 Ai2Apps；使用阿拉伯数字')
-    assert len(result['segments']) == 3
-    assert result['segments'][0] == {'start':0, 'end':1, 'text':'Ai2Apps 有3种功能', 'speaker':'A', 'wordTimestampsNeedReview':True}
-    assert result['segments'][1:] == original[1:]
-    assert original[0]['text'] == 'AI to Apps 有三种功能'
-    assert 'words' in original[0]
+def test_video_llm_policy_is_package_owned_and_bounded():
+    task = StudioCapabilityBroker._video_llm_task(VIDEO_LLM_POLICY, "translate")
+    assert task["system"] == "Translate and return JSON"
+    for invalid in (None, {}, {"schema": "wrong", "translate": task},
+                    {"schema": VIDEO_LLM_POLICY["schema"], "translate": {"system": "", "instruction": "translate"}}):
+        with pytest.raises(StudioCapabilityError) as error:
+            StudioCapabilityBroker._video_llm_task(invalid, "translate")
+        assert error.value.code == "llm_policy_invalid"
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('completion', ['not json', '[]', '[null]', '[""]', '["a", "b"]'])
-async def test_subtitle_refinement_rejects_invalid_llm_results(monkeypatch, completion):
-    broker = StudioCapabilityBroker(_runtime(extension_manager=VideoSubtitleExtensionManager()))
-    async def reply(*args, **kwargs):
-        return completion
-    monkeypatch.setattr(broker, '_translation_completion', reply)
-    with pytest.raises(StudioCapabilityError) as error:
-        await broker.refine_subtitles(STUDIO_ID, MOUNT_ID, principal=RequestPrincipal.legacy_local(),
-            request=Request({'type':'http','app':FastAPI(),'headers':[]}),
-            segments=[{'start':0,'end':1,'text':'原文'}], rules='')
-    assert error.value.code == 'subtitle_refinement_invalid'
+async def test_dubbing_shorten_uses_package_policy_on_simple_route(monkeypatch):
+    broker = StudioCapabilityBroker(_runtime(extension_manager=VideoAudioTranslationExtensionManager()))
+    captured = {}
 
+    async def complete(prompt, **options):
+        captured.update(prompt=prompt, **options)
+        return json.dumps(["更短的旁白"])
 
-@pytest.mark.asyncio
-async def test_subtitle_refinement_requires_declared_capabilities():
-    broker = StudioCapabilityBroker(_runtime())
-    with pytest.raises(StudioCapabilityError) as error:
-        await broker.refine_subtitles(STUDIO_ID, MOUNT_ID, principal=RequestPrincipal.legacy_local(),
-            request=Request({'type':'http','app':FastAPI(),'headers':[]}),
-            segments=[{'start':0,'end':1,'text':'原文'}], rules='')
-    assert error.value.code == 'capability_not_declared'
+    monkeypatch.setattr(broker, "_mini_app_completion", complete)
+    result = await broker._shorten_translation(
+        "A longer explanation.", "较长的解说。", target_language="zh", target_seconds=1.5,
+        duration_ratio=2, principal=RequestPrincipal.legacy_local(), mounted=object(),
+        request=object(), llm_policy=VIDEO_LLM_POLICY,
+    )
+    assert result == "更短的旁白。"
+    assert captured["complexity"] == "simple"
+    assert captured["system"] == VIDEO_LLM_POLICY["shorten"]["system"]
+    assert json.loads(captured["prompt"].split("\n", 1)[1])["target_seconds"] == 1.5
 
 
 @pytest.mark.asyncio

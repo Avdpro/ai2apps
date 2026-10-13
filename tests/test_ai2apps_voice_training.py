@@ -394,33 +394,13 @@ def test_source_analysis_review_and_atomic_insertion(setup):
     def line(text):
         return repo.create_segment('local', project['id'], speaker_id=actor['id'], text=text, emotion='neutral', emotion_strength=1, speed=1, pause_after_ms=300)
     first, last = line('Before'), line('After')
-    selected = []
-    s.runtime.model_manager = SimpleNamespace(resolve_default_model=lambda task: selected.append(task) or 'standard/model')
-    standard = SimpleNamespace(id='standard/model', endpoints={'chat_completions':{}})
-    s.runtime.model_invocations.model = lambda mid: standard if mid == standard.id else None
-    proposals = {'actors':[{'key':'alice','name':'Alice','role':'female_lead','notes':'Curious','voice_profile_id':'made-up-voice'}],
-                 'lines':[{'text':'The door opened.','speaker_id':actor['id']}, {'text':'Hello!','speaker_id':'alice','emotion':'happy'}]}
-    async def invoke(*args, **kwargs):
-        context = json.loads(args[2]['messages'][1]['content'])
-        assert context['actors'][0]['role'] == 'narrator'
-        assert context['actors'][0]['notes'] == 'Calm storyteller'
-        assert [x['text'] for x in context['before']] == ['Before']
-        assert [x['text'] for x in context['after']] == ['After']
-        return Response(json.dumps({'choices':[{'finish_reason':'stop','message':{'content':json.dumps(proposals)}}]}), media_type='application/json')
-    s.runtime.model_invocations.invoke_foreground_json = invoke
     base = '/readaloud/projects/' + project['id'] + '/source/'
     before = repo.get_project('local', project['id'])
-    response = s.client.post(base+'analyze', json={'text':'The door opened. Hello!', 'after_id':first['id']})
-    assert response.status_code == 200, response.text
-    assert selected == ['work_standard']
+    # Mini-App creates the review proposal via the generic LLM interface.
+    proposal = {'actors':[{'key':'new_alice','name':'Alice','role':'female_lead','notes':'Curious','voice_profile_id':None}],
+        'lines':[{'text':'The door opened.','speaker_id':actor['id']}, {'text':'Hello!','speaker_id':'new_alice','emotion':'happy'}],
+        'revision':before['revision'], 'after_id':first['id'], 'batch_id':'b'*32}
     assert repo.get_project('local', project['id']) == before
-    assert response.json()['actors'][0]['voice_profile_id'] is None
-    # Explicit model selection works even when Standard tasks has no default.
-    s.runtime.model_manager.resolve_default_model = lambda task: None
-    response = s.client.post(base+'analyze', json={'text':'The door opened. Hello!', 'after_id':first['id'], 'model_id':'standard/model'})
-    assert response.status_code == 200, response.text
-    assert response.json()['model_id'] == 'standard/model'
-    proposal = response.json(); proposal.pop('model_id')
     proposal['actors'][0]['name'] = 'Alice reviewed'
     proposal['lines'][1]['text'] = 'Hello, everyone!'
     response = s.client.post(base+'apply', json=proposal)
@@ -446,79 +426,13 @@ def test_source_analysis_review_and_atomic_insertion(setup):
     assert repo.get_project('local', project['id'])['segments'][-1]['text']=='Tail'
 
 
-def test_source_analysis_context_bounds_and_invalid_output(setup):
-    import json
-    from ai2apps.readaloud.source_analysis import analysis_messages, parse_completion
-    project = {'characters':[], 'segments':[{'id':str(i),'text':'x'*1200,'speaker_id':None,'emotion':'neutral'} for i in range(30)]}
-    data = json.loads(analysis_messages(project, 'Source', '14')[1]['content'])
-    assert len(data['before'])==len(data['after'])==8
-    assert all(len(x['text'])==1000 for x in data['before']+data['after'])
-    with pytest.raises(ValueError):
-        analysis_messages(project, 'Source', 'missing')
-    with pytest.raises(ValueError, match='truncated'):
-        parse_completion(json.dumps({'choices':[{'finish_reason':'length','message':{'content':'{}'}}]}))
-    s=setup
-    project=s.repository.create_project('local',title='Empty',purpose='private',source_rights='user_owned',source_text='')
-    base='/readaloud/projects/'+project['id']+'/source/analyze'
-    assert s.client.post(base,json={'text':'Hello'}).status_code==409
-    assert s.client.post(base,json={'text':'   '}).status_code==422
-    foreign=s.repository.create_project('other',title='Private',purpose='private',source_rights='user_owned',source_text='')
-    assert s.client.post('/readaloud/projects/'+foreign['id']+'/source/analyze',json={'text':'Hello'}).status_code==404
-
-
-def test_source_actor_alias_normalization_preserves_bindings():
-    import json
-    from ai2apps.readaloud.source_analysis import parse_completion
-    def parse(data, existing=()):
-        return parse_completion(json.dumps({'choices':[{'message':{'content':json.dumps(data)}}]}), existing)
-    data = {'actors':[{'key':'narrator','name':'Narrator'}, {'key':'班纳特太太','name':'Mrs Bennet'}, {'key':'new_actor_1','name':'Mr Bennet'}],
-            'lines':[{'text':'Narration','speaker_id':'narrator'}, {'text':'Hello','speaker_id':'班纳特太太'}, {'text':'Yes','speaker_id':'new_actor_1'}, {'text':'Existing','speaker_id':'cast_saved'}]}
-    result = parse(data, ['cast_saved'])
-    assert len({actor.key for actor in result.actors}) == 3
-    assert all(actor.key.startswith('new_') for actor in result.actors)
-    assert [line.speaker_id for line in result.lines] == [actor.key for actor in result.actors] + ['cast_saved']
-    assert result.actors[2].key == 'new_actor_1'
-    with pytest.raises(ValueError, match='duplicate'):
-        parse({'actors':[{'key':'same','name':'A'}, {'key':'same','name':'B'}], 'lines':[{'text':'Hi','speaker_id':'same'}]})
-    with pytest.raises(ValueError, match='existing'):
-        parse(data, ['narrator'])
-
-
-def test_source_dialogue_duplicate_detection_keeps_plot_narration():
-    from ai2apps.readaloud.source_analysis import SourceProposal, dialogue_issues, analysis_messages
-    project={'characters':[{'id':'n','name':'旁白','role':'narrator','description':''},{'id':'mrs','name':'班纳特太太','role':'female_lead','description':''}], 'segments':[]}
-    proposal=SourceProposal.model_validate({'lines':[
-        {'speaker_id':'n','text':'“的确租出去了，”她说，“朗格太太刚刚上这儿来过。”'},
-        {'speaker_id':'mrs','text':'的确租出去了，朗格太太刚刚上这儿来过。'}]})
-    assert len(dialogue_issues(proposal,project))==1
-    proposal.lines[0].text='她推开门，发现走廊已经着火。'
-    assert not dialogue_issues(proposal,project)
-    prompt=analysis_messages(project,'文本',None)[0]['content']
-    assert 'Every spoken passage must occur exactly once' in prompt
-    assert 'Preserve the plot-bearing action' in prompt
 
 
 
-def test_source_analysis_repairs_repeated_narrator_dialogue(setup):
-    import json
-    s=setup
-    project=s.repository.create_project('local',title='Story',purpose='private',source_rights='user_owned',source_text='')
-    model=SimpleNamespace(id='analysis',endpoints={'chat_completions':{}})
-    s.runtime.model_manager=SimpleNamespace(resolve_default_model=lambda task:model.id)
-    s.runtime.model_invocations.model=lambda mid:model
-    calls=[]
-    actors=[{'key':'new_n','name':'旁白','role':'narrator'},{'key':'new_mrs','name':'太太','role':'female_lead'}]
-    dialogue={'speaker_id':'new_mrs','text':'的确租出去了，朗格太太刚刚上这儿来过。'}
-    async def invoke(*args,**kwargs):
-        calls.append(args[2]['messages'])
-        lines=[dialogue] if len(calls)>1 else [{'speaker_id':'new_n','text':'“的确租出去了，”她说，“朗格太太刚刚上这儿来过。”'},dialogue]
-        return Response(json.dumps({'choices':[{'message':{'content':json.dumps({'actors':actors,'lines':lines})}}]}))
-    s.runtime.model_invocations.invoke_foreground_json=invoke
-    response=s.client.post('/readaloud/projects/'+project['id']+'/source/analyze',json={'text':'“的确租出去了，”她说，“朗格太太刚刚上这儿来过。”'})
-    assert response.status_code==200,response.text
-    assert len(calls)==2 and 'Correct the complete proposal' in calls[1][-1]['content']
-    assert len(response.json()['lines'])==1
-    assert not s.repository.get_project('local',project['id'])['segments']
+
+
+
+
 
 
 def test_clone_preview_expression_respects_model_capabilities(setup):
@@ -559,3 +473,9 @@ def test_clone_preview_preserves_worker_error(setup):
     response=s.client.post('/readaloud/training/preview',json=s.request)
     assert response.status_code==502
     assert 'HTTP 400' in response.text and 'Reference could not be decoded' in response.text
+
+
+def test_legacy_source_analysis_endpoint_removed(setup):
+    s=setup
+    project=s.repository.create_project('local',title='Test',purpose='private',source_rights='user_owned',source_text='')
+    assert s.client.post('/readaloud/projects/'+project['id']+'/source/analyze',json={'text':'Hello'}).status_code==404

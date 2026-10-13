@@ -73,6 +73,14 @@ PROGRESS_PHASE_RANGES = {
 PROGRESS_CAPABILITIES = frozenset(PROGRESS_PHASE_RANGES)
 
 
+class MiniAppLLMRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    prompt: str = Field(min_length=1, max_length=128000)
+    system: str = Field(default="", max_length=16000)
+    complexity: Literal["simple", "standard", "complex"] = "simple"
+    profile: Literal["normal", "privacy"] = "normal"
+
+
 class AudioGenerationRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     capability: Literal["audio.music_generation", "audio.sound_effects_generation", "audio.song_generation"]
@@ -332,10 +340,18 @@ def _publish_video_studio_output(
     return {"downloadUrl": output_url, "runId": run["id"], "filename": filename}
 
 
-class SubtitleRefinementRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    segments: list[dict[str, Any]] = Field(min_length=1, max_length=10000)
-    rules: str = Field(default="", max_length=8000)
+def _parse_video_llm_policy(value: str) -> dict[str, Any] | None:
+    if not value:
+        return None
+    if len(value.encode("utf-8")) > 16_384:
+        raise StudioCapabilityError("llm_policy_invalid", "Package LLM policy exceeds 16 KiB", status_code=422)
+    try:
+        policy = json.loads(value)
+    except (ValueError, TypeError) as error:
+        raise StudioCapabilityError("llm_policy_invalid", "Package LLM policy is not valid JSON", status_code=422) from error
+    if not isinstance(policy, dict):
+        raise StudioCapabilityError("llm_policy_invalid", "Package LLM policy must be an object", status_code=422)
+    return policy
 
 
 class StudioTextExportRequest(BaseModel):
@@ -865,6 +881,39 @@ def create_studio_mini_app_router(
         except StudioCapabilityError as error:
             raise capability_error(error) from error
 
+    @router.post("/{studio_id}/mini-apps/{mini_app_id}/llm")
+    async def builtin_mini_app_llm(studio_id: str, mini_app_id: str, body: MiniAppLLMRequest,
+            request: Request, studio_instance_id: str = Header(alias="X-AI2Apps-App-Instance"),
+            principal: RequestPrincipal = principal_dependency):
+        from ai2apps.studio.capability_broker import MountedMiniApp, _declared_capabilities
+        runtime, extensions = manager()
+        authorize_app_instance(runtime, principal, studio_instance_id)
+        entry = extensions.instance_entry(studio_instance_id, principal=principal)
+        if entry.get("app_key") != studio_id:
+            raise HTTPException(404, "Studio instance was not found")
+        declaration = next((item for item in BUILTIN_MINI_APPS.get(studio_id, ()) if item["id"] == mini_app_id), None)
+        if declaration is None:
+            raise HTTPException(404, "Built-in Mini-App was not found")
+        mounted = MountedMiniApp({"id": studio_instance_id + ":" + mini_app_id,
+            "app_instance_id": studio_instance_id}, declaration, _declared_capabilities(declaration))
+        try:
+            result = await StudioCapabilityBroker(runtime).complete_for_mini_app(mounted,
+                principal=principal, request=request, **body.model_dump())
+            authorize_app_instance(runtime, principal, studio_instance_id)
+            return result
+        except StudioCapabilityError as error:
+            raise capability_error(error) from error
+
+    @router.post("/{studio_id}/mini-app-mounts/{mount_id}/llm")
+    async def mini_app_llm(studio_id: str, mount_id: str, body: MiniAppLLMRequest,
+                           request: Request, principal: RequestPrincipal = principal_dependency):
+        runtime, _ = manager()
+        try:
+            return await StudioCapabilityBroker(runtime).llm_complete(studio_id, mount_id,
+                principal=principal, request=request, **body.model_dump())
+        except StudioCapabilityError as error:
+            raise capability_error(error) from error
+
     @router.post("/{studio_id}/mini-app-mounts/{mount_id}/audio-generation")
     async def invoke_audio_generation(studio_id: str, mount_id: str, body: AudioGenerationRequest,
                                      request: Request, principal: RequestPrincipal = principal_dependency):
@@ -1052,18 +1101,6 @@ def create_studio_mini_app_router(
         )
         return {"downloadUrl": url, "filename": body.filename}
 
-    @router.post("/{studio_id}/mini-app-mounts/{mount_id}/subtitle-refinement")
-    async def refine_subtitle_text(studio_id: str, mount_id: str, body: SubtitleRefinementRequest,
-                                   request: Request, principal: RequestPrincipal = principal_dependency):
-        runtime, _ = manager()
-        try:
-            return await StudioCapabilityBroker(runtime).refine_subtitles(
-                studio_id, mount_id, principal=principal, request=request,
-                segments=body.segments, rules=body.rules,
-            )
-        except StudioCapabilityError as error:
-            raise capability_error(error) from error
-
     @router.post(
         "/{studio_id}/mini-app-mounts/{mount_id}/capabilities/{capability}/invoke"
     )
@@ -1089,6 +1126,7 @@ def create_studio_mini_app_router(
         subtitle_format: Annotated[str, Form()] = "srt",
         subtitle_action: Annotated[Literal["extract", "render"], Form()] = "render",
         subtitle_segments: Annotated[str, Form()] = "",
+        llm_policy: Annotated[str, Form()] = "",
         bilingual: Annotated[bool, Form()] = True,
         burn_in: Annotated[bool, Form()] = False,
         speaker_labels: Annotated[bool, Form()] = False,
@@ -1229,6 +1267,7 @@ def create_studio_mini_app_router(
                     return JSONResponse(output)
                 return result
             if capability == "media.video_subtitles":
+                parsed_llm_policy = _parse_video_llm_policy(llm_policy)
                 edited_segments = None
                 if subtitle_segments:
                     if len(subtitle_segments.encode("utf-8")) > 2 * 1024 * 1024:
@@ -1262,6 +1301,7 @@ def create_studio_mini_app_router(
                     extract_only=subtitle_action == "extract",
                     edited_segments=edited_segments,
                     progress=report_progress,
+                    llm_policy=parsed_llm_policy,
                 )
                 if subtitle_action == "extract":
                     return result
@@ -1295,6 +1335,7 @@ def create_studio_mini_app_router(
                 await report_progress(4, "completed", 100, "字幕工作流完成")
                 return result
             if capability == "media.video_audio_translation":
+                parsed_llm_policy = _parse_video_llm_policy(llm_policy)
                 result = await broker.video_audio_translation(
                     studio_id,
                     mount_id,
@@ -1309,6 +1350,7 @@ def create_studio_mini_app_router(
                     voice_clone_model_id=voice_clone_model_id or None,
                     asr_verification=asr_verification,
                     progress=report_progress,
+                    llm_policy=parsed_llm_policy,
                 )
                 if studio_id == VIDEO_STUDIO_ID and result.status_code == 200:
                     output = await asyncio.to_thread(

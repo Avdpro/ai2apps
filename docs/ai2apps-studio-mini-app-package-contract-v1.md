@@ -614,14 +614,34 @@ in the signed Service model definition. The optional field currently accepts onl
 Absence means preserve the user's description; it does not assert that all languages are
 supported. Host model options expose this as `preferredPromptLanguage`.
 
-For an English-preferred model the Host uses the configured `work_simple` model to translate
-and polish the description before each generation, including English inputs. For a model
-without the preference, no Task call occurs. Lyrics and ABC scores are never translated by
-this policy. Task failure stops generation; no silent original-text fallback. The policy is
-read from installed model metadata, never inferred from a model name or provided by the Frame.
-Previously signed Packages need a new release to introduce this declaration; do not mutate
-installed or published manifests. Model metadata, Host behavior and Mini-App hints must be
-upgraded together.
+Audio prompt preparation belongs to the Package. The audio generation Host passes the
+supplied prompt unchanged; it never translates it or interprets a translation checkbox.
+The audio-generation suite uses its own `web/prompt.js` and the generic LLM bridge below.
+Lyrics and ABC remain unchanged. Translation failure stops the Package workflow.
+
+### Generic Mini-App LLM bridge
+
+Declare `llm.text` in `requirements.capabilities` (optional is allowed). Call
+`llm.complete` with `payload: {prompt, system?, complexity?, profile?}`.
+Complexity is `simple` (default), `standard`, or `complex`, mapped to `work_simple`,
+`work_standard`, or `work_complex`. Profile is `normal` (default) or `privacy`.
+The effective profile is privacy when the Mini-App requests it, its declaration
+`llm.profile` requires it, or the server Runtime `privacy_mode` is true. Normal
+requests cannot override system privacy. The future system privacy switch must
+set this server-owned Runtime value, never trust a Frame assertion to disable it.
+Privacy routing never falls back to normal defaults or the normal Cloud default.
+
+The Host validates owner/live mount and capability before invoking and revalidates
+before returning `{text, complexity, profile}`. No model ID, URL, credentials or
+arbitrary generation parameters are accepted from the Frame. Prompt/system limits
+are 128,000/16,000 characters. Calls have a 120-second timeout; `llm.cancel` cancels
+only this frame's pending call. Disconnect/unmount cancels pending work. Package
+code owns prompts, JSON parsing, schema validation and how results are applied.
+This bridge does not create an output artifact or implement chat history.
+
+Durable AI Browser Mini-Apps (Search All and Shopping Pro) retain the public background Task lifecycle rather than calling the foreground bridge for task steps. Both paths share `ai2apps.task_llm` model-tier/profile resolution and request defaults. Task submission, run initialization, and durable model dispatch enforce server-owned `privacy_mode`; recovery planning also checks it before selecting a route. Host-owned routing metadata is persisted for replay and removed before provider dispatch. Normal pinned routes cannot override a system privacy upgrade. Background tasks continue when Desktop/Mobile frames disconnect; only foreground bridge calls use mount/disconnect cancellation. Agent JSON schemas and replay remain owned by the durable executor.
+
+
 
 ## AI Browser Web-Agent Mini-Apps
 
@@ -645,3 +665,13 @@ Tasks cannot be closed. Closure/focus use native BiDi and enforce the recorded
 Profile and Task-owned contexts, with closure verification. These are scoped
 Task lifecycle operations, not a second browser protocol. The SDK serializes
 host requests; progress continues via SSE without status polling.
+
+### Built-in Mini-App LLM entry
+
+Trusted built-in adapters use POST `/v1/platform/studios/{studio}/mini-apps/{id}/llm`
+with `X-AI2Apps-App-Instance`. The same request schema, complexity/profile routing,
+timeout and completion executor apply. The server authorizes the owned instance,
+checks its Studio identity, and requires llm.text in the built-in declaration.
+Package frames must continue using their mount-bound bridge; they cannot supply a
+built-in identity through this entry. Audiobook source analysis lives in its JS
+module; the retired `/readaloud/projects/{id}/source/analyze` route is absent.

@@ -40,10 +40,9 @@ class BackgroundPlanner:
         """One bounded AI selection over native observed links, no generated content."""
         parameters = run.input['parameters']
         tier = step.get('ai', {}).get('tier', 'standard')
-        model_id = parameters.get('ai_model_routes', {}).get(tier)
-        if not model_id:
-            kwargs = {'profile': 'privacy'} if parameters.get('model_profile') == 'privacy' else {}
-            model_id = self.runtime.model_manager.resolve_default_model('work_' + tier, **kwargs)
+        from ai2apps.task_llm import resolve_task_model
+        model_id = resolve_task_model(self.runtime, tier, parameters.get('model_profile', 'normal'),
+            pinned_routes=parameters.get('ai_model_routes'))
         if not model_id:
             raise RuntimeError('No recovery model configured')
         invocations = self.runtime.model_invocations
@@ -60,6 +59,8 @@ class BackgroundPlanner:
             {'role': 'user', 'content': json.dumps({'goal': step.get('working_goal', ''),
              'step': step.get('description', ''), 'arguments': step.get('arguments', {}),
              'observed': observed}, ensure_ascii=False)}])
+        from ai2apps.task_llm import task_payload
+        payload = task_payload(model_id, payload['messages'], tier, max_tokens=payload['max_tokens'])
         if model_id.startswith('cloud/'):
             response = await invocations.invoke_agent_cloud_json(payload, context=context)
         else:
@@ -79,12 +80,9 @@ class BackgroundPlanner:
     async def next(self, *, run, step, observation, attempts, scopes):
         parameters = run.input['parameters']
         tier = step.get('ai', {}).get('tier', 'standard')
-        model_id = parameters.get('ai_model_routes', {}).get(tier)
-        if not model_id:
-            if parameters.get('model_profile', 'normal') == 'privacy':
-                model_id = self.runtime.model_manager.resolve_default_model('work_' + tier, profile='privacy')
-            else:
-                model_id = self.runtime.model_manager.resolve_default_model('work_' + tier)
+        from ai2apps.task_llm import resolve_task_model
+        model_id = resolve_task_model(self.runtime, tier, parameters.get('model_profile', 'normal'),
+            pinned_routes=parameters.get('ai_model_routes'))
         invocations = self.runtime.model_invocations
         cloud_model = bool(model_id and model_id.startswith('cloud/'))
         model = None if cloud_model else invocations.model(model_id)
@@ -102,6 +100,8 @@ class BackgroundPlanner:
         payload = dict(model=model_id, max_tokens=2400, messages=[
             {'role': 'system', 'content': 'Plan one browser action or evaluate completion. Return JSON only.'},
             {'role': 'user', 'content': prompt}])
+        from ai2apps.task_llm import task_payload
+        payload = task_payload(model_id, payload['messages'], tier, max_tokens=payload['max_tokens'])
         budget = JsonRepairBudget()
         while True:
             if cloud_model:

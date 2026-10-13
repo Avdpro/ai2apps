@@ -209,6 +209,18 @@ class RegistryPackageManager:
         )
         return self._decorate_catalog_compatibility(value)
 
+    async def discovery_capabilities(self) -> Any:
+        # Public capability discovery must also work without an Installation session.
+        value = await self._public_json("GET", "/v1/registry")
+        return value.get("discoveryCapabilities", {}) if isinstance(value, dict) else {}
+
+    async def content_catalog(self, **params) -> Any:
+        value = await self._json(
+            "GET", "/v1/registry/content",
+            params={key: value for key, value in params.items() if value is not None and value != ""},
+        )
+        return self._decorate_catalog_compatibility(value)
+
     async def recommendations(self, **params) -> Any:
         value = await self._json(
             "GET",

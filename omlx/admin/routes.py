@@ -1355,6 +1355,7 @@ MOBILE_STATIC_FILES = frozenset({
     'js/imagine_style_catalog.js',
     'js/mini_app_chat.js',
     'js/readaloud.js',
+    'js/audiobook_source.js',
     'js/studio_audio_recorder.js',
     'js/studio_mini_apps.js',
     'js/studio_mobile.js',

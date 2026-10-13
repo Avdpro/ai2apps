@@ -49,11 +49,8 @@ class WebAgentInvocation:
                 if len(exports) > 1:
                     raise ValueError('Select an explicit WebAgent capability')
                 capability = exports[0]['name'] if exports else f'agent.{agent_id}.run'
-        model_profile = model_profile or declared_model_profile
-        if declared_model_profile == 'privacy':
-            model_profile = 'privacy'
-        if model_profile not in {'normal', 'privacy'}:
-            raise ValueError('Unknown model profile')
+        from ai2apps.task_llm import effective_profile
+        model_profile = effective_profile(self.runtime, model_profile or declared_model_profile, declared_model_profile)
         if parent_task_id.startswith("btask_"):
             parent = self.tasks.get(owner, parent_task_id)
             if parent.get('browser_context', {}).get('model_profile') == 'privacy':

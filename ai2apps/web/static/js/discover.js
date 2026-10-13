@@ -239,6 +239,7 @@
             modelReady: Boolean(value.modelReady || value.model_ready),
             readyModelConfigurationIds: value.readyModelConfigurationIds || value.ready_model_configuration_ids || [],
             miniApps: value.miniApps || manifest.miniApps || [],
+            appNavigation: value.appNavigation || null,
             cardId: id,
         };
     }
@@ -265,6 +266,22 @@
             if (Array.isArray(value?.[key])) return value[key];
         }
         return [];
+    }
+
+    function normalizeContentCard(card) {
+        const item = normalize(card.parent);
+        if (card.installationTarget?.packageId !== item.packageId || !card.installationTarget?.version
+            || card.packageId !== item.packageId || card.packageVersion !== card.installationTarget.version) {
+            throw new Error('Invalid content catalog installation target');
+        }
+        return {...item, cardId: card.cardKey, version: card.installationTarget.version,
+            displayName: card.contentKind === 'mini-app' ? card.displayName || item.displayName : item.displayName,
+            description: card.contentKind === 'mini-app' ? card.description || item.description : item.description,
+            discoveryKind: card.contentKind === 'mini-app' ? 'mini-app' : undefined,
+            componentId: card.componentId, componentVersion: card.componentVersion,
+            miniApp: card.contentKind === 'mini-app' ? {componentId: card.componentId,
+                version: card.componentVersion, categories: card.categories || [], placements: card.placements || []} : undefined,
+        };
     }
 
     function catalogPage(value) {
@@ -326,6 +343,7 @@
     window.discoverApp = function () {
         return {
             tab: 'discover', type: '', modelCategory: '', modelTask: '', miniAppCategory: '', query: '', busy: false, loadingMore: false, working: '',
+            nativeContent: false, catalogSnapshot: '',
             items: [], installed: [], nextCursor: '', localRemainder: [], deferredCursor: '', catalogCache: {}, selected: null, message: '', messageTone: 'error',
             installDialog: null,
             publishers: [], localKeys: [], submissions: [], reviewSubmissions: [], publishingContext: null, publishingLoaded: false,
@@ -374,6 +392,8 @@
             ]; },
             get visibleItems() {
                 const source = this.tab === 'installed' ? this.installed : this.items;
+                // Native content queries already filter/search before paginating, including host/category text.
+                if (this.tab === 'discover' && this.nativeContent) return source;
                 const query = this.query.trim().toLowerCase();
                 return source.filter(item => this.matchesType(item) && this.matchesModelCategory(item) && this.matchesModelTask(item) && this.matchesMiniAppCategory(item) &&
                     (!query || (item.displayName + ' ' + item.packageId + ' ' + (item.componentId || '') + ' ' + item.description + ' ' + item.publisherName).toLowerCase().includes(query)));
@@ -473,6 +493,17 @@
             },
             async loadCatalogPage(append, force) {
                 const key = this.catalogKey();
+                if (!append) {
+                    let capabilities;
+                    try { capabilities = await request('/catalog/capabilities'); }
+                    catch (error) { if (error.status !== 404) throw error; capabilities = {}; }
+                    if (key !== this.catalogKey()) return;
+                    const capability = capabilities?.contentCatalog;
+                    this.nativeContent = capability?.schemaVersion === 'ai2apps.content-catalog.v1'
+                        && capability?.endpoint === '/v1/registry/content'
+                        && !['model', 'service'].includes(this.type);
+                }
+                if (this.nativeContent) return this.loadContentPage(append, key);
                 const cached = this.catalogCache[key];
                 if (!append && !force && cached) {
                     this.items = cached.items;
@@ -536,6 +567,38 @@
                     this.deferredCursor = entry.deferredCursor;
                 }
             },
+            async loadContentPage(append, key) {
+                const params = new URLSearchParams({limit: String(CATALOG_PAGE_SIZE),
+                    content: ['app', 'mini-app'].includes(this.type) ? this.type : 'all',
+                    sort: this.query.trim() ? 'relevance' : 'recommended'});
+                if (this.type === 'agent') params.set('type', 'agent');
+                if (this.query.trim()) params.set('q', this.query.trim());
+                if (this.miniAppCategory) params.set('mini_app_category', this.miniAppCategory);
+                if (append && this.nextCursor) params.set('cursor', this.nextCursor);
+                try {
+                    const page = await request('/catalog/content?' + params.toString());
+                    if (key !== this.catalogKey()) return;
+                    if (page.schemaVersion !== 'ai2apps.content-catalog.v1' || !Array.isArray(page.items) || !page.catalogSnapshot) {
+                        throw new Error('Invalid content catalog response');
+                    }
+                    if (append && this.catalogSnapshot && this.catalogSnapshot !== page.catalogSnapshot) {
+                        this.items = []; this.nextCursor = ''; this.catalogSnapshot = '';
+                        return this.loadContentPage(false, key);
+                    }
+                    const cards = page.items.map(normalizeContentCard);
+                    this.items = append ? mergeCards(this.items, cards) : cards;
+                    this.nextCursor = page.nextCursor || '';
+                    this.catalogSnapshot = page.catalogSnapshot;
+                    this.localRemainder = []; this.deferredCursor = ''; this.catalogCache = {};
+                } catch (error) {
+                    if (key !== this.catalogKey()) return;
+                    if (append && ['catalog_cursor_mismatch', 'invalid_catalog_cursor', 'catalog_cursor_expired', 'invalid_content_query'].includes(error.code)) {
+                        this.items = []; this.nextCursor = ''; this.catalogSnapshot = ''; this.catalogCache = {};
+                        return this.loadContentPage(false, key);
+                    }
+                    throw error;
+                }
+            },
             async loadCatalog() {
                 const [, installed] = await Promise.all([
                     this.loadCatalogPage(false, true),
@@ -584,7 +647,7 @@
             async setTab(tab) {
                 this.tab = tab; this.clearMessage(); this.query = ''; this.type = ''; this.modelCategory = ''; this.modelTask = ''; this.miniAppCategory = '';
                 if (tab === 'publish') await this.reload();
-                else if (!this.items.length || tab === 'installed') await this.loadCatalog();
+                else await this.loadCatalog();
                 redraw();
             },
             async setType(type) {
@@ -621,7 +684,8 @@
                 if (this.type === 'model') return this.isModel(item);
                 if (this.type === 'mini-app') return this.isMiniApp(item);
                 if (this.type === 'service') return item.packageType === 'service' && !this.isModel(item);
-                if (this.type === 'app') return item.packageType === 'app' && !this.isMiniApp(item);
+                if (this.type === 'app') return item.packageType === 'app' && !this.isMiniApp(item)
+                    && (this.tab === 'installed' || item.appNavigation?.launcher !== false);
                 return item.packageType === this.type && !this.isMiniApp(item);
             },
             matchesModelCategory(item) {

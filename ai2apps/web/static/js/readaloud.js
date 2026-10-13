@@ -22,6 +22,8 @@
         let text = typeof window.t === 'function' ? window.t(key) : key;
         const waitLabels = {
             'readaloud.source.model': ['分析模型', 'Analysis model'],
+            'readaloud.source.normal': ['普通模式', 'Normal mode'],
+            'readaloud.source.privacy': ['隐私模式', 'Privacy mode'],
             'readaloud.source.default_model': ['系统默认 · Standard tasks（中难度任务）', 'System default · Standard tasks'],
             'readaloud.source.add': ['追加文本', 'Add source text'],
             'readaloud.source.help': ['使用所选 AI 模型分析，参考演员定位、Notes 和插入点前后各 8 行。最多 30,000 字符。确认前不会修改项目。', 'Analyze with the selected AI model using cast roles, Notes and up to 8 lines before and after the insertion point. Maximum 30,000 characters. The project stays unchanged until confirmation.'],
@@ -152,7 +154,7 @@
         voiceForm: { profileId: '', description: '', name: '', sourceType: 'synthetic_designed', modelId: '', providerVoiceId: '', referenceTranscript: tr('readaloud.design.sample_text'), consentConfirmed: false, usageRightsConfirmed: false, antiImpersonationAcknowledged: false },
         pendingProjectRemoval: null, deletingProject: false,
         pendingCharacterRemoval: null, deletingCharacter: false,
-        showSourceDialog: false, sourceTextDraft: '', sourceProposal: null, sourceBusy: false, sourceApplying: false, sourceError: '', sourceProjectId: '', sourceModelId: '', sourceModels: [], sourceAfterId: null, sourcePosition: '',
+        showSourceDialog: false, sourceTextDraft: '', sourceProposal: null, sourceBusy: false, sourceApplying: false, sourceError: '', sourceProjectId: '', sourceProfile: 'normal', sourceAfterId: null, sourcePosition: '',
         editingCastId: '', castBusy: false, pendingCastRemoval: null,
         pendingSampleRemoval: null,
         waitDialogDismissed: false,
@@ -1045,18 +1047,6 @@
         },
         async createProject() { this.busy = true; try { const created = await request('/projects', { method: 'POST', body: { mini_app_id: this.currentMiniApp.id, title: this.projectForm.title, purpose: this.projectForm.purpose, source_rights: this.projectForm.sourceRights, source_text: this.projectForm.sourceText } }); this.showProjectForm = false; this.projectForm = { title: '', purpose: 'private', sourceRights: 'user_owned', sourceText: '' }; this.selectedProjectId = created.id; await this.refresh(); this.success(tr('readaloud.success.project_created')); } catch (error) { this.fail(error); } finally { this.busy = false; } },
         async saveProject() { if (!this.selected) return; try { this.selected = await request('/projects/' + encodeURIComponent(this.selected.id), { method: 'PATCH', body: { title: this.selected.title, purpose: this.selected.purpose, source_rights: this.selected.sourceRights, source_text: this.selected.sourceText, asr_verification: !!this.selected.asrVerification, asr_model_id: this.selected.asrModelId || '' } }); const item = this.projects.find(project => project.id === this.selected.id); if (item) Object.assign(item, this.selected); this.success(tr('readaloud.success.project_saved')); } catch (error) { this.fail(error); } },
-        async loadSourceModels() {
-            try {
-                const response = await fetch('/v1/models', {credentials:'same-origin',cache:'no-store'});
-                if (!response.ok) throw new Error('Model discovery failed: HTTP ' + response.status);
-                this.sourceModels = ((await response.json()).data || []).filter(model => {
-                    const type = String(model.model_type || model.type || '').toLowerCase();
-                    const caps = model.capabilities;
-                    return Array.isArray(caps) && caps.length ? caps.some(cap => ['conversation','chat','chat_completions'].includes(String(cap).toLowerCase())) : ['llm','vlm',''].includes(type);
-                });
-                if (!this.sourceModels.some(model => model.id === this.sourceModelId)) this.sourceModelId = '';
-            } catch (error) { this.sourceError = error.message; }
-        },
         openSourceDialog() {
             if (!this.selected) return;
             this.sourceProjectId = this.selected.id;
@@ -1064,13 +1054,17 @@
             this.sourceAfterId = index >= 0 ? this.expandedLineId : null;
             this.sourcePosition = index >= 0 ? tr('readaloud.source.after', {number:index+1}) : tr('readaloud.source.append');
             this.sourceProposal = null; this.sourceError = ''; this.showSourceDialog = true;
-            this.loadSourceModels();
+
         },
         async analyzeSource() {
             if (this.sourceBusy || !this.sourceTextDraft.trim()) return;
             this.sourceBusy = true; this.sourceError = ''; this.sourceProposal = null;
             try {
-                this.sourceProposal = await request('/projects/' + encodeURIComponent(this.sourceProjectId) + '/source/analyze', {method:'POST', body:{text:this.sourceTextDraft,after_id:this.sourceAfterId,model_id:this.sourceModelId || null}});
+                const project = await request('/projects/' + encodeURIComponent(this.sourceProjectId));
+                this.sourceProposal = await window.AudiobookSource.analyze(project,this.sourceTextDraft,this.sourceAfterId,async payload => {
+                    const response=await fetch('/v1/platform/studios/'+APP_ID+'/mini-apps/'+encodeURIComponent(project.miniAppId||'ai2apps.audio.audiobook')+'/llm', {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-AI2Apps-App-Instance':appInstanceId()},body:JSON.stringify(payload)});
+                    const value=await response.json();if(!response.ok)throw Error(value.detail?.message||value.detail||'LLM request failed');return value;
+                },this.sourceProfile);
             } catch (error) { this.sourceError = error.message; }
             finally { this.sourceBusy = false; }
         },
@@ -1078,7 +1072,7 @@
             if (this.sourceApplying || !this.sourceProposal?.lines.length) return;
             this.sourceApplying = true; this.sourceError = '';
             try {
-                const {model_id, ...proposal} = this.sourceProposal;
+                const proposal = this.sourceProposal;
                 await request('/projects/' + encodeURIComponent(this.sourceProjectId) + '/source/apply', {method:'POST', body:proposal});
                 this.showSourceDialog = false; this.sourceProposal = null; this.sourceTextDraft = '';
                 await this.openProject(this.sourceProjectId, false);

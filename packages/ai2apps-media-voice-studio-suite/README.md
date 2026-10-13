@@ -16,7 +16,7 @@ six Mini-Apps continue to appear in their declared Voice Studio and Video Studio
 
 ## MVP boundary
 
-Version `0.2.1` targets the complete Package → install → Studio discovery → trusted mount path. Each
+Version `0.2.2` targets the complete Package → install → Studio discovery → trusted mount path. Each
 Mini-App provides its own responsive UI, media selection, workflow options, speaker naming, local draft
 persistence, and JSON draft export. All six workflows execute through the same mount-bound Host Capability
 Broker. Detailed Transcription uses MLX WhisperX; separation uses MLX Demucs; speaker replacement combines
@@ -50,7 +50,7 @@ must not automatically download every model. At the moment the intended provider
 | `audio.voice_conversion` | `ai2apps/model-seed-vc-v2-mlx >=0.1.0,<1.0.0` |
 | `audio.speech_generation` | the model bound to the selected ready Voice Studio Character |
 | `audio.voice_clone` | optional request-scoped original-voice cloning through a compatible TTS model |
-| `text.translation` | the configured Standard model through the existing local/Cloud model route |
+| `llm.text` | mount-bound Mini-App task route; Package owns subtitle refinement, translation, and time-constrained shortening prompts |
 | `media.audio.extract` | Host media pipeline |
 | `media.subtitle.export` | Package/Host subtitle pipeline |
 | `media.video.subtitle_burn_in` | Host media pipeline |
@@ -65,7 +65,7 @@ than eager dependencies so installing the UI suite does not download every model
 From the repository root, build an unsigned contract artifact for local structural validation:
 
 ```bash
-./.venv/bin/python -c "from ai2apps.packages.contract_v1 import build_package; build_package('packages/ai2apps-media-voice-studio-suite', '/tmp/ai2apps-media-voice-studio-suite-0.2.1.ai2app')"
+./.venv/bin/python -c "from ai2apps.packages.contract_v1 import build_package; build_package('packages/ai2apps-media-voice-studio-suite', '/tmp/ai2apps-media-voice-studio-suite-0.2.2.ai2app')"
 ```
 
 Production signing and publication must use `scripts/build_signed_registry_release.py` and the standard

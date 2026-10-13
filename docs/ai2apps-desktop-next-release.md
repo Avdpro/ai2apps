@@ -1,5 +1,34 @@
 # AI2Apps Desktop 下一版 Release 台账
 
+### NXR-MINIAPP-LLM-MOBILE-2262-20261014：迁移接口同步 Mobile 导出
+
+- 状态：implemented，发布回归中补齐受控 Mobile 路由表：删除已撤回 source/analyze、subtitle-refinement，精确导出新的内置及挂载 Mini-App LLM POST；保留 owner lease、Studio 白名单、AppInstance/mount、llm.text 声明校验。新增 audiobook_source.js 静态文件白名单。
+- 新增回归覆盖 POST/GET 区分、未许可 Studio 拒绝、旧路由拒绝及静态文件，完整 owner Studio 与 LLM 测试 69 passed。发布整套客户端复验通过，安装集成 135、分类 66、安全/输出/Runtime 31、前端 552 + 52、生产匿名目录 5、Swift 77 + 2 通过；前端组中唯一 live 项已另外启用并验证。没有修改 Cloud、凭据或实例数据。纳入用户批准的 0.1.7 / Build 2262。
+
+### NXR-RELEASE-2262-20261014：通用 Mini-App LLM 与 Discover 目录升级
+
+- 状态：preflight；候选 0.1.7 / Build 2262，基线 0.1.6 / 2261。纳入通用 mount-bound LLM、隐私优先路由、持久 Task 路由、有声书文本分析迁移、视频 Package LLM 合同及 Discover B 模式目录。
+- 用户已确认 Package 正在独立升级，并批准继续构建发布 2262；不恢复旧 subtitle.refine/text.translation 专用接口。音频套件 0.2.2 已发布；视频套件需配套 0.2.2。旧视频套件未升级时部分翻译/润色功能不兼容，此例外已告知用户，不表述为向后兼容。
+- 本轮仅发布 Desktop，不代替独立 Package/模型/Runtime 发布，不纳入 YuE2 器乐引擎实验。源码纳入不代表真实 LLM、长视频、干净实例 UI 或目标 Mac 升级验收完成。使用现有生产原生快照及 cloud 精简 Runtime，不读取 Cookie、不替换 Dev/App-Dev/Test。
+
+### NXR-VIDEO-MINIAPP-LLM-20261014：视频文本工作流统一 LLM 路由
+
+- 状态：`implemented_source_verified`，尚未发布 Package、重启 Local 或在真实视频上端到端验收。Media Voice Suite 的字幕润色由 Package 持有提示词和批次编排，调用 mount-bound `llm.complete`；字幕翻译、视频音轨翻译及按时长缩写由 Package 传入限长策略，Host 通过同一 `llm.text` 授权路由执行。删除 Host 的 `subtitle.refine` 专用路由及 `_translation_completion` 直连包装，保留时间轴、段落数量、字幕标点和配音媒体处理校验。旧 `text.translation` 声明改为 `llm.text`，因此新 Package 需要搭配含通用接口的 Desktop 版本。
+- 验证：定向 Python 72 项通过（含 Host 桥接与 Package 声明），Node 视频共享 Output/i18n 3 项通过；Python/JS 语法及 scoped diff 检查通过。实际 LLM 翻译、字幕润色、长视频配音与隐私配置仍需开发实例验收。修改了 Local Python 与静态桥接：开发实例需重启对应 Helper 的 Local 并刷新 Shell；未触碰 Dev/App-Dev 之间的数据或 Cookie。
+
+### NXR-AUDIOBOOK-LLM-20261014：有声书文本分析迁移
+
+- 状态：`implemented_and_tested`，58 项 Python 回归及有声书前端上下文/别名/修正/隐私路由测试通过；尚未重启实例、真实 LLM 验收或发布。移除 readaloud.py 专用 /source/analyze、指定模型与直接 completion 调用；移除后端提示词/模型解析/修正策略。
+- 有声书前端模块 audiobook_source.js 持有提示词、上下文、别名规范化与重复对白修正，调用通用 LLM（standard，支持主动 privacy）。内置 Mini-App 通用入口校验所属 Studio AppInstance 与声明的 llm.text，并复用 Package 的同一执行器/隐私优先规则。
+- 保留 /source/apply 的用户确认、revision、幂等与角色归属校验，分析不直接写项目；不是保留旧 LLM 依赖。未发布。
+
+### NXR-MINIAPP-CONTENT-CLIENT-20261014：Cloud 1.66.0 B 模式客户端接入
+
+- implemented / source_verified / public_catalog_verified / clean_install_pending：Local 增加固定 Registry capabilities/content 代理；Discover 仅在声明 `ai2apps.content-catalog.v1` 时对 All、Apps、Mini-Apps、Agents 使用原生卡片分页。Models/Services 保留现有模型筛选路径（B 未声明这些 content 值），不伪称全目录协议迁移完成。
+- B 响应不重复展开 parent.miniApps；卡片键采用 Cloud cardKey、安装版本采用父 installationTarget。原生关键词/分类结果不在前端二次误过滤。首次加载重新读取目录、分页记录 snapshot；游标失效/不匹配重新加载，状态 410 透传。旧 Cloud 保留 A 模式；Installed 保留父包管理。
+- 验证：2 项 Local 代理测试通过；Node 内容分页、升级、下载进度专项 8 项通过，生产匿名 clean-state 目录测试另行通过，实际得到 10 个组件、3 个父包，无本地安装记录。既有分类 Python 66 项中 65 通过，1 项 legacy model 映射覆盖断言因另有 3 个模型缺映射失败，与本次 Mini-App 改动无关；未改模型表。
+- 仅匿名读取生产，未安装/升级/卸载用户 Package，未改 Cloud。真实干净 Desktop 实例 UI + 签名安装/升级/卸载验收仍待执行，Node 空状态验证不能替代。Local Python 新路由需按 Helper 标准重启 Local；不需要重新构建 App。
+
 ### NXR-RELEASE-2261-PUBLISHED-20261014：0.1.6 / 2261 已推送 100%
 
 - 状态：`released_pending_target_mac`。2026-10-14 01:06（北京时间）完成 Apple 公证、双源固定工件、Cloud 完整下载/Range/摘要与公证元数据预检、0% 登记和 100% 扩灰。生产摘要 `2c52921a916137d47b129092232fedba5ed987f2c5cdf9478873f22c61969894`；GET/HEAD 200、条件请求 304、无 Cookie，容器 healthy、近期错误匹配 0。
@@ -44,7 +73,14 @@
 - 验证：新增列表渲染行为测试覆盖连续五次刷新、分组重排、主动折叠和新弹层隔离；与已有 ACPF 完成确认测试合跑 3 passed。初次测试 VM 重复声明问题修正为每次独立块作用域。node --check 与 scoped diff check 通过；未实际安装 Runtime/模型。
 - 生效：静态 JS 修改，开发实例刷新页面即可，无需重建或重启 Local；未发布 Desktop。
 
+### NXR-MINI-APP-LLM-20261014：通用任务 LLM 调用
+
+- 状态：`implemented_and_tested`。32 项 Python 测试、20 项歌曲交互检查及 Package prompt/Host bridge 回归通过；尚未重启实例或发布。新增 mount-bound `llm.complete`，复杂度 simple（默认）/standard/complex 对应 work_*；系统 privacy_mode 或 Mini-App privacy 要求均强制使用独立隐私模型配置，无普通模型回退。系统开关尚未实现，预留 Runtime privacy_mode 接入。
+- 音频套件翻译策略迁入 Package prompt.js；Host 删除模型 ID 特判、translate_style 参数和音频翻译提示词。新版平台只负责通用路由、权限与响应；以后翻译策略修改无需主 App 更新。尚未发布。
+
 ### NXR-YUE2-ENGLISH-STYLE-20261013：YuE2 英文风格条件
+
+- 2026-10-14 架构调整：下述 Host 翻译策略和 translate_style 参数已撤回，由 NXR-MINI-APP-LLM-20261014 的 Package-owned 翻译替代；保留历史测试记录。
 
 - App-Dev 验证（2026-10-13）：通过专属 Helper 控制接口重启 Local，PID 95992 → 26232，端口 58032 → 51428；固定 Shell 标题确认 App-Dev 身份。开发 Package 源码热挂载已显示默认选中的翻译选项；取消、保存、重新挂载后恢复未选状态通过，测试后恢复勾选。该实例未配置 YuE2，完整生成/真实 LLM 翻译尚未在此实例验收；未复制其他实例状态，未发布 Package。
 
@@ -66,6 +102,8 @@
 
 
 ### NXR-STABLE-AUDIO-LEGACY-PROMPT-20261013：旧模型声明兼容英文提示词
+
+- 2026-10-14：Host 模型 ID 特判与翻译逻辑已撤回，音效/音乐套件改用 Package prompt.js 和通用 LLM 接口。
 
 - 状态：`implemented_and_tested`；音频生成套件 25 项测试及 scoped diff check 通过，未发布。
 - Stable Audio MLX/CUDA 的 music/sfx 已知模型 ID 在旧 Package 缺少 preferred_prompt_language 时仍按英文提示词处理；模型菜单提示与执行共用同一判定。其他模型保留声明行为。
@@ -9398,6 +9436,8 @@ Runtime profile、安装行为或发布流程的工作，都必须在完成该�
 
 ### NXR-AI-BROWSER-MOBILE-20261013
 
+- Shared Mini-App/Task LLM policy (2026-10-14): Search All and Shopping Pro retain durable background Tasks on Desktop/Mobile while using shared task_llm routing/profile/request defaults with the foreground Mini-App bridge. Apply server privacy_mode at submission, run creation, and immediately before each durable model call (strip host routing metadata before provider dispatch), including custom-source/navigation recovery; privacy never inherits normal pinned routes or defaults. Replenishment remains privacy-required and gifts normal by default unless upgraded.
+
 - GitHub custom search stall (2026-10-13): use host-authored, query-encoded GitHub repository search navigation before observed-link extraction instead of AI search-input navigation. Bound each custom search planning round to 45 seconds and report timeout/invalid-plan diagnostics without replaying actions or weakening compiler validation. Custom-source regression suite: 19 passed.
 
 - Google verification classification (2026-10-13): actual failed search redirected to Google /sorry/index; classify it as needs_user/captcha before normal /search path validation, allowing the existing assistance flow to retain the page and continue after user verification instead of failing as unexpected_search_page. No captcha bypass or automatic repeated requests.
@@ -9455,3 +9495,6 @@ Runtime profile、安装行为或发布流程的工作，都必须在完成该�
 - Status: implemented; 80 Python and 66 JavaScript/UI tests passed, including 390px phone navigation/frame retention and trusted Mobile Entry assets/API scope checks.
 - Add a Mobile Ready, mount-bound AI Browser Mini-App consumer with library/workspace/task navigation and nine languages. Retain Mini-App iframe state across navigation. Keep authoring/install/customization/native browser login on the computer; execute via existing shared Local Tasks.
 - Curate owner Mobile routes for Mini-App capabilities and Task monitoring/continuation, without exporting authoring, raw BiDi, profile mutations or API-key configuration. Forward the authenticated host-instance header through the existing trusted bridge. Phone layouts added to Search All and Shopping Pro Packages.
+
+### NXR-AUDIO-SUITE-022-20261014
+- 状态：package_published_host_pending，Audio Generation Suite 0.2.2 已发布（Repository 287）。32 项 Python 及 JS 回归、签名包隔离升级/三个挂载/卸载、匿名下载验签通过。Mini-App 自有翻译依赖新版 Host llm.complete；不包含模型/Runtime 升级。回执：docs/ai2apps-audio-generation-suite-0.2.2-release.md。

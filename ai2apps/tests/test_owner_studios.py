@@ -92,6 +92,18 @@ def test_frozen_inventory_matches_real_router():
     assert '/v1/platform/sessions/{session_id}/workspace' not in paths
 
 
+def test_migrated_llm_mobile_routes_and_asset_are_explicit():
+    from omlx.admin import routes
+    assert 'js/audiobook_source.js' in routes.MOBILE_STATIC_FILES
+    for suffix in ('mini-app-mounts/mnt_test/llm', 'mini-apps/ai2apps.audio.audiobook/llm'):
+        path = '/v1/platform/studios/ai2apps.readaloud/' + suffix
+        assert studio.allowed('POST', path)
+        assert not studio.allowed('GET', path)
+        assert not studio.allowed('POST', path.replace('ai2apps.readaloud', 'untrusted.app'))
+    assert not studio.allowed('POST', '/v1/platform/readaloud/projects/p/source/analyze')
+    assert not studio.allowed('POST', '/v1/platform/studios/ai2apps.readaloud/mini-app-mounts/mnt_test/subtitle-refinement')
+
+
 def test_owner_package_draft_through_public_boundary(env, monkeypatch):
     from ai2apps.api import studio_mini_apps as api
     client, _, manager, _, _ = env

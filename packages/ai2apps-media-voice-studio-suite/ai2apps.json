@@ -3,7 +3,7 @@
   "package": {
     "id": "ai2apps/media-voice-studio-suite",
     "type": "app",
-    "version": "0.2.1",
+    "version": "0.2.2",
     "displayName": "Media Voice Studio Suite",
     "description": "Six local-first Mini-Apps for transcription, source separation, voice replacement, video dubbing, and subtitles.",
     "localizations": {

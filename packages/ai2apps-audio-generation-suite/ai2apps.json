@@ -3,7 +3,7 @@
   "package": {
     "id": "ai2apps/audio-generation-suite",
     "type": "app",
-    "version": "0.2.1",
+    "version": "0.2.2",
     "displayName": "Music and Sound Effects",
     "description": "Music, sound effects and YuE2 song creation Mini-Apps for Voice Studio. Requires the Host audio generation workflow broker.",
     "localizations": {

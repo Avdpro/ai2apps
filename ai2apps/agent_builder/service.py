@@ -150,21 +150,11 @@ def create_ir_run(
     if any(step.get("operation") == "agent.call" for step in ir.get("steps", [])):
         from .calls import resolve_calls
         ir = resolve_calls(runtime.agent_builder, owner_user_id or "", ir)
-    model_profile = (browser_context or {}).get("model_profile") or ir.get("model_profile") or "normal"
-    if ir.get("model_profile") == "privacy":
-        model_profile = "privacy"
-    if model_profile not in {"normal", "privacy"}:
-        raise ValueError("Unknown model profile")
-    model_manager = getattr(runtime, "model_manager", None)
-    ai_model_routes = {
-        tier: (
-            None
-            if model_manager is None
-            else (model_manager.resolve_default_model(f"work_{tier}", profile="privacy")
-                  if model_profile == "privacy" else model_manager.resolve_default_model(f"work_{tier}"))
-        )
-        for tier in ("simple", "standard", "complex")
-    }
+    from ai2apps.task_llm import effective_profile, resolve_task_model, TIERS
+    model_profile = effective_profile(runtime,
+        (browser_context or {}).get("model_profile") or ir.get("model_profile") or "normal",
+        ir.get("model_profile") or "normal")
+    ai_model_routes = {tier: resolve_task_model(runtime, tier, model_profile) for tier in TIERS}
     task_store = None
     task_record = None
     local_execution = getattr(runtime, "background_browser_runner", None) is not None

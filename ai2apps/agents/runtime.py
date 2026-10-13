@@ -165,6 +165,13 @@ class AgentRuntime:
     ) -> dict:
         """Invoke a model while durably surfacing stream and wait progress."""
 
+        if '_ai2apps_task_route' in request:
+            from ai2apps.task_llm import prepare_task_request
+            routing_runtime = getattr(self._model_invocations, 'runtime', None)
+            if routing_runtime is None:
+                raise RuntimeError('Task routing runtime unavailable')
+            request = prepare_task_request(routing_runtime, request)
+            model_name = str(request['model'])
         latest_update: dict = {}
         started = asyncio.get_running_loop().time()
 

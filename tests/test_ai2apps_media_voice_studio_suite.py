@@ -16,6 +16,13 @@ def _app_manifest() -> dict:
     return yaml.safe_load((SOURCE / "app.yaml").read_text(encoding="utf-8"))
 
 
+def test_video_text_workflows_use_mount_bound_llm_instead_of_legacy_refinement():
+    package_js = (SOURCE / "web" / "mini-app.js").read_text(encoding="utf-8")
+    assert "hostRequest('llm.complete'" in package_js
+    assert "form.append('llm_policy'" in package_js
+    assert "subtitle.refine" not in package_js
+
+
 def test_media_voice_suite_builds_as_one_contract_package_with_six_mini_apps(tmp_path):
     artifact = tmp_path / "media-voice-studio-suite.ai2app"
     built = build_package(SOURCE, artifact)
@@ -24,7 +31,7 @@ def test_media_voice_suite_builds_as_one_contract_package_with_six_mini_apps(tmp
     assert built.sha256 == inspected.sha256
     assert inspected.manifest["package"]["id"] == "ai2apps/media-voice-studio-suite"
     assert inspected.manifest["package"]["type"] == "app"
-    assert inspected.manifest["package"]["version"] == "0.2.1"
+    assert inspected.manifest["package"]["version"] == "0.2.2"
     assert len(inspected.manifest["miniApps"]) == 6
     assert {item["componentId"] for item in inspected.manifest["miniApps"]} == {
         "ai2apps.media-voice.transcription",
@@ -81,6 +88,11 @@ def test_media_voice_suite_app_manifest_passes_installed_app_validation():
 def test_media_voice_suite_uses_lazy_capability_dependencies():
     manifest = _app_manifest()
     mini_apps = {item["id"]: item for item in manifest["mini_apps"]}
+
+    for mini_app_id in ("ai2apps.media-voice.video-subtitles", "ai2apps.media-voice.video-audio-translation"):
+        capabilities = mini_apps[mini_app_id]["requirements"]["capabilities"]
+        assert any(item == "llm.text" or isinstance(item, dict) and item.get("capability") == "llm.text" for item in capabilities)
+        assert not any(item == "text.translation" or isinstance(item, dict) and item.get("capability") == "text.translation" for item in capabilities)
 
     assert manifest["instances"] == {"mode": "singleton", "scope": "user"}
     assert manifest["navigation"]["launcher"] is False
