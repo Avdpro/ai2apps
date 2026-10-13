@@ -1,5 +1,14 @@
 # AI2Apps Desktop 下一版 Release 台账
 
+### NXR-RELEASE-2262-PUBLISHED-20261014：0.1.7 / 2262 已推送 100%
+
+- 当前生产基线：0.1.7 / Build 2262，状态 released_pending_target_mac；2026-10-14 02:25（北京时间）Cloud 0% 发布及 10000 basis points 扩灰成功。清单摘要 f006f8dc6a539097ad27593efc086af7f124285a83e4c667154ab64df502288e；本机及海外服务器 GET/HEAD 200、条件请求 304、无 Cookie，容器 healthy，近十分钟错误匹配 0。未声称中国三运营商独立探针覆盖。
+- 源码 c9b66aa0c6ded072a6c26c5c49182b2709a06f90，GitHub main/tag v0.1.7-build2262；MS 固定 revision d758ae32076a7f3456ff6d8f6c66352eb46a781e；DMG 269137610 bytes、SHA-256 e3e0894f69da3ed08b48daf85a8a7f5249bdf3db9b21eb0e96696ae0714a1b81。Apple ec9bcd8f-6dc8-496b-9d76-29bc9f0b3e74 Accepted，staple/Gatekeeper/双源完整摘要及 Range 通过。
+- included：Mini-App 通用 LLM、持久 Task 隐私路由、有声书分析迁移、视频 Package LLM 合同、Discover B 模式、Mobile 精确路由/脚本补齐。范围和所有历史状态归档到 docs/ai2apps-desktop-2262-scope-audit.json 及 docs/ai2apps-desktop-0.1.7-build2262-release-2026-10-14.json，不自动关闭未验收历史事项。
+- 用户明确确认独立 Package 正在升级，允许不恢复旧视频专用 API；Audio Generation Suite / Media Voice Studio Suite 配套 0.2.2。Desktop 未发布任何独立 Package、模型或 Runtime，也未纳入 YuE2 器乐引擎实验。
+- 最终 Python 1454 passed / 2 skipped；集成 135、分类 66、安全/输出/Runtime 31；前端 552 + 52，生产匿名目录另测 5；Swift 77 + 2。首轮发现两项 Mobile 迁移遗漏，修复并完整复跑。包内 1397 个 Host 文件一致；2261→2262 临时目录更新器及 health-only 成功。目标 Mac 完整升级、真实 LLM/长视频、干净实例签名安装验收仍 pending。
+- 本轮未重建 Dev/App-Dev/Test，未读取 Cookie，未改 Cloud 应用代码。GitHub CI 仍因缺少 av 收集失败；独立 PyPI 工作流失败，Desktop 工件发布成功；Homebrew 工作流成功且公式提交已保留。
+
 ### NXR-MINIAPP-LLM-MOBILE-2262-20261014：迁移接口同步 Mobile 导出
 
 - 状态：implemented，发布回归中补齐受控 Mobile 路由表：删除已撤回 source/analyze、subtitle-refinement，精确导出新的内置及挂载 Mini-App LLM POST；保留 owner lease、Studio 白名单、AppInstance/mount、llm.text 声明校验。新增 audiobook_source.js 静态文件白名单。
