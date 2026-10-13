@@ -24,6 +24,7 @@ from ai2apps.core import utc_now_text
 from ai2apps.model_installer import AI2AppsInstaller
 from ai2apps.model_providers import (
     installed_model_preparation_recipes,
+    list_package_models,
     resolve_package_model,
 )
 from ai2apps.packages.registry import RegistryError
@@ -378,6 +379,13 @@ class CapabilityProvisioner:
         available = set(service.capabilities) | set(
             instance.health.get("capabilities", ())
         )
+        # Model Worker health is protocol-only; model operations live in the
+        # signed model declaration, not the Service capability list. Only count
+        # models owned by this exact healthy Service with complete checkpoints.
+        if not required.issubset(available):
+            for model in list_package_models(self.runtime):
+                if model.service_key == service_key and model.checkpoint_ready:
+                    available.update(model.capabilities)
         return required.issubset(available)
 
     def _resolve_component_stack(

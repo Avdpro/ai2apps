@@ -177,6 +177,10 @@ same-origin 子资源和 mount-scoped Host Capability Broker 请求，以便 CSS
 
 ### Package Mini-App 名称与界面本地化（必选）
 
+分类与发布也必须遵守 [Mini-App 目录开发/发布门禁](ai2apps-studio-mini-app-package-contract-v1.md#development-and-publication-gate-2026-10-13)：
+底层类型保持 App，显式声明组件分类与宿主，纯组件包隐藏 launcher，默认签名制品保留 miniApps。
+源码挂载、安装后 Studio 可见、未安装时 Discover 可检索须分别验收；Cloud 拒绝投影不能静默删字段继续发布。
+
 非内置 Mini-App 不能只提供英文名称，也不能只本地化所属 Package。下面三层元数据用途不同，
 必须分别声明：
 

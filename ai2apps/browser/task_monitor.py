@@ -20,8 +20,11 @@ def reconcile_browser_tasks(runtime, tasks, owner):
             run = runtime.agents.get_run(task['run_id'])
             status = run.status.value
             if status in TERMINAL:
-                tasks.update(owner, task['id'], status=status,
+                tasks.update(owner, task['id'], status='cancelled' if task['status']=='cancelling' else status,
                     message=str((run.error or {}).get('message') or ''))
+                continue
+            if task['status'] == 'cancelling':
+                runtime.agent_runtime.cancel(task['run_id'])
                 continue
             if task['status'] != 'interrupted' and status in ('running', 'waiting_input'):
                 message = browser_task_wait_presentation(runtime.agents.list_interactions(task['run_id']))['message'] if status == 'waiting_input' else ''
@@ -53,9 +56,12 @@ class BrowserTaskMonitor:
         self._task = None
 
     def reconcile(self):
+        from .task_tree import TaskTreeRepository
+        tree = TaskTreeRepository(self.runtime.database, self.runtime.events)
         tasks = BrowserTaskRepository(self.runtime.database, self.runtime.events)
         for owner in tasks.owners():
             reconcile_browser_tasks(self.runtime, tasks, owner)
+        tree.reconcile()
 
     async def _loop(self):
         async with self.runtime.notifications.subscribe() as wake:

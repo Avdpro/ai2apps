@@ -1,0 +1,55 @@
+schema: ai2apps.capability-profiles/v1
+app_id: ai2apps.imagine-studio
+version: 1
+capabilities:
+  image.frozen_time.da:
+    trigger: on_feature_request
+    presentation: &presentation
+      eyebrow: AI2APPS FROZEN TIME
+      title: 配置静止时间 / Set up Frozen Time
+      description: 安装几何模型、Meridian 及共享 H3 8-bit 底座。Install geometry, Meridian and the shared H3 base; license confirmation required.
+      icon: orbit
+      confirm_label: 下载并配置 / Download and configure
+      ready_label: 静止时间已就绪 / Frozen Time ready
+    requirements: {operations: [depth_estimation, video_generation]}
+    profiles:
+      - id: apple-metal-frozen-da
+        label: Depth Anything V2 Large + Meridian
+        description: MLX · 64 GiB minimum · research/non-commercial model terms apply
+        priority: 100
+        device: &device
+          os: [macos]
+          architectures: [arm64]
+          accelerator: {vendor: apple, api: metal, unified_memory_gib: {minimum: 64}}
+        stack:
+          components:
+            - &runtime {id: runtime, kind: package, phase: runtime, package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.8.11,<2.0.0"}
+            - &h3 {id: h3, kind: package, phase: provider, package_id: ai2apps/model-minimax-h3, service_key: ai2apps.model.minimax-h3, version: "==0.11.0"}
+            - &h3weights {id: h3-checkpoint, kind: checkpoint, model_id: ai2apps.model.minimax-h3/fl2va-8bit}
+            - {id: geometry, kind: package, phase: provider, package_id: ai2apps/model-depth-anything-v2-large-mlx, service_key: ai2apps.model.depth-anything-v2-large-mlx, version: ">=0.1.0,<1.0.0"}
+            - {id: geometry-checkpoint, kind: checkpoint, model_id: ai2apps.model.depth-anything-v2-large-mlx/large}
+            - &meridian {id: meridian, kind: package, phase: provider, package_id: ai2apps/model-meridian-mlx, service_key: ai2apps.model.meridian-mlx, version: ">=0.1.0,<1.0.0"}
+            - &meridianweights {id: meridian-checkpoint, kind: checkpoint, model_id: ai2apps.model.meridian-mlx/h3-8bit}
+            - {id: geometry-ready, kind: verify, service_key: ai2apps.model.depth-anything-v2-large-mlx, capabilities: [depth_estimation]}
+            - &verify {id: meridian-ready, kind: verify, service_key: ai2apps.model.meridian-mlx, capabilities: [video_generation]}
+  image.frozen_time.vggt:
+    trigger: on_feature_request
+    presentation: *presentation
+    requirements: {operations: [depth_estimation, video_generation]}
+    profiles:
+      - id: apple-metal-frozen-vggt
+        label: VGGT-Omega + Meridian
+        description: MLX · 64 GiB minimum · model licenses shown before installation
+        priority: 100
+        device: *device
+        stack:
+          components:
+            - *runtime
+            - *h3
+            - *h3weights
+            - {id: geometry, kind: package, phase: provider, package_id: ai2apps/model-vggt-omega-mlx, service_key: ai2apps.model.vggt-omega-mlx, version: ">=0.1.0,<1.0.0"}
+            - {id: geometry-checkpoint, kind: checkpoint, model_id: ai2apps.model.vggt-omega-mlx/1b-512}
+            - *meridian
+            - *meridianweights
+            - {id: geometry-ready, kind: verify, service_key: ai2apps.model.vggt-omega-mlx, capabilities: [depth_estimation]}
+            - *verify

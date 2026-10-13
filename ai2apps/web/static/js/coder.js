@@ -489,7 +489,13 @@
             if (rootHint && defaultProjectRoot) rootHint.textContent = 'Relative to ' + defaultProjectRoot;
             agentSelect.innerHTML = agents.map(function (agent) { return '<option value="' + escapeHtml(agent.id) + '"' + (agent.installed ? '' : ' disabled') + '>' + escapeHtml(agent.name) + (agent.installed ? '' : ' (not installed)') + '</option>'; }).join('');
             render();
-            loadAi2AppsModels();
+            await loadAi2AppsModels();
+            const handoffKey='ai2apps.coder.mini-app-handoff';
+            let handoff;try{handoff=JSON.parse(sessionStorage.getItem(handoffKey)||'null');}catch(_){sessionStorage.removeItem(handoffKey);}
+            if(handoff&&typeof handoff.prompt==='string'&&handoff.prompt.length<=32768){
+                const project=projects.find(item=>item.id===handoff.projectId&&item.kind==='ai2apps');
+                if(project&&window.AI2AppsNativeCoder){sessionStorage.removeItem(handoffKey);activeProjectId=project.id;render();window.AI2AppsNativeCoder.open({project,models:ai2appsModels,onApplied:load,initialPrompt:handoff.prompt,autoStart:true});}
+            }
         } catch (error) { status.textContent = error.message; }
     }
 
@@ -747,6 +753,6 @@
             render();
         } catch (error) { status.textContent = error.message; }
     });
-    window.addEventListener('message', function (event) { if (event.origin !== location.origin) return; if (event.data?.type === 'ai2apps.host.activate') setTimeout(resize, 50); });
+    window.addEventListener('message', function (event) { if (event.origin !== location.origin) return; if (event.data?.type === 'ai2apps.host.activate') { setTimeout(resize, 50); if(sessionStorage.getItem('ai2apps.coder.mini-app-handoff'))void load(); } });
     load();
 }());

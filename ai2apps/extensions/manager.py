@@ -1470,6 +1470,7 @@ class InteractivePackageManager:
                     "running_count": app["running_count"],
                     "entry_source": entry_source,
                     "mobile_renderer": view.get("kind", "host"),
+                    "mobile_gateway": bool(app["source"] == "builtin" and (app.get("mobile") or {}).get("gateway")),
                 }
             )
         return tuple(result)

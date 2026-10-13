@@ -82,8 +82,8 @@ def test_imagine_studio_uses_studio_shell_with_builtin_mini_apps():
     assert "mobileSurface" in template and "is-mobile-back" in template
     assert "is-mobile-output" in template
     assert "leftCollapsed" in template and "rightCollapsed" in template
-    assert "handleGalleryDrop($event,slot-1)" in template
-    assert "@drop.stop.prevent" in template
+    assert "drop:event=>handleGalleryDrop(event,slot-1)" in template
+    assert "AI2AppsAssetSlot.bind" in template
     assert "gallerySlotTarget" in script
     assert "mountMiniEntry" in script and "appId: 'ai2apps.gallery'" in script
     assert "GALLERY_MINI_FALLBACK_URL" in script
@@ -294,7 +294,8 @@ def test_imagine_studio_uses_cloud_and_local_image_models_with_capability_aware_
     assert "object-fit:contain" in template
     assert "referenceSlotStyle" in script
     assert "aspect-ratio:${dimensions.width}/${dimensions.height}" in script
-    assert ':style="referenceSlotStyle(slot-1)"' in template
+    assert 'AI2AppsAssetSlot.bind' in template
+    assert 'asset_slot.css' in template
 
 
 def test_imagine_studio_completed_artifact_controls():

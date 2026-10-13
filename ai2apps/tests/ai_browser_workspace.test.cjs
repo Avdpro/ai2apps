@@ -3,6 +3,15 @@ const translations=JSON.parse(fs.readFileSync(__dirname+'/../web/i18n/zh.json','
 const t=key=>translations[key]||key;
 const source=fs.readFileSync(__dirname+'/../web/static/js/ai_browser.js','utf8');
 function setup(){const context={crypto:{randomUUID:()=> 'worker-1234567890'},window:{t,},document:{getElementById:()=>({classList:{toggle(){}}})},Map,URL,URLSearchParams,console,setTimeout:()=>0,clearTimeout:()=>{}};vm.runInNewContext(source,context);return context.aiBrowserApp();}
+test('header refresh updates catalog and remounts only the current Mini-App',async()=>{
+ const app=setup(),calls=[];app.view='mini-app';app.miniAppId='search';app.miniApps=[{id:'search'}];
+ app.frames.set('mini-app:search',{frame:{remove:()=>calls.push('remove')}});app.frames.set('task-one',{frame:{remove:()=>assert.fail('Task page must survive')}});
+ app.loadProfiles=async()=>calls.push('profiles');app.refresh=async()=>calls.push('workspace');app.refreshMiniApps=async()=>calls.push('catalog');app.openMiniApp=async item=>calls.push('mount:'+item.id);
+ await app.refreshAll();assert.deepEqual(calls,['profiles','workspace','catalog','remove','mount:search']);assert.equal(app.frames.has('task-one'),true);assert.equal(app.refreshAllBusy,false);
+});
+test('header refresh never switches back to a Mini-App after user navigates away',async()=>{
+ const app=setup();app.view='mini-app';app.miniAppId='search';app.miniApps=[{id:'search'}];app.loadProfiles=async()=>{};app.refresh=async()=>{app.view='domain';};app.refreshMiniApps=async()=>{};app.openMiniApp=async()=>assert.fail('Must preserve new view');await app.refreshAll();assert.equal(app.view,'domain');
+});
 test('switching between Profile and task preserves editor and task iframe instances',()=>{
  const app=setup();let display='none';const frame={style:{get display(){return display},set display(v){display=v}}};app.frames.set('editor:one',{frame});app.editorKey='editor:one';app.view='editor';app.updateFrames();assert.equal(display,'block');app.selectProfile({key:'default'});assert.equal(display,'none');assert.equal(app.frames.size,1);app.openTask({id:'task',status:'queued'});assert.equal(app.frames.size,1);app.view='editor';app.updateFrames();assert.equal(display,'block');
 });
@@ -132,7 +141,7 @@ test('active website Agent exposes deletion and archives only after named confir
  await app.deleteSavedDraft({id:'active',status:'active',name:'Article reader'});
  assert.match(confirmed,/删除Agent/);assert.match(confirmed,/Article reader/);
  assert.equal(posted.path,'/agent-drafts/active/archive');assert.equal(posted.data.expected_revision,7);
- const template=fs.readFileSync(__dirname+'/../web/templates/system_apps/ai_browser.html','utf8');
+ const template=fs.readFileSync(__dirname+'/../web/templates/system_apps/ai_browser_workspace.html','utf8');
  assert.match(template,/\['editing','compiled','active'\]\.includes\(draft.status\)/);
 });
 
@@ -178,4 +187,56 @@ test('SSE updates tasks without refreshing the catalog and ignores duplicate rep
  stream.onerror();assert.equal(browser.streamState,'reconnecting');assert.equal(browser.tasks.length,1);
  stream.onopen();assert.equal(browser.streamState,'connected');
  browser.connectWorkspaceEvents();assert.equal(closed,1);
+});
+
+test('first Profile status read never sends bind or launches a Profile',async()=>{
+ const app=setup();let commands=[],requests=[];
+ const connection={connect:async()=>{},close:async()=>{},command:async(method)=>{commands.push(method);return {contexts:[{userContext:'work-context',context:'tab'}]};}};
+ const ctx={crypto:{randomUUID:()=> 'worker'},window:{t,AI2AppsBiDi:{AI2AppsBiDiConnection:function(){return connection;}}},document:{getElementById:()=>null},Map,URL,URLSearchParams,console,setTimeout:()=>0,clearTimeout:()=>{}};
+ vm.runInNewContext(source,ctx);const browser=ctx.aiBrowserApp();browser.profiles=[{key:'work'},{key:'new'}];
+ browser.request=async(path,method)=>{requests.push([path,method]);return {bindings:{work:'work-context'}};};
+ browser.fail=error=>{throw error;};await browser.connectProfileStatus();
+ assert.deepEqual(requests,[['/client/browser-profile-bindings',undefined]]);
+ assert.deepEqual(commands,['browsingContext.getTree']);assert.equal(browser.profileState('work').tabs,1);
+ assert.equal(browser.profileState('new').tabs,null);
+});
+
+test('native launch without userContext reports opened without inventing Tab count',async()=>{
+ const app=setup();app.request=async()=>({status:'launched',pid:42});
+ let reconnected=0;app.connectProfileStatus=async()=>{reconnected++;};app.succeed=()=>{};
+ await app.launch({key:'default'});
+ assert.equal(app.profileState('default').label,t('ai_browser.workspace.opened'));
+ assert.equal(app.profileState('default').tabs,null);assert.equal(reconnected,1);
+ assert.equal(app.profileState('work').label,t('ai_browser.workspace.unconnected'));
+});
+
+test('native launch with userContext refreshes only matching Profile tabs',async()=>{
+ const app=setup();app.request=async()=>({status:'focused',pid:42,user_context:'own'});app.succeed=()=>{};
+ app.statusConnection={command:async()=>({contexts:[{context:'one',userContext:'own'},{context:'two',userContext:'other'}]})};
+ await app.launch({key:'work'});
+ assert.equal(app.profileState('work').label,t('ai_browser.workspace.opened'));
+ assert.equal(app.profileState('work').tabs,1);
+});
+
+test('domain list hides invalid and empty registry entries but retains saved Agent drafts',async()=>{
+ const app=setup();app.selectedDomain='null';
+ app.request=async path=>path==='/browser-workspace'?{domains:[null,'null','undefined','empty.com','saved.com'],tasks:[],settings:{global_limit:4,profile_limit:1}}:
+ path==='/agent-drafts'?{items:[{id:'saved',site_key:'saved.com',status:'draft',name:'Saved'},
+ {id:'bad',site_key:'null',site_scope:['data:text/plain,test'],name:'Invalid'}]}:{items:[]};
+ app.refreshProfileStates=async()=>{};app.updateFrames=()=>{};app.dispatch=async()=>{};
+ await app.refresh();assert.deepEqual(Array.from(app.domains,d=>d.name),['saved.com']);
+ assert.equal(app.domains[0].capabilities.length,1);assert.equal(app.selectedDomain,'saved.com');
+});
+
+test('adding a website opens Agent creation instead of leaving an empty navigation row',async()=>{
+ const app=setup();app.newDomain='new.com';let edited;
+ app.request=async()=>({domain:'new.com'});app.refresh=async()=>{};app.editAgent=async(...args)=>{edited=args;};
+ await app.addDomain();assert.deepEqual(edited,[null,'new.com']);assert.equal(app.newDomain,'');
+});
+test('parallel collection children appear as one root task until cleanup and editorial work end',()=>{
+ const app=setup();app.taskTree=[{id:'root',parent_id:null,kind:'collection',name:'Refresh',status:'running',created_at:1}];
+ app.tasks=[{id:'a',root_task_id:'root',profile_key:'default',status:'running',created_at:2},{id:'b',root_task_id:'root',profile_key:'default',status:'completed',created_at:3}];
+ assert.equal(app.activeTasks.length,1);assert.equal(app.activeTasks[0].id,'root');assert.equal(app.activeTasks[0].children.length,2);assert.equal(app.recentTasks.length,0);
+ app.taskTree[0].status='finishing';assert.equal(app.activeTasks.length,1);
+ app.taskTree[0].status='completed';assert.equal(app.activeTasks.length,0);assert.equal(app.recentTasks.length,1);
 });

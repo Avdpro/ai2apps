@@ -2,7 +2,7 @@ const test=require('node:test'),assert=require('node:assert/strict'),fs=require(
 const source=fs.readFileSync(__dirname+'/../web/static/js/intelligence_site_agents.js','utf8');
 function setup({cached=false,drift=false,bad=false}={}){
  const recipe={generation_id:'v1',rule:{},ir:{steps:[{mode:'compiled'}]}};
- const baseline={items:[{url:'https://example.com/a'},{url:'https://example.com/b'}]};let executions=0,learnCalls=0,activations=0,invalidations=0;
+ const baseline={items:[{url:'https://example.com/a'},{url:'https://example.com/b'},{url:'https://example.com/c'}]};let executions=0,learnCalls=0,activations=0,invalidations=0;
  const client={observeExtractionRegions:async()=>({url:'https://example.com/',regions:[{selector:'main',count:2,sample:'headlines'}]}),
  executeExtractionStep:async()=>{executions++;if(drift&&executions===1)throw Error('drift');return bad?{items:[{url:'https://example.com/unrelated'}]}:baseline;}};
  const api=async(path,method,body)=>{if(path.endsWith('learn')){learnCalls++;return recipe;}if(path.endsWith('activate')){activations++;return recipe;}if(path.endsWith('invalidate')){invalidations++;return {}; }return {recipe:cached?recipe:null};};

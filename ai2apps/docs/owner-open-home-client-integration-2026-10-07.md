@@ -1,5 +1,7 @@
 # Owner Open-Home 客户端接入状态（Cloud OpenAPI 1.62.0）
 
+> 当前 Mobile App 接入机制已更新：新增应用采用通用目录、挂载资源和 App Bridge。本文早期固定入口清单保留作历史兼容记录；以 [2026-10-10 通用挂载合同](mobile-app-access-gateway-2026-10-09.md) 为准。
+
 状态：implemented_dev_e2e_verified。用户明确批准后启用就绪标志，仅重启公网主设备 dev；App-Dev 与生产未升级。
 
 ## 已实现的接入基础
@@ -42,3 +44,7 @@
 - AI2Apps原生浏览器下拉菜单操作后出现可访问性控件树异常，实际对话与长会话在Chrome完成；没有因此复制浏览器Cookie或改用后台Owner会话。
 
 未修改 Cloud 项目，未发布 Desktop，未重建 App-Dev。首批仅支持文本 Chat，附件和 Agent 后台任务隐藏并被服务端拒绝。
+
+## 2026-10-10：Mobile App 通用接入更新
+
+新增 App 采用动态目录、mount-bound app-resource 与 Bridge；不要扩展历史 App ID/API 固定清单。设备 Mobile 开关是用户策略。Package sandbox 保持 opaque 与 context-only；可信内置 host App 通过 manifest 的 mobile.gateway 声明页面资源和自己的后台 API，在独立 ASGI 中执行。情报中心使用此机制，包括 Local WebAgent URL 收录；不公开浏览器控制接口。当前合同见 [Mobile 通用挂载](mobile-app-access-gateway-2026-10-09.md)。历史阶段限制只描述当时状态。

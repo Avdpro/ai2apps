@@ -1,5 +1,520 @@
 # AI2Apps Desktop 下一版 Release 台账
 
+### NXR-RELEASE-2260-PREFLIGHT-20261013：新客户端发布检查
+
+- 2026-10-14：用户明确批准暂缓 YuE2 未验收改动，继续 Desktop。候选为 0.1.6 / 2260，独立目录 `/private/tmp/ai2apps-release-2260`，基于 main 12971bba；开发目录及实验保留。候选排除 YuE2 风格兼容/翻译开关/器乐模块，音频 Suite 保留已发布基线；保留 Stable Audio 已验证的旧语言声明兼容。独立模型、Runtime 和 Mini-App 不随 Desktop 自动发布。
+- 候选回归：核心 Python 1301 passed、2 skipped；AI2Apps Node 551 passed（含真实无头 Chrome Mobile 渲染），根目录 Node 47 passed；Swift 77 Testing 通过。全量历史 Python 套件仍在执行，不能宣称全量通过。前端失败为测试运行目录/原生源码环境变量、缺失 Playwright/WebCrypto/DOM fixture 与三链接验证样本；补齐环境及契约，不放宽生产代码。相关修复已同步开发目录，YuE2 排除仅在候选。
+- 范围索引 `docs/ai2apps-desktop-2260-scope-audit.json` 覆盖 593 项记录（构建前快照）；来源/验收状态与纳入边界分别保留。正式签名、Apple 公证、双源和 Cloud 生产操作尚未执行；最终目标 Mac 升级与浏览器冷启动实机仍须验收。
+
+- 状态：`in_progress`，尚未构建正式候选、上传或更新生产清单。匿名生产核对仍为 0.1.5 / Build 2259、10000 basis points；GitHub main 为 12971bba，含 Runtime 1.8.11 配方。下一 Desktop Build 计划 2260，源码范围尚未冻结。
+- 首轮定向 Python 239 passed；Swift 77 项 Testing 及 XCTest 日志见 `/private/tmp/ai2apps-2260-swift-preflight.log`。扩大核心回归 1297 passed、2 skipped、2 failed；不作为全绿记录。
+- 修复真实取消竞态：`ai2apps/codex/manager.py` 将等待审批状态写入纳入请求 token 的 try/finally，避免异步持久化期间取消造成审批残留；新增确定性阻塞回调取消测试，同时验证 interrupt/unsubscribe、会话锁与执行槽清理。新闻扫描测试拆分持续出现新链接时的八次滚动上限及空列表无新增时提前停止，未放宽生产边界。两文件复验 15 passed；仍需最终候选扩大回归。日志 `/private/tmp/ai2apps-2260-regression-fixes.log`。
+- 正式 AceFox 输入的 shell.mjs 缺少当前源码已有的 native-export 处理，不能使用 Development-only overlay 替代正式原生快照。已启动标准 `mach build` 更新，日志 `/private/tmp/ai2apps-2260-acefox-build.log`；打包、新快照、签名及冷启动验收未完成。四个正式 Shell/Sidebar 补丁的对应资源变换检查通过。
+- YuE2 未验收 Host 风格改动的纳入/延期已请求用户确认；独立 Runtime/模型/Mini-App Package 不因本次 Desktop 请求自动发布。未读取 Cookie，未修改 Cloud。
+- 原生输入追加：标准 `mach build` exit 0（8 分 17 秒），`mach package` 完成；正式输入 `dist/firefox/Acefox.app` 的 shell.mjs 已确认含 native-export，Shell 三项和 Sidebar 对应资源变换全部通过。未替换 Dev/App-Dev/Test 或生产实例，不等同于最终签名 Desktop/冷启动验收。
+- 前端扩大检查：87 项中 75 passed、12 failed，日志 `/private/tmp/ai2apps-2260-node-preflight.log`；包括情报测试抽取函数缺少 labels/setHTML/ai2appsDOMVisible 依赖、Mobile 导航和采集规则契约，仍须逐项核对，未跳过门禁。核心修复后全范围复验日志 `/private/tmp/ai2apps-2260-core-preflight-r2.log`，运行完成前不记为通过。
+
+### NXR-IMAGINE-OUTPUT-WRAP-20261013：共享 Output 卡片文字出框
+
+- source_changed：截图中Frozen Time失败卡片的长JSON错误没有断行，越过卡片边界。仅在Imagine Output作用域增加错误pre-wrap/overflow-wrap:anywhere，保留完整诊断；标题/步骤文字允许缩小，附件名称与媒体类型列限定宽度并换行。未修改共享Video/Voice样式，未改变Output所有权、下载或生成逻辑。无需Runtime/模型Package或Local重启，真实窗口待刷新验收。
+
+- source_verified：Node测试报告17项通过（含2项新增Output CSS结构断言、14项Mobile行为、9个模型错误样例的测试入口），git diff --check通过。检查截图及对应模板/样式确认原因；未做实际浏览器渲染验收，不将CSS断言描述为视觉实测。
+
+### NXR-ACPF-EXPANSION-20261013：进度刷新保留步骤展开状态
+
+- 状态：`implemented_and_tested`。ACPF 每 500ms 轮询重建步骤列表前，按现有分组 key 读取 details.open，重绘时恢复；保留用户主动折叠，状态限定当前弹层，不影响安装状态或轮询机制。
+- 验证：新增列表渲染行为测试覆盖连续五次刷新、分组重排、主动折叠和新弹层隔离；与已有 ACPF 完成确认测试合跑 3 passed。初次测试 VM 重复声明问题修正为每次独立块作用域。node --check 与 scoped diff check 通过；未实际安装 Runtime/模型。
+- 生效：静态 JS 修改，开发实例刷新页面即可，无需重建或重启 Local；未发布 Desktop。
+
+### NXR-YUE2-ENGLISH-STYLE-20261013：YuE2 英文风格条件
+
+- App-Dev 验证（2026-10-13）：通过专属 Helper 控制接口重启 Local，PID 95992 → 26232，端口 58032 → 51428；固定 Shell 标题确认 App-Dev 身份。开发 Package 源码热挂载已显示默认选中的翻译选项；取消、保存、重新挂载后恢复未选状态通过，测试后恢复勾选。该实例未配置 YuE2，完整生成/真实 LLM 翻译尚未在此实例验收；未复制其他实例状态，未发布 Package。
+
+- 新增歌曲创作“风格提示词翻译为英文”复选框，默认勾选，草稿保存选择；取消时 Host 跳过翻译且不向 Worker 传递 UI 参数。严格 API schema 接收布尔值。28 项 API/套件测试、20 项 Mini-App 交互检查通过。此 UI 变更涉及 Audio Generation Suite，当前安装包尚未更新。
+
+- 状态：`in_progress`；用户试听官方 PyTorch 同谱对照，确认中文提示词带吉他，英文提示词为明显钢琴独奏。该证据支持英文风格预处理，但不证明所有风格都已达标。
+- Voice Studio 对已发布且缺少语言声明的 YuE2 MLX/CUDA 模型启用 Simple Task 英文风格翻译润色；保留歌词与乐谱，保留独奏和排除乐器约束。模型菜单声明及实际生成使用同一判定；预处理失败不静默回退。
+- 验证：27 项音频生成套件测试通过，scoped diff check 通过；MLX 使用手工英文提示词生成钢琴/重金属各约 30 秒样本，位于 `/tmp/yue2-english-mlx-20261013/`，待试听验收；未验证真实 Simple Task LLM 翻译调用。
+- 仅 Host Python 改动，需重启 Local；本项不要求重新发布模型 Package。此前器乐流程的 Runtime/模型 Package 交付要求仍独立存在。未发布。
+
+### NXR-YUE2-INSTRUMENTAL-20261013：真实器乐规划流程
+
+- 状态：`in_progress`，源码与转谱结构检查通过，但用户试听验收失败：重金属样本不符合重金属风格，钢琴样本有明显吉他。不能视为风格遵循已修复；尚未构建或发布新的签名 Runtime/模型 Package。
+- 空歌词或仅段落标签使用 YuE2 规划后 Vocal → Ins 事件转换；保留中文风格原文，追加器乐约束，转换后重建生成前缀。直接生成模式在器乐请求下转为 full 规划。异常曲谱停止，不伪装成纯音乐成功。
+- 同时接入 MLX 模型引擎与 CUDA Runtime 引擎；共享转谱模块包含官方 Apache-2.0 许可、来源 revision。保存原始/有效请求、前后 ABC、转谱报告及生成前缀。
+- 交付需包含新 Runtime 与 MLX 模型引擎；当前安装的签名 Package 尚未改变，不能仅刷新页面宣称生效。
+- 验证：47 项 Python 回归、18 项歌曲 UI 检查及语法检查通过。已有权重，BF16、32 步、seed=831001、750 semantic tokens 上限，分别真实生成中文重金属与钢琴约 30 秒样本。两者实际 AR 前缀与提示词一致，Vocal 发声音符为 0，谱面/音频摘要不同，WAV 为 48 kHz 立体声。转谱保留音符时值/速度/和弦；没有声称已完成人耳无人声或流派忠实度验收。CUDA 未实机推理。
+- 证据：`docs/ai2apps-yue2-instrumental-validation-20261013.json`；样本及前后 ABC/原始与有效请求/前缀/转谱报告位于 `/tmp/yue2-instrumental-20261013/`。音频套件歌词帮助已说明空歌词的器乐规划行为，需要后续 Suite 发布。
+
+
+### NXR-STABLE-AUDIO-LEGACY-PROMPT-20261013：旧模型声明兼容英文提示词
+
+- 状态：`implemented_and_tested`；音频生成套件 25 项测试及 scoped diff check 通过，未发布。
+- Stable Audio MLX/CUDA 的 music/sfx 已知模型 ID 在旧 Package 缺少 preferred_prompt_language 时仍按英文提示词处理；模型菜单提示与执行共用同一判定。其他模型保留声明行为。
+- 生成前仍调用 Simple Task 翻译润色，失败不静默降级为原文。新增四个旧模型声明回归场景，检查菜单标记、实际模型输入及 preparedPrompt。
+- 需重启 Dev Local 并刷新页面；无需重新发布模型 Package。未读取当前实例 Cookie，未用真实 LLM 重跑截图任务。
+
+
+### NXR-SOUND-EFFECTS-STARTUP-20261013：音效 Mini-App 按需检查能力
+
+- 状态：`implemented_and_tested`；未发布。
+- 验证：音频生成/能力 broker 共 71 项测试、Voice Studio Node 回归、JS 语法及 scoped diff check 通过。新增用例约束不扫描无关模型，以及慢就绪查询不阻塞页面打开。
+- 能力 probe 只枚举声明依赖的模型家族，音效/音乐不再预先枚举转写、分离、换声和 TTS；保持每次调用的 actor/mount/签名声明校验，无长期就绪缓存。
+- Voice Studio 挂载后异步更新就绪状态，不阻塞页面打开，打开提示使用已有中英翻译。
+- 修改宿主 Python/静态页面，需要重启对应 Dev Local 并刷新页面；无需 Runtime 或音效 Package 更新。未测真实设备端到端耗时。
+
+
+### NXR-MINIAPP-DISCOVERY-CONTRACT-20261013：Mini-App 目录修正交接与发布门禁
+
+- docs_ready / cloud_pending / desktop_pending：提供 Cloud 新包投影校验、历史签名 app.yaml 可信回填、分类/缓存/分页及验收交接。旧包不改字节、不重签、不要求逐包升级；纯 Mini-App 提供包与混合 App 的分类语义分开。
+- 同步 Studio/Web-Agent Mini-App 开发规范、App 开发指南与标准发布手册；省略 miniApps 仅限用户明确批准的历史兼容例外，必须报告远端发现未验收。新增未安装干净实例的分类验收门禁。
+- 本轮仅文档，不改 Cloud/客户端、不构建或发布 Package。Cloud 回交 OpenAPI/部署与回填证据后，Desktop 仍须接入 launcher 分类及原生组件分页；不宣称当前分类故障已经上线修复。交接见 `docs/ai2apps-cloud-mini-app-discovery-fix-20261013.md`。
+
+### NXR-FROZEN-TIME-MP4-AUDIO-20261013：静止时间可选 MP4 音轨
+
+- implemented / source_verified：Frozen Time Package 增加可选音频素材槽（本地、Mobile 选择器、Gallery 拖放），只在 MP4 生成或转存时上传；未选择仍输出无声 MP4。Host 在推理前限制音频为 100 MiB 并验证可解码，完成视频后以 AAC 封装音轨，不重编码视频；音频从零点开始，过长截断，较短则后段静音，视频帧数/时长不变。转存 MP4 在未换音频时保留来源 MP4 的已有音轨，Live Photo/交互 HTML 不带音轨。音频仅为当前页面临时素材，不写入持久草稿或私有转换缓存。53 项 Frozen Time Python 回归、12 项 UI Node 回归及 JS 语法检查通过；未进行真实 Meridian 推理或 App-Dev 实机验收，未发布新 Package/Desktop。Host Python 需在空闲时按标准 Helper 重载，Package 开发挂载需刷新。
+
+### NXR-INTELLIGENCE-I18N-ACTIVITY-20261013：情报界面与后台提示多语言补齐
+
+- implemented / source_verified：补齐当前系统中英文目录中的采集、稿件、图片与实体文案，以完整句子覆盖旧碎片翻译；后台进度/结果/冷却提示通过受限模板翻译，捕获的用户来源名称与未知诊断保持原值。新频道 AI 输出语言默认值规范化区域代码，已有频道语言与内容保持。Desktop/Mobile 共用 resolver，其他 UI 语言仍英文回退，不宣称完整母语目录。8 项 Node 本地化回归、3 项 Python 输出语言/模板回归及 1 项无头 Chrome Mobile/Desktop 英文渲染验证通过。文档 LOCALIZATION/intelligence-center-v1 更新；静态与目录变更；因服务端英文目录缓存，Dev/App-Dev 已经通过各自 Helper 重载 Local 并通过 health 200。页面刷新后使用新版，无需原生构建或 Cloud 变更。
+
+
+### NXR-INTELLIGENCE-LIST-SCAN-20261013：列表早停与按需覆盖验证
+
+- implemented / source_verified：正常更新不再无条件执行 list-coverage；健康且编译版本匹配的规则直接使用其已验证结果，缺失/失效规则进入通用扫描与学习，少于三个有效链接、提取回退或失败等异常才启动覆盖检查。每页连续两轮无新增链接停止滚动，区域观察仅首次采样；列表任务在 source Task 内串行转移复用页面，显式 reuse_current_page 的同 URL open 不再导航，独立文章池不变。针对早停、验证触发和精确 URL 复用增加回归，83 项定向 Python 回归通过，diff 检查通过；Dev/App-Dev 通过各自标准 Helper 重载且 health 200。文档 intelligence-center-v1 更新。无 Cloud/原生改动。
+
+
+### NXR-WEBAGENT-PARALLEL-ROOT-20261013：同一根任务的受限并行池
+
+- implemented / source_verified / native_verified：可信 Local 子任务可声明最多 3 个同 root/Profile 的浏览器执行；全局/Profile 名额继续按根组计数。情报中心 2 源池、普通网站 3 篇文章池，社交来源串行并保留冷却；每篇独立页面，失败隔离与稳定顺序合并。Profile 级重入输入锁串行点击/输入/滚动/上传，页面加载与采集可重叠。AI Browser 根任务合并展示、actor-scoped 根取消和子任务详情入口。149 项 Python 分批定向回归及 25 项 UI 回归通过，包含并发名额、源与文章重叠、单篇失败、取消所有后代与跨 owner 拒绝、输入锁、参数在启动/页面更新后保留且不能伪造。实测 Dev F1/ESPN 同 root/Profile 同时运行，真实更新完成（跳过 50 条、读取/保存 1 篇），5 个浏览器 Task 均 verified 清理。临时隔离原生 Profile 实测 3 个独立 Tab 同时加载读取，测试后全部关闭核验。发现并修复启动上下文丢失 parallel_limit 的集成遗漏；最终 Dev/App-Dev 已通过各自 Helper 重载。架构与情报文档更新。无 Cloud/原生改动。
+
+### NXR-INTELLIGENCE-MOBILE-BACK-SIZE-20261013：Mobile 返回箭头视觉尺寸
+
+- implemented / source_verified：频道与详情 Mobile 返回箭头由通用 17px 放大至 30px、stroke-width 3，44×44px 按钮居中，参考用户手机截图的清晰粗箭头。仅 Mobile 返回按钮生效，保留布局和手势。静态 CSS 刷新生效，无需重启或重建。
+
+### NXR-INTELLIGENCE-MOBILE-BACK-20261013：Mobile 右滑返回
+
+- implemented / source_verified：参考 TODO 的同文档 history/popstate 方式，以来源窗口/origin/mount token/instance 校验接入情报频道与详情层级。顶部返回和原生边缘返回走一次历史跳转，前进恢复缓存阅读状态，不重载 iframe；内容区右滑可返回，栏目横滑及表单/菜单/弹窗排除，系统边缘不重复拦截。进一步区分原生 popstate 和按钮返回：原生手势状态同步暂时关闭 CSS transition，避免系统动画后又飞出一次；按钮/内容手势保留动画。新增回归验证 animate 标记，保留滚动。10 项前端/触控回归、13 项历史/TODO/宿主回归通过；JS 语法检查通过。静态资源修改，手机刷新 Mobile 页即可生效，无 Local 重启或原生构建。文档 intelligence-center-v1 已更新。
+
+### NXR-BROWSER-COLD-HOST-20261013：重启后后台分身冷启动
+
+- in_progress：Helper 在描述文件尚未写入或过期时以固定嵌入 App 路径、bundle ID、instance ID、活进程 executable 严格核验并恢复描述文件，避免启动重复 Shell；后台 bind 等待 Firefox delayed startup 完成再隐藏窗口并返回身份，启动等待有界。需固定 Dev 重建、原生签名验证和冷启动验收。无 Cloud 改动。
+
+### NXR-WEBAGENT-COMMAND-FAILURE-RECOVERY-20261013：浏览器超时恢复与错误交回
+
+- implemented / source_verified：原生 BiDi 超时携带方法/等待时间，不包含 URL 参数；打开网页优先 SDK 重连、检查同一 context/Profile，已到目标则继续，否则最多重试一次，不启动额外浏览器/页面。点击等动作不盲目重放；执行异常以 durable failed evidence 交回 Agent 的失败/恢复分支，标注 action_outcome_unknown 与禁止自动重放，最终失败透出实际原因；重启后的 uncertain 动作报告失败而非无限暂停，响应无法提交则取消收尾。购物与情报均使用共享 runner。116 项跨浏览器/购物/情报/清理回归通过，含导航最多两次、同页已到目标不重开、错误交回及重启不重放回归。Dev/App-Dev 已经标准 Helper 重载；人工协助交互保持等待，非强制恢复或重复购物操作。无 Cloud/原生构建改动。
+
+### NXR-INTELLIGENCE-ACTIVITY-ISOLATION-20261013：更新阶段详情与信息源失败隔离
+
+- implemented / source_verified：活跃更新展示事件规划、逐篇整理翻译、保存阶段、当前文章序号/总数/标题、模型调用次数及阶段耗时；阶段时钟不随心跳重置，Desktop/Mobile 共用且保留防闪动渲染。浏览器 interrupted 或人工待处理结束当前采集子任务并记录源失败，不自动重放不确定操作，不阻塞其它源及已采集内容整理。浏览器超时提示与一般中断区分。44 项 Python 与 9 项 Node 回归通过，包含中断立即退出、阶段时间稳定、模型调用前报告活动；无 Cloud/原生改动。
+
+### NXR-INTELLIGENCE-MOBILE-POLL-STABILITY-20261013：Mobile 阅读防闪动
+
+- 状态：implemented / source_verified。Mobile 5 秒轮询保留，隐藏页暂停；刷新请求合并、快照和本地页面状态无变化时跳过渲染。列表/栏目/热点/稿件/详情/菜单按内容分别保留 DOM；实际变化同一阅读范围保留滚动与 details 状态。Lucide 只转换新增图标。静态 JS 变更无需重启或原生重建，Mobile 重新加载页面后使用新版。
+- 验证：本地无头 Chrome 390×780 触控回归通过，实际轮询 callback 验证图片/正文/卡片节点不变，任务进度改变不影响阅读；真实内容更新且保留展开、滚动/返回/右滑/分类/聊天/菜单正常。12 项 Node 单元回归通过，含请求合并、空快照首轮渲染、无变化跳过与本地导航变化；JS 语法及 diff 检查通过。文档 intelligence-center-v1 已更新，无 Cloud/原生改动。
+
+### NXR-INTELLIGENCE-EDITORIAL-20K-20261013：两阶段整理与逐篇保存
+
+- 状态：implemented / source_verified。情报结构化模型调用上限由 5000 改为 20000；事件计划与逐事件正文分离，保持引用/栏目/更新目标校验。截断从原证据缩短生成要求重试，记录模型/阶段/token 用量/finish_reason，不记录正文或密钥。成功文章稳定 ID 逐篇入库并持久化 checkpoint，失败证据不提交指纹，部分结果保留；手动更新复用 24 小时内同配置整理失败的源证据，定时采集不复用。Desktop/Mobile 活跃记录增加已保存情报数量。文档 intelligence-center-v1 更新。真实 Dev 验收完成：20K 被 provider 接受，读取 10 篇变化并生成/保存 6 篇情报，更新 completed，数据库已确认 6 篇文章。发现提交缓存准备与工作线程竞态并加入 ready 标记及启动恢复，缓存复用有回归覆盖。61 项 Python、3 项 Node 回归通过，包含成功更新后不再复用旧失败证据；Dev/App-Dev 最终实现已重载并通过健康检查。无 Cloud 或原生改动。
+
+### NXR-DEV-BROWSER-BIND-20261013：Dev 内嵌 Shell 版本同步
+
+- 状态：implemented / source_verified。Dev Local 已使用 Profile bind/background host，但 Dev 打包仍嵌入不支持 bind 的旧 Shell，后台采集报 Unsupported AppShell browser action，用户重试打开浏览器遇实例冲突。build-dev-app.sh 增加 Development-only 当前匹配 Shell/document/prompt overlay 与既有 background-host 补丁，并在打包时要求 bind 合同。固定 Dev 路径与实例数据不变，不修改 App Dev 或生产构建。旧 Dev Gecko startupCache 已归档，实测 bind 返回 bound。冷 Profile 没有初始内容 Tab 时，后台通过同一 BiDi host 创建指定 userContext 的首个 window；已有 context 则仍建 tab 复用，不启动额外进程。29 项后台回归和 11 项 Profile/workspace 回归通过。 最终 Dev 在线 ESPN-NBA 列表及后续多个文章读取任务 completed，article-rule-5 正在运行；原 Unsupported action / no bound context 均已越过，未宣称整轮情报完成。Dev 签名/身份/实时标题/健康检查通过；通用发行 verify-release-app 在既有 Dev 包缺发行 LICENSE 处停止，不能声明发行校验通过。
+
+### NXR-SHOPPING-NEW-LIST-CHAT-RESET-20261012：新清单清空旧调整对话
+
+- implemented / source_verified：refresh_list/重新推荐成功且新 plan 有效后，清空旧对话与输入草稿，新的生成说明不再混入对话调整记录；revise 保留同一清单对话，生成失败保留旧记录。清空后的状态随本机 draft 保存，重开不恢复旧对话。订单同步不完整提示移到独立同步状态，保留必要提示。仅 Package HTML/JS，刷新 Mini-App 生效，无 Local 重启。
+
+### NXR-SHOPPING-HISTORY-MERGE-20261012：生成前增量同步购买记录
+
+- implemented / source_verified / App-Dev online_verified：新增 refresh_list 公用后台能力，一次 Task 内检查近期订单、与上一个同 actor/分身已完成历史快照合并去重、重算日期/复购间隔，再经 Privacy AI 生成清单并打包结果；关闭页面不中断流程。遇到整页已知日期记录停止继续翻页，有限页数无法覆盖时提示不完整。旧 Task 历史与本机草稿均保留，不用短期源窗口覆盖长期记录。图片/购物车/打开商品接受新的经核验合并 Task 商品来源；前端展示最后同步时间，既有数据平滑复用，生成按钮与读取按钮统一进入增量同步流程。同日不同订单使用观察到的订单/商品 SHA-256 键区分，旧日期样本迁移不双算，原始订单号不持久化。46 项相关 Python 和 4 项 UI 回归通过；标准 Helper 已重载空闲 App-Dev，真实 refresh_list Task 完成：读 1 页后 known_page 提前停止，26 种商品历史保留、新日期 0、非截断，随后完成 Privacy AI 新清单；界面最后同步时间与结果/草稿正常。未制造真实新增订单或操作购物车，新增/重叠/同日订单去重由回归覆盖。原 X 窗口已恢复，购物达人留在主界面。
+
+### NXR-SHOPPING-PRODUCT-IMAGES-20261012：购物清单缩略图显示
+
+- implemented / source_verified / App-Dev online_verified：修复 Package 沙箱拒绝商品外链图导致空白的问题；后台从本 Mini-App/actor 已完成订单或搜索 Task 中提取实际图片 URL，仅允许固定 Amazon 图片 CDN HTTPS 路径、拒绝重定向，限流/大小/超时后生成 JPEG DataURL。现有清单初始化异步补图并保存到本机 draft，无需再读取订单或 AI 排序，保留原 CSP。SDK 与宿主增加受挂载授权的 product-images 业务调用，不能传任意图片 URL。23 项 Python 和 3 项 UI 回归、JS 语法/diff 检查通过；标准 Helper 已重载空闲 App-Dev，打开原购物清单自动补图，截图确认首屏商品图片正常。缩略图入本机 draft 持久化，未重新采集订单或调用 AI。
+
+### NXR-SHOPPING-PRO-MINI-APP-20261012：购物达人补货清单与购物车
+
+- implemented / source_verified / App-Dev partial_online_verified：新增可安装/开发挂载的 Shopping Pro Package（Amazon.com、默认分身可选），订单读取、隐私模型补货排序、勾选/数量调整、对话修改、新商品搜索、确认后购物车准备共用后台 Task。读取最近六个月最多六页订单，仅提取商品/日期，不采集地址/支付字段；频率基于已观察日期，缺失/不足标注不确定。清单/会话/任务引用保存在 actor/Mini-App 绑定的平台 SQLite draft，网页不持久存储。购物车只接受本 Mini-App/分身已完成订单/搜索 Task 的实际商品，按 ASIN 补足数量、不移除已有商品、不下单；逐项 durable action、结果不确定不自动重复点击。购物任务固定自然交互，限定 Amazon.com，同源、登录/验证码/未知结构均暂停。Privacy 不回退 Normal；未改 Cloud 或发布。65 项跨 Mini-App/Privacy/后台 Python 回归通过，购物专项补充后 15 项通过，3 项 UI 回归与语法/diff 检查通过。App-Dev 实际读取 Amazon.com 订单，保存/恢复 26 个观察商品，隐私标准模型按用户选择配置 DeepSeek V4.1 Flash（cloud/ai2apps/deepseek/deepseek-v4-flash），26 项均识别到购买日期，其中 7 项有可计算复购间隔；补货建议完成并勾选 3 项，对话修改数量完成；数据及对话 SQLite 持久化验收通过。真实发现商品目录超过指令长度限制，修复为 broker 注入受验证 catalog 数据输入，覆盖大目录回归；编译错误返回有界诊断。确认/取消购物车对话框已在线验证，未向用户真实购物车添加商品，加入/数量/核验/禁止订阅及不重放由模拟 BiDi 回归覆盖，真实购物车准备待用户勾选确认验收。未发布 Package；最新 Python helper 已通过标准 Helper 重载空闲 App-Dev；清单恢复不重复提交任务。
+
+### NXR-MINI-APP-ASSET-STARTUP-20261012：开发 Package 增量校验与脚本并行加载
+
+- implemented / source_verified / App-Dev online_verified：开发 Package 每次资源读取不再重复哈希/解析未变化的全部文件；每次仍遍历安全路径并比较文件集合、dev/inode/size/mtime_ns/ctime_ns，任何变化重新完整校验，返回独立 manifest 副本，移除 Package 清理缓存。正式安装 Package 的哈希验证不变。一搜到底经典脚本统一 defer，并行下载按原顺序执行；加载 gate 与频道授权不变。Python 修改已通过标准 Helper 重载空闲 App-Dev Local，HTML 刷新生效。39 项 Python、9 项 Node 回归通过。六个开发 Package 校验实测未缓存 58–68ms，缓存后 3.4–3.6ms。后台启动活动结束后，以新 mount_id 且完整分身/搜索表单可见为准，顶部整体刷新到 Ready 单次实测 2.10 秒（前一轮约 3.82 秒）；非稳定性能承诺，Local 冷启动期间仍可能受其它服务初始化影响。
+
+### NXR-SEARCH-ALL-STARTUP-PERFORMANCE-20261012：缩短首屏初始化等待
+
+- implemented / source_verified：首屏自定义源与分身通过一个宿主 startup 请求并行读取，共享一次能力目录/mount 检查，API 仍保持 actor/mount 授权；SDK 保留单请求队列。历史保留页逐项核验移到 Ready 后，不再阻塞表单；核验合并进行中的请求，开始新搜索仍等待检查并询问关闭旧页。旧宿主 SDK 保留串行兼容回退。仅宿主及 Package JS，刷新 Shell 生效，无 Python/Cloud/数据库或原生变更。33 项 Node 回归及 JS 语法检查通过，新增延迟历史页读取用例验证 Ready 不等待且新搜索等待同一核验。App-Dev 已刷新 Shell，完整分身/模式/表单正常；一次顶部整体刷新（包含宿主目录、分身及工作区刷新）到完整表单 AX 可见实测约 3.82 秒，不作为纯 Mini-App 启动时间或稳定性能承诺。
+
+
+### NXR-SEARCH-ALL-QUERY-BUTTON-20261012：搜索按钮放在输入框同行
+
+- implemented / source_verified：所有搜索模式统一将开始搜索按钮放在搜索输入框右侧；输入框自适应剩余宽度，按钮不收缩，保留表单 Enter 提交与初始化禁用状态。模式切换只移动分身/API 设置，不再移动搜索按钮。仅 Package HTML/CSS/JS，刷新 Mini-App 生效；JS 语法和既有搜索/启动流程回归通过。
+
+
+### NXR-SEARCH-ALL-COMPACT-CONTROLS-20261012：快速/优选控件合并一行
+
+- implemented / source_verified：快速和优选将搜索模式、浏览器分身、开始搜索排在同一 flex 行，模式说明置于行下；快速 API 设置跟随同一行，窄屏自然换行。切到自定义时将同一控件移回来源配置下方，保留选择/事件/初始化状态，不复制表单字段。仅 Package HTML/JS，刷新 Mini-App 生效。
+
+
+### NXR-SEARCH-ALL-BEFORE-SEARCH-20261012：未开始搜索不显示零条结果
+
+- implemented / source_verified：Search All 结果标题行在初始 HTML 中隐藏，仅实际来源搜索批次启动后展示；初始化、配置源及优选策略失败/取消均不冒充零条搜索结果。已开始且无结果时保留零条计数。仅 Package HTML/JS，刷新 Mini-App 生效，无后台或数据库变化。
+
+
+### NXR-AIB-MINI-LIST-HEADER-REFRESH-20261012：移除重复列表标题和刷新入口
+
+- implemented / source_verified / App-Dev online_verified：删除 AI Browser Mini-App 列表上方“应用”与局部刷新按钮，保留导航 Tab 和底部更多入口。顶部设置旁刷新统一更新分身/工作区/Mini-App 目录，并仅重新挂载当前展示的 Mini-App UI，重新进入其初始化加载流程；后台 Task 和任务页面继续运行，不重放任务。刷新期间禁用并旋转顶部按钮；用户在刷新途中切换视图时不抢回 Mini-App。26 项工作区/多语言 Node 回归与 JS 语法检查通过，仅模板/JS，刷新 Shell 生效，无 Local 重启或原生重建。App-Dev AX 确认列表重复标题和按钮已消失；顶部刷新禁用后恢复，一搜到底 mount_id 从 mnt_3ba298... 更新为 mnt_5150...，Ready 表单及默认分身正常。
+
+
+### NXR-SEARCH-ALL-STARTUP-READY-20261012：初始化完成后展示界面
+
+- implemented / source_verified / App-Dev ready_ui_verified：Search All 初始 HTML 隐藏并 inert 完整内容，只展示加载指示。语言/模式和同步事件绑定完成后，依次等待自定义源、保留页状态、浏览器分身成功初始化，才解除隐藏；失败或 45 秒超时只展示错误与重试。初始化后正常运行错误不再覆盖为加载错误；尊重减少动画设置。避免首屏空分身/未切换模式/未翻译文案闪现。Package HTML/JS/CSS 与 AI Browser 宿主重试监听，刷新生效，无 Local 重启或原生重建。重试仅接受当前展示且来源窗口匹配的 Mini-App，重新挂载并使用新认证频道，保留原有 load 撤销机制与后台 Task。12 项 Node 启动/失败/超时/搜索流程回归与 JS 语法检查通过。App-Dev AX 确认先显示宿主加载提示，随后 Ready 表单已完整翻译、优选配置正确隐藏来源、默认分身已选；原生截图复核。失败/超时及重试请求由回归覆盖，未人为制造在线启动失败。
+
+
+### NXR-SEARCH-SOURCE-DESCRIPTION-20261012：名称与模糊说明识别搜索源
+
+- implemented / source_verified：添加源输入支持 URL/名称/说明；URL 保留原直达分析，名称/说明先用 standard 档 resolve_source 公用后台 Task 给出最多三个官网候选/歧义说明，用户选择并确认实际 URL 后再走既有同源 discover_source 识别及 SQLite 保存。只识别名称的任务不执行浏览器动作，候选未核验前不宣称可搜索；无候选提示补充说明。候选 UI 不接受危险地址；最终后台 public_url/同源/实际控件校验保持。未改变数据库结构、未改 Cloud、未发布。96 项 Python、23 项 Node 回归与 JS 语法/diff 检查通过，覆盖纯 AI 解析不执行浏览器动作、候选边界/去重/危险 URL 过滤与原有添加/搜索流程。标准 Helper 已重载空闲 App-Dev；名称输入的真实模型候选生成尚未本轮在线验收。
+
+
+### NXR-SEARCH-SOURCE-PLUS-SIZE-20261012：搜索源加号与标签对齐
+
+- implemented / source_verified：Search All 来源标签统一 36px 高、inline-flex 垂直居中；加号改为 36px 方形圆按钮、18px 字号，移除大 padding；父级按中心对齐，复选框移除额外 margin，避免加号撑高一整行及文字错位。仅 Package CSS，不需 Local 重启或原生重建，刷新 Mini-App 生效。静态检查通过。
+
+
+### NXR-SEARCH-ALL-CUSTOM-SOURCES-20261012：用户 URL 自定义搜索源
+
+- implemented / source_verified / App-Dev online_verified：来源末尾增加加号与 URL 对话框。公用后台 discover_source Task 使用所选分身打开网站、检查实际页面、中档 AI 总结名称/说明并选择实际搜索控件；保存只接受本 Mini-App/actor 的已完成 Task 且控件确实存在。配置保存在平台 SQLite custom_search_sources 表，owner 隔离、URL 去重、最多 30 个、支持删除，网页不存 localStorage/IndexedDB。新搜索源用宿主固定 Source/明确同源 scope，AI 有界寻找搜索入口、输入原查询并提交搜索；列表用实际候选 ID 恢复并接入合并/去重/来源/排序/翻译/摘要和保留页面。优选可选择后台加入的自定义来源；前端不能传任意 Source/脚本。Migration 91 与版本常量同步。未改 Cloud、未发布。95 项 Python 与 22 项 Node 回归及 JS 语法/diff 检查通过；标准 Helper 重载 App-Dev。实际 Wikipedia URL 分析/新增成功，重载 Local 后数据库配置恢复，独立 DeepSeek 搜索返回两条真实条目并完成中文摘要/来源展示。新增对话框标题/URL/按钮文案已 AX 确认。在线发现控件 role 为 null 时的后台异常，已修复并覆盖，失败测试 Task 通过 UI 取消，复跑成功。原 X 浏览器窗口已恢复；保留新增示例源供用户体验。仅验证 Wikipedia，复杂登录/反爬或跨域站点仍可能需要协助。
+
+
+### NXR-WEB-MINI-APP-LIST-RECOVERY-20261012：网页结构变化的有界恢复
+
+- implemented / source_verified：公用 Mini-App Broker 为列表提取添加宿主恢复策略，复制并固定到新 Task，不修改签名 Package 或既有已排队程序。编译读取优先，仅结构/加载不匹配可回退：native BiDi 读最多 100 个可见链接，一次 AI 选择实际候选 ID（45 秒限时），拒绝未知/重复/空选择，沿用观察到的标题、内容、封面和 URL，保留顺序和结果上限。社交/视频限定真实内容链接；不编造互动数，回退标记元数据可能不完整。遵循 actor/分身/site_scope/隐私模型配置；登录、验证码、权限、服务不可用、排序未核验和不确定原生命令不会自动重放或放宽。开发契约明确语义提取、fallback、结果校验、八动作 adaptive 与复验要求。未修改 Cloud、未发布。80 项 Python 回归与 1 项 Node DOM 回归通过，覆盖改动卡片结构仍可提取、编译成功不调用恢复 AI、未知/重复/空候选拒绝、来源链接/作用范围、登录验证码与排序失败不回退及原有任务流程；diff 检查通过。经标准 Helper 重载空闲 App-Dev 生效。未人为修改线上第三方网页做端到端改版演练，不宣称任意改版均能恢复。
+
+### NXR-SEARCH-ALL-ORIGINAL-SUMMARY-20261012：可选原文总结与可信来源评估
+
+- implemented / source_verified / App-Dev online_verified：搜索结果后增加“AI 总结要点”和“找出更可信结果”按钮，不自动运行。按既有相关性排序选择最多 5 个网页候选，读取最多 3 篇成功原文，再以 standard ai.transform 总结，整个 read_results/AI/可信结果封装为同一个后台 Task。Broker 校验每个 URL 必须来自本 Mini-App 自己的已完成搜索 Task；每个导航遵守公开 URL 和 site_scope，复用 native BiDi/既有访问协助，付费/访问受限可跳过并列明失败。AI 不生成引用 URL，只返回实际读取 source_id，前端拒绝未知引用或空正文；可信度是已读取文章内的比较判断，不冒充全网独立核实。结论/来源随 JSON 导出，原文不进入导出。未改 Cloud、未发布。86 项 Python、22 项 Node 回归及 JS 语法/diff 检查通过；Helper 重载空闲 App-Dev。真实 Python asyncio 搜索后点击总结，一个后台 Task 读到三篇原文，生成中文要点、引用及官方文档优先的可信度理由，并说明 6000 字符上限/未完整通读/未独立核实。点击引用在 Default 打开实际 docs.python.org 文档；测试 Tab 已关闭，用户原 Tab 保留。AX 与截图已确认入口/报告/引用，未独立复验第二种 trust 模式的模型措辞。文档 ai2apps/docs/search-all-mini-app.md 同步。
+
+
+### NXR-SEARCH-ALL-MODES-20261012：快速/优选/自定义搜索
+
+- implemented / source_verified / mode_ui_verified：搜索表单默认优选，非自定义隐藏来源/上限/排序/广告/保留页面等设置。优选以 simple 档 ai.transform 公用后台 Task 选择 1–3 个允许的来源、每源 3–10 条和 X/小红书排序，验证模型配置并显示理由；菜谱优先小红书高赞/综合。快速优先用户配置 API，没有时显式 Google 网页搜索；Google 官方接口需要既有可用账号，另支持 SerpAPI Google/Bing（第三方）。配置经当前 Search All mount/actor 验证，密钥保存在平台 SecretRepository，任务/模型不含密钥，API 错误不回传带密钥 URL。search.api 为只读编译步骤，执行仍用后台 Task。未改 Cloud、未发布。64 项 Python、21 项 Node 回归及 JS/Package 语法检查通过；Helper 已重载空闲 App-Dev。真实菜谱策略选择小红书最多点赞+B站+Google，B站/Google/结果整理完成，合并 12 条；小红书排序未核验，未计在线成功，核验失败改为来源失败而非卡住同分身队列的中断，附明确建议。API 无浏览器 Tab/密钥日志脱敏已覆盖，未用虚构凭据执行真实 API。优选简洁表单截图已确认，快速 API 配置对话框和自定义恢复原有设置已在线检查；API 固定服务地址必须在审阅过的 Agent site_scope 内。文档 ai2apps/docs/search-all-mini-app.md 同步。
+
+
+### NXR-STUDIO-MORE-MINI-APPS-20261012：推广固定底部安装/定制菜单
+
+- implemented / source_verified：创意画坊、视频工作室、语音工作室使用共享固定底部“更多 Mini-App”入口，卡片独立滚动，弹出安装/定制菜单；九语言菜单与定制名称/需求表单。共享 ACPF 按当前宿主 manifest placements 过滤 Package，保留既有签名、依赖、审核安装链，安装后刷新目录及准备状态。私人 Coder 项目交接绑定正确 Studio，不套用浏览器 WebAgent 规则；语音工作室提示强制遵守 Quick Read 宿主输出及私人 Line 缓存约定。未修改 Cloud、浏览器协议或输出生产逻辑。8 项 Node 回归、4 模板解析及 JS 语法检查通过；Helper 已重载空闲 App-Dev。App-Dev 在线确认三个宿主的底部入口，创意画坊/语音工坊截图确认菜单布局和独立滚动卡片区；创意画坊实测 ACPF 宿主筛选标题、安装说明及定制名称/需求表单。未实际启动虚构需求的 Coder 生成或安装 Package。文档 ai2apps/docs/ai-browser-mini-app-library.md 更新。
+
+
+### NXR-AIB-MORE-MINI-APPS-20261012：安装和私人定制入口
+
+- implemented / source_verified / menu_online_verified：列表底部固定“更多 Mini-App”与安装/定制菜单，九语言。安装使用共享 ACPF 的 Package 选择面板，按 manifest miniApps.placements 只展示 AI Browser 适配项，分页读取既有 Registry catalog；安装调用既有签名/依赖/审核 install-operations，不绕过审核。定制收集名称与要求，经现有 Coder API 创建私人本地项目，用同源 sessionStorage 一次性传递项目 ID 与需求；Coder 核对当前可访问项目后打开原生 AI 开发面板，有工具模型时自动启动，无模型时提示配置。提示约束后台公用 Task、固定 UI、私人且不发布。安装完成刷新列表；未改 Cloud。30 项 Node 回归与四个 JS/Jinja 模板语法检查通过。App-Dev 原生界面确认固定底部入口、两项菜单、ACPF 按宿主筛选的空目录提示及定制需求框；当前无已发布 AI Browser 适配 Package，未实际安装或启动虚构需求的 Coder 生成。私人项目创建/需求交接有回归覆盖；完整 Coder 生成和安装签名链由既有流程承接，尚未本轮端到端执行。文档 ai2apps/docs/ai-browser-mini-app-library.md 已同步。
+
+
+### NXR-AIB-MINI-APP-LIBRARY-20261012：AI Browser 应用列表
+
+- implemented / source_verified：参照 Imagine Studio，应用列表加入 Lucide 图标、名称、两行摘要与版本，统一卡片间距和选中/hover/键盘焦点状态；安装入口改为虚线紧凑按钮，选中项显示箭头并设置 aria-current。目录刷新后更新图标，现有 Package、选择与任务机制不变。JS/Jinja 模板语法检查通过；App-Dev 刷新后 AX 与原生截图确认两个应用的搜索/地球图标、中文名称/摘要、版本、选中边框和安装按钮正常。仅模板/CSS/JS，无原生重建、Cloud 修改或发布。
+
+
+### NXR-SEARCH-ALL-SOURCE-SORT-20261012：各源搜索排序
+
+- implemented / source_verified：Search All 选择 X 时显示最新/热门，选择小红书时显示综合/最新/最多点赞；未选来源隐藏菜单，每个 Task 独立传递该源排序参数。Package 输入 Schema 声明枚举，后台复用 native BiDi SDK 的网站选中态校验与原生点击；X 支持显式排序覆盖起始 URL，原有情报中心 URL 推导排序行为保持兼容。小红书 SDK 增加最多点赞标签。AI 推荐排序仍在采集后进行，不把它当作网站排序。40 项 Python 回归及 JS 语法检查通过（含三种小红书排序校验与 X 显式热门覆盖最新 URL）；已通过标准 Helper 重载空闲 App-Dev。最多点赞完整后台在线验收待完成，未宣称通过。未改 Cloud、未发布。
+
+
+### NXR-SEARCH-SOURCE-LOGIN-HINT-20261012：登录态来源提示
+
+- implemented / source_verified：选择小红书、X、微博时，在搜索表单内显示当前所选浏览器分身的登录提醒；切换分身或搜索源立即更新，不同分身登录状态独立，搜索中遇登录/验证码从任务栏继续。无相关来源时隐藏。中英文文案；提示不宣称自动核验登录，不增加弹窗或阻止搜索。仅 Search All Package HTML/CSS/JS 改动，JS 语法检查通过；未改 Cloud 或发布。
+
+
+### NXR-XHS-SEARCH-COVERS-20261012：小红书结果封面
+
+- 追加布局：小红书有封面的卡片改为左图右文，封面区域 2:3、object-fit:contain 保留完整图片，右侧放作者/原帖、标题、四行正文和指标；窄屏缩小左侧封面而保留左右布局。无封面自动使用全文宽度。仅 Package HTML/CSS/JS 改动。 JS 语法检查通过，刷新 App-Dev 后真实三篇 Task 完成，AX 显示封面与独立内容容器；最终截图与 AX 状态不一致，未将截图视为该布局的视觉验收。
+
+- 状态：implemented / source_verified / App-Dev online_verified。小红书帖子卡片加入封面；后台从已观测、已加载图片区域通过 native BiDi captureScreenshot 生成 JPEG DataURL，不请求任意图片 URL 或绕过 CORS。单图最多 400 KB 字符、每次搜索累计最多 2 MB 字符，仅封面区域，异常不阻断正文。输出沿用 Task 结果保留周期，不另建文件缓存；AI review 不接收图片，排序后保留原始封面。前端仅允许 HTTPS 或有界 JPEG/PNG/WebP DataURL，拒绝 SVG/HTML。29 项 Python、18 项 Node 回归通过。已通过标准 Helper 重载空闲 App-Dev；“机械腕表”三篇均获取 DataURL（34,827 / 72,523 / 89,743 字符）和正文。原生截图确认封面图片及四行正文、互动指标正常显示，任务页关闭后继续显示。未改 Cloud、未发布。
+
+
+### NXR-INTELLIGENCE-SEARCH-SORT-VERIFY-20261012：X 搜索排序与小红书控件修正
+
+- 状态：implemented / source_verified / site_ui_verified。X 搜索信息源新增最新/热门，默认 latest，多个关键词共享排序；保存与编辑恢复，Desktop/Mobile 同一配置。按实测 URL，Latest 使用 f=live，Top 不带 f。共享 BiDi SDK 在 X feed 采集前校验 query 与 Tab aria-selected，必要时拟人点击，未确认则失败；覆盖编译缓存路径。帐号/列表不显示此排序。
+- 小红书实测发现“综合”推荐词和排序选项重名、按钮可能显示“已筛选”；排序 SDK 改为限定“排序依据”区域并识别已筛选，确认后收起菜单再读取，避免遮挡原生笔记点击。
+- 验证：74 项 Python、15 项 Node 回归通过。Default 分身 UI 实测 X F1 Latest→Top→Latest，URL 与选中态一致，Latest 秒级帖子正常；本轮新建测试 X Tab 已关闭。小红书机械腕表综合→最新切换，最新高亮并显示按时间排列笔记。尚未宣称完整频道刷新和后台排序 SDK 在线验收。文档已同步；无 Cloud 或原生修改。
+
+
+### NXR-INTELLIGENCE-XHS-SORT-20261012：小红书信息源排序
+
+- 状态：implemented / source_verified。信息源新增小红书关键词搜索与最新/综合排序，默认最新；粘贴搜索链接、编辑恢复及后台默认兼容均支持。保存 xiaohongshu_sort，后台共享 BiDi SDK 通过可见控件拟人输入选择并验证选中态；无法验证明确失败，不猜 URL 排序参数。Desktop/Mobile 共用设置与采集路径。小红书列表绕过自定义列表 Agent，使用共享站内搜索读取器。
+- 验证：54 项 Python、15 项 Node 回归通过，包括默认值/非法值/保存编辑、原生点击确认与未确认拒绝及后台采集回归。已通过标准 Helper 重载 App Dev Local，健康检查通过。真实小红书排序控件在线验收尚未完成；不宣称在线采集通过。文档 intelligence-center-v1 已同步，无 Cloud 或原生修改。
+
+
+### NXR-XHS-NOTE-CARDS-20261012
+
+- 最终验收（2026-10-12）：按用户最新授权切回 App-Dev。修正返回后笔记链接参数变化及不可点击链接匹配，按同站笔记 ID 选择有可点击区域的实际 DOM 链接，最多等待 6 轮列表渲染，保留新观测 URL。实际“机械腕表”三篇全部 detail_read，正文 47/305/36 字符，点赞/收藏/评论 40/15/3、169/64/51、508/285/38；UI 三张卡片显示正文、作者、日期、指标。点击“宇宙带着三枚新机芯，强势复兴”卡片的查看原帖，Default 新 Tab 打开同一笔记，正文与 169/64/51 一致。31 项 Python、9 项 Node 回归通过；文档已同步，未发布。下方为早期验证记录，所述连续读取待验证状态已由本轮解决。
+
+- 状态：implemented / source_verified / App-Dev online_verified。小红书通过同一后台任务顺序点击已观测笔记，读取可见正文/作者/日期/点赞/收藏/评论；最多 20 篇，每篇有界等待。遇验证暂停，不重放未知点击、不猜详情链接。卡片补充独立标题及收藏数；未读取正文明确提示，不以标题冒充正文。
+- 在线确认：Default 分身采集“焚膏继晷”正文 1003 字符，卡片显示 85 点赞、19 收藏、24 评论；点击卡片“查看原帖”在 Default 新 Tab 打开同一笔记并显示一致正文和指标。旧 Escape/关闭控件方案停止于第一篇，已改为 native BiDi browsingContext.traverseHistory 后退并确认搜索 URL 恢复；27 项 Python、8 项搜索 DOM Node 回归通过，search.js 语法检查通过。最后的原生后退方案已通过标准 Helper 重载，但界面控制持续返回 user changed / element invalid / screenshot unavailable，尚未在线确认三篇连续读取，不宣称已完整验收。 用户要求改用 Dev 验证，已停止操作 App-Dev；通过 Dev 自身 Helper 重载空闲 Local（50009 → 52931），打开其独立默认分身，确认小红书显示“登录探索更多内容”，等待用户在 Dev 登录。Dev 暂无 Search All 开发 Package 入口，未复制 App-Dev 状态；最新相关 Python 回归为 29 项通过。无 Cloud 修改、原生重建或 Package 发布。
+
+### NXR-WEBAGENT-DOM-READY-20261012：后台导航等待
+
+- 2026-10-12 追加：三篇 App-Dev 复验在首步导航仍触发 interactive 的 BiDi 响应超时（run_4c246712ab7e4b5d85d7fb732f790088），并非正文读取失败。改为 native wait=none，随后保留原有 delay 和 require_content 页面稳定性检查，不重放超时操作。31 项 Python 与 8 项搜索 DOM Node 回归通过；已取消中断测试，标准 Helper 重载空闲 App-Dev，在线复验三篇连续读取及卡片原帖打开通过，见 NXR-XHS-NOTE-CARDS-20261012。
+
+- 状态：implemented / source_verified。登录态小红书搜索页已有笔记，但 native BiDi complete 等待 30 秒超时；共享后台导航改用 interactive，并保留延时和内容稳定性检查，避免等待无关子资源。传输异常仍暂停，不自动重放操作。24 项后台执行及 X 滚动回归通过；已通过标准 Helper 重载空闲 App Dev Local。Default 分身在线复验“机械腕表”，小红书打开与 extract_list 均 success，持久化结果 10 条，任务 completed。检索页已保留；本次导航/读取无输入或点击，不宣称模拟打字。无需原生重建或 Cloud 修改。
+
+### NXR-XHS-LOGIN-HINT-20261012：小红书登录门槛识别
+
+- 状态：implemented / source_verified。最近小红书搜索失败任务页面有“登录探索更多内容”输入框提示且没有笔记；旧检测未包含 placeholder，误报 search_markup_unavailable。新增仅在无笔记时识别可见输入框登录提示，输出 needs_user / authentication，沿用共享 Task 登录协助流程，不关闭等待协助页面、不自动登录或绕过验证。16 项搜索 DOM Node 回归通过，含无弹窗登录提示；未宣称小红书登录后的在线采集通过。按标准 Helper 重载空闲 App-Dev Local，无 Cloud、原生或 Package 发布改动。
+
+### NXR-SEARCH-POSTS-20261012：X 继续加载与原帖翻译
+
+- 状态：implemented / source_verified。X 后台有界滚动收集、虚拟列表跨屏去重；原帖通过 actor/mount/caller 校验的任务结果 URL 与既有原生窗口生命周期打开，页面关闭后仍可打开。共享 AI review 检测帖子语言、翻译为应用语言并标记已翻译，保留原文。无 Cloud 或原生修改，不构建或发布 Package。
+- 验证：52 项 Python、35 项 Node 回归通过；实测 ASR Model 从首屏 3 条增至 8 条，默认前三张与展开另外 5 条正常，自动中文翻译/已翻译/原文展开正常；点击原帖在默认分身中新建并切换原帖标签页，既有标签不受影响。修复共享滚轮落点为内容视窗中心；有界采集停止原因展示于来源区域。已按标准 Helper 重载空闲 App-Dev Local。
+
+### NXR-SEARCH-ALL-LIFECYCLE-20261012：搜索诊断、广告过滤与保留页面
+
+- 状态：implemented / source_verified。补充来源失败诊断码与中英文处理建议，不投影原始 DOM；“剔除广告”默认开启，原生标记过滤加共享 AI review 广告分类；“保留搜索结果页面”默认关闭，可从来源/结果卡片切换到保留页面、统一关闭。后台 Task 持有页面；actor/mount/caller/分身/owned contexts 校验，仅管理自身已完成 Task，关闭后 native BiDi getTree 核验。SDK 请求排队，SSE 继续推送；刷新/重启恢复页面引用。新搜索检测旧页面并提供关闭并搜索/保留并搜索/取消。X 多关键词独立匹配取代连续短语误判，SPA 增加有界只读重试。
+- 验证：48 项 Python 通过，1 项原生集成测试按环境跳过；34 项 Node 通过（含三种新搜索选择、广告开关、SDK 请求排队及来源诊断）。JavaScript/Python 语法、diff 格式通过。按标准 Helper 重载空闲 App-Dev Local；实际同一 ASR Model 查询 X 返回 3 条帖子，共享 AI review 完成，元数据与推荐理由正常；实机验证保留页前台切换、重启恢复、询问/取消恢复、关闭全部后 cleanup=verified / remaining=[]，页面按钮消失。现有其他用户标签不在任务关闭范围。文档 search-all-mini-app、Package README、公共 Mini-App 合同已更新。
+- 发布边界：开发 Package 未签名发布；无 Cloud 或原生改动，不构建 Desktop。AI 广告分类依据有限摘要可能遗漏或误判；review 失败仅保留确定的 DOM 广告过滤，并明确提示整理失败。
+
+### NXR-BROWSER-PROFILE-NAMING-20261012：浏览器分身
+
+- 状态：implemented。统一浏览器 Profile 的中文产品文案为“浏览器分身”，默认为“默认分身”（繁体：瀏覽器分身／預設分身）。覆盖 AI Browser 管理与运行、Agent 编辑器、情报中心信息源/搜索推荐/网页导入、知识库网页导入及搜索和阅读 Mini-App。英文仍为 Profile，内部 Profile key、数据与隔离机制保持不变；模型和音色等非浏览器 Profile 不改名。无原生改动；本次通过 Helper 重载空闲 app-dev Local 刷新运行中的语言资源。5 项 AI Browser / 情报中心多语言测试通过，JavaScript 语法及 diff 格式检查通过。App-Dev 重载后已实测“浏览器分身”Tab、“默认分身”及分身列表显示。
+
+
+### NXR-SEARCH-ALL-MINI-APP-20261012：一搜到底
+
+- DuckDuckGo / Brave（2026-10-12）：新增独立搜索源及两步 compiled 后台能力，使用 native BiDi DOM helper，站点范围仅限对应搜索站点；支持结果链接及摘要、DuckDuckGo uddg 目标解码、语义标题 fallback、广告/站内导航过滤和验证/空结果/页面漂移区分。无 API Key、AI 调用或新浏览器控制协议。状态：implemented；43 项 Python、14 项 Node 测试通过，涵盖 compiled 能力、BiDi 提取分派、导航错误、链接安全、来源去重和验证分支。App-Dev 实测 mechanical watches：DuckDuckGo 与 Brave 各返回 3 条，合并为 5 条；重复 Wikipedia 链接保留两源标记。两 Task completed，任务页面已关闭并核验。后台 Python 变更已按规范通过 Helper 重载空闲 app-dev Local，无原生构建或发布。
+
+- 搜索源拆分（2026-10-12）：Google 与 Bing 独立勾选、独立 compiled 能力、独立站点范围及后台 Task；Mini-App 不再将 Google 失败自动转到 Bing。合并去重保留两个来源；平台通用搜索 Agent 原有回退保持不变。状态：implemented，19 项 Python（Package 编译/公共搜索 Agent/Task broker）及 8 项 Node（两源提取/合并来源）测试通过，JavaScript 语法与 diff 检查通过；App-Dev 实测表单已显示独立 Google / Bing 复选框及“独立执行”说明。本次未宣称 Bing 在线搜索验收。
+
+- Profile 选择调整：一搜到底改为下拉菜单，通过公用 SDK profiles() 与已鉴权宿主加载当前用户配置，仅返回 key/name/is_default；默认选择默认配置，加载失败不允许提交。无新增 Python API，无需重启 Local。
+
+- 导航调整：AI Browser 左侧栏目顺序为应用、网站、浏览器配置；首次打开默认选中应用并展示 Mini-App 选择界面。JavaScript 语法检查通过；静态页面刷新验证。
+
+- 状态：implemented / source_verified。新增普通 App Package `ai2apps/search-all` 与固定 Mini-App UI，支持勾选 Google/Bing、中文 Wikipedia、小红书、X、微博；来源分别进入公用后台 Task，沿用 Profile 与并发限制、SSE 状态、登录/验证协助。所有步骤 compiled，明确站点 scope；不依赖前端执行浏览器，不调用 AI。展示层交替合并链接、按规范化 URL/社交帖子 ID 去重，保留原始链接与实际 provider，支持 JSON 导出。Google helper 支持页面实际 opaque signed goto 链接；社交 helper 区分验证、空结果与结构变化，X 字面关键词检查排除无关时间线建议。
+- 验证：39 项 Python、10 项 Node 测试通过。App-Dev 实际 Google + Wikipedia 双源搜索显示 6 条结果；微博返回 2 条。Task 独立页面完成关闭与核验。小红书本次页面无可提取笔记，按失败处理；X 在线返回无关内容，最终过滤修正有回归覆盖但未宣称在线通过。开发 Package 已在 AI Browser 应用 Tab 挂载；最终 Python 修改按规范重启空闲 app-dev Local。文档 `ai2apps/docs/search-all-mini-app.md`、Package README 与 Mini-App 合同已同步。
+- 发布边界：未签名或发布 Package，未修改 Cloud 或原生组件，未构建/发布 Desktop。正式发布仍走标准 Package 签名发布流程。Google opaque 目标未知时跨来源去重有限；本次合并视图刷新不保留，独立 Task 历史仍可查看。
+
+### NXR-MODEL-PRIVACY-PROFILE-20261011：普通/隐私模型配置
+
+- source_verified：普通沿用既有默认模型文件和 Cloud fallback；隐私独立原子持久化，支持高中低对话/任务、多模态、绘图、语音和视频用途，允许用户明确选择本机/私有服务/云端模型。新增受 APP_SYSTEM_MANAGE 保护的 Local 配置接口，复用现有 live 目录与兼容性验证，模型 App 加入九语言配置切换。WebAgent Source/Package 应用及能力可指定 model_profile，公用后台队列保留选择，AgentRun 记录路由、子调用继承；隐私 Source 不可被普通上下文降级，缺少模型不回退。后台规划通过既有 actor 认证调用所选云端模型。相关文档 ai2apps/docs/model-routing-profiles.md。77 项 Python 测试、5 项 Node 回归通过，Python/JS 语法、九语言 JSON 和 diff 检查通过；标准 Helper 重载空闲 App-Dev Local 至56098，模型 App 实机显示普通/隐私切换，隐私三档均为“未指定”并提示不回退，普通保留原 Cloud 默认。未设置用户的实际隐私模型、未使用私人数据、未修改 Cloud、未发布。
+
+### NXR-WEB-AGENT-MINI-APP-20261011：AI Browser Package Mini-App
+
+- source_verified：新增能力、HTTP 参数拒绝/任务读取、当前 Package digest 校验、开发 Package 正常加载等 10 项测试通过；既有 Studio/后台 Task 回归 67 项通过，27 项 Node 回归通过，语法及 diff 空白检查通过。准确 App-Dev 任务空闲后由标准 HelperControlClient 重载 Local，端口49672；原生界面确认“应用”Tab 和 Web Reader 双能力 UI，真实提交进入公用任务栏并通过 SSE 显示等待浏览器响应。Package CSP 由既有资源接口统一拥有，与 Imagine Studio 相同，安装版保留 opaque sandbox；不增加前台执行器。真实列表能力已完成，返回 SJX 文章标题和链接；Mini-App 显示 completed，任务页面已关闭并核验。阅读正文能力已通过 Source/接口验证，尚未单独运行验收；示例未签名发布。
+
+- implemented：复用 Studio Package 注册、actor/mount/digest 校验及隔离 iframe，在 AI Browser 增加应用 Tab。Package 每个能力独立声明 WebAgent Source、输入及网站范围；后台统一 WebAgentInvocation/BrowserTaskRepository 执行，私有 MessageChannel 提交与读取，SSE 推送。新增双能力 Web Reader 源 Package、SDK、九语言入口及文档；不改 Cloud，不创建第二执行循环，不发布 Package。Python API 已由 App-Dev Local 重载；最后新增重复 request_id 的能力/配置/输入一致性检查，10 项定向测试通过。
+
+### NXR-VIDEO-ASSET-SLOTS-20261011：Video Studio 统一素材槽
+
+- 2026-10-11（source_verified）：复用 Image Studio 的 Asset Slot v1，扩展明确的 video/audio 类型与多选快照，Video 内置首尾帧、参考图片/视频/音频、提取音轨与视频放大统一选择、预览/文件名、替换、清除、键盘和拖放交互。Mobile 通用文件/照片/Gallery 选择面板与触摸 Gallery 拖放现在识别素材槽根节点；Host 保持素材校验、容量、顺序与 Blob URL 生命周期。Composer 批量导入、项目、遮罩、JSON 和 Package 私有槽维持专用控件。Frozen Time vendored 组件与 CSS 保持字节一致。43 项相关 Python、34 项 Desktop/Mobile/素材槽 Node 回归，以及 JS/Jinja 语法和 diff 检查通过；仅本地源码，未发布 Package。Desktop/Mobile 实机待验收。
+
+### NXR-VIDEO-SHARED-OUTPUT-20261011：Video Studio 共享 Output
+
+- 2026-10-11（source_verified）：Video Studio 右侧改为与当前 Mini-App 无关的宿主统一 Output，合并文/图/参考生视频、合成器、提取音轨、视频放大和 Package Mini-App 的运行记录；直接返回的 Package 文件结果也在本页保留多条。选中结果后可按媒体类型预览、下载、导入 Gallery，并可在多 Artifact 结果中切换。切换左侧 Mini-App 不再替换右侧输出或隐藏其它历史。43 项相关 Python 和 2 项 Node 回归通过，JS 语法与 diff 检查通过。仅静态模板、JS、CSS，App-Dev 刷新加载；未重启 Local、重建 App 或发布 Package。真实 App-Dev 界面与 Package 结果仍待现场验收。
+
+### NXR-X-READ-WAITING-PAUSE-20261011：X 更新失败与等待任务暂停
+
+- 自适应规则App Dev加载：仅重启空闲app-dev Local至61663，health200、原生标题确认。现有X：F1单源更新66b460a23cc5461fb910e48a7f8375b1被social冷却正常deferred，未访问X/学习新generation，未绕过冷却，真实学习验收待下次允许访问。
+
+- 2026-10-11 X自适应编译规则（source_verified）：BiDi只读SDK观察帖子容器及正文/时间永久链接/作者/照片选择器，旧属性失效时按语义容器/语言正文回退；AI仅选实际观察索引，不生成JS或任意选择器。保存owner隔离的普通WebAgent draft与编译generation，AI Browser可见；独立读页对比帖子ID、URL、正文与照片后激活，同draft版本修复。正常读取复用generation不逐帖调用模型，漂移失效缓存，每source/template/collection一次持久修复尝试。保留拟人、Task树/Profile、登录挑战、journal不确定性与清理边界。62项Python及3项Node回归通过，含属性改版/编译复用/失败校验/owner版本隔离；文档更新，无Cloud/原生协议改变，需App Dev Local重载，真实X更新尚未验收。
+
+- X增强加载验证：修正日志f-string在内嵌Python3.11的引号兼容，系统Python3.9 AST检查及36项X/采集回归通过；App Dev Local重载至59425，health HTTP200。55项完整回归及拟人契约保持；未启动真实批量X更新，不声明网站端覆盖验收完成。
+
+- 2026-10-11 X采集增强（source_verified）：取消每次5篇正文与合并后800候选截断，读取全部已发现且未收录的候选；单篇已知读取失败记录URL/原因并继续后续帖子，保留成功证据，失败不标已采集，部分失败仍如实标记。列表上限20轮/200唯一帖子，连续3轮无新增结束；详情仍原地重试，登录挑战/不确定操作保留中断门禁。默认拟人及5秒详情间隔不变。55项Python回归通过，包含超过5篇/第4篇失败后继续第8篇、加载空档与超过3轮列表发现；文档更新、diff检查通过，仅app-dev经Helper重载，不改Cloud/浏览器协议、不重建App。真实新一轮X覆盖量待用户更新验证。
+
+- app_dev_verified：真实 X：F1 更新在 article-3 找不到正文后抛出异常，waiting_input Run 暂停又被状态门禁拒绝，造成重复错误与频道挂起。X 正文缺失现在返回明确 failed 结果；详情重试不滚动，feed 保留滚动。Schema 90 允许 waiting_input→interrupted，保留 pending interaction 并补偿等待期限；未绕过不确定操作的重复执行保护。
+- 验证：87 项 Python 回归通过（X、后台页面、情报采集、Agent）。通过既有 HelperControlClient 仅重启 app-dev Local，当前端口55573，Schema90加载成功；未重建App、未触碰dev/Cloud。UI结束旧的失败正文子任务后，频道实际显示“部分完成”：读取3篇、发现1篇变化、生成/更新1篇情报；已收录内容保留。未声称第4篇正文恢复或所有X页面采集通过。
+
+
+### NXR-MOBILE-STUDIO-LOAD-20261010：Studio Mobile 页面加载回归
+
+- 2026-10-11 Gallery手机素材选择预览（in_progress）：统一选择面板改为双列缩略图卡片，图片lazy预览、视频静音metadata预览、音频类型占位；显示名称与媒体类型，失败保留可选占位。仅使用actor-scoped Gallery content路径，不接受素材记录中的任意预览URL；CSS限定sm-sheet，避免污染素材库/其它Mini-App。无需Cloud/Runtime/Package变更，iPhone待刷新验收。
+
+- Gallery选择预览source_verified：22项Node回归通过，覆盖缩略图、视频metadata、音频占位、加载失败回退、名称安全显示及拒绝任意previewUrl；diff检查通过。真实iPhone展示尚待复测。
+
+- 2026-10-11 Mobile素材槽统一（in_progress）：统一面板识别标准data-asset-slot及label槽；Frozen Time隔离Package经已授权MessageChannel请求Host素材面板，复用文件/照片/Gallery选择。每次请求仍校验actor/live mount，限定MIME集合，取消/通道撤销返回空选择，不弱化sandbox、不向Package暴露Cookie或任意URL。Desktop原生选择及拖拽保持原样；静态Host与Mini-App源码更新，无Cloud/Runtime修改，iPhone待刷新验收。
+
+- Mobile素材槽source_verified：21项Node回归通过，覆盖统一菜单、隔离Package选取/取消、禁用后拒绝迟到选择、Desktop与Gallery/Output既有行为；JS语法与diff检查通过。Package源码与标准槽副本同步；未发布Package，未宣称真实iPhone验收完成，Dev刷新重开测试。
+
+- 2026-10-11 Frozen Time手机不能滚动（in_progress）：Mobile通用create面板display:block!important覆盖Package的flex布局，iframe收到内容高度后在overflow:hidden父容器下被截断。只针对Mobile Imagine Package-active恢复列flex布局，wrapper/iframe零flex-basis与min-height，iframe height:0!important覆盖SDK内联内容高度，由iframe内部保留唯一滚动容器。内置Mini-App、Output、桌面及画布touch-action不改；新增手机样式回归，不需Cloud/Runtime/Package或Local重启。真实iPhone待刷新验收。
+
+- 手机滚动修复source_verified：3项Package布局回归、14项Mobile导航/Output回归通过，diff检查通过；静态资源按mtime换缓存。未宣称iPhone实机通过，用户刷新重开即可验收。
+
+- 2026-10-11 根因确认，Cloud交接待部署：截图真实mount存在且mounted；公网真实mount/draft与frozen-time/models返回Nginx HTML 404，同Host直连Local/draft为Uvicorn JSON 403，公网同mount/capabilities为Local JSON 403。证明公网精确路由遗漏，请求未到Local；早先mnt_test探测不足。已写`docs/ai2apps-cloud-frozen-time-mobile-routing-20261011.md`，包含草稿及完整Frozen Time方法/路径、安全边界与iPhone验收。遵循Cloud变更边界，未改Cloud/部署/重启，不绕过404或回退易丢失的localStorage；手机完成仍等待Cloud补齐。
+
+- 2026-10-11 手机已恢复Frozen Time入口，启动“恢复设置”404（in_progress）：Dev真实Local草稿/能力接口匿名对照均401，证明路由已注册；新增经PublicDeviceBoundary、Owner租约与隔离Studio应用的草稿GET集成回归，49项通过。当前日志未见对应Mobile Studio错误，尚不能归因Cloud或挂载失效；SDK HTTP错误增加仅pathname诊断，排除query/凭据，保留失败门禁，不将404静默当作空草稿。待手机重试返回具体路径；不声明已修复，不重启/不更新Runtime。
+
+- 2026-10-11 手机Package入口缺失诊断（in_progress）：Dev桌面Frozen Time可见且定义启用；手机截图仅内置列表。修复Imagine列表捕获错误后静默忽略的行为：SDK缺失、无效响应、HTTP失败在列表中安全显示并提供重试；失败保留既有Package入口，成功刷新去重。SDK错误保留HTTP状态。匿名公网与同Host Local均403属于未授权预期，不能据此断言Cloud问题；真实手机列表请求仍需刷新取错误证据，不宣称启动已修复。
+
+- 入口诊断回归：6项Node通过（SDK缺失、HTTP失败保留入口、重试恢复、无效响应、刷新去重及手机导航），SDK语法与diff检查通过。仅静态源码，手机重新打开Studio即可加载，不重启实例或中断生成。
+
+- Dev诊断加载：3项启动门禁Node回归通过（含实际阶段/错误textContent显示、超时与资源错误），语法及diff检查通过；仅dev经既有HelperControlClient重载至50009，健康正常。具体手机失败阶段及请求状态仍待重试截图/新增网关日志，不宣称修复完成，不再操作app-dev。
+
+- 2026-10-11 Dev手机仍失败（in_progress）：已澄清为独立dev实例；Dev plist指向当前源代码，重启健康正常，但现有日志无本次手机失败请求，不能认定先前清单补齐已解决。Frozen Time启动失败增加阶段及错误的textContent展示（不再隐藏真实错误），Mobile Studio网关只记录失败method/path/status、不记录query/凭据/草稿。待用户重试后的证据定位；不改Cloud，不声明手机已通过。
+
+- Frozen Time Mobile回归完成：93项Python通过，精确清单与真实嵌套路由一致，未授权调用401，原生保存/非Studio/非法方法保持拒绝；数据库草稿隔离与Frozen Time生命周期回归通过，diff空白检查通过。原生UI确认当前渲染已完成后，经既有HelperControlClient仅重载app-dev Local，无App重建、无其它实例操作。iPhone远程完整启动仍需用户刷新复测；前项Save As内嵌Shell更新尚待加载，不计实机完成。
+
+- 2026-10-11 Frozen Time启动接口清单补齐（in_progress）：用户手机显示启动失败；源码确认数据库草稿GET/PUT/DELETE与Frozen Time模型状态/几何预览/生成/转换/成品内容均未纳入owner_studio_routes精确清单，前端启动必须先取draft再读models。仅补齐已有mount/actor/installation/Studio范围保护的Local接口，不开放通配代理；原生.pvt Save As及client/native-export保持不对Mobile暴露。不改Cloud、不更新模型/Runtime，需Local重载；回归进行中，截图不能单独证明线上具体HTTP错误，实机待复测。
+
+- dev_local_verified：补齐素材槽 CSS/JS 与 Gallery Mini 样式的精确 Mobile 静态清单；兼容 FastAPI 延迟嵌套路由，逐叶保留精确方法/路径及依赖，不开放未批准接口。Dev 日志确认模板资源拒绝及 `_IncludedRouter.methods` 两类 500；Mobile 失败 iframe 重开时重建，提示不再误断言 CSP。57 项后端（含三个 Studio 模板、Gallery Mini 与权限边界）及 8 项导航回归通过。固定 Dev Helper 重载 PID 91293/63670，健康及三个新资源 HTTP 200；未重建 App/未修改 Cloud，iPhone 实机待用户复测。
+
+### NXR-GALLERY-MINI-TOUCH-20261010：素材侧栏缩略图遮挡
+
+- source_verified：窄桌面iframe误触发gallery.css中max-width:760px触屏拖拽柄，44px按钮遮挡缩略图。将拖拽柄样式迁入仅Gallery Mini-Entry加载的gallery_mini.css，限定surface并改用pointer:coarse；桌面隐藏按钮、保留原生缩略图拖拽，触屏保留44px手柄。更新静态缓存版本，新增样式隔离回归；无需重建App或重启Local。
+
+### NXR-FROZEN-TIME-20261009：静止时间 Mini-App 与模型包
+
+- Save As回归补齐：61项Python通过（含native helper认证/禁止Origin网页调用/非法JSON与路径/取消/超时/已有包保护及Run范围），14项Node通过（含Output取消不显示保存成功及既有动作编辑）。Shell与Package JS语法、git diff空白检查通过，Imagine静态缓存版本更新。仍未替换正在渲染的App-Dev，也未声明原生对话框实机通过。
+
+- 2026-10-11 Output原生Save As（source_verified，待App-Dev加载/实机验收）：将.pvt专用保存路由从固定Downloads写入改为已授权成品进入本地native export队列；AceFox Shell使用nsIFilePicker.modeSave原生另存为，返回用户选择路径，经已有Helper bearer认证完成保存。网页不能传目的路径，取消不落盘、超时/重复完成拒绝、不覆盖现有文件包；仍输出真实.pvt目录包，不重推理/不写Photos。普通文件保留Shell原生下载流程；Mini-App备用保存文案改为另存为并处理取消。51项Python及2项Output Node初始回归通过；新增真实认证接口回归待跑。需固定App-Dev构建脚本叠加更新shell.mjs后重载Local；检查发现用户正在Meridian refinement 35%，本轮未重启/替换App、未中断任务。生产需采用含此Shell源码的新AceFox快照；不发布Package/Runtime/Cloud。
+
+- 2026-10-11 Package草稿持久化及动作恢复（source_verified）：发现“震撼登场”9关键点仍在64035浏览器草稿，当前App-Dev端口49778使localStorage隔离。改用mount授权的本地StudioRepository草稿，校验actor/installation/Studio实例/Mini-App声明；首次读取只在数据库无记录时迁移当前origin旧草稿并保留备份。通过StudioRepository恢复“震撼登场”至该账号/安装/Imagine实例，旧origin保留，另备份ai2apps/.build/frozen-time-recovered-64035.json；已有动作不覆盖。55项Python回归通过，JS语法与diff检查通过；三Studio脚本缓存版本更新。通过已有HelperControlClient仅重载app-dev Local，端口49778→51517，未重建App。用户切换至其它页面，未计动作菜单实机确认；不改Cloud、不发布Package/Runtime。
+
+- 2026-10-11 动作保存简化（source_verified）：空白名称直接更新当前自定义动作；当前为内置动作时保存同名自定义副本，不修改内置定义。输入名称与已保存动作重名（忽略大小写）时双语确认覆盖，取消不修改；覆盖保留ID，不新增重复条目。移除独立重命名按钮，新增名称仍保存新动作。Node回归覆盖空白/重名确认与取消/内置副本/锁定；仅Mini-App静态JS，不更新模型/Runtime或发布。
+
+- 2026-10-11 十五关键点（source_verified）：关键点数量扩至3/5/7/9/11/13/15，默认5保留；草稿/命名动作恢复支持新增数量，拒绝超限17点。Node回归覆盖新增数量恢复及全部预设/幅度/帧数/返回组合，10项通过；仅Mini-App静态JS，不更新模型/Runtime或发布，刷新加载。
+
+- 2026-10-11 九关键点（source_verified）：编辑动作数量支持3/5/7/9，默认5不变；草稿与命名动作恢复接受9点，逐帧轨迹及返回原点沿用Package内实现。Node回归覆盖9点保存结构恢复及全部预设/幅度/帧数/返回组合；仅Mini-App静态JS，刷新生效，不更新Runtime/模型或发布。
+
+- 2026-10-11 启动提示去重（source_verified）：Imagine宿主占位仅在尚无Package iframe URL且无错误时显示；iframe出现后由Mini-App独占启动状态，不再与上方“正在打开Mini-App”同时显示。保留挂载前占位和错误重试，不修改其它Studio共享样式；模板回归通过，刷新Shell即可生效，无需重建App、重启Local或发布模型。
+
+- 2026-10-11 Meridian 0.1.2（published）：参考视频每轴上限384→768，保留32对齐、24fps、精确帧数与输出比例检查。33项模型契约通过；最终签名Package独立managed安装以768×768参考真实输出73帧512×512视频HTTP200，停止/重启/卸载通过，总安装与验收652.57秒（不等于纯推理耗时）。submission e98080ff-9c63-4c77-af8b-1bb309dcb034；123804字节，SHA-256 3878dffef11667a090fbf56b96671d4e4be2ea46cdcef8cad8bb157002aaa78f。匿名Registry v282完整文件与签名一致；既有双源checkpoint Index v138签名回读通过，复用H3 0.11.0与Runtime1.8.11，无权重更新、无Runtime/Mini-App发布。Dev59350 Discover显示服务器0.1.2和AI2Apps Publisher，未代装到用户App-Dev。测试参考复用缩放几何视频，仅验收尺寸可用，不宣称画质改善或全部帧数/尺寸组合已实测。回执docs/ai2apps-meridian-0.1.2-release-2026-10-11.json；本次Dev Cookie授权已完成并失效。
+
+- 2026-10-10 参考视频提速开关（source_verified）：新增双语“低分辨率参考视频提速”，默认开启保留半尺寸参考，关闭使用完整尺寸参考；保持原裁切比例及成品分辨率。设置保存到草稿，经Gateway/API传递并纳入预览缓存匹配，切换要求重新预览；任务中锁定。45项Python与12项Node回归通过，包括真实编码73帧半/全尺寸参考、相同成品尺寸、缓存设置不匹配拒绝、默认值与草稿契约；两份JS语法与diff空白检查通过。仅Host与Mini-App，不更新Runtime或模型包、不发布；需要重载app-dev Local并刷新UI，本轮未运行Meridian画质/速度对照。
+
+- 2026-10-10 Frozen Time启动门禁（app_dev_verified）：原生hidden隐藏整个编辑UI，完成宿主连接、语言设置、草稿恢复及模型能力检查后一次性展示；启动阶段显示双语连接/恢复/检查状态，失败或30秒超时提供重新加载按钮，脚本错误不泄露半初始化控件。15项Node、2项Package Python通过，JS语法和diff空白检查通过；App-Dev实机从启动占位进入中文已初始化UI，保留历史Run及草稿设置，没有触发推理。仅Package前端，不更新Runtime或重建App，未发布。
+
+- 2026-10-10 Imagine全槽复查（app_dev_verified）：调整图片原图入口改用Asset Slot v1，删除独立导入按钮和空态Canvas文件选择器；处理Canvas保留，批量文件/目录选择器保留专用逻辑。其它内置Mini-App参考槽与Frozen Time已经接入标准槽。新增单图输入覆盖测试，防止继续新增独立单图选择器。15项Node与13项相关Python通过（既有ACPF设备选择测试排除）；Output图片逐个内置Mini-App槽位拖放测试通过。App-Dev实机确认调整图片使用标准槽；当前Local已重载，旧Run的MP4成功加入Gallery（已加入Gallery · Recent），前项视频导入实机待验项已闭环。仅前端刷新，不更新Runtime或主动重启Local。
+
+- 2026-10-10 共享素材槽与MP4 Gallery导入（source_verified）：新增作用域隔离Asset Slot v1，统一图片选择/替换/清除/键盘/拖拽/锁定/contain预览，Imagine全体共用参考槽、Video首尾帧、Frozen Time接入；Package内vendored副本以字节一致测试约束，不跨iframe引用Host样式。Output MP4新增Artifact拖拽及添加Gallery入口，Gallery经拥有者/Studio实例校验的Imagine导入API接收，静止时间视频不再错误走图片历史路径。接口文档docs/ai2apps-asset-slot-v1.md。57项相关Python与15项Node通过；另有17项Gallery/导航/素材槽测试通过。排除一项既有设备ACPF模型选择测试失败（CUDA预期与当前Mac候选不符）。App-Dev实机已验证选图、清除控件及完整不裁切预览；MP4实机仍运行旧导入API，提示历史内容未找到，需从Helper重启Local后验证。仅本地代码，不发布；禁止打断当前生成。
+
+- 2026-10-10 Output原生PVT保存分流（source_verified）：除desktop模板标记外，同时识别当前/同源父窗口的Local Shell bridge，避免App内容iframe被标记browser时绕过save-live-photo而弹出ZIP下载。更新Imagine Studio脚本缓存版本；复用已生成JPG/MOV保存原生.pvt目录包，不把ZIP改后缀，不重新推理。桌面及Shell iframe下载分流Node回归通过；静态刷新生效，无Local重启或App重建。
+
+- 2026-10-10 就绪隐藏安装入口（source_verified）：当前几何模型与Meridian均就绪后隐藏安装/配置按钮，运行中仍隐藏；切换到未就绪几何模型或缺少Meridian时重新显示。9项Mini-App Node回归通过，包含就绪/运行/切换/缺依赖状态。仅Package静态JS，不刷新正在渲染的页面，不重启Local/重建App/更新Runtime或模型。
+
+- 2026-10-10 默认线性过渡（source_verified）：所有新建及预设动作关键点默认线性；恢复未设置过渡的旧草稿/命名动作时也按线性处理，明确保存的平滑选择保留。Canvas、3D示意与提交模型的逐帧计划共用同一插值规则。8项Node回归通过，含1008组预设组合的默认线性断言及旧草稿恢复验证。仅Package静态JS，刷新Mini-App生效，不更新Host/Runtime/模型，不发布。
+- 2026-10-10 3D示意区块顺序（source_verified）：将3D运镜示意插入编辑动作之前，独立details折叠逻辑不变。8项Node回归通过，包含DOM插入顺序契约。仅Package静态JS，刷新Mini-App生效，不更新Host/Runtime/模型，不发布。
+
+- 2026-10-10 命名动作及轻量3D示意（app_dev_verified）：编辑器默认details折叠，命名动作存入现有Mini-App草稿通道的motionPresets（最多100条/名称60字，拒绝重名，支持所选自定义动作重命名），镜头菜单列出自定义动作；保存关键点/过渡/滤镜/帧数/返回规则，自定义动作禁用幅度再缩放。独立离线Canvas透视场景以中央盒子与远处背景柱体展示实际逐帧相机计划，支持播放/暂停/时间拖动，MP4/PVT包含返回序列、HTML不返回，关闭/切页停止动画；中英双语，无网络/模型调用。8项Node回归（含1008组轨迹）及2项Package契约通过；固定app-dev64127静态强刷，确认默认折叠、保存后菜单选择、刷新后预设保留、中文重命名、3D播放及时间轴650/1000定位2.58s实机通过，27条Run保留。保留“示例 · 推近环绕”供用户测试。仅Package静态代码，不改Host/Runtime/模型、不重启Local/重建App、不发布。
+
+- 2026-10-10 轨迹业务下放Package（app_dev_verified）：Mini-App使用同一JS采样器计算逐帧相机/滤镜参数、海报帧及返回原点播放索引，提交`ai2apps.camera-frames/v1`。Host只校验有界参数/索引并执行几何、固定通用滤镜和模型任务，不接收动作名称/幅度/关键点或执行插值；preview缓存匹配完整轨迹，schema-2转换缓存保存Package播放顺序，HTML用原始帧、MP4/PVT用播放索引。旧schema-1成品转换保留独立兼容规则，旧关键点草稿格式在Package侧编译；无需更新Meridian/Runtime。123项Python、6项Mini-App Node回归通过（含1008组预设/幅度/关键点/帧数/返回组合），另12项Studio Node回归通过；端口61934空闲Local由原Helper重载至64127，中文Mini-App、模型就绪、默认实况照片及27条历史加载通过。未重建App、未发布Package、未运行Meridian GPU推理。接口说明：`docs/ai2apps-frozen-time-frame-plan-v1.md`。
+
+- 2026-10-10 曲线关键点过渡（app_dev_verified）：每个点可选平滑/线性，表示到下一个关键点的插值；默认平滑兼容旧草稿，最后一点禁用过渡菜单。Canvas/几何预览/成品共用相同smoothstep或线性插值，改动失效旧预览，转存保留采样后的真实路线。84项Python及4项Node回归通过；仅重载空闲app-dev Local（39070→41298，端口61934），实机选择线性及恢复平滑验证通过。不重建App、不更新模型/Runtime、不发布Package，本轮未运行GPU渲染。
+
+- 2026-10-10 Frozen Time UI细化（app_dev_verified）：转存/原生PVT保存区仅本轮正式渲染成功后开放，不自动回填历史最新成品；选择新图、编辑轨迹或重新预览后隐藏。新草稿默认Live Photo，已有明确格式草稿保留。编辑Canvas在当前实线背后绘制其余7参数低透明度虚线，按各自范围归一化并附图例；增加更浅的10%时间竖网格。4项Node回归通过，端口61934实机确认默认实况照片、历史Output存在时转存区仍隐藏、背景虚线与竖网格可见，27条Run历史保留。与过渡Host改动一并重载Local，不重建App、不发布Package/模型/Runtime。
+
+- 2026-10-10 Imagine Package Mini-App 双滚动条修复（app_dev_verified）：Package-active 工作区关闭外层滚动，Package wrapper及iframe使用min-height:0的flex布局填充剩余高度，由iframe文档独占内容滚动；内置Mini-App及其它Studio不受影响。1项布局契约及11项移动Studio回归通过；固定app-dev58516强制刷新后，在曲线编辑区域实机截图确认仅一条内容滚动条，Mini-App标题保留在外层，动作草稿和27个Run保持。仅Host CSS，未更新Runtime/模型/Mini-App或重建App，Desktop发布待后续纳入。
+
+- 发布后 Discover 实机检查：固定 app-dev 58516 搜索 Meridian，卡片及详情显示 `ai2apps/model-meridian-mlx`、Publisher AI2Apps、服务器0.1.1及73–243帧说明，本地仍0.1.0。没有替用户点击安装/卸载，留在搜索结果页供更新。
+
+- 2026-10-10 Meridian 0.1.1 已发布：submission `220a4098-e9ef-49b2-b110-0ea96fa8cd40`，Package SHA-256 `f21aed39dc40a268e6fa476cd4e37feb2ef1f2b737b083154159dfa2efdc3292`，123650 bytes；匿名 Registry v280 精确下载字节和签名 envelope 验证通过。新双源分发 `dist_ai2apps_meridian_adapters_mlx_6e84e624_v1`（HF `6e84e62425587cbe1a57e39508eb5d1aff2fcaba` / MS `810cc67a74d5b7147c99fad5c4609e61e7157979`）使用标准 metadata-verified 签名构建，真实固定 HF snapshot SHA-256 与 MS 最终文件 metadata 一致；匿名分发索引v138验证通过。最终签名包在隔离managed安装中使用Runtime1.8.11内嵌Python3.11实际输出90帧512×512/24fps，H3 0.11.0依赖解析、停止/重启/卸载通过。不更新Runtime，不重复打包H3。支持73/90/107/124/141/158/175/243帧；本轮真实GPU验证90帧，不宣称所有长度的画质/性能已验收。Host/静止时间113项及模型25项回归通过，曲线UI中文显示正常；Mini-App未发布、app-dev仍安装旧模型0.1.0，需要正常更新后才能选择新帧数。发布凭据：`docs/ai2apps-meridian-0.1.1-release-2026-10-10.json`。本次Cookie发布授权已完成，不延续到其它Package。
+
+- 2026-10-10（in_progress）：静止时间曲线动作编辑器：3/5/7关键点，时间/数值拖拽、选中数值回车提交及范围裁剪；X/Y/Z旋转、相对距离、模糊/饱和度/曝光/亮度，预设回填、草稿保存、编辑后预览失效。“返回原点”要求整组参数中性，成品倒放至最后一个中性关键帧。Meridian 0.1.1 源码增加官方8种帧数，下载并lossless转换对应固定编码（总约85.8MB，新增约75.7MB，作为双源checkpoint分发；Service Package不内嵌），复用现有adapter权重及H3 Package。111项Host/UI契约和25项模型契约通过；真实90帧512×512推理190.18秒、MLX峰值34.2GiB。两个不可变镜像已上传，签名分发、最终签名安装QA和发布验收进行中；Mini-App不发布。
+
+- 新镜头开发 UI 验证：app-dev Local 恢复到56586，打开静止时间后中文“幅度”显示默认“中 · 10°”，镜头菜单包含并可选择“推近后环绕2”，模型状态已就绪。未启动推理；需重新选图并预览，已有27个Run保留。
+
+- 2026-10-10：新增“推近后环绕2”（原机位→推近→左侧→右侧），以及大/中/小幅度（基准环绕 ±15°/±10°/±5°，距离变化同步缩放，默认中）。MP4/PVT 复用最终环绕段和开场推近段的已有帧，依次回正面并拉回原机位；几何预览与成品共享顺序。幅度纳入草稿、Gateway、API 校验和预览缓存匹配，改变幅度需重新预览；保留旧导出的完整轨迹用于转存。73 项回归通过，含全部路线预览/导出帧序一致性、三档新路线回正并拉回、幅度不匹配拒绝及非法幅度拒绝；两份 JS 语法检查通过。仅重载已确认空闲的 app-dev Local 36792，未重建 App/未发布 Package/Runtime/未运行真实 Meridian 推理。
+
+- 2026-10-10 Output 实况照片下载改为原生保存：桌面端 Frozen Time 的 LivePhoto.pvt.zip/旧live-photo.zip Artifact “下载”点击改走受 actor/installation/App scope 约束的保存路由，直接在 Downloads 创建唯一 .pvt 文件包，不下载ZIP；不要求当前Mini-App mount，支持历史成品，旧mount保存入口保留。非桌面仍用ZIP作传输；仅Host/Imagine UI修改，不发布模型/Runtime/Package，回归及开发加载待完成。
+
+- Output 原生下载回归：38 项接口测试通过，包含mount及独立Output路由的跨实例拒绝；JS语法和下载拦截模拟通过（preventDefault后POST保存接口，不走ZIP链接）。空闲app-dev Local35660重载完成，端口54328连接成功；未重建App/未发布。
+
+- 2026-10-10 Frozen Time 种子旁新增“随机 / Random”按钮：Web Crypto 生成32位非负整数，碰巧重复时递增取模确保与当前值不同，点击填入输入并保存草稿，不使几何预览失效；预览/渲染执行时跟随种子字段禁用。双语标签、窄宽度flex布局；仅 Package 静态资源，刷新即可加载，不重启 Local/重建 App/发布 Package。
+
+- 随机按钮验证：JS语法通过，4个边界/重复值测试通过；真实开发 UI 显示随机按钮及-1说明，点击后种子从1032702670变为1127219720。没有启动推理或重载服务。
+
+- 2026-10-10 Frozen Time 随机种子：Host 接受 -1，默认 -1，在确认渲染时解析为系统随机32位非负种子，仅解析一次；0及以上仍为固定种子。Artifact metadata 保存 seed/requestedSeed，Run 进度及完成详情显示真实 seed，便于复现。Package 输入 min/value 改 -1，增加中英文说明，已有草稿显式种子保留。仅 Host/Package 源码，需开发重载；本轮不发布 Runtime/模型/Package，回归进行中。
+
+- 随机种子回归完成：64 passed，覆盖省略seed、-1、0、42、最大32位值，以及非法-2/溢出拒绝；mock生成确认模型收到解析后的非负seed，Artifact和Run步骤保留真实seed。确认开发 UI 无运行任务后重载 app-dev Local 34157；选图/预览需重建，原成品不受影响，未执行真实 Meridian 推理、未发布。
+
+- 随机种子开发 Local 已恢复至52498，Shell连接成功；界面随后进入用户文生图执行状态，不再切换/重载以免打断。静止时间默认值以源码和回归确认，本轮不声称已执行真实随机种子 Meridian 生成。
+
+- 2026-10-10 .pvt 真实开发 UI 验收：仅重载空闲 app-dev Local 21330，Helper 自动恢复至端口51144；Mini-App 恢复既有 Live Photo 成品，点击“保存 .pvt 到下载文件夹”成功生成 /Users/avdpropang/Downloads/Frozen-Time-57a644d30689.pvt，无推理、无新增 Output Run、无图库写入。Finder 对同内容探针文件按空格打开原生 Quick Look，AX 为“Live Photo of FrozenTime.pvt”，显示“实况”“播放实况照片”“通过照片打开”，画面正常；先前 QLThumbnailGenerator 错误不代表 Finder 预览失败。59 项回归通过，新增保存接口已加载，无 App 重建、无 Package 发布。
+
+- 补充权限边界：命令行验证实际 Downloads 文件包时受到 macOS 目录隐私限制（ls/Quick Look 均 Operation not permitted），不把此次 PHLivePhoto=false 记为格式失败或通过。不扩大系统权限；Finder 原生识别证据来自同内容工作区探针，开发 App 保存路由真实返回成功。后续用户可直接在 Finder 检查上述 Downloads 成品。
+
+- 2026-10-10 原生 .pvt 实况照片导出进行中：沿用 Apple 解码成功的 JPEG/MOV 配对，增加 metadata.plist 的 PFVideoComplementMetadataVersionKey=1 原生文件包及 .pvt.zip 传输 Artifact。Mini-App 显式“保存 .pvt 到下载文件夹”通过 mount/actor/installation/App 范围校验的 Host 路由创建唯一文件包，不覆盖、不接受任意目标路径、不启动 Photos、不写图库；旧配对输出无需重新推理即可保存。仅 Host/Gateway/Package 源码，需要后续 Desktop/Package 发布验收，本轮未发布；系统类型与 Quick Look 验证待完成。
+
+- .pvt 原生只读验证：系统 URL resource type 为 com.apple.private.live-photo-bundle，isPackage=true，Apple PHLivePhoto 解码成功；QLThumbnailGenerator 返回错误0，尚不能声称 Finder Quick Look 动画已验证。Mac 锁屏导致真实保存按钮 UI 验收未完成，未重启开发 Local；探针 .build/live-photo-pvt-probe/FrozenTime.pvt 可供解锁后检查。对用户提供“JPEG尾部拼MOV”截图核对官方资料：这是 Android Motion Photo 类封装，不采用为 Apple Live Photo 交付方案。
+
+- .pvt 回归 59 passed（含原生清单、传输包结构、保存路由跨实例拒绝、缺少配对拒绝、唯一目标不覆盖、保存不新增生成 Run）；Host Gateway 与 Package JS 语法检查通过。待解锁后的真实 UI 保存及 Finder 播放验收；仍未发布。
+
+- 2026-10-09 Frozen Time 转存开发验收完成：58 项回归通过，Host/Gateway/Package JS 语法检查通过；固定 App-Dev Local 重载至 54300，使用已有实况照片经真实 Mini-App UI 连续转存 MP4、交互 HTML、Live Photo，三个共享 Output Run 均成功（50ed8094、244b9d26、05255819）。完整解码分别 91/73/91 帧，LivePhoto.mov 91 帧、JPG 保留 3240×2160 原图、HTML 内嵌 DataURL；旧视频回中间播放内容 SHA-256 与保留副本一致。未调用 Meridian，未覆盖原 Run，未自动导入 Photos；本轮未发布 Package/Desktop。
+
+- 2026-10-09 Frozen Time 转存实现：Package 生成成功后显示“转存为”及 HTML/MP4/Live Photo 选择，并可恢复最近完成结果；Host 受 mount/actor/installation/App scope 约束，创建独立共享 Output Run，复用 raw73+轨迹+原图、不调用模型。新生成及转存结果保留私有转换缓存，随 Run 删除；旧 MP4/Live Photo 兼容单程前73帧与既有回中间播放文件，旧无轨迹 HTML 不凭空猜测回中间。Live Photo 除 ZIP 增加配对 JPG/MOV 两项独立 Artifact/下载，双语说明 ZIP 是传输容器，Finder 不直接识别 ZIP；不自动写入 Photos。Host/Gateway/Package 源码变化需 Desktop/Package 后续发布验收。
+
+- 运镜增强回归完成：55 passed；开发 UI 轻柔悬浮/MP4/512 显示预览就绪且无执行任务，已重载唯一 app-dev Local 18816。原私有预览及临时图片需重新选择，不沿用旧角度缓存；本轮未执行 Meridian 推理或发布。
+
+- 2026-10-09 运镜张力增强一档（用户试验请求）：普通水平/推近/上下 yaw或pitch±10→±15°；HTML水平±15→±20°；弧线yaw±15/pitch−12；斜向yaw±15/pitch±9、远端半径1.18；悬浮yaw±8/pitch3至−5；推近远端半径1.15→1.22。保持73源帧、相同格式相关倒放规则和预览/成品一致；双语提示增加大幅度孔洞风险。仅 Host/Package 源码，不发布模型/Runtime/Mini-App。回归与开发重载待完成，真实 Meridian 大幅度画质不声明已验收。
+
+- 2026-10-09 Frozen Time 生成按钮对齐：Package CSS 生成区域改 flex/wrap/align-items:center，共享 42px 最小高度与20px行高，清除预览按钮独立8px外边距及确认按钮 float，用 auto margin 保持确认按钮右侧；状态/进度独占下一行，窄屏允许整齐换行。仅静态样式源码改动，不重启 Local、不重建 App、不发布 Package，保留用户当前选图/私有预览；刷新重新加载样式时临时选图可能需要重选。
+
+- 补充几何阶段真实编码回归：不调用 Meridian，深度结果 fixture 经实际几何渲染生成 reference73/preview109 两份 MP4，完整解码帧数通过；相关总计 55 passed。app-dev Local 已自动重启为 18816，仅 Host 重载，无 App Bundle 重建。
+
+- 2026-10-09 播放顺序回归完成：54 passed，包括十八种动作/格式组合。上下揭示 MP4/Live Photo 均 109 帧、尾帧回到第 36 帧中心；HTML 73 帧。开发 UI 检查当前为上下揭示/MP4/512，未执行任务，重启唯一 app-dev Local 18036 加载修改；现有临时选图/预览需重选，不触碰其它实例。
+
+- 2026-10-09 预览/成品播放顺序修复：几何步骤新增私有 `preview.mp4`，与最终成品共用 `export_video` 的输出格式分支和尾段倒放规则；Mini-App 预览接口只返回该播放副本。Meridian 输入仍为未倒放 73 帧的 `reference.mp4`，确认渲染不误用延长预览。新增六动作×三输出格式的解码逐帧/帧数一致测试及预览/参考区别路由测试。此一致性指轨迹、帧顺序和时长，不承诺生成模型每帧视觉内容完全等于带洞几何。仅 Host 修改，无 Runtime/模型/Mini-App 发布；回归及开发重载验收进行中。
+
+- 2026-10-09 镜头菜单真实 UI 验证：固定 App-Dev Local 重启到 64640，交互 HTML 下菜单可展开六项，实际选择“电影弧线”成功显示选中值，中英文说明已刷新。此前临时图片/预览随重启失效，需要重新选择输入并预览；未调用 Meridian、未发布 Package。
+
+- 2026-10-09 修复镜头运动菜单：移除 HTML 输出导致的静态禁用条件，仅忙碌/任务执行时锁定；Host HTML camera_plan 改为遵从所选六种动作，仅水平环绕保留 ±15°，其它模式不再被覆盖。交互播放器滑块标注改为动作进度 0–100%，不将推近/俯仰伪标成 yaw 角度；更新中英文说明。36 项 Python 回归与 Package JS 语法检查通过，含六种 HTML 轨迹测试。仅 Host/Package 开发源码更新，未发布 Runtime/模型/Mini-App。
+
+- 2026-10-09 两阶段真实开发 UI 验收：固定 App-Dev `127.0.0.1:63478`、Imagine 实例 `appi_6f94b94cd34b4404850256e5bdb37267`、Package mount `mnt_5b0a1f01f4b74854aed41adb30f6d385`，用户提供的 `截屏2025-10-12 05.18.45.png` 经 VGGT/768 几何预览成功，在 Mini-App 私有 UI 播放约 3 秒孔洞参考，AX 确认 Loading100%、Pause、0:01/0:03、确认并渲染按钮启用。右侧仍显示原 `strun_ff27016eaf84426cbd0127d607d8c108`、9 个 Run，预览没有创建 Output。未点击真实 Meridian 确认渲染，留给用户预览确认；参考复用的最终 API 路径由回归覆盖，既有 Meridian 真实成品路径此前已验收。本次不发布 Package/Runtime、不重建 App，只重启 app-dev Local。
+
+- 2026-10-09 两阶段动作预览：Frozen Time Package UI 先仅调用 DA/VGGT 深度和几何运镜，在自身 UI 播放带孔洞参考 MP4；不创建 Studio Run/Artifact、不进入共享 Output。确认后传私有预览 ID，Host 校验 actor/installation/App scope 与图片/几何/动作/输出/尺寸快照，复用已生成参考及裁剪输入调用 Meridian；参数/图片改变作废旧预览，支持取消。私有临时缓存 30 分钟有效、每 scope 最多 2/global16 项，删除/过期清理；Host 重启预览不恢复。33 项相关回归与两份 JS 语法检查通过，含不产生 Output、跨实例拒绝、旧参数拒绝及复用测试。Package 源码挂载更新、未构建/发布新版；Host/Gateway 变化仍需 Desktop 发布验收，真实 UI/模型预览验收进行中。
+
+- 2026-10-09 用户确认允许静态照片/视频比例不同：Live Photo 静态资源与 poster 改用完整上传图（EXIF 方向归一、RGB JPEG），仅视频几何/模型输入居中裁剪；MP4/HTML 行为不变。不更新 Runtime/模型 Package，Host 改动需 Desktop 纳入；不将只读 macOS 配对解码验证视为 iPhone 导入验收。
+
+- 2026-10-09 Host 输入改为目标画布比例居中裁剪：深度、运镜参考、Meridian 使用同一份 `model-input.png`，上传原图不变；整数比例裁剪不拉伸，32 对齐画布使用整数运算避免浮点 ceil 漂移，极宽图会受最短边 128 约束而损失较多边缘。27 项相关回归通过，含横/竖/方/宽图逐像素裁剪保持验证。本次仅 Host Python 修改，不更新模型 Package/Runtime；尚未完成新裁剪输入的真实生成画质验收。额外 Apple `PHLivePhoto.request` 只读实测接受 384×768 静态图配 768×768 视频，未导入照片库、未验证 iPhone 导入；默认仍采用视频中心帧同尺寸静态图，避免构图跳变。证据 `ai2apps/.build/live-photo-aspect-probe/`。
+
+- 2026-10-09 Meridian 补边实验（completed / rejected）：黑色/灰色原图补边对照保留明显边带；修改 Package 内参考为边缘颜色延展后，512×512/73 帧、同轨迹/seed42 实测 77.27 秒、MLX peak35.31GB，横带消失但领带下缘有明显重复拉长纹理，未达到可靠背景补全门禁。2 项尺寸/内容保持测试通过不能替代画质验收。已撤回正式 Package 源码试验，实验 helper/视频保留在 `ai2apps/.build/meridian-padding-probe/`；0.1.0/权重/Runtime 不变，不构建、不发布、不读取 Cookie。未来应优先评估真正扩图/inpainting，而非声明当前 Meridian 有显式区域 mask 支持。
+
+- 2026-10-09 开发验收：标准 ACPF 在固定 app-dev 实例完成 Runtime 1.8.11、H3/Meridian/VGGT Package 与三项 checkpoint 安装/验证；独立源码 Package 挂载界面真实生成 VGGT + Meridian 512px/73 帧交互 HTML 和 MP4，Run `strun_ff27016eaf84426cbd0127d607d8c108` succeeded，共享 Output 展示 HTML 预览、双语拖拽提示及两个可下载 Artifact。修正 Host 深度调用使用已声明完整模型 ID（而非 upstream Hub ID），Package 握手延后至 iframe load 后及请求串行化，任选几何方案的列表 readiness。25 项相关回归通过。最终签名候选 `ai2apps/.build/frozen-time-package-0.1.0/frozen-time-0.1.0.ai2app`：8851 bytes，SHA-256 `bcc20c37d600082dca7b0ed27d905405f490e0a16c00d02b37de6739d232e059`；尚未生产发布、未进行已安装制品 opaque-origin 全流程验收。当前用户可在开发源码 Package 挂载中测试；DA 仍按选择走 ACPF 配置。无 App Bundle 重建/身份替换，无 Cookie 读取。
+
+- 2026-10-09 Package 接入：新增 `packages/ai2apps-frozen-time` 0.1.0（中英文、Imagine Studio placement、DA/VGGT、六种镜头、512/768、HTML/MP4/Live Photo），通过正式 manifest/source-mount 校验；固定 App-Dev 实际发现并挂载 Package，MessagePort 受控操作和 ACPF 组合安装计划已显示。不注册内置 Mini-App；已撤下此前内置 UI 和 Swift App 构建/校验入口。Host 仍需未来 Desktop 发布：mount 声明校验、共享 Run/Artifact 生成、进度/取消/重启恢复、有界几何参考及 HTML/video/archive Output。Live Photo 改用现有 Python/Pillow/PyAV 依赖写入标准 Apple MakerNote/QuickTime content identifier/timed metadata，真实 `PHLivePhoto.request` 解码通过，无需新增原生 Runtime。开发流程已通过标准 ACPF 安装 Runtime 1.8.11 并正在配置模型；Mini-App 尚未生产发布，安装制品及完整端到端生成验收仍在进行。
+
+- 用户纠正（2026-10-09）：静止时间必须以独立 Package 安装/挂载到 Imagine Studio，不应作为内置 Mini-App。已停止误启动的 App-Dev 重建（exit 130，固定 Bundle 尚未被替换，仍为 03:48 构建），撤下本轮新增的内置前后端注册；未发布任何 Mini-App/Desktop。本轮 API/UI 草稿与原生配对工具仍是待重构实验代码，不能作为已完成接入；后续按 Package 源码挂载/安装合同实现，并独立评估 Live Photo 原生能力交付边界。
+
+- 2026-10-09 Mini-App 接入进行中：新增内置静止时间、DA/VGGT 选择、73 帧有界轨迹、384/256 参考分辨率、768/512 输出、共用 Run/Artifact 的 HTML/MP4/Live Photo 输出及 ACPF 组合依赖配置。新增 Desktop 原生 `ai2apps-live-photo` 导出器及标准打包/校验入口，不改模型 Runtime。实测已有视频输出 JPG/MOV 配对，通过 Apple `PHLivePhoto.request` 解码验证（不写照片图库）；尚待完整 API/UI 与重建 App-Dev 验收。不得把源码完成等同于已发布 Desktop。
+
+- 最终模型发布结果：`ai2apps/model-meridian-mlx@0.1.0` 已 published，submission `b01459cb-6c80-4a10-bfb9-d287cadca248`，Registry 279，Package SHA-256 `bc77cd8de545aa4a4f2f4b1316f53bc543780ec5b11dcd115faf2aa6128575bd`（123379 bytes）。明确依赖 H3 0.11.0 / FL2VA 8-bit，模型自身 5.34 GB 双源适配权重；不重复分发底座。正式 Runtime Python 3.11 隔离安装、H3 Registry 验签/依赖锁、双 checkpoint 缓存命中、512×512/73 帧/24 fps 真实视频、停止/重启/卸载通过，匿名制品字节及 envelope 一致。57 项 Package/依赖测试与 87 项 Host 回归通过（重叠不相加）。回执 `docs/ai2apps-meridian-mlx-0.1.0-release-2026-10-09.json`。本次 Cookie 授权已用毕；Desktop Host 改动仍需纳入发布，Mini-App 未发布。以下是阶段历史。
+- 2026-10-09 发布推进：adapter-only 权重分发 `dist_ai2apps_meridian_adapters_mlx_78df34df_v1` 已 published，submission `cc11e768-5b49-484c-8c51-4d4ff0c602b5`，Index 137，manifest digest `sha256:0d9e33c0b0e4f3cafbe250462db4e3e435b419f73d83da04f2427637877377d3`；10 文件/637 pieces/HF+MS 完整回读和签名一致性通过。Meridian 模型包本身仍在签名安装验收，尚未发布。标准 smoke 增加显式 Registry 模型依赖安装及 required_model_ids checkpoint 准备；正式 H3 0.11.0 校验固定 SHA，QA 只操作 `/private/tmp/ai2apps-frozen-time-models-qa/meridian`。不改 Dev/App-Dev 数据或重发 H3。
+- 最新范围调整：用户要求 Meridian 依赖现有 H3 Package，不重复分发底座。已匿名确认 `ai2apps/model-minimax-h3@0.11.0` 在签名目录 278 中可用。旧组合发布等待和 MS 校验进程已停止，旧自动发布入口已禁用；保留已有文件，未发布 Meridian Registry 包。用户随后明确批准受限 Host 修改：仅解析必需服务依赖中与活动包 digest/version 锁一致、由提供者声明拥有的 checkpoint；拒绝路径覆盖、未声明或传递依赖，不扩大消费者公开模型 ID。Supervisor 与 readiness 已接入；增加 `model.checkpoint-dependencies.v1` Host 特征及 Meridian 服务兼容门禁，旧 Host 不应安装该新合同。相关回归 87 passed；尚未发布 Desktop。Mini-App 暂不发布。
+- 双路径候选：Meridian Adapter 独立读取 LoRA/固定嵌入与现有 H3 FL2VA 8-bit checkpoint。adapter-only inventory 为 10 文件、5,343,044,678 bytes（原组合 46,405,089,002 bytes），从原固定镜像选择子集，不删除或改写既有 H3 文件。源码真实双路径 GPU 推理完成：149.63 秒，512×512、73 帧、24 fps，380009 bytes MP4 完整解码通过；依赖/门禁与 Meridian 合同 37 项通过（与 87 项 Host 回归有重叠，不相加）。完整双源子集校验、签名安装验收和 Meridian Registry 发布仍待完成。实验目录 `ai2apps/.build/meridian-adapter-release-0.1.0`，回执 `source-qa.json`。未再升级 Runtime，未发布 Desktop/Mini-App。
+- 状态：`in_progress`，尚未注册为可用 Mini-App。DA Large / VGGT-Omega MLX 0.1.0 已发布；Meridian 模型包未发布。依赖已发布 Runtime 1.8.11 的正式深度估计接口；本次三个 0.1.0 模型包已获 Dev Cookie 授权，完成的两个包授权使用完毕。
+- 初始实现：`ai2apps/studio/frozen_time.py` 提供六种有界镜头轨迹、交互模式固定 ±15°、Live Photo 视频末段倒放回中间的帧顺序；已回中间的轨迹不再倒放。`frozen_time_player.html` 为单文件 DataURL 视频播放器，触摸/鼠标/键盘控制、中英提示、松手 10 秒后提示恢复，禁用网络，保留画面比例。
+- 2026-10-09 进展：DA/VGGT 0.1.0 对应权重分发已 published，HF/MS 固定 revision 全文件下载 SHA-256 校验及公开签名 envelope 一致性通过；两个签名 Package 候选已构建，尚未发布。用户批准隔离 QA 安装推理，`verify_installed_package.py` 使用正式 Runtime 1.8.11 和隔离 HF 缓存进行验收；标准 smoke 增加深度 NPZ、停止/重启/卸载检查。Mini-App 轨迹及 HTML 单元测试 16 passed，Host/UI 集成仍待完成。
+- 最终两包状态：`ai2apps/model-depth-anything-v2-large-mlx@0.1.0` 与 `ai2apps/model-vggt-omega-mlx@0.1.0` 已 published，签名目录版本 278；匿名下载与本地 artifact 字节和 envelope JSON 完全一致。两包均通过正式嵌入 Python 3.11 Runtime 的 1536×1024 NPZ 推理、停止/重启/卸载；仅隔离 QA 模型服务卸载，保留缓存，Dev/App-Dev 未修改。回执位于 `ai2apps/.build/depth-model-release-0.1.0/{da,vggt}-{package-publish,package-public,installed-qa}.json`。原非商业许可限制保留，不声明 Img2Img 或 VGGT 多视图能力。
+- Meridian 0.1.0 本轮：独立纯 Python/MLX Adapter、固定嵌入 safetensors 化、73 帧/3 步/384 参考上限、PyAV MP4 导出；移除模型载荷内联 Metal 编译，仅使用 Runtime MLX 原语。源码真实 512×512 推理 145.85 秒，16 项请求/视频/无损嵌入测试通过，尚非签名安装验收。46,405,089,002 bytes 固定组合权重已上传 HF `78df34df85c7031e4f59ffaf85e94de7eb336c27` / MS `28b619712d567987fd2c929cc48e9dd1378a0544`，正在首次完整双源回读，未发布 Registry 模型包。`release_meridian.py` 仅编排标准构建/发布/验签 CLI，任何门禁失败停止；实际状态和收据在 `ai2apps/.build/meridian-release-0.1.0/`。用户明确要求 Mini-App 先试用后发布，本轮禁止发布 Mini-App。
+- 尚待：模型适配器及许可/双源权重分发、真实签名包安装推理、Host 队列与 ACPF、Mini-App 界面和共享输出接入、Apple Live Photo 真正配对元数据导出与验收。当前不能将普通 MP4 标为已完成的 Live Photo。
+
+### NXR-DEPTH-PROTOCOL-20261009：深度估计正式协议
+
+- 最终发布结果（2026-10-09）：Runtime 1.8.11 已发布并完成 Cloud / GitHub / ModelScope 三源激活与验证，匿名签名目录版本 276，完整 SHA-256 与逐片摘要通过，累计 144 项相关回归通过。正式回执：`docs/ai2apps-runtime-1.8.11-release-2026-10-09.json`。本次 Dev Cookie 授权使用完毕。以下保留阶段记录；Desktop Host 类型注册仍待纳入 Desktop 发布，三个模型 Package 和 Mini-App 不在本次已发布范围。
+- 状态：`in_progress`。用户已批准最小 Runtime 升级，候选 ai2apps/runtime-omlx 1.8.11；基于已发布 1.8.10 的隔离源码和依赖层，仅增加 depth-estimation-v1 与 /v1/images/depth，不包含当前工作区其他未发布 Runtime 改动。
+- Host 新增独立 depth_estimation 模型类型/能力/路由，不冒充文生图。请求限定显式 schema、已声明模型、单张图片、有限输入尺寸及 NPZ 输出，不接受路径/URL。协议与既有 Worker 回归首轮 28 passed；正式候选构建、公证、安装与发布待完成。
+- 1.8.11 Dev 在线 Cookie 获用户明确授权；已查询原 Publisher active key，未提交新版本。原生依赖保持不变。后续 Desktop 包含 Host 类型注册，模型与 Mini-App 验收另记。
+- 29 项协议/Worker 回归通过。Developer ID 候选构建完成；Apple 公证 submission d1d1fc64-70a9-4a22-aba4-36e40b11c514 等待中。候选 DMG 只读挂载后，内置 Python 3.11 真实 DA HTTP 推理返回 710×798 NPZ，相对原版 L2 1.53696e-6、请求成功且临时文件清理通过；此为本地 QA Adapter，不替代正式模型包 managed-service 验收。工件 ai2apps/.build/runtime-1.8.11。
+- 最新：Apple 公证已 Accepted，staple/Gatekeeper 通过，正式候选 Package 379607226 bytes，SHA-256 769650173b3d14935ec43f524dfbd53980e1003df17f53d043dc4a7341fe4455。累计 85 项回归通过。等待用户批准临时 QA Runtime/FlashHead 安装审计；未提交 Cloud、未发布、未配置外部镜像。候选回执 ai2apps/.build/runtime-1.8.11/release-status.json。
+- 用户已批准临时 QA 安装审计；签名 Runtime 安装、FlashHead 依赖自动解析到 1.8.11、停止/重启/卸载通过，未下载 FlashHead 权重。已安装 Runtime 本地 QA Adapter 真实深度 HTTP 复验通过。标准发布脚本正在提交 Cloud，正式发布与多源状态以后续回执为准。
+- Runtime 1.8.11 已于 2026-10-09 17:14（北京时间）正式 published，submission 2948a797-8444-4871-9f3d-99efab09f3bb，初始签名 Repository metadata 274。匿名完整 Cloud 下载验签通过，新增 59 项 Range/Registry 回归通过。GitHub 与 MS 相同制品已上传，多源验证/激活进行中；Desktop 与三个模型包尚未发布。
+
+### NXR-DEPTH-MLX-20261009：Meridian 几何模型纯 MLX 移植
+
+- 状态：`in_progress_experimental`。用户要求不更新 Runtime；在 ai2apps/experiments/depth_mlx 实现 DA Large 和 VGGT-Omega 单图 MLX 推理，离线转换权重，运行时不依赖 PyTorch/OpenCV。尚未接入 Desktop、Mini-App 或正式模型 Package，不纳入可用功能声明。
+- 初步验证：已定位默认 TF32 精度差异；MLX_ENABLE_TF32=0 下 DA Large 1036 输入相对 L2 8.40e-7，VGGT 单图相机 7.38e-7、深度 2.84e-6、置信度 2.25e-6。两种模型在既有导出 Runtime CPython 3.11 + framework-mlx-base 中复验一致；插值与卷积算子测试通过。仍待多图、预处理、几何接入和正式 signed Package managed-service 验收，不代表发布完成。
+- 未读取发布 Cookie，未构建/发布三个新模型 Package；多源与许可核验待完成。Runtime 不改动。
+- 增量验证：照片、插画、竖幅裁切共 12 项原版/MLX 对比在开发 Python 3.13 与既有 Runtime Python 3.11 均通过，最大相对 L2 2.99e-5；DA 含原图预处理及尺寸恢复。新增无 Torch/OpenCV 的 NumPy 相机解码、点云及带洞掩码 z-buffer，3 项测试通过，尚未复验 Meridian 端到端。
+- 接入边界：现有签名 Runtime 的 Model Worker 固定操作表没有深度估计，Host 模型类型也未包含 depth。仅 MLX 库兼容不能视为无需协议变更。需确认采用最小 Runtime/Host 深度协议扩展，或采用既有 managed HTTP Service 合同及 Host 集成；未伪装为 image_generation、未绕过隔离、未擅自更新 Runtime。
+
+### NXR-GALLERY-CHINESE-NAME-20261009：Gallery 中文名改为素材库
+
+- 状态：`implemented_and_checked`。内置 App 中文名从图库改为素材库，统一中文 Gallery 页面、侧栏、选择器、手机入口以及语音/视频/情报中心相关提示；英文名称及 App ID 保持不变。
+- 验证：中文 JSON 解析及旧中文名称残留检查通过；三个修改的 JS 文件 node --check、App 注册 Python AST 解析通过。模板/静态文案刷新可见；内置 App 注册名称需 Local 重启。未构建或发布 Desktop。
+
+### NXR-DOCK-TODO-ORDER-20261009：待办默认排在发现之前
+
+- 状态：`implemented_and_checked`。Shell 默认 Dock 顺序在图库与发现之间显式加入 ai2apps.todo；已保存的用户排序继续优先，不强制覆盖。
+- 验证：shell.js 的 node --check 通过，检查默认列表中待办紧邻发现之前；无需重建开发 App。未发布 Desktop，下一版打包包含。
+
 ### NXR-RELEASE-2259-20261009：Desktop 0.1.5 Build 2259
 
 - 状态：`released_pending_target_mac`。2026-10-09 11:27（北京时间）完成 Apple 公证、GitHub/ModelScope 双源发布、Cloud 完整下载/Range/摘要预检、0% 登记及 100% 扩灰。当前生产基线为 0.1.5 / 2259。
@@ -390,6 +905,344 @@
 - App Dev 公网开关原为关闭，保持关闭。未完成真实公网 Owner/Visitor 扫码端到端；原截图中的 general Dev 未升级，未发布 Desktop。账户固定链接二维码弹窗在 App Dev 已实机展示。
 
 ### NXR-SPARK-MEDIA-20261006：媒体模型 CUDA 对齐
+
+- 2026-10-09：新受管core+LivePortrait私有层+Worker协议层在标准Supervisor Docker命令下多目录只读挂载通过；显式挂载系统/usr/bin/python3.12与/usr/lib/python3.12，不设PYTHONHOME，-I下sys.prefix保持新venv。逐模块来源与原生site库来源校验、GB10 CUDA矩阵CPU参照通过；network none/read-only root/CapDrop ALL/no-new-privileges实查，容器已移除。artifacts/managed-runtime-container-r1-receipt.json。此为开发bootstrap探针，尚未真实Worker请求、生产resolver、受管解释器身份固定或签名安装/原子激活，不计产品安装器完成。
+
+- 2026-10-09：共享Worker协议层14项固定wheel下载、与core33+LivePortrait9组成56项实物SHA/身份/目标依赖extras闭包及基础逐项不变通过；仅安装到managed-worker-profile-r1/site-packages，复用typing-extensions，增量3,334,562字节。实际fastapi/uvicorn/pydantic/starlette/multipart来自该层，Torch来自core，Worker server来自显式旧Runtime app源码；未初始化CUDA，artifacts/managed-worker-profile-r1/install-receipt.json。与模型层一样是独立开发安装，尚未生产resolver多root接入、容器启动、材料器原子激活/签名安装；下一步验证解释器/stdlib挂载，不设置旧PYTHONHOME。
+
+- 2026-10-09：核对Host生产衔接边界：InferenceRuntimeResolver只接受单安装root内解释器/launcher，Supervisor只挂该root且固定PYTHONHOME，launcher从单root framework-profiles取profile；不能将新venv与外部private路径直接伪装旧Runtime。Worker server另需fastapi/uvicorn/python-multipart，独立managed-worker-profile-r1按已验收根版本0.142.2/0.54.0/0.0.32解析成功15项（含已有typing_extensions），artifacts/managed-worker-profile-r1-resolution.json；传递pydantic2.14等为本次解析新候选，需固定SHA和实物/启动验收，不计旧版本验收继承。尚未安装或改变活动Host/生产resolver；下一步构建共享轻量协议层并验证多root容器/venv解释器路径，保留单root旧合同。
+
+- 2026-10-09：LivePortrait新offline共享core+9项private环境FP32/BF16实机通过，各78帧，12.13/7.27秒；两输出SHA与旧共享Runtime基线完全一致，artifacts/liveportrait-managed-profile-r1-receipt.json及liveportrait-managed-output-comparison-r1.json。原生site库仅来自新core/private，stop pipelines/pending0/root清空，CUDA残留33554432字节。安装后审计2238个private原始wheel文件、17443个core原始文件SHA全部通过，无private Torch/NumPy；专用wheel120024014字节、落盘常规文件391984367字节、模型代码270244字节。artifacts/managed-liveportrait-profile-r1/post-install-audit.json。未测实际网络字节/峰值盘，未覆盖生成entrypoint额外文件、Host/签名安装/原子升级/回滚；现为真实模型按需组合机制验收，非产品安装器完成。
+
+- 2026-10-09：LivePortrait9项专用wheel与共享compute33项组成42项实物SHA/身份/METADATA+extras闭包通过，基础descriptor逐项保持一致，9项仅pip --target装到独立site-packages，无torch/numpy副本。代码按旧Runtime固定META文件SHA复制。首次CPU导入缺ai2apps Worker协议失败保留；独立r2显式挂载既有Runtime app纯源码后，torch来自新core、av/cv2/scipy/ORT/safetensors/yaml来自private、引擎来自model-code，未初始化CUDA，artifacts/managed-liveportrait-profile-r1/imports-r2.json。开始check_liveportrait_managed_profile_r1.py真实FP32/BF16视频/清理/原生库来源验收，session73393运行，尚未通过；未覆盖Host/签名安装与完整材料器生命周期。
+
+- 2026-10-09：审计既有LivePortrait profile固定版本，9项专用依赖在新33项compute基础约束下pip dry-run解析成功，唯一共享依赖NumPy2.5.2无需重复下载。artifacts/managed-liveportrait-profile-r1/resolution.json/selection.json。按报告精确URL/SHA生成9项专用下载并启动，不写共享venv。真实protobuf cp310-abi3促成planner改用packaging目标CPython标签集，支持较早abi3、拒绝较新ABI/非Linux架构；新增4项测试，相关40项通过（累计56）。仍待实物闭包/独立profile安装和真实LivePortrait推理，不能将解析成功当作模型通过。
+
+- 2026-10-09：真实managed-torch-env-r1离线33 wheel安装通过，48.15秒，pip check/原始wheel落盘字节与Torch/vision/audio/Triton独立导入来源通过，artifacts/managed-torch-env-r1-receipt.json。随后独立进程GPU空闲前置检查后，GB10 SM12.1上矩阵/cuDNN卷积/cuFFT/torchaudio重采样/torchvision NMS五项CPU参照校验通过，未加载其他site-packages原生库，退出前CUDA仍33554432字节；artifacts/managed-torch-env-r1-gpu-receipt.json。不等于媒体模型profile/Host/签名安装/生产激活通过；基础包含NumPy2.5/Pillow12/cuda-bindings13.3，既有模型冲突须按需私有层独立核验，不能全模型直接替换。
+
+- 2026-10-09：EchoMimic Host r2真实调用/调度/proxy/隔离Worker通过，768²81帧/52224音频采样，337.81秒，SHA0a936324fbe417b2d3117dd57efb4a3e572f1c19fd22fcf09dbdd34e79b410b5；scheduler completed1 failed0 queued/running0，Docker无网络/只读根/CapDrop ALL/no-new-privileges、容器已移除。artifacts/echomimic-package-host-r2-receipt.json。采用冻结Package与fixture discovery，不等于生产Discover签名安装/UI或广泛质量验收。
+
+- 2026-10-09：33项真实Torch/CUDA wheel下载与独立size/SHA/身份/目标METADATA+extras闭包全部通过，总2,891,500,122字节，环境摘要8fa039ae9b8c2b514865b1c45b22d0ccae86f71573679f2861d3c278e39fd790，回执artifacts/managed-torch-wheels-r1-verification.json。新增install_managed_torch_env_r1.py，在新managed-torch-env-r1目录重新复制验hash/闭包、离线venv安装、pip check、安装后字节对照及CPU import provenance，session88762已启动；不初始化GPU/不切换Host/未计生产签名安装，环境验收仍待终态。
+
+- 2026-10-09：依据既有torch213-cu130-resolution-r1生成33项精确URL/SHA下载清单，来源限定PyTorch/PyPI/NVIDIA HTTPS，无凭据或可变解析。首次白名单漏pypi.nvidia.com导致生成前拒绝，后续未存在目录命令也未执行；补官方来源后部署独立managed-torch-wheelhouse-r1，以pip download --no-index --no-deps --only-binary --require-hashes获取，进程357361/session39187现场运行。新增实物verify脚本逐wheel SHA/身份/真实METADATA+extras闭包，生成unsigned descriptor，显式33项compute base，不含模型profiles；排在下载后执行，尚未取得通过回执。无活动环境安装/升级。
+
+- 2026-10-09：SoL shared Package r2四项真实推理全部通过（artifacts/sol-shared-package-r2-receipt.json）：标准图像242.80秒/视频4.80秒，自定义图像382.38秒/视频6.28秒；图像1026x682与alpha逐像素一致，视频60帧/96000音频采样。stop清空runner/root/model，仍33554432 CUDA字节。仅官方完整checkpoint显式注入的冻结adapter证据，不覆盖旧错误draft权重/Registry/Host/签名安装或广泛质量。局部hash后缓存建议复验成功，不能仅凭此证明所有OOM原因。安装器补递归extras固定点传播/未知extras拒绝/完整显式依赖边及版本校验，含反向遍历与循环测试，相关21项通过（累计52）；真实Torch pip报告33项/Toolkit11extras元数据闭包通过artifacts/torch213-extras-closure-r1.json，尚非实际下载wheel验签/安装。
+
+- 2026-10-09：开始真实Torch2.13/cu130安装输入迁移，审查既有精确pip resolution共33制品，无基础marker缺项，但Torch通过cuda-toolkit的11项extras选CUDA组件，现草案拒绝active extras，因此需下一步递归extras闭包支持后才能采用，未绕过检查。artifacts/torch213-install-descriptor-gap-r1.json。发现Dynamic全拒绝误伤25项已构建wheel；依据PyPA Core Metadata（https://packaging.python.org/en/latest/specifications/core-metadata/#dynamic-multiple-use），该字段在wheel仅为信息，修为仍检查实际Requires-Dist，禁止身份Dynamic。新增3项测试验证合法Dynamic不跳过依赖检查；wheel校验/真实离线pip19项通过，既有累计50项分组覆盖。未获取/安装新Torch或声明新环境验收，旧冻结探针不变。
+
+- 2026-10-09：将5个内部安装器模块及SHA清单冻结到Spark managed-runtime-offline-r1，check_managed_runtime_offline_r1.py实跑Linux/aarch64目标marker、2个完整纯Python wheel、私有wheelhouse、真实venv离线pip、import42、安装后字节比对与独立SQLite activate/lease/GC保护全部通过exit0；回执artifacts/managed-runtime-offline-r1-receipt.json。无pytest时使用自包含探针，未安装工具依赖，不修改活动Host/Runtime。这是Linux安装机制基础验收，不是实际Torch/CUDA/沙箱网络/生产签名激活或共享原生栈验收。SoL345729仍活跃，自定义模式未出完成项；EchoMimic347175继续等待。
+
+- 2026-10-09：新增runtime_installed_files.py，将已验证wheel内原始文件逐一映射到显式目标venv安装scheme，流式校验库/数据字节，验证#!python脚本重写并拒绝越界/碰撞；pip生成RECORD明确排除，额外文件/生成entrypoint/ELF/GPU仍是独立门禁。新增5项字节篡改/数据/script/symlink测试，全部47项通过；真实venv离线pip测试继续接入安装后字节验证，4项重测通过。生产材料器、Host激活仍未接入。SoL标准图像1026x682 alpha精确和视频60帧/96000采样已产出；自定义仍运行345729，EchoMimic347175等待。
+
+- 2026-10-09：新增runtime_wheelhouse.py离线输入准备：仅复制选中闭包到新0700目录，逐文件限量/SHA校验、复制后真实METADATA重验、fsync回执/requirements、固定本地file URI+hash；失败保留failed且禁止复用，未写入任何活动环境。pip参数禁索引/缓存/隐式依赖并强制binary/hash，仍需材料器沙箱。3项输入测试与既有38项共41通过，另新增真实临时venv/pip安装两个完整纯Python fixture并成功import，wheelhouse4项通过（总42项分组已验证）。并非真实Torch、Linux目标ABI、网络命名空间、签名安装或生产材料器验收。SoL345729仍运行，回执已出现视频60帧/96000音频采样，完整四项未结束。
+
+- 2026-10-09：受管Runtime事务草案新增不可变环境依赖图：reserve在同一写事务绑定已ready基础，拒绝自引用、未ready/deleting基础及同digest换依赖；构建/失败/待删环境均保护基础，只有材料器确认文件删除后complete_collection才释放边。GC因此保护传递基础与第二模型引用，避免SQL先删引用而文件尚在使用。新增4项SQLite测试，总38项通过exit0；尚未接生产migration/材料器/真实Worker租约，未计完整共享安装完成。SoL345729与EchoMimic347175现场仍存活，无终态结果。
+
+- 2026-10-09：实现内部runtime_environment_state事务原语（未注册生产migration），由现有PlatformDatabase写事务承载候选building/ready/failed/deleting、验收回执摘要、CAS模型环境绑定、旧绑定回滚、Worker精确digest租约和GC占用声明。新增7项SQLite实测覆盖双连接锁竞争/重开持久化、未验证拒绝、事务回滚、旧Worker及其他模型保护；与描述/wheel校验共34项测试通过exit0。尚未接物化文件、上游验签/探针、进程租约管理、基础层依赖引用图或生产resolver，不宣称完整安装/原子升级通过。SoL PID345729越过原CUDA查询失败，8分片加载完成，仍运行无case产物；EchoMimic wrapper347175等待，未重启。
+
+- 2026-10-09：修复EchoMimic Host r1探针误用精简Runtime app导入Host模块的问题，独立check_echomimic_package_host_r2.py使用既有media-image-venv，实查Supervisor/av来自cuda-venv已安装Host；Worker仍显式使用共享Runtime r2，记录Host解释器及Supervisor文件SHA，不向推理Runtime添加Host。脚本语法通过并已部署，排在SoL345729之后；wrapper347175/tail347177实查存活，session37403。SoL345729仍在固定权重hash阶段，未重启。两项尚未推理通过，旧失败证据保留。
+
+- 2026-10-09：收取AVTR shared Package实机回执，standard/fast均50帧512²含音频，21.66/12.68秒、fallback0，stop清空engine/root但仍33,554,432 CUDA字节；不是Host/签名安装。SoL r1在首个CUDA mem_get_info失败，cases为空，失败回执已归档。当前无GPU进程，小型同栈CUDA运算成功（sum16），OS缓存约112GiB；NVIDIA已知问题支持缓存压力假设，尚未证实因果。新增独立r2复验，仅在输入完整hash后按文件POSIX_FADV_DONTNEED，不清全局缓存、不改模型/冻结Runtime；四项推理已启动session43930，尚未通过。
+
+- 2026-10-09：新增 runtime_wheel_verification.py，读取已获取 wheel 的实际 ZIP/METADATA，在同一文件句柄全量 size/SHA 校验后检查身份、Requires-Python、目标Linux/aarch64/CPython marker与实际Requires-Dist直接依赖及版本。拒绝漏锁、活动URL/extras依赖（草案尚无其锁合同）、重复/逃逸/符号链接ZIP条目及膨胀上限；不执行wheel代码。新增12项真实ZIP fixture测试，连同planner共27项通过exit0；这是本地制品结构/依赖验证，不是上游完整wheelhouse、ELF/GPU或安装验收。材料器、签名接入、获取时网络安全、事务激活/回滚继续待实现。
+
+- 2026-10-09：开始受管 Runtime 安装器 P1，新增 ai2apps/packages/runtime_install_descriptor.py 内部 v2-draft 纯规划器，严格字段/固定 wheel 身份与 SHA/大小/无凭据 HTTPS 来源、依赖引用、目标与 Python ABI 基本匹配；选择 base+指定 profile 闭包并拒绝同名分发冲突，生成环境摘要与已验缓存后的增量下载量。15项测试通过（exit0，既有无Metal退出提示）。未注册 Registry 协议、未联网/运行pip/激活环境；实际 wheel METADATA 闭包、glibc/ELF/GPU校验、下载时DNS/重定向安全、物化事务及签名安装仍待实现，不能据此称安装器完成。
+
+- 2026-10-09：按用户新决策纳入 Linux Runtime 小型签名安装描述方案，RUNTIME-INSTALLATION-PLAN.md 明确轻量 wheel/Host venv/systemd、固定完整依赖图、共享不可变基础与按需 profile、离线验 hash 安装、最终路径创建/事务激活、Worker 隔离、租约/回滚/GC。代码审查确认现有 wheel 已分离 control-plane，但 resolver/supervisor 仍为单载荷 root，需要新合同和安装器，不能把 torch 加入 Host 依赖代替。Cloud 需求独立提交文档；旧大包方案降为迁移基线，未修改生产合同/运行环境，也未称 v2 已实现。
+
+- 2026-10-09：共享Runtime r2构建exit0，6,323,839,282字节，SHA0a15e1fe75534b248b0652fe36df73a2e2ddf58d7a80e8152af7ebd72cbe72ce；解包202068文件/H3 2821/27profile布局通过，导入验收继续。发布元数据审计发现descriptor仍声明已从service和载荷移除的InfiniteTalk/ExOmni/MuseTalk，因此r2仍非发布就绪。标准builder新增导出前版本/服务身份/能力集合一致性拒绝，95项测试通过；捕获的真实r2元数据被新guard拒绝、仅修正能力集合的fixture通过。artifacts/runtime-source-metadata-guard-r1.json、artifacts/media-runtime-r2-release-metadata-audit.json。最初8项CLI测试因校验顺序改变失败，将校验放在CLI输入校验后、昂贵导出前已修正；冻结r2与排队GPU任务未改，后续正式候选需修正描述并重验，不能靠改版本宣称安装通过。
+
+- 2026-10-09：LivePortrait CUDA 0.1.0经标准build_signed_registry_release.py构建本地签名候选，12,610字节，SHA483a52f5af60ba000509ead0e190de2046351fa39ee630865a252134ba8f2d7b。签名前核对唯一既有Keychain记录公钥与Index134 Publisher/key一致，不读取Cookie。独立verify_signed_package校验签名/整包摘要/文件索引通过，源码字节与service parser通过；初始ai2apps.json原始hash比较因builder生成files索引失败，后逐项确认除files外所有作者字段一致。实际GPU回执绑定同一adapter，仅支持推理证据。artifacts/liveportrait-package-signed-r1/verification-receipt.json。Runtime能力齐全但当前0.6.0-dev.1不满足>=0.6.0，保留约束不绕过；此候选尚未签名安装或发布。
+
+- 2026-10-09：用户精确批准本批5项Dev Cookie后，标准脚本先查无既有提交，再顺序提交/审核/发布AVTR、EchoMimic、VoxCPM2 4/8bit、CosyVoice原始权重。五项匿名标准验证全部进入签名Index134且envelope精确一致；保留metadata_verified证据级别。artifacts/media-batch-production-20261009.json记录各submission/摘要/时间。CosyVoice service补上已验证distribution_id，其余三包现有绑定逐model/repo/revision核对通过，source parser通过；更新源哈希，不改排队冻结包。该批Cookie授权已消费。模型Package本身尚未发布/安装，Runtime及实机质量门禁独立保留；SoL公开上传仍待单独批准。
+
+- 2026-10-09：匿名标准校验确认 AVTR、EchoMimic、VoxCPM2 4/8bit、CosyVoice original五项不在生产签名Index129；用该受信索引的既有Publisher公钥重新核验五份envelope全部通过。Installation优先查询仍返回active user session required。精确摘要/路径/大小写入artifacts/media-next-batch-publication-preflight-20261009.json，已合并请求本批Dev Cookie授权；尚未读取Cookie/创建submission。此为checkpoint元数据准备，不解除模型安装/Runtime与质量门禁；与待批准SoL公开镜像授权不同。
+
+- 2026-10-09：新增ai2apps-model-cosyvoice3-cuda 0.1.0源包，使用既有官方FP32 adapter与29e01c4e原始权重、现成已签分发候选；保留克隆/情绪/指令，数值speed按官方mel插值声明native，未删除4/8bit源码证据。service/Contract临时索引/Runtime能力校验与19项回归通过。Spark r1导入真实失败cuda_cosyvoice_adapter缺失：Runtime只导出引擎，因此把既有纯Python共用adapter纳入Package，独立r2冻结重验通过实际引擎/Torch2.13cu130来源及空启停。artifacts/cosyvoice-package-source-contract-r1.json、artifacts/cosyvoice-package-entry-r2.json。生产分发状态未核实，service不填未验证distribution_id；新包GPU/签名安装/发布及既有内容质量失败仍未解除。
+
+- 2026-10-09：SoL官方布局publication r2冻结40文件71,187,909,756字节，补齐README/NOTICE及文件清单，manifest SHA555189859b90dec4444834d853cfd8f72c7b4fe37fbaf08cdfb5a919029ba0fd。标准/custom文件子集仍分别约40.44/71.19GB。公开HF Avdpro/SoL-Refiner-CUDA 与MS ai2apps/SoL-Refiner-CUDA上传脚本采用精确allowlist/上传前全量重验/状态恢复保护。首次HF创建上传被自动审批拒绝（缺确切目的地与载荷授权），命令未执行，无仓库/上传状态产生；已向用户请求两处公开镜像授权，非Cookie。artifacts/sol-official-publication-r2-receipt.json。其他队列继续。
+
+- 2026-10-09：LivePortrait共享Runtime r1实际冻结Package适配器通过FP32/BF16各78帧完整解码，12.7377/6.9840秒；使用已发布checkpoint逐文件固定校验。stop后pipelines/pending为0、checkpoint清空，CUDA仍分配33,554,432字节；不宣称全显存释放。artifacts/liveportrait-shared-package-r1-receipt.json。旧冻结service仍含先前依赖声明，适配器字节未变；这是推理证据，不是修正后manifest依赖解析/Host/签名安装或广泛质量通过。共享Runtime r2构建队列已接续。
+
+- 2026-10-09：共享Runtime r1 OpenVDN DMD8正式进程入口真实推理完成exit0，124帧881.84秒，输出SHA3f9ca5ca655391927f096956af145bf9b82aa7ebb7aab42385c311f7e4df044f与独立cu130基线逐字节一致。artifacts/shared-openvdn-model-r1-receipt.json。固定缓存prompt，非encoder/Worker/Host/签名安装验收；原进程已终态，LivePortrait队列接续运行。
+
+- 2026-10-09：新增SoL共享Runtime r2真实适配器四项探针（标准/自定义 × 图像/视频），要求冻结源SHA、官方完整清单逐文件size/SHA、GPU空闲与Runtime验收。检查2x尺寸、图像alpha逐像素一致、视频帧数/音频与stop清理；显式注入官方checkpoint，绝不计错误draft service权重/Registry安装通过。脚本部署后排于AVTR317478后，wrapper327817/session49299；evidence/media/sol-shared-package-preparation-20261009.json，尚未执行通过。
+
+- 2026-10-09：新增 prepare_sol_official_publication_r1.py，复用Mac现存官方c69c2a54快照，31原始文件按固定HF LFS SHA/Git blob及size全量校验，通过后本地硬链接暂存（不复制71GB）。再核验固定prompt上下文与原LTX/Gemma条款，共37文件71,187,895,208字节；Transformer/connector/text encoder三个分片索引全部引用有效。artifacts/sol-official-publication-r1-receipt.json，进程19794 exit0。标准/custom文件子集已分别列出；无上传/签名/许可代确认，现有错误Mac布局spec保持不可发布，需以双Hub固定官方布局替换并实际Package验收。
+
+- 2026-10-09：SoL发布前权重头审计发现实质阻碍：Mac裁剪快照 transformer仅1457键，已验收官方CUDA输入4186键，缺2729键且没有Diffusers shard index；保留键shape/dtype及config一致不证明加载兼容/张量值相等。artifacts/sol-checkpoint-layout-comparison-r1.json。现有CPU空启停不加载权重，因此不能支撑原草稿分发。已将SoL源META标记checkpoint_layout_blocked_not_publishable并在README禁止签发当前两份草稿；须改为已核验官方布局与固定prompt context后做真实Package推理。既有冻结CPU回执保持原范围，未签名/发布错误分发。
+
+- 2026-10-09：新增 ai2apps-model-sol-refiner-cuda 0.1.0 适配器源包，保留标准/自定义提示词两模型及图像透明度/视频音频2x放大合同。两份固定checkpoint spec除CUDA身份外逐对象完全保留（包括LTX-2/Gemma许可及用户声明），仍为未签草稿；service不填未发布distribution_id。真实service/Contract临时索引/Runtime能力校验通过；初始必填modelProfile和过长label错误已修正并记录，内存标签明确保守估计。15项适配器回归通过exit0（既有无Metal退出提示）；Spark共享Torch2.13cu130实际引擎来源、全源哈希及空启停通过。artifacts/sol-package-source-contract-r1.json、artifacts/sol-package-entry-r1.json。原Mac source-lock仅归因，不当作CUDA依赖锁；本包GPU/Host/签名安装与发布仍待验收。
+
+- 2026-10-09：新增 check_avtr_shared_package_r1.py，独立冻结当前 AVTR Package r2（仅README provenance补充导致较CPU r1变化，适配器SHA仍a60d1d4b）。校验当前全源哈希通过；远端脚本SHA83f1677c一致。真实标准/快速各2秒、顶层preset/duration与嵌套seed、50帧512²+音频/无fallback/stop清理探针排于EchoMimic之后，wrapper317478/session19483实查存活，等待301888；共享Runtime r2验收是执行前置条件。evidence/media/avtr-shared-package-preparation-20261009.json，尚未执行通过。原先r1 CPU回执仍只覆盖旧冻结README，未覆盖此GPU探针。
+
+- 2026-10-09：用户本轮授权 Dev Cookie 用于 FlashHead Lite/Pro 分发；标准脚本查询、提交、审核及发布完成，submission 654be146-5259-47ec-a407-d503ce4ddda2 / eb3288fd-f10d-4f64-8397-a081e39d2c16。匿名验证两项进入签名 Index129，envelope 精确一致。artifacts/flashhead-distributions-production-20261009.json。metadata_verified 非新增双端全量下载；模型 Package/Runtime 安装门禁保留。本批次 Cookie 授权已消费。
+
+- 2026-10-09：旧栈 practical Runtime 8,780,521,347 字节通过生产解包/源码哈希/布局/关键导入；共享 r1 为6,323,791,123字节，同保留范围减少27.98%。Demucs 两栈真实 CUDA 5.248秒双轨分离及停止/拒绝/取消/恢复通过；共享 Torch2.13.0+cu130 重建最大误差9.31e-10，停止后仍分配203,751,424字节，不计进程级显存完全释放。artifacts/media-runtime-practical-acceptance-r1.json、artifacts/demucs-real-stop-r1-receipt.json、artifacts/demucs-shared-real-stop-r1-receipt.json。不替代 HTTP/Host/签名安装或跨栈质量验收。
+
+- 2026-10-09：新增 ai2apps-model-avtr1-cuda 0.1.0 源合同，绑定既有 AVTR 固定签名候选并保留复合许可/downloadConsent。修复嵌套 parameters 时 Host 顶层 preset/duration 等参数被忽略，冲突值明确拒绝；21 项适配器测试通过。Spark 冻结 Package 在共享 Runtime 中实际引擎/Torch 来源与空启停通过，回执 artifacts/avtr-package-source-contract-r1.json、artifacts/avtr-package-entry-r1.json。新 Host 参数路径 GPU、签名安装及发布尚未通过，原有实机证据保持原范围。
+
+- 2026-10-09：新增 ai2apps-model-voxcpm2-cuda 0.1.0源合同，绑定既有已签4bit/8bit CUDA分发候选，不新增BF16宣称。保留语音克隆/指令/情绪与定性speed合同，说明CUDA逆转换不等于native低位kernel；移除MacRTF标签。真实service解析/Contract临时索引/共享Runtime能力校验及17项适配器回归通过（退出时无Metal设备清理提示）；Spark共享Runtime引擎/Torch来源、冻结SHA与空启停通过exit0。回执 artifacts/voxcpm-package-source-contract-r1.json / artifacts/voxcpm-package-entry-r1.json；生产分发状态待核实，新包GPU/签名安装/发布未计通过。
+
+- 2026-10-09：新增 ai2apps-model-indextts25-cuda 0.1.0源合同，复用当前已验证CUDA适配器，固定FP16 checkpoint与draft CUDA distributionId。原Bilibili许可、downloadConsent和redistributionConditions逐对象对照完全保留，不代安装者许可声明；SBOM区分WIndexTTS与CUDA Runtime归属，去掉MacRTF。service解析、Contract临时索引、Runtime能力检查和9项适配器回归通过（退出时无Metal设备清理提示）；Spark实际共享Runtime引擎/Torch来源、源SHA及空启停通过exit0。回执 artifacts/indextts-package-source-contract-r1.json / artifacts/indextts-package-entry-r1.json。分发未签/未发布，未做本包GPU或签名安装，原模型实机证据保持原范围。
+
+- 2026-10-09：FlashHead Lite/Pro发布预检：生产签名Index127均无两项CUDA分发；用该已验证Index认证的既有Publisher公钥重新验签成功，固定摘要保持不变。标准Installation查询返回active user session required；按AGENTS/发布手册§7请求精确两项Dev Cookie授权，尚未读取Cookie或创建submission。回执 artifacts/flashhead-publication-preflight-20261009.json。metadata_verified仍非双端全量下载声明；模型Package/Runtime安装门禁独立保留。
+
+- 2026-10-09：审计真实共享Runtime service发现新补LivePortrait/FlashHead/EchoMimic三个包误继承Mac专属video-codecs/audio-codecs依赖名，CUDA未声明，会触发dependency_capability_missing。改用既有CUDA模型引擎能力+cuda/model-worker-v1/video-generation，保持音视频功能和实测门禁；三包source-preparation服务摘要更新。真实解析器核验：当前0.6.0-dev.1不能满足正式>=0.6.0；仅将版本设为0.6.0的合成fixture能力解析通过，移除模型引擎仍拒绝。回执 artifacts/media-package-cuda-dependency-contract-r1.json / artifacts/media-package-dependency-resolver-r1.json。适配器字节未变，已冻结远端r1推理任务仍使用旧manifest，不能视为修正后完整安装通过。
+
+- 2026-10-09：新增 EchoMimic 新Package Host768实机探针，要求修正版共享Runtime r2验收通过、GPU独占和冻结源码SHA；经真实Host调度/Supervisor代理/禁网Worker请求顶层resolution=768x768与嵌套seed，完整检查81帧768²及音频、调度槽位和容器清理。部署脚本/独立bridge SHA核验通过；队列PID301888/session42926已实查存活，等待r2构建验收PID292437，尚未执行。证据 evidence/media/echomimic-package-host-preparation-20261009.json；不计签名安装/产品发现通过。
+
+- 2026-10-09：EchoMimic CUDA补齐模型Package源0.1.0，绑定已签未发布固定分发与Runtime >=0.6.0。发现Host resolution=768x768在嵌套parameters请求中被忽略而默认512，修复顶层/嵌套控制合并、尺寸/帧率冲突与不支持ratio/output/audio模式拒绝，19项定向回归通过（退出时无Metal设备提示）。service与Contract临时文件索引校验通过；Spark实际共享Runtime中冻结源hash、引擎来源、768解析及空生命周期通过exit0。回执 artifacts/echomimic-package-source-contract-r1.json / artifacts/echomimic-package-entry-r1.json；未声称修正后GPU、Host端到端或签名安装通过。
+
+- 2026-10-09：H3 OpenVDN StageB50 Host PID269263正常完成，实际Host调度/代理/禁网Worker输出124帧1344×768，2414.10秒，401/active0/槽位归还/容器删除通过。取回MP4 SHA ed9f0551…b3614一致，完整视频124帧及音频165888样本解码通过。仅fixture discovery，不计产品API/UI、共享cu130或签名安装。E5物化Torch2.13/cu130进程也通过：官方FP32最大误差6.8918e-08、batch17/取消恢复/关闭通过；仍使用Transformers4.57.3且非最终共享Runtime。回执 artifacts/openvdn-stageb-host-r1-receipt.json、对应-decoded.json、artifacts/e5-torch213-materialized-r1.json。旧栈practical Runtime构建已实际启动PID296701，其余原队列继续。
+
+- 2026-10-09：补齐既有 FlashHead CUDA 准备目录的 ai2apps.json/service.yaml/SBOM及上游许可证，固定Lite/Pro身份与已签未发布分发，Runtime >=0.6.0。现有三份适配器/共享helper与当前开发源逐字节一致，未改算法；删除Mac性能标签。真实service解析、manifest临时索引校验、16项适配器回归通过（pytest退出有无Metal设备清理提示）；Spark共享Runtime内官方pipeline/media/Torch2.13.0+cu130来源与空启停通过，进程exit0。回执 artifacts/flashhead-package-source-contract-r1.json / artifacts/flashhead-package-entry-r1.json；尚无共享Runtime GPU/签名安装/正式发布通过。Mac实用依据 docs/ai2apps-flashhead-mlx-0.1.0-release-2026-10-01.md。
+
+- 2026-10-09：共享Runtime r2独立冻结1078源码文件，构建器与r1仅Fish Torch说明一处差异，改为引用实际META版本。初次严格核验拒绝r1构建后变化的一个__pycache__文件；全量核对证明仅该自动字节码变化，r2排除6份生成缓存且保留所有实际源码SHA约束。标准stage-only重建和独立解包/27-profile导入验收排于LivePortrait PID289731后，队列PID292437/session58783已实查存活；尚未构建完成，旧候选未改。回执 evidence/media/shared-runtime-r2-preparation-20261009.json。
+
+- 2026-10-09：LivePortrait源service经真实ServicePackageArchive解析通过；补充共享Runtime真实Package适配器GPU回归脚本 check_liveportrait_shared_package_r1.py，冻结源hash、完整已发布v2权重hash，官方s0/d0输入，FP32/BF16视频全帧解码与stop清理。已传独立目录并核验脚本/清单摘要；session79666、PID289731确认存活，等待共享OpenVDN PID276392后串行运行，尚未推理通过。准备回执 evidence/media/liveportrait-shared-package-preparation-20261009.json。清单移除已完成的Package源绑定缺口，其余GPU/签名安装/发布仍保留。
+
+- 2026-10-09：新增 packages/ai2apps-model-liveportrait-cuda 0.1.0 开发源，绑定已发布固定分发 dist_ai2apps_liveportrait_cuda_f8dd1b0c_v1，Linux ARM64、Runtime >=0.6.0、官方Torch质量/快速预设与Host视频合同。真实适配器置于Package，模型引擎/媒体层来自Runtime；移除Mac吞吐基准。源manifest临时索引校验通过；Spark已物化共享Runtime中逐文件hash、真实导入路径与空生命周期通过（Torch2.13.0+cu130、CPU-only）。32项相关回归通过，Mac退出时出现沙箱无Metal设备清理提示。回执 artifacts/liveportrait-package-source-contract-r1.json / artifacts/liveportrait-package-entry-r1.json；不计GPU推理、签名构建/安装或模型Package发布完成。
+
+- 2026-10-09：LivePortrait CUDA固定权重分发正式发布 dist_ai2apps_liveportrait_cuda_f8dd1b0c_v1，16文件/76pieces/635609433字节；HF/MS固定版本均匿名完整下载并全SHA通过，标准full_dual_download签署、独立验签及审核发布完成。submission b5140e87-75c3-4f25-8685-c2423cd17e45；生产Index127匿名信任链回读与本地envelope完全一致，manifestDigest 90d34f831ced6bf0b07e7abbdfa48b0f34a2eff5f455447ce5489a3e8a61896a。回执 artifacts/liveportrait-distribution-production-20261009.json。Dev Cookie按本次明确授权仅由标准browser-live在内存使用。此为checkpoint发布，不代表CUDA模型Package、共享Runtime GPU/签名安装完成。
+
+
+- 2026-10-09：用户明确批准LivePortrait两处公开仓库与固定载荷，另授权Dev Cookie用于本次发布。官方SDK两源创建上传完成，HF f8dd1b0cf7ebd665c7f71ce12ecb8b0725183a83、MS 001cf3c768341904d63f8563fcd1cbc459fe3831；HF匿名强制完整下载16文件635609433字节SHA全通过，MS匿名全量下载session6627仍进行。Installation会话失败后标准--browser-live核对Publisher/key active，精确既有Keychain记录仅派生公钥指纹且与Cloud一致；未签署提交，Cookie未导出。
+
+
+- 2026-10-09：LivePortrait候选拟双源 Avdpro/LivePortrait-CUDA 与 ai2apps/LivePortrait-CUDA；精确查询分别SDK404/匿名404。官方Hub SDK上传脚本限定16文件并完整hash、状态存在即拒绝盲重试，语法通过。自动审批在执行前拒绝HF公开创建/上传，要求精确公开目的地与载荷授权；已一次询问两源，未创建/上传、无Cookie访问。证据 evidence/media/liveportrait-public-upload-approval-20261009.json。独立Runtime/GPU队列继续。
+
+
+- 2026-10-09：LivePortrait正式分发准备目录从Spark已核验v2权重独立复制，逐文件重新hash后加入LICENSE/YUNET_LICENSE/NOTICE/README并重建checkpoint文件清单。16文件635,609,433字节，manifest SHA771038f87eeedc50ad1024a8f921acf8a70d8372054d5c8c826eecf1a2137ae9；原始开发目录未改，原权重字节完全一致。回执 artifacts/liveportrait-cuda-checkpoint-publication-r1-receipt.json。未上传/签署/绑定distribution或安装。首次本机系统Python缺file_digest在写入前退出，改用仓库.venv完成有界hash检查。
+
+
+- 2026-10-09：新增 check_shared_openvdn_model_r1.py，通过最终已解包共享Runtime的嵌入Python与实际OpenVDN入口跑固定官方DMD8/124帧，绑定完整验收、原始prompt与检查点回执，检查音视频及同实现基线摘要。语法/部署摘要核验通过，session86870等待共享Demucs队列PID262624；尚未执行，不覆盖encoder/Host/签名安装。证据 evidence/media/shared-openvdn-model-preparation-20261009.json。
+
+
+- 2026-10-09：共享Runtime完整验收通过：生产解包/202068文件对照、27-profile布局、关键依赖与引擎导入全部通过，唯一Torch安装为core的2.13.0+cu130。实际OpenVDN inference入口检查通过，Torch来自core，Diffusers/flash_attn.cute来自私有环境。回执 artifacts/media-runtime-shared-acceptance-r1.json 与 artifacts/shared-openvdn-runtime-check-r1-receipt.json。只读最终文件/RECORD审计 artifacts/shared-runtime-dependency-size-r1.json：常规文件12,994,571,589字节，Torch仅一个版本/安装点；仍有CUTLASS4.8/4.6等隔离版本，不能据目录大直接判定重复。GPU/Host与签名安装未计通过，Fish NOTICE修正与Cloud外部制品合同仍待完成。
+
+
+- 2026-10-09：LivePortrait v2分发输入逐项追溯完成：7份safetensors与固定无损转换回执size/SHA一致，landmark与82a4fa6官方资产一致，models.yaml与9b294b3固定源码一致。artifacts/liveportrait-v2-provenance-reconciliation-r1.json；属于证据对照，非重新转换/推理或发布。共享候选生产解包202068文件及27-profile布局已通过，依赖导入仍在运行，尚无完整验收通过声明。
+
+
+- 2026-10-09：LivePortrait 分发材料固定官方模型卡82a4fa6与源码LICENSE 9b294b3；YuNet固定opencv_zoo 47534e27版本、完整下载SHA与实机检测器一致，配套MIT LICENSE已保存。准备独立LICENSE/YUNET_LICENSE/NOTICE，明确203点原始权重、无InsightFace模型及未完成双源发布；artifacts/liveportrait-checkpoint-publication-assets-r1。未改变已验收开发权重目录，未上传或代用户许可声明。
+
+
+- 2026-10-09：OpenVDN 独立完整 Torch2.13/cu130 物化环境官方 DMD8 推理通过，124帧、音频有效、840.87秒，旧原生库映射为空，输出SHA256 3f9ca5ca655391927f096956af145bf9b82aa7ebb7aab42385c311f7e4df044f 与前次通过结果一致。回执 artifacts/openvdn-cu130-materialized-model-r1-receipt.json；不是最终共享 Runtime、Worker/Host或签名安装通过。原队列已进入 StageB Host 验收。
+
+
+- 2026-10-09：共享 retained-capability Runtime 标准构建完成 exit0，压缩6,323,791,123字节，SHA256 eca34208e20e33e8c89751974e072b7711e90b66bb6e809afcf72b153e7ef533；相比consolidated r2减少2,820,198,214字节（30.84%），为依赖共享与移除暂缓模型的合计变化，不能全归因Torch。操作回执与体积对照已保存，解包验收PID267969实查运行，尚未通过。Fish NOTICE修正须进入下一发布候选，Cloud外部制品合同、GPU与签名安装仍待完成。
+
+
+- 2026-10-09：只读逐文件核验 Spark LivePortrait v2 开发 checkpoint，13文件共635605405字节，内部12项size/SHA与实际全字节一致。当前packages树无CUDA Package，固定转换后v2树的HF/MS双源和资产NOTICE尚未建立；仅有上游LICENSE不能自动覆盖所有资产。记录 artifacts/liveportrait-v2-distribution-input-audit-r1.json 并补清单交付缺口；未上传、签署或声明许可/安装完成。
+
+
+- 2026-10-09：Mac GhostV2 发布回执包含正式 Runtime/包安装及真实图像、带音频视频推理，故继续保留基础能力对齐优先级，不因 Spark 遮挡合成失败而归为 Mac 实验模型。MEDIA-INVENTORY 补入历史证据；自然遮挡 visual_quality_failed 仍是未解除发布门禁，不增加场景测试、不宣称已通过。
+
+
+- 2026-10-09：Demucs 实机探针增加显式 Runtime/验收/输出目录参数及可选 Torch 精确版本，核对验收根、记录依赖来源和验收摘要、拒绝 GPU 并发。独立上传 check_demucs_shared_real_stop_r1.py，session36364 排于既有 Demucs PID228304 和共享验收 PID257776 之后，覆盖共享 Torch2.13/cu130 的实际分离与停止/恢复；既有冻结探针不变。仅语法与部署摘要检查，尚未推理通过。证据 evidence/media/demucs-shared-runtime-preparation-20261009.json。
+
+
+- 2026-10-09：逐项复核历史 Mac 发布回执，Seed-VC v2 有最终实现30步 Metal 转换及签名安装证据；RVC 有公开包安装与原生转换证据，保留实用模型交付优先级，但不据此豁免训练质量失败。MEDIA-INVENTORY 补证据并纠正 RVC 已完成真实 Worker/Host 训练音色上传推理仍被写作待测的旧缺口；新共享 Runtime、正式发现、签名安装与发布仍待完成。证据 evidence/media/practical-voice-priority-review-20261009.json；无新增推理通过声明。
+
+
+- 2026-10-09：consolidated r2 对照包完整解包/源码与关键依赖、引擎导入验收通过；回执 artifacts/media-runtime-consolidated-acceptance-r2.json，压缩9,143,989,337字节，仍为旧 CUDA 双栈，非最终缩包或签名安装。新增 check_shared_openvdn_runtime_r1.py，从最终共享候选的实际 process entry 执行 inference --check-runtime，要求 Torch 来自 core、Diffusers/flash_attn.cute 来自私有层。语法通过，session87604 等待共享验收 PID257776；尚未执行通过，不覆盖 GPU/encoder/签名安装。
+
+
+- 2026-10-09：共享 Runtime 诊断候选新增 accept_shared_runtime_r1.py，检查生产解包/全文件与摘要、27-profile 布局、唯一 Torch2.13/cu130 安装、OpenVDN sharedCore 声明与实际文件以及 CPU 导入。远端等待进程 PID257776 已核实，构建 PID256072 仍在运行；尚未执行通过，不代表 GPU、签名安装或发布。保留 Fish NOTICE 修正须进入下一发布候选的限制。
+
+
+- 2026-10-09：共享候选启动后静态复核发现Fish来源说明仍硬编码Torch2.10，当前源码已改为引用实际META/fish-s2-distributions.json版本。正在运行的冻结shared r1保留原字节作为诊断候选，不可直接作为发布候选；下一完整候选需包含此说明修正，不能手改已冻结归档。
+
+- 2026-10-09：build_shared_runtime_candidate_r1.py冻结完整retained-capability共享栈候选，1084源码摘要、25模型输入及候选精确锁，复用独立core/audio/Fish-E5与其余标准导出输入；OpenVDN切cu130固定锁并启用--openvdn-share-core，新process entry随源码冻结。prepare-only通过，标准stage-only完整构建PID256072/session89556已实查运行；artifacts/media-runtime-shared-build-r1-operation.json。与consolidated/practical旧栈队列隔离，不覆写现行安装。尚无最终体积、解包/GPU/签名安装或发布结果；新版Cloud外部制品合同仍待交付。
+
+- 2026-10-09：25个保留profile共享栈构建输入已标准导出并独立闭包/候选锁检查通过。r1为19通过/6缺构建工具依赖；补显式packaging/PyYAML后只在独立r2重做6项，全部通过，失败证据保留。选择清单 artifacts/shared-profile-build-inputs-selected-r2.json；核心、audio、Fish/E5复用既有已验收输入。未计模型GPU或完整Runtime。另consolidated r2旧CUDA栈对照包完成9,143,989,337字节/SHA f33862406271b44b0b8bed52cc160ed0466565c333137f169b23245aa2cfca17，正在解包验收；此包未合并CUDA栈，不是最终缩减发布目标。
+
+- 2026-10-09：check_h3_shared_export.py以物理复制的共享core/audio树执行现有标准_copy_h3_profile，91项依赖解析与ComfyUI --cpu导入通过，Torch2.13/cu130来自core、torchaudio2.11/cu130来自H3私有层，H3无重复torch目录且CUDA未初始化。回执 artifacts/h3-shared-export-r1-receipt.json。该诊断树不作为发行包；完整共享候选、H3 GPU编码及签名安装仍待完成，未改运行中的consolidated/practical候选。
+
+- 2026-10-09：核对H3标准导出器已优先选择core/audio，核心Torch升级须同步audio的torchaudio闭包。新增 prepare_shared_audio_input.py，标准导出104项依赖、独立venv CPU导入及无开发site回退通过；Torch2.13/cu130、Transformers4.57.6及既有Qwen-TTS0.1.1+ai2apps.tf4576.1保持精确声明，CUDA未初始化。回执 artifacts/shared-audio-build-input-r1-receipt.json。未计TTS推理/H3/完整Runtime或签名安装；当前冻结构建输入不变。
+
+- 2026-10-09：标准Runtime构建器新增显式--openvdn-share-core，默认保留独立环境；要求Torch2.13/cu130及torchvision/Triton/cuda-bindings匹配，H3 encoder也须同Torch版本，只对栈库去重、保留框架私有层，写入sharedCore合同。96项构建/入口回归通过exit0（既有Metal退出告警）。Spark真实标准导出及无GPU CPU导入通过：Torch/CUTLASS来自独立shared core，Diffusers0.40.0.dev0/FlashAttention来自私有层，无私有torch目录，私有字节2,422,873,503（未压缩，非下载量）。回执 artifacts/openvdn-shared-export-r1-receipt.json。当前冻结候选未改；H3输入对齐、完整新Runtime/GPU/签名安装仍待完成。
+
+- 2026-10-09：OpenVDN现行process entry写死推理Torch2.13/cu129且不搜索core，直接去重会破坏启动。新增显式sharedCore v1（Torch2.13/cu130）环境选择，保留私有profile优先及旧无声明双环境行为，未知/错误合同拒绝；入口改为main guard以可独立验证。7项环境选择/旧合同/拒绝测试通过（exit0，既有Metal退出告警）。尚未启用构建器共享导出，也未改冻结候选；下一步接标准导出及真实进程验收，不能据此删除旧栈或称缩包完成。
+
+- 2026-10-09：prepare_shared_fish_e5_input.py用标准导出器生成独立Fish/E5共享Torch构建输入，118项声明闭包/候选精确锁及CPU导入通过；Torch2.13/cu130、Transformers4.57.6，Fish保留protobuf3.19.6，所有导入来自独立venv且不初始化CUDA。仅升级物化共享栈覆盖项，非栈依赖仍核对原锁；候选锁单独保存、不改现行源码/冻结候选。回执 artifacts/shared-fish-e5-build-input-r1-receipt.json，锁差异 artifacts/shared-fish-e5-build-input-r1-lock-changes.json。未计GPU/完整Runtime/签名安装或节省体积。
+
+- 2026-10-09：标准core依赖闭包在共享Torch2.13/cu130物化栈+已验证CUTLASS导出输入下通过；新增 prepare_shared_core_input.py 复用标准_copy_framework，生成无pip/.pth的独立venv。85项声明闭包及Torch/torchvision/FlashInfer/Transformers/Diffusers/CUTLASS/CUDA bindings CPU导入通过，模块来自独立venv且CUDA未初始化，无开发site回退。回执 artifacts/shared-core-closure-r1.json、artifacts/shared-core-build-input-r1-receipt.json。可用于下一标准构建输入；未修改当前候选，不代表完整Runtime/GPU/签名安装或体积收益。
+
+- 2026-10-09：现有Qwen3.8 27B在Torch2.13.0+cu130完整原生回归通过，固定16b6615a权重，168 NVFP4模块/13440次调用、图像/工具模板结果/思考/流式取消通过，无旧Torch/NVIDIA/Triton原生映射。加载152.13秒/峰值37,945,249,792字节，清理后allocated109,052,928；回执 artifacts/qwen38-torch213-model-r1-receipt.json。工具仅模板及结果注入，非实际工具执行；非Worker/Host/签名安装。日志存在causal_conv1d和flash-linear-attention缺失导致PyTorch参考路径，不能称性能达标或未比对即称升级回退。后续全量consolidated r2标准构建已接续，本回执不等于整包已合并CUDA栈。
+
+- 2026-10-09：Demucs当前Spark两份权重实读168,007,757字节，逐文件大小/SHA与已签名CUDA分发候选manifest一致；artifacts/demucs-stop-checkpoint-preflight-r1.json。真实stop探针增加每次运行前固定字节核验，最新脚本SHA同步准备回执；未读取Cookie，未计GPU或分发发布通过。当前InfiniteTalk PID141183仍活跃37/40，所有既有等待任务保持原队列。
+
+- 2026-10-09：新增 check_demucs_real_stop.py，冻结当前Demucs Package源码，adapter SHA bf9d3f40与stop guard测试版本一致。实机探针要求真实分离基线、真实模型forward hook进入后停止、active/queued取消499、重复409/停止后503、资源清理及start后可解码恢复；早期native失败直接保留，不等待永不到来的hook。语法通过，PID228304/session98455实查存活，等待缩减Runtime验收PID225966。证据 evidence/media/demucs-real-stop-preparation-20261009.json；尚未GPU通过，不代表HTTP/Host或签名安装。
+
+- 2026-10-09：新增缩减 Runtime 独立验收入口 accept_practical_runtime_r1.py，生产解包/全树字节对照、载荷与源码SHA、27-profile布局、关键依赖/引擎CPU导入及暂缓三模型profile/source/META缺席检查。三脚本语法通过，Spark负向检查确认旧全量候选在导入前被拒绝。PID225966/session95189实查存活，等待构建PID224446；尚未运行完整验收。证据 evidence/media/practical-runtime-acceptance-preparation-20261009.json。旧全量队列脚本不改，不等于GPU或签名安装通过。
+
+- 2026-10-09：按最新实用模型优先级新增 build_practical_runtime_candidate_r1.py，仅冻结输入并调用既有标准 Runtime 构建器。Spark prepare-only 已通过：1084 个源码文件摘要固定，删除暂缓三模型的 8 个专用输入和 3 项能力声明，保留 H3/avatar/OpenVDN/GhostV2/E5 及其他现有能力，采用已验证 Qwen-TTS 统一输入。独立 source/work 不覆盖旧候选；队列 PID224446/session81804 实查存活，等待 E5 PID220743。证据 artifacts/media-runtime-practical-build-r1-operation.json。尚未构建/解包/签名安装通过，未报告新体积收益；仍保留原 CUDA 栈，其他模型的 Mac 实用性须逐项确认。
+
+- 2026-10-09：按用户最新“Mac尚不实用可暂不对齐”调整优先级；AGENTS、parity计划和inventory已同步暂缓MuseTalk/InfiniteTalk/Ex-Omni。经/proc验证全部为仅有tail子进程的等待shell后，下游优先停止并撤销实验队列；当前InfiniteTalk PID141183推理及Qwen/Runtime/OpenVDN前驱不动。H3重新排队PID220306/session14367等待146605，E5 PID220743/session88845等待H3；实查新队列存活旧waiter退出。回执 artifacts/practical-model-queue-reprioritization-r1.json。未删除源码/制品或称暂缓项通过；这些实验改动不应仅因存在工作树就纳入下一发行。
+
+- 2026-10-09：匿名获取Ex-Omni四固定权重版本README/可用LICENSE并保存SHA；Teacher/Wan/Qwen tokenizer模型卡声明Apache-2.0，OmniAvatar固定卡无license且LICENSE两路径404，保持未确认、不继承代码许可。MS匿名搜索及git固定revision后，OmniAvatar340e17c、Wan020b9e5、Qwend1d2fe2三个候选所选文件大小/SHA全部吻合HF锁（元数据证据，非双端完整下载）；Teacher精确名搜索无结果，不能推断所有镜像不存在。证据 evidence/media/exomni-mirror-metadata-20261009.json、evidence/media/exomni-license-review-20261009.json；未上传、签署分发或读取凭据。
+
+- 2026-10-09：Ex-Omni四份独立快照推理候选冻结至exomni-component-source-r1，Mac/Spark adapter/engine/lock SHA逐项一致；Spark CPU预检15文件大小与路径、独立/聚合官方配置完全相同。GPU回归PID215908/session27133已核实排队存活，等待PID212879，将对比74帧像素/音频及清理；尚未通过。证据 evidence/media/exomni-component-inference-preparation-20261009.json。InfiniteTalk原PID141183仍活跃31/40步，未重启。
+
+- 2026-10-09：Ex-Omni新增Teacher/wan/omniavatar/speech_tokenizer四份Host快照支持，完整性检查与全组件cache identity，保持aggregate开发基线；Teacher配置及实际speech encoder均使用Host tokenizer根。取回既有15文件校验回执并补全固定权重lock全部SHA，总18,963,845,939字节。内部component在完整校验回执下增加.pt支持（OmniAvatar），未验证目录不放宽。52项测试通过exit0；证据 evidence/media/exomni-component-snapshots-20261009.json。未替换已排队源码，新路径GPU/双源许可/签名安装发布仍待完成。
+
+- 2026-10-09：Ex-Omni标准Host输入真实Teacher推理已冻结独立adapter并核对Mac/Spark SHA，复用验收Runtime固定官方源码（明确symlink，非独立发行包），对比已通过Transformers4.57.6基线74帧像素与音频及释放。PID212879/session53772已核实存活，等待MuseTalk durable PID210325；尚未运行/通过。证据 evidence/media/exomni-standard-input-inference-preparation-20261009.json。
+
+- 2026-10-09：Ex-Omni Teacher补齐标准Host reference_parts单图+audio映射及顶层prompt/seed，保留开发inputs路径；拒绝不支持的显式分辨率/帧率/静音/duration/steps/width/Student模式。12项合同测试通过exit0；官方固定配方使用25fps/50steps/125帧窗口和720级纵横比桶，未继承Mac512精度或尺寸假设。证据 evidence/media/exomni-standard-host-inputs-20261009.json。尚无新GPU推理、冻结Runtime升级或完整Host验收，source自动几何不代表原尺寸输出。
+
+- 2026-10-09：补齐可复用durable Host验收入口，实际VideoTaskManager数据库/媒体冻结/任务执行/Workspace归档在预录视频gateway夹具下通过；新增真实CUDA adapter接入版本并在Spark验证Host导入，排队PID210325/session81080等待PID204692。仅模型查找/调用gateway为开发桥接，不含正式scheduler/HTTP或签名安装；真实推理尚未执行。证据 evidence/media/musetalk-durable-adapter-preparation-20261009.json 与 musetalk-durable-harness-20261009.json。
+
+- 2026-10-09：独立Spark Host源码目录musetalk-host-contract-source-r1通过aarch64 CPU实际导入、视频/组件声明、三种Registry回执布局与可写拒绝、ASGI发现/两种组件ID调用拒绝/主模型请求检查；源码三文件SHA与Mac一致，未导入Torch。首次r1夹具缺视频能力声明失败，r2补入实际MuseTalk声明后通过exit0，保留失败目录。证据 artifacts/musetalk-host-contract-r2-receipt.json。适配器为测试夹具，不代表模型推理、Registry获取、持久化任务或签名安装完成。
+
+- 2026-10-09：修复MuseTalk安装就绪检查缺口：完整Registry校验回执下video_generation接受官方.pth，严格internal component接受.pth/.onnx；通用未验证目录探测不放宽。新增三布局正向及缺失/修改/可写/symlink/缺回执/额外文件拒绝验证，连同Runtime布局和Package策略回归53项通过exit0（既有Metal退出警告）。证据 evidence/media/musetalk-checkpoint-layout-readiness-20261009.json。尚未部署冻结Host，不代表分发获取/签名安装通过。同步MEDIA-INVENTORY开发清单与排队状态。
+
+- 2026-10-09：新增MuseTalk标准Host输入CUDA实机探针，独立冻结r1源码并核对Mac/Spark两文件SHA；传入source_video/audio及顶层控制、五份独立snapshot和原始parser，对比排队中的原始parser基线像素/音频并检查engine清理。PID204692/session13278已核实存活，等待E5 PID194129，尚未运行/通过；不替代durable Host或签名安装。证据 evidence/media/musetalk-standard-input-inference-preparation-20261009.json。InfiniteTalk PID141183仍活跃27/40步，未重启。
+
+- 2026-10-09：MuseTalk补齐开发ai2apps.json与外部checkpoint SPDX清单，内存文件索引下Contract及Service解析通过、五模型/主安装选择一致；权重总计3,939,490,192字节不含Runtime，内存/评分明确估计。证据 evidence/media/musetalk-package-contract-preparation-20261009.json。未绑定未发布distribution，未构建签名包；兼容Host最低版本与安装/持久化推理待验收。
+
+- 2026-10-09：补齐Worker侧component边界：/v1/models不再列出checkpoint component，以声明ID或upstream_id直接调用返回400 model_not_callable；完整context仍传给adapter用于主模型依赖。真实FastAPI/TestClient验证发现过滤、两种ID拒绝及主模型正常请求，Worker及component共32项通过exit0（既有Metal退出警告）。证据 evidence/media/model-component-worker-boundary-20261009.json。尚未部署到冻结Runtime，不代表MuseTalk GPU/持久化任务或签名安装通过。
+
+- 2026-10-09：修复list_package_models仅检查主checkpoint的就绪漏洞：按当前service声明递归检查required_model_ids及snapshot path，缺失主/辅助快照、未声明依赖或循环均未就绪；无权重模型保持原有可用路径。新增真实service注册/live catalog配合模拟snapshot激活测试，验证主模型隐藏→辅助激活恢复→删除辅助再隐藏，component始终内部隐藏。model provider+component共49项通过exit0（既有Metal退出警告）；证据 evidence/media/model-component-catalog-readiness-20261009.json。安装器现有native路径负责required checkpoints下载，但本次未运行网络下载/真实安装/推理；Host升级及整包验收仍待完成。
+
+- 2026-10-09：Host模型合同新增component类型，仅允许metadata.internal严格true及唯一checkpoint_component能力，拒绝伪装公开推理；用于MuseTalk VAE/Whisper编码器/检测器/解析器。新增MuseTalk开发service.yaml一主视频模型+四内部component，required_model_ids精确闭合，权重HF/MS固定revision，未绑定未发布distribution_id。model provider回归+component约束+MuseTalk合同共60项通过，独立清单校验通过。证据 evidence/media/musetalk-development-service-contract-20261009.json。需要新Host，旧Host兼容、完整ai2apps.json、真实发现/依赖激活、签名安装/持久化任务未验收；不得直接发布或计Mac发行完成。
+
+- 2026-10-09：MuseTalk开发源码新增META/video-capabilities.json，声明source_video+driving_audio、WAV/MP4、source几何/25fps、保留驱动音频和默认preset；尚未作为正式service发布。新增真实VideoTaskManager._effective_request与_freeze_inputs联测，生成可解码MP4/WAV并经过实际媒体校验/上传冻结，再交adapter捕获Work，自动duration正确移除、seed42和媒体字节一致。13项相关测试通过exit0（既有Metal退出警告）。证据 evidence/media/musetalk-host-video-contract-20261009.json；非GPU、持久化任务生命周期或签名安装验收。
+
+- 2026-10-09：检查MuseTalk标准注册发现真实输入合同缺口：durable VideoGenerationTaskService冻结source_video/audio，既有adapter只接受开发inputs模板。新增标准无inputs路径映射及顶层seed，保留既有prepared模板调用；拒绝不支持的geometry/fps/output/audio/preset和显式duration。12项checkpoint/输入映射/不忽略控制测试通过，exit0（既有Metal退出警告）。证据 evidence/media/musetalk-standard-video-inputs-20261009.json。未纳入冻结Runtime或现有排队原始parser源码；正式service/manifest、durable Host实机与签名安装仍待完成，既有Host fixture通过不覆盖该路径。
+
+- 2026-10-09：只读 audit_shared_torch_payload.py 按Runtime所有dist-info/RECORD选中24项共享栈家族，并按文件device/inode消除既有共享重复计数：旧载荷9,376,423,294字节，新物化栈4,641,346,019字节，条件性未压缩差额4,735,077,275字节。主要为core Torch2.10/cu130+Triton3.6与processes/openvdn Torch2.13/cu129+Triton3.7及两套NVIDIA库；非大量相同库版本随意叠加。证据 artifacts/torch-shared-payload-estimate-r1.json。估算不含缺失/未登记文件及额外CUTLASS修复，不反映压缩率，不是已实现节省或删除许可；现有Runtime保持不变，真实GPU与完整新包仍待验收。
+
+- 2026-10-09：物化共享栈31组媒体关键依赖CPU导入全部通过，会话64830退出0，全部验证Torch2.13来自torch213-selective-materialized-r1目录、目标模块路径无原新栈venv/CUDA overlay回退、CUDA未初始化。回执 artifacts/torch213-materialized-media-imports-r1-receipt.json。其余模型依赖仍使用已验收旧Runtime profile，不等于完整新Runtime或31模型GPU通过。E5真实CUDA回归wrapper194129等待161166，会话79697，尚未运行。
+
+- 2026-10-09：新增 check_e5_torch213_materialized.py 并串行排在已实查live的MuseTalk原始parser队列wrapper161166之后，会话79697。固定已验收E5 profile Transformers4.57.3，仅更换物化Torch2.13/cu130，先要求31组导入回执通过及GPU空闲，再全量核验checkpoint、官方FP32向量误差、batch17、取消hook清理/精确恢复、关闭拒绝和libtorch/libc10/cudart/cublas映射均来自新物化栈。准备回执 evidence/media/e5-torch213-materialized-preparation-20261009.json；未运行/未计通过。
+
+- 2026-10-09：materialize_torch213_selective_stack.py 将已审计24项共享栈从开发symlink overlay复制为独立无symlink目录，13791文件/4,641,346,019未压缩字节，逐文件摘要清单sha256 d05e1e085dd5bc12c74402db41300b3f525db241c19bfd2789549c520fa84d9b。回执 artifacts/torch213-selective-materialized-r1-receipt.json；不是完整Runtime或压缩包缩减结果。check_torch213_media_imports.py 新增物化目录模式，拒绝Torch或目标模块解析回原新栈venv/CUDA overlay；Spark31组CPU导入实测会话64830已启动，输出torch213-materialized-media-imports-r1/receipt.json。未修改既有Runtime/GPU队列、未计GPU通过或缩包收益。
+
+- 2026-10-09：Fish官方DAC真实依赖audiotools.BaseModel/AudioSignal，不移除或伪造其protobuf约束。Fish profile未声明CUTLASS；r5全局强制根导致跨Worker组合冲突，r6按真实profile声明根遍历30个有清单profile均无候选冲突，openvdn-coordinator无根清单明确未覆盖。实际独立CPU进程均使用Torch2.13/cu130：Fish导入engine并使用protobuf3.19.6且无CUTLASS模块；CUTLASS使用protobuf7.36.2，两者CUDA均未初始化。证据 artifacts/torch213-media-requirements-r6.json、artifacts/torch213-protobuf-isolation-r1.json。因此保留小型profile依赖隔离并共享Torch仍可推进；不代表物化完整Runtime/GPU通过，也未新增缩包收益。
+
+- 2026-10-09：共享 Torch2.13/cu130 + 实际 CUTLASS 导出闭包声明审计 r5：31组中30组无候选约束冲突，Fish-S2唯一剩余冲突为 descript-audiotools 要求 protobuf>=3.9.2,<3.20，而CUTLASS4.8配套libs要求protobuf>=4.21.12。不强行改上游METADATA或全局升级。r4漏计导出闭包protobuf产生23组缺项，修正candidate fallback保留r4/r5证据；r5反映组合元数据，不是物化新Runtime或GPU通过，openvdn-coordinator无独立根清单的覆盖限制仍保留。证据 artifacts/torch213-media-requirements-r5.json。下一步验证Fish运行时是否可去除audiotools依赖或隔离CUTLASS需求，不计缩包收益。
+
+- 2026-10-09：MuseTalk 三核心分发已完成全部7文件 HF/MS 完整字节核验及标准构建、独立验签，共3,885,968,140字节。UNet/VAE/Whisper manifest分别50ee8c83、4d1f036e、45649973，完整摘要见 evidence/media/musetalk-core-distributions-signed-20261009.json；MS会话81914退出0，artifacts/musetalk-modelscope-full-r1/receipt.json通过。Installation查询返回active user session required，已一次申请本三项精确Cookie授权，未读取Cookie/提交/发布。README与覆盖清单同步；Package仍是准备源码，未生成可安装合同或通过签名安装。
+
+- 2026-10-09：MuseTalk UNet 固定 HF/MS 两端完整字节通过标准 full_dual_download 构建及独立 Ed25519 验签：dist_ai2apps_musetalk_unet_2bcb936e_v1，2 文件/406 pieces/3,400,075,672 字节，manifest sha256:50ee8c83538e9ddb3d5c2836e3412f0c5fc4384b0f0a35c22a7c8789065f000b。证据 evidence/media/musetalk-unet-distribution-signed-20261009.json。未读取 Cookie、提交或发布；VAE/Whisper 下载继续，后续合并为核心分发发布批次。
+
+- 2026-10-09：新增 packages/ai2apps-model-musetalk-cuda 发布准备源码目录：入口委托 Runtime，五个固定 checkpoint distribution 规格、原始许可/模型卡、权重 lock、署名及源码摘要；未放权重或重复 Torch/CUDA。Spark 独立目录全部源码哈希、实际已验收 Runtime 的入口委托及空生命周期通过，artifacts/musetalk-package-source-r1-entry-receipt.json。当前 Runtime adapter 摘要与待纳入新快照实现不同，不能将入口验收视为独立快照/GPU通过。未生成可发布 manifest，五分发正式发布、Runtime升级、Host合同与签名安装仍待完成。
+
+- 2026-10-09：check_cutlass_standard_export.py 在 Spark 独立源码目录调用真实标准 _copy_framework 与 _sanitize_symlinks，8 项 CUTLASS 声明依赖完整导出、cutlass/iket 相对链接保留、无 .pth，-I -S 仅 site 根目录真实 CPU 导入通过。证据 artifacts/cutlass-standard-export-r3-receipt.json。此结果验证构建器自动接入，未打包完整 Runtime、未作 GPU 或签名安装验收；冻结 r2 候选保持不变。
+
+- 2026-10-09：标准 CUDA builder 为 CUTLASS 4.8 的 cutlass/iket 添加限定名称的包内相对链接，保持不复制/执行 .pth；拒绝目标越界与名称冲突，共享 profile 无本地 DSL 时不生成链接。79 项 builder 测试通过（exit 0，既有 Metal 退出警告）。Spark 独立导出目录以 -I -S 且仅 site 根目录导入真实 cutlass/cuda.bindings.driver 通过，证据 artifacts/cutlass-companion-export-links-r1-receipt.json，builder SHA256 267e8e220c0ac5d26ec86a82751821cf4a84e621ff9f0904de0e426259aaf905。尚未纳入冻结 Runtime r2，非完整归档、GPU或签名安装验收；既有推理队列未修改。
+
+- 2026-10-09：修复builder在独立Spark源码目录中实际导出CUTLASS4.8.0闭包通过（含libs-base/libs-core/libs-cu12等8项，未压缩360303577字节），artifacts/cutlass-companion-export-r2-receipt.json。首次孤立脚本缺源码lock路径失败保留；按标准源码目录重试通过。导出库仅自身路径CPU导入通过artifacts/cutlass-companion-export-r2-imports.json；4.8官方.pth使用nvidia_cutlass_dsl/dsl_packages（旧python_packages探针失败保留），构建器不复制/执行.pth，因此完整Runtime仍需显式受信模块路径接入或等价内部布局处理，不能仅凭额外sys.path探针宣称生产bootstrap通过。未重建/发布Runtime。
+
+- 2026-10-09：按各profile标准导出META依赖根遍历后，继承核心备用Diffusers导致的Hub/Safetensors误报排除，r3审计只剩核心CUTLASS4.8.0缺libs-base/libs-cu12，artifacts/torch213-media-requirements-r3.json（openvdn-coordinator无独立distribution清单，仅覆盖选择性栈，非其完整闭包）。确认标准builder _excluded_distribution将nvidia-cutlass-dsl-libs-*误归宿主CUDA，修正为按声明依赖纳入并校验版本，不修改上游METADATA。新增缺包/错版本拒绝及完整闭包测试，76项builder测试通过（exit0，既有无Metal设备退出警告）。冻结r2候选/远端旧builder未变，下一次源码候选需要包含修复、实查配套库并重新打包验收；尚未称完整Runtime闭包通过或获得缩包收益。
+
+- 2026-10-09：选择性共享24项Torch/torchvision/torchaudio/Triton/CUDA/NVIDIA组件，并采用已解析CUDA Python13 overlay，保留各profile的NumPy/Pillow/fsspec等。audit_torch213_media_requirements.py --selective 比较31profile无新增声明冲突（不等于清除既有系统toolkit/extras缺项），artifacts/torch213-media-requirements-r2.json。prepare_torch213_selective_overlay.py生成开发专用33顶层链接，不修改既有环境；31组实际关键依赖导入全部通过且CUDA未初始化，artifacts/torch213-selective-media-imports-r1-receipt.json。未标准物化完整Runtime、未做全部媒体GPU回归、未删除旧栈或计缩包收益。
+
+- 2026-10-09：新增check_torch213_media_imports.py，在新Torch2.13/cu130完整候选环境优先、旧Runtime各profile依赖兜底的独立CPU子进程中，31组关键媒体依赖导入全部通过，包括NeMo；全部assert CUDA未初始化。artifacts/torch213-media-imports-r1-receipt.json。此为跨栈导入诊断，非31组精确依赖锁闭包、实际CUDA模型、性能/质量或签名安装通过；未替换核心栈，未计缩包收益。
+
+- 2026-10-09：MuseTalk辅助分发通过标准build_checkpoint_distribution.py full_dual_download生成签名候选。YuNet dist_ai2apps_musetalk_yunet_3cc26e7f_v1，232589字节/1片，manifest 2acab879498773a91ef07aad9c1d159dbc74591b071989b477475ea2dad49a91；BiSeNet dist_ai2apps_musetalk_bisenet_768606b8_v1，53289463字节/7片，manifest a2080bafbb9ab38538b682410f3a821075dd8364b1f9ba0bab422c8a09ad18fb。沿用已确认Publisher/key，精确Secret记录公钥指纹核对通过；未读取Cookie。候选/双源verification位于distributions/musetalk。Installation list-publisher返回active user session required，已请求这两项精确Cookie授权，未提交/发布，其他工作继续。
+
+- 2026-10-09：verify_musetalk_auxiliary_mirrors.py完成YuNet/BiSeNet固定HF+MS两端全部字节下载与size/SHA校验，artifacts/musetalk-auxiliary-dual-r1/receipt.json passed，未使用凭据/未发布。新增独立源码r2与check_musetalk_original_parser_pipeline.py，分别绑定UNet/VAE/Whisper并用原始79999_iter.pth自动预处理，要求25帧输出像素/音频SHA与原聚合基线相同及engine释放；排于既有独立快照wrapper153891后session37997，尚未执行通过。保持旧排队候选及冻结Runtime字节不变。
+
+- 2026-10-09：cuda_musetalk_prepare.py新增精确79999_iter.pth的CPU weights_only加载并要求纯张量state dict/strict加载；adapter允许Host parser快照内原始pth或既有safetensors，拒绝符号链接越界。6项接口测试通过（退出0，既有Metal退出警告）。Spark上原始pth/既有safetensors对固定视频0/12/24帧真实CPU BiSeNet标签逐像素一致，artifacts/musetalk-parser-original-r1/inference-receipt.json；全191张量比较亦保留。当前冻结Runtime和已排队独立快照候选未覆盖此新加载器，完整CUDA视频/HTTP/Host及签名安装仍待执行，未宣称发布通过。
+
+- 2026-10-09：新增 musetalk-checkpoints.lock.json，补齐既有官方固定revision下7文件全部SHA256（原发现清单4个配置摘要为空），总3,885,968,140字节；在Spark对当前磁盘完整重新哈希通过，artifacts/musetalk-core-lock-recheck-r1.json。原发现记录不覆盖。此锁仅覆盖UNet/VAE/Whisper核心，YuNet/BiSeNet辅助分发、MS双源字节验证及Registry发布仍缺，未填占位distribution_id或宣称可发布。
+
+- 2026-10-09：MuseTalk Package 接入准备发现当前UNet/VAE/Whisper依赖开发聚合目录；cuda_musetalk_engine.py 与 adapter新增Host独立vae/whisper快照绑定，要求二者同时就绪，驻留引擎身份包含三个根路径，保留既有聚合fixture兼容。4项无GPU测试通过（退出0，结束有既有无Metal设备警告），覆盖半激活拒绝、辅助快照切换身份及旧布局。check_musetalk_separate_checkpoints.py 已独立上传并排于H3 Host wrapper151697之后，要求25帧/自动检测/清理及像素音频SHA与原聚合候选完全一致；尚未实机通过。冻结Runtime候选未变，Package/权重双源分发声明及发布仍待完成。
+
+- 2026-10-09：收回 H3 OpenVDN Stage B HTTP 已完成回执 artifacts/openvdn-stageb-http-r1-receipt.json，124帧/音轨非空有限、2368.60秒、active归零/容器删除通过。check_openvdn_http.py 新增真实 Host 桥接与调度完成/槽位归还断言；首次health缺共享bridge模块失败，补齐既有media_host_probe_bridge.py后health-r2通过，回执 artifacts/openvdn-stageb-host-health-r2-receipt.json。完整Host推理已排于InfiniteTalk Host wrapper149174之后，probe openvdn-stageb-host-r1；尚未计Host推理、签名安装或质量通过。
+
+- 2026-10-09：新增 run_infinitetalk_host_after_http.py，要求 r5 HTTP 真实25帧、active_requests归零、容器删除全部通过，才运行完整 Host 推理（固定已验收 Runtime、sol-host-timeout-source-r3）。前置失败写 gate 回执并跳过，不把 health-only 当推理通过。语法通过，已上传并排于当前完整队列 wrapper146605 后，session19823；尚未执行/通过。
+
+- 2026-10-09：新增 accept_consolidated_runtime_r2.py 与 check_openvdn_cu130_materialized_model.py，已上传并串行排于 r2 标准构建 wrapper144867 后（session93949）。前者检查生产解包、版本/来源、无 Transformers4.57.3 残留及依赖/引擎导入；后者只使用81项独立物化依赖与固定官方源码，复验完整 OpenVDN，禁止旧 site-packages 回退。两者尚未执行通过。InfiniteTalk HTTP r5 实查仍在运行，1/40步约255秒，未得终态；保留队列，不重启。
+
+- 2026-10-09：新增build_consolidated_runtime_candidate_r2.py，从已验收冻结r1源码复制独立source-r2，仅叠加ExOmni/MuseTalk新锁并切换audio/ExOmni/MuseTalk三个已通过的独立输入，其他参数沿用标准stage-only构建及原CUDA栈。输出独立r2目录、记录源码与最终payload摘要/大小，排于Qwen完整回归wrapper131315之后session63877，尚未开始/通过；不得提前声称已删除4.57.3或获得体积收益。
+
+- 2026-10-09：ExOmni独立构建输入终态通过，110项标准声明闭包/精确锁、Transformers4.57.6及本venv导入来源通过；artifacts/exomni-consolidated-build-input-r1-receipt.json。下一次标准构建可同时切换audio/ExOmni输入，实际是否删除旧库与压缩收益仍需整包检查。
+
+- 2026-10-09：ExOmni Transformers4.57.3/4.57.6固定Teacher74帧对照通过，inputs、MP4、像素及音频SHA均完全一致，engine释放；artifacts/exomni-transformers-{baseline,candidate}-r1-receipt.json。实际候选overlay同时使用Tokenizers0.22.2，已核实，故构建锁同步4.57.6/0.22.2及显式qwen-tts派生0.1.1+ai2apps.tf4576.1。prepare_exomni_consolidated_input.py已启动独立标准声明闭包物化session18076；尚未计构建输入/新Runtime/签名安装通过，不删现有库。
+
+- 2026-10-09：OpenVDN CUDA13独立构建输入终态通过，81项精确锁与声明闭包、vdn/diffusers固定wheel来源、Torch2.13cu130和CUDA绑定导入/本venv来源均通过；artifacts/openvdn-cu130-build-input-r1-receipt.json。包含cuda-python13.3.1/cuda-core1.0.1的新物化环境尚需完整实机回归及标准Runtime导出/解包，不能继承此前overlay的GPU通过为最终新包通过。
+
+- 2026-10-09：新增prepare_openvdn_cu130_input.py，按81项已审计候选锁物化新venv，复用标准_copy_framework/_distribution_closure/_verify_dependency_lock并验证vdn/diffusers固定wheel来源；构建输入保留toolkit元数据，最终Runtime仍走标准system-toolkit排除。语法通过，独立物化session8471进行中；未改active Runtime lock/当前环境，尚未计构建输入终态通过。
+
+- 2026-10-09：独立CUDA Python13 overlay按5项完整require-hashes正常安装成功。新增audit_openvdn_cu130_closure.py重审81项基础声明依赖（extras由显式roots代表），冲突0、CUDA12包0；cuda.bindings.driver/cuda.core导入及精确版本/来源通过，不初始化GPU。artifacts/openvdn-cu130-closure-audit-r2.json及openvdn-cu130-candidate-r2.lock保留，官方解析/哈希清单同时保存。当前active Runtime lock未改，独立物化标准构建输入及包含新增cuda-core的实机/安装验收待完成。
+
+- 2026-10-09：CUDA Python正常pip解析确认13.3.1可与bindings13.3.1匹配，新增cuda-core1.0.1；完整ignore-installed二次解析固定5项官方PyPI wheel（另含pathfinder1.6.0/numpy2.5.2），按报告SHA生成cuda-python13-requirements-r2.txt。独立cuda-python13-overlay-r1目录require-hashes正常依赖安装已启动；不修改正在验收的新Torch环境。声明闭包重审及导入仍待终态。
+
+- 2026-10-09：OpenVDN CUDA13标准打包前只读依赖闭包审计选中80项，发现cuda-python旧版要求cuda-bindings~=12.9.7而新栈为13.3.1；artifacts/openvdn-cu130-closure-audit-r1.json。实际模型通过不等于声明闭包通过，未改lock或忽略冲突；下一步正常解析并对齐cuda-python/bindings，保留旧构建基线。ExOmni候选PID133574已实查进入推理。
+
+- 2026-10-09：新增check_qwen38_torch213_model.py，冻结现有qwen38_backend/compat及既有能力探针，在新Torch2.13/cu130下加载同一16b6615a固定27B检查点，要求168原生NVFP4模块、禁JIT、图像/工具模板与结果/思考/流式取消通过并检查旧原生映射及清理内存。仅既有能力升级回归、不新增对话模型。语法通过，实机排于InfiniteTalk r5 wrapper122807之后，尚未执行通过；源码摘要和失败回执保留。
+
+- 2026-10-09：Qwen-TTS独立构建输入通过，104项标准audio声明依赖闭包、派生版本0.1.1+ai2apps.tf4576.1与Transformers4.57.6实际版本和无外部site路径检查通过；artifacts/qwen-tts-consolidated-build-input-r1-receipt.json。尚未新Runtime导出/签名安装或发布。
+
+- 2026-10-09：Qwen-TTS派生wheel已按SHA送至Spark，仅在新构建输入overlay安装；prepare_qwen_tts_consolidated_input.py要求四模式基线/候选通过，复用标准audio roots完整声明闭包物化并检查新venv来源，未更改原环境或放宽依赖检查。独立构建输入session36646进行中，尚未计通过。ExOmni基线PID125901实查运行并进入50步推理。
+
+- 2026-10-09：新增build_qwen_tts_transformers_overlay.py，从固定上游wheel SHA11a290d8...构建显式派生qwen-tts 0.1.1+ai2apps.tf4576.1，仅改精确Transformers依赖4.57.6/本地版本并附AI2APPS-PATCH来源说明；Python及许可证字节逐一保持。候选wheel114404字节，SHAbb43e801205a2cdc60f43a17918c2428378b638cf64b50ebbf3c79cd8a1ece8d，artifacts/qwen-tts-transformers-wheel-r1/receipt.json。固定输出重复构建摘要一致、RECORD全校验、错误输入摘要拒绝通过。未装入现有环境、未发布；ExOmni实机对照与完整依赖解析/标准Runtime导出仍待完成，不绕过原声明直接改安装目录。
+
+- 2026-10-09：Qwen-TTS Transformers4.57.3/4.57.6四模式原版/候选实机完成且stop清理通过；artifacts/qwen-tts-transformers-{baseline,candidate}-r1-receipt.json。固定输入/种子/权重及实际WAV摘要复核：0.6B CustomVoice与1.7B Base完全一致，1.7B CustomVoice/VoiceDesign相对L2为0.00368869/0.00362303、相关系数约0.999993，样本数一致但并非字节一致；artifacts/qwen-tts-transformers-comparison-r1.json。保留数值差异，不计广泛质量或Host/签名安装通过；官方qwen-tts==4.57.3声明未改，合法可复现的依赖补丁构建与ExOmni回归仍待完成。
+
+- 2026-10-09：MuseTalk统一NumPy构建输入终态通过，75项标准声明依赖闭包、精确锁及新venv内2.5.3导入/无外部site路径校验成功；artifacts/musetalk-consolidated-build-input-r1-receipt.json。可用于下一次标准Runtime构建，尚未重打整包。
+
+- 2026-10-09：MuseTalk NumPy2.2.6/2.5.3两次完整自动检测/解析+CUDA25帧实机通过，像素/音频SHA完全一致，engine释放；artifacts/musetalk-numpy-{baseline,candidate}-r1-receipt.json。MuseTalk锁升级2.5.3，新增prepare_musetalk_consolidated_input.py复用标准框架导出/声明闭包及精确锁校验，独立输入准备session56512运行，未计通过或完整新包收益。Torch2.13/cu130既有NVFP4 AOT禁用JIT后三形状通过，relative_l2约0.001807/0.001670/0.001660，保留实际GPU内核证据于artifacts/torch213-nvfp4-compatibility-r1-receipt.json；非Qwen完整模型验收。
+
+- 2026-10-09：Torch2.13/cu130完整官方OpenVDN DMD8实机通过，124帧且音频非空有限，868.71秒，无旧Torch/NVIDIA/Triton映射；artifacts/openvdn-torch213-cu130-model-r2-receipt.json。实际MP4 SHA复核3f9ca5ca655391927f096956af145bf9b82aa7ebb7aab42385c311f7e4df044f；非Worker/Host/签名安装通过。InfiniteTalk HTTP r4在请求前因宿主venv缺soundfile失败，401/容器清理通过，artifacts/infinitetalk-http-r4-receipt.json；不是VAE问题复现。探针增加已验收Runtime媒体库fallback及容器启动前导入检查，实际依赖导入通过、语法通过；r5排于ExOmni wrapper112818后session29275，尚未推理通过。
+
+- 2026-10-09：新增check_exomni_transformers_consolidation.py，使用已验收Runtime、固定Teacher检查点和3秒官方输入，对照Transformers4.57.3/4.57.6，记录74帧像素/音频摘要及engine释放；Runtime根/版本/来源和GPU独占前置校验，失败回执保留。语法通过，已部署并排于Qwen-TTS wrapper99585之后；尚未执行通过，不修改官方依赖元数据、不删除旧库。
+
+- 2026-10-09：统一Transformers完整候选基础验收通过，生产解包、冻结源码SHA、三profile版本、布局、关键依赖及引擎导入（含FlashHead官方pipeline）均通过；artifacts/media-runtime-consolidated-acceptance-r1.json。制品9,157,161,708字节，未签名、未完成新包GPU/安装验收。后续Torch2.13/cu130官方OpenVDN完整模型r2已启动并完成14分片加载，保留torchao可选Tensor导入警告，尚无推理终态。
+
+- 2026-10-09：Klein9B实际Host生成/编辑基础验收通过，512²分别217.34秒（含冷加载）/3.94秒，2完成0失败、active0、槽位归还及容器删除；artifacts/flux9b-host-r1-receipt.json。使用已验收旧Runtime，非产品API/UI或签名安装。统一Transformers候选标准构建exit0，最终9,157,161,708字节，SHA256 44879034a665ae9bf7e4886531645f897e321d912a11a860f883d48a6c9acb4f；较旧r2仅少11,219字节。证据artifacts/media-runtime-consolidated-build-r1-operation.json，仍未签名发布；生产解包验收进程103341已实查运行，后续新Torch OpenVDN实机队列保留。
+
+- 2026-10-09：补齐Qwen-TTS4.57.3→4.57.6真实回归脚本check_qwen_tts_transformers_consolidation.py，复用固定0.6B与1.7B CustomVoice/Base/VoiceDesign检查点、当前Runtime实际adapter，固定随机种子，保留WAV摘要/采样率/时长及stop清理。原版候选排于NVFP4 wrapper96033后session6977，尚未执行通过；不修改官方exact依赖元数据，不宣称可删4.57.3。已有CPU导入通过时出现SoX缺失及可选FlashAttention警告，需实际声音模式验证。构建PID85127实查仍压缩，中间6.7G非最终大小。
+
+- 2026-10-09：真实共享布局前后核验改变缩包判断：旧E5/Fish/FlashHead已经链接audio的4.57.3，新候选改链ACE的4.57.6；Transformer共享报告逻辑节省758047164→758047746，仅增加582字节，不是压缩差值。因Qwen-TTS仍固定4.57.3，旧库尚不能删除，三模型迁移主要是兼容性进展而非显著体积收益。证据artifacts/transformer-consolidation-sharing-r1.json。下一步版本收敛优先消除最后消费者（Qwen-TTS/ExOmni）和Torch/CUDA，不把每模型升级等同删除一个版本；Qwen-TTS4.57.6只读导入实验session94967开始，保留原严格元数据，未获依赖验收。
+
+- 2026-10-09：针对基础Torch升级必须保留既有NVFP4能力，新增check_torch213_nvfp4_compatibility.py，复用原三形状量化/GEMM独立解码数值对照与CUDA profiler kernel证据，锁FlashInfer0.7.0.post1且FLASHINFER_DISABLE_JIT=1，私有缓存；排于媒体队列94048后session46080，尚未通过，不扩展对话模型范围。完整Runtime关键引擎导入列表补齐FlashHead实际官方pipeline，避免三profile合并只校验其基础依赖。当前构建压缩仍运行，中间4.9G非最终大小且已超4GiB发布限制。
+
+- 2026-10-09：NumPy2.2.6/2.5.3四profile原版候选八项原生CPU检查全部通过，artifacts/numpy-consolidation-native-r2-receipt.json，非媒体模型通过；r1无SciPy探针失败保留。实查构建产物META的E5/Fish/FlashHead已为Transformers4.57.6，整包仍未完成。新增check_musetalk_numpy_consolidation.py，固定官方输入、完整Runtime自动检测/解析+CUDA合成25帧，保留像素/音频摘要及engine释放，原版候选串行排于InfiniteTalk wrapper92306后；仅语法通过，尚未执行，不删除旧NumPy。
+
+- 2026-10-09：NumPy原生r1六项ExOmni/InfiniteTalk/MuseTalk原版候选通过，YuE2两边均因探针无条件import scipy失败（该profile并无SciPy），并非升级失败；回执artifacts/numpy-consolidation-native-r1-receipt.json保留，修正按实际模块检查的r2/session61149运行。InfiniteTalk HTTP r3核验为VAE初始化CUDA OOM，基础支持不能写成通过。HTTP探针新增精确Runtime验收绑定、GPU独占门禁及请求前后/清理后MemAvailable/Cached/Swap诊断；r4使用完整已验收Runtime r2，排于队列86493后，尚未运行通过。
+
+- 2026-10-09：剩余NumPy版本约束审计完成，artifacts/numpy-consolidation-metadata-r1.json。ExOmni/InfiniteTalk/MuseTalk/YuE2当前2.2.6声明未排斥2.5.3；SenseVoice FunASR明确numpy<2，保持1.26.4；Nemo无显式冲突仍不代表可升主版本。新增check_numpy_consolidation.py原版/候选八项CPU原生检查（SVD、SciPy重采样、Torch桥接及存在时OpenCV/Numba/Librosa），独立覆盖不修改环境，session1001已启动，尚未通过，不继承为实际模型兼容。标准构建PID85127仍运行；版本体积审计session62110已exit0并保存artifacts/runtime-dependency-version-bytes-r1.json。
+
+- 2026-10-09：扩展既有audit_runtime_remaining_size.py，--dependency-versions按wheel METADATA/RECORD输出每name/version的模型site及唯一inode字节，内部共享目标每版本只计一次，外部路径不读取并报告，跨版本可重叠且不是下载大小。内部共享与外部元数据拒绝两项测试通过。已对验收Runtime r2启动只读基线审计，尚无结果；后续可与统一构建比较，禁止以非压缩字节直接声称包体积节省。构建PID85127实查仍运行。
+
+- 2026-10-09：OpenVDN新CUDA完整模型r1终态失败，原因是探针引用Runtime未携带的prompts/example_0.pt；未证明CUDA不兼容，亦未通过模型验收。失败回执artifacts/openvdn-torch213-cu130-model-r1-receipt.json。r2改用原官方固定source-r1缓存、加载模型前校验SHA8dacc249bce17119e07c292a78fdbec23ee9220816edd9c927bbf7d7f4121bae。统一依赖完整Runtime构建已真实启动PID85127，旧CUDA栈保留。accept_consolidated_runtime.py新增生产解包/冻结源码摘要/三profile4.57.6版本/布局/依赖引擎导入验收，排在KleinHost wrapper85124后，再串行运行旧Runtime上的新CUDA模型r2，session71700；尚未计任一通过或发布。
+
+- 2026-10-09：E5/Fish独立构建输入r3通过，118项声明闭包及两模型精确锁、4.57.6导入/无外部site路径均通过，artifacts/fish-consolidated-build-input-r3-receipt.json。标准完整候选重建已排于OpenVDN PID78001之后，队列PID84012/session19206，仍保留旧CUDA栈。Klein9B HTTP脚本新增显式Host源码选项，共享桥记录三模块SHA，实际调度生成/编辑两完成/零失败/slot归还门禁；语法通过，实机flux9b-host-r1排于84012后，尚未通过；使用已验收Runtime r2，不借用未完成的新候选。
+
+- 2026-10-09：E5/Fish干净输入物化r2由精确锁检查发现缺少E5独有sentencepiece0.2.2（Fish闭包不需要）；失败保留，已改为两模型标准ROOT_DISTRIBUTIONS并集准备r3，session79524，尚未通过。完整候选脚本build_consolidated_runtime_candidate.py已准备：冻结既有源码、仅改已验收Transformer锁及三个解释器输入、保留原CUDA栈、调用标准stage-only builder并记录整包SHA/大小，尚未启动构建；需新输入通过后才执行。磁盘可用1.5T。OpenVDN新CUDA完整推理PID78001仍存活。
+
+- 2026-10-09：FlashHead独立构建输入完成，标准_copy_framework物化47项声明依赖；新venv内4.57.6实际导入和标准依赖闭包校验通过，site路径不再指向外部音频环境，无Qwen-TTS/Gradio。artifacts/flashhead-consolidated-build-input-r1-receipt.json；适用标准system-CUDA排除合同，不称为全pip闭包或完整Runtime。Klein9B隔离HTTP r2回执补核通过：512²生成218.59秒（含冷加载）、编辑3.40秒、401/active0/容器删除；artifacts/flux9b-http-r2-receipt.json，非Host/签名安装通过。SoL inventory总状态同步custom Host通过。新Torch完整OpenVDN PID78001仍在运行，尚无终态。
+
+- 2026-10-09：E5/Fish标准导出payload隔离验证通过，Transformers2240文件/Tokenizers26文件均与此前真实推理的4.57.6候选逐文件SHA一致（忽略可再生pyc），隔离site路径真实tokenizer和tiny CPU BERT前向通过，artifacts/consolidated-profile-export-validation-r1.json。CUDA标准构建器75测试通过，pytest退出0（headless Metal退出提示保留）。未计新媒体GPU、签名安装或完整包体积。OpenVDN DMD8新Torch213/cu130完整模型PID78001已实查存活并加载14个权重分片，session27914继续，不以日志进展代替终态通过。
+
+- 2026-10-09：SoL custom Host r3通过：60帧512×288，443.97秒，1完成0失败、槽位归还/容器删除；修复video_upscaling300秒等待后通过，旧r2失败保留，回执artifacts/sol-custom-host-r3-receipt.json，非签名安装/API/UI验收。Torch2.13/cu130官方OpenVDN内核通过：FP8 relative RMSE0.00733665、flex attention对SDPA最大误差0.00024414、无旧原生库映射，artifacts/openvdn-torch213-cu130-kernels-r1.json；日志仍有torchao可选Tensor导入警告，不计完整ABI/模型通过。固定DMD8完整124帧官方模型试验check_openvdn_torch213_cu130_model.py已启动session27914，保留独立输出/缓存，不修改现有Runtime。
+
+- 2026-10-09：确认原Fish导出环境仍为Transformers4.57.3，未被副本安装修改。使用既有标准_copy_isolated_profile/_distribution_closure完成E5/Fish升级后依赖导出r2，精确锁与依赖specifier校验通过，均为4.57.6；输出不含Qwen-TTS/Gradio/ONNXRuntime或.pth文件。回执artifacts/consolidated-profile-export-r2-receipt.json。此为依赖基础Runtime的profile，不是独立pip环境；源venv全局pip check失败仍保留，不能宣称已清理源环境。r1缺ACE锁的导入失败保留。下一步验证导出payload导入/推理及完整构建，未计下载缩减或发布通过。SoL custom r3 PID68482已实查运行6分56秒；Torch213 CUDA内核session16004仍在后置队列。
+
+- 2026-10-09：独立构建输入r1失败并保留：Fish/E5复制venv仍通过外部site-packages引用旧Runtime/ACE等环境，pip check暴露Qwen-TTS==4.57.3等无关依赖冲突；仅Transformers版本改变，但不能视为闭包验收通过。不用于Runtime构建。准备脚本新增外部site-packages前置拒绝，后续须物化实际profile闭包，不盲复制含.pth环境或压制依赖检查。已通过的模型推理证据不代表整个源构建环境干净。
+
+- 2026-10-09：将已验证的E5/Fish构建锁升级到Transformers4.57.6，同步FlashHead标准导出断言。新增prepare_consolidated_transformers_inputs.py：独立复制原构建venv、冻结其余全部已安装版本，使用正常pip resolver升级并比对实际变更仅Transformers，执行pip check；不改原基线。Spark输入准备session42491进行中，尚未重建Runtime/计入体积收益。
+
+- 2026-10-09：FlashHead Lite/Pro统一Transformers4.57.6的四次真实推理全部通过，固定两秒50帧512×512音视频，原版/候选像素和MP4摘要均完全一致，输入/权重/源代码/参数已对照且pipeline释放。实际输出文件SHA复核通过，artifacts/flashhead-consolidation-comparison-r1.json；非Host/签名发布验收。Torch2.13/cu130官方OpenVDN FP8和attention内核探针新增check_openvdn_torch213_cu130_kernels.py，要求新Torch来源、GPU独占并核验/proc/self/maps无旧Torch/NVIDIA/Triton映射；排在SoL custom r3 PID68482后，session16004，尚未通过。
+
+- 2026-10-09：Fish统一Transformers4.57.6实机通过，官方固定基线PCM16完全一致且重复float输出一致（artifacts/fish-consolidated-transformers-r1-receipt.json）。独立Torch2.13/cu130的33项哈希锁定依赖安装完成，pip check及torch/torchvision/torchaudio/triton导入通过（artifacts/torch213-cu130-import-r1.json），不计GPU模型兼容。SoL custom r2失败后发现Host仅video_generation允许长推理，video_upscaling仍为300秒；修复JSON/multipart两路径为相同有界14400秒等待，保留连接/写入限制，31项请求ID/鉴权/超时/调度测试通过（退出时headless Metal提示，pytest exit0）。custom r3独立Host源码实机复验排在FlashHead55049之后，尚未通过，旧失败保留。
+
+- 2026-10-09：E5统一Transformers4.57.6固定权重CUDA验收通过，官方FP32最大误差6.891787052154541e-08，batch17/取消恢复/hook清理/关闭检查通过，回执artifacts/e5-consolidated-transformers-engine-r1.json。Torch2.13/cu130新环境的33项依赖按官方解析URL和SHA256固定，清单artifacts/torch213-cu130-requirements-r1.txt；Spark独立torch213-cu130-venv-r1安装进行中，session31625，未改既有Runtime，尚未计依赖闭包、GPU或发布通过。Fish实机进程47746仍在运行；OpenVDN和FlashHead队列进程已实查存活。
+
+- 2026-10-09：Fish S2 CUDA固定权重分发完成标准签名和独立公钥验签，11文件1313pieces/11,008,083,526字节，manifest a949cb66，metadata_verified。开发Package补齐精确原版权NOTICE及独立分发spec，保留每安装者许可确认，不代替用户接受条款。未读Cookie/发布/绑定service；独立权重大小不属于Runtime。证据evidence/media/fish-s2-cuda-distribution-signed-20261009.json。
+
+- 2026-10-09：补齐Fish S2 Pro CUDA Package开发源码，官方固定1de9996b权重，参考克隆/情绪/五说话人合同及Fish Research许可、Built with Fish Audio署名，Runtime>=0.6.0。补齐discovery后真实源码文件索引manifest及Host合同通过；优化Runtime下无GPU无权重隔离入口1模型/401/正常关闭/容器删除通过。分发尚未绑定及签名安装发布，不计新GPU推理或质量通过。证据artifacts/fish-package-entrypoint-r1-receipt.json。
+
+- 2026-10-09：SoL标准模式在完整优化Runtime r2的真实Host调用/调度/代理通过，60帧512×288、247.52秒，1完成/0失败，槽位归还、容器删除。回执artifacts/sol-host-r2-receipt.json。旧fixture缺CudaCustomRefiner失败保留；自定义模式继续串行，未继承标准模式通过。非产品API/UI/签名安装验收。
+
+- 2026-10-09：FlashHead版本统一补齐Lite/Pro固定输入实机对照脚本，原Transformers4.57.3与候选4.57.6各运行两秒视频，使用优化Runtime内固定官方pipeline，保留音视频/抽样帧及原始像素摘要、释放pipeline，不再错误导入不存在adapter。四项任务串行排于OpenVDN kernel wrapper51337后，尚未执行/通过；不得据此移除旧版本。脚本check_flashhead_consolidated_engine.py、run_flashhead_consolidation.py。
+
+- 2026-10-09：Klein9B BF16原生生成/编辑r2通过，512²/4步，3.55/3.85秒，加载208.89秒，CUDA峰值分配35379195904字节。人工图像检查红壶→绿壶、桌面构图保留；两图及内存回执artifacts/flux9b-native-basic-r2/，旧OOM保留，不能据此认定缓存是唯一原因。HTTP/Host/签名安装仍待。RVC训练声音Host实机通过，413760样本，上传/默认恢复/非法ZIP后恢复与直连归一化基线最大PCM16差0，4完成/1预期失败、槽位归还/容器删除。核对Package adapter SHA一致、优化Runtime协议及物化通过后，开发service声明trained_voice；未发布、未声称UI/训练质量通过。回执artifacts/rvc-trained-voice-host-r1-receipt.json。
 
 - 2026-10-09：新增OpenVDN真实CUDA内核合并预检check_openvdn_torch_kernels.py：分别在原2.13/cu129和主2.10/cu130环境调用固定官方Fp8Linear及设备实际选择的flex attention，对照BF16 Linear/SDPA，使用私有新Triton缓存和Runtime编译器/头文件，记录失败而不改上游实现。任务排于Fish wrapper47746后（session75648），要求Runtime通过及GPU空闲；尚未运行/通过，不以导入结果替代内核兼容。
 
@@ -2553,6 +3406,88 @@
 
 ### NXR-TODO-MVP-20261003：内置 Todo 项目树与执行调度
 
+- 2026-10-13：手机版 Todo 项目详情增加附件列表、图片缩略图和页内大图弹窗，保留原文件下载。复用桌面图片响应逻辑；移动 snapshot 仅返回可见项目附件，移动附件 GET 按 owner/App capability 校验并排除归档与回收站项目；公网 Gateway 仅放行精确只读路径。增加预览、下载、跨用户和归档隔离测试。需重启 Local 并刷新手机页面；不涉及 Cloud 修改。
+
+- 2026-10-13：Todo 桌面图片附件增加缩略图，点击打开大图；归档/回收站详情复用同一展示，原始文件下载保留。附件接口增加 owner-scoped preview 参数，解码图片、应用 EXIF 朝向并限制至 1600px 后输出 PNG，拒绝无效或过大图片。新增预览尺寸、下载原样、无效图片与跨用户隔离测试；需重启 Local 并刷新 Shell。
+
+- 2026-10-12：目录删除确认弹窗补充标题、说明及目录名的明确段间距；目录名到输入框留 18px，避免全局样式重置后紧贴。仅 CSS 变更，刷新 Shell 页面生效；diff 空白检查通过。
+
+- 2026-10-12：调整目录删除防误删规则：仅正常项目阻止删除，归档/回收站项目随原树结构迁移到“归档与回收站”目录（不存在则创建），保留附件、执行记录及恢复能力。服务端事务内检查并迁移，仍须确认目录名称。新增归档/回收站恢复、混合项目原子拒绝及目标目录复用验证；需重启 Local 并刷新页面。
+
+- 2026-10-12：目录详情增加删除入口。仅允许删除空目录（含归档/回收站项目检查），需输入完整目录名称确认；服务端在同一事务核对归属、名称和空目录条件，并清理目录排序记录。增加删除 API、名称变更、跨用户及保留项目防误删测试；前端 JavaScript 语法与 Todo 回归验证。Python 接口需重启 Local，页面刷新生效。
+
+- 2026-10-12：Desktop Todo 选中普通目录但未选项目时显示目录详情，可编辑并保存目录名称，同步目录列表和标题；新增 owner 隔离的目录重命名 API 与原名称并发检查，保留项目归属/排序，复用未保存离开保护。74 项 Todo 后端及 9 项前端操作/筛选测试通过；需要重启 Local 并刷新页面。
+
+- 2026-10-12：Desktop Todo 已完成分组按钮额外右移 48px；展开项目恢复真实层级，与同级未完成项目对齐，不再为分组虚增一级缩进，内部子树仍保留父子缩进。7 项筛选/层级测试、JS 语法与差异空白检查通过；静态刷新生效。
+
+- 2026-10-12：Desktop Todo 将全部项目筛选移至标题栏，与搜索、新建项目同排；搜索关闭时隐藏整条搜索工具栏，统一按钮图标与文本横向排列，窄宽度允许标题栏换行。JS 语法和差异空白检查通过；刷新 Shell 页面生效。
+
+- 2026-10-12：Desktop Todo 搜索输入默认隐藏，在新建项目旁增加中英文搜索按钮，点击展开并聚焦；再次点击或 Escape 收起并清空查询，筛选下拉保留。JS 语法与差异空白检查通过；刷新 Shell 页面生效。
+
+- 2026-10-12：Desktop Todo 原“执行中”聚合改名“进行中”，纳入未完成且 status=in_progress 的项目，同时保留已启动执行记录的项目；队列仍由当前任务展示。更新中英文说明，保留祖先路径、生命周期过滤与去重计数。13 项聚合/筛选测试、JS 语法与差异空白检查通过；静态刷新生效。
+
+- 2026-10-11：Desktop Todo 全部项目视图将已完成子项目分支收纳到父级末尾“已完成（n）”节点，可展开/收起；保留未完成后代的祖先路径，不修改持久化排序，搜索/专项筛选及聚合目录保持直接匹配展示。中英文标签和键盘按钮支持；14 项筛选、聚合、操作测试及 JS 语法/差异空白检查通过。静态更新，刷新 Shell 页面生效。
+
+- 2026-10-11：移动 Todo 行内进度弹窗标题显示当前百分比，滑块 input 实时更新标题与 aria-valuetext，保留松手保存行为。JS 语法及差异空白检查通过；静态刷新生效。
+
+- 2026-10-11：移动 Todo 已有项目 Emoji 输入、选择、清除及 AI 生成后自动保存，保留其它未保存表单内容并更新 revision；新项目随创建保存，离开时取消待保存定时器。自动保存及导航 4 项测试、JS 语法检查通过；静态刷新生效。
+
+- 2026-10-11：移动 Todo Emoji 编辑增加 AI 生成，支持未保存的新项目；桌面与移动共用生成逻辑、标准任务模型、Emoji 提取及去重重试。移动入口保持 owner 隔离并精确开放 POST 路由；生成先填表，保存后写入，异步结果不覆盖用户后续修改，模型配置错误保留原提示。移动/API/桌面 Todo 95 项测试、JS 语法及差异空白检查通过；需要重启 Local 并刷新手机页面。
+
+- 2026-10-11：移动 Todo 已完成分组展开符号改为固定尺寸 CSS 箭头，消除文字字形基线导致的偏下，与树形横线垂直居中对齐。JS 语法及差异空白检查通过；静态刷新生效。
+
+- 2026-10-11：移动 Todo 层级缩进由 18px 收紧至 12px，展开区由 36px 收紧至 24px，卡片横向内边距由 10px 收紧至 6px；横线仍为 10px，祖先竖线、箭头中心及分割线同步对齐。JS 语法与差异空白检查通过；刷新页面生效。
+
+- 2026-10-11：移动 Todo 默认将隐藏的已完成分支收纳为同级末端“已完成（n）”节点，可按组展开/收起并保留层级连接线；有未完成后代的已完成父项继续显示，全局显示已完成时恢复正常顺序，搜索沿用原筛选规则。树结构及导航 7 项测试、JS 语法和差异空白检查通过；静态刷新生效。
+
+- 2026-10-11：移动 Todo 详情页将添加子项目按钮移至顶部，与返回列表同排左右布局，沿用新建时隐藏及未保存修改保护。5 项移动多语言模板测试、差异空白检查通过；刷新页面生效。
+
+- 2026-10-11：移动 Todo 树形竖线横向位置对齐父行展开箭头中心（36px 按钮中心与 18px 层级缩进对齐），同步修正跨层祖先连接线偏移。JS 语法和差异空白检查通过；刷新页面生效。
+
+- 2026-10-11：移动 Todo 同组子项目树形竖线连续显示，末项中部收尾；展开多层后保留祖先后续兄弟的竖线，按筛选/折叠后的可见树计算。树结构测试 3 项及 JavaScript 语法检查通过；修正测试提取函数受前置诊断 IIFE 影响的问题。静态更新，刷新手机页面生效。
+
+- 2026-10-11：移动 Todo 列表显示项目 Emoji；详情/新建表单支持输入、常用 Emoji 选择和清除。移动 API 增加 Emoji 投影与共享单 Emoji 校验，旧客户端和行内快捷修改省略字段时保留已有值。验证：移动 API/多语言 21 项、导航 9 项测试及 JS 语法检查通过；需重启 Local 并刷新手机页面生效。
+
+- 2026-10-11：扩大移动 Todo 详情点击区域，卡片空白与非控件文本点击均打开详情；按钮等交互元素由卡片处理器跳过，避免标题重复打开或优先级/状态/进度操作误跳转，折叠按钮仍在卡片外。JS 语法、9 项导航测试及 diff 检查通过。
+
+- 2026-10-11：用户要求暂时关闭导航排障日志。Shell/Todo 两份采集器均设置 MOBILE_NAV_TRACE_ENABLED=false，在注册监听器/观察器/定时器前退出，不再主动发送请求；保留代码及接口便于后续排查，方案文档补充启停说明。两份 JS 语法、无浏览器 API 的关闭状态执行检查及 diff 检查通过。旧页面需整页刷新停止原有采集。
+
+- 2026-10-11：用户确认最终手机切换体验 OK；新增 ai2apps/docs/mobile-shell-list-detail-navigation.md 并从 Mobile Entry 文档链接，记录实机证据、撤回方案、Shell 双 frame/预热占位/动画实现、诊断限制和其它 App 接入要求。仅文档整理，不新增运行时行为。
+
+- 2026-10-11：按用户反馈将 Todo 按钮返回滑出动画从 240ms 放慢至 360ms，改为平缓起止曲线；进入保持 240ms，原生右划保持系统动画。7 项双 iframe 测试及 JS 语法、diff 检查通过。
+
+- 2026-10-11：Todo 详情改为点击后立即滑入 Shell 框架，详情 iframe 外增加同背景占位层和返回按钮；数据未就绪时遮住空白/旧任务，ready 仅移除占位、不重复播放动画。动画作用于容器，预热/复用保持；加载中可返回，迟到 ready 不会重开详情，原生返回仍无叠加动画。18 项 Node 导航/动画测试、JS 语法及 diff 检查通过。前端整页刷新生效，实机流畅度待验证。
+
+- 2026-10-11：Todo 双 iframe 增加 Shell 管理的 240ms 水平过渡：详情从右侧滑入，按钮返回向右滑出，原列表在下层保持准备状态；原生历史右划不叠加自定义动画。动画取消清理、重复按钮返回防重及 prefers-reduced-motion 已处理。17 项 Node 导航测试、JS 语法与 diff 检查通过，包含动画方向、完成状态、原生返回无叠加与减弱动态效果。仅前端，整页刷新后手机实测。
+
+- 2026-10-11：用户实机确认 Shell 双 iframe 返回不闪。trace 单次打开详情约 1043ms（新文档约 625ms、数据等待约 413ms、Shell 显示约 2ms），据此增加列表就绪后的隐藏详情预热和同 mount 详情 frame 复用，重开传入当前列表 snapshot，不重复加载文档/请求相同数据；预热未完成时保留最新点击，数据初始化完成后才显示，沿用 revision 冲突校验及原有消息来源约束。15 项 Node 导航测试及两份 JS 语法通过，含预热隐藏、复用和点击竞争。保留时序日志，优化后延迟待实机对照。
+
+- 2026-10-11：按用户要求增加 Todo 双 iframe 最小验证：Shell 保留原列表 frame，以同一可信 mount 的独立 token 打开详情 frame，收到数据 ready 后才切换；Shell pushState/popstate 管理返回/前进，列表不导航、不重绘，保存消息刷新原列表。消息严格校验同源/source/mount token/instance，并仅允许 ai2apps.todo 非 sandbox 实例；保留未保存确认、关闭清理。临时时序日志的 list/detail 在 Shell 表示两个 frame 的可见状态，并记录 Shell 路由及后续两帧。13 项 Node 导航/消息边界测试、20 项 Python 页面/API测试及语法检查通过。仅前端修改，刷新整个手机 Shell 即可启用；iOS 实机闪动仍待用户测试。
+
+- 2026-10-10：撤回 Mobile Todo 跨文档详情导航。实机 trace 确认 back_forward 的 pageshow.persisted=false，进入详情初始 list/detail 均隐藏约 514ms；用户看到重新加载提示且闪屏未改善。恢复 pushState/popstate 同文档切页，移除跨文档 URL/sessionStorage 更新逻辑，刷新时清理实验 query；保留诊断。20 项 Python 页面/API、11 项 Node 导航测试通过。原始 iOS 闪屏仍待定位，外层错误面板触发原因尚未验证。
+
+- 2026-10-10：根据实机 trace（popstate 后 2ms 显隐已切换，但首帧回调延后约 372ms），将 Mobile Todo 详情改为 query 路由的跨文档导航，保留 mount hash；列表 DOM 不再被改为详情，子任务 replace 详情 entry，直接详情链接返回列表 URL。保存后使用同源 sessionStorage 标记更新缓存列表，保留目录/搜索/折叠/滚动状态；模板隐藏详情 URL 的初始列表。新增 document_id、pageshow/pagehide persisted、navigation 类型及 pageshow 后两帧日志。14 项 Node 导航测试、21 项 Python 页面/API 测试通过。需重启 Local 接收新日志字段，再手机整页刷新实测；未声明 iOS 闪屏已消除。
+
+- 2026-10-10：修复临时诊断引入的 Mobile 入口 500。dev Local 日志确认 mobile_navigation_trace.js 未在 Runtime MOBILE_STATIC_FILES 白名单，模板生成 URL 抛 ValueError。撤掉独立静态资源引用，将被动采集并入已有 mobile.js/mobile_todo.js，不扩大网关白名单或重建 Runtime。新增真实 allowlist 的 Shell/Todo 模板渲染回归测试，覆盖 member/complete 入口；验证页面模板及 API 20 项、导航 11 项。
+
+- 2026-10-10：临时增加 Mobile Shell/Todo 导航时序诊断，跨 frame 共享随机追踪编号，记录触摸、popstate、显隐及后续两帧；每批最多 40 条、每页面最多 1000 条、30 分钟停止采集，250ms 批量发送同源 Local。新增经过原有 owner/App capability 校验的 POST /v1/mobile/todo/navigation-trace，严格事件 schema，日志前缀 MOBILE_NAV_TRACE；不采集任务文本/ID、URL、表单或凭据。15 项 Mobile Todo API 测试、JS 语法及 diff 检查通过。需重启对应 Local 再刷新手机启用，尚未收集实机复现；定位后应移除临时采集及接口。
+
+- 2026-10-10：用户实机反馈提前隐藏导致右划开始及结束均闪屏，撤销 Todo 自定义边缘触摸处理、visibility 隐藏及双 RAF 提前切页；统一只在 popstate 提交后切换列表，返回按钮只发起一次历史回退，保留 Shell 同 App 导航去重。更新缓存版本。11 项导航测试和 JS 语法通过；原始 iOS 快照闪屏仍未完成实机定位，不标记已解决。
+
+- 2026-10-10：按用户反馈将移动 Todo 详情隐藏提前到边缘右划过程中（水平移动 10px 后 visibility:hidden），保留表单及布局，短划、取消、多指或拒绝放弃编辑时恢复；成功返回后继续由列表接管显示。非 cancelable 触摸也跟踪方向，更新脚本缓存版本。3 项导航测试及语法检查通过，含滑动中隐藏和取消恢复；仍需 iPhone 实机验证 Safari 快照效果。
+
+- 2026-10-10：继续处理 Todo 详情右划返回瞬时重现：Mobile Shell 对同一已加载可见 App 的 popstate 不再重复 focus/隐藏激活 iframe；Todo 先展示列表，等待两次 animation frame 后再回退历史，防重复触发及期间导航竞争。更新 Shell/Todo 脚本版本参数。12 项导航测试及两份 JS 语法检查通过；未获得 iPhone 现场运行轨迹，不能据此确认实机闪屏已消除。
+
+- 2026-10-10：针对移动 Todo 右划结束时详情页短暂重现，详情页接管左侧 24px 边缘右划（60px 距离及水平方向判定），校验未保存内容后先显示列表再回退历史，避开 Safari 原生同文档快照与 popstate 绘制交错。保留浏览器返回、前进及未保存确认；列表不拦截边缘手势。JavaScript 语法检查、2 项导航测试通过，覆盖短划、竖划、取消及未保存拒绝；尚待 iPhone 实机确认原生手势拦截和闪屏效果。
+
+- 2026-10-10：缓解移动 Todo 详情右划返回后的闪动：去除 showList 的整表重绘（保存/刷新已更新列表 DOM），设置当前文档 scrollRestoration=manual，以 instant 恢复列表位置，避免浏览器与页面重复滚动。验证：导航测试确认返回不触发 render、仍恢复位置并保护草稿；JS 语法和 diff 检查通过。未做 iOS 真机手势复验，刷新页面生效。
+
+- 2026-10-10：移动 Todo 详情接入 iframe 原生浏览历史：列表进入详情 pushState，保存/刷新/切换子项目只 replaceState，浏览器右划/后退先返回列表；统一返回按钮并恢复列表滚动位置，未保存草稿确认取消或保存中保留详情。验证：新增 1 项导航状态测试、2 项树结构测试、JS 语法和 diff 检查通过；未做 iOS Safari 真机手势验收。纯前端刷新生效。
+
+- 2026-10-10：移动 Todo 项目副行（状态、进度百分比）整体右对齐，保持现有紧凑行高及点击编辑行为。验证：diff 检查通过。纯 CSS，刷新页面生效。
+
+- 2026-10-10：移动 Todo 列表紧凑化：标题使用独立 span 做两行 line-clamp/省略号，保留完整文字供详情和无障碍读取；取消行外边距、收紧卡片上下 padding 和状态控件留白，新增随层级缩进的卡片底部分隔线，保持高亮仅在卡片内部。验证：JS 语法和 diff 检查通过；未做 iPhone 真机复验。纯静态资源，刷新页面即可。
+
 - 2026-10-09：桌面 Todo 行内进度滑块旁新增实时百分比，打开即显示当前滑块值，input 时同步更新并提供 aria-valuetext；保留 5% 步进和松手保存关闭行为。验证：JS 语法和 diff 检查通过。纯前端刷新生效。
 
 - 2026-10-09：桌面 Todo 行内优先级/状态/进度浮层改为以触发控件水平居中，按项目列表左右边界限制位置和宽度，避免覆盖右侧详情；底部不足时向上弹出。验证：JS 语法和 diff 检查通过；未做实机截图复验。刷新页面生效。
@@ -3090,6 +4025,11 @@
 - 2026-10-01 轨道入口增量：移除 Composer 顶部“聚光遮罩 / 文本”按钮，将轨道区原“+ 视频轨 / + 音轨”改为“+ 轨道 / + 项目”下拉菜单。轨道头和空白行可明确选中当前轨道；新轨道在当前轨道后插入并成为当前轨道。“+ 项目”仅在未锁定的视频轨可用，聚光遮罩和文本直接插入当前轨道并继续执行同轨不重叠/后移规则，音频轨或锁定轨上禁用。Composer 16 项回归、JavaScript、双语 JSON 与 diff check 通过；固定 Dev Local 重启至 `56626`，实机确认顶部旧按钮消失、两个菜单的中文选项完整，并确认选择音轨后“+ 项目”变为禁用。
 - 2026-10-01 轨道右键插入增量：“+ 轨道”左键继续直接选择视频轨/音轨并默认插在当前轨道之后；右键改为两级菜单，先选择“在当前轨道前/后”，再选择轨道类型，插入完成后新轨道成为当前轨道。补充前后插入索引、右键入口、两级状态及中英文文案回归覆盖；Composer 17 项回归、JavaScript、双语 JSON 与 diff check 通过，固定 Dev Local 重启至 `50636`，实机辅助功能树确认右键第一级菜单正确显示“在当前轨道前 / 在当前轨道后”。
 - 2026-10-01 相邻片段空帧修复：导出渲染不再用经过 9 位小数舍入的浮点秒区间判断 Clip 是否命中，统一以项目 FPS 换算出的整数起始帧/持续帧选择片段，并以局部帧计算源时间和文字读出时间，消除相邻片段边界处两边都未命中的纳秒级缝隙。预览改用同一套整数帧命中规则，并提前一秒挂载、定位即将播放的相邻媒体，避免切片边界临时创建 `<video>` 带来的偶发首帧闪黑。新增 30fps 非零起点相邻片段的逐帧渲染回归，明确验证 F32 为第二段首帧而不是背景空帧；Composer 回归增至 18 passed，JavaScript、Ruff 与 diff check 通过，固定 Dev Local 已重启至 `53916`。
+- 2026-10-12 预览接缝末帧回闪修复：预加载窗口内的非活动 Clip 不再用 `x-show` 向动态 `style` 写入 `display:none`；旧实现的几何/关键帧样式会在后续播放头更新时重写整个 `style`，而 Alpine 因显隐布尔值未变化不会重复隐藏，从而让上一段末帧在下一段出现后短暂回到画面。现改为独立 `is-active` / `is-inactive` class，并以 `display:none!important` 隐藏非活动层，保留前后视频的预加载和定位，不改变整数帧命中及最终导出。Composer 19 项回归、JavaScript 语法和定向 diff 检查通过；固定 App-Dev 已重新打开 Video Composer 并加载带新版本号的样式，当前自动草稿为空，接缝素材的最终目视复验留给用户现有工程。
+- 2026-10-12 轨道裁剪播放头磁吸：拖动 Clip 左右裁剪手柄改变时长时，在磁吸开启且边缘距离播放头不超过 12 px 时按项目帧率精确对齐播放头；目前按产品要求只使用播放头作为裁剪吸附目标，不再吸附零点或其它 Clip 边缘。左侧裁剪只在上一片段尾部至当前片段最短时长之间吸附，右侧裁剪只在满足最短时长时吸附，避免显示磁吸反馈后又被防重叠规则钳回。关闭磁吸时继续按帧自由裁剪；相接片段推移规则保持不变。
+- 2026-10-12 Inspector 数值草稿校验：Clip、裁剪、蒙版、文本效果及关键帧的数字输入统一在捕获阶段校验有限数值和动态 min/max。输入过程中的空值、未完成负号或越界数字仅保留在输入框并显示浅红错误状态，不再送入 `x-model` / `@input` 后被最小值强行改写；修正为合法值后立即恢复正常并按原实时机制写回。带 placeholder 的关键帧参数继续允许留空表示继承上一关键帧。合法值按 Enter 会阻止事件传播并主动 blur，由 change 完成撤销历史、时间线约束和自动保存，后续空格等快捷键不再误改数字输入。验证：Composer 19 项回归、JavaScript 语法和定向 diff 检查通过；测试退出时仅有隔离环境无 Metal 设备的清理告警，退出码为 0。纯静态资源修改，刷新 App-Dev Shell 生效，无需重启 Local 或重建 App。
+
+- 2026-10-12（ready）Video Composer Clip Output：片段属性操作区增加“输出 Clip”，仅媒体 Clip 可用。视频 Clip 按独立画布合成保留剪入点、时长、速度、布局、裁剪、蒙版、关键帧和音频并生成 MP4；音频 Clip 按剪入点、时长、速度、音量及淡入淡出生成 48kHz 双声道 WAV；图片 Clip 无损物化原素材。三类结果统一创建 Workspace Artifact 和 Composer Run，自动选入 Video Studio 共享 Output/历史，可预览、下载或加入 Gallery；聚光遮罩和文本项目层不提供独立输出。验证：Video Composer 20 项测试、Ruff、JavaScript 语法、英中 JSON 和 diff 检查通过；App-Dev Local 已通过认证 Helper 控制通道重启到 `127.0.0.1:61676`，Shell 刷新后已实机确认“输出 Clip”按钮及空选择禁用状态。无需重建原生 App。
 
 ### NXR-APPDEV-SCREEN-RECORDING-WINDOW-20260929
 
@@ -8204,3 +9144,296 @@ Runtime profile、安装行为或发布流程的工作，都必须在完成该�
 ### NXR-AI-BROWSER-COMPACT-DOMAIN-MODE-20261009：紧凑网站执行模式设置
 - 状态：`implemented`。执行模式标题与下拉框同行，移除通用表单 label 的上下 22px 留白；说明独立显示，区域内边距压缩为 12px/16px，下拉框按内容宽度显示。窄屏或长翻译允许自然换行；显式 label 关联与说明 aria-describedby 保留可访问性。
 - 验证：2 项九语言覆盖/占位符与运行标签回归通过，定向 diff 检查通过。纯 HTML/CSS，刷新 Shell 页面生效，无需 Local 重启或 App 重建；未发布。
+
+### NXR-INTELLIGENCE-EMPTY-ICON-20261009：统一情报中心空白页图标
+- 状态：`implemented`。首次创建频道空白页将旧 radar 图标改为 satellite-dish，与应用导航和页眉一致。JS 语法及定向 diff 检查通过。纯前端，刷新生效，无重启、重建或发布。
+
+### NXR-INTELLIGENCE-ENGLISH-NAME-20261009：精简英文显示名
+- 状态：`implemented`。应用注册英文名、英文页眉和页面标题统一改为 Intel Center，中文名称与 App ID 保持不变。3 项国际化测试、定向 diff 检查通过。需重启 Local 加载注册及语言包，无重建或发布。
+
+### NXR-INTELLIGENCE-BROWSER-CLEANUP-20261010：采集临时页清理
+- 状态：`implemented`。后台运行器记录创建页面的 run 归属，情报中心任务成功/失败/取消后通过原生 BiDi 关闭其已跟踪且 Profile 匹配的页面。其他 App、外部绑定页面及等待协助任务保留；前端主动打开原文的 retain 行为不变。旧页面无归属标记不批量关闭。25 项清理与后台浏览器测试通过，diff 检查通过；尚未原生 Shell 端到端验证。需重启 Local，无重建或发布。
+
+### NXR-WEBAGENT-PAGE-LIFECYCLE-20261010：通用任务页面收尾约束
+- 状态：`implemented`。将情报中心专用清理提升为全部 Local WebAgent 的默认生命周期；记录 owned contexts，保护借用页面与等待协助状态；可信调用方通过 retain_pages_reason 明确保留用途。结束后重新 getTree 核验并记录 verified/pending/retained；失败清理持续重试，Local 重启后按持久化记录恢复，不新建页面。任务记录显示清理/保留原因。40 项后台/任务清理/情报采集测试及 diff 检查通过。原生 Shell 端到端尚未验证，历史无归属页面不批量清理。更新浏览器控制架构约束；需重启 Local，无重建或发布。
+
+### NXR-INTELLIGENCE-LIST-COVERAGE-IMPORT-TRANSLATION-20261010：列表覆盖与手动新闻翻译
+- 状态：`implemented`。公开 F1 首页 HTML 含 17 条 article 链接；尚未复现用户本机此次只收录 1 篇的确切运行原因。自动学习列表增加通用列表覆盖比对，低于 80% 时失效回退（显式指定 Agent 不替换）；普通网站批次由 3 篇增至 10 篇，记录剩余数，首页未提取到链接时明确失败而不导入首页。手动 URL 收录按频道输出语言分段全文翻译并保留原文/来源/图片，详情支持展开原文；重复收录可原位升级旧手动原文。图片上传的总结选择保持不变。21 项 Python 与 10 项 Node 检查、JS 语法/diff 检查通过；真实模型翻译与用户本机 F1 完整采集未实测。需重启 Local，无重建或发布。
+
+### NXR-NEWS-WEBAGENT-DISCOVERY-20261010：增强新闻发现与 F1 原生验收
+- 状态：`implemented`。共享 Local BiDi SDK 为 extract_list 增加有界 news_scan：跨区块、滚动、明确同源 News/Next 入口及原生 Load More；最多 3 文档/每页 8 轮/2 次加载，去重并优先文章详情。AI 可选最多 6 个已观察区域，编译区域只适用于初始页；前后端激活改为至少 3 样本且基线 URL 覆盖 80%，保留运行时覆盖回退。记录 discovery 统计，无新增用户配置。F1 App Dev 独立原生容器实测首页+News 发现 22 篇新闻，测试 main 编译区域覆盖 100%；原生测试含标签关闭核验通过。39 项离线回归及 1 项原生测试通过，SDK/helper 同步、JS/diff 检查通过。实际 AI 选择区域与用户频道摘要流水线未进行实测，不能宣称全站历史完整。详见 ai2apps/docs/intelligence-news-discovery.md。需重启 Local，无重建或发布。
+
+### NXR-INTELLIGENCE-SINGLE-SOURCE-UPDATE-20261010
+- 状态：implemented。信息源卡片新增“立即更新”，运行中显示多语言更新状态并防止重复提交；暂停的信息源需先启用。后台 claim 支持 owner/channel 校验的 source_id，将唯一来源快照持久化到采集任务；恢复的待处理帖子也限制在所选来源。单源更新不推进频道定时采集 last_attempt。沿用后台任务、事件刷新与更新记录。13 项后台采集测试通过，含单源隔离、无效/暂停来源拒绝及定时锚点保留；JS 语法及 diff 检查通过。需要重启 App Dev Local，无需重建。
+
+### NXR-INTELLIGENCE-ARTICLE-LARGE-COVER-20261010
+- 状态：implemented。情报文章列表的网页文章与混合来源卡片采用顶部通栏 16:9 大封面，来源、标题、摘要和元信息位于图片下方；无图文章不保留图片空位。移除桌面/移动端侧边小缩略图布局，保留已有文章打开和图片失败回退。7 项现有卡片测试、JS 语法与 diff 检查通过。仅静态前端变更，刷新 App Shell 即可，无需重启或重建；未进行原生界面视觉验收。
+
+### NXR-INTELLIGENCE-COMPACT-ARTICLE-GRID-20261010
+- 状态：implemented。文章列表改为两列图片加标题卡片，列表不展示摘要和附加元信息，详情内容保持可打开；无封面时仅标题。列表容器小于 420px 时回到单列，空状态跨列。仅文章列表启用 compact 渲染，其他面板不使用网格。现有 7 项卡片测试及 JS 语法、diff 检查通过；需刷新 Shell，无需重启或重建，未进行原生视觉验收。
+
+### NXR-INTELLIGENCE-GRID-SUMMARY-20261010
+- 状态：implemented。两列文章卡片在标题下恢复提炼摘要，最多显示三行；空摘要不留空位。保留大图和窄屏单列。7 项卡片回归测试、JS 语法及 diff 检查通过。仅静态前端刷新，无需重启或重建。
+
+### NXR-INTELLIGENCE-SUMMARY-CLAMP-SPACING-20261010
+- 状态：implemented。修复两列卡片摘要 line-clamp 元素底部 padding 导致第四行露出的问题；截断元素取消 padding，明确三行裁剪与省略，使用外边距保留底部 16px 留白。diff 检查通过。静态 CSS 刷新即可，无需重启或重建。
+
+### NXR-INTELLIGENCE-TITLE-SUMMARY-GAP-20261010
+- 状态：implemented。两列文章卡片有摘要时，标题底部间距由 12px 缩至 5px，保留无摘要标题的底部留白和摘要三行截断。diff 检查通过；静态 CSS 刷新生效。
+
+### NXR-INTELLIGENCE-PRIMARY-SOURCE-COVER-20261010
+- 状态：implemented。确认 F1 迈凯伦文章图片提取正确，但多源摘要默认取首个引用（维斯塔潘报道）封面导致错配。Digest 多来源须给出有效 primary_evidence_id，按正文主体选择主来源并保存 primary_source_url，封面只取主来源图片；列表缺图回退也限主来源，引用编号不变。已纠正 App Dev 用户指出的这一张卡片封面。6 项封面测试通过，覆盖非首引用主来源及无效主来源拒绝。需要 Local 重启和前端刷新。
+
+### NXR-INTELLIGENCE-DRAFT-IMAGES-20261010
+- 状态：implemented，待 App Dev Local 重启加载 API。稿件从所选资料文章图片中多选插图，短 Post 放文末，其他稿件可在段落前放多图，可移除；按正文段落文本保存位置，改写后无法匹配的图片保留文末。乐观版本校验与 owner/channel/evidence 图片归属校验；复制输出 Markdown 图片链接。新增中英文文案。位置/来源校验测试、现有写作前端测试和语法/diff 检查通过。考虑用户正在生成视频，本轮未重启 Local；未做原生交互验收。当前图片来源为已采集资料，未增加本地上传。
+
+### NXR-INTELLIGENCE-DRAFT-GRID-PICKER-20261010
+- 状态：implemented。稿件列表两列响应式网格，窄于 420px 回到单列。修复图片选择框继承对话框输入 100% 宽度和上边距导致位置偏移：固定缩略图左上角 18px checkbox、白色外圈、选中边框及键盘焦点；缩略图 label 清除继承边距，选择区只纵向滚动。现有稿件列表测试、JS 语法和 diff 检查通过。静态刷新生效，无重启，无原生视觉验收。
+
+### NXR-INTELLIGENCE-DRAFT-CARD-PREVIEW-20261010
+- 状态：implemented。稿件列表通过现有详情 API 加载稿件插图，首张作为卡片封面，无图不留空位。整卡点击及键盘 Enter/Space 在右侧文章详情栏预览稿件正文、按段落插图和引用，保留继续修改入口；选择文章或切换频道时清除稿件预览。编辑保存重新加载列表并同步已打开预览。现有稿件渲染测试、JS 语法与 diff 检查通过。仅前端刷新，无重启；未做原生界面验收。
+
+### NXR-INTELLIGENCE-DRAFT-TITLE-SIZE-20261010
+- 状态：implemented。稿件卡片标题统一为 14px/1.6、600 字重，与文章卡片一致；右侧稿件预览标题单独设为 20px/1.5，避免影响普通文章详情。JS 语法和 diff 检查通过。静态刷新，无需重启。
+
+### NXR-INTELLIGENCE-RUN-ACTIONS-SPACING-20261010
+- 状态：implemented。更新记录页隐藏空筛选工具栏，查看已过滤帖子改用专用工具栏，上距 14px、下距 16px，消除按钮下方紧贴记录卡片的问题。JS 语法和 diff 检查通过；静态页面刷新生效，无需重启，未做原生视觉验收。
+
+### NXR-INTELLIGENCE-MOBILE-NAVIGATION-20261010
+- 状态：implemented。850px 以下采用频道列表 → 频道页面 → 文章/稿件详情的滑入分层导航，返回图标及左边缘右滑返回，保存上一层详情状态和列表滚动位置；隐藏非活动层交互，并支持减少动态效果。频道顶部仅文章/热点/稿件下拉、频道 Chat、更多菜单（收录、更新、撰写）；文章详情菜单提供顶/踩/基于当前文章写稿，稿件详情提供继续修改。栏目横向滚动，文章/稿件单列，沿用桌面卡片，不新增底部导航。Mobile Chat 清除文章上下文，后台更新不再跳到 Mobile 不提供的更新记录页。新增中英文文案。
+- 验证：14 项卡片/写作/对话/i18n 回归通过；隔离 Chrome 390×780 浏览器测试覆盖入口、单列、收录/更新/写稿菜单、稿件切换、详情返回滚动位置、频道对话无 article_id、边缘手势及 1440px 桌面双列恢复；JS 语法及 diff 检查通过。查看了模拟数据手机截图；未在真机 App-Shell 验收。仅前端刷新，无需 Local 重启。
+- 浏览器测试：`NODE_PATH=<Playwright 安装目录> node --test ai2apps/tests/intelligence_mobile.test.cjs`（默认隔离系统 Chrome，可用 INTEL_TEST_BROWSER 指定 channel）。
+
+### NXR-INTELLIGENCE-MOBILE-GENERIC-ACTIVATION-20261010
+- 状态：implemented。情报中心声明 mobile.ready 与可信内置 mobile.gateway，通过现有动态目录、mount-bound resource/Bridge 激活，不扩展 Cloud App ID 白名单。可信 builtin host 的模板/assets/自身 API prefix 在独立 ASGI 中执行；保留 actor、实例归属、设备启用及 Owner 租约校验。Package sandbox 不获得 host 权限，context-only 保持。手机上传、频道聊天/热点/稿件使用 App API；URL 收录提交共享 Local WebAgent并复用翻译归类，更新结果轮询。
+- 已更新 Mobile 接入文档、Owner Home 客户端说明和 Cloud 交接说明，明确历史入口兼容与新机制。自动审批第一次拒绝扩大 Bridge 边界，用户明确回复“允许”后放行路由改动。
+- App Dev 激活及重启已完成；真实手机与生产 Cloud 端到端验收仍需单独记录。
+- 完成记录：app-dev 已通过现有 MobileAppPolicy 开启 Intelligence；标准固定 App 重建与重启完成，PID 86313 / 端口 56925 / boot 8df7e753-761c-4c9c-b186-b3f58d6a5ea0，原生标题实际核验。verify-release-app.sh 与 codesign --verify --deep --strict 通过；bundle/instance/cloud Runtime/Development 源码合同有效。账户设备页实际显示 Intel Center 已开启。
+- 验证：64 项 Python API/导入/Owner gateway/设备策略回归、11 项卡片/对话/写作前端测试、隔离 Chrome 手机导航测试通过，新增模板/资产资源声明测试通过。生产 Cloud/真机未验收；隔离 Cloud 成员激活测试被自动审批拒绝，未执行。只改 app-dev 配置与开关，未修改 Cloud/其它实例。
+
+### NXR-MOBILE-APP-CATALOG-LOCALE-20261010
+- 状态：implemented。账户设备页 Mobile 可用应用目录随当前系统界面语言传递 locale；Remote 目录 API 规范化 locale，并复用 Extension Manager 的 Manifest 多语言名称与描述，包括内置及第三方应用。中文界面显示“情报中心”等中文名称，缺少对应翻译时沿用 Manifest 默认值。
+- 验证：8 项 Mobile 策略/目录测试通过，包含 zh-CN 与英文名称、描述回归；account.js 语法与定向 diff 检查通过。API 修改需 Local 重启加载，未在本轮重启正在运行的实例。
+
+### NXR-COMPOSITE-WEBAGENT-TASK-TREE-20261010
+- 状态：implemented。Schema 88 引入持久综合任务节点及不可变 parent/root 绑定；情报 collection → source → Browser Task。Profile/global admission 按根任务/Profile 去重，组内串行，父任务与翻译摘要不占浏览器名额；保留等待、中断和已记录页面清理 pending 的名额。工作台计数按执行组，目录 API 返回 task_tree，Agent Run 保存父/根关联。
+- 取消子树向下传播，已取消/收尾父节点拒绝新工作；finishing 状态等待子任务和自有页面核验，Local Monitor 可重启后完成收尾。启动失败未创建资源无需清理回执。复用现有 Runner、动作日志与清理机制，不新增控制协议或盲目重试。旧未关联任务保持独立计数。
+- 已更新浏览器架构与后台迁移文档。本轮不重启实例、不发布；需要 Local 重启加载 Python 与 Schema 88，前端刷新加载计数修改。验证结果见本条后续记录。
+- 验证完成：62 项 Python 定向回归通过（任务树、并发/跨 Profile、取消、幂等归属、清理收尾、重启结果复用、后台采集、WebAgent 调用、SSE）；17 项 AI Browser 前端回归、JS 语法及定向 diff 检查通过。未进行本轮原生浏览器/真实 F1 采集验收。
+
+
+### NXR-WEBAGENT-TASK-TREE-FULL-ADOPTION-20261010
+- 状态：implemented。补齐 NXR-COMPOSITE-WEBAGENT-TASK-TREE-20261010 的阶段性结构；Schema 89 保存 execution_task_id。AI Browser 排队/测试/直接调用自动建根，内部 agent.call 创建稳定持久调用帧，共享原 Run/Tab/动作日志及根/Profile 名额。情报 collection → source → 列表/正文执行，另设 organize 子任务处理去重、翻译、摘要、保存及派生整理。
+- 来源完成证据持久化并复用；保存后未完成整理可在 Local 重启恢复，避免再次摘要或把 completed 业务 run 置回 running。运行取消先 cancelling，等待实际 Run 终止和页面清理回执后才结束根。工作台 SSE/快照携带节点元数据，不传完整结果证据。
+- 验证：66 项 Python 定向回归、28 项 Node 前端回归通过，包含嵌套调用无额外执行名额、交互重放、取消/清理等待、独立整理、来源及保存后恢复；Python 编译与 JS 语法通过。文档同步更新。未重启真实实例、未做本轮原生或真实 F1 验收、未发布。需要 Local 重启加载 Python 并自动迁移 Schema 89，前端刷新加载 SSE 状态。
+
+
+### NXR-AI-BROWSER-PROFILE-STATUS-OBSERVATION-20261010
+- 状态：implemented。首次进入 AI Browser 曾逐个发送 native bind 来读取 Profile 状态，旧 Shell 报 Unsupported AppShell browser action，并可能使单纯查看列表触发 Profile 启动。改为读取当前 actor 已确认的原生绑定缓存，再通过现有 BiDi browsingContext.getTree 查询标签页；未绑定 Profile 保持未连接，不自动创建。绑定元数据只来自已完成的 open/bind 回执，删除时清除，actor 哈希键隔离。真实执行继续走原绑定/启动流程。
+- 验证：6 项 Python Profile/API/身份隔离回归及 18 项工作台前端回归通过，新增首次读取不得发 bind/launch 测试；JS 语法、定向 diff 检查通过。未重启用户正在运行的 Dev 实例，未进行本轮原生验收。Python 新只读 API 需 Local 重启，随后刷新工作台；无需重建原生 App。
+
+
+### NXR-AI-BROWSER-PROFILE-LAUNCH-STATUS-20261010
+- 状态：implemented。显式打开 Profile 收到原生 launched/focused 回执后立即显示已打开；兼容旧 Shell 不返回 user_context，Tab 数量保留未知，不再继续显示未连接。状态连接失效时重新建立只读观察；有 userContext 时仍仅统计匹配 Profile 的标签页。
+- 验证：20 项工作台前端回归通过，新增无 userContext 的启动回执及有标识的 Profile 隔离计数测试；JS 语法通过。仅前端修改，刷新页面加载，无需重启 Local 或重建 App；未执行本轮原生验收。
+
+
+### NXR-AI-BROWSER-DOMAIN-NAV-CLEANUP-20261010
+- 状态：implemented。网站导航过滤 null/undefined 与非 HTTP(S) 来源的无效域名，隐藏没有能力或已保存 Agent/Recipe 草稿的空域名；保留后台注册记录中的设置和图标。隐藏当前域名后修正选择。新增网站直接打开新 Agent 编辑器，避免新增空导航入口；Domain API 拒绝 null/undefined 哨兵值。
+- 验证：22 项工作台前端、10 项 Browser Workspace Python 回归通过，覆盖无效/空注册项过滤、草稿保留、新网站编辑入口、API 拒绝哨兵值；JS 语法及定向 diff 检查通过。列表变化刷新前端即可加载，API 校验需 Local 重启；未重启或执行本轮原生验收。
+
+
+### NXR-INTELLIGENCE-X-MULTI-TARGET-SOURCES-20261011
+- 状态：implemented。频道信息源增加 X，账号与搜索关键词两种方式，每行一项、最多 20 项；账号支持 @handle 或主页链接，搜索按独立查询使用 Latest。保存规范化 x_mode/x_values，复用所选 actor Profile、现有冷却与刷新任务树，合并帖子 ID 并在详情前去重。X 使用专用 DOM 帖子提取，不应用通用列表/正文 Agent 覆盖。
+- 后台默认自然/拟人模式，通过已有 BiDi BackgroundPage SDK 滚动与停顿，沿用登录/验证协助及自有页面清理；不使用私有 X API、不复制 Cookie、不修改 Cloud。详情匹配 status ID，只保留对应帖子可见正文和图片，避免通用网页首图覆盖。采集证据进入频道现有过滤、翻译、摘要流程。
+- 限制：每目标最多三轮可见快照与 40 帖，每次来源更新最多读取 5 篇新帖；不保证穷尽历史，不读取回复串/视频转写/隐藏长文/无正文纯图帖子。说明：ai2apps/docs/intelligence-x-sources.md。
+- 验证：62 项 Python 后台/来源/API/BiDi 回归及 22 项 Node i18n/卡片/社交/DOM 回归通过，覆盖多查询/Profile 复用、重复 ID、准确详情匹配与帖子图片保留；JS 语法及定向 diff 检查通过。未重启实例、未进行真实 X 登录态验收、未发布。需要 Local 重启加载 Python，刷新 Shell 加载表单；无需原生 App 重建。
+
+
+### NXR-INTELLIGENCE-X-LIST-SOURCES-20261011
+- 状态：implemented。X 信息源新增第三种方式“列表（多个）”，每行一个列表 URL、最多 20 个；接受 X/Twitter 标准 /i/lists/<ID> 链接，移除分享参数、规范化并合并重复列表。拒绝其它站点、账号/成员页面、无效列表 ID 及携带认证信息或端口的 URL。编辑、暂停与恢复复用已有 x_mode/x_values 持久化。
+- 多列表复用 X feed → 详情采集、所选 Profile、任务树、默认拟人模式、列表间帖子 ID 去重与频道整理流程；不创建/修改用户的 X 列表。私有列表提示使用创建者的登录 Profile。中英文表单与 ai2apps/docs/intelligence-x-sources.md 已同步。沿用每目标最多 40 帖、每次来源刷新最多读取 5 篇新帖的限量策略。
+- 验证：多列表端到端模拟采集、分享链接规范化、输入拒绝、列表来源模型/编译验证及后台/API/社交回归；4 项 Node i18n/DOM 回归、JS 语法与定向 diff 检查通过。真实公开/私有 X 列表未验收，未重启实例、未发布。Python 需 Local 重启，表单刷新后加载，无需原生 App 重建。
+
+
+### NXR-INTELLIGENCE-MANUAL-SOCIAL-INTERVAL-20261011
+- 状态：implemented。手动频道及单源更新使用独立持久化的 60 秒社交采集间隔（完成后开始），自动更新保留信息源配置的小时周期。原有平台租约、失败退避和验证暂停仍生效；未开始的采集会恢复两个时间戳。旧的自动周期不再阻止手动更新。
+- 验证：44 项社交、X 与后台采集回归通过，覆盖 59/60 秒边界、自动间隔、失败退避、旧数据及租约释放；定向 diff 检查通过。Python 变更只需重启 App Dev Local，无需原生重建或 Cloud 变更。
+
+
+### NXR-INTELLIGENCE-MANUAL-FAILURE-RETRY-20261011
+- 状态：implemented。补齐手动间隔：普通读取失败后的平台重试也使用 60 秒，旧平台失败退避按原完成时间兼容，不改写用户历史记录。单篇失败且已有成功证据不再触发平台退避；自动周期、正在执行的租约和明确验证/限流结果保留。未开始的任务恢复平台手动时间戳。
+- 验证：44 项后台/X/社交回归通过，另新增 2 项明确限流/验证保护测试通过；使用当前 App Dev 数据库隔离副本确认 X：F1 手动 admission 为 true。需重启 App Dev Local；不重建原生 App、不修改 Cloud。
+
+
+### NXR-X-SOURCE-PAGE-REUSE-20261011
+- 状态：implemented。X 普通采集子任务在同一来源 Task 与 Profile 内顺序复用任务自建页面，按记录的上下文及原 Run 所有权原子交接；不借用用户标签页、其它 actor/Profile 或其它来源任务。相同 X URL 不重复导航，学习验证仍使用独立页面。
+- 来源 finishing 后关闭及核验保留页，父任务等待核验完成；失败/取消关闭页面，重启 reconciliation 按已记录 ID 清理，不创建替代页面。复用通过现有 Task 元数据表达，所有页面操作仍走认证原生 BiDi，无新语义 API 或 Cloud 变更。
+- 验证：78 项后台/X/任务树/清理回归通过；补充页面所有权交接测试后 42 项浏览器/任务树/清理回归通过，含禁止新建标签页断言。Python 兼容语法与定向 diff 检查通过。当前无活动 Browser Task 后重启 App Dev Local；真实下一轮 X 复用尚待观察，无原生重建。
+
+
+### NXR-INTELLIGENCE-LIVE-UPDATE-PROGRESS-20261012
+- 状态：implemented。手动更新全部/单来源成功提交后统一切到更新记录（含 Mobile），移除“可以关闭当前页面”提示。活跃卡片显示来源、列表/正文/学习验证/情报生成阶段、当前请求页面链接、已读页面数、已提取文章数、完成来源数及每秒更新耗时。后端持久化进度，经既有 SSE/Mobile polling 刷新，不新增浏览器控制 API。
+- 已完成读 Task ID 去重以支持重启，学习验证排除普通阅读计数；重复相同进度不重复发事件，防止刷新反馈循环。中英文文案同步。计数为已完成页面读取及提取证据篇数，非 DOM 滚动次数或最终生成情报数。
+- 验证：38 项后台/X Python 回归、11 项前端/多语言 Node 回归通过，含单来源 Mobile 切换、内容转义与进度合并/重复事件抑制；Python 兼容语法与 JS 语法通过。当前无活动浏览器任务，重启 App Dev Local 加载后端；无需原生重建/Cloud 变更。真实采集中的展示尚待观察。
+
+
+### NXR-SEARCH-ALL-RESULT-CARDS-20261012
+- 状态：implemented。《一搜到底》增加帖子/视频/网页分类卡片与每类三条折叠展示，新增 YouTube/B站编译搜索能力。保留可见内容、预览图及互动/时间信息，缺失字段不补造。
+- 搜索后使用独立公用后台 ai.transform Task 根据查询、摘要及域名推断排序，并将网页标题/摘要翻译为应用语言；失败保留未整理的原始结果。AI 不生成链接或互动指标，原始来源与观测链接保留。
+- 验证：48 项 Python、23 项 Node 回归通过；App Dev 实际三源搜索与独立 AI 整理全部完成，合并 10 条并显示中文网页提要、视频预览/时长/播放数、每类前三条与展开入口。空白视频 SPA 加入有界只读等待，Brave 片段及 B站标题兼容修正有回归覆盖。X/小红书互动信息未做本轮登录态在线验收。文档 ai2apps/docs/search-all-mini-app.md 已同步；已重启 App Dev Local，无需原生 App 重建或 Cloud 变更，未发布。
+
+### NXR-SHOPPING-CART-QUANTITY-20261012：购物车补足数量
+
+- implemented / source_verified：实测首件要求 2 件、实际添加 1 件，旧任务以 amazon_cart_add_unverified 等待协助。兼容购物车原生数量加号和 Quantity is 标签；对已有不足数量的商品直接补足，每次点击后等待并核验只增加 1 件，结果不确定不重复点击。数量未知不再次添加。Mini-App 显示明确的数量核验暂停说明。23 项购物逻辑测试和 6 项 UI 测试通过。旧等待任务已取消，已通过固定 Helper 重启 App-Dev Local；购物车原有 1 件保留。尚未重新执行真实批量添加。
+
+### NXR-SHOPPING-AMAZON-CHANNELS-20261012：学习渠道和配送偏好
+
+- implemented / source_verified：购买事件增加显式渠道与配送时效；增量合并保留并补全，同一订单不重复计数。按商品统计渠道/配送偏好，Privacy AI 参考，卡片展示；购物车添加/补数量前核对渠道与明确配送时效，不一致或生鲜渠道无法确认时暂停。旧数据未知兼容，不按商品品牌猜渠道。未自动切换 Amazon 子商店或预约配送时段；最终核对和下单仍由用户完成。47 项后台测试和 7 项 UI 测试通过；已重启 App-Dev Local。保留已观察的 almBrandId 店铺链接；尚未完成真实 Whole Foods/Fresh 渠道切换实测，页面无显式证据时保留未知/人工核对。
+
+### NXR-AI-BROWSER-MINI-APP-SELECTION-20261013：加深选中卡片外框
+
+- implemented / source_verified：AI Browser Mini-App 列表选中卡片边框加粗到 2px，颜色由 #d6d3d1 加深为 #78716c；未选中使用同宽透明边框并补偿内边距，切换选中项不引起布局跳动。仅静态 CSS，刷新 Shell 生效。
+
+### NXR-SHOPPING-HISTORY-RESET-FRESH-20261013：清除记录与 Fresh 订单标签
+
+- implemented / online_verified：修正 Fresh 订单标题、品牌图和已观察 almBrandId 店铺标识识别，新增删除本机购物缓存/清单/对话及恢复入口；数据库先持久化清空状态，失败不清掉当前 UI，活动任务期间禁用。新同步不引用已清除旧 history task，任务运行历史单独保留，亚马逊订单及购物车不变。30 项后台测试、8 项 UI 测试通过。已重启固定 App-Dev，通过 UI 删除并重新采集：previous_task 为空、任务 completed、26 个商品，23 个 Fresh / 3 个未知；可乐 6 次记录均为 Fresh，界面显示 Amazon Fresh。
+
+### NXR-SHOPPING-UNSELECTED-COLLAPSE-20261013：折叠未选中商品
+
+- implemented / source_verified：补货清单默认展开已勾选商品；未勾选/数量为零商品收进原生 details 折叠区，摘要显示数量，点击可查看并勾选，勾选后移入主清单，全部勾选时隐藏折叠区。新建议重置为折叠，普通重绘保持展开状态。仅 Package HTML/JS/CSS，刷新 Mini-App 生效。
+
+### NXR-AI-BROWSER-BROWSERS-TAB-20261013：缩短浏览器导航标签
+
+- implemented / source_verified：AI Browser 左栏浏览器 Tab 使用独立 profiles_tab 文案，中文“浏览器”、繁中“瀏覽器”、英文“Browsers”；同步其它现有语言的简短标签。分身设置、选择器及说明仍保留原有明确名称。JSON 解析和 diff 检查通过，刷新 Shell 生效。
+
+### NXR-SHOPPING-HISTORICAL-PRICES-20261013：历史单价与购物车预估
+
+- implemented / online_verified：后台历史任务读取普通订单价格及 Fresh 商品表，兼容 gridcell、嵌套单元格与异步加载。Fresh 商品行总价按该行明确数量计算单价，不分摊订单总价。价格按购买事件保存整数分值与币种，按最后购买日期展示；确认框显示单价、数量、小计、分币种合计，缺价明确排除，运费税费和当前优惠不计入。33 项购物逻辑、18 项共用 WebAgent、10 项 UI 测试通过。已在固定 App-Dev 补齐 26/26 商品历史单价，可乐 USD 5.39；恢复用户原有 5 种商品各 2 份，确认框预估合计 USD 58.62，未确认添加购物车、未下单。
+
+### NXR-SHOPPING-CART-CONFIRM-LAYOUT-20261013：购物车确认框商品展示
+
+- implemented / online_verified：确认框复用本机缓存商品缩略图，商品标题限制两行并保留完整标题提示，固定单价、数量与小计列宽，适配窄窗口；显示历史常用渠道。准备购物车继续使用已观察到的渠道链接，并核对实际渠道；未自动结账。
+
+- 验证：10 项购物 UI 测试通过；固定 App-Dev 确认框已实测显示图片、两行名称、独立价格列及 Fresh 渠道，五种商品各两份合计仍为 USD 58.62。本轮未执行添加购物车或结账，未重新实测 Fresh 渠道加购全过程。
+
+### NXR-SHOPPING-PREFERRED-CART-ROUTING-20261013
+
+- implemented / online_verified（Fresh）：购物车按商品 ID 与历史偏好渠道匹配，其他渠道同款保留且不计入目标数量。Fresh / Whole Foods 使用已观察的渠道链接，并在加购前访问购买区域实际提供的目标购物车入口。缺失入口、未知渠道或无法核对数量时暂停，不自动结账。
+- 修复：保留 fpw=alm 生鲜页面模式；URL 参数不作为购买区域渠道证明。兼容 Fresh 数量弹出菜单、数量加号及 localmarket 购物车，包括带隐藏 No items selected 文本的语义标题、原生数量选择器和推荐区排除。等待异步加购完成后再跳页核验，不重放不确定加购。
+- 验证：40 项购物后台、10 项公用调用与 10 项购物 UI 回归通过，嵌入脚本语法检查通过。固定 App-Dev Local 已重启；真实后台任务 completed，Fresh 五种商品各 2 份共 10 件，当前小计 USD 58.88，普通 Amazon 原有酸奶 1 份、USD 5.97 保留。早期两次误入普通渠道的测试新增量均已撤回。未结账、未下单；Whole Foods 未做本轮在线加购验收。开发说明已更新，无 Cloud 变更或原生重建，未发布。
+
+### NXR-SHOPPING-MULTI-STORE-CART-20261013
+
+- implemented / source_verified：购物达人支持普通 Amazon、Fresh、Whole Foods 的独立渠道；补齐 Whole Foods WFMO 显式标识及带 Base64 填充的已观察店铺 URL。生鲜加购始终核对实际购买区渠道，同款跨渠道独立计数，混合清单最终报告分别读取并核验每个渠道购物车，返回分渠道入口与结果。Same Day / Tomorrow 是配送偏好，与店铺渠道分开；未知渠道不静默替换。
+- 验证：47 项购物逻辑、10 项共用调用及 10 项购物 UI 测试通过，嵌入 JS 语法检查通过；确认无活动任务后已通过固定 Helper 重启 App-Dev Local。Whole Foods 本轮未在线加购或结账。开发说明更新，无 Cloud 变更或原生重建，未发布。
+
+### NXR-SHOPPING-CONSERVATIVE-CYCLE-DEFAULTS-20261013
+
+- implemented / online_verified：定位重新采集后 AI 勾选 21 种，其中 14 种只有一个不同购买日期、3 种未达到历史周期 80%。新增后台确定性默认勾选门槛：两个不同购买日期及距上次购买达到中位间隔 80%，同时需 AI 判定适合补货。早于周期/周期未知商品保留候选且不默认勾选，显式用户对话修改不被默认门槛覆盖。刷新/推荐两条路径均加入后台筛选步骤，混合渠道行为不变。
+- 验证：51 项购物逻辑、10 项共用调用及 10 项 UI 测试通过，含周期门槛、同日多次购买、单次购买、耐用品和用户指定修改。固定 Helper 重启 App-Dev Local 后重新同步/推荐任务 completed；界面默认勾选 3 种（两款酸奶与可乐），其余 23 种折叠保留，26 种购物记录仍在。未修改购物车或下单。开发契约同步，无 Cloud 改动或原生重建，未发布。
+
+### NXR-SHOPPING-CONFIRM-FIXED-HEADER-FOOTER-20261013
+
+- implemented：准备购物车确认框改为独立头部/可滚动正文/底部操作三段布局；对话框整体限制在 Mini-App 视口内，头尾不收缩，正文 min-height:0 自适应剩余高度且仅正文滚动。小高度窗口缩小头尾留白，保留操作按钮；关闭状态不被 flex 覆盖。商品图片、价格列和估价说明保持。
+- 验证：10 项现有购物 UI 测试通过，HTML 三段结构检查通过；固定 App-Dev 刷新后已确认新头尾与底部分隔线展示、商品图片和金额保留，未点击确认加购。小高度适配经 CSS 规则检查，原生窗口缩小未成功，未宣称矮窗口在线验收。仅 HTML/CSS 更改，无后端重启或原生重建，未发布。
+
+### NXR-SHOPPING-FEATURE-WEBSITE-ENTRY-20261013
+
+- implemented / online_verified：购物达人默认进入功能选择，日常补货开放，其它美食外卖/时下热门/季节优选/礼物推荐为开发中禁用卡片。日常补货下一步选购物网站，仅 Amazon.com 可用，京东、淘宝/天猫、Walmart 禁用，提供返回功能/网站入口。现有购物记录、隐私模型与公用后台 Task 保持，恢复活动任务直接展示工作区。新网站需受控适配与验收，不开放即时 AI 自动加购适配。本轮继续 Mini-App，不创建独立 App。
+- 验证：11 项购物 UI 测试通过，覆盖入口切换不提交任务、不改变清单；Package 能力契约测试通过，JS 语法及格式检查通过。固定 App-Dev 刷新后通过实际界面树确认四项功能/三类网站禁用、日常补货→Amazon.com→原工作区及返回首页；原 3 种勾选清单保留。原生截图返回旧画面，未据此宣称视觉验收。仅 Package HTML/JS 与文案，无 Cloud 改动或原生重建，未发布。
+
+### NXR-SHOPPING-PERMANENT-DELETE-20261013
+
+- implemented / source_verified + UI_verified：移除恢复入口和新增软删除副本，永久删除需输入 DELETE，取消默认聚焦，活动购物任务禁止删除。新增本机 mount/actor/caller 绑定 API，事务清除购物草稿和旧恢复副本，清空自有购物任务程序/运行/步骤/交互/工具证据/消息内容/任务树结果/相关事件载荷；仅保留空内容审计元数据。旧恢复副本仅经明确永久删除处理，防止旧客户端新增副本或凭已清除任务引用回写。亚马逊订单、购物车和登录不改动。
+- 验证：4 项隔离数据库删除、18 项 Mini-App 后台契约、12 项购物 UI 及共享 SDK 回归通过；Python/JS 语法及格式检查通过。已通过固定 Helper 重启 App-Dev Local，真实界面确认恢复入口消失，永久删除文字/DELETE 输入框/初始禁用按钮及取消默认焦点正确；取消后仍显示原 3 种勾选。未执行用户真实删除。开启 SQLite secure_delete 并尽力截断 WAL，不声明清除独立 OS 备份或撤回已发给模型服务的内容。无 Cloud 变更或原生重建，未发布。
+
+### NXR-WEB-MINI-APP-LOCALIZATION-20261013：一搜到底与购物达人语言覆盖
+
+- implemented：两个 Package 增加静态 UI 语言词表，覆盖平台 9 种语言（zh、zh-TW、en、ja、ko、fr、es、pt-BR、ru），按宿主 locale 规范化地区别名并以英文回退。补齐加载、失败提示、搜索模式/排序/结果计数、商品卡片/渠道/估价、功能选择与永久删除确认；Package 列表名称/说明同步本地化。界面不运行在线翻译，不修改商品名称或历史对话。后台补货周期筛选提示使用同一语言范围，新 AI 任务继续接收当前 locale。
+- validation：原有搜索/购物 JS 回归 37 项通过；新增 9 语言前端加载/提交、别名/占位符/不可信文本、加载顺序测试 11 项通过；购物后台及周期筛选语言回归 62 项通过。 App-Dev Local 已重启，当前中文一搜到底与购物达人均完成 Ready 界面核验；未执行搜索、订单读取、购物车操作或删除购物数据。
+
+### NXR-SHOPPING-GIFTS-20261013：购物达人礼物推荐
+
+- implemented / online_read_verified：开放礼物推荐功能，基于对象/场合/预算/喜好使用 Privacy 标准模型规划 Amazon 搜索并从真实商品选择候选；推荐、对话修改、用户确认后的购物车准备均复用公用 WebAgent 后台 Task。礼物状态与日常补货分开，保存于已有本机数据库草稿；界面覆盖平台 9 语言。
+
+- Gift validation：前端购物/9 语言/礼物工作流 34 项通过；后台购物/礼物/权限/删除 97 项通过。App-Dev 真实 Privacy Task 为通用咖啡爱好者生日条件返回 5 个实际 Amazon 商品，50 美元预算；对话降为 30 美元并排除食品后，返回 5 个实际咖啡器具，预算与三条对话记录同步更新。购物车确认/取消/提交顺序及来源限制使用测试覆盖，没有在线添加购物车或结账。
+
+### NXR-SHOPPING-GIFTS-NORMAL-20261013
+
+- Status: implemented; validated 103 Python tests and 35 frontend tests. App-Dev Local restarted to activate the routing change.
+- Gift recommendations default to Normal models with an optional Privacy checkbox in all nine locales. Recommendation, revision and cart Tasks honor the selection; replenishment remains Privacy-only. This supersedes the Privacy-only gift default in NXR-SHOPPING-GIFTS-20261013.
+
+### NXR-XHS-SORT-VISIBILITY-20261013
+
+- Dev 腕表频道失败排查：旧 Local Python SDK 与热加载的新 browser_snapshot.js 不匹配，导致 ai2appsDOMVisible 未定义。磁盘上的共享注入实现已存在；通过 Dev 自身 Helper 重载后 health 200，隔离原生 BiDi 容器实测 SJX、Fratello snapshot 均成功并完成测试窗口/容器清理。39 项 Python 与 5 项共享可见性回归通过；没有改动频道来源、Cookie 或其他实例数据。
+
+- Status: implemented; 56 Python and 13 JavaScript regression tests passed.
+- Fix Xiaohongshu search sort verification selecting transparent aria-hidden duplicate nodes with stale selected classes. Check visibility through ancestors (including opacity, hidden and inert) before choosing or validating native controls. Keep explicit selected-state verification; do not silently substitute another sort.
+- Real App-Dev default browser integration: shared WebAgent SDK completed likes/latest/general transitions and read six results for 回锅肉做法 under likes. App-Dev Local restarted; UI submitted both general and likes searches through shared Tasks. Both returned six cards with cover/engagement metadata, and likes results included 23.8万 and 3.3万 likes.
+
+### NXR-BROWSER-SHARED-VISIBILITY-20261013
+
+- Status: implemented; 158 Python tests passed, 1 native-environment test skipped; 85 JavaScript tests passed. Live App-Dev SDK verification returned three results each from Google, Bing, DuckDuckGo and Brave; shared snapshots succeeded. App-Dev Local restarted to activate imported changes.
+- Add one composed-ancestor visibility source for Python and front-end BiDi SDKs. Integrate snapshots, search readers/sorting, list recovery, page access, Shopping native targets, and legacy backend scripts. Respect aria-hidden/inert/CSS visibility/effective opacity and Shadow DOM hosts; keep offscreen result reading separate from viewport input checks.
+- All ten built-in search providers have regressions ensuring hidden duplicate links do not consume deduplication identities; preserve explicit file-upload handling.
+
+### NXR-AI-BROWSER-MOBILE-20261013
+
+- GitHub custom search stall (2026-10-13): use host-authored, query-encoded GitHub repository search navigation before observed-link extraction instead of AI search-input navigation. Bound each custom search planning round to 45 seconds and report timeout/invalid-plan diagnostics without replaying actions or weakening compiler validation. Custom-source regression suite: 19 passed.
+
+- Google verification classification (2026-10-13): actual failed search redirected to Google /sorry/index; classify it as needs_user/captcha before normal /search path validation, allowing the existing assistance flow to retain the page and continue after user verification instead of failing as unexpected_search_page. No captcha bypass or automatic repeated requests.
+
+- Empty workspace Logo background (2026-10-13): lighten gray tile from #858585 to #A3A3A3 per visual feedback; sizing unchanged.
+
+- Empty workspace Logo refinement (2026-10-13): enlarge the inner globe another 15% and change the tile to neutral gray #858585, preserving outer bounds and centered alignment.
+
+- Empty workspace Logo sizing (2026-10-13): enlarge inner Globe2 glyph by 20%, centered within the unchanged 112px SVG/rounded tile; cache version updated.
+
+- AI Browser icon consistency (2026-10-13): reuse the Dock Lucide Globe2 icon paths for Desktop/Mobile headers and the empty-workspace SVG Logo.
+
+- Progressive search results (2026-10-13): publish initial observed lists and each social-note/video-cover update into actor-scoped Local browser_search_progress; emit status-only Task events, fetch partial results through the existing mount-authorized Task endpoint and mobile polling. Final run results supersede partial state, while failures retain already observed items. Search All uses keyed DOM reconciliation to retain unchanged cards, shows all rows during processing, and folds to top three only after AI review. 48 Python and 8 JS/UI tests passed, including real 390px incremental UI and same-card identity checks.
+
+- AI Browser empty Mini-App workspace (2026-10-13): replace top-left generic Apps/select text with a centered globe Logo asset and one localized tagline; subtle shadow, responsive sizing, retain loading status. Nine locale catalogs updated.
+
+- Mobile navigation density (2026-10-13): remove AI Browser inner bottom navigation; add task icon/count next to header refresh, with close action on task list/details returning to the original library or Mini-App workspace. Preserve mounted frame and user input while task UI is open. Update phone navigation regression coverage and static asset cache versions.
+
+- Google navigation follow-up (2026-10-13): confirmed real task failed with NS_ERROR_NET_HTTP3_PROTOCOL_ERROR before extraction. Retry definitive same-context/same-URL GET protocol failure once, keep browser global protocol configuration unchanged, and project a specific search_network_protocol_error with retry/alternate-source guidance. 60 browser/search Python tests passed.
+
+- Native link/dialog correction (2026-10-13): remove delayed XHS webpage fallback and about:blank popup replacement, which raced Safari App confirmation and could leave a blank tab. Use direct user-activated target=_blank native App and HTTPS links, with an explicit webpage fallback button; preserve the AI2Apps tab. Roomy 460px/viewport-bounded dialog, stacked 48px actions, localized guidance in nine supported locales (Chinese variants share copy). Nine SDK tests passed; iPhone confirmation/webpage loading still needs device acceptance.
+
+- Compact search controls (2026-10-13): Quick/Preferred mode and Browser Profile selectors share a two-column row, including phone widths; API settings occupy a separate full row. Custom source controls retain their layout.
+
+- XHS mobile link follow-up (2026-10-13): host-owned user-activated popup keeps AI2Apps tab intact, with blocked-popup instructions instead of same-tab navigation. XHS/Rednote note IDs use documented xhsdiscover://item native links; web fallback normalizes desktop /search_result/id to /explore/id preserving host and access query. Separate web/new-tab button retained; native-launch timer is best effort and awaits real iPhone acceptance. Eight SDK tests passed; no sandbox permission changes.
+
+- Parallel Search All and XHS cover badges (2026-10-13): group source submissions under an actor/Package-bound search Task root and use existing WebAgentInvocation/BrowserTaskRepository admission with parallel_limit=3, preserving Profile native input locks and cleanup/root cancellation. Frontend submits sources together; broker owns parent/concurrency. Auto-settle completed source groups. Move XHS source badges onto cover top-left and suppress duplicate tags below. 82 Python and 14 JS tests passed.
+
+- Rednote history recovery (2026-10-13): real failed task raised `no such history entry` after successfully reading a note. On this definitive Back rejection, use a visible note close control or restore the original search GET; retain collected note content and stop enrichment gracefully if the list cannot be restored. No replay of uncertain clicks. 25 XHS/search Python tests passed.
+
+- Video card source badges (2026-10-13): show video origins over the thumbnail top-left using contrasting translucent badges, remove repeated plain source tags below, retain source page action buttons and fallback tags when no cover exists. Applies to desktop and Mobile Search All.
+
+- Mobile result opening (2026-10-13): host handles result clicks on the phone instead of calling the Desktop browser open-result API. Validate HTTPS URL against mount-scoped observed Task results, then show a host-owned native link for user activation and OS Universal/App Links with web fallback. Preserve actual host/access tokens and keep Package sandbox policy intact. Mobile card cover/text delegates to the original result action. Seven SDK tests passed.
+
+- Stable results follow-up (2026-10-13): deduplicate unchanged task presentation updates in the shared Mini-App bridge; Search All retains existing result-card DOM when items and retained-page actions are unchanged. Background polling continues without repeatedly replacing cards/images or disturbing expanded results.
+
+- Result card density (2026-10-13): tighten text line height and summary/metric spacing; clamp displayed result URLs to two lines with ellipsis while preserving full original links and title text. Search All Package UI change, applies to desktop and Mobile.
+
+- Dual-site XHS/Rednote search (2026-10-13): inspect both sites in temporary tabs within the selected Profile, prefer visibly logged-in site, remember confirmed actor/Profile preference in Local SQLite, and recheck both on subsequent searches. Never read/copy cookies; unknown remains unknown. Extend signed Search All site_scope, DOM sort/list handling, list recovery and note dedup to Rednote, preserving observed original host. 59 Python and 20 JS tests passed; live overseas-account acceptance still requires a new search.
+
+- Xiaohongshu sorting fallback (2026-10-13): inability to verify a requested sort no longer discards readable results. Attempt Recommended order then extract the available page, recording requested_sort/sort_verified=false/sort_warning and displaying a downgrade notice. Wrong-page/authentication/captcha failures remain failures or assistance. 19 Python search tests passed; Dev Local refreshed.
+
+- Video covers (2026-10-13): prioritize YouTube/Bilibili thumbnail nodes and lazy-image URLs; capture observed loaded cover pixels via native BiDi as bounded temporary DataURLs, matching XHS and avoiding cross-site image restrictions. Preserve image_data_url when duplicate search results merge. 18 Python and 20 JS search tests passed; Dev Local refreshed.
+
+- Result delivery follow-up (2026-10-13): supplement Mini-App SSE with coalesced authenticated task polling every 3 seconds; remove terminal tasks and cancel timers when the frame disconnects. Prevents Mobile UI remaining at waiting-browser when proxy/Safari push updates are absent. Five SDK tests passed, including completion without SSE; bumped Mobile bridge script cache version.
+
+- Task submission follow-up (2026-10-13): Mobile Mini-App mount authorization remains Mobile-scoped; submit shared Local Tasks with the same actor’s desktop task session, instead of an incompatible Mobile Chat singleton session. Fixes `app_instance_not_found` on fast search fallback and other WebAgent capabilities. 73 Mini-App/owner Studio tests passed, including same-owner Mobile task session regression; Dev Local restarted.
+
+- Initialization follow-up (2026-10-13): include the existing mount-bound GET capabilities probe in the curated AI Browser Mobile router. The omitted probe caused real Mini-App initialization HTTP 404s. Added route regression coverage; 52 owner Studio tests passed. Restarted only Dev Local to apply the fix.
+
+- Mobile launcher follow-up (2026-10-13): fix numeric Lucide name conversion (`globe-2` → `Globe2`), preventing AI Browser from falling back to the generic window icon; bump Mobile script cache version. Syntax and bundled-icon mapping checks passed.
+
+- Dev verification (2026-10-13): rebuilt fixed `AI2Apps-dev.app` via `build-dev-app.sh`, preserving instance `dev` data; deep/strict signature and Development/source-root identity passed. Restarted Dev Local health returned 200; AI Browser Mobile Ready registered in Dev.
+
+- Status: implemented; 80 Python and 66 JavaScript/UI tests passed, including 390px phone navigation/frame retention and trusted Mobile Entry assets/API scope checks.
+- Add a Mobile Ready, mount-bound AI Browser Mini-App consumer with library/workspace/task navigation and nine languages. Retain Mini-App iframe state across navigation. Keep authoring/install/customization/native browser login on the computer; execute via existing shared Local Tasks.
+- Curate owner Mobile routes for Mini-App capabilities and Task monitoring/continuation, without exporting authoring, raw BiDi, profile mutations or API-key configuration. Forward the authenticated host-instance header through the existing trusted bridge. Phone layouts added to Search All and Shopping Pro Packages.

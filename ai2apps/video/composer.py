@@ -7,7 +7,9 @@ import hashlib
 import json
 import mimetypes
 import os
+import shutil
 import uuid
+import wave
 from collections.abc import Callable
 from fractions import Fraction
 from io import BufferedIOBase
@@ -823,6 +825,70 @@ async def render_composition(
 ) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     await asyncio.to_thread(_render_with_pyav, project, sources, destination, progress)
+
+
+async def render_clip_output(
+    project: ComposerProject,
+    clip_id: str,
+    sources: dict[str, tuple[dict[str, Any], Path]],
+    destination: Path,
+    progress: Callable[[float, float], None] | None = None,
+) -> dict[str, Any]:
+    """Materialize one media Clip using its timeline trim and edit settings."""
+
+    clip = next((item for item in project.clips if item.id == clip_id), None)
+    if clip is None or clip.layer_type != "media" or not clip.source_id:
+        raise ComposerError("clip_not_exportable", "Select a media clip to output")
+    source = sources.get(clip.source_id)
+    if source is None:
+        raise ComposerError("source_not_found", "Composer source was not found", status_code=404)
+    record, source_path = source
+    track = next((item for item in project.tracks if item.id == clip.track_id), None)
+    if track is None:
+        raise ComposerError("clip_track_not_found", "The clip track was not found")
+    destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+
+    if record.get("hasImage"):
+        await asyncio.to_thread(shutil.copyfile, source_path, destination)
+        if progress is not None:
+            progress(clip.duration, clip.duration)
+        return {"kind": "image", "mediaType": record.get("mediaType") or "image/png"}
+
+    clip_data = clip.model_dump(by_alias=True)
+    clip_data["start"] = 0
+    clip_data["groupId"] = None
+    track_data = track.model_dump()
+    track_data.update({"order": 0, "muted": False, "locked": False})
+    isolated = ComposerProject.model_validate(
+        {
+            "schema": project.schema_name,
+            "title": clip.name,
+            "settings": project.settings.model_dump(),
+            "tracks": [track_data],
+            "clips": [clip_data],
+        }
+    )
+    if track.kind == "video" and record.get("hasVideo"):
+        await render_composition(isolated, sources, destination, progress)
+        return {"kind": "video", "mediaType": "video/mp4"}
+    if not record.get("hasAudio"):
+        raise ComposerError("clip_not_exportable", "The selected clip has no output media")
+
+    def write_audio() -> None:
+        samples = _mix_audio(isolated, sources)
+        interleaved = (samples.T * 32767).round().astype("<i2", copy=False)
+        with wave.open(str(destination), "wb") as output:
+            output.setnchannels(2)
+            output.setsampwidth(2)
+            output.setframerate(48_000)
+            output.writeframes(interleaved.tobytes())
+
+    await asyncio.to_thread(write_audio)
+    if progress is not None:
+        progress(clip.duration, clip.duration)
+    if not destination.is_file() or destination.stat().st_size <= 44:
+        raise ComposerError("render_failed", "Clip audio rendering produced no output")
+    return {"kind": "audio", "mediaType": "audio/wav"}
 
 
 class _VideoReader:

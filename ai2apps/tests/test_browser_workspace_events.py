@@ -57,6 +57,8 @@ async def test_snapshot_then_updates_have_no_gap_and_are_owner_scoped(runtime):
     # Commit after bootstrap and before the stream subscribes: replay must find it.
     second = enqueue(tasks)
     message = await asyncio.wait_for(anext(stream), 1)
+    assert payload(message)['payload']['task_node']['id'] == second['execution_task_id']
+    message = await asyncio.wait_for(anext(stream), 1)
     assert payload(message)['payload']['task']['id'] == second['id']
     enqueue(tasks, 'bob')
     assert await anext(stream) == ': heartbeat\n\n'

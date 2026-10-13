@@ -1,0 +1,7 @@
+<div class="studio-mini-more" x-data="{menuOpen:false}" @click.outside="menuOpen=false" @keydown.escape="menuOpen=false" data-custom-title="{{ t('studio.customize_mini_app') }}" data-custom-name="{{ t('models.cloud.editor.name') }}" data-custom-request="{{ t('studio.custom_mini_app_request') }}" data-custom-confirm="{{ t('studio.open_coder') }}" data-custom-cancel="{{ t('ai_browser.workspace.cancel') }}">
+ <div class="studio-mini-more-menu" x-show="menuOpen" x-cloak role="menu">
+  <button type="button" role="menuitem" @click="menuOpen=false;installMiniApps()"><i data-lucide="download"></i>{{ t('studio.install_mini_app') }}</button>
+  <button type="button" role="menuitem" @click="menuOpen=false;openCoder()"><i data-lucide="code-2"></i>{{ t('studio.customize_mini_app') }}</button>
+ </div>
+ <button type="button" class="studio-mini-more-toggle" @click="menuOpen=!menuOpen" :aria-expanded="menuOpen" aria-haspopup="menu"><i data-lucide="plus"></i><span>{{ t('studio.more_mini_apps') }}</span><i data-lucide="chevron-up"></i></button>
+</div>

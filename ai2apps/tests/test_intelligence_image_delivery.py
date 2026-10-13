@@ -14,7 +14,7 @@ def test_cdn_boundary():
 def test_image_requires_owned_saved_reference(client,monkeypatch):
     c,s=channel_and_source(client)
     url='https://wx4.sinaimg.cn/orj480/photo.jpg'
-    async def digest(*args):
+    async def digest(*args,**kwargs):
         return [{'title':'图片','summary':'摘要','body':'正文','sources':[], 'images':[{'url':url}]}]
     monkeypatch.setattr(service,'digest',digest)
     run=legacy_run(client,c['id'])

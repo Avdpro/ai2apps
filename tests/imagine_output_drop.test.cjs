@@ -7,7 +7,7 @@ vm.createContext(ctx);
 vm.runInContext(fs.readFileSync(__dirname+'/../ai2apps/web/static/js/imagine_studio.js','utf8'),ctx);
 const app=ctx.window.imagineStudioApp();
 app.appInstanceId=()=> 'app-test';
-const artifact={id:'artifact-test',name:'portrait.png',previewUrl:'/v1/platform/imagine-studio/results/isr_'+'a'.repeat(32)+'/content?appInstanceId=app-test'};
+const artifact={id:'artifact-test',kind:'image',name:'portrait.png',previewUrl:'/v1/platform/imagine-studio/results/isr_'+'a'.repeat(32)+'/content?appInstanceId=app-test'};
 app.runs=[{artifacts:[artifact]}];
 let requests=0;
 ctx.fetch=async(url,options)=>{requests++;assert.equal(options.credentials,'same-origin');return {ok:true,blob:async()=>new Blob(['image'],{type:'image/png'})};};

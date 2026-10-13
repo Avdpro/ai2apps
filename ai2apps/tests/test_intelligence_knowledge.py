@@ -139,7 +139,7 @@ def test_api_associations_and_auto_finish(env,monkeypatch):
     # Old clients that omit association settings must preserve existing links.
     assert client.put('/intelligence/channels/'+c['id'],json={'name':'腕表','interests':'新品'}).json()['knowledge_bucket_ids']==[b[0].id]
     from ai2apps.intelligence import service
-    async def digest(*args):
+    async def digest(*args,**kwargs):
         return [dict(title='Another',summary='summary',body='new automatic content',sources=[])]
     monkeypatch.setattr(service,'digest',digest)
     run=store.claim(p.actor_user_id,c['id'])  # Existing pre-background run compatibility.

@@ -487,6 +487,66 @@
   {
     "module": "studio_mini_apps",
     "method": "GET",
+    "path": "/v1/platform/studios/{studio_id}/mini-app-mounts/{mount_id}/draft"
+  },
+  {
+    "module": "studio_mini_apps",
+    "method": "PUT",
+    "path": "/v1/platform/studios/{studio_id}/mini-app-mounts/{mount_id}/draft"
+  },
+  {
+    "module": "studio_mini_apps",
+    "method": "DELETE",
+    "path": "/v1/platform/studios/{studio_id}/mini-app-mounts/{mount_id}/draft"
+  },
+  {
+    "module": "imagine_studio",
+    "method": "GET",
+    "path": "/v1/platform/imagine-studio/frozen-time/models"
+  },
+  {
+    "module": "imagine_studio",
+    "method": "POST",
+    "path": "/v1/platform/imagine-studio/frozen-time/mounts/{mount_id}/previews"
+  },
+  {
+    "module": "imagine_studio",
+    "method": "GET",
+    "path": "/v1/platform/imagine-studio/frozen-time/previews/{key}"
+  },
+  {
+    "module": "imagine_studio",
+    "method": "GET",
+    "path": "/v1/platform/imagine-studio/frozen-time/previews/{key}/video"
+  },
+  {
+    "module": "imagine_studio",
+    "method": "DELETE",
+    "path": "/v1/platform/imagine-studio/frozen-time/previews/{key}"
+  },
+  {
+    "module": "imagine_studio",
+    "method": "POST",
+    "path": "/v1/platform/imagine-studio/frozen-time/mounts/{mount_id}/runs"
+  },
+  {
+    "module": "imagine_studio",
+    "method": "POST",
+    "path": "/v1/platform/imagine-studio/runs/{run_id}/frozen-time"
+  },
+  {
+    "module": "imagine_studio",
+    "method": "GET",
+    "path": "/v1/platform/imagine-studio/runs/{run_id}/frozen-content/{filename}"
+  },
+  {
+    "module": "imagine_studio",
+    "method": "POST",
+    "path": "/v1/platform/imagine-studio/frozen-time/mounts/{mount_id}/runs/{source_id}/convert"
+  },
+  {
+    "module": "studio_mini_apps",
+    "method": "GET",
     "path": "/v1/platform/studios/{studio_id}/mini-app-mounts/{mount_id}/capabilities"
   },
   {
@@ -648,5 +708,105 @@
     "module": "provisioning",
     "method": "POST",
     "path": "/v1/platform/capabilities/probe"
+  },
+  {
+    "module": "client",
+    "method": "GET",
+    "path": "/v1/platform/client/browser-profiles"
+  },
+  {
+    "module": "agent_platform",
+    "method": "GET",
+    "path": "/v1/platform/browser-workspace"
+  },
+  {
+    "module": "agent_platform",
+    "method": "GET",
+    "path": "/v1/platform/browser-workspace/events"
+  },
+  {
+    "module": "agent_platform",
+    "method": "POST",
+    "path": "/v1/platform/browser-workspace/tasks/{task_id}/cancel"
+  },
+  {
+    "module": "agent_platform",
+    "method": "POST",
+    "path": "/v1/platform/browser-workspace/roots/{root_id}/cancel"
+  },
+  {
+    "module": "agent_platform",
+    "method": "POST",
+    "path": "/v1/platform/browser-workspace/tasks/{task_id}/resume"
+  },
+  {
+    "module": "agent_builder",
+    "method": "GET",
+    "path": "/v1/platform/agent-draft-runs/{run_id}"
+  },
+  {
+    "module": "agent_builder",
+    "method": "POST",
+    "path": "/v1/platform/agent-draft-runs/{run_id}/interactions/{interaction_id}/respond"
+  },
+  {
+    "module": "agents",
+    "method": "GET",
+    "path": "/v1/platform/agent-runs/{run_id}/events"
+  },
+  {
+    "module": "studio_mini_apps",
+    "method": "GET",
+    "path": "/v1/platform/studios/ai2apps.ai-browser/mini-app-mounts/{mount_id}/web-agent/search-config"
+  },
+  {
+    "module": "studio_mini_apps",
+    "method": "POST",
+    "path": "/v1/platform/studios/ai2apps.ai-browser/mini-app-mounts/{mount_id}/web-agent/tasks"
+  },
+  {
+    "module": "studio_mini_apps",
+    "method": "GET",
+    "path": "/v1/platform/studios/ai2apps.ai-browser/mini-app-mounts/{mount_id}/web-agent/custom-sources"
+  },
+  {
+    "module": "studio_mini_apps",
+    "method": "POST",
+    "path": "/v1/platform/studios/ai2apps.ai-browser/mini-app-mounts/{mount_id}/web-agent/custom-sources"
+  },
+  {
+    "module": "studio_mini_apps",
+    "method": "DELETE",
+    "path": "/v1/platform/studios/ai2apps.ai-browser/mini-app-mounts/{mount_id}/web-agent/custom-sources/{source_id}"
+  },
+  {
+    "module": "studio_mini_apps",
+    "method": "GET",
+    "path": "/v1/platform/studios/ai2apps.ai-browser/mini-app-mounts/{mount_id}/web-agent/tasks/{task_id}"
+  },
+  {
+    "module": "studio_mini_apps",
+    "method": "POST",
+    "path": "/v1/platform/studios/ai2apps.ai-browser/mini-app-mounts/{mount_id}/web-agent/product-images"
+  },
+  {
+    "module": "studio_mini_apps",
+    "method": "GET",
+    "path": "/v1/platform/studios/ai2apps.ai-browser/mini-app-mounts/{mount_id}/web-agent/retained-tasks"
+  },
+  {
+    "module": "studio_mini_apps",
+    "method": "POST",
+    "path": "/v1/platform/studios/ai2apps.ai-browser/mini-app-mounts/{mount_id}/web-agent/tasks/{task_id}/open-result"
+  },
+  {
+    "module": "studio_mini_apps",
+    "method": "POST",
+    "path": "/v1/platform/studios/ai2apps.ai-browser/mini-app-mounts/{mount_id}/web-agent/tasks/{task_id}/pages/{action}"
+  },
+  {
+    "module": "studio_mini_apps",
+    "method": "POST",
+    "path": "/v1/platform/studios/ai2apps.ai-browser/mini-app-mounts/{mount_id}/web-agent/delete-shopping-history"
   }
 ]

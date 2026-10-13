@@ -25,6 +25,7 @@ from ai2apps.video.composer import (
     _fit_image_to_visual_box,
     _mix_audio,
     _place_cropped_image_in_visual_box,
+    render_clip_output,
     render_composition,
 )
 
@@ -94,6 +95,61 @@ def project(source_id: str) -> ComposerProject:
             ],
         }
     )
+
+
+def test_composer_outputs_selected_image_video_and_audio_clips(tmp_path):
+    import asyncio
+    import wave
+
+    scope = {
+        "actor_id": "owner",
+        "installation_id": "installation",
+        "app_instance_id": "appi_composer",
+    }
+    store = ComposerSourceStore(tmp_path / "clip-output-sources")
+    video_path = tmp_path / "source.mp4"
+    image_path = tmp_path / "source.png"
+    media_file(video_path, color=170)
+    Image.new("RGB", (24, 18), (20, 180, 80)).save(image_path)
+    video = store.register(video_path, media_type="video/mp4", **scope)
+    image = store.register(image_path, media_type="image/png", **scope)
+    sources = {
+        item["id"]: store.get(item["id"], **scope)
+        for item in (video, image)
+    }
+    composition = ComposerProject.model_validate(
+        {
+            "title": "Clip outputs",
+            "settings": {"width": 64, "height": 64, "fps": 12, "background": "#000000"},
+            "tracks": [
+                {"id": "v1", "kind": "video", "name": "Video", "order": 0},
+                {"id": "v2", "kind": "video", "name": "Images", "order": 1},
+                {"id": "a1", "kind": "audio", "name": "Audio", "order": 2},
+            ],
+            "clips": [
+                {"id": "video", "sourceId": video["id"], "trackId": "v1", "name": "Video", "start": 2, "sourceStart": 0.25, "duration": 0.5, "speed": 1.5, "width": 40, "height": 40},
+                {"id": "image", "sourceId": image["id"], "trackId": "v2", "name": "Image", "start": 0, "duration": 1},
+                {"id": "audio", "sourceId": video["id"], "trackId": "a1", "name": "Audio", "start": 1, "sourceStart": 0.1, "duration": 0.4, "speed": 1.25, "volume": 0.5},
+            ],
+        }
+    )
+    video_output = tmp_path / "clip.mp4"
+    image_output = tmp_path / "clip.png"
+    audio_output = tmp_path / "clip.wav"
+    video_descriptor = asyncio.run(render_clip_output(composition, "video", sources, video_output))
+    image_descriptor = asyncio.run(render_clip_output(composition, "image", sources, image_output))
+    audio_descriptor = asyncio.run(render_clip_output(composition, "audio", sources, audio_output))
+
+    assert video_descriptor == {"kind": "video", "mediaType": "video/mp4"}
+    with av.open(str(video_output)) as rendered:
+        assert len(list(rendered.decode(video=0))) == 6
+    assert image_descriptor == {"kind": "image", "mediaType": "image/png"}
+    assert image_output.read_bytes() == image_path.read_bytes()
+    assert audio_descriptor == {"kind": "audio", "mediaType": "audio/wav"}
+    with wave.open(str(audio_output), "rb") as output:
+        assert output.getnchannels() == 2
+        assert output.getframerate() == 48_000
+        assert abs(output.getnframes() / output.getframerate() - 0.4) < 0.02
 
 
 def test_composer_rejects_same_track_overlap_and_preserves_group_color():
@@ -867,6 +923,33 @@ def test_video_composer_api_registers_source_and_materializes_artifact(tmp_path)
     assert "run_id" not in captured["workspace_kwargs"]
     assert str(source_path) not in json.dumps(completed)
 
+    clip_run = client.post(
+        "/video-studio/runs",
+        headers=headers,
+        json={
+            "miniAppId": "ai2apps.video.composer",
+            "title": "Base.mp4",
+            "input": {"outputType": "clip", "clipId": "c1"},
+        },
+    ).json()
+    clip_started = client.post(
+        f"/video-studio/runs/{clip_run['id']}/output-clip",
+        headers=headers,
+        json={
+            "project": composition.model_dump(by_alias=True),
+            "clipId": "c1",
+            "outputName": "Base.mp4",
+        },
+    )
+    assert clip_started.status_code == 202
+    clip_completed = client.get(
+        f"/video-studio/runs/{clip_run['id']}", headers=headers
+    ).json()
+    assert clip_completed["status"] == "succeeded"
+    assert clip_completed["artifacts"][0]["kind"] == "video"
+    assert captured["metadata"]["outputType"] == "clip"
+    assert captured["metadata"]["clipId"] == "c1"
+
 
 def test_video_composer_surface_exposes_timeline_preview_and_chat_editing():
     template = (WEB_ROOT / "templates/system_apps/video_studio.html").read_text()
@@ -885,10 +968,18 @@ def test_video_composer_surface_exposes_timeline_preview_and_chat_editing():
     assert 'class="vs-composer-chat" hidden aria-hidden="true"' in template
     assert "/v1/chat/completions" in script and "allowed = new Set" in script
     assert "renderComposer" in template and "/compose" in script
-    assert "composerRunDetail(activeComposerRun)" in template
-    assert "composer\\.rendering:" in script and "render_progress" in script
+    assert "selectedOutputItem?.detail" in template
+    assert "composerRunDetail(run)" in script
+    assert "composer\\.(rendering|clip_output):" in script and "render_progress" in script
     assert english["video_studio.composer.render_progress"] == "Rendered {current}s / {total}s"
     assert chinese["video_studio.composer.render_progress"] == "已合成 {current} 秒 / 共 {total} 秒"
+    assert "outputComposerClip()" in template and "/output-clip" in script
+    assert "composerCanOutputClip" in script and "composerClipOutputBusy" in script
+    assert "clip_output" in script and "clip_output_progress" in script
+    assert "selectedOutputKind==='image'" in template and "artifact.kind==='image'" in template
+    assert "artifact.kind === 'image'" in script and "['video', 'audio', 'image']" in script
+    assert english["video_studio.composer.output_clip"] == "Output Clip"
+    assert chinese["video_studio.composer.output_clip"] == "输出 Clip"
     assert "beginComposerStageDrag" in script and "beginComposerStageResize" in script
     assert "composerStageStyle" in template and "390 * ratio" in script
     assert "max-height:390px" not in stylesheet
@@ -1003,6 +1094,9 @@ def test_video_composer_surface_exposes_timeline_preview_and_chat_editing():
     assert "candidate.kind === originTrack?.kind" in script
     assert "clip-drop-target" in stylesheet and "translateY" in script
     assert "composerMovePlan" in script and "composerTrimPlan" in script
+    assert "snapComposerTrimEdgeToPlayhead" in script
+    assert "Math.abs(playhead - value) * this.composerScale <= 12" in script
+    assert "snapComposerClipEdge" not in script
     assert "composerDragUnit" in script and "selected.has(ordered[first - 1].id)" in script
     assert "preserveSelection" in script and "movingClips = null" in script
     assert "composerMovePlan(clip, nextStart, nextTrackId, moving)" in script
@@ -1017,7 +1111,16 @@ def test_video_composer_surface_exposes_timeline_preview_and_chat_editing():
     assert "composerTrackMenuStep = 'position'" in script and "chooseComposerTrackInsertSide" in script
     assert "placement === 'before' ? 0 : 1" in script
     assert "composerCanAddProjectItem" in script and ":disabled=\"!composerCanAddProjectItem\"" in template
-    assert "composerPreviewTimelineClips" in script and 'x-show="composerClipActiveAtPlayhead(clip)"' in template
+    assert "composerPreviewTimelineClips" in script
+    assert "composerClipActiveAtPlayhead(clip)?'is-active':'is-inactive'" in template
+    assert 'x-show="composerClipActiveAtPlayhead(clip)"' not in template
+    assert ".vs-composer-layer.is-inactive{display:none!important}" in stylesheet
+    assert "validateComposerNumberDraft" in script and "submitComposerNumberDraft" in script
+    assert "input.hasAttribute('placeholder')" in script
+    assert "event.stopImmediatePropagation()" in script and "input.blur()" in script
+    assert "input.invalid-draft" in stylesheet and "#fff1f2" in stylesheet
+    assert '@input.capture="validateComposerNumberDraft($event)"' in template
+    assert '@keydown.enter.capture="submitComposerNumberDraft($event)"' in template
     assert "clip_start_frame <= frame_index < clip_start_frame + clip_duration_frames" in composer_backend
     assert "composerSelectedTrackId" in script and "isComposerTrackSelected(track)" in template
     assert "this.insertComposerClip(clip); this.composerProject.clips.push(clip)" in script

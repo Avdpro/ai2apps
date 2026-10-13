@@ -1,4 +1,5 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const visibility=fs.readFileSync(__dirname+'/../web/static/js/browser_dom_visibility.js','utf8');
 const source=fs.readFileSync(__dirname+'/../web/static/js/browser_bidi_client.js','utf8');
 function reader(){let now=0;const env={URL,Map,Date:{now:()=>now},setTimeout:(fn,ms)=>{now+=ms;fn();}};
 vm.runInNewContext('globalThis.Reader=class{'+source.slice(source.indexOf('        async waitForStability('),source.indexOf('        async extractArticleList('))+'}',env);
@@ -83,7 +84,7 @@ test('site extraction uses current page for empty scope and independently enforc
  const anchor={href:'https://example.com/article',innerText:'An article title',getAttribute:()=>null,closest:()=>null,getBoundingClientRect:()=>({width:100,height:20})};
  const root={...anchor,querySelectorAll:()=>[anchor]};
  const env={URL,Set,location:{origin:'https://example.com',pathname:'/current/',href:'https://example.com/current/'},document:{querySelectorAll:()=>[root]},getComputedStyle:()=>({visibility:'visible',display:'block'})};
- client.callJSON=async(script,args)=>vm.runInNewContext('('+script+')',env)(args[0]);
+ client.callJSON=async(script,args)=>vm.runInNewContext(visibility+';('+script+')',env)(args[0]);
  const run=scope=>client.executeExtractionStep({mode:'compiled',operation:'extract_list',arguments:{site_extraction:{schema:'ai2apps.site-extraction/v1',kind:'list',selector:'#content',...scope}}});
  for(const scope of [{},{origin:null,path:null},{origin:'',path:''},{origin:'  ',path:'  '},{origin:'https://example.com'},{path:'/current/'}]){
   const result=await run(scope);assert.equal(result.url,env.location.href);assert.equal(result.items.length,1);

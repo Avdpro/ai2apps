@@ -2,6 +2,26 @@
 
 状态：可开发、安装和测试；协议标识 `ai2apps-model-worker/v1`。
 
+## 深度估计扩展（Runtime 1.8.11 候选）
+
+独立模型类型和 capability 为 `depth_estimation`，Runtime dependency 必须要求
+`depth-estimation-v1`。不要将 DA/VGGT 注册为 `image_generation`。Host 也需要支持
+该类型；Runtime 升级不能替代 Desktop Host 更新。
+
+`POST /v1/images/depth` 使用现有认证和 multipart 传输：普通文本字段
+`schema=ai2apps.depth-estimation/v1`、`model=<完整已声明模型 ID>`、可选
+`input_size=128..2048`、`output_format=npz`，以及唯一文件字段 `image`。
+允许 PNG/JPEG/WebP；不接受本地路径、远程 URL、prompt 或第二张图片。
+Worker 仅验证传输，Adapter 必须解码图片、应用 EXIF、限制像素数和模型特定尺寸。
+
+Adapter 返回受控 output_root 内的 `ModelWorkerArtifact`（application/octet-stream，
+`.npz`）。v1 数值数组约定：`depth` 为原图 H×W float32 正深度或相对逆深度，
+`depth_kind` 为 Unicode 标量 `camera_depth` 或 `relative_inverse_depth`；
+`source_size` 为 int32 `[H,W]`。可选 `intrinsics` 为原图坐标 3×3 float32，
+`confidence` 为 H×W float32。所有数值有限、无 object 数组；读取端强制
+`allow_pickle=False`。两者均不自动保证米制尺度；相对逆深度需另行映射到相机距离。
+取消、请求清理、输出读取和停止复用标准 Worker 生命周期。
+
 如果模型能力需要由 Chat、Read Aloud、Video Studio 或第三方 App 按设备和用户操作进行
 配置，还必须阅读
 [AI2Apps Capability Provisioning Framework（ACPF）v1](ai2apps-capability-provisioning-framework-v1.md)。
@@ -214,9 +234,23 @@ models:
 
 - `llm`、`vlm`
 - `image_generation`
-- `audio_stt`、`audio_tts`、`audio_processing`
+- `audio_stt`、`audio_tts`、`audio_processing`、`audio_generation`（音乐/音效生成）
 - `audio_detailed_transcription`（字幕/会议转写专用，不参与 Chat STT 选型）
 - `video_generation`
+
+### 音乐和音效生成（Runtime 1.8.9+）
+
+`audio_generation` 与 TTS 独立。模型在 `metadata.audio_generation` 声明
+`schema: ai2apps.audio-generation-capabilities/v1`、`task: music|sound_effects`、
+数值 `minimum_duration`/`maximum_duration`（1–600 秒内）、布尔 `lyrics`，以及
+`output_formats: [wav]`；音效模型不能声明歌词。`capabilities` 包含 `audio_generation`。
+
+`audio_generate` 请求使用 `model`、`task`、`prompt`、`duration`，可选
+`lyrics`、`language`、`steps`（1–100）、`seed`（uint32）；v1 只返回 WAV Artifact，
+不接受参考音频、流式或调用方输出路径。Adapter 还须按签名模型声明收窄时长和功能。
+Host 可通过 `invoke_background_to_file` 调用并接收文件、进度与取消状态。
+NPZ 权重仅在 Registry 完整验证并物化不可变分发回执后激活；普通目录探测不接受 NPZ。
+这些 Host 声明/安装规则须随 Desktop 发布；仅升级 Runtime 不会升级 Host。
 
 ### 对话模型的上下文窗口契约
 
@@ -402,6 +436,21 @@ Package 根目录内的相对路径并被 `files` 索引和 Publisher 签名覆�
 
 不得把全局模型对象放在模块 import 顶层。模型应在 `start()` 或首次调用时加载，并在 `stop()` 中释放。
 
+### 复用另一个模型 Package 的 checkpoint
+
+需要 `model.checkpoint-dependencies.v1` Host 特征（须在 Service 的
+`compatibility.features` 声明；旧 Host 拒绝安装）。消费者必须同时在外层
+Package dependencies 和 Service requires.services 声明非可选的提供者依赖。
+消费者模型的 metadata 同时声明 `required_model_ids` 和
+`checkpoint_dependencies: [{service_id: <提供者 Service ID>, model_id: <其模型 ID>}]`。
+
+Host 仅接受与活动提供者 digest/version 依赖锁一致、由其签名 manifest 实际拥有的
+指定 checkpoint。此选择不能覆盖路径、仓库或 revision，不支持传递 checkpoint
+依赖，不会把提供者的其他模型公开成消费者模型。消费者仍须声明只读模型权重权限。
+Adapter 用 `context.checkpoint_for(<指定模型 ID>)` 读取，不可自行寻找其他包文件。
+准备流程沿用提供者自己的分发、许可确认和缓存；消费者及所需 checkpoint 全部准备好
+才算 ready。此合同需要 Host 更新，不要求改变现有 Runtime 的 Context API。
+
 ## 5. 操作与返回值
 
 `request.operation` 取值及入口：
@@ -415,6 +464,7 @@ Package 根目录内的相对路径并被 `files` 索引和 Publisher 签名覆�
 | `audio_transcription` | `/v1/audio/transcriptions` |
 | `audio_detailed_transcription` | `/v1/audio/transcriptions/detailed` |
 | `audio_speech` | `/v1/audio/speech` |
+| `audio_generate`（Runtime 1.8.9+） | `/v1/audio/generations` |
 | `audio_process` | `/v1/audio/process` |
 | `video_generation` | `/v1/videos/generations` |
 
@@ -591,3 +641,23 @@ SecretBackend 权限。构建器会排除 `__pycache__`、`.pyc`、`.pyo` 和 `d
 v1 已经把 Package 代码、MLX 状态和模型权重移出主 Server，并提供沙箱及短期内部认证。当前仍是 Python Worker + loopback HTTP，不等价于最终的签名 XPC 安全边界。后续替换传输层时，系统将尽量保持 `service.yaml`、`ModelWorkerContext`、`ModelWorkerRequest` 和 Adapter 返回类型兼容。
 
 音频上传、图片编辑等大二进制请求目前仍以 JSON/data URL 为主要交换格式；真正的 multipart/共享内存通道属于协议后续版本。模型 Package 不应依赖 Worker 的实际端口、启动命令或内部令牌格式。
+
+## 音乐规划工作流（Runtime 1.8.10）
+
+`audio-generation-workflow-v1` 在现有 `POST /v1/audio/generations` 上新增显式
+`schema: ai2apps.audio-generation/v2`。省略 schema 或选择 v1 保持旧协议，steps 默认 8，
+duration 必填；v1 不接受以下新字段。v2 的 steps 默认 32，范围仍为 1–100。
+
+- `duration_mode: fixed`（默认）：duration 必填，范围 1–600 秒。
+- `duration_mode: auto`：仅 music；必须省略 duration，由模型 EOS/token 上限决定结束。
+- 可选 `generation` 对象只接受 `planning_mode`（full/melody/off）、`abc`（非空内联 ABC，
+  UTF-8 不超过 128 KiB，off 禁用）、`max_abc_tokens`（1–4096）、
+  `max_semantic_tokens`（1–15000）、`guidance_scale`（有限数值 1–10）。
+- generation 的省略值和更严格的模型限制由 Adapter 声明并验证；不接受任意路径、
+  代码、文件输入或未知选项。此版本没有音频转谱、参考音频上传或阶段恢复接口。
+- Host 必须根据模型能力选择协议。auto 不承诺精确音频秒数；Adapter 应报告截断，
+  并遵循 Host 的输出时长限制，不能默默截短或绕过 Host 校验。
+- YuE2 的 `MLX_ENABLE_TF32=0` 必须在其 Adapter 导入 MLX 前设置。共享 Launcher 不主动
+  导入 MLX；发布 QA 断言首次进入 Adapter 时 mlx.core 未加载。不要修改所有模型的精度默认值。
+- 原有认证、串行队列、进度、取消和 WAV Artifact 通道继续使用。完整 YuE2 推理代码由模型
+  Package 提供；Runtime 不捆绑实验源码或模型权重。

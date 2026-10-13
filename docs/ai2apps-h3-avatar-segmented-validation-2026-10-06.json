@@ -1,0 +1,98 @@
+{
+  "stage": "prototype_verified_package_pending",
+  "duration_seconds": 69,
+  "frames": 1656,
+  "windows": 11,
+  "wall_seconds": 2225.3897803749423,
+  "video_sha256": "ca5a256f095af557be22cf8e57dd0762e992fcefe3d1a84c77e7211ef708c868",
+  "inspection": {
+    "frames": 1656,
+    "fps": 24.0,
+    "streams": [
+      {
+        "type": "video",
+        "codec": "h264",
+        "duration": 69.0
+      },
+      {
+        "type": "audio",
+        "codec": "aac",
+        "duration": 69.0
+      }
+    ],
+    "max_timestamp_error": 0.0,
+    "median_frame_delta": 0.3537801206111908,
+    "p95_frame_delta": 0.887750244140625,
+    "seams": {
+      "187": 1.1225827932357788,
+      "340": 1.2632713317871094,
+      "493": 1.2549489736557007,
+      "646": 1.1093025207519531,
+      "799": 1.143079161643982,
+      "952": 1.0656496286392212,
+      "1105": 1.0829010009765625,
+      "1258": 1.091168761253357,
+      "1411": 1.1463037729263306,
+      "1564": 0.972143828868866
+    }
+  },
+  "syncnet": [
+    {
+      "video": "/tmp/h3-long-window-real/result.mp4",
+      "start_seconds": 5.0,
+      "duration_seconds": 4.0,
+      "weights_sha256": "961e8696f888fce4f3f3a6c3d5b3267cf5b343100b238e79b2659bff2c605442",
+      "offset_frames": -1,
+      "offset_seconds": -0.04,
+      "confidence": 4.70102596282959,
+      "distance": 9.76260757446289,
+      "zero_offset_distance": 11.923020362854004,
+      "seconds": 3.2159897920209914,
+      "face_crop": "upstream-style geometry with Vision rectangles"
+    },
+    {
+      "video": "/tmp/h3-long-window-real/result.mp4",
+      "start_seconds": 29.0,
+      "duration_seconds": 4.0,
+      "weights_sha256": "961e8696f888fce4f3f3a6c3d5b3267cf5b343100b238e79b2659bff2c605442",
+      "offset_frames": -1,
+      "offset_seconds": -0.04,
+      "confidence": 4.74051570892334,
+      "distance": 9.53922176361084,
+      "zero_offset_distance": 11.33682918548584,
+      "seconds": 2.86349383299239,
+      "face_crop": "upstream-style geometry with Vision rectangles"
+    },
+    {
+      "video": "/tmp/h3-long-window-real/result.mp4",
+      "start_seconds": 58.0,
+      "duration_seconds": 5.0,
+      "weights_sha256": "961e8696f888fce4f3f3a6c3d5b3267cf5b343100b238e79b2659bff2c605442",
+      "offset_frames": -1,
+      "offset_seconds": -0.04,
+      "confidence": 5.1974382400512695,
+      "distance": 9.52720832824707,
+      "zero_offset_distance": 10.655999183654785,
+      "seconds": 3.0075089170131832,
+      "face_crop": "upstream-style geometry with Vision rectangles"
+    },
+    {
+      "video": "/tmp/h3-long-window-real/result.mp4",
+      "start_seconds": 64.0,
+      "duration_seconds": 5.0,
+      "weights_sha256": "961e8696f888fce4f3f3a6c3d5b3267cf5b343100b238e79b2659bff2c605442",
+      "offset_frames": -1,
+      "offset_seconds": -0.04,
+      "confidence": 5.66933536529541,
+      "distance": 8.956727027893066,
+      "zero_offset_distance": 10.756591796875,
+      "seconds": 4.14629854215309,
+      "face_crop": "upstream-style geometry with Vision rectangles"
+    }
+  ],
+  "limitations": [
+    "Source adapter test, not installed Package acceptance",
+    "M5 Max 128 GiB development machine; timings include staging/refinement and concurrent light Host verification",
+    "All-variant inference still running"
+  ]
+}

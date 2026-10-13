@@ -14,17 +14,20 @@ class WebAgentInvocation:
 
     def submit(self, *, owner, session_id, profile='default', name, key,
                caller_app_id, agent_id='', capability='', generation_id='',
-               parameters=None, source=None):
+               parameters=None, source=None, retain_pages_reason='', parent_task_id='', reuse_page=False, model_profile=None, parallel_limit=1):
         from ai2apps.api.ownership import authorize_session
         from ai2apps.identity import IdentityRepository
         principal = IdentityRepository(self.runtime.database).local_principal_for(owner)
         authorize_session(self.runtime, principal, session_id)
         program = None
+        declared_model_profile = "normal"
         if source is not None:
             compiled = compile_source(source)
             if not compiled.valid:
-                raise ValueError('WebAgent program failed compilation preflight')
+                import json
+                raise ValueError('WebAgent program failed compilation preflight: ' + json.dumps(compiled.report['errors'])[:800])
             program = compiled.ir
+            declared_model_profile = program.get("model_profile", "normal")
         elif agent_id.startswith('builtin:web:'):
             from ai2apps.agent_builder.foundations import foundation_ir, GENERATION
             foundation_ir(agent_id, capability, generation_id or GENERATION)
@@ -39,11 +42,22 @@ class WebAgentInvocation:
             generation = repository.get_generation(generation_id, owner)
             if generation.draft_id != agent_id or generation.status.value != 'active':
                 raise ValueError('WebAgent generation is not active for this owner')
+            from ai2apps.agent_builder.service import capability_ir
+            declared_model_profile = capability_ir(generation.ir, capability or None).get('model_profile', 'normal')
             if not capability:
                 exports = generation.ir.get('capability_exports') or []
                 if len(exports) > 1:
                     raise ValueError('Select an explicit WebAgent capability')
                 capability = exports[0]['name'] if exports else f'agent.{agent_id}.run'
+        model_profile = model_profile or declared_model_profile
+        if declared_model_profile == 'privacy':
+            model_profile = 'privacy'
+        if model_profile not in {'normal', 'privacy'}:
+            raise ValueError('Unknown model profile')
+        if parent_task_id.startswith("btask_"):
+            parent = self.tasks.get(owner, parent_task_id)
+            if parent.get('browser_context', {}).get('model_profile') == 'privacy':
+                model_profile = 'privacy'
         return self.tasks.enqueue(owner, profile, agent_id, capability, generation_id,
             name, parameters or {}, session_id=session_id, idempotency_key=key,
-            program=program, caller_app_id=caller_app_id)
+            program=program, caller_app_id=caller_app_id, retain_pages_reason=retain_pages_reason, parent_task_id=parent_task_id, reuse_page=reuse_page, model_profile=model_profile, parallel_limit=parallel_limit)

@@ -61,3 +61,78 @@ def test_pre_navigation_browser_failure_releases_only_its_reservation(tmp_path):
     next_run=store.claim_social('alice',s['id']);assert next_run['allowed']
     with pytest.raises(ValueError):store.finish_social('alice',s['id'],first['token'],'not_started')
     store.finish_social('alice',s['id'],next_run['token'],'failed');assert not store.claim_social('alice',s['id'])['allowed']
+
+
+def test_manual_social_refresh_waits_one_minute_and_preserves_schedule(tmp_path, monkeypatch):
+    from datetime import datetime, timezone
+    import ai2apps.intelligence.store as module
+    clock = [100000.0]
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime.fromtimestamp(clock[0], tz or timezone.utc)
+    monkeypatch.setattr(module, 'datetime', Clock)
+    store=IntelligenceStore(tmp_path)
+    c=store.save_channel('alice',ChannelInput(name='test',interests='watch').model_dump())
+    s=store.save_source('alice',c['id'],SourceInput(name='X',url='https://x.com/F1',x_mode='accounts',x_values=['F1']).model_dump())
+    first=store.claim_social('alice',s['id'],manual=True)
+    assert first['allowed']
+    assert not store.claim_social('alice',s['id'],manual=True)['allowed']
+    store.finish_social('alice',s['id'],first['token'],'success')
+    clock[0]+=59
+    assert not store.claim_social('alice',s['id'],manual=True)['allowed']
+    clock[0]+=1
+    assert not store.claim_social('alice',s['id'])['allowed']
+    second=store.claim_social('alice',s['id'],manual=True)
+    assert second['allowed']
+    store.finish_social('alice',s['id'],second['token'],'failed')
+    clock[0]+=59
+    assert not store.claim_social('alice',s['id'],manual=True)['allowed']
+    clock[0]+=1
+    third=store.claim_social('alice',s['id'],manual=True)
+    assert third['allowed']
+    store.finish_social('alice',s['id'],third['token'],'not_started')
+    assert store.claim_social('alice',s['id'],manual=True)['allowed']
+
+
+def test_legacy_schedule_cooldown_does_not_block_manual_refresh(tmp_path):
+    import json
+    from datetime import datetime, timezone
+    store=IntelligenceStore(tmp_path)
+    c=store.save_channel('alice',ChannelInput(name='test',interests='watch').model_dump())
+    s=store.save_source('alice',c['id'],SourceInput(name='X',url='https://x.com/F1',x_mode='accounts',x_values=['F1']).model_dump())
+    now=datetime.now(timezone.utc).timestamp()
+    s['social_next_at']=now+21600
+    s['social_failures']=1
+    with store.connect() as db:
+        db.execute('UPDATE sources SET data=? WHERE owner=? AND id=?',(json.dumps(s),'alice',s['id']))
+    with store.connect() as db:
+        db.execute('INSERT INTO social_limits VALUES(?,?,?)',('alice','x.com',json.dumps({'source_id':s['id'],'next_at':now+3000,'lease_until':0,'token':''})))
+    assert not store.claim_social('alice',s['id'])['allowed']
+    assert store.claim_social('alice',s['id'],manual=True)['allowed']
+
+
+@pytest.mark.parametrize('outcome',['rate_limited','needs_user'])
+def test_manual_retry_keeps_explicit_platform_protection(tmp_path, outcome):
+    store=IntelligenceStore(tmp_path)
+    c=store.save_channel('alice',ChannelInput(name='test',interests='watch').model_dump())
+    s=store.save_source('alice',c['id'],SourceInput(name='X',url='https://x.com/F1',x_mode='accounts',x_values=['F1']).model_dump())
+    lease=store.claim_social('alice',s['id'],manual=True)
+    store.finish_social('alice',s['id'],lease['token'],outcome)
+    store.resume_social('alice',s['id'])
+    assert not store.claim_social('alice',s['id'],manual=True)['allowed']
+
+
+def test_xiaohongshu_sort_roundtrip(tmp_path):
+    from ai2apps.intelligence.models import SourceInput
+    from ai2apps.intelligence.social import xiaohongshu_search_url
+    source=SourceInput(name='腕表',url='https://www.xiaohongshu.com/search_result?keyword=watch')
+    assert source.kind=='social' and source.xiaohongshu_sort=='latest'
+    assert xiaohongshu_search_url('https://evil.example/search_result?keyword=watch') is None
+    with pytest.raises(ValueError):SourceInput(name='test',url=source.url,xiaohongshu_sort='popular')
+    store=IntelligenceStore(tmp_path)
+    c=store.save_channel('alice',ChannelInput(name='test',interests='test').model_dump())
+    saved=store.save_source('alice',c['id'],source.model_dump())
+    edited=SourceInput(**{**source.model_dump(),'xiaohongshu_sort':'general'})
+    store.save_source('alice',c['id'],edited.model_dump(),saved['id'])
+    assert store.get('sources','alice',saved['id'])['xiaohongshu_sort']=='general'

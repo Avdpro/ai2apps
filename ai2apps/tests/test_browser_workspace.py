@@ -64,6 +64,8 @@ def test_workspace_api_pins_generation_and_rejects_wrong_worker(tmp_path, monkey
     principal=RequestPrincipal(actor_user_id='owner',installation_id='install',organization_id='org',billing_account_id='billing',role=MemberRole.MEMBER,membership_epoch=1)
     app=FastAPI();app.include_router(create_ai2apps_router(runtime_provider=lambda:runtime,principal_provider=lambda:principal));client=TestClient(app)
     base='/v1/platform'
+    for invalid in ('null','undefined','https://null/'):
+        assert client.post(base+'/browser-workspace/domains',json={'domain':invalid}).status_code==422
     source={'name':'Reader','site_scope':['https://example.com/**'],'capabilities':[{'id':'read','name':'site.read','title':'读取页面','inputs':{'type':'object','properties':{'count':{'type':'integer'}},'required':['count']},'steps':[{'name':'inspect','operation':'inspect','desc':'Read page','on':{'success':'done','failed':'failed'}}]}]}
     draft=client.post(base+'/agent-drafts',json={'name':'Reader','site_scope':source['site_scope'],'source':source}).json()
     compiled=client.post(base+'/agent-drafts/'+draft['id']+'/compile');assert compiled.status_code==200,compiled.text
@@ -86,7 +88,9 @@ def test_workspace_api_pins_generation_and_rejects_wrong_worker(tmp_path, monkey
     run_id=started['run_id'];assert run_id
     run=runtime.agents.get_run(run_id)
     assert run.input['parameters']['execution_owner']=='local'
-    assert run.input['parameters']['browser_context']=={'profile_key':'default'}
+    assert run.input['parameters']['browser_context']['profile_key']=='default'
+    assert run.input['parameters']['browser_context']['retain_pages_reason']==''
+    assert run.input['parameters']['model_profile']=='normal'
     assert run.session_id==task['session_id']
     assert len(client.get(base+'/browser-workspace').json()['tasks'])==1
     assert client.post(base+'/browser-workspace/tasks/'+task['id']+'/cancel').json()['status']=='cancelled'
@@ -180,3 +184,22 @@ def test_cancelled_task_cannot_be_resurrected_by_late_browser_failure(tasks):
     tasks.update('owner',task['id'],status='cancelled')
     result=tasks.update('owner',task['id'],status='interrupted',message='Late error')
     assert result['status']=='cancelled'
+
+
+def test_composite_root_cancel_is_owner_scoped_and_cancels_children(tmp_path):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from ai2apps.platform_runtime import PlatformRuntime
+    from ai2apps.config import PlatformConfig
+    from ai2apps.api.router import create_ai2apps_router
+    from ai2apps.identity import RequestPrincipal,MemberRole
+    from ai2apps.browser.task_tree import TaskTreeRepository
+    runtime=PlatformRuntime(PlatformConfig.from_base_path(tmp_path));runtime.start()
+    principal=RequestPrincipal(actor_user_id='owner',installation_id='install',organization_id='org',billing_account_id='billing',role=MemberRole.MEMBER,membership_epoch=1)
+    app=FastAPI();app.include_router(create_ai2apps_router(runtime_provider=lambda:runtime,principal_provider=lambda:principal));client=TestClient(app)
+    tree=TaskTreeRepository(runtime.database);tasks=BrowserTaskRepository(runtime.database)
+    tree.create('owner','pool','Pool');tree.create('other','foreign','Foreign')
+    children=[tasks.enqueue('owner','default','','','','Article',{},caller_app_id='ai2apps.intelligence',parent_task_id='pool',parallel_limit=3) for _ in range(3)]
+    assert client.post('/v1/platform/browser-workspace/roots/foreign/cancel').status_code==404
+    assert client.post('/v1/platform/browser-workspace/roots/pool/cancel').status_code==200
+    assert all(tasks.get('owner',task['id'])['status']=='cancelled' for task in children)

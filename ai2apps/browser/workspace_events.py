@@ -15,11 +15,13 @@ def workspace_snapshot(tasks: BrowserTaskRepository, owner: str) -> tuple[int, d
     with tasks.database.transaction() as c:
         cursor = c.execute('SELECT COALESCE(MAX(sequence),0) FROM events').fetchone()[0]
         rows = c.execute("SELECT * FROM browser_tasks WHERE owner=? AND (status NOT IN ('completed','failed','cancelled') OR id IN (SELECT id FROM browser_tasks WHERE owner=? AND status IN ('completed','failed','cancelled') ORDER BY created_at DESC LIMIT 200)) ORDER BY created_at DESC", (owner, owner)).fetchall()
+        from .task_tree import TaskTreeRepository
+        task_tree = TaskTreeRepository.projection(c, owner)
         settings = c.execute('SELECT global_limit,profile_limit FROM browser_task_settings WHERE owner=?', (owner,)).fetchone()
     projection = [tasks.decode(row) for row in rows]
     for task in projection:
         task.pop('input', None)
-    return cursor, {'tasks': projection,
+    return cursor, {'tasks': projection, 'task_tree':task_tree,
                     'settings': dict(settings) if settings else {'global_limit': 4, 'profile_limit': 1}}
 
 

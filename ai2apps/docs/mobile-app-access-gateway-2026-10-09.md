@@ -1,62 +1,57 @@
-# Mobile App 设备策略与通用公网通道
+# Mobile App 通用挂载与设备策略
 
-日期：2026-10-09。当前状态：设备设置及现有 App 限制已实现于源码；通用 sandbox 资源及 context Bridge 已实现、默认未激活，Cloud 尚未变更，未做实机发布声明。
+更新：2026-10-10。本文描述当前机制；2026-10-09 的 sandbox/context 阶段不是新增 App 的固定入口白名单。
 
-## 本地已实现
+## 接入方式
 
-账户 → 设备 → 远程访问 → Mobile 可用应用。设置按 Installation/App 持久保存，新增 schema v85。Owner 在本机管理；手机的 Owner 租约及普通成员不能修改此设置。接口为 GET /v1/platform/remote/mobile-apps、PUT /v1/platform/remote/mobile-apps/{app_key}，PUT JSON 为 {"enabled":true|false}。
+Mobile Shell 通过动态 App 目录启动应用。新应用继续使用固定协议：
 
-已接入 Mobile 目录、挂载列表、启动、聚焦、原生 App 页面和主要功能接口，以及 Studio 专属接口。默认保留已有七个内置 App；其它 App 默认关闭。当前 Cloud/客户端固定公网通道尚在，自建应用展示“通用远程通道尚未启用”，不开通无效开关。
+- `POST /v1/mobile/apps/{app_key}/open`
+- `GET /mobile/app-resource/{mount_id}/{instance_id}/{resource:path}`
+- `POST /v1/mobile/app-mounts/{mount_id}/bridge`
 
-本开关控制 Mobile 使用，不授予访客身份，不发布公开 Open-Entry。已传输到浏览器的内容无法撤回，已开始的任务不自动取消。Studio 的 Gallery/模型等共享依赖与独立 App 入口分开：关闭 Gallery 独立入口不阻止已开放 Studio 的素材选择。整个 Mobile 管理 API 不对公网导出。
+新增 App 不增加 Cloud App ID 清单，也不增加公开的 `/admin/*` 或 `/v1/platform/*` 通配代理。设备的 Mobile 开关仍按 Installation/App 保存：它决定此设备是否允许使用该 App，不是协议白名单，也不授予访客权限。已有七个历史入口保留兼容处理；新应用默认关闭，由设备 Owner 激活。
 
-## 已批准及已实现的客户端边界
+自建 sandbox App 已有通用页面、资源、context 握手链路；用户反馈贪吃蛇已按此链路通过。页面可显示不等于已获得所有模型、文件和 Agent 能力。
 
-2026-10-09 用户明确批准：限定本人 Owner 有效登录会话、App 开关、实例/挂载和 sandbox。新增路径已通过自动审批。身份约束指账号本人登录的客户端，不是对物理手机硬件的识别。
+## 两种资源与能力合同
 
-资源接口要求公网上必须为经过 Cloud 验证的 Owner 租约；旧配对会话不能代替这个校验。本地要求已认证 core/Owner。每个请求均检查 mount 有效、placement=mobile、renderer=sandbox、实例匹配、当前用户实例权限及当前开启状态。
+### Package sandbox
 
-已实现 POST `/v1/mobile/app-mounts/{mount_id}/bridge`：目前只接受 `{"method":"context"}`，返回 appId/instanceId/viewMountId/surface 与空 capabilities。禁止额外字段、任意 URL、工具或未授权能力。Shell 验证实际 iframe 来源、mountToken、instanceId 后通过此接口完成 opaque frame 握手。**第一阶段只支持无需后端能力的 sandbox 页面；模型生成/文件/Agent 等 Bridge 未实现，不能声明所有自建 App 都已可用。**
+`mobile.ready=true` 且声明可解析的 sandbox Entry。由现有 Package 资源读取器执行路径规范化和 digest 校验。iframe 保持 opaque sandbox，不增加 allow-same-origin。Bridge 只接受 `{"method":"context"}`，返回空 capabilities；未授权方法、额外参数均拒绝。第三方 Package 不能通过 mobile.gateway 声明可信 host 权限。
 
-Cloud 完成本文资源/启动/Bridge 路径部署并验收后，才可在目标 Local 配置 `AI2APPS_MOBILE_PACKAGE_GATEWAY_READY=1` 并重启；默认关闭，在关闭状态管理界面禁用自建 App 开关且目录不暴露这些 App。
+### 可信内置 host App
 
-具体边界：
+内置定义可在 `mobile.gateway` 声明模板、静态 assets、自己的 API module/factory/prefix。声明是安装端可信配置，不能来自请求，也不能来自第三方 Package。目录返回 mobile_gateway 标记；设备开关统一判断声明是否可运行，不检查新增 App ID 名单。
 
-1. 动态启动仅接受设备当前可见目录中的 App，并同时校验 Mobile Ready、启用策略和当前访问者的原有 App 权限；不得仅凭 App ID 或 Owner Cookie 放行。
-2. 新增 GET `/mobile/app-resource/{mount_id}/{instance_id}/{resource:path}`，每次要求有效会话、同设备 Host、actor 所属的有效 Mobile mount、匹配 instance、启用策略和 sandbox renderer。资源由现有 digest 校验/规范化读取器提供，不接受磁盘绝对路径、目录穿越和跨 App mount。
-3. Mobile Shell 生成该受限路径；Package iframe 保持 opaque sandbox，不加 allow-same-origin，不继承开发环境放宽规则。来源必须对应具体 iframe，握手必须匹配 mount token 和 instance。
-4. 不开放 `/admin/*`、通用文件系统、任意 URL 代理、任意平台 API 或管理能力。
-5. 通用 Bridge 需要另外落地方法级能力授权：绑定 actor/App/instance/mount，交集计算 manifest 声明与设备授权；缺省拒绝。当前 Mobile Shell 仅已有导航握手，不能将显示 HTML 声称为完整可运行任意 App。
-6. 第一阶段仅支持安全 Package sandbox 页面；schema/safe-html 等 renderer 和需要新能力的 App 必须在 UI 明示暂不可用。完整生成型自建 App 的验收应覆盖 Bridge 后再声明完成。
+模板以 `entry` 资源挂载，声明的静态资源以 `assets/` 获取。未声明资源、路径穿越、非 Mobile 挂载、跨实例、关闭 App 均拒绝。模板采用 Mobile base；不渲染长期 API 凭据。
 
-## Cloud 交接需求
+Bridge 的 `request` 消息含 verb、path、base64 body 和受限 headers。API path 只能落在该 App 声明的 prefix 下，verb 限 GET/POST/PUT/PATCH/DELETE；不接受外部 URL、Authorization/Cookie、其它平台或管理接口。后台在独立 ASGI App 中装配该模块路由，保留原有 actor/资源归属校验；principal 从已验证挂载请求注入，不接受客户端指定用户。上传上限 21MiB，非法编码拒绝。返回 status/contentType/base64 body。文件或图片的 GET 使用同一挂载资源的 `api/` 分支，仍限定 App prefix。
 
-Cloud 的设备反向代理应允许上述固定协议形状，而不是维护自建 App ID 清单。保留现有 native App API 冻结清单，不能用宽泛 `/v1/*` 替代。
+共用适配器：`web/mobile_app_gateway.py` 与 `web/static/js/mobile_app_gateway.js`。不要为每个新 App 复制公网 API 清单。
 
-新增通道方法仅 POST `/v1/mobile/apps/{app_key}/open` 和 GET 上述 app-resource 模式；app_key 为单段，mount/instance 为规定的 ID 格式。沿用设备域名绑定、上传/流量限制、流式转发和原有有效租约检查。新资源路径保留 Local sandbox CSP、无缓存和 nosniff；无 CSP 时拒绝嵌入。不要修改本机管理 API 的拒绝规则。
+## 情报中心
 
-Cloud 需追加上述 context Bridge 的精确 POST 路径，保留 Origin/Owner/租约限制；客户端方法 allowlist 仅 context。后续能力扩展另行提供方法与权限合同，不能预先开放通用 proxy。新增 App 不应要求 Cloud 审核具体 ID，但客户端协议本身需在双端验收后启用。
+`apps/system.py` 声明 Mobile Ready、页面 assets 与 Intelligence 自身 API。手机入口为频道列表；频道页仅文章/热点/稿件、频道 Chat 和更多菜单；文章卡片单列，返回图标及边缘右滑导航，不另设底部导航。
 
-## 必测项目
+聊天、热点和稿件调用 App 自身后台。更新频道由已有 Local durable collector 执行，手机轮询当前数据，不公开整个 Browser Workspace SSE。上传文件沿用原来的文章导入接口。URL 收录通过 Intelligence 的 import-link 接口在 Local 提交共享 WebAgent read_page，继承 Profile/actor/session、公开 URL 校验和页面清理合同，再复用原有翻译及归类；手机不获得原始浏览器控制端点。
 
-- 禁用后目录、直接启动、已知 instance 聚焦和直接页面/API均拒绝；重新启用恢复。
-- 普通用户不能修改设置，账号/Installation 隔离；权限不足者不能靠开启 App 获得额外能力。
-- 自建 App 默认关闭；启用后不同 actor、跨 App/mount、过期/撤销租约、资源路径穿越均拒绝。
-- Sandbox 无设备 Cookie/管理凭据，恶意 iframe 消息无法冒用其它 App。
-- 未授权能力 Bridge 调用拒绝，带能力的真实 App 在 iPhone Safari 完整调用/回看/重开通过。
-- 原七个内置 App 与桌面入口回归，Cloud 未升级时 UI 不承诺自建 App 已可用。
+## 激活与重启
 
+可信 `AI2APPS_RUN_DESCRIPTOR_PATH` 定位当前实例的 `config/mobile-package-gateway.json`，精确内容：`{"enabled":true,"protocol":"mobile-app-access-gateway-v1"}`。显式环境变量仍优先；缺失或错误默认关闭。不要复制其它实例状态。然后由 Owner 通过设备 Mobile 开关激活 App。
 
-## 本轮源码验证
+Python/API 变更重启当前 Local；若修改 omlx/ 或嵌入 Runtime，按 App Dev 工作流使用固定 build-app-dev-environment.sh 重建，只退出 app-dev 对应进程，保持长期实例数据。不要改用临时 App 名或修改其它实例。
 
-55 项 Python 与 6 项 Mobile 导航 Node 测试通过，包括匿名拒绝、关闭 App 拒绝、跨实例/非 Mobile mount 拒绝、Origin 拒绝、撤销后资源/Bridge 拒绝、CSP 不含 allow-same-origin、任意 Bridge 方法拒绝。没有 iPhone 或生产 Cloud 联调验收；Cloud 未部署，目标 Local 未重启。
+## 安全和验证
 
+所有公网资源/Bridge 需要 Cloud 验证的 Owner 租约、同设备 Host/Origin、当前有效 Mobile mount、实例匹配、原有实例权限、启用策略。每次请求重新校验，关闭或租约撤销后拒绝。普通成员和手机 Owner 租约不能修改设备开关。已送达浏览器的内容无法撤回；已启动后台工作不因关闭开关自动取消。
 
-## Cloud 部署后的 Dev 激活（2026-10-09）
+新增回归覆盖 API prefix/verb/header/body 拒绝、跨 actor 注入隔离、上传、第三方 host 拒绝、静态资源穿越、关闭 App/跨实例/租约撤销拒绝。真实 iPhone 和 Cloud 联调结果必须单独记录，不能以模拟浏览器测试声称完成。
 
-- Cloud 已部署 mobile-app-access-gateway-20261009-v1，交接路径和 CSP 合同已核对一致。
-- Helper 过滤非白名单环境变量，Ready 增加实例独立配置：由可信 AI2APPS_RUN_DESCRIPTOR_PATH 定位同实例 config/mobile-package-gateway.json，内容精确为 {"enabled":true,"protocol":"mobile-app-access-gateway-v1"}。显式环境变量仍优先，0 可关闭；文件缺失/格式错误默认关闭，不读取请求提供的路径。
-- 仅 dev 写入配置并通过标准 HelperControlClient 重启。新 PID 80734，端口 62813，boot 8dadc33c-ef75-481f-bbd7-42a9f76a7171。没有重启 App-Dev/Test 或复制其状态。
-- Chrome 从固定用户 URL 正常恢复 Owner 会话，Mobile 首页实际显示 Owner session connected 和内置 App；Dev 原生窗口标题及账户“远程访问”列表核实目标设备和 Mobile 开关正常加载。
-- 44 项 policy/Owner gateway/Owner lease 回归通过，包括实例独立配置与缺省拒绝测试。
-- 当前该设备目录没有独立 sandbox Package。真实 Package 打开/返回/重开、实际租约安全矩阵及 iPhone Safari 未完成；已请求用户指定 Package 或允许创建最小无私有数据测试 App。本轮未开启任何自建 App。
+## App Dev 激活记录（2026-10-10）
+
+仅 app-dev 写入通用网关配置并通过既有 MobileAppPolicy 开启 `ai2apps.intelligence`。标准 build-app-dev-environment.sh 已重建固定 App，旧包归档为 `AI2Apps-app-dev-20261010-144144.app`。新 Local PID 86313、端口 56925、boot `8df7e753-761c-4c9c-b186-b3f58d6a5ea0`。原生窗口实际显示 `AI2Apps-App-Dev: App-Dev 127.0.0.1:56925`。bundle ID/instance/cloud Runtime/开发源码根契约、verify-release-app.sh、codesign deep strict 均通过。
+
+重启后账户 → 设备 → Mobile 可用应用实际显示 Intel Center 已开启，支持标记有效。64 项 Python 回归（包括模板及声明资源）和 11 项前端卡片/聊天/写作测试通过；隔离 Chrome 手机导航测试通过。旧摘要引用映射测试补齐此前主来源字段合同，不改变业务逻辑。
+
+真实手机和生产 Cloud 完整访问未验收。隔离测试浏览器无法使用已注册设备的离线激活；测试用 Cloud 成员激活被自动审批拒绝，因可能改变账户/设备状态，未执行。没有修改 Cloud 或其它实例。

@@ -31,9 +31,9 @@ class IntelligenceSiteAgents {
    const result=await this.client.executeExtractionStep(candidate.ir.steps[0]);
    let samples,matched;
    if(kind==='list'){
-    const urls=new Set(baseline.items.map(i=>i.url));const sample=result.items.slice(0,10);
-    samples=sample.length;matched=sample.filter(i=>urls.has(i.url)).length;
-    if(matched<Math.min(2,samples)||matched/samples<.6)throw Error('list_validation_failed');
+    const urls=new Set(baseline.items.map(i=>i.url));const actual=new Set(result.items.map(i=>i.url));
+    samples=urls.size;matched=[...urls].filter(url=>actual.has(url)).length;
+    if(samples<3||matched<3||matched/samples<.8)throw Error('list_validation_failed');
    }else{
     const normalize=s=>String(s).replace(/\s+/g,'');const expected=normalize(baseline.text),actual=normalize(result.text);
     const excerpts=[0,.25,.5].map(n=>expected.slice(Math.floor(expected.length*n),Math.floor(expected.length*n)+50));

@@ -16,3 +16,20 @@ def test_mobile_todo_localized_template(lang,expected):
         assert 'Search projects' in html
     else:
         assert '调整进度，每步 5%' in html
+
+@pytest.mark.parametrize('template', ['mobile.html', 'mobile_todo.html'])
+def test_mobile_templates_use_real_gateway_asset_allowlist(template):
+    import ast
+    from types import SimpleNamespace
+    routes = ROOT.parent / 'omlx/admin/routes.py'
+    tree = ast.parse(routes.read_text())
+    assignment = next(node for node in tree.body if isinstance(node, ast.Assign)
+                      and any(isinstance(target, ast.Name) and target.id == 'MOBILE_STATIC_FILES' for target in node.targets))
+    allowed = ast.literal_eval(assignment.value.args[0])
+    def static(path):
+        assert path in allowed, f'Mobile asset not exposed: {path}'
+        return '/mobile/static/' + path
+    env = Environment(loader=FileSystemLoader(ROOT/'web/templates'), autoescape=True)
+    html = env.get_template(template).render(current_lang='zh', mobile_static=static,
+        request=SimpleNamespace(url=SimpleNamespace(path='/mobile/member/complete'), state=SimpleNamespace()))
+    assert 'mobile_navigation_trace.js' not in html

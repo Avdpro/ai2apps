@@ -1,0 +1,32 @@
+schema: ai2apps.app/v1
+id: ai2apps.frozen-time
+name: Frozen Time
+version: 0.1.0
+description: Local camera motion from a still image.
+publisher: {id: ai2apps}
+instances: {mode: singleton, scope: user}
+entry: {kind: sandbox, resource: web/index.html}
+navigation: {launcher: false}
+localizations:
+  en: {name: Frozen Time, description: Open Frozen Time in Imagine Studio.}
+  zh-CN: {name: 静止时间, description: 在创意画坊中打开静止时间。}
+mini_apps:
+  - schema: ai2apps.mini-app/v1
+    id: ai2apps.imagine.frozen-time
+    name: Frozen Time
+    version: 0.1.0
+    kind: clip
+    icon: orbit
+    description: Turn a still photo into a camera journey, interactive HTML or Live Photo.
+    entry: {kind: sandbox, resource: web/frozen-time.html, placements: [inline, sidebar]}
+    placements: [{studio: ai2apps.imagine-studio, category: image, order: 130}]
+    inputs: [{id: image, kind: image, required: true}, {id: audio, kind: audio, required: false}]
+    outputs: [{id: video, kind: video, final: true}, {id: html, kind: document, final: true}, {id: live_photo, kind: archive, final: true}]
+    executor: {operation: video_generation}
+    requirements:
+      capabilities:
+        - {capability: image.frozen_time.vggt, optional: true}
+        - {capability: image.frozen_time.da, optional: true}
+    localizations:
+      en: {name: Frozen Time, description: "Live Photo, interactive orbit and camera-motion video."}
+      zh-CN: {name: 静止时间, description: 将照片转换为实况照片、交互环绕或运镜视频。}

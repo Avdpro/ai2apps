@@ -101,7 +101,7 @@ def _package_checkpoint_repositories(manifest: dict) -> set[str]:
     return repositories
 
 
-HOST_PACKAGE_FEATURES = frozenset({"avatar.segmented-jobs.v1"})
+HOST_PACKAGE_FEATURES = frozenset({"avatar.segmented-jobs.v1", "model.checkpoint-dependencies.v1"})
 
 
 class ServicePackageManager:

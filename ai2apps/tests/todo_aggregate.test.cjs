@@ -27,7 +27,8 @@ test('changing priority or completion removes a match but keeps necessary parent
 test('additional aggregates use live runs, enabled schedules and actual completion timestamps',()=>{
  const h=setup(),t=h.state.tasks[0];h.state.runs=[{task_id:t.id,status:'waiting_input'}];
  assert.equal(h.context.matchesAggregate(t,'executing'),true);h.state.runs[0].status='completed';assert.equal(h.context.matchesAggregate(t,'executing'),false);
- t.status='in_progress';assert.equal(h.context.matchesAggregate(t,'executing'),false);
+ t.status='in_progress';assert.equal(h.context.matchesAggregate(t,'executing'),true);
+ t.status='paused';assert.equal(h.context.matchesAggregate(t,'executing'),false);
  t.schedule={frequency:'weekly'};assert.equal(h.context.matchesAggregate(t,'recurring'),true);
  t.completed=true;t.completed_at=new Date(Date.now()-86400000).toISOString();assert.equal(h.context.matchesAggregate(t,'recent'),true);
  t.completed_at=new Date(Date.now()-8*86400000).toISOString();assert.equal(h.context.matchesAggregate(t,'recent'),false);
@@ -43,4 +44,16 @@ test('current tasks includes Todo queue while executing excludes tasks not yet a
  h.state.runs[0].todo_queued=false;
  assert.equal(h.context.matchesAggregate(t,'executing'),true);
  h.state.runs[0].status='completed';assert.equal(h.context.matchesAggregate(t,'currentTasks'),false);
+});
+
+test('in-progress projects appear without runs, retain paths, and exclude inactive projects',()=>{
+ const h=setup();h.context.aggregateId='executing';
+ h.state.tasks.find(t=>t.id==='nested').status='in_progress';
+ for(const id of ['done','archived','deleted'])h.state.tasks.find(t=>t.id===id).status='in_progress';
+ const rows=h.rows();
+ assert.deepEqual(Array.from(rows.filter(r=>r.t),r=>r.t.id),['parent','bridge','nested']);
+ assert.equal(rows[0].count,1);
+ assert.equal(rows[1].contextOnly,true);
+ h.state.runs=[{task_id:'nested',status:'running'}];
+ assert.equal(h.rows()[0].count,1);
 });

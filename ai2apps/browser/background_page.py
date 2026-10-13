@@ -8,13 +8,17 @@ from __future__ import annotations
 import asyncio
 import ipaddress
 import json
+import math
 import random
 import re
 import sys
 import time
 import uuid
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, parse_qs
+
+from .processing_pool import serialized_input
+from .dom_visibility import page_function
 
 _ROOT = Path(__file__).resolve().parents[1]
 _HELPERS = json.loads(Path(__file__).with_name('dom_helpers.json').read_text())
@@ -33,7 +37,7 @@ class BackgroundPage:
     async def call_json(self, source, args=(), timeout=30):
         arguments = json.dumps(args, ensure_ascii=False).replace('<', '\\u003c')
         result = await self.connection.command('script.callFunction', {
-            'functionDeclaration': f'async function(){{const fn=({source});return JSON.stringify(await fn(...{arguments}));}}',
+            'functionDeclaration': page_function(source, arguments),
             'target': {'context': self.context_id}, 'awaitPromise': True,
         }, timeout=timeout)
         if result.get('type') == 'exception':
@@ -78,14 +82,92 @@ class BackgroundPage:
         return {'stable': False, 'page': await self.snapshot()}
 
     async def navigate(self, url, delay_ms=3000):
-        await self.connection.command('browsingContext.navigate', {
-            'context': self.context_id, 'url': url, 'wait': 'complete'}, timeout=30)
+        from .background_bidi import BrowserTransportError
+        recovered=False
+        for attempt in range(2):
+            try:
+                await self.connection.command('browsingContext.navigate', {
+                    'context':self.context_id,'url':url,'wait':'none'},timeout=30)
+                break
+            except RuntimeError as error:
+                if 'NS_ERROR_NET_HTTP3_PROTOCOL_ERROR' not in str(error) or attempt:
+                    raise
+                # Explicit network-protocol rejection of a GET is definitive;
+                # retry only the same URL/context once, never an input action.
+                await asyncio.sleep(.6)
+            except (TimeoutError,BrowserTransportError) as error:
+                if attempt:
+                    error.navigation_attempts=2
+                    raise
+                reconnect=getattr(self.connection,'reconnect',None)
+                if reconnect:await reconnect()
+                # Inspect the same recorded context; never adopt another tab by
+                # URL/focus or launch a replacement browser after a timeout.
+                tree=await self.connection.command('browsingContext.getTree',{'maxDepth':0},timeout=5)
+                current=next((c for c in tree.get('contexts',[]) if c['context']==self.context_id),None)
+                if current is None:raise RuntimeError('Navigation recovery: original browser context no longer exists') from error
+                expected=getattr(self,'user_context',None)
+                if expected and current.get('userContext')!=expected:
+                    raise RuntimeError('Navigation recovery: Profile mismatch') from error
+                if current.get('url','').split('#')[0]==url.split('#')[0]:
+                    recovered=True
+                    break
+                # Opening a URL is an explicit GET navigation. Retry once only
+                # after observing that it did not reach the requested location.
         await asyncio.sleep(min(30000, max(0, float(delay_ms))) / 1000)
         readiness = await self.wait_stable(require_content=True)
-        return {'url': url, 'delay_ms': delay_ms, 'stable': readiness['stable']}
+        return {'url': url, 'delay_ms': delay_ms, 'stable': readiness['stable'], 'navigation_recovered':recovered, 'navigation_attempts':attempt+1}
 
     async def mode(self):
         return self.interaction_mode((await self.snapshot())['url'])
+
+    async def select_xhs_site(self, search_url):
+        """Inspect both public sites in the same Profile, without reading cookies."""
+        from .search import XHS_LOGIN_STATE_SCRIPT
+        from urllib.parse import urlunsplit
+        domains = ('www.xiaohongshu.com', 'www.rednote.com')
+        previous = None
+        database = getattr(self, 'database', None)
+        if database:
+            with database.transaction(write=True) as c:
+                c.execute('CREATE TABLE IF NOT EXISTS browser_search_site_preferences (owner TEXT NOT NULL, profile TEXT NOT NULL, provider TEXT NOT NULL, domain TEXT NOT NULL, PRIMARY KEY(owner,profile,provider))')
+                row = c.execute("SELECT domain FROM browser_search_site_preferences WHERE owner=? AND profile=? AND provider='xiaohongshu'", (self.owner,self.profile_key)).fetchone()
+                previous = row['domain'] if row else None
+        original = self.context_id
+        states = {}
+        for domain in domains:
+            temporary = None
+            try:
+                options = {'type':'tab', 'background':True}
+                if getattr(self,'user_context',None): options['userContext'] = self.user_context
+                created = await self.connection.command('browsingContext.create', options)
+                temporary = created['context']
+                self.context_id = temporary
+                await self.navigate('https://' + domain + '/explore', 1500)
+                for attempt in range(3):
+                    state = await self.call_json(XHS_LOGIN_STATE_SCRIPT)
+                    if state.get('state') != 'unknown': break
+                    await asyncio.sleep(.5)
+                states[domain] = state.get('state', 'unknown')
+            except (RuntimeError, TimeoutError):
+                states[domain] = 'unavailable'
+            finally:
+                self.context_id = original
+                if temporary:
+                    try: await self.connection.command('browsingContext.close', {'context':temporary})
+                    except (RuntimeError, TimeoutError): pass
+        logged = [domain for domain in domains if states.get(domain) == 'logged_in']
+        chosen = previous if previous in logged else next(iter(logged), None)
+        # Unknown is not a login claim. Prefer a page without an explicit login
+        # gate; the actual result extractor still enforces login and CAPTCHA.
+        chosen = chosen or (previous if previous in domains and states.get(previous) == 'unknown' else None)
+        chosen = chosen or next((d for d in domains if states.get(d) == 'unknown'), domains[0])
+        if logged and database:
+            with database.transaction(write=True) as c:
+                c.execute("INSERT INTO browser_search_site_preferences VALUES (?,?,'xiaohongshu',?) ON CONFLICT(owner,profile,provider) DO UPDATE SET domain=excluded.domain", (self.owner,self.profile_key,chosen))
+        self.xhs_site_selection = {'domain':chosen, 'login_states':states, 'verified_login':chosen in logged}
+        parsed = urlsplit(search_url)
+        return urlunsplit(('https',chosen,parsed.path,parsed.query,parsed.fragment))
 
     async def pause(self, mode):
         if mode != 'fast':
@@ -110,6 +192,7 @@ class BackgroundPage:
                         'rect': dict(x=x, y=y, width=width, height=height)}
         return best
 
+    @serialized_input
     async def pointer_to(self, target, *, click=True, hover_ms=0, seed=7):
         mode = await self.mode()
         await self.pause(mode)
@@ -131,6 +214,7 @@ class BackgroundPage:
         self.pointer = x, y
         return {'x': x, 'y': y, 'profile': mode}
 
+    @serialized_input
     async def type_text(self, value, *, replace=False, submit=False):
         value = str(value)
         mode = await self.mode()
@@ -182,19 +266,124 @@ class BackgroundPage:
         finally:
             await self.helper('typeText:2', token)
 
+    @serialized_input
     async def scroll(self, delta_y=620):
         mode = await self.mode()
         await self.pause(mode)
+        point = await self.call_json('function(){return {x:Math.floor(innerWidth/2),y:Math.floor(innerHeight/2)};}')
         await self.connection.command('input.performActions', {'context': self.context_id, 'actions': [
-            {'type': 'wheel', 'id': 'webagent-wheel', 'actions': [dict(type='scroll', x=0, y=0,
+            {'type': 'wheel', 'id': 'webagent-wheel', 'actions': [dict(type='scroll', x=point['x'], y=point['y'],
                 deltaX=0, deltaY=delta_y, duration=0 if mode == 'fast' else 360, origin='viewport')]}]})
+
+    async def ensure_xhs_sort(self, order):
+        """Apply observed sort controls using native input; require selected-state evidence."""
+        from .search import XHS_SORT_STATE_SCRIPT
+        if order not in ('latest', 'general', 'likes'):
+            raise ValueError('Invalid Xiaohongshu search order')
+        state = {}
+        for _ in range(6):
+            state = await self.call_json(XHS_SORT_STATE_SCRIPT, [order])
+            if state.get('invalid'):
+                raise RuntimeError('xiaohongshu_sort_wrong_page')
+            if state.get('verified'):
+                if state.get('filter'):await self.pointer_to(state['filter'])
+                await self.wait_stable(require_content=True)
+                return
+            if state.get('option') or state.get('filter'):
+                break
+            await asyncio.sleep(1)
+        if not state.get('option') and state.get('filter'):
+            await self.pointer_to(state['filter'], click=False, hover_ms=650)
+            state = await self.call_json(XHS_SORT_STATE_SCRIPT, [order])
+            if not state.get('option'):
+                await self.pointer_to(state['filter'])
+                await asyncio.sleep(.5)
+                state = await self.call_json(XHS_SORT_STATE_SCRIPT, [order])
+        if not state.get('verified') and state.get('option'):
+            await self.pointer_to(state['option'])
+        for _ in range(6):
+            await asyncio.sleep(.5)
+            state = await self.call_json(XHS_SORT_STATE_SCRIPT, [order])
+            if state.get('verified'):
+                if state.get('filter'):await self.pointer_to(state['filter'])
+                await self.wait_stable(require_content=True)
+                return
+        raise RuntimeError('xiaohongshu_sort_not_verified: ' + order)
 
     async def extract_list(self, step):
         args = step.get('arguments') or {}
-        if args.get('search_provider') in ('google', 'bing'):
+        sort_warning = None
+        if args.get('xiaohongshu_sort'):
+            try:
+                await self.ensure_xhs_sort(args['xiaohongshu_sort'])
+            except RuntimeError as error:
+                if not str(error).startswith('xiaohongshu_sort_not_verified:'):
+                    raise
+                # Sorting is optional; readable results must not be discarded.
+                sort_warning = 'xiaohongshu_sort_not_verified'
+                if args['xiaohongshu_sort'] != 'general':
+                    try:
+                        await self.ensure_xhs_sort('general')
+                    except RuntimeError as fallback_error:
+                        if not str(fallback_error).startswith('xiaohongshu_sort_not_verified:'):
+                            raise
+        if args.get('x_sort'):
+            await self.ensure_x_search_sort((await self.snapshot())['url'], args['x_sort'])
+        if args.get('news_scan'):
+            return await self.extract_news_list(step)
+        if args.get('search_provider') in ('google', 'bing', 'duckduckgo', 'brave'):
             from .search import SEARCH_RESULTS_SCRIPT
-            return await self.call_json(SEARCH_RESULTS_SCRIPT, [args['search_provider'],
-                min(50, max(1, int(args.get('limit', 10)))), args.get('query', '')])
+            result = await self.call_json(SEARCH_RESULTS_SCRIPT, [args['search_provider'],
+                min(50, max(1, int(args.get('limit', 10)))), args.get('query', ''), args.get('exclude_ads', True)])
+            await self.emit_search_progress(result)
+            return result
+        if args.get('search_provider') in ('wikipedia', 'x', 'weibo', 'xiaohongshu', 'youtube', 'bilibili'):
+            from .search import SITE_SEARCH_RESULTS_SCRIPT
+            call_args = [args['search_provider'], min(50, max(1, int(args.get('limit', 10)))), args.get('query', ''), args.get('exclude_ads', True)]
+            result = await self.call_json(SITE_SEARCH_RESULTS_SCRIPT, call_args)
+            # SPA video pages may appear stable while their search content is still loading.
+            # Read-only retries are bounded and never dismiss login/verification controls.
+            if args['search_provider'] in ('youtube', 'bilibili', 'x', 'xiaohongshu'):
+                for _ in range(6):
+                    if result.get('reason') not in ('search_page_not_loaded', 'search_markup_unavailable'):
+                        break
+                    await asyncio.sleep(1)
+                    result = await self.call_json(SITE_SEARCH_RESULTS_SCRIPT, call_args)
+            if sort_warning:
+                result.update(sort_warning=sort_warning, requested_sort=args['xiaohongshu_sort'], sort_verified=False)
+            if args['search_provider']=='xiaohongshu' and getattr(self,'xhs_site_selection',None):
+                result['site_selection'] = self.xhs_site_selection
+            await self.emit_search_progress(result)
+            if args['search_provider'] == 'xiaohongshu' and result.get('items'):
+                await self.enrich_xhs_notes(result)
+            if args['search_provider'] in ('youtube', 'bilibili') and result.get('items'):
+                await self.enrich_video_covers(result)
+            if args['search_provider'] == 'x' and result.get('items'):
+                # X virtualizes its timeline: accumulate results before each scroll.
+                collected = {item['url']: item for item in result['items']}
+                stalled = 0
+                stop = 'scroll_limit'
+                for _ in range(12):
+                    if len(collected) >= call_args[1]:
+                        stop = 'limit_reached'
+                        break
+                    await self.scroll(700)
+                    await asyncio.sleep(.8)
+                    page = await self.call_json(SITE_SEARCH_RESULTS_SCRIPT, call_args)
+                    before = len(collected)
+                    for item in page.get('items', []):
+                        collected.setdefault(item['url'], item)
+                    await self.emit_search_progress({**result,'items':list(collected.values())[:call_args[1]]})
+                    stalled = stalled + 1 if len(collected) == before else 0
+                    if page.get('classification') == 'needs_user' or page.get('reason') == 'provider_unavailable':
+                        stop = page.get('reason')
+                        break
+                    if stalled >= 3:
+                        stop = 'no_more_results'
+                        break
+                result.update(items=list(collected.values())[:call_args[1]],
+                              count=min(len(collected), call_args[1]), scan_stop_reason=stop)
+            return result
         rule = step.get('arguments', {}).get('site_extraction')
         if rule:
             if rule.get('schema') != 'ai2apps.site-extraction/v1' or rule.get('kind') != 'list':
@@ -207,6 +396,242 @@ class BackgroundPage:
         if step.get('arguments', {}).get('observe_regions'):
             result['observed_regions'] = await self.helper('observeExtractionRegions:0', 'list')
         return result
+
+    async def emit_search_progress(self, result):
+        callback=getattr(self,'search_progress',None)
+        if callback and result.get('items'):
+            await callback(result)
+
+    async def enrich_video_covers(self, result):
+        """Keep observed video thumbnails portable across desktop and Mobile."""
+        from .search import VIDEO_COVER_TARGET_SCRIPT
+        budget = 2_000_000
+        for item in result['items'][:20]:
+            if not item.get('url'):
+                continue
+            for _ in range(3):
+                target = await self.call_json(VIDEO_COVER_TARGET_SCRIPT, [item['url']])
+                if target and 'scroll' in target:
+                    await self.scroll(target['scroll'])
+                    await asyncio.sleep(.4)
+                    continue
+                if target and target.get('rect'):
+                    cover = await self.xhs_cover(target['rect'], budget)
+                    if cover:
+                        item['image_data_url'] = cover
+                        budget -= len(cover)
+                        await self.emit_search_progress(result)
+                    break
+                await asyncio.sleep(.4)
+            if budget <= 0:
+                break
+
+    async def enrich_xhs_notes(self, result):
+        """Read observed notes sequentially through native clicks and history.
+
+        Never synthesize detail URLs, replay uncertain input, or bypass access
+        gates. A missed detail keeps its list metadata with an explicit status.
+        """
+        from .search import XHS_NOTE_TARGET_SCRIPT, XHS_NOTE_DETAIL_SCRIPT
+        original = (await self.snapshot())['url']
+        for item in result['items']:
+            item.update(content='', summary='', content_status='list_only')
+        await self.emit_search_progress(result)
+        cover_budget = 2_000_000
+        for item in result['items'][:20]:
+            target = None
+            for _ in range(6):
+                target = await self.call_json(XHS_NOTE_TARGET_SCRIPT, [item['url']])
+                if target:
+                    break
+                await asyncio.sleep(.5)
+            if not target:
+                item['content'] = ''
+                item['content_status'] = 'detail_unavailable'
+                continue
+            if target.get('url'):
+                item['url'] = target['url']
+            cover = await self.xhs_cover(target.get('cover_rect'), cover_budget)
+            if cover:
+                item['image_data_url'] = cover
+                cover_budget -= len(cover)
+            await self.pointer_to(target)
+            detail = {}
+            for _ in range(10):
+                await asyncio.sleep(.8)
+                detail = await self.call_json(XHS_NOTE_DETAIL_SCRIPT, [item['url']])
+                if detail.get('ready'):
+                    break
+                access = await self.helper('handlePageAccess:0')
+                if access.get('classification') == 'needs_user':
+                    result.update(classification='needs_user', reason=access.get('reason'),
+                                  assistance_kind=access.get('assistance_kind', 'authentication'))
+                    return
+            if detail.get('ready'):
+                for key in ('content', 'author', 'published_at', 'like_count', 'collect_count', 'comment_count'):
+                    if detail.get(key) is not None:
+                        item[key] = detail[key]
+                item['content_status'] = 'detail_read'
+            else:
+                item['content'] = ''
+                item['content_status'] = 'detail_unavailable'
+            await self.emit_search_progress(result)
+            # The note click creates a native history entry; return through the
+            # browser's Back action rather than a focus-dependent Escape key.
+            try:
+                await self.connection.command('browsingContext.traverseHistory',
+                                              {'context': self.context_id, 'delta': -1})
+            except RuntimeError as error:
+                if 'no such history entry' not in str(error).lower():
+                    raise
+                # Rednote may replace history when opening the note overlay.
+                # Close an observed overlay control; otherwise restore only the
+                # original search GET, never replay the note click.
+                close_target = await self.call_json(r'''function(){
+                    const node=[...document.querySelectorAll('.close-circle,.close-mask,.note-container .close,#noteContainer .close,[aria-label="Close"]')].find(ai2appsDOMVisible);
+                    return node?{rect:node.getBoundingClientRect().toJSON()}:null;
+                }''')
+                if close_target:
+                    await self.pointer_to(close_target)
+                    await asyncio.sleep(.4)
+                if (await self.snapshot())['url'] != original:
+                    try:
+                        await self.navigate(original, 800)
+                    except (RuntimeError, TimeoutError):
+                        result['detail_stop_reason'] = 'search_page_not_restored'
+                        break
+            await self.pause(await self.mode())
+            restored = False
+            for _ in range(6):
+                if (await self.snapshot())['url'] == original:
+                    restored = True
+                    break
+                await asyncio.sleep(.4)
+            if not restored:
+                result['detail_stop_reason'] = 'search_page_not_restored'
+                break
+
+    async def xhs_cover(self, rect, budget):
+        """Copy only the observed cover pixels through native BiDi, without CDN requests."""
+        if not isinstance(rect, dict) or budget <= 0:
+            return None
+        try:
+            box = {key: float(rect[key]) for key in ('x', 'y', 'width', 'height')}
+            if not (all(math.isfinite(value) for value in box.values()) and 0 <= box['x'] and 0 <= box['y'] and
+                    0 < box['width'] <= 1200 and 0 < box['height'] <= 1200):
+                return None
+            captured = await self.connection.command('browsingContext.captureScreenshot', {
+                'context': self.context_id, 'origin': 'viewport',
+                'clip': {'type': 'box', **box},
+                'format': {'type': 'image/jpeg', 'quality': .75},
+            }, timeout=10)
+            data = captured.get('data', '')
+            if not isinstance(data, str) or not data.startswith('/9j/'):
+                return None
+            value = 'data:image/jpeg;base64,' + data
+            return value if len(value) <= min(400_000, budget) else None
+        except (TimeoutError, RuntimeError, ValueError, KeyError):
+            # A missing preview does not invalidate an otherwise readable note.
+            return None
+
+    async def extract_news_list(self, step):
+        """Bounded read-only discovery on the native SDK, across news regions/pages."""
+        args = dict(step.get('arguments') or {})
+        args.pop('news_scan', None)
+        limit = min(100, max(1, int(args.get('limit', 40))))
+        initial = (await self.snapshot())['url']
+        origin = urlsplit(initial)
+        seen, visited, regions = {}, set(), []
+        stop_reason = 'page_limit'
+        rounds = 0
+        load_clicks = 0
+        last_load_count = -1
+        for page_number in range(3):
+            current = (await self.snapshot())['url']
+            if current in visited:
+                stop_reason = 'repeated_page'
+                break
+            visited.add(current)
+            stalled = 0
+            for scroll_round in range(8):
+                before_count = len(seen)
+                result = await self.extract_list({**step, 'arguments': {**args, 'limit': limit}})
+                for item in result.get('items', []):
+                    seen.setdefault(item.get('url') or item.get('href'), item)
+                if not regions and result.get('observed_regions'):
+                    regions = result['observed_regions']
+                rounds += 1
+                stalled = stalled + 1 if len(seen) == before_count else 0
+                # Region observation is expensive and only needs one sample.
+                if regions:
+                    args['observe_regions'] = False
+                if stalled >= 2:
+                    stop_reason = 'no_new_links'
+                    break
+                if len(seen) >= limit:
+                    stop_reason = 'item_limit'
+                    break
+                position = await self.call_json(r'''function(){
+                    const button=[...document.querySelectorAll('main button,[role=main] button')].find(b=>{
+                        const r=b.getBoundingClientRect();
+                        return !b.disabled&&!b.closest('form,[role=dialog]')&&
+                            /^(load more(?: (?:news|articles|stories))?|show more (?:news|articles|stories)|加载更多|更多新闻)$/i.test(b.textContent.trim())&&
+                            r.width>2&&r.height>2&&r.top>=0&&r.bottom<=innerHeight;
+                    });
+                    return {y:scrollY,height:innerHeight,total:document.documentElement.scrollHeight,
+                        more:button?{rect:button.getBoundingClientRect().toJSON()}:null};
+                }''')
+                if position.get('more') and load_clicks < 2 and len(seen) != last_load_count:
+                    last_load_count = len(seen)
+                    await self.pointer_to(position['more'])
+                    load_clicks += 1
+                    await asyncio.sleep(.7)
+                    continue
+                if position['y'] + position['height'] >= position['total'] - 8:
+                    stop_reason = 'end_of_page'
+                    break
+                await self.scroll(max(400, int(position['height'] * .85)))
+                await asyncio.sleep(.35)
+            else:
+                stop_reason = 'scroll_limit'
+            if len(seen) >= limit:
+                break
+            # Only explicit same-origin news/next links. No guessed URLs, form
+            # submissions or generic "continue" clicks that could have effects.
+            navigation = await self.call_json(r'''function(){
+                const links=[...document.querySelectorAll('a[href]')];
+                const valid=a=>a.origin===location.origin&&a.pathname!==location.pathname;
+                const next=links.find(a=>valid(a)&&(a.rel==='next'||/^(next|next page|下一页)$/i.test(a.textContent.trim())));
+                const news=location.pathname==='/'?links.find(a=>valid(a)&&/^(news(?:\s*news)*|latest news|新闻|最新新闻)$/i.test(a.textContent.trim())&&/\/(news|latest|articles)(\/|$)/i.test(a.pathname)):null;
+                return {next:(news||next)?.href||''};
+            }''')
+            url = navigation.get('next')
+            if not url or url in visited:
+                break
+            if page_number == 2:
+                stop_reason = 'page_limit'
+                break
+            self.public_url(url)
+            target = urlsplit(url)
+            if (target.scheme, target.netloc) != (origin.scheme, origin.netloc):
+                break
+            # The learned region belongs to the initial document only. Later
+            # observed news/pagination URLs use generic multi-region discovery.
+            args.pop('site_extraction', None)
+            args['observe_regions'] = False
+            await self.navigate(url, delay_ms=300)
+        items = list(seen.values())
+        detail = [i for i in items if re.search(r'/(?:article|articles|story|stories)/[^/]+', urlsplit(i.get('url','')).path)]
+        if len(detail) >= 3:
+            # Prefer clear article detail URLs, but retain unfamiliar URL schemes
+            # rather than silently treating them as non-articles.
+            other = [i for i in items if i not in detail and not re.search(
+                r'/(?:video|videos|drivers|teams|results|standings|tags?|category|categories)(?:/|$)', urlsplit(i.get('url','')).path)]
+            items = detail + other
+        return {'url': initial, 'page_url': initial, 'items': items[:limit],
+                'observed_regions': regions, 'discovery': {'pages': sorted(visited),
+                    'rounds': rounds, 'load_more_clicks': load_clicks, 'stop_reason': stop_reason,
+                    'unique_links': len(items), 'candidate_links': len(seen)}}
 
     async def handle_access(self):
         dismissed = False
@@ -268,6 +693,57 @@ return article?{title:article.title,text:article.textContent,url:location.href}:
             if url.hostname == 's.weibo.com' and url.path == '/weibo' and parse_qs(url.query).get('q') == [query]:
                 return
         raise RuntimeError('weibo_search_navigation_failed')
+
+    async def ensure_x_search_sort(self, url, order=None):
+        from .search import X_SEARCH_SORT_SCRIPT
+        params=parse_qs(urlsplit(url).query)
+        order=order or ('latest' if params.get('f',[''])[0]=='live' else 'top')
+        if order not in ('latest','top'):raise ValueError('Invalid X search order')
+        query=params.get('q',[''])[0]
+        clicked=False
+        for _ in range(10):
+            state=await self.call_json(X_SEARCH_SORT_SCRIPT,[order,query])
+            if state.get('invalid'):raise RuntimeError('x_search_wrong_page')
+            if state.get('verified'):
+                await self.wait_stable(require_content=True)
+                return
+            if state.get('option') and not clicked:
+                await self.pointer_to(state['option'])
+                clicked=True
+            await asyncio.sleep(.5)
+        raise RuntimeError('x_search_sort_not_verified: '+order)
+
+    async def x_page(self, options):
+        if options['x']=='feed' and urlsplit(options['url']).path=='/search':
+            await self.ensure_x_search_sort(options['url'])
+        script = (_ROOT / 'web/static/js/x_post_snapshot.js').read_text()
+        items = {}
+        observed = None
+        rule_valid = bool(options.get('x_extraction'))
+        wanted = re.search(r'/status/(\d+)', options['url'])
+        stale = 0
+        attempts = 20 if options['x'] == 'feed' else 3
+        for attempt in range(attempts):
+            access = await self.handle_access()
+            if access['classification'] in ('needs_user', 'restricted'):
+                return dict(outcome=access['classification'], reason=access.get('reason'))
+            snapshot = await self.call_json(script, [options.get('x_extraction')])
+            observed = snapshot.get('x_observed') or observed
+            rule_valid = rule_valid and snapshot.get('x_rule_valid', False)
+            before = len(items)
+            for item in snapshot['items']:items[item['post_id']] = item
+            if options['x'] == 'detail':
+                post = items.get(wanted.group(1)) if wanted else None
+                if post:
+                    return {**post, 'x_observed':observed, 'x_rule_valid':rule_valid, 'platform':'x', 'content_type':'post', 'cover_image':{'url':post['images'][0]['url'] if post['images'] else ''},
+                        'text':'Author: '+post['author']+'\nPublished: '+post['published_at']+'\nVisible post only; replies not included.\n'+post['text']}
+            stale = stale + 1 if len(items) == before else 0
+            if attempt == attempts - 1 or (options['x'] == 'feed' and (stale >= 3 or len(items) >= 200)):break
+            if options['x'] == 'feed':await self.scroll(650)
+            await asyncio.sleep(random.uniform(1.2, 2.0))
+        if options['x'] == 'detail':return {'outcome':'failed','reason':'x_post_body_not_visible','url':options['url']}
+        if not items:return {'outcome':'failed','reason':'x_feed_empty_or_not_loaded','url':options['url']}
+        return {'url':options['url'], 'items':list(items.values())[:200], 'x_observed':observed, 'x_rule_valid':rule_valid, 'text':'\n'.join(item['title'] for item in items.values())[:10000], 'extraction_method':'x-visible-posts-v1'}
 
     async def weibo_page(self, options):
         from urllib.parse import parse_qs
@@ -364,7 +840,9 @@ return article?{title:article.title,text:article.textContent,url:location.href}:
                         'type': 'tab', 'referenceContext': original, 'background': True}))['context']
                     self.context_id = temporary
                     self.created_contexts[temporary] = original
-                await self.navigate(options.get('social_source_url') or options['url'], options.get('delay_ms', 0))
+                destination=options.get('social_source_url') or options['url']
+                if not options.get('x') or (await self.snapshot())['url'] != destination:
+                    await self.navigate(destination, options.get('delay_ms', 0))
             self.public_url((await self.snapshot())['url'])
             if phase == 'open':
                 retained = bool(temporary)
@@ -382,7 +860,10 @@ return article?{title:article.title,text:article.textContent,url:location.href}:
                 not isinstance(result.get('text'), str) or len(result['text']) < 300))
             if extraction_fallback:
                 result = None
-            if options.get('weibo'):
+            if options.get('x'):
+                result = await self.x_page(options)
+                if result.get('outcome') in ('needs_user', 'restricted', 'failed'):return result
+            elif options.get('weibo'):
                 result = await self.weibo_page(options)
                 if result.get('outcome') in ('needs_user', 'restricted'):
                     return result
@@ -405,7 +886,7 @@ return article?{title:article.title,text:article.textContent,url:location.href}:
                 result = await self.rendered_page(options.get('max_chars'))
                 if extraction_fallback:
                     result['extraction_fallback'] = True
-            if options.get('include_cover') or options.get('include_images'):
+            if not options.get('x') and (options.get('include_cover') or options.get('include_images')):
                 result['cover_image'] = await self.helper('extractLeadImage:0')
                 if options.get('include_images'):
                     result['images'] = result['cover_image'].get('images', [])
@@ -423,7 +904,7 @@ return article?{title:article.title,text:article.textContent,url:location.href}:
                     self.created_contexts.pop(temporary, None)
             self.context_id = original
 
-    async def read_results(self, items, limit=3, delay_ms=0):
+    async def read_results(self, items, limit=3, delay_ms=0, *, skip_restricted=False):
         articles, failures, seen = [], [], set()
         original = self.context_id
         for item in (items if isinstance(items, list) else [])[:5]:
@@ -438,10 +919,13 @@ return article?{title:article.title,text:article.textContent,url:location.href}:
             result = await self.read_page({'url': url, 'new_tab': True, 'close_tab': True,
                                            'max_chars': 6000, 'delay_ms': delay_ms})
             self.context_id = original
+            if result.get('outcome') == 'restricted' and skip_restricted:
+                failures.append({'url':url,'reason':result.get('reason','restricted')})
+                continue
             if result.get('outcome') in ('needs_user', 'restricted'):
                 return {**result, 'articles': articles, 'failures': failures}
             if result.get('outcome') == 'success':
-                articles.append({key: result.get(key, '') for key in ('url', 'title', 'text')})
+                articles.append({**{key: result.get(key, '') for key in ('url', 'title', 'text')}, **({'source_id':item['source_id'], 'requested_url':url} if item.get('source_id') else {})})
             else:
                 failures.append({'url': url, 'reason': result.get('reason', 'empty_page')})
             if len(articles) >= min(5, max(1, int(limit))):
@@ -475,6 +959,7 @@ return article?{title:article.title,text:article.textContent,url:location.href}:
                 'link_count': sum(item.get('tag') == 'a' for item in controls),
                 'button_count': sum(item.get('tag') == 'button' or item.get('role') == 'button' for item in controls)}
 
+    @serialized_input
     async def upload(self, hint, paths):
         mode = await self.mode()
         if mode == 'natural':

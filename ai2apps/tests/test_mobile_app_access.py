@@ -59,3 +59,27 @@ def test_ready_config_is_instance_scoped_and_fails_closed(tmp_path,monkeypatch):
     assert not package_gateway_ready()
     monkeypatch.setenv('AI2APPS_MOBILE_PACKAGE_GATEWAY_READY','0')
     assert not package_gateway_ready()
+
+
+def test_declared_host_uses_generic_policy(runtime,monkeypatch):
+    monkeypatch.setenv('AI2APPS_MOBILE_PACKAGE_GATEWAY_READY','1')
+    runtime.extension_manager.list_mobile_apps=lambda **kw:[{'app_key':'ai2apps.intelligence','mobile_renderer':'host','mobile_gateway':True}]
+    with client(runtime,RequestPrincipal.legacy_local()) as c:
+        assert c.get('/remote/mobile-apps').json()['items'][0]['supported']
+        assert c.put('/remote/mobile-apps/ai2apps.intelligence',json={'enabled':True}).status_code==200
+
+
+@pytest.mark.parametrize('locale,expected', [('zh-CN', '情报中心'), ('en', 'Intel Center')])
+def test_mobile_catalog_localizes_manifest_metadata(runtime, locale, expected):
+    from ai2apps.apps.system import SYSTEM_APP_MANIFESTS
+    from ai2apps.localization import localized_app_metadata
+    manifest = next(item for item in SYSTEM_APP_MANIFESTS if item['id'] == 'ai2apps.intelligence')
+    def catalog(**kwargs):
+        metadata = localized_app_metadata(manifest, kwargs['locale'])
+        return [{'app_key': manifest['id'], 'display_name': metadata['name'],
+                 'description': metadata['description'], 'mobile_renderer': 'host', 'mobile_gateway': True}]
+    runtime.extension_manager.list_mobile_apps = catalog
+    with client(runtime, RequestPrincipal.legacy_local()) as c:
+        item = c.get('/remote/mobile-apps', params={'locale': locale}).json()['items'][0]
+        assert item['display_name'] == expected
+        assert item['description'] == localized_app_metadata(manifest, locale)['description']

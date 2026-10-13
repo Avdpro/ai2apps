@@ -175,8 +175,13 @@
             throw new Error('The current browser page changed; refresh the Sidebar context');
         }
         async callJSON(fn, args = [], timeoutMs = 15000) {
+            if (!this.visibilitySource) {
+                const response = await fetch('/admin/static/js/browser_dom_visibility.js?v=1');
+                if (!response.ok) throw new Error('Cannot load shared DOM visibility helper');
+                this.visibilitySource = await response.text();
+            }
             const serializedArgs = JSON.stringify(args).replace(/</g, '\\u003c');
-            const declaration = `async function(){const fn=(${fn});const value=await fn(...${serializedArgs});return JSON.stringify(value);}`;
+            const declaration = `async function(){const ai2appsDOMVisible=(${this.visibilitySource});const fn=(${fn});const value=await fn(...${serializedArgs});return JSON.stringify(value);}`;
             const result = await this.connection.command('script.callFunction', {
                 functionDeclaration: declaration,
                 target: {context: this.contextId},
@@ -340,7 +345,7 @@
             const target=await this.callJSON(`function(){
                 if(location.hostname!=='s.weibo.com')throw Error('weibo_search_origin_required');
                 const input=[...document.querySelectorAll('input:not([type=password]):not([type=hidden])')].filter(n=>{
-                    const r=n.getBoundingClientRect(),style=getComputedStyle(n);return r.width>40&&r.height>10&&style.visibility==='visible'&&style.display!=='none'&&document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)===n;
+                    const r=n.getBoundingClientRect(),style=getComputedStyle(n);return r.width>40&&r.height>10&&ai2appsDOMVisible(n)&&document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)===n;
                 }).pop();
                 if(!input)throw Error('未找到微博搜索输入框');const r=input.getBoundingClientRect();return {rect:{x:r.x,y:r.y,width:r.width,height:r.height}};
             }`);
@@ -497,7 +502,7 @@
                 const root=document.querySelector('article')||document.querySelector('main,[role=main],#content')||document.body;
                 const images=[...root.querySelectorAll('img')].filter(img=>!img.closest('nav,footer,aside,[role=dialog],.related-posts,.related-articles,.advertisement,[class*=social-share]')).map((img,index)=>{
                     const r=img.getBoundingClientRect(),s=getComputedStyle(img);
-                    if(s.display==='none'||s.visibility==='hidden')return null;
+                    if(!ai2appsDOMVisible(img))return null;
                     const w=Math.max(img.naturalWidth||0,Number(img.getAttribute('width'))||0,r.width),h=Math.max(img.naturalHeight||0,Number(img.getAttribute('height'))||0,r.height);
                     if(w<320||h<180||w/h>3.5||h/w>3)return null;
                     const url=usable(img.getAttribute('data-original'))||usable(img.getAttribute('data-src'))||usable(img.getAttribute('data-lazy-src'))||usable(img.currentSrc)||usable(img.getAttribute('src'));
@@ -514,7 +519,7 @@
         async observeExtractionRegions(kind, referenceURLs=[]) {
             return this.callJSON(`function(kind,referenceURLs){
                 const references=new Set(referenceURLs);
-                const visible=n=>{const r=n.getBoundingClientRect(),s=getComputedStyle(n);return r.width>2&&r.height>2&&s.visibility!=='hidden'&&s.display!=='none';};
+                const visible=ai2appsDOMVisible;
                 const selector=n=>{if(n.id&&!/\\d{5}/.test(n.id))return '#'+CSS.escape(n.id);
                     const classes=[...n.classList].filter(c=>!/(active|hover|selected|\\d{5})/.test(c)).slice(0,2);
                     return classes.length?n.tagName.toLowerCase()+classes.map(c=>'.'+CSS.escape(c)).join(''):n.tagName.toLowerCase();};
@@ -544,18 +549,18 @@
             const result=await this.callJSON(`function(rule){
                 const origin=String(rule.origin||'').trim(),path=String(rule.path||'').trim();
                 if((origin&&location.origin!==origin)||(path&&location.pathname!==path))return null;
-                const visible=n=>{const r=n.getBoundingClientRect(),s=getComputedStyle(n);return r.width>2&&r.height>2&&s.visibility!=='hidden'&&s.display!=='none';};
-                const roots=document.querySelectorAll(rule.selector);if(roots.length!==1||!visible(roots[0]))return null;
+                const visible=ai2appsDOMVisible;
+                const roots=[...document.querySelectorAll(rule.selector)];if(!roots.length||roots.length>6||roots.some(n=>!visible(n))||(rule.kind!=='list'&&roots.length!==1))return null;
                 const root=roots[0];
                 if(root.closest('nav,header,footer,aside,[role=dialog]'))return null;
                 if(rule.kind==='list'){
                     const items=[],seen=new Set();
-                    for(const a of root.querySelectorAll('a[href]')){
+                    for(const a of roots.flatMap(n=>[...n.querySelectorAll('a[href]')])){
                         if(!visible(a)||a.closest('nav,header,footer,aside'))continue;
                         let url;try{url=new URL(a.href);}catch(_){continue;}
                         const title=(a.innerText||a.getAttribute('aria-label')||'').trim().replace(/\\s+/g,' ');
                         if(url.origin!==location.origin||url.pathname===location.pathname||seen.has(url.href)||title.length<12||title.length>320||/\\/(?:category|tag|page|login|about)(?:\\/|$)/i.test(url.pathname))continue;
-                        seen.add(url.href);items.push({url:url.href,title,text:''});if(items.length>=20)break;
+                        seen.add(url.href);items.push({url:url.href,title,text:''});if(items.length>=40)break;
                     }
                     return {url:location.href,items};
                 }
@@ -1023,8 +1028,7 @@ setReadablility();
 
         async extractArticleList(limit = 50) {
             return this.callJSON(`function(limit){
-                const visible=node=>{const r=node.getBoundingClientRect(),s=getComputedStyle(node);
-                    return r.width>2&&r.height>2&&s.display!=='none'&&s.visibility!=='hidden';};
+                const visible=ai2appsDOMVisible;
                 const excluded=node=>Boolean(node.closest('header,nav,footer,[role=navigation],[role=banner],[role=contentinfo]'));
                 const contentRoot=document.querySelector('main,[role=main],#content')||document.body;
                 const searchPage=/(^|\\.)google\\.[a-z.]+$/.test(location.hostname)&&location.pathname==='/search';
@@ -1117,9 +1121,7 @@ setReadablility();
             // Re-observe after native input: sending a click is not proof of dismissal.
             const inspect = () => this.callJSON(`function(){
                 const positive=/^(?:deny(?: all)?|reject(?: all)?(?: cookies)?|decline(?: all)?|only necessary|necessary only|reject optional cookies|拒绝(?:所有|全部)?|仅必要|只允许必要|关闭|close|not now|稍后|以后再说)$/i;
-                const visible=node=>{const r=node.getBoundingClientRect(),s=getComputedStyle(node);
-                    return r.width>2&&r.height>2&&r.right>0&&r.bottom>0&&r.left<innerWidth&&r.top<innerHeight&&
-                        s.display!=='none'&&s.visibility!=='hidden'&&Number(s.opacity)>0;};
+                const visible=node=>ai2appsDOMVisible(node,{viewport:true});
                 const consentText=/cookies?|privacy preferences|consent preferences|隐私偏好|隐私设置/i;
                 const selector='#CybotCookiebotDialog,#onetrust-banner-sdk,#onetrust-consent-sdk,.qc-cmp2-container,[role=dialog],[aria-modal=true],[id*=cookie i],[class*=cookie-banner i],[class*=consent-banner i]';
                 const panels=[...document.querySelectorAll(selector)].filter(node=>visible(node)&&consentText.test(node.innerText||''));

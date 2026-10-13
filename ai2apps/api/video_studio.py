@@ -53,6 +53,7 @@ from ai2apps.video.composer import (
     ComposerError,
     ComposerProject,
     ComposerSourceStore,
+    render_clip_output,
     render_composition,
 )
 from ai2apps.video_policy import (
@@ -69,7 +70,7 @@ MINI_APPS = (
     {"schema": "ai2apps.mini-app/v1", "id": "ai2apps.video.text-to-video", "version": "1.0.0", "kind": "clip", "mode": "t2v", "icon": "type", "entry": {"kind": "host-adapter", "adapter": "text-to-video"}, "ui": {"minimum_width": 520, "drop_targets": [{"id": "prompt", "accepts": ["text"]}]}, "placements": [{"studio": STUDIO_ID, "category": "create", "order": 10}], "inputs": [{"id": "prompt", "kind": "text", "required": True}], "outputs": [{"id": "video", "kind": "video", "final": True}], "executor": {"pipelines": ["ai2apps.pipeline.video-generation"]}, "requirements": {"capabilities": ["video.generation"]}},
     {"schema": "ai2apps.mini-app/v1", "id": "ai2apps.video.image-to-video", "version": "1.0.0", "kind": "clip", "mode": "i2v", "icon": "image", "entry": {"kind": "host-adapter", "adapter": "image-to-video"}, "ui": {"minimum_width": 520, "drop_targets": [{"id": "first_frame", "accepts": ["image"]}]}, "placements": [{"studio": STUDIO_ID, "category": "create", "order": 20}], "inputs": [{"id": "first_frame", "kind": "image", "required": True}], "outputs": [{"id": "video", "kind": "video", "final": True}], "executor": {"pipelines": ["ai2apps.pipeline.video-generation"]}, "requirements": {"capabilities": ["video.generation"]}},
     {"schema": "ai2apps.mini-app/v1", "id": "ai2apps.video.reference-to-video", "version": "1.0.0", "kind": "clip", "mode": "r2v", "icon": "scan-search", "entry": {"kind": "host-adapter", "adapter": "reference-to-video"}, "ui": {"minimum_width": 520, "drop_targets": [{"id": "references", "accepts": ["image", "video", "audio"]}]}, "placements": [{"studio": STUDIO_ID, "category": "create", "order": 30}], "inputs": [{"id": "references", "kind": "asset-list", "required": True}], "outputs": [{"id": "video", "kind": "video", "final": True}], "executor": {"pipelines": ["ai2apps.pipeline.video-generation"]}, "requirements": {"capabilities": ["video.reference_generation"]}},
-    {"schema": "ai2apps.mini-app/v1", "id": COMPOSER_ID, "version": "0.2.0", "kind": "project", "mode": "composer", "icon": "panels-top-left", "entry": {"kind": "host-adapter", "adapter": "video-composer"}, "ui": {"minimum_width": 760, "drop_targets": [{"id": "timeline", "accepts": ["image", "video", "audio"]}]}, "placements": [{"studio": STUDIO_ID, "category": "edit", "order": 35}], "inputs": [{"id": "sources", "kind": "asset-list", "required": False}], "outputs": [{"id": "video", "kind": "video", "media_types": ["video/mp4"], "final": True}], "executor": {"pipelines": ["ai2apps.pipeline.video-composition"]}, "requirements": {"capabilities": ["media.video.compose"]}},
+    {"schema": "ai2apps.mini-app/v1", "id": COMPOSER_ID, "version": "0.3.0", "kind": "project", "mode": "composer", "icon": "panels-top-left", "entry": {"kind": "host-adapter", "adapter": "video-composer"}, "ui": {"minimum_width": 760, "drop_targets": [{"id": "timeline", "accepts": ["image", "video", "audio"]}]}, "placements": [{"studio": STUDIO_ID, "category": "edit", "order": 35}], "inputs": [{"id": "sources", "kind": "asset-list", "required": False}], "outputs": [{"id": "media", "kind": "media", "media_types": ["image/*", "video/mp4", "audio/wav"], "final": True}], "executor": {"pipelines": ["ai2apps.pipeline.video-composition"]}, "requirements": {"capabilities": ["media.video.compose"]}},
     {"schema": "ai2apps.mini-app/v1", "id": EXTRACT_AUDIO_ID, "version": "1.0.0", "kind": "clip", "mode": "x2a", "icon": "audio-lines", "entry": {"kind": "host-adapter", "adapter": "extract-audio"}, "ui": {"minimum_width": 520, "drop_targets": [{"id": "video", "accepts": ["video"]}]}, "placements": [{"studio": STUDIO_ID, "category": "edit", "order": 40}], "inputs": [{"id": "video", "kind": "video", "required": True}], "outputs": [{"id": "audio", "kind": "audio", "media_types": ["audio/wav"], "final": True}], "executor": {"pipelines": ["ai2apps.pipeline.media-extraction"]}, "requirements": {"capabilities": ["media.audio_decode"]}},
     {"schema": "ai2apps.mini-app/v1", "id": UPSCALING_ID, "version": "1.0.0", "kind": "clip", "mode": "upscale", "icon": "scan-search", "entry": {"kind": "host-adapter", "adapter": "video-upscaling"}, "ui": {"minimum_width": 520, "drop_targets": [{"id": "video", "accepts": ["video"]}]}, "placements": [{"studio": STUDIO_ID, "category": "edit", "order": 45}], "inputs": [{"id": "video", "kind": "video", "required": True}], "outputs": [{"id": "video", "kind": "video", "media_types": ["video/mp4"], "final": True}], "executor": {"operation": "video_upscaling"}, "requirements": {"capabilities": ["video.upscaling"]}},
 )
@@ -132,6 +133,14 @@ class ComposerRenderRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
     project: ComposerProject
+    output_name: str | None = Field(default=None, alias="outputName", max_length=255)
+
+
+class ComposerClipOutputRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    project: ComposerProject
+    clip_id: str = Field(alias="clipId", min_length=1, max_length=80)
     output_name: str | None = Field(default=None, alias="outputName", max_length=255)
 
 
@@ -926,6 +935,139 @@ def create_video_studio_router(
             media_type=source["mediaType"],
             headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
         )
+
+    @router.post("/runs/{run_id}/output-clip", status_code=202)
+    async def output_composer_clip(
+        run_id: str,
+        request: ComposerClipOutputRequest,
+        background_tasks: BackgroundTasks,
+        app_instance_id: str = Header(alias="X-AI2Apps-App-Instance"),
+        principal: RequestPrincipal = principal_dependency,
+    ):
+        runtime = runtime_provider()
+        repository = studio(principal, app_instance_id)
+        run_scope = scope(principal, app_instance_id)
+        try:
+            run = repository.get_run(run_id, **run_scope)
+        except StudioRepositoryError as error:
+            return studio_error(error)
+        if run["miniAppId"] != COMPOSER_ID or run["status"] != "queued":
+            raise HTTPException(status_code=409, detail="Composer Clip output Run is not queued")
+        clip = next((item for item in request.project.clips if item.id == request.clip_id), None)
+        if clip is None or clip.layer_type != "media" or not clip.source_id:
+            raise HTTPException(status_code=422, detail="Select a media Clip to output")
+        track = next((item for item in request.project.tracks if item.id == clip.track_id), None)
+        source_ids = {clip.source_id}
+        if clip.mask_source_id:
+            source_ids.add(clip.mask_source_id)
+        resolved: dict[str, tuple[dict[str, Any], Path]] = {}
+        try:
+            for source_id in source_ids:
+                resolved[source_id] = composer_sources().get(
+                    source_id,
+                    actor_id=principal.actor_user_id,
+                    installation_id=principal.installation_id,
+                    app_instance_id=app_instance_id,
+                )
+        except ComposerError as error:
+            return composer_error(error)
+        source_record, source_path = resolved[clip.source_id]
+        if source_record.get("hasImage"):
+            kind = "image"
+            suffix = source_path.suffix.lower()
+            if suffix not in {".png", ".jpg", ".jpeg", ".webp", ".gif", ".avif"}:
+                suffix = ".png"
+            media_type = source_record.get("mediaType") or "image/png"
+        elif track is not None and track.kind == "video" and source_record.get("hasVideo"):
+            kind, suffix, media_type = "video", ".mp4", "video/mp4"
+        elif source_record.get("hasAudio"):
+            kind, suffix, media_type = "audio", ".wav", "audio/wav"
+        else:
+            raise HTTPException(status_code=422, detail="The selected Clip has no output media")
+        video_tasks = None if runtime is None else getattr(runtime, "video_tasks", None)
+        workspace = None if runtime is None else getattr(runtime, "workspace", None)
+        paths = None if runtime is None else getattr(runtime.config, "paths", None)
+        if video_tasks is None or workspace is None or paths is None:
+            raise HTTPException(status_code=503, detail="Media Artifact storage is not ready")
+        requested_stem = Path(request.output_name or clip.name).stem.strip()[:180]
+        safe_stem = "".join(
+            character if character.isalnum() or character in " -_." else "-"
+            for character in requested_stem
+        ).strip(" .") or "clip"
+        output_name = f"{safe_stem}{suffix}"
+        work_root = paths.artifacts_path / "video-composer-work" / run_id
+        destination = work_root / output_name
+        repository.update_run(
+            run_id, status="running", progress=5, detail="Preparing Clip output", **run_scope
+        )
+
+        async def output_clip_in_background() -> None:
+            stage = "render_clip"
+            try:
+                def report_progress(completed: float, total: float) -> None:
+                    ratio = min(1.0, max(0.0, completed / total)) if total > 0 else 1.0
+                    with suppress(StudioRepositoryError):
+                        repository.update_run(
+                            run_id, status="running", progress=round(10 + ratio * 78),
+                            detail=f"composer.clip_output:{completed:.3f}:{total:.3f}",
+                            **run_scope,
+                        )
+
+                descriptor = await render_clip_output(
+                    request.project, request.clip_id, resolved, destination, report_progress
+                )
+                current = repository.get_run(run_id, **run_scope)
+                if current["status"] == "cancelled":
+                    return
+                stage = "workspace_artifact"
+                repository.update_run(
+                    run_id, status="running", progress=92,
+                    detail="Saving Clip Artifact", **run_scope,
+                )
+                session_id = video_tasks.artifact_session()
+                metadata = {
+                    "generator": COMPOSER_ID,
+                    "outputType": "clip",
+                    "clipId": clip.id,
+                    "clipName": clip.name,
+                    "sourceId": clip.source_id,
+                    "duration": clip.duration,
+                    "speed": clip.speed,
+                }
+                artifact = workspace.import_artifact(
+                    session_id, destination, output_name,
+                    media_type=descriptor.get("mediaType") or media_type,
+                    metadata=metadata,
+                )
+                content_url = f"/v1/platform/sessions/{session_id}/artifacts/{artifact.id}/download"
+                repository.create_artifact(
+                    run_id, kind=descriptor.get("kind") or kind, name=artifact.name,
+                    media_type=artifact.media_type, preview_url=content_url,
+                    download_url=content_url, source_id=artifact.id,
+                    metadata={
+                        "workspaceSessionId": session_id,
+                        "workspaceArtifactId": artifact.id,
+                        **metadata,
+                    },
+                    **run_scope,
+                )
+                repository.update_run(
+                    run_id, status="succeeded", progress=100,
+                    detail="Clip output ready", **run_scope,
+                )
+            except Exception as error:  # task boundary
+                code = getattr(error, "code", "clip_output_failed")
+                with suppress(StudioRepositoryError):
+                    repository.update_run(
+                        run_id, status="failed", progress=100, detail="Clip output failed",
+                        error={"code": code, "message": f"{stage}: {error}"[:1200]}, **run_scope,
+                    )
+            finally:
+                shutil.rmtree(work_root, ignore_errors=True)
+                prune_history(repository, run_scope)
+
+        background_tasks.add_task(output_clip_in_background)
+        return repository.get_run(run_id, **run_scope)
 
     @router.post("/runs/{run_id}/compose", status_code=202)
     async def execute_composition(

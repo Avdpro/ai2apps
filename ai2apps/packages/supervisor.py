@@ -405,6 +405,10 @@ class ManagedServiceSupervisor:
             return None
         return resolved if resolved.is_dir() else None
 
+    def checkpoint_manifest(self, package: InstalledPackageRecord) -> dict[str, Any]:
+        from .checkpoint_dependencies import checkpoint_manifest
+        return checkpoint_manifest(package, self.packages)
+
     @staticmethod
     def _model_worker_checkpoints(
         manifest: dict[str, Any],
@@ -911,9 +915,10 @@ class ManagedServiceSupervisor:
         hf_hub_cache = self._huggingface_hub_cache()
         worker_checkpoints: tuple[dict[str, Any], ...] = ()
         worker_weight_roots: tuple[Path, ...] = ()
+        checkpoint_manifest = self.checkpoint_manifest(package)
         has_checkpoint_models = any(
             isinstance(model, dict) and isinstance(model.get("weights"), dict)
-            for model in manifest.get("models", [])
+            for model in checkpoint_manifest.get("models", [])
         )
         if is_model_worker or has_checkpoint_models:
             declared_weight_permission = manifest.get("permissions", {}).get(
@@ -928,7 +933,7 @@ class ManagedServiceSupervisor:
                     "Declared Hugging Face weights require model_weights.huggingface_cache: read",
                 )
             worker_checkpoints, worker_weight_roots = self._model_worker_checkpoints(
-                manifest, hf_hub_cache, self.model_root
+                checkpoint_manifest, hf_hub_cache, self.model_root
             )
         expanded: list[str]
         if is_model_worker:

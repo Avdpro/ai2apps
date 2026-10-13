@@ -74,3 +74,8 @@ test('Weibo stops before clicking search when typed input differs',async()=>{
  let calls=0,clicks=0;Object.assign(e.client,{callJSON:async()=>++calls===1?{rect:{}}:'wrong',naturalPointer:async()=>clicks++,typeText:async()=>{}});
  await assert.rejects(e.client.submitSocialSearch('#腕表#'),/输入与目标话题不一致/);assert.equal(clicks,1);
 });
+test('Xiaohongshu keyword source encodes search input without guessing sort URL parameters',()=>{
+ const url=new URL(env().sourceURL('xiaohongshu-search','机械表 & F1'));
+ assert.equal(url.hostname,'www.xiaohongshu.com');assert.equal(url.searchParams.get('keyword'),'机械表 & F1');assert.equal(url.searchParams.has('sort'),false);
+ assert.throws(()=>env().sourceURL('xiaohongshu-search',''));
+});

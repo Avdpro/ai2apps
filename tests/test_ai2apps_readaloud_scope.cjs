@@ -517,5 +517,16 @@ vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../ai2apps/web/static/j
     finish();await switching;
     assert.equal(startup.starting,false);
   }
+  {
+    const mounted = context.window.readAloudApp();
+    mounted.icons = mounted.emitBridge = () => {};
+    context.window.AI2AppsStudioMiniApps = {mount:async()=>({id:'fast-mount',content_url:'/frame'})};
+    let finishProbe;
+    mounted.refreshPackageMiniAppReadiness=()=>new Promise(resolve=>{finishProbe=resolve;});
+    await mounted.mountPackageMiniApp({id:'sound-effects',source:'package'});
+    assert.equal(mounted.packageMiniAppUrl,'/frame');
+    assert.equal(mounted.packageMiniAppLoading,false,'slow readiness must not block opening');
+    finishProbe(false);
+  }
   console.log('Voice Studio: project isolation and project-free Quick Read generation passed');
 })().catch(error => { console.error(error); process.exitCode = 1; });

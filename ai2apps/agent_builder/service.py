@@ -150,12 +150,18 @@ def create_ir_run(
     if any(step.get("operation") == "agent.call" for step in ir.get("steps", [])):
         from .calls import resolve_calls
         ir = resolve_calls(runtime.agent_builder, owner_user_id or "", ir)
+    model_profile = (browser_context or {}).get("model_profile") or ir.get("model_profile") or "normal"
+    if ir.get("model_profile") == "privacy":
+        model_profile = "privacy"
+    if model_profile not in {"normal", "privacy"}:
+        raise ValueError("Unknown model profile")
     model_manager = getattr(runtime, "model_manager", None)
     ai_model_routes = {
         tier: (
             None
             if model_manager is None
-            else model_manager.resolve_default_model(f"work_{tier}")
+            else (model_manager.resolve_default_model(f"work_{tier}", profile="privacy")
+                  if model_profile == "privacy" else model_manager.resolve_default_model(f"work_{tier}"))
         )
         for tier in ("simple", "standard", "complex")
     }
@@ -190,6 +196,9 @@ def create_ir_run(
                     "preview": preview,
                     "execution_owner": "local" if local_execution else "frontend",
                     "browser_task_id": task_record["id"] if task_record else None,
+                    "root_task_id": task_record.get("root_task_id", "") if task_record else "",
+                    "parent_task_id": task_record.get("parent_task_id", "") if task_record else "",
+                    "execution_task_id": task_record.get("execution_task_id", "") if task_record else "",
                     "browser_context": dict(browser_context or {}),
                     "invocation_input": invocation_input,
                     "caller_app_id": caller_app_id,
@@ -198,6 +207,7 @@ def create_ir_run(
                     "installation_id": installation_id,
                     "capability_name": capability_name,
                     "ai_model_routes": ai_model_routes,
+                    "model_profile": model_profile,
                 }
             },
             idempotency_key=idempotency_key,

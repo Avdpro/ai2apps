@@ -1682,16 +1682,18 @@ class AgentRepository:
                 raise ResourceNotFoundError("agent_run", run_id)
             if row["status"] == "interrupted":
                 return self._run(row)
-            if row["status"] not in ("queued", "planning", "running"):
+            if row["status"] not in ("queued", "planning", "running", "waiting_input"):
                 raise ResourceConflictError(
-                    "Only a queued, planning, or running AgentRun can pause"
+                    "Only a queued, planning, running, or waiting AgentRun can pause"
                 )
+            deadline = (_resume_deadline(row["deadline_at"], row["updated_at"], parse_utc(now))
+                        if row["status"] == "waiting_input" else row["deadline_at"])
             connection.execute(
                 """
                 UPDATE agent_runs SET status = 'interrupted', error_json = ?,
-                    revision = revision + 1, updated_at = ? WHERE id = ?
+                    revision = revision + 1, updated_at = ?, deadline_at = ? WHERE id = ?
                 """,
-                (_json({"code": "user_paused"}), now, run_id),
+                (_json({"code": "user_paused"}), now, deadline, run_id),
             )
             updated = connection.execute(
                 "SELECT * FROM agent_runs WHERE id = ?", (run_id,)

@@ -4,7 +4,9 @@ const method=sdk.slice(sdk.indexOf('        async extractLeadImage()'),sdk.index
 async function extract(metadata={},images=[]){
  const root={querySelectorAll:()=>images};
  const env={URL,location:{href:'https://news.example.com/article'},document:{body:root,querySelector:()=>root,querySelectorAll:s=>(metadata[s]||[]).map(content=>({content}))},getComputedStyle:()=>({display:'block',visibility:'visible'})};
- vm.createContext(env);vm.runInContext('this.client={'+method+'};',env);
+ vm.createContext(env);
+ vm.runInContext(fs.readFileSync(__dirname+'/../web/static/js/browser_dom_visibility.js','utf8'),env);
+ vm.runInContext('this.client={'+method+'};',env);
  env.client.callJSON=async expression=>vm.runInContext('('+expression+')()',env);
  return env.client.extractLeadImage();
 }

@@ -20,6 +20,7 @@ from ai2apps.apps.access import APP_SYSTEM_MANAGE
 from ai2apps.cloud_client import AI2APPS_CLOUD_BROWSER_COOKIE
 from ai2apps.qr import svg_qr_data_url
 from ai2apps.remote import RemoteAccessError
+from ai2apps.localization import normalize_locale
 
 
 class MobileAppAccessRequest(BaseModel):
@@ -177,15 +178,18 @@ def create_remote_router(
         return result
 
     @router.get("/mobile-apps")
-    async def mobile_apps(principal=Depends(principal_provider)):
+    async def mobile_apps(locale: str = "en", principal=Depends(principal_provider)):
         from ai2apps.remote.mobile_apps import MobileAppPolicy, LEGACY_APPS, package_gateway_ready
+        from ai2apps.web.mobile_app_gateway import supported
         mobile_owner(principal)
         runtime = runtime_provider()
         policy = MobileAppPolicy(runtime.database)
-        items = runtime.extension_manager.list_mobile_apps(principal=principal)
+        items = runtime.extension_manager.list_mobile_apps(
+            principal=principal, locale=normalize_locale(locale)
+        )
         return {"items": [{**item,
             "enabled": policy.enabled(principal.installation_id, item["app_key"]),
-            "supported": item["app_key"] in LEGACY_APPS or item.get("mobile_renderer") == "sandbox",
+            "supported": item["app_key"] in LEGACY_APPS or supported(item),
             "requiresCloudUpgrade": item["app_key"] not in LEGACY_APPS and not package_gateway_ready(),
         } for item in items]}
 
@@ -193,6 +197,7 @@ def create_remote_router(
     async def update_mobile_app(app_key: str, body: MobileAppAccessRequest,
                                 principal=Depends(principal_provider)):
         from ai2apps.remote.mobile_apps import MobileAppPolicy, LEGACY_APPS, package_gateway_ready
+        from ai2apps.web.mobile_app_gateway import supported
         mobile_owner(principal)
         runtime = runtime_provider()
         item = next((item for item in runtime.extension_manager.list_mobile_apps(principal=principal)
@@ -200,7 +205,7 @@ def create_remote_router(
         if item is None:
             raise HTTPException(404, "Mobile App not found")
         if body.enabled and app_key not in LEGACY_APPS:
-            if item.get("mobile_renderer") != "sandbox":
+            if not supported(item):
                 raise HTTPException(409, "Mobile renderer not supported")
             if not package_gateway_ready():
                 raise HTTPException(409, "Custom App remote transport is pending activation")

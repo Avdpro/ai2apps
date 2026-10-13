@@ -1,3 +1,52 @@
+/* Temporary navigation diagnostics: no task text, URLs, IDs or form values. */
+(() => {
+    'use strict';
+    // Temporary diagnostics are off after the mobile navigation verification.
+    const MOBILE_NAV_TRACE_ENABLED=false;
+    if(!MOBILE_NAV_TRACE_ENABLED)return;
+    const documentId=crypto.randomUUID();
+    const navigation=performance.getEntriesByType('navigation')[0]?.type||'navigate';
+    const started=performance.now(), pending=[];
+    let timer, sent=0, sequence=0, lastMove=0;
+    const surface=document.getElementById('mobile-todo')?'todo':'shell';
+    let session;
+    try { session=window.top.__mobileNavigationTraceSession ||= crypto.randomUUID(); }
+    catch (_) { session=crypto.randomUUID(); }
+    function sample(event,persisted=null) {
+        if(sent+pending.length>=1000||performance.now()-started>1800000)return;
+        const visible=id=>{const el=document.getElementById(id);return el?!el.hidden:null;};
+        const shown=selector=>{const el=document.querySelector(selector);return el?!el.hidden:null;};
+        pending.push({event,document_id:documentId,persisted,navigation,seq:++sequence,at:performance.timeOrigin+performance.now(),mono:performance.now(),
+            list:visible('list-view')??shown('.mobile-todo-list-frame'),detail:visible('detail-view')??shown('.mobile-todo-detail-frame'),stage:shown('.mobile-stage'),loading:shown('.mobile-loading'),
+            route:history.state?.todoDetail||history.state?.ai2appsMobileTodo?.view==='detail'?'detail':history.state?.ai2appsMobileTodo?.view==='list'||history.state?.appId==='ai2apps.todo'?'list':'other',
+            visible:document.visibilityState==='visible'});
+        if(!timer)timer=setTimeout(flush,250);
+    }
+    function flush(){
+        clearTimeout(timer);timer=null;
+        if(!pending.length)return;
+        const events=pending.splice(0,40);sent+=events.length;
+        fetch('/v1/mobile/todo/navigation-trace',{method:'POST',credentials:'same-origin',keepalive:true,
+            headers:{'Content-Type':'application/json'},body:JSON.stringify({session,surface,events})}).catch(()=>{});
+        if(pending.length)timer=setTimeout(flush,250);
+    }
+    for(const name of ['touchstart','touchend','touchcancel','popstate','pageshow','pagehide','hashchange']){
+        window.addEventListener(name,event=>{
+            sample(name,typeof event.persisted==='boolean'?event.persisted:null);
+            if(name==='popstate'||name==='pageshow')requestAnimationFrame(()=>{sample('frame1');requestAnimationFrame(()=>sample('frame2'));});
+            if(name==='pagehide')flush();
+        },{capture:true,passive:true});
+    }
+    window.addEventListener('touchmove',()=>{if(performance.now()-lastMove>80){lastMove=performance.now();sample('touchmove');}},{passive:true});
+    document.addEventListener('visibilitychange',()=>{sample('visibility');if(document.hidden)flush();});
+    const observer=new MutationObserver(records=>{
+        if(records.some(r=>r.target.matches?.('#list-view,#detail-view,.mobile-stage,.mobile-loading,.mobile-app-frame')))sample('view-change');
+    });
+    observer.observe(document.body,{subtree:true,attributes:true,attributeFilter:['hidden','style','class']});
+    sample('ready');
+    setTimeout(()=>observer.disconnect(),1800000);
+})();
+
 (function () {
     'use strict';
 
@@ -40,7 +89,7 @@
     function icon(name) {
         let safe = /^[a-z0-9-]{1,48}$/.test(name || '') ? name : 'app-window';
         if (safe === 'gallery-stacked-horizontal') safe = 'images';
-        const key = safe.replace(/(^|-)([a-z])/g, (_, prefix, letter) => letter.toUpperCase());
+        const key = safe.replace(/(^|-)([a-z0-9])/g, (_, prefix, letter) => letter.toUpperCase());
         if (window.lucide?.icons && !window.lucide.icons[key]) safe = 'app-window';
         return '<i data-lucide="' + safe + '"></i>';
     }
@@ -172,6 +221,7 @@
     }
 
     function showHome(push) {
+        hideTodoDetail();
         sequence += 1;
         activeAppId = null;
         title.textContent = 'Mobile';
@@ -211,6 +261,7 @@
     }
 
     function displayMount(app, mount, push) {
+        hideTodoDetail();
         activeAppId = app.id;
         mount.lastUsed = Date.now();
         mounts.set(app.id, mount);
@@ -225,7 +276,7 @@
         });
 
         let record = frames.get(app.id);
-        if (!record || record.mountId !== mount.id) {
+        if (!record || record.failed || record.mountId !== mount.id) {
             if (record) record.frame.remove();
             const frame = document.createElement('iframe');
             const token = crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random();
@@ -247,7 +298,7 @@
                 if (activeAppId === app.id && frames.get(app.id) === record) {
                     loading.hidden = true;
                     errorView.hidden = documentReady;
-                    if (!documentReady) errorMessage.textContent = '应用页面未能加载，可能被公网嵌入策略阻止。请返回 Home 重试；若持续出现，请检查设备和 Cloud 网关。';
+                    if (!documentReady) errorMessage.textContent = '应用页面未能加载。请返回 Home 后重新打开；若持续出现，请检查设备连接。';
                 }
             });
             record = { frame, token, renderer: mount.renderer, loaded: false, mountId: mount.id, instanceId: mount.app_instance_id, lastUsed: Date.now() };
@@ -256,7 +307,7 @@
             frame.src = framedUrl(mount.content_url, token, mount);
         }
         loading.hidden = Boolean(record.loaded || record.failed);
-        if (record.failed) { errorView.hidden = false; errorMessage.textContent = '应用页面未能加载，请关闭此 App 后重试；若持续出现，请检查公网嵌入策略。'; }
+        if (record.failed) { errorView.hidden = false; errorMessage.textContent = '应用页面未能加载。请返回 Home 后重新打开。'; }
         record.lastUsed = Date.now();
         record.frame.hidden = false;
         record.frame.contentWindow?.postMessage({ type: 'ai2apps.host.activate', mountToken: record.token }, '*');
@@ -314,6 +365,7 @@
             const record = frames.get(appId);
             if (record) record.frame.remove();
             frames.delete(appId);
+            if(appId==='ai2apps.todo'){(todoDetail?.surface||todoDetail?.frame)?.remove();todoDetail=null;}
             if (activeAppId === appId) showHome();
             renderDock();
             renderSwitcher();
@@ -321,6 +373,95 @@
             showToast(error.message);
         }
     }
+
+    // Todo-only two-frame navigation experiment. No extra App mount is created.
+    let todoDetail=null;
+    function cancelTodoSlide(detail){
+        if(detail?.animation){const animation=detail.animation;detail.animation=null;animation.cancel();}
+    }
+    function switchTodoFrame(detail,show,animate=false){
+        cancelTodoSlide(detail);
+        const frame=detail.frame,list=detail.record.frame,surface=detail.surface||frame;
+        if(detail.surface)detail.surface.hidden=false;
+        const motion=animate&&typeof surface.animate==='function'&&!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+        if(!motion){frame.hidden=!show;surface.hidden=!show;list.hidden=show;return;}
+        // Keep the ready list underneath throughout the transition.
+        list.hidden=false;frame.hidden=false;
+        const animation=surface.animate([
+            {transform:show?'translateX(100%)':'translateX(0)'},
+            {transform:show?'translateX(0)':'translateX(100%)'}
+        ],{duration:show?240:360,easing:show?'cubic-bezier(.22,.61,.36,1)':'cubic-bezier(.4,0,.2,1)',fill:'both'});
+        detail.animation=animation;
+        animation.finished.then(()=>{
+            if(detail.animation!==animation)return;
+            frame.hidden=!show;surface.hidden=!show;list.hidden=show;detail.animation=null;animation.cancel();
+        }).catch(()=>{});
+    }
+    function hideTodoDetail(){if(todoDetail){cancelTodoSlide(todoDetail);todoDetail.frame.hidden=true;if(todoDetail.surface)todoDetail.surface.hidden=true;todoDetail.buttonBack=false;}}
+    function leaveTodoDetail(){
+        if(!todoDetail||todoDetail.frame.hidden)return true;
+        try{return todoDetail.frame.contentWindow.mobileTodoCanLeave?.()!==false;}catch(_){return true;}
+    }
+    function presentTodoShell(detail){
+        detail.placeholder.hidden=false;
+        switchTodoFrame(detail,true,true);
+        if(!history.state?.todoDetail)history.pushState({appId:'ai2apps.todo',todoDetail:true},'',location.href);
+        loading.hidden=true;errorView.hidden=true;
+    }
+    function openTodoDetail(record,message){
+        if(!todoDetail&&history.state?.todoDetail)history.replaceState({appId:'ai2apps.todo'},'',location.href);
+        if(todoDetail&&!leaveTodoDetail())return;
+        if(todoDetail?.record===record){
+            if(message.warm)return;
+            todoDetail.requested=true;
+            presentTodoShell(todoDetail);
+            if(todoDetail.ready){
+                todoDetail.frame.contentWindow.postMessage({...message,type:'ai2apps.todo.initialize-detail',mountToken:todoDetail.token},location.origin);
+            }else todoDetail.pending=message;
+            return;
+        }
+        (todoDetail?.surface||todoDetail?.frame)?.remove();
+        record.frame.classList.add('mobile-todo-list-frame');
+        const frame=document.createElement('iframe');
+        frame.className='mobile-app-frame mobile-todo-detail-frame';frame.hidden=true;
+        frame.title='Todo detail';frame.referrerPolicy='same-origin';
+        const token=crypto.randomUUID(),url=new URL(record.frame.src,location.href);
+        url.searchParams.set('todo_shell_detail','1');
+        url.searchParams.set('todo_task',message.taskId||'');
+        url.searchParams.set('todo_parent',message.parentId||'');
+        url.searchParams.set('todo_directory',message.directoryId||'');
+        const hash=new URLSearchParams(url.hash.slice(1));hash.set('ai2apps-mount',token);url.hash=hash.toString();
+        const surface=document.createElement('div');surface.className='mobile-app-frame mobile-todo-surface';surface.hidden=true;
+        const placeholder=document.createElement('div');placeholder.className='mobile-todo-placeholder';
+        const back=document.createElement('button');back.type='button';back.textContent='‹';back.setAttribute('aria-label',document.documentElement.lang.startsWith('zh')?'返回列表':'Back to list');
+        back.onclick=()=>{if(!todoDetail?.buttonBack){todoDetail.buttonBack=true;history.back();}};
+        const bars=document.createElement('div');bars.className='mobile-todo-skeleton';bars.setAttribute('aria-busy','true');
+        placeholder.append(back,bars);surface.append(frame,placeholder);
+        todoDetail={frame,surface,placeholder,token,record,ready:false,requested:!message.warm};
+        frameHost.appendChild(surface);frame.src=url.href;
+        if(!message.warm)presentTodoShell(todoDetail);
+    }
+    window.addEventListener('message',event=>{
+        if(event.origin!==location.origin)return;
+        const m=event.data||{},record=frames.get('ai2apps.todo');
+        if(!record||activeAppId!=='ai2apps.todo')return;
+        if(event.source===record.frame.contentWindow&&m.mountToken===record.token&&m.instanceId===record.instanceId&&m.type==='ai2apps.todo.open-detail'){
+            if(record.renderer==='sandbox')return;
+            openTodoDetail(record,m);return;
+        }
+        const detail=todoDetail;
+        if(!detail||detail.record!==record||event.source!==detail.frame.contentWindow||m.mountToken!==detail.token||m.instanceId!==record.instanceId)return;
+        if(m.type==='ai2apps.todo.detail-ready'){
+            detail.ready=true;
+            if(detail.pending){
+                const pending=detail.pending;detail.pending=null;
+                detail.frame.contentWindow.postMessage({...pending,type:'ai2apps.todo.initialize-detail',mountToken:detail.token},location.origin);return;
+            }
+            detail.placeholder.hidden=true;
+        }else if(m.type==='ai2apps.todo.detail-back'){if(!detail.buttonBack){detail.buttonBack=true;history.back();}}
+        else if(m.type==='ai2apps.todo.changed')record.frame.contentWindow.postMessage({type:'ai2apps.todo.refresh',mountToken:record.token},location.origin);
+        else if(m.type==='ai2apps.todo.detail-error'){detail.placeholder.hidden=true;showToast(m.message||'Unable to open Todo detail');if(history.state?.todoDetail)history.back();}
+    });
 
     function sendBridgeResponse(frame, message, ok, result, error) {
         frame.postMessage({
@@ -334,6 +475,17 @@
         if (!record || (event.origin !== window.location.origin && event.origin !== 'null')) return;
         const message = event.data || {};
         if (message.mountToken !== record.token || message.instanceId !== record.instanceId) return;
+        if(activeAppId==='ai2apps.intelligence'&&record===frames.get(activeAppId)&&record.renderer!=='sandbox'){
+            if(message.type==='ai2apps.intelligence.push'){
+                const depth=Number(message.depth),current=Number(history.state?.intelDepth)||0;
+                if(Number.isInteger(depth)&&depth===current+1&&depth<=20){record.intelDepth=depth;history.pushState({...history.state,appId:activeAppId,intelDepth:depth},'',location.href);}
+                return;
+            }
+            if(message.type==='ai2apps.intelligence.back'){
+                if(history.state?.intelDepth>0&&!record.intelBackPending){record.intelBackPending=true;history.back();}
+                return;
+            }
+        }
         if (message.type === 'ai2apps.shell.ready') {
             let context={surface:'mobile'};
             if(record.renderer==='sandbox'){
@@ -380,6 +532,34 @@
     search.addEventListener('input', () => renderCatalog(search.value));
     window.addEventListener('popstate', (event) => {
         const appId = event.state?.appId || new URLSearchParams(location.hash.slice(1)).get('app');
+        const intelRecord=frames.get('ai2apps.intelligence');
+        if(activeAppId==='ai2apps.intelligence'&&appId==='ai2apps.intelligence'&&intelRecord){
+            const depth=Number(event.state?.intelDepth)||0;
+            const animate=!!intelRecord.intelBackPending;
+            intelRecord.intelBackPending=false;intelRecord.intelDepth=depth;
+            intelRecord.frame.contentWindow.postMessage({type:'ai2apps.intelligence.history',depth,animate,mountToken:intelRecord.token},location.origin);
+            loading.hidden=true;errorView.hidden=true;return;
+        }
+        if(todoDetail&&activeAppId==='ai2apps.todo'){
+            if(!event.state?.todoDetail&&!leaveTodoDetail()){
+                todoDetail.buttonBack=false;
+                history.pushState({appId:'ai2apps.todo',todoDetail:true},'',location.href);return;
+            }
+            if(appId==='ai2apps.todo'){
+                const showing=!!event.state?.todoDetail;
+                const animateBack=!showing&&!!todoDetail.buttonBack;
+                todoDetail.buttonBack=false;
+                switchTodoFrame(todoDetail,showing,animateBack);
+                loading.hidden=true;errorView.hidden=true;
+                return;
+            }
+            hideTodoDetail();
+        }
+
+        // An inner page history traversal must not hide/reactivate the current
+        // iframe or start another asynchronous focus request.
+        const record = frames.get(appId);
+        if (appId && appId === activeAppId && !stage.hidden && record?.loaded && !record.failed && !record.frame.hidden) return;
         if (appId) openApp(appId, false); else showHome(false);
     });
 

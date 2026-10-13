@@ -1,4 +1,5 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const visibility=fs.readFileSync(__dirname+'/../web/static/js/browser_dom_visibility.js','utf8');
 const s=fs.readFileSync(__dirname+'/../web/static/js/browser_bidi_client.js','utf8');
 function reader(){const context={URL};vm.runInNewContext('globalThis.Reader=class{'+s.slice(s.indexOf('        async readResultPages('),s.indexOf('        async extractArticleList('))+'}',context); const client=new context.Reader(); const visits=[];client.contextId='tab';client.pageState=async()=>({url:'https://www.google.com/search?q=test'});client.connection={command:async(_,p)=>visits.push(p.url)};client.handlePageAccess=async()=>({});client.extractRenderedPage=async()=>({url:visits.at(-1),title:'Page',text:'Body'});return {client,visits};}
 test('reads bounded distinct result pages and restores search tab',async()=>{const {client,visits}=reader();const result=await client.readResultPages([{url:'https://a.example/1'},{url:'https://a.example/1'},{url:'https://b.example/2'},{url:'https://c.example/3'}],2);assert.equal(result.articles.length,2);assert.deepEqual(visits,['https://a.example/1','https://b.example/2','https://www.google.com/search?q=test']);});
@@ -15,7 +16,7 @@ function consentReader({names=['Deny'], dismisses=true, unrelated=false}={}) {
         getComputedStyle:()=>({display:'block',visibility:'visible',opacity:1}),
         document:{querySelectorAll:()=>open&&!unrelated?[panel]:[],elementFromPoint:()=>nodes[0],body:{innerText:'Article'}}};
     vm.runInNewContext('globalThis.Reader=class{'+s.slice(s.indexOf('        async handlePageAccess('),s.indexOf('        async pickElement('))+'}',context);
-    const client=new context.Reader();client.callJSON=async code=>vm.runInNewContext('('+code+')()',context);
+    const client=new context.Reader();client.callJSON=async code=>vm.runInNewContext(visibility+';('+code+')()',context);
     client.naturalPointer=async candidate=>{clicks.push(candidate);if(dismisses)open=false;};
     client.waitForStability=async()=>({stable:true});
     return {client,clicks,nodes,context};
@@ -68,6 +69,6 @@ test('Google external headings and opaque goto results survive, navigation links
  const anchor=(url,h)=>({href:url,getAttribute:()=>null,querySelector:selector=>selector==='h1,h2,h3,h4'&&h?heading:null,closest:()=>null,getBoundingClientRect:()=>({width:120,height:40}),textContent:'BiDi reference',innerText:'BiDi reference'});
  const context={URL,getComputedStyle:()=>({display:'block',visibility:'visible'}),location:{hostname:'www.google.com',pathname:'/search',origin:'https://www.google.com',href:'https://www.google.com/search?q=bidi'},document:{title:'Search',querySelector:()=>({querySelectorAll:selector=>selector==='h1,h2,h3,h4'?[]:[anchor('https://developer.mozilla.org/en-US/docs/Web/WebDriver',true),anchor('https://www.google.com/goto?url=opaque',true),anchor('https://www.google.com/search?q=other',true)]}),querySelectorAll:()=>[anchor('https://developer.mozilla.org/en-US/docs/Web/WebDriver',true),anchor('https://www.google.com/goto?url=opaque',true),anchor('https://www.google.com/search?q=other',true)]}};
  vm.runInNewContext('globalThis.Reader=class{'+s.slice(s.indexOf('        async extractArticleList('),s.indexOf('        async handlePageAccess('))+'}',context);
- const client=new context.Reader();client.callJSON=async code=>vm.runInNewContext('('+code+')()',context);
+ const client=new context.Reader();client.callJSON=async code=>vm.runInNewContext(visibility+';('+code+')()',context);
  const result=await client.extractArticleList(5);assert.equal(result.items.length,2);
 });

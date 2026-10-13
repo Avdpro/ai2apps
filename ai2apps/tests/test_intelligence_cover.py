@@ -13,12 +13,12 @@ def test_cover_url_rejects_private_and_preserves_signed_query():
 
 @pytest.mark.asyncio
 async def test_cover_comes_from_cited_evidence_only(monkeypatch):
-    async def model(runtime,request,principal,id,instruction,data,validate):
+    async def model(runtime,request,principal,id,instruction,data,validate,**kwargs):
         return validate({'articles':[{'title':'title','summary':'summary','body':'facts [2]','evidence_ids':[2]}]})
     monkeypatch.setattr(service,'model_json',model)
     pages=[{'url':'https://example.com/'+str(i),'title':'title','source_name':'source','retrieved_at':'now','text':'text','source_id':'s','image_url':'https://cdn.example.com/'+str(i)+'.jpg','images':[{'url':'https://cdn.example.com/detail'+str(i)+'.jpg','alt':'detail'}]} for i in range(2)]
     pages[1].update(content_type='video',duration_seconds=125,page_count=None)
-    article=(await service.digest(None,None,None,{'id':'c'},pages,[]))[0]
+    article=(await service.digest_event(None,None,None,{'id':'c'},pages,[]))[0]
     assert article['sources'][0]['content_type']=='video'
     assert article['sources'][0]['duration_seconds']==125
     assert article['cover_image']=={'url':pages[1]['image_url'],'source_url':pages[1]['url']}
@@ -74,3 +74,17 @@ def test_article_images_are_scoped_deduplicated_and_validated(tmp_path):
     assert len(result['images'])==2
     with pytest.raises(ValueError):s.save_images('a','article',valid.source_url,[])
     assert len(s.get('articles','a','article')['images'])==2
+
+@pytest.mark.asyncio
+async def test_multi_source_cover_uses_primary_subject_not_first_citation(monkeypatch):
+    async def model(runtime,request,principal,id,instruction,data,validate,**kwargs):
+        draft={'title':'McLaren','summary':'summary','body':'facts [1][2]','evidence_ids':[1,2]}
+        with pytest.raises(ValueError):validate({'articles':[draft]})
+        with pytest.raises(ValueError):validate({'articles':[{**draft,'primary_evidence_id':3}]})
+        return validate({'articles':[{**draft,'primary_evidence_id':2}]})
+    monkeypatch.setattr(service,'model_json',model)
+    pages=[dict(url='https://example.com/'+str(i),title='source',source_name='F1',retrieved_at='now',text='facts',image_url='https://cdn.example.com/'+str(i)+'.jpg') for i in range(2)]
+    article=(await service.digest_event(None,None,None,{'id':'c'},pages,[]))[0]
+    assert article['cover_image']['url']==pages[1]['image_url']
+    assert article['primary_source_url']==pages[1]['url']
+    assert article['sources'][0]['url']==pages[0]['url']

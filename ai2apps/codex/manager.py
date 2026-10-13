@@ -129,8 +129,9 @@ class CodexManager:
                         token = uuid.uuid4().hex
                         future = asyncio.get_running_loop().create_future()
                         self.desktop_requests[token] = (owner, id, method, values, future)
-                        await _emit_update(on_update, 'waiting_input' if method.endswith('requestUserInput') else 'waiting_capability', output=output, desktop_request={'token':token,'method':method,'params':values})
-                        try: response = await future
+                        try:
+                            await _emit_update(on_update, 'waiting_input' if method.endswith('requestUserInput') else 'waiting_capability', output=output, desktop_request={'token':token,'method':method,'params':values})
+                            response = await future
                         finally: self.desktop_requests.pop(token,None)
                         await client.send({'id':message['id'],'result':response})
                         await _emit_update(on_update, 'running', desktop_request=None)

@@ -361,6 +361,13 @@
             modelDeveloperEntriesVisible: Boolean(
                 window.AI2APPS_SYSTEM_APP?.developerSurfacesVisible
             ),
+            modelRoutingProfile: 'normal',
+            modelRoutingProfiles: {},
+            async selectModelRoutingProfile(profile) {
+                this.modelRoutingProfile = profile;
+                this.defaultModelsStatus = '';
+                await this.loadModelManager();
+            },
             defaultModels: {
                 work_simple: '',
                 work_standard: '',
@@ -374,6 +381,7 @@
             },
             cloudDefaultPolicy: {},
             cloudDefaultLabel() {
+                if (this.modelRoutingProfile === 'privacy') return window.t('models.defaults.not_assigned');
                 const label = window.t('models.defaults.use_api_default');
                 const model = this.cloudDefaultPolicy?.apiDefault;
                 return model ? `${label} — (Cloud) ${model.displayName}` : label;
@@ -1420,6 +1428,10 @@
                         ...this.defaultModels,
                         ...(data.defaults || {}),
                     };
+                    const profileResponse = await fetch('/v1/platform/model-profiles');
+                    if (!profileResponse.ok) throw new Error(window.t('models.defaults.load_error'));
+                    this.modelRoutingProfiles = (await profileResponse.json()).profiles;
+                    this.defaultModels = {...this.modelRoutingProfiles[this.modelRoutingProfile]};
                     this.cloudDefaultPolicy = {};
                     try {
                         const defaultsResponse = await fetch('/v1/platform/cloud/ai/defaults');
@@ -1440,7 +1452,7 @@
                 this.defaultModelsStatus = '';
                 this.defaultModelsError = '';
                 try {
-                    const response = await fetch('/admin/api/model-manager/defaults', {
+                    const response = await fetch(this.modelRoutingProfile === 'privacy' ? '/v1/platform/model-profiles/privacy' : '/admin/api/model-manager/defaults', {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ routes: this.defaultModels }),

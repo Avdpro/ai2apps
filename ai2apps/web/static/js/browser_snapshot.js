@@ -18,18 +18,7 @@ const allRoots = (root = document) => {
   return roots;
 };
 const queryAll = selector => allRoots().flatMap(root => [...root.querySelectorAll(selector)]);
-const visible = (el) => {
-  if (!el || el.closest('[hidden],[aria-hidden="true"],[inert]')) return false;
-  if (typeof el.checkVisibility === 'function' && !el.checkVisibility({
-    checkOpacity: true,
-    checkVisibilityCSS: true,
-  })) return false;
-  const style = getComputedStyle(el);
-  const rect = el.getBoundingClientRect();
-  return style.visibility !== 'hidden' && style.display !== 'none' &&
-    style.opacity !== '0' && style.contentVisibility !== 'hidden' &&
-    rect.width > 0 && rect.height > 0;
-};
+const visible = ai2appsDOMVisible;
 const items = [];
 if (!Number.isSafeInteger(window.__ai2appsNextElementRef)) {
   window.__ai2appsNextElementRef = 1;
@@ -167,10 +156,7 @@ const textIsRendered = (node) => {
 };
 const snapElement = (el) => {
   if (excludedTags.has(el.tagName)) return '';
-  const style = getComputedStyle(el);
-  const hardHidden = el.closest('[hidden],[aria-hidden="true"],[inert]') ||
-    style.display === 'none' || style.opacity === '0' ||
-    style.contentVisibility === 'hidden';
+  const hardHidden = !ai2appsDOMVisible(el, {requireBox:false});
   if (hardHidden) return '';
   const children = [];
   for (const child of el.childNodes) {

@@ -1,30 +1,43 @@
 function aiBrowserApp() {
     return {
-        profiles: [], loading: true, busyKey: '', notice: '', noticeTone: 'success', noticeTimer: null,
-        showCreate: false, creating: false, newName: '', deleteTarget: null,
+        initialized:false,mobileMode:!!window.AI2APPS_MOBILE_SURFACE||window.innerWidth<=760,mobileSurface:'apps',mobileTaskOrigin:'tasks',
+        resizeMobile(){this.mobileMode=!!window.AI2APPS_MOBILE_SURFACE||window.innerWidth<=760;if(this.mobileMode){this.navTab='apps';if(!['mini-app','task'].includes(this.view))this.mobileSurface='apps';}this.updateFrames();},
+        mobileTasksReturn:'apps',
+        openMobileTasks(){if(!['tasks','task'].includes(this.mobileSurface))this.mobileTasksReturn=this.mobileSurface;this.mobileSurface='tasks';this.updateFrames();},
+        closeMobileTasks(){this.mobileSurface=this.mobileTasksReturn==='workspace'&&this.miniAppId?'workspace':'apps';if(this.mobileSurface==='workspace')this.view='mini-app';this.updateFrames();},
+        mobileBack(){if(this.mobileSurface==='tasks'){this.closeMobileTasks();return;}this.mobileSurface=this.mobileSurface==='task'?this.mobileTaskOrigin:'apps';if(this.mobileSurface==='workspace')this.view='mini-app';this.updateFrames();},
+        moreMiniApps:false,showCustomMiniApp:false,customMiniAppName:'',customMiniAppRequest:'',customMiniAppBusy:false,miniApps: [], miniAppId:'', miniAppLoading:false, profiles: [], loading: true, busyKey: '', notice: '', noticeTone: 'success', noticeTimer: null,
+        showCreate: false, creating: false, newName: '', deleteTarget: null, refreshAllBusy:false,
         tr(key, values = {}) {
             const text = window.t(key);
             return text.replace(/\{(\w+)\}/g, (match, name) =>
                 Object.prototype.hasOwnProperty.call(values, name) ? String(values[name]) : match);
         },
-        domainSettings:{}, domains: [], drafts: [], tasks: [], settings: {global_limit:4,profile_limit:1},
-        navTab:'domains', view:'domain', selectedDomain:'', selectedProfile:null, selectedCapability:null,
+        domainSettings:{}, domains: [], drafts: [], tasks: [], taskTree: [], settings: {global_limit:4,profile_limit:1},
+        navTab:'apps', view:'mini-app', selectedDomain:'', selectedProfile:null, selectedCapability:null,
         selectedAgentId:'', selectedTask:null, taskRun:null, taskStream:null, taskTab:'active', taskResult:'', runProfile:'default',
         showDomain:false,newDomain:'',refreshing:false,syncing:false,frameVisible:false,
         metadataTimer:null, worker:crypto.randomUUID(), frames:new Map(), sessions:new Map(), profileStates:{}, profileBindings:{}, statusConnection:null, editorSessions:new Map(),
         deletingDrafts:[], schedulerStatus:'', dispatching:false, eventStream:null, eventCursor:0, streamState:'connecting', timer:null, parameterValues:{},
         terminal(status) { return ['completed','failed','cancelled'].includes(status); },
-        get activeTasks() { return this.tasks.filter(t=>!this.terminal(t.status)); },
-        get recentTasks() { return this.tasks.filter(t=>this.terminal(t.status)).slice(0,40); },
-        statusLabel(status, task={}) { if(task.status_label)return this.localTaskText(task.status_label); return ({queued:this.tr('ai_browser.workspace.queued'),starting:this.tr('ai_browser.workspace.starting'),running:this.tr('ai_browser.workspace.running'),waiting_input:this.tr('ai_browser.workspace.waiting_input'),interrupted:this.tr('ai_browser.workspace.interrupted'),completed:this.tr('ai_browser.workspace.completed'),failed:this.tr('ai_browser.workspace.failed'),cancelled:this.tr('ai_browser.workspace.cancelled')})[status]||status; },
+        get taskGroups(){
+            const roots=this.taskTree.filter(node=>!node.parent_id&&node.kind!=='webagent');
+            const ids=new Set(roots.map(node=>node.id));
+            return [...roots.map(node=>({...node,composite:true,children:this.tasks.filter(t=>t.root_task_id===node.id),profile_key:'',capability:'',message:'',created_at:node.created_at})),...this.tasks.filter(t=>!ids.has(t.root_task_id))].sort((a,b)=>b.created_at-a.created_at);
+        },
+        get currentTask(){return this.selectedTask?.composite?(this.taskGroups.find(t=>t.id===this.selectedTask.id)||this.selectedTask):this.selectedTask;},
+        get activeTasks() { return this.taskGroups.filter(t=>!this.terminal(t.status)); },
+        get recentTasks() { return this.taskGroups.filter(t=>this.terminal(t.status)).slice(0,40); },
+        statusLabel(status, task={}) { if(status==='finishing')status='running'; if(task.status_label)return this.localTaskText(task.status_label); return ({queued:this.tr('ai_browser.workspace.queued'),starting:this.tr('ai_browser.workspace.starting'),running:this.tr('ai_browser.workspace.running'),waiting_input:this.tr('ai_browser.workspace.waiting_input'),interrupted:this.tr('ai_browser.workspace.interrupted'),completed:this.tr('ai_browser.workspace.completed'),failed:this.tr('ai_browser.workspace.failed'),cancelled:this.tr('ai_browser.workspace.cancelled'),cancelling:this.tr('ai_browser.workspace.cancelling')})[status]||status; },
         localTaskText(text) {
             const labels = { '等待协助':'waiting_help', '等待确认':'waiting_confirmation',
                 '等待浏览器响应':'waiting_browser', '等待响应':'waiting_input',
                 '浏览器操作正在执行，无需人工介入。':'browser_busy' };
             return labels[text] ? this.tr('ai_browser.workspace.' + labels[text]) : text;
         },
-        profileName(key) { return this.profiles.find(p=>p.key===key)?.name||key; },
-        profileTaskCount(key) { return this.activeTasks.filter(t=>t.profile_key===key&&t.status!=='queued').length; },
+        profileName(key) { const profile=this.profiles.find(p=>p.key===key);return profile?.is_default?this.tr('browser.profile.default'):profile?.name||key; },
+        get browserSlotCount() { return new Set(this.tasks.filter(t=>t.holds_browser_slot??(!this.terminal(t.status)&&t.status!=='queued')).map(t=>(t.root_task_id||t.id)+'\0'+t.profile_key)).size; },
+        profileTaskCount(key) { return new Set(this.tasks.filter(t=>t.profile_key===key&&(t.holds_browser_slot??(!this.terminal(t.status)&&t.status!=='queued'))).map(t=>t.root_task_id||t.id)).size; },
         profileState(key) { return this.profileStates[key]||{label:this.tr('ai_browser.workspace.unconnected'),tabs:null}; },
         async request(path, method='GET', data) {
             const response=await fetch('/v1/platform'+path,{method,credentials:'same-origin',...(data!==undefined?{headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}:{})});
@@ -33,27 +46,108 @@ function aiBrowserApp() {
             return body;
         },
         async init() {
+            if(this.initialized)return;this.initialized=true;
             await this.loadProfiles();
             await this.refresh();
-            void this.connectProfileStatus();
+            await this.refreshMiniApps();
+            this.onMiniAppTask=()=>{void this.refresh();};
+            window.addEventListener('ai2apps:web-agent-submitted',this.onMiniAppTask);
+            this.onMiniAppRetry=event=>{
+                if(event.data?.type!=='ai2apps:mini-app-retry'||event.data.version!==1||
+                    (event.origin!=='null'&&event.origin!==location.origin)||this.miniAppLoading)return;
+                const key='mini-app:'+this.miniAppId,record=this.frames.get(key);
+                const item=this.miniApps.find(app=>app.id===this.miniAppId);
+                if(this.view!=='mini-app'||!record||record.frame.contentWindow!==event.source||!item)return;
+                record.frame.remove();this.frames.delete(key);void this.openMiniApp(item);
+            };
+            window.addEventListener('message',this.onMiniAppRetry);
+            if(!this.mobileMode)void this.connectProfileStatus();
             this.connectWorkspaceEvents();
-            this.onWorkspaceFocus=()=>{void this.refresh();};
+            this.onWorkspaceFocus=()=>{void this.refresh();void this.refreshMiniApps();};
             window.addEventListener('focus',this.onWorkspaceFocus);
             window.addEventListener('pagehide',()=>this.destroy(),{once:true});
         },
-        destroy() { this.clearNotice();this.taskStream?.close();clearTimeout(this.metadataTimer);this.eventStream?.close();this.eventStream=null;window.removeEventListener?.('focus',this.onWorkspaceFocus);clearInterval(this.timer);void this.statusConnection?.close(); for(const session of this.sessions.values()) void session.connection.close(); },
+        destroy() { window.removeEventListener?.('message',this.onMiniAppRetry);window.removeEventListener?.('ai2apps:web-agent-submitted',this.onMiniAppTask);this.clearNotice();this.taskStream?.close();clearTimeout(this.metadataTimer);this.eventStream?.close();this.eventStream=null;window.removeEventListener?.('focus',this.onWorkspaceFocus);clearInterval(this.timer);void this.statusConnection?.close(); for(const session of this.sessions.values()) void session.connection.close(); },
+        async installMiniApps(){
+            this.moreMiniApps=false;
+            try{await window.AI2AppsCapabilities.openMiniAppPackages({placement:'ai2apps.ai-browser'});await this.refreshMiniApps();}catch(error){this.fail(error);}
+        },
+        async customizeMiniApp(){
+            if(this.customMiniAppBusy||!this.customMiniAppName||!this.customMiniAppRequest)return;
+            this.customMiniAppBusy=true;
+            try{
+                const response=await fetch('/v1/platform/coder/projects',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:this.customMiniAppName,root_path:'private-browser-mini-app-'+crypto.randomUUID(),kind:'ai2apps',create_directory:true,bootstrap:true})});
+                const project=await response.json();if(!response.ok)throw Error(project.detail?.message||project.detail||'Could not create private project');
+                const prompt='Build a private AI2Apps Web-Agent Mini-App Package for placement ai2apps.ai-browser. Follow docs/ai2apps-studio-mini-app-package-contract-v1.md and docs/ai2apps-browser-control-architecture.md. Fixed UI with one or more capabilities; execute all WebAgents through the shared background Task system and host SDK. Keep this project private and local; do not publish or upload it. Include validation and local installation instructions. User requirements:\n'+this.customMiniAppRequest;
+                sessionStorage.setItem('ai2apps.coder.mini-app-handoff',JSON.stringify({projectId:project.id,prompt}));
+                this.showCustomMiniApp=false;
+                if(window.ai2appsShell?.openEntry)await window.ai2appsShell.openEntry({appId:'ai2apps.coder'});else window.open('/apps/ai2apps.coder','_top');
+            }catch(error){this.fail(error);}finally{this.customMiniAppBusy=false;}
+        },
+        async refreshMiniApps(){
+            if(!window.AI2AppsStudioMiniApps)return;
+            try{
+                const catalog=await window.AI2AppsStudioMiniApps.list('ai2apps.ai-browser');
+                this.miniApps=catalog.items.filter(item=>item.source==='package'&&item.web_agent);
+                this.refreshIcons();
+                for(const [key,item] of this.frames)if(key.startsWith('mini-app:')&&
+                    !this.miniApps.some(app=>app.id===item.miniAppId&&app.provider?.digest===item.digest)){
+                    item.frame.remove();this.frames.delete(key);
+                }
+                this.updateFrames();
+            }catch(error){this.fail(error,this.tr('ai_browser.workspace.load_mini_apps_failed'));}
+        },
+        async openMiniApp(item){
+            if(this.miniAppLoading)return;
+            this.navTab='apps';this.miniAppId=item.id;this.view='mini-app';if(this.mobileMode)this.mobileSurface='workspace';
+            const key='mini-app:'+item.id;
+            if(this.frames.has(key)){this.updateFrames();return;}
+            this.miniAppLoading=true;
+            try{
+                const mount=await window.AI2AppsStudioMiniApps.mount('ai2apps.ai-browser',item.id);
+                const frame=document.createElement('iframe');
+                frame.className='aib-frame aib-package-mini-app-frame';
+                frame.title=item.name||item.title||item.id;
+                // The resource endpoint owns the sandbox CSP, exactly as in Imagine Studio.
+                // Installed Packages are opaque; trusted Development sources can load their indexed assets.
+                frame.referrerPolicy='no-referrer';frame.src=mount.content_url;
+                document.getElementById('aib-frames').append(frame);
+                this.frames.set(key,{frame,miniAppId:item.id,digest:item.provider?.digest});
+                this.updateFrames();
+            }catch(error){this.fail(error,this.tr('ai_browser.workspace.open_mini_app_failed'));}
+            finally{this.miniAppLoading=false;}
+        },
+        async refreshAll(){
+            if(this.refreshAllBusy)return;
+            this.refreshAllBusy=true;
+            const selected=this.view==='mini-app'?this.miniAppId:'';
+            try{
+                await this.loadProfiles();
+                await Promise.all([this.refresh({manual:true}),this.refreshMiniApps()]);
+                if(selected&&this.view==='mini-app'&&this.miniAppId===selected&&!this.miniAppLoading){
+                    const item=this.miniApps.find(app=>app.id===selected);
+                    if(item){
+                        const key='mini-app:'+selected;
+                        this.frames.get(key)?.frame.remove();this.frames.delete(key);
+                        await this.openMiniApp(item);
+                    }
+                }
+            }catch(error){this.fail(error);}
+            finally{this.refreshAllBusy=false;}
+        },
         async refresh({manual=false}={}) {
             // Background polling must not animate or dim the manual refresh button.
             if(this.syncing){if(manual)this.refreshing=true;return;}
             this.syncing=true;this.refreshing=manual;
             try {
                 const [workspace,drafts,catalog,recipes]=await Promise.all([
-                    this.request('/browser-workspace'),this.request('/agent-drafts'),this.request('/agent-capabilities'),this.request('/agent-recipes'),
+                    this.request('/browser-workspace'),...(this.mobileMode?[Promise.resolve({items:[]}),Promise.resolve({items:[]}),Promise.resolve({items:[]})]:[this.request('/agent-drafts'),this.request('/agent-capabilities'),this.request('/agent-recipes')]),
                 ]);
-                this.domainSettings=workspace.domain_settings||{};this.tasks=workspace.tasks;if(this.view!=='settings')this.settings=workspace.settings;this.drafts=[...(drafts.items||[]),...(recipes.items||[]).filter(recipe=>!recipe.committed_draft_id).map(recipe=>({...recipe,recipe_only:true}))];
+                this.domainSettings=workspace.domain_settings||{};this.tasks=workspace.tasks;this.taskTree=workspace.task_tree||[];if(this.view!=='settings')this.settings=workspace.settings;this.drafts=[...(drafts.items||[]),...(recipes.items||[]).filter(recipe=>!recipe.committed_draft_id).map(recipe=>({...recipe,recipe_only:true}))];
                 const expanded=new Map(this.domains.map(d=>[d.name,d.expanded]));
-                const groups=new Map(workspace.domains.map(name=>[name,[]]));
-                const domainFor=draft=>draft.site_key||(draft.site_scope||[]).map(scope=>{try{return new URL(scope.replace(/\*/g,'')).hostname;}catch(_){return '';}}).find(Boolean);
+                const validDomain=name=>{if(typeof name!=='string'||!name||['null','undefined'].includes(name.toLowerCase()))return false;try{return new URL('https://'+name).hostname===name;}catch(_){return false;}};
+                const groups=new Map((workspace.domains||[]).filter(validDomain).map(name=>[name,[]]));
+                const domainFor=draft=>validDomain(draft.site_key)?draft.site_key:(draft.site_scope||[]).map(scope=>{try{const url=new URL(scope.replace(/\*/g,''));return ['http:','https:'].includes(url.protocol)&&validDomain(url.hostname)?url.hostname:'';}catch(_){return '';}}).find(Boolean);
                 for(const draft of this.drafts){const name=domainFor(draft);if(name&&!groups.has(name))groups.set(name,[]);}
                 for(const cap of catalog.items||[]){
                     if(cap.agent_id?.startsWith('builtin:'))continue;
@@ -68,12 +162,12 @@ function aiBrowserApp() {
                     groups.get(name).push({agent_id:draft.id,title:draft.name,draft_only:true,
                         availability:draft.recipe_only?this.tr('ai_browser.workspace.recipe_pending'):draft.status==='compiled'?this.tr('ai_browser.workspace.compiled_pending'):this.tr('ai_browser.workspace.pending_compile')});
                 }
-                this.domains=[...groups].sort((a,b)=>a[0].localeCompare(b[0])).map(([name,capabilities])=>({name,icon:workspace.domain_icons?.[name]||'',capabilities,expanded:expanded.get(name)??true}));
-                if(!this.selectedDomain&&this.domains.length)this.selectedDomain=this.domains[0].name;
+                this.domains=[...groups].filter(([,capabilities])=>capabilities.length).sort((a,b)=>a[0].localeCompare(b[0])).map(([name,capabilities])=>({name,icon:workspace.domain_icons?.[name]||'',capabilities,expanded:expanded.get(name)??true}));
+                if(!this.domains.some(d=>d.name===this.selectedDomain))this.selectedDomain=this.domains[0]?.name||'';
                 if(this.selectedTask)this.selectedTask=this.tasks.find(t=>t.id===this.selectedTask.id)||this.selectedTask;
-                this.schedulerStatus=this.tr('ai_browser.workspace.scheduler_summary',{count:this.activeTasks.length,limit:this.settings.global_limit});
+                this.schedulerStatus=this.tr('ai_browser.workspace.scheduler_summary',{count:this.browserSlotCount,limit:this.settings.global_limit});
                 this.settleTaskFrames();
-                await this.refreshProfileStates();
+                if(!this.mobileMode)await this.refreshProfileStates();
                 this.updateFrames();
                 void this.dispatch();
             } catch(error){this.schedulerStatus=this.tr('ai_browser.workspace.connection_error');this.fail(error,this.tr('ai_browser.workspace.load_workspace_failed'));}
@@ -87,7 +181,7 @@ function aiBrowserApp() {
             const recent=tasks.filter(task=>this.terminal(task.status)).sort((a,b)=>b.created_at-a.created_at).slice(0,200);
             this.tasks=[...active,...recent].sort((a,b)=>b.created_at-a.created_at);
             if(this.selectedTask)this.selectedTask=tasks.find(task=>task.id===this.selectedTask.id)||this.selectedTask;
-            this.schedulerStatus=this.tr('ai_browser.workspace.scheduler_summary',{count:this.activeTasks.length,limit:this.settings.global_limit});
+            this.schedulerStatus=this.tr('ai_browser.workspace.scheduler_summary',{count:this.browserSlotCount,limit:this.settings.global_limit});
             this.settleTaskFrames();this.updateFrames();
             if(this.selectedTask?.run_id&&this.view==='task'&&!this.taskStream&&!this.taskRun)void this.observeTask(this.selectedTask);
         },
@@ -95,7 +189,7 @@ function aiBrowserApp() {
             this.eventStream?.close();
             const stream=new EventSource('/v1/platform/browser-workspace/events',{withCredentials:true});
             this.eventStream=stream;this.streamState='connecting';
-            stream.onopen=()=>{if(this.eventStream!==stream)return;this.streamState='connected';this.schedulerStatus=this.tr('ai_browser.workspace.scheduler_summary',{count:this.activeTasks.length,limit:this.settings.global_limit});};
+            stream.onopen=()=>{if(this.eventStream!==stream)return;this.streamState='connected';this.schedulerStatus=this.tr('ai_browser.workspace.scheduler_summary',{count:this.browserSlotCount,limit:this.settings.global_limit});};
             stream.onerror=()=>{if(this.eventStream!==stream)return;this.streamState='reconnecting';this.schedulerStatus=this.tr('ai_browser.workspace.reconnecting');};
             const receive=(event,snapshot)=>{
                 if(this.eventStream!==stream)return;
@@ -103,17 +197,17 @@ function aiBrowserApp() {
                     const cursor=Number(event.lastEventId);
                     if(!snapshot&&cursor<=this.eventCursor)return;
                     const value=JSON.parse(event.data);this.eventCursor=cursor;
-                    if(snapshot){if(this.view!=='settings')this.settings=value.settings;this.applyTaskProjection(value.tasks);}
+                    if(snapshot){this.taskTree=value.task_tree||[];if(this.view!=='settings')this.settings=value.settings;this.applyTaskProjection(value.tasks);}
                     else if(value.payload?.task){
                         const task=value.payload.task;
                         this.applyTaskProjection([task,...this.tasks.filter(item=>item.id!==task.id)].sort((a,b)=>b.created_at-a.created_at));
-                    }else if(value.payload?.settings_changed){void this.refresh();}
+                    }else if(value.payload?.task_node){const node=value.payload.task_node;this.taskTree=[node,...this.taskTree.filter(item=>item.id!==node.id)];}else if(value.payload?.settings_changed){void this.refresh();}
                 }catch(error){this.fail(error,this.tr('ai_browser.workspace.read_events_failed'));}
             };
             stream.addEventListener('browser.workspace.snapshot',event=>receive(event,true));
             stream.addEventListener('browser.workspace.changed',event=>receive(event,false));
         },
-        async addDomain(){try{await this.request('/browser-workspace/domains','POST',{domain:this.newDomain});this.showDomain=false;this.newDomain='';await this.refresh();}catch(error){this.fail(error,this.tr('ai_browser.workspace.add_site_failed'));}},
+        async addDomain(){try{const site=await this.request('/browser-workspace/domains','POST',{domain:this.newDomain});this.showDomain=false;this.newDomain='';await this.refresh();await this.editAgent(null,site.domain);}catch(error){this.fail(error,this.tr('ai_browser.workspace.add_site_failed'));}},
         canDeleteDomain(){return Boolean(this.selectedDomain)&&!this.domainDrafts().length&&!(this.domains.find(d=>d.name===this.selectedDomain)?.capabilities.length);},
         domainMode(){return this.domainSettings[this.selectedDomain]?.interaction_mode || 'natural';},
         async saveDomainMode(mode){
@@ -232,7 +326,7 @@ function aiBrowserApp() {
             frame.src='/admin/agent-mini?'+new URLSearchParams(query)+'#'+new URLSearchParams(context);
             frame.className='aib-frame';frame.style.display='none';document.getElementById('aib-frames').append(frame);this.frames.set(key,{frame});this.updateFrames();
         },
-        updateFrames(){let visible=false;for(const [key,item] of this.frames){const show=this.view==='editor'&&key===this.editorKey||this.view==='task'&&key===this.selectedTask?.id;item.frame.style.display=show?'block':'none';visible||=show;}this.frameVisible=visible;document.getElementById('aib-frames')?.classList.toggle('is-visible',visible);},
+        updateFrames(){let visible=false;for(const [key,item] of this.frames){const show=(!this.mobileMode||['workspace','task'].includes(this.mobileSurface))&&(this.view==='mini-app'&&key==='mini-app:'+this.miniAppId||this.view==='editor'&&key===this.editorKey||this.view==='task'&&key===this.selectedTask?.id);item.frame.style.display=show?'block':'none';visible||=show;}this.frameVisible=visible;document.getElementById('aib-frames')?.classList.toggle('is-visible',visible);},
         async editAgent(id,domain,capability=''){
             const key='editor:'+(id||domain);this.editorKey=key;this.view='editor';
             if(this.frames.has(key)){this.updateFrames();return;}
@@ -263,7 +357,7 @@ function aiBrowserApp() {
             })().finally(()=>this.editorSessions.delete(key)));
             return this.editorSessions.get(key);
         },
-        openTask(task){this.selectedTask=task;this.taskResult='';this.taskRun=null;this.view='task';this.updateFrames();void this.observeTask(task);},
+        openTask(task){if(this.mobileMode){this.mobileTaskOrigin=this.mobileSurface==='workspace'?'workspace':'tasks';this.mobileSurface='task';}this.selectedTask=task;this.taskResult='';this.taskRun=null;this.view='task';this.updateFrames();void this.observeTask(task);},
         async observeTask(task){
             this.taskStream?.close();this.taskStream=null;
             if(!task.run_id)return;
@@ -281,11 +375,14 @@ function aiBrowserApp() {
         async respondTask(interaction,approve=true){try{await this.request('/agent-draft-runs/'+encodeURIComponent(this.selectedTask.run_id)+'/interactions/'+encodeURIComponent(interaction.id)+'/respond','POST',{response:interaction.request.control==='agent_confirmation'?{decision:approve?'approve':'deny'}:{continued:true},response_id:crypto.randomUUID()});}catch(error){this.fail(error,this.tr('ai_browser.workspace.continue_failed'));}},
         async showTaskPage(task){let connection;try{connection=new window.AI2AppsBiDi.AI2AppsBiDiConnection();await connection.connect();const context=task.browser_context?.bidi_context;if(!context)throw Error(this.tr('ai_browser.workspace.page_not_created'));await connection.command('browsingContext.activate',{context});}catch(error){this.fail(error,this.tr('ai_browser.workspace.open_task_failed'));}finally{await connection?.close();}},
         async resumeTask(task){try{const resumed=await this.request('/browser-workspace/tasks/'+task.id+'/resume','POST',{worker:'local-background'});this.selectedTask=resumed;void this.observeTask(resumed);}catch(error){this.fail(error,this.tr('ai_browser.workspace.resume_failed'));}},
-        async cancelTask(task){try{await this.request('/browser-workspace/tasks/'+task.id+'/cancel','POST');const item=this.frames.get(task.id);if(item){item.frame.remove();this.frames.delete(task.id);}await this.refresh();}catch(error){this.fail(error,this.tr('ai_browser.workspace.cancel_failed'));}},
+        async cancelTask(task){try{await this.request('/browser-workspace/'+(task.composite?'roots/':'tasks/')+encodeURIComponent(task.id)+'/cancel','POST');const item=this.frames.get(task.id);if(item){item.frame.remove();this.frames.delete(task.id);}await this.refresh();}catch(error){this.fail(error,this.tr('ai_browser.workspace.cancel_failed'));}},
         async connectProfileStatus(){
             try{
                 await this.statusConnection?.close();this.statusConnection=null;const connection=new window.AI2AppsBiDi.AI2AppsBiDiConnection();await connection.connect();this.statusConnection=connection;
-                for(const profile of this.profiles){const binding=await this.request('/client/browser-profiles/'+profile.key+'/binding','POST',{});if(binding.user_context)this.profileBindings[profile.key]=binding.user_context;}
+                // Status observation must never bootstrap a native Profile.
+                // Unknown identities stay unconnected until an explicit launch.
+                const known=await this.request('/client/browser-profile-bindings');
+                for(const profile of this.profiles){if(known.bindings?.[profile.key])this.profileBindings[profile.key]=known.bindings[profile.key];}
                 await this.refreshProfileStates();
             }catch(error){this.fail(error,this.tr('ai_browser.workspace.profile_status_failed'));}
         },
@@ -326,7 +423,16 @@ function aiBrowserApp() {
         },
         async launch(profile) {
             this.busyKey=profile.key;
-            try { const result=await this.request('/client/browser-profiles/'+encodeURIComponent(profile.key)+'/launch','POST',{});if(result.user_context)this.profileBindings[profile.key]=result.user_context;await this.refreshProfileStates();this.succeed(this.tr('ai_browser.workspace.browser_opened')); }
+            try {
+                const result=await this.request('/client/browser-profiles/'+encodeURIComponent(profile.key)+'/launch','POST',{});
+                // The native open acknowledgement is authoritative even when an
+                // older Shell omits its BiDi userContext. Never invent a Tab count.
+                this.profileStates[profile.key]={label:this.tr('ai_browser.workspace.opened'),tabs:null};
+                if(result.user_context)this.profileBindings[profile.key]=result.user_context;
+                if(!this.statusConnection)await this.connectProfileStatus();
+                else await this.refreshProfileStates();
+                this.succeed(this.tr('ai_browser.workspace.browser_opened'));
+            }
             catch(error){this.fail(error,this.tr('ai_browser.workspace.open_browser_failed'));}
             finally{this.busyKey='';}
         },
@@ -355,7 +461,7 @@ function aiBrowserApp() {
             this.showNotice(detail ? `${fallback}: ${detail}` : fallback, 'error');
             this.refreshIcons();
         },
-        refreshIcons() { this.$nextTick(() => window.lucide?.createIcons()); },
+        refreshIcons() { if(this.$nextTick)this.$nextTick(() => window.lucide?.createIcons());else window.lucide?.createIcons(); },
         async readError(response) {
             let detail = '';
             try {

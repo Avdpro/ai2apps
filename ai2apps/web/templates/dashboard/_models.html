@@ -26,7 +26,7 @@
                             <div class="max-w-3xl">
                                 <h2 class="text-xs font-bold uppercase tracking-widest text-neutral-400 mb-2">{{ t('models.defaults.section_label') }}</h2>
                                 <h3 class="text-2xl font-bold tracking-tight text-neutral-900">{{ t('models.defaults.heading') }}</h3>
-                                <p class="text-sm text-neutral-500 mt-2">{{ t('models.defaults.description') }}</p>
+                                <p x-show="modelRoutingProfile === 'normal'" class="text-sm text-neutral-500 mt-2">{{ t('models.defaults.description') }}</p>
                             </div>
                             <div class="flex items-center gap-3">
                                 <span x-show="defaultModelsStatus" class="text-xs font-semibold text-green-700" x-text="defaultModelsStatus"></span>
@@ -42,6 +42,14 @@
                              class="mb-5 px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700"
                              x-text="defaultModelsError || modelManagerError"></div>
 
+                        <div class="flex gap-2 mb-5">
+                            <template x-for="profile in ['normal', 'privacy']" :key="profile">
+                                <button @click="selectModelRoutingProfile(profile)" :disabled="defaultModelsSaving || modelManagerLoading"
+                                    :class="modelRoutingProfile === profile ? 'bg-neutral-900 text-white' : 'bg-neutral-100 text-neutral-600'"
+                                    class="px-4 py-2 rounded-xl text-sm" x-text="window.t('models.defaults.profile.' + profile)"></button>
+                            </template>
+                        </div>
+                        <p x-show="modelRoutingProfile === 'privacy'" class="text-sm text-neutral-500 mb-5">{{ t('models.defaults.profile.privacy_description') }}</p>
                         <section class="mb-8">
                             <div class="mb-3">
                                 <h4 class="text-sm font-bold text-neutral-900">{{ t('models.defaults.complexity.heading') }}</h4>

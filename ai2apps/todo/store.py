@@ -122,6 +122,43 @@ class TodoStore:
             db.execute("INSERT INTO directories VALUES(?,?,?)", (id, owner, title))
         return {"id": id, "title": title}
 
+    def rename_directory(self, owner, id, title, expected_title):
+        title = title.strip()
+        if not title or len(title) > 200:
+            raise ValueError("Directory name required (up to 200 characters)")
+        with self.connect() as db:
+            old = db.execute("SELECT title FROM directories WHERE id=? AND owner=?", (id, owner)).fetchone()
+            if old is None:
+                raise KeyError("Directory not found")
+            if old["title"] != expected_title:
+                raise ValueError("Directory changed; refresh before saving")
+            db.execute("UPDATE directories SET title=? WHERE id=? AND owner=?", (title, id, owner))
+        return {"id": id, "title": title}
+
+    def delete_directory(self, owner, id, confirm_title):
+        with self.connect() as db:
+            directory = db.execute("SELECT title FROM directories WHERE id=? AND owner=?", (id, owner)).fetchone()
+            if directory is None:
+                raise KeyError("Directory not found")
+            if directory["title"] != confirm_title:
+                raise ValueError("Directory name does not match; refresh and confirm again")
+            retained = list(db.execute("SELECT id,data FROM tasks WHERE owner=? AND json_extract(data, '$.directory_id')=?", (owner, id)))
+            if any(not (json.loads(row["data"]).get("archived_at") or json.loads(row["data"]).get("deleted_at")) for row in retained):
+                raise ValueError("Directory still contains active projects")
+            if retained:
+                # Keep retained trees reachable through the existing directory-scoped views.
+                target = db.execute("SELECT id FROM directories WHERE owner=? AND title=? AND id<>? ORDER BY rowid LIMIT 1", (owner, "归档与回收站", id)).fetchone()
+                target_id = target["id"] if target else uuid.uuid4().hex
+                if target is None:
+                    db.execute("INSERT INTO directories VALUES(?,?,?)", (target_id, owner, "归档与回收站"))
+                for row in retained:
+                    data = json.loads(row["data"])
+                    data["directory_id"] = target_id
+                    db.execute("UPDATE tasks SET data=?,revision=revision+1 WHERE id=? AND owner=?", (json.dumps(data), row["id"], owner))
+            db.execute("DELETE FROM directory_order WHERE owner=? AND directory_id=?", (owner, id))
+            db.execute("DELETE FROM directories WHERE owner=? AND id=?", (owner, id))
+        return {"ok": True}
+
     def reorder_directories(self, owner, ids, expected):
         with self.connect() as db:
             current = [row["id"] for row in db.execute("SELECT d.id FROM directories d LEFT JOIN directory_order o ON o.directory_id=d.id AND o.owner=d.owner WHERE d.owner=? ORDER BY COALESCE(o.position,2147483647),d.rowid", (owner,))]

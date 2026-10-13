@@ -215,3 +215,49 @@ def test_recovery_never_redirects_unknown_host_or_untrusted_target(env):
     response=client.get('/mobile',headers=headers,follow_redirects=False)
     assert response.status_code==303
     assert response.headers['location']=='/mobile/member/complete'
+
+
+def test_declared_host_bridge_is_mount_bound_and_revoked(env,monkeypatch):
+    from ai2apps.remote.mobile_apps import MobileAppPolicy
+    from ai2apps.web import mobile_app_gateway as host
+    client,record,shell,_,actor=env
+    runtime=gateway._runtime()
+    MobileAppPolicy(runtime.database).set_enabled(actor.installation_id,'fixture.host',True)
+    monkeypatch.setenv('AI2APPS_MOBILE_PACKAGE_GATEWAY_READY','1')
+    shell.list_mobile_apps.return_value=[{'app_key':'fixture.host','mobile_renderer':'host','mobile_gateway':True}]
+    shell.mount_entry.return_value={'id':'mount','app_key':'fixture.host','app_instance_id':'instance','renderer':'host','placement':'mobile','source':'builtin'}
+    monkeypatch.setattr(host,'descriptor',lambda manager,mount:{'api':{'prefix':'/v1/platform/fixture'}})
+    calls=[]
+    async def bridge(runtime,principal,spec,body):
+        calls.append(principal)
+        return {'status':200,'body':'e30=','contentType':'application/json'}
+    monkeypatch.setattr(host,'bridge',bridge)
+    url='/v1/mobile/app-mounts/mount/bridge'
+    assert client.post(url,json={'method':'request','path':'/v1/platform/fixture'}).status_code==200
+    assert calls==[actor]
+    assert client.get('/mobile/app-resource/mount/another/entry').status_code==403
+    MobileAppPolicy(runtime.database).set_enabled(actor.installation_id,'fixture.host',False)
+    assert client.post(url,json={'method':'request','path':'/v1/platform/fixture'}).status_code==403
+    MobileAppPolicy(runtime.database).set_enabled(actor.installation_id,'fixture.host',True)
+    record.revoked=True
+    assert client.post(url,json={'method':'request','path':'/v1/platform/fixture'}).status_code==401
+
+
+def test_intelligence_uses_declared_entry_and_assets(env,monkeypatch):
+    from ai2apps.remote.mobile_apps import MobileAppPolicy
+    from ai2apps.web import mobile_app_gateway as host
+    from ai2apps.apps.system import SYSTEM_APP_MANIFESTS
+    client,_,shell,_,actor=env
+    spec=next(m for m in SYSTEM_APP_MANIFESTS if m['id']=='ai2apps.intelligence')['mobile']['gateway']
+    MobileAppPolicy(gateway._runtime().database).set_enabled(actor.installation_id,'ai2apps.intelligence',True)
+    monkeypatch.setenv('AI2APPS_MOBILE_PACKAGE_GATEWAY_READY','1')
+    shell.list_mobile_apps.return_value=[{'app_key':'ai2apps.intelligence','mobile_renderer':'host','mobile_gateway':True}]
+    shell.mount_entry.return_value={'id':'mount','app_key':'ai2apps.intelligence','app_instance_id':'instance','renderer':'host','placement':'mobile','source':'builtin'}
+    monkeypatch.setattr(host,'descriptor',lambda manager,mount:spec)
+    response=client.get('/mobile/app-resource/mount/instance/entry')
+    assert response.status_code==200,response.text[:200]
+    assert 'mobile-app-gateway' in response.text
+    assert '/mobile/app-resource/mount/instance/assets/js/intelligence.js' in response.text
+    assert "frame-ancestors 'self'" in response.headers['content-security-policy']
+    assert client.get('/mobile/app-resource/mount/instance/assets/js/intelligence.js').status_code==200
+    assert client.get('/mobile/app-resource/mount/instance/assets/js/account.js').status_code==404

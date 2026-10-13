@@ -1,0 +1,56 @@
+{
+  "repositoryMetadataVersion": 263,
+  "packages": [
+    {
+      "packageId": "ai2apps/model-stable-audio-mlx",
+      "version": "0.1.1",
+      "status": "published",
+      "sha256": "851860542afed55237213c18c3f245685c4305f31c45fa208430017a7b101983",
+      "size": 199781,
+      "publicVerified": true,
+      "sources": [
+        {
+          "id": "src_cloud_851860542afed55237213c18",
+          "url": "https://coder.ai2apps.com/v1/registry/packages/ai2apps/model-stable-audio-mlx/versions/0.1.1/artifact",
+          "kind": "cloud"
+        }
+      ],
+      "downloadedArtifact": "/Users/avdpropang/sdk/omlx-moe-cache/artifacts/audio-language-release-20261006/public-package-trust/registry-v1/downloads/ai2apps/model-stable-audio-mlx/0.1.1/851860542afed55237213c18c3f245685c4305f31c45fa208430017a7b101983.ai2service",
+      "submissionId": "b16a0038-f1b3-4ef0-84c6-c9268ba6b59d",
+      "publishedAt": "2026-10-06T10:53:08.801Z"
+    },
+    {
+      "packageId": "ai2apps/audio-generation-suite",
+      "version": "0.2.1",
+      "status": "published",
+      "sha256": "63e62bf03e7eb29a1fd1380fad022ec6b4d0c62b3195da3e2f7b94224358b409",
+      "size": 22552,
+      "publicVerified": true,
+      "sources": [
+        {
+          "id": "src_cloud_63e62bf03e7eb29a1fd1380f",
+          "url": "https://coder.ai2apps.com/v1/registry/packages/ai2apps/audio-generation-suite/versions/0.2.1/artifact",
+          "kind": "cloud"
+        }
+      ],
+      "downloadedArtifact": "/Users/avdpropang/sdk/omlx-moe-cache/artifacts/audio-language-release-20261006/public-package-trust/registry-v1/downloads/ai2apps/audio-generation-suite/0.2.1/63e62bf03e7eb29a1fd1380fad022ec6b4d0c62b3195da3e2f7b94224358b409.ai2app",
+      "submissionId": "b6569221-2c7a-4b47-a1fa-b1477e45336e",
+      "publishedAt": "2026-10-06T10:53:10.636Z"
+    }
+  ],
+  "runtime": {
+    "version": "1.8.10",
+    "status": "published",
+    "sources": [
+      "cloud",
+      "github",
+      "modelscope"
+    ]
+  },
+  "sourceCommit": "fa377dcb62875d5c82fc8177afd4277cd2357db9",
+  "dirtyWorktree": true,
+  "discoverVerified": true,
+  "hostDeliverySeparate": true,
+  "devInstalledStableAudio": "0.1.0",
+  "date": "2026-10-06"
+}

@@ -1,0 +1,68 @@
+{
+  "status": "signed_candidate_not_published",
+  "build": {
+    "artifact": "/Users/avdpropang/sdk/omlx-moe-cache/packages/ai2apps-audio-generation-suite/dist/0.1.0/ai2apps-audio-generation-suite-0.1.0.ai2app",
+    "envelope": "/Users/avdpropang/sdk/omlx-moe-cache/packages/ai2apps-audio-generation-suite/dist/0.1.0/ai2apps-audio-generation-suite-0.1.0.ai2app.envelope.json",
+    "packageId": "ai2apps/audio-generation-suite",
+    "version": "0.1.0",
+    "sha256": "6e070e0f01e2900b9fc72262ed20049dcfd929463eae7738289109c5898dc658",
+    "size": 12892
+  },
+  "installedInference": {
+    "artifactSha256": "e079c0cf43c45025d7a53c0cce4d73c400a218fd3a694164a74b372f672076de",
+    "modelsSha256": "9a5622efb92316935d609164a1b943ff21e96422c2254f9cd4bf3f7505579826",
+    "sourceMount": false,
+    "outputs": [
+      {
+        "miniAppId": "ai2apps.audio-generation.music",
+        "downloadUrl": "/v1/platform/sessions/ses_cdc396851bc94a5ca75bc50677cc4c9c/artifacts/art_ae1bec841139466ba1b259e68e629e60/download",
+        "filename": "music.wav"
+      },
+      {
+        "miniAppId": "ai2apps.audio-generation.sfx",
+        "downloadUrl": "/v1/platform/sessions/ses_cdc396851bc94a5ca75bc50677cc4c9c/artifacts/art_36bb4baa79e5439383ede286f35197cf/download",
+        "filename": "sound-effect.wav"
+      }
+    ],
+    "sharedOutputCount": 2
+  },
+  "installedLifecycle": {
+    "signedInstalledDiscovery": 2,
+    "verifiedAssetInlining": true,
+    "disableEnableAtomic": true,
+    "uninstallAtomic": true
+  },
+  "regressionPassed": 73,
+  "additionalDisconnectTestPassed": true,
+  "sharedOutputNodePassed": true,
+  "hostDesktopReleasePending": true,
+  "cookieAccess": false,
+  "liveAppDevUi": {
+    "variants": [
+      "music",
+      "sfx"
+    ],
+    "locales": [
+      "zh",
+      "en"
+    ],
+    "roleNames": true,
+    "spaceDisclosure": true,
+    "noFramePlayer": true,
+    "mountReadyVerified": true
+  },
+  "dropdownUpdate": {
+    "date": "2026-10-06",
+    "interactionChecksPassed": 16,
+    "relatedTestsPassed": 7,
+    "artifactSha256": "6e070e0f01e2900b9fc72262ed20049dcfd929463eae7738289109c5898dc658",
+    "note": "Earlier installedInference is evidence for the previous candidate; inference code unchanged. New candidate installed lifecycle verification is recorded separately.",
+    "installedLifecycle": {
+      "artifactSha256": "6e070e0f01e2900b9fc72262ed20049dcfd929463eae7738289109c5898dc658",
+      "signedInstalledDiscovery": 2,
+      "verifiedAssetInlining": true,
+      "disableEnableAtomic": true,
+      "uninstallAtomic": true
+    }
+  }
+}

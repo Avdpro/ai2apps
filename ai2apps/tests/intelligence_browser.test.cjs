@@ -19,9 +19,9 @@ test('ambiguous bootstrap page fails closed without using focused tab',async()=>
 });
 
 test('collection only submits a durable background job and refreshes once',async()=>{
- const calls=[],env={busy:false,render(){},refresh:async()=>calls.push('refresh'),notice(){},api:async(...args)=>calls.push(args)};
+ const calls=[],env={busy:false,render(){},refresh:async()=>calls.push('refresh'),notice(){},mobileQuery:{matches:false},$:()=>null,api:async(...args)=>calls.push(args)};
  Object.assign(env,require('./intelligence_test_env.cjs'));vm.createContext(env);vm.runInContext(script.slice(script.indexOf('async function collect('),script.indexOf("\n$('#collect').onclick"))+'\nthis.collect=collect;',env);
- await env.collect('channel');assert.deepEqual(JSON.parse(JSON.stringify(calls)),[['/channels/channel/runs','POST',{scheduled:false}],'refresh']);
+ await env.collect('channel');assert.deepEqual(JSON.parse(JSON.stringify(calls)),[['/channels/channel/runs','POST',{scheduled:false,source_id:null}],'refresh']);
  assert.equal(env.busy,false);
 });
 test('collection observes shared SSE without frontend scheduling or browser execution',()=>{
@@ -33,11 +33,12 @@ test('collection observes shared SSE without frontend scheduling or browser exec
 
 test('section navigation filters articles with search and unread status and escapes names',()=>{
  const nodes={'#section-filters':{},'#intel-content':{},'#search-articles':{value:''},'#article-filter':{value:'all'},'#article-type-filter':{value:'all'}};
+ for(const node of Object.values(nodes))node.classList={toggle(){}};
  const sections=[{id:'new',name:'新品 <发布>',description:'New releases'},{id:'review',name:'上手体验',description:'Reviews'}];
  const articles=[{id:'a',section_id:'new',title:'New watch',summary:'Summary',body:'Body',read:false,updated_at:'2026-10-07',sources:[]},
  {id:'b',section_id:'review',title:'Review',summary:'Summary',body:'Body',read:true,updated_at:'2026-10-07',sources:[]},
  {id:'c',title:'Legacy',summary:'Summary',body:'Body',read:false,updated_at:'2026-10-07',sources:[]}];
- const env={URL,window:{},document:{addEventListener(){}},channel:()=>({sections}),inChannel:t=>t==='articles'?articles:[],sectionId:'new',selectedId:null,tab:'articles',busy:false,
+ const env={setHTML:(root,html)=>{root.innerHTML=html;},renderedMarkup:new WeakMap(),URL,window:{},document:{addEventListener(){}},channel:()=>({sections}),inChannel:t=>t==='articles'?articles:[],sectionId:'new',selectedId:null,tab:'articles',busy:false,
  readerMode:'chat',failedCovers:new Set(),
  $:s=>nodes[s] ||= {},when:s=>s,esc:s=>String(s??'').replaceAll('<','&lt;').replaceAll('>','&gt;')};
  Object.assign(env,require('./intelligence_test_env.cjs'));vm.createContext(env);
@@ -71,4 +72,31 @@ test('container-only Profile launch creates an isolated tab with matching userCo
  const create=calls.find(c=>c[0]==='browsingContext.create')[1];
  assert.equal(create.userContext,'profile');assert.equal(create.referenceContext,'reference');
  assert.equal(calls.find(c=>c[0]==='browsingContext.navigate')[1].context,'new');
+});
+
+
+test('all manual updates switch to records including a single source on mobile',async()=>{
+ for(const mobile of [true,false])for(const source of [null,'source']){
+  const env={busy:false,tab:'sources',mobilePage:'reader',render(){},refresh:async()=>{},mobileQuery:{matches:mobile},$:()=>null,api:async()=>{}};
+  vm.createContext(env);vm.runInContext(script.slice(script.indexOf('async function collect('),script.indexOf("\n$('#collect').onclick"))+'\nthis.collect=collect;',env);
+  await env.collect('channel',false,source);assert.equal(env.tab,'runs');if(mobile)assert.equal(env.mobilePage,'channel');
+ }
+});
+
+test('active run shows live counters and escapes source and page data',()=>{
+ const env={labels:{},lt:s=>s,esc:s=>String(s).replaceAll('<','&lt;'),link:()=> 'https://x.com/F1',Number};
+ vm.createContext(env);vm.runInContext(script.slice(script.indexOf('function renderRunProgress('),script.indexOf('function updateRunElapsed(')),env);
+ const html=env.renderRunProgress({started_at:'2026-10-12T00:00:00Z',progress:{source_name:'<source>',phase:'article',pages_read:4,articles_extracted:3,sources_completed:1,active_pages:[{url:'<page>'}]}});
+ assert.match(html,/&lt;source>/);assert.match(html,/&lt;page>/);assert.match(html,/已读取页面 <b>4/);assert.match(html,/已提取文章 <b>3/);assert.match(html,/data-run-elapsed/);
+});
+
+test('snapshot polling coalesces requests and skips unchanged views while honoring local navigation',async()=>{
+ let resolve,requests=0,renders=0;
+ const env={state:{channels:[],sources:[],articles:[],runs:[]},channelId:null,selectedId:null,tab:'articles',sectionId:'',busy:false,readerMode:'chat',mobilePage:'channels',previewDraft:null,
+  channel:()=>null,JSON,api:()=>{requests++;return new Promise(r=>resolve=r);},render:()=>{renders++;vm.runInContext('lastPresentation=presentationKey()',env);}};
+ vm.createContext(env);
+ vm.runInContext(script.slice(script.indexOf('let refreshInFlight='),script.indexOf('\nfunction render(){'))+'\nthis.poll=refresh;',env);
+ const one=env.poll(),two=env.poll();assert.equal(requests,1);resolve(env.state);await Promise.all([one,two]);assert.equal(renders,1);
+ const same=env.poll();resolve(env.state);await same;assert.equal(renders,1);
+ env.tab='runs';const navigation=env.poll();resolve(env.state);await navigation;assert.equal(renders,2);
 });

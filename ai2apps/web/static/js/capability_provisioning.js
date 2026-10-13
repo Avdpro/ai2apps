@@ -437,7 +437,14 @@
             const name = document.createElement('strong'); name.textContent = selected.map(option => tr(option.label)).join('、');
             selection.append(label, name);
         }
-        const list = overlay.querySelector('.acpf-steps'); list.replaceChildren();
+        const list = overlay.querySelector('.acpf-steps');
+        // Polling rebuilds these rows. Read the live state before replacing them
+        // so both mouse and keyboard toggles survive the next progress update.
+        const expandedGroups = new Set(Array.from(
+            list.querySelectorAll('details.acpf-step-items[open]'),
+            details => details.dataset.groupKey
+        ));
+        list.replaceChildren();
         for (const group of groupedSteps(session)) {
             const item = document.createElement('li');
             item.className = group.state;
@@ -457,6 +464,8 @@
                 content.append(detail);
             } else {
                 const details = document.createElement('details'); details.className = 'acpf-step-items';
+                details.dataset.groupKey = group.key;
+                details.open = expandedGroups.has(group.key);
                 const summary = document.createElement('summary'); summary.textContent = tr('查看 {0} 项', group.steps.length);
                 const identifiers = document.createElement('ul');
                 for (const step of group.steps) {
@@ -677,5 +686,109 @@
         });
     }
 
-    window.AI2AppsCapabilities = { ensure, resume, probe, acknowledge, appInstanceId, chooseProfile, runSession, createTransferMeter, formatDownloadProgress };
+    function miniAppPackageComponents(item,placement){
+        const components=item.miniApps||item.manifest?.miniApps||item.latestRelease?.manifest?.miniApps||[];
+        return Array.isArray(components)?components.filter(c=>Array.isArray(c?.placements)&&c.placements.includes(placement)):[];
+    }
+    const miniAppHosts = {
+        'ai2apps.ai-browser': 'AI Browser',
+        'ai2apps.imagine-studio': 'Imagine Studio',
+        'ai2apps.video-studio': 'Video Studio',
+        'ai2apps.readaloud': 'Voice Studio',
+    };
+    async function createPrivateMiniAppProject({placement,name,requirements}) {
+        if(!miniAppHosts[placement])throw Error('Unsupported Mini-App placement');
+        name=String(name||'').trim();requirements=String(requirements||'').trim();
+        if(!name||name.length>120||!requirements||requirements.length>24000)throw Error('Enter a name and requirements');
+        const response=await fetch('/v1/platform/coder/projects',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,root_path:'private-mini-app-'+crypto.randomUUID(),kind:'ai2apps',create_directory:true,bootstrap:true})});
+        const project=await response.json();if(!response.ok)throw Error(project.detail?.message||project.detail||'Could not create private project');
+        if(!project.id)throw Error('Missing project identity');
+        let contract='Follow docs/ai2apps-studio-mini-app-package-contract-v1.md. Use the host SDK, declared capabilities and host-owned output. ';
+        if(placement==='ai2apps.ai-browser')contract+='Follow docs/ai2apps-browser-control-architecture.md; execute WebAgents through the shared background Task system and authenticated host SDK. ';
+        if(placement==='ai2apps.readaloud')contract+='All output must use the one host-owned Preview & Output based on Quick Read. Do not add per-Mini-App output history, playback, download or drag logic. Keep private Line caches and reference materials outside output retention/deletion. ';
+        const prompt='Build a private AI2Apps Mini-App Package for placement '+placement+'. '+contract+'Provide a fixed UI with one or more capabilities. Keep this project private and local; do not publish or upload it. Include validation and local installation instructions. User requirements:\n'+requirements;
+        sessionStorage.setItem('ai2apps.coder.mini-app-handoff',JSON.stringify({projectId:project.id,prompt}));
+        if(window.ai2appsShell?.openEntry)await window.ai2appsShell.openEntry({appId:'ai2apps.coder'});else window.open('/apps/ai2apps.coder','_top');
+        return project;
+    }
+    async function openMiniAppCustomization({placement}) {
+        if(!miniAppHosts[placement])throw Error('Unsupported Mini-App placement');
+        const labels=document.querySelector('.studio-mini-more')?.dataset||{};
+        const overlay=document.createElement('div');overlay.className='acpf-overlay';
+        overlay.innerHTML='<form class="acpf-sheet" role="dialog" aria-modal="true"><h2></h2><label data-name-label></label><input data-name required maxlength="120"><label data-request-label></label><textarea data-request required maxlength="24000" rows="7"></textarea><p class="acpf-error" role="status"></p><div class="acpf-actions"><button type="button" class="acpf-secondary" data-cancel></button><button type="submit" class="acpf-primary" data-confirm></button></div></form>';
+        overlay.querySelector('h2').textContent=labels.customTitle||'Customize Mini-App';
+        overlay.querySelector('[data-name-label]').textContent=labels.customName||'Name';
+        overlay.querySelector('[data-request-label]').textContent=labels.customRequest||'Your requirements';
+        const cancel=overlay.querySelector('[data-cancel]'),confirm=overlay.querySelector('[data-confirm]'),form=overlay.querySelector('form');
+        cancel.textContent=labels.customCancel||'Cancel';confirm.textContent=labels.customConfirm||'Open Coder';
+        const previous=document.activeElement;let busy=false;document.body.append(overlay);overlay.querySelector('[data-name]').focus();
+        return new Promise(resolve=>{
+            const finish=()=>{if(busy)return;document.removeEventListener('keydown',keys);overlay.remove();previous?.focus?.();resolve();};
+            const keys=event=>{if(event.key==='Escape'){event.preventDefault();finish();}if(event.key==='Tab'){const nodes=[...overlay.querySelectorAll('input,textarea,button:not(:disabled)')],i=nodes.indexOf(document.activeElement);if(event.shiftKey&&i<=0){event.preventDefault();nodes.at(-1).focus();}else if(!event.shiftKey&&(i<0||i===nodes.length-1)){event.preventDefault();nodes[0].focus();}}};
+            document.addEventListener('keydown',keys);cancel.onclick=finish;
+            form.onsubmit=async event=>{event.preventDefault();if(busy||!form.reportValidity())return;busy=true;cancel.disabled=true;confirm.disabled=true;
+                try{await createPrivateMiniAppProject({placement,name:overlay.querySelector('[data-name]').value,requirements:overlay.querySelector('[data-request]').value});busy=false;finish();}
+                catch(error){overlay.querySelector('.acpf-error').textContent=error.message;}
+                finally{busy=false;cancel.disabled=false;confirm.disabled=false;}
+            };
+        });
+    }
+    async function openMiniAppPackages({placement}) {
+        if(!miniAppHosts[placement])throw Error('Unsupported Mini-App placement');
+        const hostName=miniAppHosts[placement];
+        const zh=/^zh/i.test(document.documentElement.lang),label=(cn,en)=>zh?cn:en;
+        const overlay=document.createElement('div');overlay.className='acpf-overlay acpf-choice-overlay';
+        overlay.innerHTML='<section class="acpf-sheet acpf-choice-sheet" role="dialog" aria-modal="true"><header class="acpf-choice-header"><div class="acpf-heading"><span>AI2APPS MINI-APPS</span><h2></h2><p></p></div></header><div class="acpf-mini-catalog"></div><p class="acpf-error" role="status"></p><div class="acpf-actions"><button type="button" class="acpf-secondary" data-more></button><button type="button" class="acpf-secondary" data-close></button></div></section>';
+        overlay.querySelector('h2').textContent=label('安装 '+hostName+' Mini-App','Install '+hostName+' Mini-Apps');
+        overlay.querySelector('.acpf-heading p').textContent=label('只显示声明支持 '+hostName+' 的 Package。安装使用系统签名校验和依赖检查。','Only Packages declaring '+hostName+' support are shown. Installation uses system signature and dependency checks.');
+        const list=overlay.querySelector('.acpf-mini-catalog'),error=overlay.querySelector('.acpf-error'),more=overlay.querySelector('[data-more]'),close=overlay.querySelector('[data-close]');
+        more.textContent=label('加载更多','Load more');close.textContent=label('关闭','Close');
+        let cursor='',busy=false,installed=false;const seen=new Set();
+        const previous=document.activeElement;document.body.append(overlay);close.focus();
+        return await new Promise(resolve=>{
+            const finish=()=>{if(busy)return;document.removeEventListener('keydown',keys);overlay.remove();previous?.focus?.();resolve({installed});};
+            const keys=event=>{if(event.key==='Escape'){event.preventDefault();finish();}if(event.key==='Tab'){const nodes=[...overlay.querySelectorAll('button:not(:disabled),a[href]')];if(!nodes.length)return;const i=nodes.indexOf(document.activeElement);if(event.shiftKey&&i<=0){event.preventDefault();nodes.at(-1).focus();}else if(!event.shiftKey&&(i<0||i===nodes.length-1)){event.preventDefault();nodes[0].focus();}}};
+            document.addEventListener('keydown',keys);close.onclick=finish;
+            const install=async(item,button)=>{
+                busy=true;close.disabled=true;more.disabled=true;button.disabled=true;error.textContent='';
+                try{
+                    const id=item.packageId||item.package?.id||item.manifest?.package?.id;
+                    if(!/^[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+$/.test(id||''))throw Error('Invalid Package identity');
+                    const path='/packages/'+id.split('/').map(encodeURIComponent).join('/');
+                    let op=await request(path+'/install-operations',{method:'POST',body:JSON.stringify({version:item.latestVersion||item.version||item.latestRelease?.version||null,approve_review:false})});
+                    while(['pending','running'].includes(op.status)){
+                        error.textContent=label('正在安装：','Installing: ')+(op.stage||op.status);
+                        await new Promise(r=>setTimeout(r,750));op=await request('/packages/install-operations/'+encodeURIComponent(op.operationId));
+                    }
+                    if(op.status!=='completed'&&op.status!=='succeeded')throw Error(op.error?.message||label('安装未完成，请在“发现”查看审核或依赖要求。','Installation did not finish. Check Discover for review or dependency requirements.'));
+                    installed=true;button.textContent=label('已安装','Installed');error.textContent=label('安装完成，可关闭此窗口。','Installed. You can close this window.');
+                }catch(e){error.textContent=String(e.message);button.disabled=false;}
+                finally{busy=false;close.disabled=false;more.disabled=false;}
+            };
+            const load=async()=>{
+                more.disabled=true;error.textContent=label('正在加载…','Loading…');
+                try{
+                    let pages=0;
+                    do{
+                        const result=await request('/packages/catalog/search?type=app&limit=100'+(cursor?'&cursor='+encodeURIComponent(cursor):''));
+                        cursor=result.nextCursor||result.next_cursor||result.pagination?.nextCursor||result.pagination?.next_cursor||'';
+                        const rows=Array.isArray(result)?result:(result.items||result.packages||result.results||[]);
+                        for(const item of rows){
+                            const id=item.packageId||item.package?.id||item.manifest?.package?.id;
+                            const compatible=miniAppPackageComponents(item,placement);
+                            if(!compatible.length||seen.has(id))continue;seen.add(id);
+                            const card=document.createElement('article');card.className='acpf-mini-package';const title=document.createElement('strong'),description=document.createElement('p'),button=document.createElement('button');
+                            title.textContent=item.displayName||item.package?.displayName||id;description.textContent=compatible.map(c=>c.displayName||c.componentId).join(' · ');button.className='acpf-primary';button.textContent=label('安装 Mini-App','Install Mini-App');button.onclick=()=>install(item,button);card.append(title,description,button);list.append(card);
+                        }
+                        pages++;
+                    }while(!seen.size&&cursor&&pages<5);
+                    error.textContent=seen.size?'':label('暂无已发布且适配 '+hostName+' 的 Mini-App Package。','No published '+hostName+' Mini-App Packages are available.');more.hidden=!cursor;
+                }catch(e){error.textContent=String(e.message);}
+                finally{more.disabled=false;}
+            };
+            more.onclick=load;void load();
+        });
+    }
+
+    window.AI2AppsCapabilities = { createPrivateMiniAppProject, openMiniAppCustomization, miniAppPackageComponents, openMiniAppPackages, ensure, resume, probe, acknowledge, appInstanceId, chooseProfile, runSession, createTransferMeter, formatDownloadProgress };
 })();

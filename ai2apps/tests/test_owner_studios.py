@@ -31,6 +31,36 @@ def test_studio_entry_exported(key):
 def test_unexported_routes_stay_denied(method,path):
     assert not studio.allowed(method,path)
 
+
+@pytest.mark.parametrize('method,path',[
+    ('GET','/v1/platform/studios/ai2apps.imagine-studio/mini-app-mounts/mnt_test/draft'),
+    ('PUT','/v1/platform/studios/ai2apps.imagine-studio/mini-app-mounts/mnt_test/draft'),
+    ('DELETE','/v1/platform/studios/ai2apps.imagine-studio/mini-app-mounts/mnt_test/draft'),
+    ('GET','/v1/platform/imagine-studio/frozen-time/models'),
+    ('POST','/v1/platform/imagine-studio/frozen-time/mounts/mnt_test/previews'),
+    ('GET','/v1/platform/imagine-studio/frozen-time/previews/key/video'),
+    ('POST','/v1/platform/imagine-studio/frozen-time/mounts/mnt_test/runs'),
+    ('POST','/v1/platform/imagine-studio/runs/run/frozen-time'),
+    ('GET','/v1/platform/imagine-studio/runs/run/frozen-content/output.mp4'),
+    ('POST','/v1/platform/imagine-studio/frozen-time/mounts/mnt_test/runs/run/convert'),
+])
+def test_frozen_mobile_startup_and_workflow_exact_exports(method,path):
+    assert studio.allowed(method,path)
+    with TestClient(studio.create_app(lambda:None)) as client:
+        assert client.request(method,path).status_code==401
+
+
+@pytest.mark.parametrize('method,path',[
+    ('POST','/v1/platform/imagine-studio/runs/run/save-live-photo'),
+    ('POST','/v1/platform/imagine-studio/frozen-time/mounts/mnt_test/runs/run/save-live-photo'),
+    ('POST','/v1/platform/client/native-export/id/complete'),
+    ('GET','/v1/platform/client/native-export/next'),
+    ('POST','/v1/platform/studios/ai2apps.imagine-studio/mini-app-mounts/mnt_test/draft'),
+    ('GET','/v1/platform/studios/ai2apps.account/mini-app-mounts/mnt_test/draft'),
+])
+def test_mobile_draft_and_frozen_exports_do_not_expose_native_save(method,path):
+    assert not studio.allowed(method,path)
+
 @pytest.mark.parametrize('path', ['/v1/platform/imagine-studio/mini-apps',
     '/v1/platform/readaloud/mini-apps', '/v1/platform/video-studio/mini-apps'])
 def test_direct_isolated_app_requires_authority(path):
@@ -62,6 +92,20 @@ def test_frozen_inventory_matches_real_router():
     assert '/v1/platform/sessions/{session_id}/workspace' not in paths
 
 
+def test_owner_package_draft_through_public_boundary(env, monkeypatch):
+    from ai2apps.api import studio_mini_apps as api
+    client, _, manager, _, _ = env
+    runtime = owner._runtime()
+    runtime.extension_manager = manager
+    manager.instance_entry.return_value = {'app_key': 'ai2apps.imagine-studio'}
+    mounted = SimpleNamespace(mount={'context': {'studioInstanceId': 'studio'}}, declaration={'id': 'ai2apps.imagine.frozen-time'})
+    monkeypatch.setattr(api, 'StudioCapabilityBroker', lambda _: SimpleNamespace(mounted_mini_app=lambda *a, **k: mounted))
+    monkeypatch.setattr(api, 'authorize_app_instance', lambda *a: None)
+    response = client.get('/v1/platform/studios/ai2apps.imagine-studio/mini-app-mounts/mnt_test/draft')
+    assert response.status_code == 200, response.text
+    assert response.json() == {'value': None}
+
+
 def test_member_is_not_promoted_to_owner():
     actor=replace(RequestPrincipal.legacy_local(),role=MemberRole.MEMBER,authentication_type='owner_home_lease')
     service=SimpleNamespace(principal=lambda _:actor)
@@ -76,7 +120,7 @@ def test_real_mobile_templates_and_static_dependencies(env,key):
     client,*_=env
     response=client.get('/mobile/app-content/'+key)
     assert response.status_code==200
-    assert 'studio_mobile.js' in response.text
+    assert ('data-mobile-open-app' if key=='ai2apps.ai-browser' else 'studio_mobile.js') in response.text
     assert '/admin/static/' not in response.text
     for asset in re.findall(r'(?:src|href)="/mobile/static/([^"?]+)',response.text):
         assert asset in routes.MOBILE_STATIC_FILES, asset
@@ -169,3 +213,54 @@ def test_disabled_studio_rejects_direct_api(env):
     policy=MobileAppPolicy(routes._get_platform_runtime().database)
     policy.set_enabled(actor.installation_id,'ai2apps.imagine-studio',False)
     assert client.get('/v1/platform/imagine-studio/mini-apps').status_code==403
+
+
+def test_nested_router_exports_only_exact_methods_and_paths():
+    from fastapi import APIRouter, FastAPI, Depends
+    calls = []
+    def guard():
+        calls.append('guard')
+    child = APIRouter(dependencies=[Depends(guard)])
+    child.add_api_route('/ok', lambda: {'ok': True}, methods=['GET', 'POST'])
+    child.add_api_route('/private', lambda: {'secret': True}, methods=['GET'])
+    middle = APIRouter()
+    middle.include_router(child, prefix='/inner')
+    root = APIRouter()
+    root.include_router(middle, prefix='/outer')
+    studio.restrict_router(root, {('GET', '/v1/platform/outer/inner/ok')})
+    app = FastAPI()
+    app.include_router(root, prefix='/v1/platform')
+    with TestClient(app) as client:
+        assert client.get('/v1/platform/outer/inner/ok').json() == {'ok': True}
+        assert calls == ['guard']
+        assert client.post('/v1/platform/outer/inner/ok').status_code == 405
+        assert client.get('/v1/platform/outer/inner/private').status_code == 404
+
+def test_ai_browser_mobile_gateway_entry_assets_and_authoring_boundary(env,monkeypatch):
+    from ai2apps.apps.system import SYSTEM_APP_MANIFESTS
+    from ai2apps.web import mobile_app_gateway as host
+    client,record,shell,_,actor=env
+    spec=next(m for m in SYSTEM_APP_MANIFESTS if m['id']=='ai2apps.ai-browser')['mobile']['gateway']
+    shell.mount_entry.return_value={'id':'mount','app_key':'ai2apps.ai-browser','app_instance_id':'instance','renderer':'host','placement':'mobile','source':'builtin'}
+    monkeypatch.setattr(host,'descriptor',lambda manager,mount:spec)
+    response=client.get('/mobile/app-resource/mount/instance/entry')
+    assert response.status_code==200,response.text[:300]
+    assert 'aib-mobile' in response.text and 'mobile-app-gateway' in response.text
+    for asset in spec['assets']:
+        assert client.get('/mobile/app-resource/mount/instance/assets/'+asset).status_code==200,asset
+    assert client.get('/mobile/app-resource/mount/instance/assets/js/agent_mini.js').status_code==404
+    for path in ['/v1/platform/agent-drafts','/v1/platform/client/browser-bidi-ticket','/v1/platform/client/browser-profiles/default/launch']:
+        result=client.post('/v1/mobile/app-mounts/mount/bridge',json={'method':'request','verb':'POST','path':path,'body':''})
+        assert result.status_code==200
+        assert result.json()['status'] in (404,405)
+    assert not studio.allowed('POST','/v1/platform/browser-workspace/tasks')
+    assert not studio.allowed('POST','/v1/platform/client/browser-bidi-ticket')
+    assert studio.allowed('GET','/v1/platform/studios/ai2apps.ai-browser/mini-apps')
+    assert studio.allowed('POST','/v1/platform/studios/ai2apps.ai-browser/mini-app-mounts/mount/web-agent/tasks')
+    profiles=client.post('/v1/mobile/app-mounts/mount/bridge',json={'method':'request','verb':'GET','path':'/v1/platform/client/browser-profiles','body':''})
+    assert profiles.status_code==200 and profiles.json()['status']==200
+    from ai2apps.api.ai_browser_mobile import create_ai_browser_mobile_router
+    from fastapi import FastAPI
+    app=FastAPI()
+    app.include_router(create_ai_browser_mobile_router(lambda: None,lambda: actor),prefix='/v1/platform')
+    assert 'get' in app.openapi()['paths']['/v1/platform/studios/{studio_id}/mini-app-mounts/{mount_id}/capabilities']

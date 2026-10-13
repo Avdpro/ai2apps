@@ -135,3 +135,102 @@ def test_mobile_highlight_roundtrip_and_old_client(env):
     assert c.put('/v1/mobile/todo/tasks/'+foreign['id'],json={**body,'revision':foreign['revision'],'highlight':'blue'}).status_code==404
     created=c.post('/v1/mobile/todo/tasks',json={'directory_id':d['id'],'title':'New','highlight':'pink'})
     assert created.status_code==200 and created.json()['highlight']=='pink'
+
+
+def test_navigation_trace_bounded_and_logged(env, caplog):
+    import logging
+    c, _ = env
+    body = {'session': '00000000-0000-0000-0000-000000000001', 'surface': 'todo',
+            'events': [{'event': 'popstate', 'seq': 1, 'at': 1000, 'mono': 30,
+                        'route': 'list', 'visible': True, 'detail': True,
+                        'document_id': '00000000-0000-0000-0000-000000000002',
+                        'persisted': True, 'navigation': 'back_forward'}]}
+    with caplog.at_level(logging.INFO, logger='ai2apps.web.mobile_todo'):
+        assert c.post('/v1/mobile/todo/navigation-trace', json=body).json() == {'accepted': 1}
+    assert 'MOBILE_NAV_TRACE' in caplog.text
+    assert 'popstate' in caplog.text
+    body['events'][0]['title'] = 'Must not accept task content'
+    assert c.post('/v1/mobile/todo/navigation-trace', json=body).status_code == 422
+    del body['events'][0]['title']
+    body['events'] *= 41
+    assert c.post('/v1/mobile/todo/navigation-trace', json=body).status_code == 422
+    assert public_allowed('POST', '/v1/mobile/todo/navigation-trace')
+    assert not public_allowed('GET', '/v1/mobile/todo/navigation-trace')
+
+
+def test_mobile_emoji_roundtrip_and_quick_edit_preservation(env):
+    c, s = env
+    directory = s.directory('alice', 'Emoji')
+    created = c.post('/v1/mobile/todo/tasks', json={
+        'directory_id': directory['id'], 'title': 'Task', 'emoji': '👩🏽‍💻',
+    })
+    assert created.status_code == 200
+    task = created.json()
+    assert task['emoji'] == '👩🏽‍💻'
+    assert c.get('/v1/mobile/todo').json()['tasks'][0]['emoji'] == '👩🏽‍💻'
+    url = '/v1/mobile/todo/tasks/' + task['id']
+    saved = c.put(url, json={'title': 'Task', 'revision': task['revision'],
+                            'status': 'in_progress', 'progress': 25}).json()
+    assert saved['emoji'] == '👩🏽‍💻'
+    for emoji in ['🚀', '']:
+        response = c.put(url, json={'title': 'Task', 'revision': saved['revision'], 'emoji': emoji})
+        assert response.status_code == 200
+        saved = response.json()
+        assert saved['emoji'] == emoji
+        assert s.get('alice', task['id'])['emoji'] == emoji
+    for invalid in ['hello', '🚀🎯']:
+        assert c.put(url, json={'title': 'Task', 'revision': saved['revision'],
+                               'emoji': invalid}).status_code == 422
+
+
+def test_mobile_emoji_generation_scope_and_drafts(env, monkeypatch):
+    c, s = env
+    calls = []
+    async def generate(runtime, store, principal, request, body, task_id=None):
+        calls.append((principal.actor_user_id, task_id, body.title))
+        return {'emoji': '🚀'}
+    monkeypatch.setattr('ai2apps.web.mobile_todo.generate_task_emoji', generate)
+    path = '/v1/mobile/todo/emoji/suggest'
+    assert public_allowed('POST', path)
+    assert not public_allowed('GET', path)
+    assert c.post(path, json={'title': 'Draft'}).json() == {'emoji': '🚀'}
+    assert s.snapshot('alice')['tasks'] == []
+    own = s.save('alice', {'title': 'Own', 'directory_id': s.directory('alice', 'Own')['id']})
+    assert c.post(path, json={'title': 'Edited', 'task_id': own['id']}).status_code == 200
+    foreign = s.save('bob', {'title': 'Private', 'directory_id': s.directory('bob', 'Private')['id']})
+    assert c.post(path, json={'title': 'Private', 'task_id': foreign['id']}).status_code == 404
+    assert len(calls) == 2
+    assert s.get('alice', own['id'])['emoji'] == ''
+
+
+def test_mobile_emoji_missing_model(env):
+    c, _ = env
+    response = c.post('/v1/mobile/todo/emoji/suggest', json={'title': 'Draft'})
+    assert response.status_code == 409
+    assert 'Standard tasks model' in response.json()['detail']
+
+
+def test_mobile_attachment_list_preview_and_owner_boundary(env):
+    import io
+    from PIL import Image
+    c,s=env
+    d=s.directory('alice','Photos')
+    task=s.save('alice',{'directory_id':d['id'],'title':'Photo task'})
+    content=io.BytesIO()
+    Image.new('RGB',(20,10),'blue').save(content,format='PNG')
+    file=s.add_attachment('alice',task['id'],'photo.png',content.getvalue())
+    url='/v1/mobile/todo/attachments/'+file['id']
+    assert c.get('/v1/mobile/todo').json()['attachments'][0]['id']==file['id']
+    assert c.get(url).content==content.getvalue()
+    response=c.get(url+'?preview=true')
+    assert response.status_code==200 and response.headers['content-type']=='image/png'
+    other=s.directory('bob','Private')
+    foreign=s.save('bob',{'directory_id':other['id'],'title':'Private'})
+    secret=s.add_attachment('bob',foreign['id'],'secret.png',content.getvalue())
+    assert c.get('/v1/mobile/todo/attachments/'+secret['id']+'?preview=true').status_code==404
+    s.lifecycle('alice',task['id'],'archive')
+    assert c.get('/v1/mobile/todo').json()['attachments']==[]
+    assert c.get(url+'?preview=true').status_code==404
+    assert public_allowed('GET',url)
+    assert not public_allowed('DELETE',url)
+    assert not public_allowed('POST',url)

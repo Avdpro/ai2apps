@@ -23,6 +23,8 @@ from .models import (
     BrowserSnapshot,
 )
 
+from .dom_visibility import DOM_VISIBILITY_SOURCE
+
 _READABILITY_SOURCE = Path(__file__).with_name("readability.js").read_text(
     encoding="utf-8"
 )
@@ -38,13 +40,7 @@ for (let index = 0; index < roots.length; index++) {
     if (host.shadowRoot) roots.push(host.shadowRoot);
   }
 }
-const visible = (el) => {
-  if (!el) return false;
-  const style = getComputedStyle(el);
-  const rect = el.getBoundingClientRect();
-  return style.visibility !== 'hidden' && style.display !== 'none' &&
-    rect.width > 0 && rect.height > 0;
-};
+const visible = ai2appsDOMVisible;
 const firstVisible = (selector) => roots.flatMap(
   root => [...root.querySelectorAll(selector)]
 ).find(visible);
@@ -69,14 +65,7 @@ const clone = document.cloneNode(true);
 const warnings = [];
 let hiddenNodesRemoved = 0;
 
-const hardHidden = (el) => {
-  if (!el || !el.isConnected) return false;
-  if (el.closest('[hidden],[aria-hidden="true"],[inert]')) return true;
-  const style = getComputedStyle(el);
-  return style.display === 'none' || style.visibility === 'hidden' ||
-    style.visibility === 'collapse' || style.opacity === '0' ||
-    style.contentVisibility === 'hidden';
-};
+const hardHidden = el => !!el?.isConnected && !ai2appsDOMVisible(el, {requireBox:false});
 
 // The live and cloned trees have identical child ordering at this point. Use
 // computed style from the rendered page while deleting only from the clone.
@@ -357,12 +346,7 @@ const similarity = (left, right) => {
   const union = new Set([...a, ...b]).size;
   return union ? intersection / union : 0;
 };
-const visible = el => {
-  if (!el || el.closest('[hidden],[aria-hidden="true"],[inert]')) return false;
-  const style = getComputedStyle(el), rect = el.getBoundingClientRect();
-  return style.display !== 'none' && style.visibility !== 'hidden' &&
-    style.opacity !== '0' && rect.width > 0 && rect.height > 0;
-};
+const visible = ai2appsDOMVisible;
 const scored = [];
 for (const root of allRoots()) for (const el of root.querySelectorAll(selector)) {
   if (!visible(el)) continue;
@@ -444,6 +428,11 @@ return {readyState:document.readyState,
         quietMs:performance.now()-window.__ai2appsDomStability.lastMutation,
         mutations:window.__ai2appsDomStability.count};
 """
+
+
+# Legacy backend scripts use the same visibility source as the native SDK.
+for _script_name in ('_SNAPSHOT_SCRIPT', '_AUTH_SCRIPT', '_ARTICLE_SCRIPT', '_RELOCATE_SCRIPT'):
+    globals()[_script_name] = DOM_VISIBILITY_SOURCE + '\n' + globals()[_script_name]
 
 
 class _BiDiEventClient:

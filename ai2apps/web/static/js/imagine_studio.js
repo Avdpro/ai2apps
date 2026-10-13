@@ -461,6 +461,8 @@
             locale,
         };
     }
+    Object.assign(TRANSLATIONS.zh, {frozenPreview:'交互预览'});
+    Object.assign(TRANSLATIONS.en, {frozenPreview:'Interactive preview'});
     window.imagineStudioApp = function () { return {
         locale: normalizedLocale(document.documentElement.lang), miniApps: localizedMiniApps(document.documentElement.lang), miniAppId: 'ai2apps.imagine.text-to-image', leftView: 'mini-apps', prompt: '',
         groupBackgroundDescription: '', groupAtmosphere: '', groupPose: '',
@@ -623,6 +625,7 @@
         adjustmentLocked: false, adjustmentPresets: [], selectedAdjustmentPresetId: '', adjustmentPresetName: '', adjustmentPresetDialogOpen: false,
         adjustmentBatchOpen: false, adjustmentBatchSource: 'files', adjustmentBatchFiles: [], adjustmentBatchOutputMode: 'save-as', adjustmentBatchOutputDirectory: '', adjustmentBatchBusy: false, adjustmentBatchDone: 0, adjustmentBatchTotal: 0,
         referenceFiles: [], referencePreviews: [], referenceDimensions: [], referenceAssets: [], runs: [], selectedRunId: '', selectedArtifactId: '', generating: false, refreshing: false, configuringLocal: false, currentRunController: null,
+        packageCatalogLoading: false, packageCatalogError: '',
         notice: '', noticeTone: 'error', noticeTimer: null, clientEnvironment: 'browser', galleryMiniUrl: '', galleryMiniMountId: '', galleryMiniLoading: false, galleryMiniError: '', galleryMessageHandler: null, hostContextHandler: null,
         chatController: null, chatMiniUrl: '', packageChatBridge: null,
         galleryActiveCollectionId: 'recent', galleryActiveCollectionName: 'Recent', galleryDragActive: false, gallerySlotTarget: null,
@@ -728,6 +731,12 @@
             this.hostContextHandler = event => this.setLocale(event.detail?.locale);
             window.addEventListener('message', this.galleryMessageHandler);
             window.addEventListener('ai2apps:host-context', this.hostContextHandler);
+            window.addEventListener('ai2apps:studio-output', async event => {
+                if (event.detail?.studioId !== APP_ID) return;
+                await this.refreshRuns();
+                const run = this.runs.find(item => item.id === event.detail.runId);
+                if (run) this.selectRun(run);
+            });
             window.addEventListener('beforeunload', () => this.cleanup(), { once: true });
             this.$watch('modelId', () => this.applySelectedModelCapability());
             await this.refresh();
@@ -1298,11 +1307,21 @@
         showLeftView(view) { this.leftView = view === 'assets' ? 'assets' : (view === 'chat' && this.miniAppChatEnabled ? 'chat' : 'mini-apps'); if (this.leftView === 'assets' && !this.galleryMiniUrl) this.mountGalleryMini(); if (this.leftView === 'chat') this.mountMiniAppChat(); this.persistPreferences(); this.icons(); },
         async selectMiniApp(id) { if (this.mobileViewport && id === this.miniAppId) { this.mobileSurface = 'create'; this.icons(); return; } if (this.generating || this.stickerBatchBusy) return; const selected = this.miniApps.find(item => item.id === id); if (!selected || selected.status !== 'ready') return; if (!this.packageMiniAppId) await this.saveDraft().catch(() => {}); disposeRenderableImage(this.adjustBitmap); this.adjustBitmap = null; this.miniAppId = id; if (this.leftView !== 'chat') this.leftView = 'mini-apps'; this.recentMiniApps = [id, ...this.recentMiniApps.filter(value => value !== id)].slice(0, 8); if (selected.source === 'package') { await this.mountPackageMiniApp(selected); if (!this.miniAppChatEnabled && this.leftView === 'chat') this.leftView = 'mini-apps'; this.persistPreferences(); this.mobileSurface = 'create'; return; } this.packageChatBridge?.dispose(); this.packageChatBridge = null; this.packageMiniAppId = ''; this.packageMiniAppUrl = ''; this.packageMiniAppError = ''; this.referenceFiles = []; this.referencePreviews.forEach(url => { if (url) URL.revokeObjectURL(url); }); this.referencePreviews = []; this.referenceDimensions = []; this.referenceAssets = []; const draft = await this.loadDraft(id); this.trimReferences(); this.reconcileSelectedModel(); if (this.prefersOpenAIModel && !draft?.modelId) { this.preferOpenAIEditingModel(); this.applySelectedModelCapability(); } if (['edit', 'style-transfer', 'group-photo'].includes(this.currentMiniApp.mode) && this.referenceDimensions[0]) this.matchEditAspect(this.referenceDimensions[0]); this.chatController?.changed(); this.persistPreferences(); this.mobileSurface = 'create'; this.icons(); },
         async refreshPackageMiniApps() {
+            if (this.packageCatalogLoading) return;
+            this.packageCatalogLoading = true;
+            this.packageCatalogError = '';
             try {
-                const catalog = await window.AI2AppsStudioMiniApps?.list(APP_ID);
-                this.miniApps = [...this.miniApps, ...(catalog?.items || []).filter(item => item.source === 'package').map(item => packageMiniApp(item, this.locale))];
+                if (!window.AI2AppsStudioMiniApps?.list) throw new Error('Mini-App SDK did not load');
+                const catalog = await window.AI2AppsStudioMiniApps.list(APP_ID);
+                if (!Array.isArray(catalog?.items)) throw new Error('Invalid Mini-App catalog response');
+                this.miniApps = [...this.miniApps.filter(item => item.source !== 'package'), ...catalog.items.filter(item => item.source === 'package').map(item => packageMiniApp(item, this.locale))];
                 await this.refreshAllPackageMiniAppReadiness();
-            } catch (_) { /* Built-in catalog remains available. */ }
+            } catch (error) {
+                this.packageCatalogError = (this.locale.startsWith('zh')
+                    ? '扩展 Mini-App 列表加载失败（静止时间等）。'
+                    : 'Package Mini-Apps could not load (including Frozen Time).')
+                    + ' ' + String(error?.message || error).slice(0, 300);
+            } finally { this.packageCatalogLoading = false; }
         },
         miniAppReady(item) { return item?.source !== 'package' || this.packageMiniAppReadiness[item.id] === true; },
         async refreshAllPackageMiniAppReadiness() {
@@ -1317,7 +1336,9 @@
                 const probe = await window.AI2AppsStudioMiniApps.probe(APP_ID, mountId);
                 const capabilities = Array.isArray(probe?.items) ? probe.items : [];
                 const required = capabilities.filter(value => value?.required !== false);
-                const ready = required.length > 0 && required.every(value => value?.implemented === true && value?.ready === true);
+                const ready = item.id === 'ai2apps.imagine.frozen-time'
+                    ? capabilities.some(value => value?.implemented === true && value?.ready === true)
+                    : required.length > 0 && required.every(value => value?.implemented === true && value?.ready === true);
                 this.packageMiniAppReadiness = { ...this.packageMiniAppReadiness, [item.id]: ready };
                 return ready;
             } catch (_) {
@@ -1354,7 +1375,8 @@
             } catch (error) { this.packageMiniAppError = error?.message || String(error); }
             finally { this.packageMiniAppLoading = false; this.chatController?.changed(); this.icons(); }
         },
-        openCoder() { if (window.ai2appsShell?.openEntry) window.ai2appsShell.openEntry({ appId: 'ai2apps.coder', query: { template: 'mini-app', placement: APP_ID } }); else window.open('/apps/ai2apps.coder?template=mini-app&placement='+encodeURIComponent(APP_ID), '_blank', 'noopener'); },
+        async installMiniApps() { try { const result=await window.AI2AppsCapabilities.openMiniAppPackages({placement:APP_ID}); if(result.installed){await this.refreshPackageMiniApps(); this.icons();} } catch(error){this.fail(error);} },
+        async openCoder() { try { await window.AI2AppsCapabilities.openMiniAppCustomization({placement:APP_ID}); } catch(error){this.fail(error);} },
         trimReferences() {
             const limit = this.referenceSlotCount;
             for (let index = limit; index < this.referencePreviews.length; index += 1) if (this.referencePreviews[index]) URL.revokeObjectURL(this.referencePreviews[index]);
@@ -1572,7 +1594,25 @@
                 this.$refs.galleryMini?.contentWindow?.postMessage({ type: 'ai2apps.gallery.refresh' }, window.location.origin); this.success(this.tr('addedToGallery', { name: this.galleryActiveCollectionName }));
             } catch (error) { this.fail(error); } finally { artifact.adding = false; this.runs = [...this.runs]; this.icons(); }
         },
-        downloadArtifact(event, url) { if (!url) { event.preventDefault(); this.fail(new Error(this.tr('invalidHistoryUrl'))); return; } if (this.clientEnvironment !== 'desktop') this.success(this.tr('downloadStarted')); },
+        async downloadArtifact(event, url) {
+            if (!url) { event.preventDefault(); this.fail(new Error(this.tr('invalidHistoryUrl'))); return; }
+            const artifact=this.activeArtifact;
+            let inLocalShell=this.clientEnvironment==='desktop'||!!window.ai2appsShell;
+            try {inLocalShell=inLocalShell||!!window.parent?.ai2appsShell;} catch (_) { /* Cross-origin browser embedding is not a Local Shell. */ }
+            if (inLocalShell && artifact?.metadata?.miniAppId==='ai2apps.imagine.frozen-time'
+                && ['LivePhoto.pvt.zip','live-photo.zip'].includes(artifact.name)) {
+                event.preventDefault();
+                if (artifact.savingPvt) return;
+                artifact.savingPvt=true;
+                try {
+                    const saved=await responsePayload(await fetch(`${STUDIO_API}/runs/${encodeURIComponent(artifact.runId)}/save-live-photo`,
+                        {method:'POST',credentials:'same-origin',headers:this.historyHeaders()}));
+                    if (!saved.cancelled) this.success(saved.path);
+                } catch(error) {this.fail(error);} finally {artifact.savingPvt=false;}
+                return;
+            }
+            if (this.clientEnvironment !== 'desktop') this.success(this.tr('downloadStarted'));
+        },
 
         async mountGalleryMini(force = false) {
             if (this.galleryMiniLoading || (this.galleryMiniUrl && !force)) return;
@@ -1599,7 +1639,8 @@
         dragOutputImage(event, artifact) {
             if (!artifact?.id || !event.dataTransfer) { event.preventDefault(); return; }
             event.dataTransfer.effectAllowed = 'copy';
-            event.dataTransfer.setData('application/x-ai2apps-image-result', JSON.stringify({artifactId: artifact.id, appInstanceId: this.appInstanceId()}));
+            event.dataTransfer.setData('application/x-ai2apps-studio-artifact', JSON.stringify({studioId:APP_ID,artifactId:artifact.id,appInstanceId:this.appInstanceId()}));
+            if (artifact.kind === 'image') event.dataTransfer.setData('application/x-ai2apps-image-result', JSON.stringify({artifactId: artifact.id, appInstanceId: this.appInstanceId()}));
             // Keep the native URL format for Gallery and external drop targets.
             event.dataTransfer.setData('text/uri-list', new URL(artifact.previewUrl, window.location.origin).href);
             event.dataTransfer.setData('text/plain', new URL(artifact.previewUrl, window.location.origin).href);

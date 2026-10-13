@@ -4590,7 +4590,51 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(version=87, name="shared_webagent_programs", statements=(
         "CREATE TABLE browser_task_programs (task_id TEXT PRIMARY KEY REFERENCES browser_tasks(id), owner TEXT NOT NULL, caller_app_id TEXT NOT NULL, ir_json TEXT NOT NULL CHECK(json_valid(ir_json)))",
     )),
+    Migration(version=88, name="composite_task_tree", statements=(
+        "CREATE TABLE task_nodes (id TEXT PRIMARY KEY, owner TEXT NOT NULL, parent_id TEXT REFERENCES task_nodes(id), root_id TEXT NOT NULL, kind TEXT NOT NULL, name TEXT NOT NULL, status TEXT NOT NULL, result_json TEXT NOT NULL DEFAULT '{}', created_at REAL NOT NULL, updated_at REAL NOT NULL)",
+        "CREATE INDEX task_nodes_owner_root ON task_nodes(owner,root_id,parent_id)",
+        "ALTER TABLE browser_tasks ADD COLUMN parent_task_id TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE browser_tasks ADD COLUMN root_task_id TEXT NOT NULL DEFAULT ''",
+        "CREATE INDEX browser_tasks_root ON browser_tasks(owner,root_task_id,profile_key,status)",
+    )),
+    Migration(version=89, name="webagent_execution_tree", statements=(
+        "ALTER TABLE browser_tasks ADD COLUMN execution_task_id TEXT NOT NULL DEFAULT ''",
+        "CREATE INDEX browser_tasks_execution_node ON browser_tasks(owner,execution_task_id)",
+    )),
+    Migration(version=90, name="pause_waiting_browser_runs", statements=(
+        "DROP TRIGGER agent_run_status_transition",
+        """
+            CREATE TRIGGER agent_run_status_transition
+            BEFORE UPDATE OF status ON agent_runs
+            WHEN NEW.status != OLD.status AND NOT (
+                (OLD.status = 'queued' AND NEW.status IN (
+                    'planning', 'interrupted', 'cancelled'
+                )) OR
+                (OLD.status = 'planning' AND NEW.status IN (
+                    'running', 'queued', 'interrupted', 'failed', 'cancelled'
+                )) OR
+                (OLD.status = 'running' AND NEW.status IN (
+                    'queued', 'waiting_input', 'waiting_capability',
+                    'interrupted', 'completed', 'failed', 'cancelled'
+                )) OR
+                (OLD.status IN ('waiting_input', 'waiting_capability')
+                    AND NEW.status IN ('queued', 'failed', 'cancelled')) OR
+                (OLD.status = 'waiting_input' AND NEW.status = 'interrupted') OR
+                (OLD.status = 'interrupted'
+                    AND NEW.status IN ('queued', 'failed', 'cancelled'))
+            )
+            BEGIN
+                SELECT RAISE(ABORT, 'invalid AgentRun status transition');
+            END
+        """,
+    )),
 )
+
+
+MIGRATIONS = (*MIGRATIONS, Migration(version=91, name="owner_custom_search_sources", statements=(
+    "CREATE TABLE custom_search_sources (id TEXT PRIMARY KEY, owner TEXT NOT NULL, url TEXT NOT NULL, config_json TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(owner,url))",
+    "CREATE INDEX custom_search_sources_owner ON custom_search_sources(owner,created_at)",
+)))
 
 
 def _validate_migrations(migrations: Sequence[Migration]) -> None:

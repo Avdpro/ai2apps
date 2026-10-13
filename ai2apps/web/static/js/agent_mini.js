@@ -1292,7 +1292,7 @@
         select.replaceChildren();
         for (const profile of profiles) {
             const option = document.createElement('option');
-            option.value = profile.key; option.textContent = profile.name || profile.key;
+            option.value = profile.key; option.textContent = profile.is_default ? window.t('browser.profile.default') : profile.name || profile.key;
             select.append(option);
         }
         select.value = state.context.profile_key || 'default';

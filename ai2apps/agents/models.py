@@ -241,6 +241,7 @@ class AgentExecutionContext:
     run: AgentRunRecord
     steps: tuple[RunStepRecord, ...]
     interactions: tuple[InteractionRecord, ...]
+    task_tree: Any = None
 
     def interaction(self, request_key: str) -> InteractionRecord | None:
         return next(

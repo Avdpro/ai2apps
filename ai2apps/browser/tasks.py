@@ -4,7 +4,7 @@ import json
 import time
 import uuid
 
-ACTIVE = ('starting', 'running', 'waiting_input', 'interrupted')
+ACTIVE = ('starting', 'running', 'waiting_input', 'interrupted', 'cancelling')
 TERMINAL = ('completed', 'failed', 'cancelled')
 
 class BrowserTaskRepository:
@@ -42,6 +42,8 @@ class BrowserTaskRepository:
         result = dict(row)
         for key in ('input', 'browser_context'):
             result[key] = json.loads(result.pop(key + '_json'))
+        context = result['browser_context']
+        result['holds_browser_slot'] = (result['status'] in ACTIVE or bool(result['run_id'] and (context.get('created_by_run') or context.get('owned_contexts')) and context.get('cleanup', {}).get('state', 'pending') == 'pending'))
         return result
 
     def settings(self, owner):
@@ -69,19 +71,29 @@ class BrowserTaskRepository:
             raise KeyError('Browser task not found')
         return self.decode(row)
 
-    def enqueue(self, owner, profile, agent, capability, generation, name, parameters, *, session_id="", idempotency_key=None, program=None, caller_app_id=""):
+    def enqueue(self, owner, profile, agent, capability, generation, name, parameters, *, session_id="", idempotency_key=None, program=None, caller_app_id="", retain_pages_reason="", parent_task_id="", reuse_page=False, model_profile="normal", parallel_limit=1):
+        if not isinstance(parallel_limit,int) or not 1<=parallel_limit<=3 or (parallel_limit>1 and (not parent_task_id or not caller_app_id)):raise ValueError('Parallel children require a trusted owning Task')
+        if model_profile not in {'normal', 'privacy'}: raise ValueError('Unknown model profile')
+        if reuse_page and not parent_task_id:raise ValueError('Page reuse requires an owning parent Task')
         import hashlib
         task_id = 'btask_' + (hashlib.sha256((owner+'\0'+idempotency_key).encode()).hexdigest() if idempotency_key else uuid.uuid4().hex)
         now = time.time()
         with self.database.transaction(write=True) as c:
             existing = c.execute('SELECT * FROM browser_tasks WHERE owner=? AND id=?', (owner, task_id)).fetchone()
             if existing:
+                if existing['parent_task_id'] != parent_task_id:
+                    raise ValueError('Idempotent browser task has another parent')
                 return self.decode(existing)
+            from .task_tree import TaskTreeRepository
+            root_task_id = TaskTreeRepository.binding(c, owner, parent_task_id) if parent_task_id else 'webtask:'+task_id
             count = c.execute("SELECT count(*) FROM browser_tasks WHERE owner=? AND status='queued'", (owner,)).fetchone()[0]
             if count >= 100:
                 raise ValueError('Task queue is full')
             c.execute('INSERT INTO browser_tasks(id,owner,profile_key,agent_id,capability,generation_id,name,input_json,browser_context_json,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)', (task_id, owner, profile, agent, capability, generation, name, json.dumps(parameters), '{}', 'queued', now, now))
-            c.execute("UPDATE browser_tasks SET session_id=? WHERE id=?", (session_id, task_id))
+            c.execute("UPDATE browser_tasks SET session_id=?,browser_context_json=? WHERE id=?", (session_id, json.dumps({'retain_pages_reason': str(retain_pages_reason or '').strip()[:500], 'reuse_scope': parent_task_id if reuse_page else '', 'model_profile': model_profile,'parallel_limit':parallel_limit}), task_id))
+            execution = 'execution:'+task_id if parent_task_id else root_task_id
+            TaskTreeRepository.create_in_transaction(c, owner, execution, name, parent_id=parent_task_id or None, kind='browser_execution' if parent_task_id else 'webagent', events=self.events)
+            c.execute('UPDATE browser_tasks SET parent_task_id=?,root_task_id=?,execution_task_id=? WHERE id=?', (parent_task_id, root_task_id, execution, task_id))
             if program is not None or caller_app_id:
                 c.execute('INSERT INTO browser_task_programs VALUES(?,?,?,?)', (task_id, owner, caller_app_id, json.dumps(program)))
             self._changed(c, owner, task_id)
@@ -92,17 +104,43 @@ class BrowserTaskRepository:
             row = c.execute('SELECT ir_json,caller_app_id FROM browser_task_programs WHERE task_id=? AND owner=?', (task_id, owner)).fetchone()
         return (json.loads(row['ir_json']), row['caller_app_id']) if row else (None, None)
 
+    @staticmethod
+    def _active_groups(c, owner):
+        rows = c.execute("SELECT id,root_task_id,profile_key FROM browser_tasks WHERE owner=? AND (status IN ('starting','running','waiting_input','interrupted','cancelling') OR (run_id!='' AND (json_extract(browser_context_json,'$.created_by_run') IS NOT NULL OR json_extract(browser_context_json,'$.owned_contexts') IS NOT NULL) AND status IN ('completed','failed','cancelled') AND COALESCE(json_extract(browser_context_json,'$.cleanup.state'),'pending')='pending'))", (owner,)).fetchall()
+        return {(r['root_task_id'] or r['id'], r['profile_key']) for r in rows}
+
+    @staticmethod
+    def _admitted(groups, root, profile, overall, per_profile):
+        # A new root/Profile acquires one lease; opted-in sibling caps are checked in claim.
+        # Different Profiles of the same root each consume one global lease.
+        return ((root, profile) not in groups and len(groups) < overall
+                and sum(p == profile for _, p in groups) < per_profile)
+
     def claim(self, owner, worker):
         # BEGIN IMMEDIATE makes admission atomic across App windows.
         with self.database.transaction(write=True) as c:
             settings = c.execute('SELECT global_limit,profile_limit FROM browser_task_settings WHERE owner=?', (owner,)).fetchone()
             overall, per_profile = (settings[0], settings[1]) if settings else (4, 1)
-            rows = c.execute("SELECT profile_key,count(*) n FROM browser_tasks WHERE owner=? AND status IN ('starting','running','waiting_input','interrupted') GROUP BY profile_key", (owner,)).fetchall()
-            counts = {r['profile_key']: r['n'] for r in rows}
-            if sum(counts.values()) >= overall:
-                return None
-            candidates = c.execute("SELECT id,profile_key FROM browser_tasks WHERE owner=? AND status='queued' ORDER BY created_at,id", (owner,)).fetchall()
-            task = next((r for r in candidates if counts.get(r['profile_key'], 0) < per_profile), None)
+            rows = self._active_groups(c, owner)
+            candidates = c.execute("SELECT id,profile_key,root_task_id,parent_task_id FROM browser_tasks WHERE owner=? AND status='queued' ORDER BY created_at,id", (owner,)).fetchall()
+            task = None
+            from .task_tree import TaskTreeRepository
+            for candidate in candidates:
+                if candidate['parent_task_id']:
+                    try:
+                        TaskTreeRepository.binding(c, owner, candidate['parent_task_id'])
+                    except ValueError:
+                        c.execute("UPDATE browser_tasks SET status='cancelled',updated_at=? WHERE id=?", (time.time(), candidate['id']))
+                        self._changed(c, owner, candidate['id'])
+                        continue
+                root=candidate['root_task_id'] or candidate['id'];profile=candidate['profile_key']
+                siblings=c.execute("SELECT browser_context_json,status FROM browser_tasks WHERE owner=? AND root_task_id=? AND profile_key=? AND (status IN ('starting','running','waiting_input','interrupted','cancelling') OR (run_id!='' AND status IN ('completed','failed','cancelled') AND COALESCE(json_extract(browser_context_json,'$.cleanup.state'),'pending')='pending' AND json_extract(browser_context_json,'$.created_by_run')!=''))",(owner,root,profile)).fetchall()
+                candidate_context=json.loads(c.execute('SELECT browser_context_json FROM browser_tasks WHERE id=?',(candidate['id'],)).fetchone()[0])
+                cap=min([candidate_context.get('parallel_limit',1),*[json.loads(r['browser_context_json']).get('parallel_limit',1) for r in siblings]])
+                within_group=(root,profile) in rows and len(siblings)<cap and all(r['status'] not in ('interrupted','cancelling') for r in siblings)
+                if within_group or self._admitted(rows,root,profile,overall,per_profile):
+                    task = candidate
+                    break
             if task is None:
                 return None
             c.execute("UPDATE browser_tasks SET status='starting',worker=?,lease_until=?,updated_at=? WHERE id=?", (worker, time.time()+90, time.time(), task['id']))
@@ -117,6 +155,10 @@ class BrowserTaskRepository:
             before = c.execute('SELECT * FROM browser_tasks WHERE owner=? AND id=?', (owner, task_id)).fetchone()
             if before is None:
                 raise KeyError('Browser task not found')
+            if 'browser_context_json' in values:
+                context=json.loads(values['browser_context_json'])
+                context['parallel_limit']=json.loads(before['browser_context_json']).get('parallel_limit',1)
+                values['browser_context_json']=json.dumps(context)
             if before['status'] in TERMINAL and values.get('status') in ACTIVE:
                 return self.decode(before)
             if all(before[key] == value for key, value in values.items()):
@@ -144,10 +186,14 @@ class BrowserTaskRepository:
                 self._changed(c, owner, row['id'])
             settings = c.execute('SELECT global_limit,profile_limit FROM browser_task_settings WHERE owner=?', (owner,)).fetchone()
             overall, per_profile = (settings[0], settings[1]) if settings else (4, 1)
-            counts = c.execute("SELECT profile_key FROM browser_tasks WHERE owner=? AND status IN ('starting','running','waiting_input','interrupted')", (owner,)).fetchall()
-            if len(counts) >= overall or sum(r['profile_key'] == profile for r in counts) >= per_profile:
+            groups = self._active_groups(c, owner)
+            if not self._admitted(groups, task_id, profile, overall, per_profile):
                 raise ValueError('WebAgent 并发名额已满，请在 AI 浏览器任务栏等待或取消现有任务。')
             now = time.time()
             c.execute('INSERT INTO browser_tasks(id,owner,profile_key,agent_id,capability,generation_id,name,input_json,browser_context_json,status,worker,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)', (task_id,owner,profile,agent,capability,generation,name,json.dumps(parameters),json.dumps(context),'starting','external',now,now))
+            from .task_tree import TaskTreeRepository
+            root = 'webtask:'+task_id
+            TaskTreeRepository.create_in_transaction(c, owner, root, name, kind='webagent', events=self.events)
+            c.execute('UPDATE browser_tasks SET root_task_id=?,execution_task_id=? WHERE id=?', (root, root, task_id))
             self._changed(c, owner, task_id)
         return self.get(owner, task_id)

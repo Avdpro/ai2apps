@@ -231,3 +231,23 @@ Model Worker 不应自行 `snapshot_download()`。在 manifest 中固定 reposit
 
 计划中的签名 XPC Runner/App Sandbox 会提供更强、可发布承诺的边界。Package 应只依赖
 本文列出的最小能力，不依赖当前 profile 的偶然宽松行为，这样迁移时通常无需改业务代码。
+
+### Linux generic HTTP service: Host-owned Unix transport
+
+A managed `http-json` Service may explicitly declare `runtime.transport: host-unix`.
+Its command must contain exactly one `--port {port}` pair and no `--uds` argument;
+the service executable must also implement `--uds <path>` as an alternative listener.
+The Host replaces the port pair with a private Unix socket path, launches the
+standard Docker sandbox, and proxies its allocated loopback endpoint to that socket.
+Keep `permissions.network.outbound: false` for a network-isolated service. GPU
+access remains separately controlled by accelerator permissions; CPU services do
+not receive `--gpus`. Socket directories are Host-owned/private; the service must
+restrict the socket mode and refuse to overwrite existing paths.
+
+This transport currently requires Linux and an available Docker sandbox image.
+Missing Docker or unsupported platforms fail explicitly rather than falling back
+to a TCP endpoint inside an unreachable private network namespace. Package authors
+must constrain compatibility appropriately. Existing omitted/`tcp` transport
+behavior remains unchanged. `host-unix` is a transport contract, not evidence of
+signed installation acceptance; verify actual Supervisor startup, health, Host
+calls, stop/restart and uninstall for each Package.

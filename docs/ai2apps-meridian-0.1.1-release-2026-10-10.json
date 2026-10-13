@@ -1,0 +1,135 @@
+{
+  "packageId": "ai2apps/model-meridian-mlx",
+  "version": "0.1.1",
+  "status": "published",
+  "artifact": {
+    "artifact": "/Users/avdpropang/sdk/omlx-moe-cache/ai2apps/.build/meridian-adapter-release-0.1.1/meridian-0.1.1.ai2service",
+    "envelope": "/Users/avdpropang/sdk/omlx-moe-cache/ai2apps/.build/meridian-adapter-release-0.1.1/meridian-0.1.1.ai2service.envelope.json",
+    "packageId": "ai2apps/model-meridian-mlx",
+    "version": "0.1.1",
+    "sha256": "f21aed39dc40a268e6fa476cd4e37feb2ef1f2b737b083154159dfa2efdc3292",
+    "size": 123650
+  },
+  "registryVerification": {
+    "repositoryMetadataVersion": 280,
+    "packageId": "ai2apps/model-meridian-mlx",
+    "version": "0.1.1",
+    "sha256": "f21aed39dc40a268e6fa476cd4e37feb2ef1f2b737b083154159dfa2efdc3292",
+    "size": 123650,
+    "publisherId": "229d6350-cd0e-408a-9905-41367385ae5c",
+    "publisherKeyId": "8afc0a51-f7f8-4fef-b3d0-8d30abe2a5bc",
+    "artifactExactBytes": true,
+    "envelopeExactJson": true
+  },
+  "checkpointVerification": {
+    "indexVersion": 138,
+    "distributionId": "dist_ai2apps_meridian_adapters_mlx_6e84e624_v1",
+    "manifestDigest": "sha256:1562a19d35711eb0f8e1dfe2895e175342c2b042fd547d6d23072cd2c1dbce53",
+    "recordCount": 103,
+    "publisherId": "229d6350-cd0e-408a-9905-41367385ae5c",
+    "publisherKeyId": "8afc0a51-f7f8-4fef-b3d0-8d30abe2a5bc",
+    "envelopeExactJson": true
+  },
+  "frameCounts": [
+    73,
+    90,
+    107,
+    124,
+    141,
+    158,
+    175,
+    243
+  ],
+  "framesPerSecond": 24,
+  "runtime": "1.8.11 (unchanged)",
+  "baseModelDependency": "ai2apps/model-minimax-h3 0.11.0 (unchanged)",
+  "installedQA": {
+    "frames": 90,
+    "lifecycle": "stop_restart_passed",
+    "uninstall": {
+      "checkpointCleanup": {
+        "requested": false
+      }
+    }
+  },
+  "sourceQA": {
+    "frames": 90,
+    "seconds": 190.18360975012183,
+    "peak_mlx_bytes": 36686229666,
+    "path": "/Users/avdpropang/sdk/omlx-moe-cache/ai2apps/.build/meridian-lengths-0.1.1/meridian.mp4",
+    "size": [
+      512,
+      512
+    ]
+  },
+  "weightSources": {
+    "hf": {
+      "status": "uploaded",
+      "repo": "Avdpro/Meridian-H3-8bit-MLX",
+      "revision": "6e84e62425587cbe1a57e39508eb5d1aff2fcaba",
+      "files": [
+        "AI2APPS-MODIFICATIONS.txt",
+        "BASE-MODIFICATIONS.md",
+        "BASE-NOTICE",
+        "LICENSE",
+        "MODIFICATIONS.md",
+        "NOTICE",
+        "fixed_embed_107.safetensors",
+        "fixed_embed_107_tags.json",
+        "fixed_embed_124.safetensors",
+        "fixed_embed_124_tags.json",
+        "fixed_embed_141.safetensors",
+        "fixed_embed_141_tags.json",
+        "fixed_embed_158.safetensors",
+        "fixed_embed_158_tags.json",
+        "fixed_embed_175.safetensors",
+        "fixed_embed_175_tags.json",
+        "fixed_embed_243.safetensors",
+        "fixed_embed_243_tags.json",
+        "fixed_embed_73.safetensors",
+        "fixed_embed_73_tags.json",
+        "fixed_embed_90.safetensors",
+        "fixed_embed_90_tags.json",
+        "provenance.json",
+        "teacher_lora/pytorch_lora_weights.safetensors",
+        "turbo_lora/pytorch_lora_weights.safetensors"
+      ]
+    },
+    "ms": {
+      "status": "uploaded",
+      "repo": "ai2apps/Meridian-H3-8bit-MLX",
+      "revision": "810cc67a74d5b7147c99fad5c4609e61e7157979",
+      "files": [
+        "AI2APPS-MODIFICATIONS.txt",
+        "BASE-MODIFICATIONS.md",
+        "BASE-NOTICE",
+        "LICENSE",
+        "MODIFICATIONS.md",
+        "NOTICE",
+        "fixed_embed_107.safetensors",
+        "fixed_embed_107_tags.json",
+        "fixed_embed_124.safetensors",
+        "fixed_embed_124_tags.json",
+        "fixed_embed_141.safetensors",
+        "fixed_embed_141_tags.json",
+        "fixed_embed_158.safetensors",
+        "fixed_embed_158_tags.json",
+        "fixed_embed_175.safetensors",
+        "fixed_embed_175_tags.json",
+        "fixed_embed_243.safetensors",
+        "fixed_embed_243_tags.json",
+        "fixed_embed_73.safetensors",
+        "fixed_embed_73_tags.json",
+        "fixed_embed_90.safetensors",
+        "fixed_embed_90_tags.json",
+        "provenance.json",
+        "teacher_lora/pytorch_lora_weights.safetensors",
+        "turbo_lora/pytorch_lora_weights.safetensors"
+      ]
+    }
+  },
+  "hostTests": 113,
+  "modelContractTests": 25,
+  "miniAppPublished": false,
+  "evidenceDirectory": "/Users/avdpropang/sdk/omlx-moe-cache/ai2apps/.build/meridian-adapter-release-0.1.1"
+}

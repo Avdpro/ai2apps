@@ -5,6 +5,7 @@ silently export it remotely. Existing resource/actor/mount guards are retained.
 """
 from importlib import import_module
 import json
+import logging
 import secrets
 from pathlib import Path
 
@@ -12,7 +13,8 @@ from fastapi import Depends, FastAPI, HTTPException, Request, File, Form, Upload
 from starlette.routing import compile_path
 from ai2apps.web import owner_home_gateway as owner
 
-STUDIO_APPS = frozenset({'ai2apps.imagine-studio', 'ai2apps.video-studio', 'ai2apps.readaloud'})
+STUDIO_APPS = frozenset({'ai2apps.imagine-studio', 'ai2apps.video-studio', 'ai2apps.readaloud', 'ai2apps.ai-browser'})
+logger = logging.getLogger(__name__)
 ROUTES = json.loads(Path(__file__).with_name('owner_studio_routes.json').read_text())
 EXTRA = [
     ('GET', '/v1/models'), ('POST', '/v1/chat/completions'),
@@ -57,7 +59,8 @@ async def principal(request: Request):
     runtime = request.app.state.runtime_provider()
     path = request.url.path
     module_apps = {'imagine_studio': 'ai2apps.imagine-studio',
-                   'video_studio': 'ai2apps.video-studio', 'readaloud': 'ai2apps.readaloud'}
+                   'video_studio': 'ai2apps.video-studio', 'readaloud': 'ai2apps.readaloud',
+                   'client':'ai2apps.ai-browser', 'agent_platform':'ai2apps.ai-browser', 'agent_builder':'ai2apps.ai-browser', 'agents':'ai2apps.ai-browser'}
     required = None
     for route in ROUTES:
         if route['method'] == request.method and compile_path(route['path'])[0].fullmatch(path):
@@ -73,6 +76,33 @@ async def principal(request: Request):
     return actor
 
 
+def restrict_router(router, approved, prefix='/v1/platform'):
+    """Keep exact exported operations, including lazy FastAPI router branches.
+
+    Recent FastAPI releases retain include_router branches instead of copying
+    their leaves. Preserve their include context (dependencies and prefix), but
+    filter the newly constructed child router before it can be mounted.
+    """
+    from fastapi.routing import APIRoute
+    kept = []
+    for route in router.routes:
+        if isinstance(route, APIRoute):
+            methods = {verb for verb in route.methods
+                       if (verb, prefix + route.path) in approved}
+            if methods:
+                route.methods = methods
+                kept.append(route)
+            continue
+        child = getattr(route, 'original_router', None)
+        context = getattr(route, 'include_context', None)
+        if child is not None and context is not None:
+            restrict_router(child, approved, prefix + context.prefix)
+            if child.routes:
+                kept.append(route)
+        # Unknown routes, mounts and WebSockets are never implicitly exported.
+    router.routes[:] = kept
+
+
 def create_app(runtime_provider):
     app = FastAPI(openapi_url=None, docs_url=None, redoc_url=None,
                   dependencies=[Depends(principal)])
@@ -80,6 +110,10 @@ def create_app(runtime_provider):
     @app.middleware('http')
     async def private_responses(request, call_next):
         response = await call_next(request)
+        if response.status_code >= 400:
+            # Log only route/status, never lease credentials, query or draft data.
+            logger.warning('Mobile Studio %s %s returned %s',
+                request.method, request.url.path, response.status_code)
         response.headers['Cache-Control'] = 'no-store'
         response.headers['X-Content-Type-Options'] = 'nosniff'
         media_type = response.headers.get('content-type', '').split(';', 1)[0]
@@ -88,14 +122,13 @@ def create_app(runtime_provider):
             response.headers['Content-Disposition'] = 'attachment'
         return response
 
-    factories = {'studio_mini_apps': 'create_studio_mini_app_router'}
+    factories = {'studio_mini_apps': 'create_studio_mini_app_router', 'agents':'create_agent_router'}
     for module in sorted({row['module'] for row in ROUTES} - {'cloud'}):
         factory = getattr(import_module('ai2apps.api.' + module),
                           factories.get(module, 'create_' + module + '_router'))
         router = factory(runtime_provider, principal_provider=principal)
         approved = {(r['method'], r['path']) for r in ROUTES if r['module'] == module}
-        router.routes[:] = [r for r in router.routes if any(
-            (verb, '/v1/platform' + r.path) in approved for verb in r.methods)]
+        restrict_router(router, approved)
         app.include_router(router, prefix='/v1/platform')
 
     @app.get('/v1/platform/cloud/ai/defaults')

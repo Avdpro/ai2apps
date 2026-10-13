@@ -1,0 +1,62 @@
+{
+  "packageId": "ai2apps/model-meridian-mlx",
+  "version": "0.1.0",
+  "status": "published",
+  "sourceCommit": "fa377dcb62875d5c82fc8177afd4277cd2357db9",
+  "sourceWorkingTree": "contains scoped uncommitted implementation; artifact digest is authoritative",
+  "artifactSha256": "bc77cd8de545aa4a4f2f4b1316f53bc543780ec5b11dcd115faf2aa6128575bd",
+  "artifactSize": 123379,
+  "submissionId": "b01459cb-6c80-4a10-bfb9-d287cadca248",
+  "repositoryMetadataVersion": 279,
+  "publisherId": "229d6350-cd0e-408a-9905-41367385ae5c",
+  "publisherKeyId": "8afc0a51-f7f8-4fef-b3d0-8d30abe2a5bc",
+  "dependency": {
+    "packageId": "ai2apps/model-minimax-h3",
+    "version": "0.11.0",
+    "artifactSha256": "6c79415f087a5a334ac8bbcb458a1759dce2fdf2abffcde45a46163c9b02a0f1",
+    "checkpoint": "ai2apps.model.minimax-h3/fl2va-8bit",
+    "baseWeightsRedistributed": false
+  },
+  "runtime": "ai2apps/runtime-omlx 1.8.11",
+  "requiredHostFeature": "model.checkpoint-dependencies.v1",
+  "checkpointDistribution": {
+    "id": "dist_ai2apps_meridian_adapters_mlx_78df34df_v1",
+    "submissionId": "cc11e768-5b49-484c-8c51-4d4ff0c602b5",
+    "manifestDigest": "sha256:0d9e33c0b0e4f3cafbe250462db4e3e435b419f73d83da04f2427637877377d3",
+    "indexVersion": 137,
+    "bytes": 5343044678,
+    "fileCount": 10,
+    "pieceCount": 637,
+    "verification": "full_dual_download",
+    "sources": [
+      {"provider": "huggingface", "repo": "Avdpro/Meridian-H3-8bit-MLX", "revision": "78df34df85c7031e4f59ffaf85e94de7eb336c27"},
+      {"provider": "modelscope", "repo": "ai2apps/Meridian-H3-8bit-MLX", "revision": "28b619712d567987fd2c929cc48e9dd1378a0544"}
+    ]
+  },
+  "verification": {
+    "publishedSubmissionConfirmed": true,
+    "anonymousArtifactExactBytes": true,
+    "anonymousEnvelopeExactJson": true,
+    "exactSignedPackageInstalled": true,
+    "h3DependencyDownloadedFromTrustedRegistry": true,
+    "dependencyDigestLockVerified": true,
+    "bothCheckpointsCacheHit": true,
+    "runtimePython": "3.11",
+    "video": {"width": 512, "height": 512, "frames": 73, "fps": 24, "bytes": 380009, "httpStatus": 200},
+    "stopRestartUninstall": "passed",
+    "hostRegressionTests": 87,
+    "packageLifecycleAndDependencyTests": 57,
+    "meridianContractTests": 16,
+    "testCountsOverlap": true
+  },
+  "evidenceDirectory": "ai2apps/.build/meridian-adapter-release-0.1.0",
+  "desktopPublished": false,
+  "miniAppPublished": false,
+  "notes": [
+    "Small model Package uses Cloud distribution; checkpoint payload has verified HF and ModelScope origins.",
+    "Host source integration must be present; older Hosts reject the required feature.",
+    "Original H3 license, territorial restrictions, consent and attribution are retained.",
+    "Only isolated QA model service was uninstalled; caches retained; Dev/App-Dev data untouched.",
+    "Cookie grant completed after the final published-status verification."
+  ]
+}

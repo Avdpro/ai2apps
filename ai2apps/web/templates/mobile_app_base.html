@@ -12,6 +12,10 @@
     <script src="{{ mobile_static('js/mobile_app.js') }}"></script>
     <script defer src="{{ mobile_static('js/alpine.min.js') }}"></script>
     <script src="{{ mobile_static('js/lucide.min.js') }}"></script>
+    {% if mobile_gateway_config %}
+    <script id="mobile-app-gateway" type="application/json">{{ mobile_gateway_config | tojson }}</script>
+    <script src="{{ static('js/mobile_app_gateway.js') }}"></script>
+    {% endif %}
     {% block head %}{% endblock %}
     <link rel="stylesheet" href="{{ mobile_static('css/app-readability.css') }}">
 </head>

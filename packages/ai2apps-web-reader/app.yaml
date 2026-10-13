@@ -1,0 +1,156 @@
+{
+  "schema": "ai2apps.app/v1",
+  "id": "ai2apps.web-reader",
+  "name": "Web Reader",
+  "version": "0.1.0",
+  "publisher": {
+    "id": "ai2apps"
+  },
+  "instances": {
+    "mode": "singleton",
+    "scope": "user"
+  },
+  "entry": {
+    "kind": "sandbox",
+    "resource": "web/index.html"
+  },
+  "navigation": {
+    "launcher": false
+  },
+  "mini_apps": [
+    {
+      "schema": "ai2apps.mini-app/v1",
+      "id": "ai2apps.web-reader",
+      "name": "Web Reader",
+      "version": "0.1.0",
+      "kind": "project",
+      "icon": "globe",
+      "description": "Extract links or read an article using background tasks.",
+      "entry": {
+        "kind": "sandbox",
+        "resource": "web/index.html",
+        "placements": [
+          "inline",
+          "sidebar"
+        ]
+      },
+      "placements": [
+        {
+          "studio": "ai2apps.ai-browser",
+          "category": "web",
+          "order": 10
+        }
+      ],
+      "localizations": {
+        "zh-CN": {
+          "name": "网页阅读器",
+          "description": "提取网页链接或阅读文章。"
+        }
+      },
+      "web_agent": {
+        "schema": "ai2apps.web-agent-mini-app/v1",
+        "capabilities": [
+          {
+            "id": "list",
+            "title": "Extract links",
+            "source": {
+              "agent_type": "web",
+              "site_scope": [
+                "https://watchesbysjx.com/**"
+              ],
+              "inputs": {
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100
+                  }
+                },
+                "required": [
+                  "url",
+                  "limit"
+                ],
+                "additionalProperties": false
+              },
+              "steps": [
+                {
+                  "name": "open",
+                  "operation": "open",
+                  "arguments": {
+                    "url": "${input.url}"
+                  },
+                  "on": {
+                    "success": "extract",
+                    "failed": "failed"
+                  }
+                },
+                {
+                  "name": "extract",
+                  "operation": "extract_list",
+                  "execution": {
+                    "mode": "compiled"
+                  },
+                  "arguments": {
+                    "limit": "${input.limit}"
+                  },
+                  "on": {
+                    "success": "done",
+                    "failed": "failed"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "article",
+            "title": "Read article",
+            "source": {
+              "agent_type": "web",
+              "site_scope": [
+                "https://watchesbysjx.com/**"
+              ],
+              "inputs": {
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "url"
+                ],
+                "additionalProperties": false
+              },
+              "steps": [
+                {
+                  "name": "read",
+                  "operation": "read_page",
+                  "execution": {
+                    "mode": "compiled"
+                  },
+                  "arguments": {
+                    "url": "${input.url}",
+                    "new_tab": true,
+                    "close_tab": true,
+                    "delay_ms": 1500,
+                    "max_chars": 20000
+                  },
+                  "on": {
+                    "success": "done",
+                    "failed": "failed"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

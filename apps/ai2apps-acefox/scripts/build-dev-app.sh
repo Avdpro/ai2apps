@@ -7,6 +7,7 @@ PROJECT_DIR=${SCRIPT_DIR:h}
 REPO_ROOT=${PROJECT_DIR:h:h}
 ACEFOX_APP=${ACEFOX_APP:-}
 LOCAL_EXECUTABLE=${LOCAL_EXECUTABLE:-}
+ACEFOX_SHELL_SOURCE=${ACEFOX_SHELL_SOURCE:-${REPO_ROOT:h}/moz/acefox-firefox-153/browser/components/ai2apps/content/shell.mjs}
 OUTPUT_APP=${OUTPUT_APP:-${PROJECT_DIR}/.build/AI2Apps-dev.app}
 PRODUCT_IDENTIFIER=${PRODUCT_IDENTIFIER:-com.ai2apps.desktop.dev}
 INSTANCE_ID=${INSTANCE_ID:-dev}
@@ -62,8 +63,31 @@ ACTOR_ROOT="${SHELL_APP}/Contents/Resources/browser/chrome/browser/content/brows
 ACTOR_PARENT='chrome/browser/content/browser/ai2apps/ManagedBrowserParent.sys.mjs'
 ACTOR_CHILD='chrome/browser/content/browser/ai2apps/ManagedBrowserChild.sys.mjs'
 BROWSER_OMNI="${SHELL_APP}/Contents/Resources/browser/omni.ja"
+# Development-only overlay: the objdir archive may lag behind current Local.
+[[ -f ${ACEFOX_SHELL_SOURCE} ]] || { print -u2 "Missing matching AceFox Shell source"; exit 65; }
+/usr/bin/python3 - "${BROWSER_OMNI}" "${ACEFOX_SHELL_SOURCE}" <<'PYOVERLAY'
+import sys, zipfile
+from pathlib import Path
+archive, source = map(Path, sys.argv[1:])
+text = source.read_text()
+if 'request.action == "bind"' not in text:
+    raise SystemExit('Dev Shell source lacks Profile bind contract')
+with zipfile.ZipFile(archive, 'r') as old:
+    entries = [(item, old.read(item.filename)) for item in old.infolist()]
+replacements = {
+    'chrome/browser/content/browser/ai2apps/shell.mjs': text.encode(),
+    'chrome/browser/content/browser/ai2apps/shell.xhtml': source.with_name('shell.xhtml').read_bytes(),
+    'actors/PromptParent.sys.mjs': (source.parents[3] / 'actors/PromptParent.sys.mjs').read_bytes(),
+}
+with zipfile.ZipFile(archive, 'w', compression=zipfile.ZIP_DEFLATED) as target:
+    for item, data in entries:
+        target.writestr(item, replacements.pop(item.filename, data))
+    for name, data in replacements.items():
+        target.writestr(name, data)
+PYOVERLAY
 /usr/bin/python3 "${SCRIPT_DIR}/apply-screen-recording-shell.py" --archive "${BROWSER_OMNI}"
 /usr/bin/python3 "${SCRIPT_DIR}/apply-shell-navigation.py" --archive "${BROWSER_OMNI}"
+/usr/bin/python3 "${SCRIPT_DIR}/apply-background-browser-host.py" --archive "${BROWSER_OMNI}"
 ACTOR_CONTRACT_VALID=false
 if [[ -f "${ACTOR_ROOT}/ManagedBrowserParent.sys.mjs" && \
       -f "${ACTOR_ROOT}/ManagedBrowserChild.sys.mjs" ]] && \

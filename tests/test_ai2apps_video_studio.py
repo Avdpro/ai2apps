@@ -56,7 +56,7 @@ def test_video_studio_uses_first_party_surface_and_async_video_api():
     assert "toggleLeftPanel()" in template and "toggleRightPanel()" in template
     assert ".vs-shell.left-collapsed" in stylesheet
     assert ".vs-run-detail" in stylesheet and "video_studio.current_run" in template
-    assert "video_studio.history" in template and "retry(activeTask)" in template
+    assert "video_studio.history" in template and "retrySelectedOutput()" in template
     assert "`${STUDIO_API}/tasks/${encodeURIComponent(task.id)}/retry`" in script
     assert "ai2apps.video.text-to-video" in script
     assert "ai2apps.video.image-to-video" in script
@@ -64,7 +64,7 @@ def test_video_studio_uses_first_party_surface_and_async_video_api():
     assert "ai2apps.video.extract-audio" in script
     assert 'class="vs-mini-app-header studio-mini-header"' in template
     assert "extractAudio()" in template
-    assert "activeAudioArtifact" in template
+    assert "selectedOutputArtifact" in template
     assert "/resource-handles" in script
     assert "/extract-audio" in script
     assert "mozAI2AppsFullPath" in script
@@ -83,15 +83,17 @@ def test_video_studio_uses_first_party_surface_and_async_video_api():
     assert "addActiveVideoToGallery" in script
     assert "handlePackageOutput" in script and "ai2apps:studio-output" in script
     assert "get activePackageArtifact()" in script
-    assert "liveUrl || this.activePackageArtifact?.downloadUrl" in script
+    assert "this.packageOutputUrl = url" in script
+    assert "this.packageOutputItems = [{key, url, runId" in script
     assert "this.packageRuns = (runs.items || []).filter" in script
     assert "!this.packageMiniAppId && this.mode === 'composer'" in script
-    assert '!packageMiniAppId&&!isLocalVideoTool' in template
+    assert 'x-for="item in sharedOutputItems"' in template
+    assert '!packageMiniAppId&&!isLocalVideoTool' not in template.split('<aside id="video-studio-output"', 1)[1]
     assert "galleryActiveCollectionId" in script
     assert "/v1/platform/gallery/assets/import-artifact/" in script
     assert "handleGalleryDrop" in script and "routeDroppedFile" in script
-    assert "handleGalleryDrop($event,'first')" in template
-    assert "handleGalleryDrop($event,'last')" in template
+    assert "handleGalleryDrop(event,'first')" in template
+    assert "handleGalleryDrop(event,'last')" in template
     assert "@drop.stop.prevent" in template
     assert "gallerySlotTarget" in script
     assert "video_studio.error.image_slot_type" in script
@@ -164,8 +166,8 @@ def test_video_studio_uses_first_party_surface_and_async_video_api():
     assert ':disabled="submitting||!canPrimaryAction"' in template
     assert "无可用视频模型" not in template
     assert "providerLabel(provider)" in template
-    assert "task.status==='running'" in template
-    assert "downloadArtifact($event, activeVideoUrl)" in template
+    assert "item.status==='running'" in template
+    assert "downloadArtifact($event,selectedOutputArtifact?.downloadUrl)" in template
     assert "video_studio.success.download_started" in script
     assert "this.clientEnvironment !== 'desktop'" in script
     assert "resolutionRatio(overrides.resolution || this.resolution)" in script

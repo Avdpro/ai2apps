@@ -1,0 +1,351 @@
+{
+  "date": "2026-10-05",
+  "sourceCommit": "fa377dcb62875d5c82fc8177afd4277cd2357db9",
+  "sourceTree": "dirty; release bytes bound by Publisher signature",
+  "aceStep": {
+    "status": "published",
+    "package": {
+      "artifact": "/Users/avdpropang/sdk/omlx-moe-cache/packages/ai2apps-model-ace-step-mlx/dist/0.1.0/ai2apps-model-ace-step-mlx-0.1.0.ai2service",
+      "envelope": "/Users/avdpropang/sdk/omlx-moe-cache/packages/ai2apps-model-ace-step-mlx/dist/0.1.0/ai2apps-model-ace-step-mlx-0.1.0.ai2service.envelope.json",
+      "packageId": "ai2apps/model-ace-step-mlx",
+      "version": "0.1.0",
+      "sha256": "c31672d7842b621d8409075c08957085943f0e3864736f618c0e103dcec94eff",
+      "size": 75942
+    },
+    "submissionId": "eccb9f9c-da2c-4081-9c1e-9535d3fed7b4",
+    "publicVerification": {
+      "status": "published",
+      "version": "0.1.0",
+      "repositoryMetadataVersion": 253,
+      "sha256": "c31672d7842b621d8409075c08957085943f0e3864736f618c0e103dcec94eff",
+      "size": 75942,
+      "sources": [
+        {
+          "id": "src_cloud_c31672d7842b621d8409075c",
+          "url": "https://coder.ai2apps.com/v1/registry/packages/ai2apps/model-ace-step-mlx/versions/0.1.0/artifact",
+          "kind": "cloud"
+        }
+      ]
+    },
+    "distribution": {
+      "distributionId": "dist_ai2apps_ace_step15_turbo_mlx_v1",
+      "manifestDigest": "sha256:b7591efa19758fa74f37dd1beb693af7086991a11893139e95acd5b72eb7be0f",
+      "estimatedSizeBytes": 10090327160,
+      "fileCount": 27,
+      "pieceCount": 1203,
+      "verificationMode": "ai2apps-local/checkpoint-full-dual-download-v1"
+    },
+    "checkpointPublicVerification": {
+      "indexVersion": 103,
+      "distributionId": "dist_ai2apps_ace_step15_turbo_mlx_v1",
+      "manifestDigest": "sha256:b7591efa19758fa74f37dd1beb693af7086991a11893139e95acd5b72eb7be0f",
+      "recordCount": 70,
+      "publisherId": "229d6350-cd0e-408a-9905-41367385ae5c",
+      "publisherKeyId": "8afc0a51-f7f8-4fef-b3d0-8d30abe2a5bc",
+      "envelopeExactJson": true
+    },
+    "checkpointSubmissionId": "add317ac-5bfc-4641-b8ac-71a3e5e2ff60",
+    "sources": [
+      {
+        "type": "huggingface",
+        "repoId": "Avdpro/ACE-Step-1.5-Turbo-MLX",
+        "revision": "ea6bb1523660feb518563f203314528294880d1f",
+        "access": "public_anonymous"
+      },
+      {
+        "type": "modelscope",
+        "repoId": "ai2apps/ACE-Step-1.5-Turbo-MLX",
+        "revision": "ec33afedc08fa8ddc2a06b50c74130fc19626d0a",
+        "access": "public_anonymous"
+      }
+    ],
+    "managedSandboxSmoke": {
+      "runtime": {
+        "service": "ai2apps.runtime.omlx",
+        "version": "1.8.9",
+        "digest": "sha256:37cba2443a5848aac090957d37ef0ccaaef7081c58483d257cf6b3c692c4ba02",
+        "root": "/private/tmp/ai2apps-music-ace-package-smoke/platform/packages/inference-runtimes/ai2apps.runtime.omlx/1.8.9/37cba2443a5848aac090957d37ef0ccaaef7081c58483d257cf6b3c692c4ba02",
+        "python": "/private/tmp/ai2apps-music-ace-package-smoke/platform/packages/inference-runtimes/ai2apps.runtime.omlx/1.8.9/37cba2443a5848aac090957d37ef0ccaaef7081c58483d257cf6b3c692c4ba02/Contents/Resources/Runtime/Python/cpython-3.11/bin/python3.11"
+      },
+      "model": {
+        "service": "ai2apps.model.ace-step-mlx",
+        "version": "0.1.0",
+        "digest": "sha256:c31672d7842b621d8409075c08957085943f0e3864736f618c0e103dcec94eff",
+        "status": "running",
+        "endpoint": "http://127.0.0.1:51812"
+      },
+      "locks": [
+        {
+          "dependency": "ai2apps.runtime.omlx",
+          "version": "1.8.9",
+          "digest": "sha256:37cba2443a5848aac090957d37ef0ccaaef7081c58483d257cf6b3c692c4ba02"
+        }
+      ],
+      "checkpoints": [
+        {
+          "model": "ai2apps.model.ace-step-mlx/turbo",
+          "distribution": "dist_ai2apps_ace_step15_turbo_mlx_v1",
+          "cache_hit": true,
+          "source_bytes": {},
+          "snapshot": "/private/tmp/ai2apps-music-ace-package-smoke/hf-hub/models--Avdpro--ACE-Step-1.5-Turbo-MLX/distributions/caf39a688add55be054f6307c7ce65b011d002fd91ee1df0e40a0f2cbfe27d73"
+        }
+      ],
+      "generate_audio": [
+        {
+          "model": "ai2apps.model.ace-step-mlx/turbo",
+          "seconds": 10.0,
+          "bytes": 1920044,
+          "request": {
+            "request_id": "music-smoke-1ea70927682147c480c06f0cd12bf74b",
+            "operation": "audio_generate",
+            "status": "succeeded",
+            "progress": {
+              "phase": "complete",
+              "current": 1,
+              "total": 1
+            },
+            "cancel_requested": false,
+            "model": "ai2apps.model.ace-step-mlx/turbo"
+          },
+          "cancel_http_status": 499
+        }
+      ],
+      "restart_status": "running",
+      "uninstall": {
+        "checkpointCleanup": {
+          "requested": false
+        }
+      }
+    }
+  },
+  "stableAudio": {
+    "status": "published",
+    "package": {
+      "artifact": "/Users/avdpropang/sdk/omlx-moe-cache/packages/ai2apps-model-stable-audio-mlx/dist/0.1.0/ai2apps-model-stable-audio-mlx-0.1.0.ai2service",
+      "envelope": "/Users/avdpropang/sdk/omlx-moe-cache/packages/ai2apps-model-stable-audio-mlx/dist/0.1.0/ai2apps-model-stable-audio-mlx-0.1.0.ai2service.envelope.json",
+      "packageId": "ai2apps/model-stable-audio-mlx",
+      "version": "0.1.0",
+      "sha256": "9a5622efb92316935d609164a1b943ff21e96422c2254f9cd4bf3f7505579826",
+      "size": 199759
+    },
+    "submissionId": "88dde5e5-3021-446b-a321-cfa07224d428",
+    "publicVerification": {
+      "status": "published",
+      "version": "0.1.0",
+      "repositoryMetadataVersion": 254,
+      "sha256": "9a5622efb92316935d609164a1b943ff21e96422c2254f9cd4bf3f7505579826",
+      "size": 199759,
+      "sources": [
+        {
+          "id": "src_cloud_9a5622efb92316935d609164",
+          "url": "https://coder.ai2apps.com/v1/registry/packages/ai2apps/model-stable-audio-mlx/versions/0.1.0/artifact",
+          "kind": "cloud"
+        }
+      ]
+    },
+    "purpose": "User confirmed non-commercial installation, evaluation and testing",
+    "licenseConsent": "ACPF/Discover explicit consent, bound to distributionId, manifestDigest and termsHash before cache import or network download",
+    "managedSandboxSmoke": {
+      "runtime": {
+        "service": "ai2apps.runtime.omlx",
+        "version": "1.8.9",
+        "digest": "sha256:37cba2443a5848aac090957d37ef0ccaaef7081c58483d257cf6b3c692c4ba02",
+        "root": "/private/tmp/ai2apps-music-stable-package-smoke/platform/packages/inference-runtimes/ai2apps.runtime.omlx/1.8.9/37cba2443a5848aac090957d37ef0ccaaef7081c58483d257cf6b3c692c4ba02",
+        "python": "/private/tmp/ai2apps-music-stable-package-smoke/platform/packages/inference-runtimes/ai2apps.runtime.omlx/1.8.9/37cba2443a5848aac090957d37ef0ccaaef7081c58483d257cf6b3c692c4ba02/Contents/Resources/Runtime/Python/cpython-3.11/bin/python3.11"
+      },
+      "model": {
+        "service": "ai2apps.model.stable-audio-mlx",
+        "version": "0.1.0",
+        "digest": "sha256:9a5622efb92316935d609164a1b943ff21e96422c2254f9cd4bf3f7505579826",
+        "status": "running",
+        "endpoint": "http://127.0.0.1:62903"
+      },
+      "locks": [
+        {
+          "dependency": "ai2apps.runtime.omlx",
+          "version": "1.8.9",
+          "digest": "sha256:37cba2443a5848aac090957d37ef0ccaaef7081c58483d257cf6b3c692c4ba02"
+        }
+      ],
+      "checkpoints": [
+        {
+          "model": "ai2apps.model.stable-audio-mlx/music",
+          "distribution": "dist_ai2apps_stable_audio3_small_music_mlx_v1",
+          "cache_hit": true,
+          "source_bytes": {},
+          "snapshot": "/private/tmp/ai2apps-music-stable-package-smoke/hf-hub/models--Avdpro--Stable-Audio-3-Small-MLX/distributions/34c72d0fc473ac4fe851fe3b6cd412ef86f615c0f8064625b82282ee00abab41"
+        },
+        {
+          "model": "ai2apps.model.stable-audio-mlx/sfx",
+          "distribution": "dist_ai2apps_stable_audio3_small_sfx_mlx_v1",
+          "cache_hit": true,
+          "source_bytes": {},
+          "snapshot": "/private/tmp/ai2apps-music-stable-package-smoke/hf-hub/models--Avdpro--Stable-Audio-3-Small-MLX/distributions/0497a9d16e79fc591f61766e99a9ce6efc74afa6238e46b99768a645bc98cd92"
+        }
+      ],
+      "generate_audio": [
+        {
+          "model": "ai2apps.model.stable-audio-mlx/music",
+          "seconds": 10.0,
+          "bytes": 1764044,
+          "request": {
+            "request_id": "music-smoke-d4d33606502e4a2593beed0fcc1c32d2",
+            "operation": "audio_generate",
+            "status": "succeeded",
+            "progress": {
+              "phase": "complete",
+              "current": 1,
+              "total": 1
+            },
+            "cancel_requested": false,
+            "model": "ai2apps.model.stable-audio-mlx/music"
+          },
+          "cancel_http_status": 499
+        },
+        {
+          "model": "ai2apps.model.stable-audio-mlx/sfx",
+          "seconds": 10.0,
+          "bytes": 1764044,
+          "request": {
+            "request_id": "music-smoke-4c78dc59b2804524a0cedd40f01dd089",
+            "operation": "audio_generate",
+            "status": "succeeded",
+            "progress": {
+              "phase": "complete",
+              "current": 1,
+              "total": 1
+            },
+            "cancel_requested": false,
+            "model": "ai2apps.model.stable-audio-mlx/sfx"
+          },
+          "cancel_http_status": 499
+        }
+      ],
+      "restart_status": "running",
+      "uninstall": {
+        "checkpointCleanup": {
+          "requested": false
+        }
+      }
+    },
+    "distributions": [
+      {
+        "variant": "music",
+        "distributionId": "dist_ai2apps_stable_audio3_small_music_mlx_v1",
+        "submissionId": "ab4bcf25-7e38-4ae8-bd79-cf5ca6c71ac2",
+        "publicVerification": {
+          "indexVersion": 104,
+          "distributionId": "dist_ai2apps_stable_audio3_small_music_mlx_v1",
+          "manifestDigest": "sha256:8a4b8f6e336f00e5d49156913e3eb795eee9dd899046f37ed3e16038939796af",
+          "recordCount": 71,
+          "publisherId": "229d6350-cd0e-408a-9905-41367385ae5c",
+          "publisherKeyId": "8afc0a51-f7f8-4fef-b3d0-8d30abe2a5bc",
+          "envelopeExactJson": true
+        },
+        "verification": {
+          "builder": "ai2apps-local/checkpoint-full-dual-download-v1",
+          "fileCount": 8,
+          "pieceCount": 204,
+          "estimatedSizeBytes": "1704751891",
+          "verifiedProviders": [
+            "huggingface",
+            "modelscope"
+          ]
+        },
+        "sources": [
+          {
+            "type": "huggingface",
+            "repoId": "Avdpro/Stable-Audio-3-Small-MLX",
+            "revision": "1e17940bc4eeb91b840ba686b99a67e8e36a907f",
+            "access": "public_anonymous"
+          },
+          {
+            "type": "modelscope",
+            "repoId": "ai2apps/Stable-Audio-3-Small-MLX",
+            "revision": "bca8407330633cb02e5ccc5aba4786ddb082406d",
+            "access": "public_anonymous"
+          }
+        ],
+        "modelscopeFullDownload": {
+          "scope": "prepublication full ModelScope download using verified Publisher candidate and production acquisition code; explicit non-commercial QA consent",
+          "snapshot": "/Users/avdpropang/sdk/omlx-moe-cache/artifacts/music-packages-0.1.0/stable-ms-download-cache/snapshots/28/2852daecd2f5edded56478d9eddfab84d3e02e31dc8c099ce965a7df87caf85c",
+          "source_bytes": {
+            "modelscope": 1704751891
+          },
+          "manifestDigest": "sha256:ad936845b2f7daa1f24fa90480745f5d08e1eb3dccf6616997a9bdb16a5fcaf1",
+          "consent_negative_cases": 4
+        },
+        "consentNegativeCases": 4,
+        "finalManifestDigest": "sha256:8a4b8f6e336f00e5d49156913e3eb795eee9dd899046f37ed3e16038939796af",
+        "candidateToFinalChange": "Only consent attestation wording clarified; all sources, file hashes and piece hashes asserted identical. Final consent gate revalidated."
+      },
+      {
+        "variant": "sfx",
+        "distributionId": "dist_ai2apps_stable_audio3_small_sfx_mlx_v1",
+        "submissionId": "f02f6fe8-5b09-4c60-b0d9-4b06f15da206",
+        "publicVerification": {
+          "indexVersion": 105,
+          "distributionId": "dist_ai2apps_stable_audio3_small_sfx_mlx_v1",
+          "manifestDigest": "sha256:f5e4095cd7176aea33960639228e29758e9cd20e2eb683d186a7676d8eacc00f",
+          "recordCount": 72,
+          "publisherId": "229d6350-cd0e-408a-9905-41367385ae5c",
+          "publisherKeyId": "8afc0a51-f7f8-4fef-b3d0-8d30abe2a5bc",
+          "envelopeExactJson": true
+        },
+        "verification": {
+          "builder": "ai2apps-local/checkpoint-full-dual-download-v1",
+          "fileCount": 8,
+          "pieceCount": 204,
+          "estimatedSizeBytes": "1704751891",
+          "verifiedProviders": [
+            "huggingface",
+            "modelscope"
+          ]
+        },
+        "sources": [
+          {
+            "type": "huggingface",
+            "repoId": "Avdpro/Stable-Audio-3-Small-MLX",
+            "revision": "1e17940bc4eeb91b840ba686b99a67e8e36a907f",
+            "access": "public_anonymous"
+          },
+          {
+            "type": "modelscope",
+            "repoId": "ai2apps/Stable-Audio-3-Small-MLX",
+            "revision": "bca8407330633cb02e5ccc5aba4786ddb082406d",
+            "access": "public_anonymous"
+          }
+        ],
+        "modelscopeFullDownload": {
+          "scope": "prepublication full ModelScope download using verified Publisher candidate and production acquisition code; explicit non-commercial QA consent",
+          "snapshot": "/Users/avdpropang/sdk/omlx-moe-cache/artifacts/music-packages-0.1.0/stable-ms-download-cache/snapshots/b1/b136162eb82532bc559860a9792a62662f1942637b57ff63a3cc1b10e600bd13",
+          "source_bytes": {
+            "modelscope": 922746880
+          },
+          "manifestDigest": "sha256:7ffa2c53d89060d57fc3402014b4827b86e86f06492e82d90273685be2b57b2d",
+          "consent_negative_cases": 4
+        },
+        "consentNegativeCases": 4,
+        "finalManifestDigest": "sha256:f5e4095cd7176aea33960639228e29758e9cd20e2eb683d186a7676d8eacc00f",
+        "candidateToFinalChange": "Only consent attestation wording clarified; all sources, file hashes and piece hashes asserted identical. Final consent gate revalidated."
+      }
+    ],
+    "nativeMlxInference": "passed for both variants at 10 and 120 seconds, without torch",
+    "cancellation": "passed; active MLX allocation 18 bytes, cache zero after native cancellation; installed sandbox cancellation HTTP 499",
+    "distributionPublished": true,
+    "packagePublished": true
+  },
+  "tests": {
+    "hostWorkerCheckpoint": 78,
+    "multisource": 10,
+    "packageRegressionAfterCleanup": 5,
+    "licenseConsentAndUiRegression": 3,
+    "stableFinalManifestDenialCases": 8
+  },
+  "limitations": [
+    "Host audio_generation and verified NPZ admission changes are not yet shipped in Desktop. Current source Host used for installed Package QA.",
+    "Single M5 Max 128 GiB test machine; no second Mac acceptance.",
+    "No Voice Studio Mini-App integration or new Desktop release in this task."
+  ],
+  "cookieAuthorization": "Both authorized model Package publications and verification completed; Dev Cookie grants ended."
+}

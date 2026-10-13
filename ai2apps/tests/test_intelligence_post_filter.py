@@ -36,7 +36,7 @@ def test_filter_and_restore_detail_on_next_run(client,monkeypatch):
     async def reject(*args):
         return [post_filter.Decision(index=i,reject=True,reason='缺少具体体验') for i in range(len(args[4]))]
     received=[]
-    async def digest(*args):
+    async def digest(*args,**kwargs):
         received.append(args[4])
         return []
     monkeypatch.setattr(post_filter,'review',reject)

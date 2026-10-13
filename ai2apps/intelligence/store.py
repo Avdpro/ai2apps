@@ -125,6 +125,11 @@ class IntelligenceStore:
             for row in db.execute('SELECT * FROM articles WHERE owner=? AND channel=?', (owner, channel)):
                 existing = self.unpack(row)
                 if existing.get('import_identity') == identity or any(s.get('url') == identity for s in existing.get('sources', [])):
+                    if article.get('ai_translation') and existing.get('manual_import') and not existing.get('ai_translation'):
+                        existing.update({k: article[k] for k in ('title','summary','body','section_id','original_content','ai_translation','translation_language') if k in article})
+                        existing['updated_at'] = stamp()
+                        db.execute('UPDATE articles SET data=? WHERE owner=? AND id=?', (json.dumps(existing), owner, existing['id']))
+                        self._queue_channel(db, owner, current)
                     if article.get('image_ai_summary') and not existing.get('image_ai_summary'):
                         existing.update({k: article[k] for k in ('title', 'summary', 'body', 'section_id', 'image_ai_summary') if k in article})
                         existing['updated_at'] = stamp()
@@ -190,12 +195,12 @@ class IntelligenceStore:
             previous = self.get('sources', owner, id)
             if previous['channel_id'] != channel:
                 raise ValueError('信息源与频道不匹配')
-            data = {**{k:v for k,v in previous.items() if k.startswith('social_')},**data}
+            data = {**{k:v for k,v in previous.items() if k.startswith('social_') or k in ('x_mode','x_values')},**data}
         with self.connect() as db:
             if not id and db.execute('SELECT COUNT(*) FROM sources WHERE owner=? AND channel=?', (owner, channel)).fetchone()[0] >= 12:
                 raise ValueError('第一版每个频道最多 12 个信息源')
             for row in db.execute('SELECT * FROM sources WHERE owner=? AND channel=?', (owner, channel)):
-                if row['id'] != id and json.loads(row['data'])['url'] == data['url']:
+                if row['id'] != id and json.loads(row['data'])['url'] == data['url'] and json.loads(row['data']).get('x_values',[]) == data.get('x_values',[]):
                     raise ValueError('该信息源已在频道中')
             id = id or key()
             db.execute('INSERT INTO sources VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data', (id, owner, channel, json.dumps(data)))
@@ -217,7 +222,7 @@ class IntelligenceStore:
         with self.connect() as db:
             db.execute("UPDATE runs SET status='interrupted' WHERE owner=? AND status='running' AND COALESCE(json_extract(data,'$.execution_owner'),'') != 'local' AND updated < ?", (owner, datetime.now(timezone.utc).timestamp() - 600))
 
-    def claim(self, owner, channel, scheduled=False, *, background_session=None):
+    def claim(self, owner, channel, scheduled=False, *, background_session=None, source_id=None):
         self.expire(owner)
         now = datetime.now(timezone.utc).timestamp()
         with self.connect() as db:
@@ -226,28 +231,34 @@ class IntelligenceStore:
                 raise ValueError('此频道已在更新中')
             if not db.execute('SELECT 1 FROM sources WHERE owner=? AND channel=? AND json_extract(data,\'$.enabled\')=1', (owner, channel)).fetchone():
                 raise ValueError('请先添加并启用信息源')
+            sources = [self.unpack(row) for row in db.execute("SELECT * FROM sources WHERE owner=? AND channel=? AND json_extract(data,'$.enabled')=1", (owner,channel))]
+            if source_id:
+                sources = [source for source in sources if source['id'] == source_id]
+                if not sources:
+                    raise ValueError('请先添加并启用信息源')
             interval = current.get('interval_hours', 0) * 3600
             anchor = max(current.get('schedule_anchor', now), current.get('last_attempt', 0))
             if scheduled and (not interval or now < anchor + interval):
                 raise ValueError('尚未到更新时间')
             id = key()
             data = {'started_at': stamp(), 'message': '准备采集', 'logs': [], 'scheduled': scheduled}
+            if source_id:data['source_id'] = source_id
             if background_session:data['execution_owner'] = 'local'
             db.execute('INSERT INTO runs VALUES(?,?,?,?,?,?)', (id, owner, channel, 'running', now, json.dumps(data)))
             if background_session:
-                sources = [self.unpack(row) for row in db.execute("SELECT * FROM sources WHERE owner=? AND channel=? AND json_extract(data,'$.enabled')=1", (owner,channel))]
-                db.execute('INSERT INTO collection_jobs VALUES(?,?,?,?)', (id,owner,background_session,json.dumps({'sources':sources})))
+                db.execute('INSERT INTO collection_jobs VALUES(?,?,?,?)', (id,owner,background_session,json.dumps({'sources':sources,'ready':False})))
                 db.execute('INSERT INTO collection_schedules VALUES(?,?) ON CONFLICT(owner) DO UPDATE SET session_id=excluded.session_id', (owner,background_session))
-            current['last_attempt'] = now
+            if not source_id:current['last_attempt'] = now
             db.execute('UPDATE channels SET data=? WHERE owner=? AND id=?', (json.dumps(current), owner, channel))
         return self.get('runs', owner, id)
 
-    def progress(self, owner, id, message, status='running', logs=None):
+    def progress(self, owner, id, message, status='running', logs=None, details=None):
         with self.connect() as db:
             current = self.unpack(db.execute('SELECT * FROM runs WHERE owner=? AND id=?', (owner, id)).fetchone())
             if current['status'] != 'running':
                 raise ValueError('本轮更新已结束，请重新更新')
             current['message'] = message
+            if details is not None:current['progress']={**current.get('progress',{}),**details}
             if logs is not None:
                 current['logs'] = logs
             if status != 'running':
@@ -294,7 +305,7 @@ class IntelligenceStore:
                     seen.add(page['url'])
         return result
 
-    def finish(self, owner, run_id, pages, articles, logs):
+    def finish(self, owner, run_id, pages, articles, logs, *, final=True):
         with self.connect() as db:
             run = self.unpack(db.execute('SELECT * FROM runs WHERE owner=? AND id=?', (owner, run_id)).fetchone())
             if run['status'] != 'running':
@@ -307,6 +318,7 @@ class IntelligenceStore:
                 old = db.execute('SELECT * FROM articles WHERE owner=? AND channel=? AND id=?', (owner, channel, id)).fetchone()
                 if old:
                     previous = self.unpack(old)
+                    if previous.get('run_id')==run_id and previous.get('body')==article.get('body') and previous.get('title')==article.get('title'):continue
                     if not article.get('cover_image') and previous.get('cover_image'):
                         article['cover_image'] = previous['cover_image']
                     if not article.get('images') and previous.get('images'):
@@ -324,6 +336,7 @@ class IntelligenceStore:
                 db.execute('INSERT INTO articles VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data', (id, owner, channel, json.dumps(article)))
             current_channel = self.unpack(db.execute('SELECT * FROM channels WHERE owner=? AND id=?', (owner, channel)).fetchone())
             self._queue_channel(db, owner, current_channel)
+            if not final:return
             status = 'partial' if any(log['status'] != 'success' for log in logs) else 'completed'
             if not pages and logs and all(log['status'] not in ('success','deferred') for log in logs):
                 status = 'failed'
@@ -497,7 +510,7 @@ class IntelligenceStore:
                 (owner,draft['channel_id'],draft['id'],json.dumps(draft,ensure_ascii=False)))
         return draft
 
-    def claim_social(self, owner, id):
+    def claim_social(self, owner, id, *, manual=False):
         from .social import site_key
         now=datetime.now(timezone.utc).timestamp()
         with self.connect() as db:
@@ -507,16 +520,30 @@ class IntelligenceStore:
             if not source.get('enabled'):raise ValueError('信息源已暂停')
             row=db.execute('SELECT data FROM social_limits WHERE owner=? AND site=?',(owner,site)).fetchone()
             limit=json.loads(row['data']) if row else {}
-            next_at=max(source.get('social_next_at',0),limit.get('next_at',0),limit.get('lease_until',0))
+            source_next=source.get('social_manual_next_at',0) if manual else source.get('social_next_at',0)
+            platform_next=limit.get('next_at',0)
+            if manual:
+                platform_next=limit.get('manual_next_at',platform_next)
+                # Older limits combined ordinary read failure with platform backoff.
+                # Recover the completion time without removing an active lease or pause.
+                if 'manual_next_at' not in limit and not limit.get('token'):
+                    old=db.execute('SELECT * FROM sources WHERE owner=? AND id=?',(owner,limit.get('source_id',''))).fetchone()
+                    previous=self.unpack(old) if old else {}
+                    failures=previous.get('social_failures',0)
+                    if failures and not previous.get('social_paused') and limit.get('outcome') not in ('needs_user','rate_limited'):
+                        wait=min(86400,3600*(2**min(failures-1,5)))
+                        platform_next=min(platform_next,platform_next-wait+60)
+            next_at=max(source_next,platform_next,limit.get('lease_until',0))
             if source.get('social_paused'):
                 return {'allowed':False,'reason':'需要在原 Profile 处理验证后，点击恢复采集','next_at':next_at}
             if next_at>now:
                 return {'allowed':False,'reason':'信息源或平台正在冷却，暂不访问','next_at':next_at}
-            token=key();limit.update(previous_next_at=limit.get('next_at',0),previous_source_next_at=source.get('social_next_at',0),token=token,source_id=id,lease_until=now+900,next_at=now+30)
+            token=key();limit.update(previous_platform_manual_next_at=limit.get('manual_next_at'),previous_next_at=limit.get('next_at',0),previous_source_next_at=source.get('social_next_at',0),previous_manual_next_at=source.get('social_manual_next_at',0),token=token,source_id=id,lease_until=now+900,next_at=now+30)
             db.execute('INSERT INTO social_limits VALUES(?,?,?) ON CONFLICT(owner,site) DO UPDATE SET data=excluded.data',(owner,site,json.dumps(limit)))
             source['social_next_at']=now+source.get('social_interval_hours',6)*3600
+            source['social_manual_next_at']=now+60
             db.execute('UPDATE sources SET data=? WHERE owner=? AND id=?',(json.dumps(source),owner,id))
-        return {'allowed':True,'token':token,'next_at':source['social_next_at']}
+        return {'allowed':True,'token':token,'next_at':source['social_manual_next_at'] if manual else source['social_next_at']}
 
     def finish_social(self, owner, id, token, outcome):
         from .social import site_key
@@ -529,15 +556,20 @@ class IntelligenceStore:
             if limit.get('token')!=token or limit.get('source_id')!=id:raise ValueError('采集租约已过期')
             if outcome=='not_started':
                 source['social_next_at']=limit.get('previous_source_next_at',source.get('social_next_at',0))
+                source['social_manual_next_at']=limit.get('previous_manual_next_at',0)
                 limit.update(lease_until=0,next_at=limit.get('previous_next_at',0),token='')
+                previous_manual=limit.get('previous_platform_manual_next_at')
+                if previous_manual is None:limit.pop('manual_next_at',None)
+                else:limit['manual_next_at']=previous_manual
                 db.execute('UPDATE social_limits SET data=? WHERE owner=? AND site=?',(json.dumps(limit),owner,site))
                 db.execute('UPDATE sources SET data=? WHERE owner=? AND id=?',(json.dumps(source),owner,id))
                 return {'next_at':source['social_next_at'],'paused':source.get('social_paused',False)}
             failures=0 if outcome=='success' else source.get('social_failures',0)+1
             wait=30 if not failures else min(86400,3600*(2**min(failures-1,5)))
-            limit.update(lease_until=0,next_at=now+wait,token='')
+            limit.update(lease_until=0,next_at=now+wait,manual_next_at=now+(wait if outcome in ('needs_user','rate_limited') else 60),outcome=outcome,token='')
             source.update(social_failures=failures,social_paused=outcome=='needs_user')
             source['social_next_at']=max(source.get('social_next_at',0),now+wait)
+            source['social_manual_next_at']=now+60
             db.execute('UPDATE social_limits SET data=? WHERE owner=? AND site=?',(json.dumps(limit),owner,site))
             db.execute('UPDATE sources SET data=? WHERE owner=? AND id=?',(json.dumps(source),owner,id))
         return {'next_at':source['social_next_at'],'paused':source['social_paused']}

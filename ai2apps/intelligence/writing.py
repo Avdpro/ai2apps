@@ -87,3 +87,36 @@ async def compose(runtime, request, principal, channel_id, draft, guidance):
          'recent_conversation':[{'guidance':t['guidance'],'note':t['note']} for t in draft.get('turns',[])[-8:]],
          'evidence':draft['evidence']},validate)
     return result.model_dump()
+
+
+class DraftImage(BaseModel):
+    article_id: str = Field(max_length=80)
+    url: str = Field(max_length=4096)
+    before: str = Field(default='', max_length=24000)
+
+
+class DraftImages(BaseModel):
+    revision: int = Field(ge=1)
+    images: list[DraftImage] = Field(max_length=40)
+
+
+def place_images(draft, articles, body):
+    allowed_ids = {e['id'] for e in draft['evidence']}
+    available = {}
+    for article in articles:
+        if article['id'] not in allowed_ids or article['channel_id'] != draft['channel_id']:
+            continue
+        for image in [article.get('cover_image'), *article.get('images', [])]:
+            if image:
+                available[(article['id'], image['url'])] = image
+    paragraphs = re.split(r'\n\s*\n', draft['current']['content'])
+    result = []
+    for item in body.images:
+        image = available.get((item.article_id, item.url))
+        if not image:
+            raise ValueError('图片不属于稿件资料')
+        if item.before and (draft['kind'] == 'short_post' or item.before not in paragraphs):
+            raise ValueError('无效的图片插入位置')
+        result.append({**item.model_dump(), 'alt': image.get('alt', ''),
+                       'source_url': image.get('source_url', '')})
+    return result

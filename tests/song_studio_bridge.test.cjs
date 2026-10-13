@@ -1,7 +1,7 @@
 const vm=require('node:vm'),fs=require('node:fs'),assert=require('node:assert/strict');
 (async()=>{
  const listeners={},replies=[],events=[],requests=[],streams=[];let channel,hold=false,started,releaseProbe;
- const source={postMessage(){}},frame={src:'http://local/frame',contentWindow:source,isConnected:true,addEventListener(){},removeEventListener(){}};
+ const source={postMessage(){}},frame={src:'http://local/frame',contentWindow:source,closest(){return null;},isConnected:true,addEventListener(){},removeEventListener(){}};
  const context={window:{AI2AppsCapabilities:{appInstanceId:()=> 'instance'},addEventListener(k,f){(listeners[k]||=[]).push(f)},dispatchEvent:e=>events.push(e)},document:{documentElement:{lang:'en'},querySelectorAll:()=>[frame]},location:{origin:'http://local'},URL,URLSearchParams,TextEncoder,AbortController,AbortSignal,Blob,FormData,localStorage:{getItem:()=>null,setItem(){},removeItem(){}},CustomEvent:class{constructor(type,options){this.type=type;this.detail=options?.detail;}},MutationObserver:class{observe(){}disconnect(){}},EventSource:class{constructor(){streams.push(this);}addEventListener(name,f){this[name]=f;}close(){this.closed=true;}},setTimeout,clearTimeout,MessageChannel:class{constructor(){channel=this;this.port1={postMessage:v=>replies.push(v),close(){}};this.port2={};}},fetch:async(url,options)=>{
   requests.push({url,options});let value;
   if(url.endsWith('/mini-app-mounts'))value={id:'mount',content_url:'/frame',app_instance_id:'provider',resource:'web/song.html'};

@@ -24,6 +24,7 @@ def test_embedded_server_agents_first_import_order():
 @dataclass(frozen=True)
 class Run:
     input: dict
+    id: str = "call-run"
 
 
 def source(steps, **extra):
@@ -215,3 +216,40 @@ def test_call_api_reports_profile_capacity_instead_of_internal_error(tmp_path):
         assert len(tasks.list("capacity-owner")) == 1
     finally:
         runtime.stop()
+
+
+def test_nested_call_frames_share_execution_and_wait_for_cleanup(tmp_path):
+    from dataclasses import replace
+    from ai2apps.storage import PlatformDatabase
+    from ai2apps.browser.tasks import BrowserTaskRepository
+    from ai2apps.browser.task_tree import TaskTreeRepository
+    database = PlatformDatabase(tmp_path/'tree.sqlite3'); database.initialize()
+    tasks = BrowserTaskRepository(database); tree = TaskTreeRepository(database)
+    task = tasks.enqueue('owner','default','draft','read','gen','Read',{})
+    tasks.claim('owner','worker')
+    leaf = compile_source(source([{'name':'read','operation':'inspect','on':{'success':'done'}}])).ir
+    middle = compile_source(source([call()])).ir
+    middle['steps'][0]['call'] = {'agent_id':'leaf','generation_id':'v1','capability':'leaf','ir':leaf}
+    outer = compile_source(source([call()])).ir
+    outer['steps'][0]['call'] = {'agent_id':'middle','generation_id':'v1','capability':'middle','ir':middle}
+    ctx = context(outer)
+    params = {**ctx.run.input['parameters'],'owner_user_id':'owner','execution_task_id':task['execution_task_id']}
+    ctx = replace(ctx,run=Run({'parameters':params}),task_tree=tree)
+    action = browser_builder_executor(ctx)
+    frames = [n for n in tree.list('owner') if n['kind']=='capability_call']
+    assert len(frames)==2
+    assert frames[0]['parent_id']==task['execution_task_id']
+    assert frames[1]['parent_id']==frames[0]['id']
+    answered = respond(action,{'outcome':'success','evidence':{'result':{'text':'Article'}}})
+    result = browser_builder_executor(replace(ctx,interactions=(answered,)))
+    assert isinstance(result,CompleteAction)
+    assert len(tasks.list('owner'))==1
+    frames = [n for n in tree.list('owner') if n['kind']=='capability_call']
+    assert len(frames)==2 and all(n['status']=='completed' for n in frames)
+    tasks.update('owner',task['id'],status='completed',run_id=ctx.run.id,
+        browser_context_json=json.dumps({'created_by_run':ctx.run.id,'cleanup':{'state':'pending'}}))
+    tree.reconcile()
+    assert tree.get('owner',task['root_task_id'])['status']=='finishing'
+    tasks.update('owner',task['id'],browser_context_json=json.dumps({'created_by_run':ctx.run.id,'cleanup':{'state':'verified'}}))
+    tree.reconcile()
+    assert tree.get('owner',task['root_task_id'])['status']=='completed'

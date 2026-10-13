@@ -1,0 +1,7 @@
+/* Mini-Entry gesture controls belong to this surface, not shared Gallery styling.
+   A narrow desktop iframe is not a touch device. */
+.gallery-mini[data-gallery-surface="mini-entry"] .gallery-touch-drag{display:none}
+@media(pointer:coarse){
+ .gallery-mini[data-gallery-surface="mini-entry"] .gallery-touch-drag{display:flex;align-items:center;justify-content:center;position:absolute;right:6px;top:6px;width:44px;height:44px;padding:0;border:1px solid #d4d4d8;border-radius:12px;background:#ffffffed;color:#27272a;touch-action:none;-webkit-touch-callout:none}
+ .gallery-mini[data-gallery-surface="mini-entry"] .gallery-touch-drag svg{width:22px;height:22px}
+}

@@ -7,8 +7,8 @@ const source = fs.readFileSync(path.join(__dirname, '../web/static/js/todo.js'),
 function task(id, priority, parent_id = null, extra = {}) {
  return {id, priority, parent_id, directory_id: 'd', title: id, description: '', position: 0, completed: false, schedule: {frequency: 'off'}, ...extra};
 }
-function rows(tasks, filter = 'priority-U', search = '', collapsed = []) {
- const context = vm.createContext({state: {tasks}, aggregateId: null, directoryId: 'd', collapsed: new Set(collapsed),
+function rows(tasks, filter = 'priority-U', search = '', collapsed = [], completed = []) {
+ const context = vm.createContext({state: {tasks}, aggregateId: null, directoryId: 'd', collapsed: new Set(collapsed), completedExpanded: new Set(completed),
   inTaskView: t => filter === 'trash' ? !!t.deleted_at : filter === 'archived' ? !!t.archived_at && !t.deleted_at : !t.archived_at && !t.deleted_at,
   $: s => ({value: s === '#filter' ? filter : search})});
  vm.runInContext(source.slice(source.indexOf('function visibleRows()'), source.indexOf('function renderTree()')), context);
@@ -37,4 +37,25 @@ test('search combines with priority and lifecycle and directory boundaries remai
 test('all-project view preserves sibling order and collapsed state', () => {
  const tasks = [task('second','U',null,{position:2}),task('first','A',null,{position:1}),task('child','B','first')];
  assert.deepEqual(rows(tasks,'all','',['first']).map(r=>r.t.id),['first','second']);
+});
+
+test('completed children collect at the end and expand without changing stored order',()=>{
+ const tasks=[task('root','A'),task('done','B','root',{completed:true,position:0}),task('open','A','root',{position:1}),task('nested','C','done',{completed:true})];
+ let result=rows(tasks,'all');
+ assert.deepEqual(result.map(r=>r.t?.id||r.completedGroup),['root','open','root']);
+ assert.equal(result[2].count,1);assert.equal(result[2].expanded,false);
+ result=rows(tasks,'all','',[],['root']);
+ assert.deepEqual(result.map(r=>r.t?.id||r.completedGroup),['root','open','root','done','nested']);
+ assert.equal(result[3].depth,result[1].depth);
+ assert.equal(result[4].depth,result[3].depth+1);
+ assert.deepEqual(tasks.map(t=>t.id),['root','done','open','nested']);
+ assert.deepEqual(rows(tasks,'all','done').map(r=>r.t.id),['root','done']);
+ assert.deepEqual(rows(tasks,'completed').map(r=>r.t.id),['root','done','nested']);
+ assert.deepEqual(rows(tasks,'all','',['root']).map(r=>r.t.id),['root']);
+});
+test('completed parents with unfinished descendants remain visible',()=>{
+ const tasks=[task('root','A'),task('parent','B','root',{completed:true}),task('live','C','parent'),task('done','C','parent',{completed:true})];
+ const result=rows(tasks,'all');
+ assert.deepEqual(result.map(r=>r.t?.id||r.completedGroup),['root','parent','live','parent']);
+ assert.equal(result[3].count,1);
 });

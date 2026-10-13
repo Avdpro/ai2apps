@@ -4,6 +4,10 @@ Status: Local Mobile Shell implementation active; FRP integration pending
 Last updated: 2026-08-14
 Scope: AI2Apps Mac/client runtime and WebUI; cloud/FRP server implementation is out of scope
 
+## Mobile navigation implementation reference
+
+For the tested Todo list/detail pattern, see [手机端列表与详情的 Shell 双 iframe 导航方案](../ai2apps/docs/mobile-shell-list-detail-navigation.md) (2026-10-11). It covers Shell-owned history, persistent list/detail frames, prewarming, loading placeholders, native versus button-back animations, timing diagnostics, and the limits of the current Todo-specific implementation.
+
 ## 1. Purpose
 
 AI2Apps needs a dedicated mobile WebUI surface that can be reached through the
@@ -494,3 +498,9 @@ Formal integration smoke test — 2026-08-15:
 - Terminal or general desktop administration over the Mobile surface;
 - using the FRP server as an application-data proxy beyond the traffic needed
   to reach the user's Mac.
+
+## AI Browser Mobile (2026-10-13)
+
+AI Browser declares Mobile Ready and a trusted mount-bound Mobile Entry. Its phone UI starts with the installed Web Mini-App library and uses single-screen library/workspace/task navigation. Switching screens hides, rather than remounts, the active Mini-App frame, preserving form input, drafts and results. Browser profiles are selected within the Mini-App. Mobile does not fetch website-Agent authoring catalogs or open a native BiDi session; installation/customization and browser login/CAPTCHA assistance stay on the computer. Nine interface languages and narrow-screen Search All / Shopping Pro layouts are provided.
+
+Execution remains the shared Local background Task system on the connected computer. The owner Mobile route inventory explicitly permits Mini-App mount/draft/provenance-bound WebAgent operations, read-only profile discovery, task status/events/cancel/resume, and existing owner-authorized interaction responses. It excludes Agent authoring, direct Task creation, profile launch/edit/delete, raw BiDi tickets and API-key configuration. The existing owner lease, App exposure policy, actor and Mini-App mount guards apply; no Cloud endpoint changes or alternate browser-control protocol are introduced. The trusted host bridge forwards the App instance header so Mini-App mounts retain their host-instance binding.

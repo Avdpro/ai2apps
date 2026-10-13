@@ -1,0 +1,37 @@
+{
+  "zh-TW": {
+    "insufficient": "購買日期不足，無法確定補貨週期。",
+    "early": "尚未接近歷史補貨週期。",
+    "selected": "依重複購買週期預選 {0} 種商品；其他保留為候選，可手動選取。"
+  },
+  "ja": {
+    "insufficient": "購入日が不足しているため補充周期を推定できません。",
+    "early": "過去の補充周期にまだ近づいていません。",
+    "selected": "購入周期から {0} 商品を選択しました。他は候補として手動で選択できます。"
+  },
+  "ko": {
+    "insufficient": "구매 날짜가 부족하여 보충 주기를 추정할 수 없습니다.",
+    "early": "이전 보충 주기에 아직 가깝지 않습니다.",
+    "selected": "반복 구매 주기로 상품 {0}개를 선택했습니다. 나머지는 직접 선택할 수 있습니다."
+  },
+  "fr": {
+    "insufficient": "Dates insuffisantes pour estimer le cycle.",
+    "early": "Le cycle observé n’est pas encore proche.",
+    "selected": "{0} produits sélectionnés selon les cycles ; les autres restent facultatifs."
+  },
+  "es": {
+    "insufficient": "Fechas insuficientes para estimar el ciclo.",
+    "early": "Aún no se acerca el ciclo observado.",
+    "selected": "{0} productos seleccionados por ciclos; los demás son opcionales."
+  },
+  "pt-BR": {
+    "insufficient": "Datas insuficientes para estimar o ciclo.",
+    "early": "Ainda não está próximo do ciclo observado.",
+    "selected": "{0} produtos selecionados por ciclos; os demais são opcionais."
+  },
+  "ru": {
+    "insufficient": "Недостаточно дат для оценки цикла пополнения.",
+    "early": "Срок пополнения по истории ещё не близок.",
+    "selected": "По циклам выбрано {0} товаров; остальные можно выбрать вручную."
+  }
+}

@@ -7,6 +7,7 @@ function youtube(source){try{return ['youtube.com','www.youtube.com','m.youtube.
 function weibo(source){try{return ['weibo.com','www.weibo.com','s.weibo.com'].includes(new URL(source.url).hostname);}catch(_){return false;}}
 function sourceURL(mode,value,currentURL=''){
  const query=value.trim();
+ if(mode==='xiaohongshu-search'){if(!query||query.length>300)throw Error(lt('请输入 1–300 个字符的搜索关键词'));return 'https://www.xiaohongshu.com/search_result?'+new URLSearchParams({keyword:query,source:'web_explore_feed'});}
  if(mode==='weibo-account'){
   if(/^[0-9]{5,20}$/.test(query))return 'https://weibo.com/u/'+query;
   let u;try{u=new URL(query);}catch(_){throw Error(lt('请输入微博账号主页链接或数字 UID'));}

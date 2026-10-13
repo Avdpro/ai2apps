@@ -245,9 +245,11 @@ also once per component workflow.
 ## Discover catalog projection
 
 Mini-App is a first-class Discover surface, but it is not a new Cloud Package type. Discover presents
-`All | Apps | Mini-Apps | Agents | Models | Services`; an App Package can therefore contribute one App
-card and one component card for every declared Mini-App. Installing, upgrading, or removing any component
-card still operates on the containing App Package.
+`All | Apps | Mini-Apps | Agents | Models | Services`. The target classification is one component card
+per Mini-App; only a Package with a launcher-visible independent App also contributes an App card.
+A host-only provider MUST set `navigation.launcher: false` and must not be presented as an ordinary App.
+Installing, upgrading, or removing a component still operates on its containing Package. Cloud metadata
+and Desktop filtering must both implement this target; the existing client does not yet enforce all of it.
 
 The Package builder derives a bounded top-level `miniApps` projection in signed `ai2apps.json` from
 `app.yaml.mini_apps`. Authors must not maintain a second hand-written index. Each projection contains the
@@ -277,6 +279,28 @@ Categories are lower-kebab identifiers and are intentionally extensible. The cur
 older App definition has no explicit `catalog.categories`, the builder derives one conservative fallback
 from its declared Studio placements. Already-installed Packages are projected from their verified local
 App definition, so they do not need reinstalling merely to appear under Installed → Mini-Apps.
+
+### Development and publication gate (2026-10-13)
+
+New Mini-Apps MUST explicitly declare `catalog.categories` and their actual host `placements` in
+`app.yaml.mini_apps`. Placement-derived categories are only legacy compatibility, not the new authoring
+convention. Keep `package.type: app`; do not invent a `mini-app` type, duplicate a component registry,
+or hand-edit the generated `miniApps` projection. The existing validator still accepts legacy fallback;
+these additional authoring/release requirements are a documented gate, not a newly implemented validator.
+
+Use only the [standard publication runbook](ai2apps-package-publication-runbook.md). Default signed builds
+must retain `miniApps`; verify the generated projection against app.yaml before submission. Source-mount
+success, installed Studio discovery, and public Discover visibility are three separate acceptance steps.
+Before calling publication complete, use a clean, uninstalled client to verify Mini-App search, category,
+host placement, and the exact parent Package/version; test parent installation and upgrade separately.
+
+If Cloud rejects the projection, stop and report the schema blocker. Do not silently use
+`--omit-mini-app-catalog` to claim normal publication success. That option is only a user-approved legacy
+exception with a release receipt recording missing remote discovery and a recovery owner/plan. Existing
+omitted releases should receive a verified Cloud index backfill, not a forced re-release or signature edit.
+See [Cloud correction handoff](ai2apps-cloud-mini-app-discovery-fix-20261013.md) for historical backfill,
+pure-provider versus mixed-App classification, and coordinated pagination. Cloud deployment and Desktop
+adaptation remain pending until their respective acceptance evidence is recorded.
 
 ## Platform API
 
@@ -323,8 +347,10 @@ Packages that do not implement this event retain a bounded compatibility height 
   exactly as before.
 - Development source discovery is additive and is disabled unless the Helper supplies both the
   Development Runtime marker and its Bundle-pinned absolute source root.
-- The Cloud Registry continues to publish and deliver the existing signed App artifact; no Cloud schema or
-  API change is required for this extension.
+- Local discovery and mounting continue to use the existing signed App artifact. Public Discover indexing
+  additionally requires Cloud schema/projection support and verified historical backfill; see the
+  [Cloud correction handoff](ai2apps-cloud-mini-app-discovery-fix-20261013.md). Local mounting compatibility
+  must not be interpreted as proof that the remote catalog needs no changes.
 - Built-in Mini-App IDs are reserved. An installed declaration cannot replace one.
 - If multiple installed Packages expose the same Mini-App ID to one Studio, the conflicting ID is omitted
   from discovery and cannot be mounted until the conflict is resolved.
@@ -557,3 +583,65 @@ through the Host, isolated by the existing owner/provider/resource draft identit
 but stored under a separate key. Resetting a media task must not remove profiles.
 At most 100 profiles, each with a name up to 100 characters and rules up to 8,000
 characters, are allowed. The opaque frame never reads browser storage directly.
+
+## Music and sound effects (2026-10-05 development)
+
+`ai2apps/audio-generation-suite` provides `ai2apps.audio-generation.music` and
+`ai2apps.audio-generation.sfx` in Voice Studio. The declared semantic capabilities are
+`audio.music_generation` and `audio.sound_effects_generation`; trusted ACPF profiles
+select the published ACE-Step/Stable Audio model Packages and Runtime 1.8.9. These
+alternative models are not simultaneous hard dependencies. Stable checkpoint consent
+is still enforced by the signed distribution acquisition contract.
+
+The private mount-bound bridge adds `audio-generation.models`,
+`audio-generation.generate` and `audio-generation.cancel`. The Host filters models by
+signed `audio_generation` metadata and task, validates all request fields and provider
+limits, and invokes `audio_generate` through the scheduler. Models expose safe labels,
+readiness, duration bounds and lyrics support, never Worker addresses or checkpoint paths.
+
+Generation is a bounded awaited request, not a durable Job. Cancel or closing the frame
+aborts its own request; the Host forwards cancellation to the native Worker. Success is
+validated as stereo PCM16 WAV and saved through the owner's shared Voice Studio Artifact
+session before the Host emits `ai2apps:studio-output`. Frames receive completion only and
+must not introduce playback, export, drag or output history. Model licensing, installation
+and shared output contracts remain unchanged.
+
+
+## Audio prompt language preference
+
+Audio model authors may declare `metadata.audio_generation.preferred_prompt_language: en`
+in the signed Service model definition. The optional field currently accepts only `en`.
+Absence means preserve the user's description; it does not assert that all languages are
+supported. Host model options expose this as `preferredPromptLanguage`.
+
+For an English-preferred model the Host uses the configured `work_simple` model to translate
+and polish the description before each generation, including English inputs. For a model
+without the preference, no Task call occurs. Lyrics and ABC scores are never translated by
+this policy. Task failure stops generation; no silent original-text fallback. The policy is
+read from installed model metadata, never inferred from a model name or provided by the Frame.
+Previously signed Packages need a new release to introduce this declaration; do not mutate
+installed or published manifests. Model metadata, Host behavior and Mini-App hints must be
+upgraded together.
+
+## AI Browser Web-Agent Mini-Apps
+
+AI Browser hosts ordinary App Package Mini-Apps under placement `ai2apps.ai-browser`, with a fixed
+sandbox UI and independent declared WebAgent capabilities. All capability execution uses the shared
+Local `WebAgentInvocation`/Browser Task queue, also used by Intelligence Center; the UI submits commands
+and receives SSE-driven status through the existing mount-bound Studio MessageChannel. No foreground
+execution loop or second browser API is permitted. See the
+[Web-Agent Mini-App Package contract](ai2apps-web-agent-mini-app-package-contract-v1.md) for manifests,
+SDK, lifecycle, security and the two-capability Web Reader example.
+
+
+### WebAgent retained Task pages
+
+The browser Mini-App SDK may submit with `retainPages: true`. Local pins this
+explicit lifecycle choice to the Task. `retainedTasks()` returns only the actor's
+current Mini-App caller's retained Tasks; `pages(taskId, action)` accepts `list`,
+`focus`, or `close` and resolves native context ownership server-side. Arbitrary
+context IDs, raw endpoints and credentials are never accepted/exposed. Active
+Tasks cannot be closed. Closure/focus use native BiDi and enforce the recorded
+Profile and Task-owned contexts, with closure verification. These are scoped
+Task lifecycle operations, not a second browser protocol. The SDK serializes
+host requests; progress continues via SSE without status polling.

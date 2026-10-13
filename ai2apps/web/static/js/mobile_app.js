@@ -1,5 +1,18 @@
 (function () {
     'use strict';
+    // Direct host URLs resolve to the same mount-bound Mobile Entry as the catalog.
+    document.addEventListener?.('DOMContentLoaded', async () => {
+        const marker=document.querySelector('[data-mobile-open-app]');
+        if(!marker)return;
+        try {
+            const response=await fetch('/v1/mobile/apps/'+encodeURIComponent(marker.dataset.mobileOpenApp)+'/open',{method:'POST',credentials:'same-origin'});
+            const mount=await response.json();
+            if(!response.ok)throw Error(mount.detail||'Cannot open App');
+            const url=new URL(mount.content_url,location.origin);
+            if(url.origin!==location.origin||!url.pathname.startsWith('/mobile/'))throw Error('Invalid Mobile Entry');
+            location.replace(url.href);
+        } catch(error) {marker.textContent=error.message;}
+    });
     window.AI2APPS_MOBILE_SURFACE = true;
     try { window._t = JSON.parse(document.getElementById("mobile-app-locale")?.textContent || "{}"); } catch (_) { window._t = {}; }
     window.t = window.t || function (key) { return window._t[key] !== undefined ? window._t[key] : key; };

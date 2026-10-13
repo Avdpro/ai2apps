@@ -34,6 +34,9 @@ from ai2apps.intelligence import service
 
 
 def test_manual_import_routes(client, monkeypatch):
+    async def translate(runtime, request, principal, channel, article):
+        return {**article, 'title':'新闻标题', 'summary':'新闻摘要', 'body':'新闻译文', 'original_content':{'body':article['body']}, 'ai_translation':True}
+    monkeypatch.setattr(manual_import, 'translate_article', translate)
     async def classify(runtime, request, principal, channel, sections, articles):
         return {'manual': sections[0]['id']}
     monkeypatch.setattr(service, 'classify_articles', classify)
@@ -50,6 +53,8 @@ def test_manual_import_routes(client, monkeypatch):
     body = {'page': {'source_id':'','url':'https://example.com/story','title':'Story','text':'Full article'}}
     result = client.post(base+'/import-url',json=body)
     assert result.status_code == 200, result.text
+    assert result.json()['body']=='新闻译文'
+    assert result.json()['original_content']['body']=='Full article'
     assert client.post(base+'/import-url',json=body).json()['id'] == result.json()['id']
     assert client.post(base+'/import-file',files={'file':('bad.png',b'not image','image/png')}).status_code == 422
 
@@ -74,3 +79,30 @@ def test_image_summary_is_opt_in_and_upgrades_original(client, monkeypatch):
     assert result.status_code == 200, result.text
     assert calls and result.json()['id'] == original['id']
     assert result.json()['image_ai_summary'] and result.json()['body'] == '只描述可见内容'
+
+
+@pytest.mark.asyncio
+async def test_translation_preserves_all_segments_sources_and_images(monkeypatch):
+    seen=[]
+    async def model(runtime,request,principal,channel,instruction,data,validate):
+        seen.append(data)
+        assert data['channel']['output_language']=='zh'
+        return validate({'title':'译文标题','summary':'摘要','body':data['body_segment']})
+    monkeypatch.setattr(service,'model_json',model)
+    article={'title':'Title','body':'A'*13001,'summary':'old','sources':[{'url':'https://example.com/a'}],'images':[{'url':'https://example.com/image.jpg'}]}
+    result=await manual_import.translate_article(None,None,None,{'id':'c','output_language':'zh'},article)
+    assert len(seen)==3
+    assert ''.join(d['body_segment'] for d in seen)==article['body']
+    assert result['original_content']['body']==article['body']
+    assert result['sources']==article['sources'] and result['images']==article['images']
+    assert result['translation_language']=='Simplified Chinese'
+
+
+def test_reimport_upgrades_untranslated_manual_article(tmp_path):
+    store=IntelligenceStore(tmp_path)
+    c=store.save_channel('a',{'name':'F1','interval_hours':0})
+    first=store.import_article('a',c['id'],{'title':'English','body':'Original','sources':[]},'url')
+    translated=store.import_article('a',c['id'],{'title':'译文','body':'翻译正文','sources':[],
+        'original_content':{'body':'Original'},'ai_translation':True},'url')
+    assert translated['id']==first['id'] and translated['body']=='翻译正文'
+    assert len(store.snapshot('a')['articles'])==1

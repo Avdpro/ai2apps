@@ -43,6 +43,7 @@ from ai2apps.api.workers import create_worker_router
 from ai2apps.api.workspace import create_workspace_router
 from ai2apps.api.intelligence import create_intelligence_router
 from ai2apps.api.todo import create_todo_router
+from ai2apps.api.model_profiles import create_model_profiles_router
 from ai2apps.api.codex import create_codex_router
 
 
@@ -80,6 +81,7 @@ def create_ai2apps_router(
         )
     )
     if runtime_provider is not None:
+        router.include_router(create_model_profiles_router(runtime_provider, effective_principal_provider))
         router.include_router(create_codex_router(runtime_provider, effective_principal_provider))
         router.include_router(create_todo_router(runtime_provider, effective_principal_provider))
         router.include_router(create_intelligence_router(runtime_provider, effective_principal_provider))

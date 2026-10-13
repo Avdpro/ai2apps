@@ -299,3 +299,82 @@ async def test_model_without_language_preference_preserves_chinese(monkeypatch):
     assert r.status_code==200,r.text
     assert invoked[0][2]['prompt']=='舒缓的中文民谣'
     assert r.json()['preparedPrompt']=='舒缓的中文民谣'
+
+
+def test_sound_effect_probe_skips_unrelated_model_families(monkeypatch):
+    from ai2apps.studio import capability_broker as broker_module
+    for name in ('_detailed_models', '_separation_models', '_voice_models', '_tts_models'):
+        def unexpected(*args):
+            pytest.fail('Sound effects must not enumerate unrelated speech models')
+        monkeypatch.setattr(StudioCapabilityBroker, name, unexpected)
+    calls = []
+    def models(runtime, capability):
+        calls.append(capability)
+        return ()
+    monkeypatch.setattr(broker_module, 'generation_models', models)
+    result = StudioCapabilityBroker(SimpleNamespace(extension_manager=None)).probe_declaration(
+        STUDIO_ID, {'id':'ai2apps.audio-generation.sound-effects',
+                    'requirements':{'capabilities':['audio.sound_effects_generation']}})
+    assert calls == ['audio.sound_effects_generation']
+    assert result['items'][0]['implemented'] is True
+    assert result['items'][0]['ready'] is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('model_id', [
+    'ai2apps.model.stable-audio-mlx/music', 'ai2apps.model.stable-audio-mlx/sfx',
+    'ai2apps.model.stable-audio-cuda/music', 'ai2apps.model.stable-audio-cuda/sfx',
+])
+async def test_legacy_stable_audio_translates_without_language_metadata(monkeypatch, model_id):
+    app, saved, invoked = fixture(monkeypatch, english=False)
+    model = generation.list_package_models(None)[0]
+    model.id = model_id
+    async def translate(self, prompt, **kw):
+        assert kw['purpose'] == 'work_simple'
+        assert json.loads(prompt)['description'] == '跑车启动'
+        return json.dumps({'prompt':'A sports car engine starting.'})
+    monkeypatch.setattr(StudioCapabilityBroker, '_translation_completion', translate)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url='http://test') as c:
+        base=f'/studios/{STUDIO_ID}/mini-app-mounts/{MOUNT_ID}'
+        options=await c.get(base+'/audio-generation-models',params={'capability':CAP})
+        assert options.json()['items'][0]['preferredPromptLanguage'] == 'en'
+        response=await c.post(base+'/audio-generation',json={'capability':CAP,'model':model_id,'prompt':'跑车启动','duration':1})
+        assert response.status_code == 200
+        assert response.json()['preparedPrompt'] == 'A sports car engine starting.'
+    assert invoked[0][2]['prompt'] == 'A sports car engine starting.'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('model_id', ['ai2apps.model.yue2-mlx/default', 'ai2apps.model.yue2-cuda/default'])
+async def test_deferred_yue2_style_keeps_original_prompt(monkeypatch, model_id):
+    app, saved, invoked = fixture(monkeypatch, song=True, english=False)
+    generation.list_package_models(None)[0].id = model_id
+    async def translate(self, prompt, **kw):
+        raise AssertionError('Deferred YuE2 preprocessing must not run')
+    monkeypatch.setattr(StudioCapabilityBroker, '_translation_completion', translate)
+    payload = SONG | {'model': model_id, 'prompt': '轻柔钢琴独奏', 'lyrics': '[Verse]\n月光照着家乡'}
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test') as c:
+        base = f'/studios/{STUDIO_ID}/mini-app-mounts/{MOUNT_ID}'
+        options = await c.get(base+'/audio-generation-models', params={'capability':'audio.song_generation'})
+        assert options.json()['items'][0]['preferredPromptLanguage'] is None
+        response = await c.post(base+'/audio-generation', json=payload)
+    assert response.status_code == 200, response.text
+    assert response.json()['preparedPrompt'] == '轻柔钢琴独奏'
+    assert invoked[0][2]['prompt'] == response.json()['preparedPrompt']
+    assert invoked[0][2]['lyrics'] == payload['lyrics']
+    assert invoked[0][2]['generation'] == payload['generation']
+
+
+@pytest.mark.asyncio
+async def test_deferred_song_translation_option_is_rejected(monkeypatch):
+    app, saved, invoked = fixture(monkeypatch, song=True)
+    async def forbidden(*args, **kwargs):
+        raise AssertionError('Explicit opt-out must skip translation')
+    monkeypatch.setattr(StudioCapabilityBroker, '_translation_completion', forbidden)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test') as c:
+        url=f'/studios/{STUDIO_ID}/mini-app-mounts/{MOUNT_ID}/audio-generation'
+        response=await c.post(url,json=SONG|{'translate_style':False,'prompt':'钢琴独奏'})
+        assert response.status_code==422,response.text
+        assert not invoked
+        invalid=await c.post(url,json=SONG|{'translate_style':'false'})
+        assert invalid.status_code==422

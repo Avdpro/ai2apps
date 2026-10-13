@@ -16,13 +16,20 @@ from . import service, site_agents, entity_categories, post_filter, knowledge_sy
 logger = logging.getLogger(__name__)
 
 
+class SourceBlocked(Exception):
+    """Stop this source without retrying an uncertain browser action."""
+
+
 class IntelligenceCollector:
     def __init__(self, runtime):
         self.runtime = runtime
         self.store = IntelligenceStore(runtime.config.paths.artifacts_path / 'intelligence')
         self.invocations = WebAgentInvocation(runtime)
         self.tasks = self.invocations.tasks
+        from ai2apps.browser.task_tree import TaskTreeRepository
+        self.tree = TaskTreeRepository(runtime.database, runtime.events)
         self.active = {}
+        self.browser_activity = {}
         self.stop = asyncio.Event()
         self.loop_task = None
         with self.store.connect() as db:
@@ -31,25 +38,89 @@ class IntelligenceCollector:
                 CREATE TABLE IF NOT EXISTS collection_schedules(owner TEXT PRIMARY KEY, session_id TEXT NOT NULL);
             ''')
 
-    def submit(self, principal, channel_id, session_id, scheduled=False):
+    def submit(self, principal, channel_id, session_id, scheduled=False, source_id=None):
         owner = principal.actor_user_id
-        run = self.store.claim(owner, channel_id, scheduled, background_session=session_id)
+        run = self.store.claim(owner, channel_id, scheduled, background_session=session_id, source_id=source_id)
+        channel = self.store.get('channels', owner, channel_id)
+        self.tree.create(owner, 'collection:'+run['id'], '刷新情报 · '+channel['name'], kind='collection')
+        with self.store.connect() as db:
+            job = dict(db.execute('SELECT * FROM collection_jobs WHERE run_id=?', (run['id'],)).fetchone())
+        self.ensure_source_nodes(job)
+        if not scheduled:
+            # Retry saved source evidence after editorial failure; do not revisit sites.
+            with self.store.connect() as db:
+                old=db.execute("SELECT id,status,data FROM runs WHERE owner=? AND channel=? AND status IN ('failed','partial','completed') AND id!=? AND updated>? ORDER BY updated DESC LIMIT 1",
+                    (owner,channel_id,run['id'],time.time()-86400)).fetchone()
+                prior=db.execute('SELECT data FROM collection_jobs WHERE run_id=?',(old['id'],)).fetchone() if old else None
+            if old and old['status']!='completed' and prior and (json.loads(old['data']).get('progress') or {}).get('phase')=='digest':
+                previous=json.loads(prior['data']);current=json.loads(job['data'])
+                fields=('id','url','kind','profile_key','x_mode','x_values','x_sort','xiaohongshu_sort','list_agent_generation_id','article_agent_generation_id')
+                def signature(sources):return [{k:s.get(k) for k in fields} for s in sources]
+                if signature(previous['sources'])==signature(current['sources']):
+                    cached=[];cached_logs=[]
+                    for source in current['sources']:
+                        try:
+                            node_id='collection:'+old['id']+':source:'+source['id']
+                            self.tree.get(owner,node_id)
+                            with self.runtime.database.transaction() as native:
+                                node=native.execute('SELECT result_json FROM task_nodes WHERE owner=? AND id=?',(owner,node_id)).fetchone()
+                            result=json.loads(node['result_json'])
+                            cached.extend(result.get('pages',[]));cached_logs.append(result.get('log',{}))
+                        except KeyError:pass
+                    if cached and len(cached_logs)==len(current['sources']):
+                        current['retry_pages']=cached;current['retry_logs']=cached_logs
+                        with self.store.connect() as db:db.execute('UPDATE collection_jobs SET data=? WHERE run_id=?',(json.dumps(current),run['id']))
+        with self.store.connect() as db:
+            current=json.loads(db.execute('SELECT data FROM collection_jobs WHERE run_id=?',(run['id'],)).fetchone()['data'])
+            current['ready']=True
+            db.execute('UPDATE collection_jobs SET data=? WHERE run_id=?',(json.dumps(current),run['id']))
         self.changed(owner, run['id'])
         self.runtime.notifications.notify()
         return self.store.get('runs', owner, run['id'])
+
+    def ensure_source_nodes(self, job):
+        root = 'collection:'+job['run_id']
+        for source in json.loads(job['data'])['sources']:
+            self.tree.create(job['owner'], root+':source:'+source['id'], '刷新 '+source['name'], parent_id=root, kind='source')
+
+    def cancel(self, owner, run_id):
+        with suppress(KeyError):
+            if self.store.get('runs',owner,run_id)['status']=='running':self.store.progress(owner,run_id,'已停止','cancelled')
+        with suppress(KeyError):
+            for run in self.tree.cancel(owner, 'collection:'+run_id):
+                self.runtime.agent_runtime.cancel(run)
+        active = self.active.get(run_id)
+        if active is not None:
+            active.cancel()
+        self.runtime.notifications.notify()
 
     def changed(self, owner, run_id):
         self.runtime.events.append(event_type='intelligence.collection.changed',
             subject_id=BrowserTaskRepository.event_subject(owner), payload={'collection_run_id': run_id})
 
-    def progress(self, owner, run_id, message, logs=None):
+    def progress(self, owner, run_id, message, logs=None, details=None):
         current = self.store.get('runs', owner, run_id)
-        self.store.progress(owner, run_id, message, logs=logs)
-        if current.get('message') != message or logs is not None:
+        if current['status'] != 'running':
+            return
+        if details is not None:
+            details=dict(details)
+            if run_id in self.browser_activity:details['active_pages']=list(self.browser_activity[run_id].values())
+            old=current.get('progress',{})
+            identity=('phase','source_id','event_index','model_attempt','browser_task_id','waiting')
+            if any(k in details and old.get(k)!=details[k] for k in identity):
+                from datetime import datetime, timezone
+                details['phase_started_at']=datetime.now(timezone.utc).isoformat()
+        details_changed=details is not None and any(current.get('progress',{}).get(k)!=v for k,v in details.items())
+        if current.get('message')==message and logs is None and not details_changed:return
+        self.store.progress(owner, run_id, message, logs=logs, details=details)
+        if current.get('message') != message or logs is not None or details_changed:
             self.changed(owner, run_id)
 
     async def startup(self):
         self.stop.clear()
+        # A Local restart may interrupt submission before its admission flag.
+        with self.store.connect() as db:
+            db.execute("UPDATE collection_jobs SET data=json_set(data,'$.ready',json('true')) WHERE json_extract(data,'$.ready')=0")
         # Upgrade existing schedules without requiring an open Intelligence UI.
         from ai2apps.identity import IdentityRepository
         from ai2apps.api.agent_platform import _session
@@ -79,9 +150,16 @@ class IntelligenceCollector:
             while not self.stop.is_set():
                 try:
                     with self.store.connect() as db:
-                        jobs = [dict(r) for r in db.execute("SELECT j.* FROM collection_jobs j JOIN runs r ON r.id=j.run_id WHERE r.status='running'")]
+                        jobs = [dict(r) for r in db.execute("SELECT j.*, r.status AS run_status FROM collection_jobs j JOIN runs r ON r.id=j.run_id WHERE r.status IN ('running','completed') AND COALESCE(json_extract(j.data,'$.ready'),1)=1")]
                         schedules = [dict(r) for r in db.execute('SELECT * FROM collection_schedules')]
                     for job in jobs:
+                        if job['run_status'] == 'completed':
+                            try:
+                                node = self.tree.get(job['owner'], 'collection:'+job['run_id']+':organize')
+                            except KeyError:
+                                continue
+                            if node['status'] != 'running':
+                                continue
                         if job['run_id'] not in self.active:
                             task = asyncio.create_task(self.collect(job), name='intelligence-'+job['run_id'])
                             self.active[job['run_id']] = task
@@ -104,6 +182,10 @@ class IntelligenceCollector:
 
     async def browser(self, job, source, key, *, recipe=None, program=None, parameters=None):
         import hashlib
+        root = 'collection:'+job['run_id']
+        self.tree.create(job['owner'], root, '更新频道', kind='collection')
+        parent = root+':source:'+source['id']
+        self.tree.create(job['owner'], parent, '刷新 '+source['name'], parent_id=root, kind='source')
         task_key = 'intelligence:'+job['run_id']+':'+source['id']+':'+key
         task_id = 'btask_'+hashlib.sha256((job['owner']+'\0'+task_key).encode()).hexdigest()
         try:task = self.tasks.get(job['owner'],task_id)
@@ -112,26 +194,45 @@ class IntelligenceCollector:
             key=task_key,
             caller_app_id='ai2apps.intelligence', agent_id=(recipe or {}).get('draft_id', ''),
             generation_id=(recipe or {}).get('generation_id', ''), capability=(recipe or {}).get('capability', ''),
-            parameters=parameters or {}, source=program)
+            parameters=parameters or {}, source=program, parent_task_id=parent,
+            reuse_page=(bool(source.get('x_mode')) and 'validate' not in key) or 'list' in key,
+            parallel_limit=1 if social.site_key(source) or 'list' in key else 3)
+        requested=(parameters or {}).get('url') or next((step.get('arguments',{}).get('url') for step in (program or {}).get('steps',[]) if step.get('arguments',{}).get('url')),source['url'])
+        validation='validate' in key
+        phase='validation' if validation else 'list' if any(v in key for v in ('list','feed','landing')) else 'article'
         async with self.runtime.notifications.subscribe() as wake:
             while True:
                 current = self.store.get('runs', job['owner'], job['run_id'])
                 if current['status'] != 'running':
                     if task.get('run_id'):self.runtime.agent_runtime.cancel(task['run_id'])
-                    self.tasks.update(job['owner'], task['id'], status='cancelled')
+                    self.tasks.update(job['owner'], task['id'], status='cancelling' if task.get('run_id') else 'cancelled')
                     raise asyncio.CancelledError()
                 task = self.tasks.get(job['owner'], task['id'])
                 if task['status'] == 'completed':
                     run = self.runtime.agents.get_run(task['run_id'])
-                    return (run.output or {}).get('result', {})
+                    result=(run.output or {}).get('result', {})
+                    seen=current.get('progress',{}).get('read_task_ids',[])
+                    if not validation and task_id not in seen:seen=[*seen,task_id]
+                    self.browser_activity.get(job['run_id'],{}).pop(task_id,None)
+                    self.progress(job['owner'],job['run_id'],'已读取页面：'+source['name'],details={'read_task_ids':seen,'pages_read':len(seen),'active_pages':[]})
+                    return result
                 if task['status'] in ('failed', 'cancelled'):
+                    self.browser_activity.get(job['run_id'],{}).pop(task_id,None)
                     raise RuntimeError(task.get('message') or 'WebAgent Task '+task['status'])
                 waiting = task['status'] == 'interrupted'
                 if task['status'] == 'waiting_input' and task.get('run_id'):
                     from ai2apps.browser.task_presentation import browser_task_wait_presentation
                     waiting = browser_task_wait_presentation(self.runtime.agents.list_interactions(task['run_id']))['status_label'] in ('等待协助','等待确认')
+                if waiting:
+                    self.browser_activity.get(job['run_id'],{}).pop(task_id,None)
+                    reason=task.get('message') or '信息源需要登录、验证或确认，请处理后重新更新此源'
+                    if task.get('run_id'):self.runtime.agent_runtime.cancel(task['run_id'])
+                    self.tasks.update(job['owner'],task['id'],status='cancelling' if task.get('run_id') else 'cancelled')
+                    raise SourceBlocked(reason+'；已跳过此信息源，其它信息源继续更新')
+                self.browser_activity.setdefault(job['run_id'],{})[task_id]={'url':requested,'status':task['status'],'source_name':source['name']}
                 self.progress(job['owner'], job['run_id'],
-                    ('请在 AI 浏览器任务栏处理：' if waiting else '后台采集中：')+source['name'], logs=None)
+                    ('请在 AI 浏览器任务栏处理：' if waiting else '后台采集中：')+source['name'], logs=None,
+                    details={'source_id':source['id'],'source_name':source['name'],'phase':phase,'waiting':waiting,'browser_task_id':task['id'],'browser_task_name':task.get('name',''),'browser_status':task['status'],'active_pages':[{'url':requested,'status':task['status']}]})
                 with suppress(TimeoutError):await asyncio.wait_for(wake.get(), timeout=10)
 
     @staticmethod
@@ -139,6 +240,7 @@ class IntelligenceCollector:
         # Scope the document; only read operations, no arbitrary application code.
         origin = site_agents.scope_url(source['url'])
         scopes = [origin+'/**']
+        if source.get('x_mode'):scopes = ['https://x.com/**', 'https://www.x.com/**']
         if social.site_key(source) == 'weibo.com':scopes = ['https://weibo.com/**', 'https://www.weibo.com/**', 'https://s.weibo.com/**']
         return {'agent_type': 'web', 'site_scope': scopes, 'steps': [{
             'name': 'collect', 'operation': operation, 'execution': 'compiled',
@@ -160,7 +262,75 @@ class IntelligenceCollector:
     async def read(self, job, source, key, url, **options):
         args = {'url': url, 'new_tab': False, 'close_tab': False, 'delay_ms': 1200,
                 'max_chars': 10000, 'include_cover': True, 'include_images': True, 'observe_regions': not bool(social.site_key(source)), **options}
+        if options.get('x'):
+            return await self.read_x(job, source, key, args)
         return await self.browser(job, source, key, program=self.program(source, 'read_page', args))
+
+    async def read_x(self, job, source, key, args):
+        from . import x_agents
+        from ai2apps.identity import IdentityRepository
+        from ai2apps.agent_builder.models import StepOutcome
+        owner=job['owner'];kind='x-list' if args['x']=='feed' else 'x-article'
+        recipe_key=site_agents.recipe_key(source,kind)
+        previous=self.store.site_recipe(owner,recipe_key)
+        record=self.recipe(owner,source,kind)
+        page=None
+        if record:
+            try:
+                page=await self.browser(job,source,key+'-rule',recipe=record,parameters={'url':args['url']})
+                if page.get('x_rule_valid'):return page
+            except RuntimeError:
+                pass
+            self.store.invalidate_site_recipe(owner,recipe_key,record['generation_id'])
+        if page is None:
+            page=await self.browser(job,source,key,program=self.program(source,'read_page',args))
+        if not page.get('x_observed'):return page
+        # One bounded repair per source/template per update, never one model call per post.
+        repair_key=source['id']+':'+kind
+        with self.store.connect() as db:
+            data=json.loads(db.execute('SELECT data FROM collection_jobs WHERE run_id=?',(job['run_id'],)).fetchone()['data'])
+            attempted=data.setdefault('x_repair_attempts',[])
+            if repair_key in attempted:return page
+            attempted.append(repair_key)
+            db.execute('UPDATE collection_jobs SET data=? WHERE run_id=?',(json.dumps(data),job['run_id']))
+        try:
+            principal=IdentityRepository(self.runtime.database).local_principal_for(owner)
+            self.progress(owner,job['run_id'],'正在学习采集规则：'+source['name'],details={'phase':'validation','active_pages':[]})
+            candidate=await x_agents.learn(self.runtime,principal,source,args['x'],args['url'],page['x_observed'],previous)
+            result=await self.browser(job,source,key+'-validate-rule',program=self.program(source,'read_page',{**args,'x_extraction':candidate['rule']}))
+            if not x_agents.matches(page,result,args['x']):return page
+            repo=self.runtime.agent_builder
+            repo.add_evidence(draft_id=candidate['draft_id'],owner_user_id=owner,step_name='extract',generation_id=candidate['generation_id'],
+                outcome=StepOutcome.SUCCESS,evidence={'validation':'x-observed-post-comparison','mode':args['x']})
+            repo.activate_generation(candidate['draft_id'],candidate['generation_id'],owner)
+            self.store.save_site_recipe(owner,recipe_key,candidate)
+            return result
+        except Exception:
+            logger.exception('X rule repair failed; retaining observed post evidence')
+            return page
+
+    async def read_list(self, job, source, key='list'):
+        sort = {'xiaohongshu_sort':source.get('xiaohongshu_sort', 'latest'), 'search_provider':'xiaohongshu', 'news_scan':False} if social.xiaohongshu_search_url(source['url']) else {}
+        return await self.browser(job, source, key, program={
+            **self.program(source, 'open', {'url': source['url']}),
+            'steps': [dict(name='open', operation='open', execution='compiled', desc='Open source',
+                          arguments={'url': source['url'], 'delay_ms':1200, 'reuse_current_page':True}, on={'success':'extract','failed':'failed'}),
+                      dict(name='extract',operation='extract_list',execution='compiled',desc='Read article list',
+                           arguments={'limit':40,'observe_regions':True,'news_scan':True,**sort},on={'success':'done','failed':'failed'})]})
+
+    @staticmethod
+    def list_needs_check(result):
+        # Healthy compiled rules already carry validation evidence. Re-scan only
+        # suspicious results; missing/drifted rules take the learning path.
+        urls = {item.get('url') or item.get('href') for item in result.get('items', [])
+                if isinstance(item, dict)} - {None, ''}
+        return len(urls) < 3 or bool(result.get('extraction_fallback')) or result.get('outcome') in ('failed', 'not_found')
+
+    @staticmethod
+    def list_undercovered(result, baseline):
+        expected = {i.get('url') or i.get('href') for i in baseline.get('items', [])} - {None, ''}
+        actual = {i.get('url') or i.get('href') for i in result.get('items', [])} - {None, ''}
+        return len(expected) >= 3 and len(actual & expected) / len(expected) < .8
 
     async def ensure_images(self, job, source, page, url, key, stats):
         """Every extraction path receives one bounded image recovery attempt."""
@@ -222,7 +392,7 @@ class IntelligenceCollector:
             args = {**step['arguments']}
             if kind == 'article':args['url'] = body.url
             steps = []
-            if kind == 'list':steps.append(dict(name='open',operation='open',execution='compiled',desc='Open validation page',arguments={'url':body.url},on={'success':'extract','failed':'failed'}))
+            if kind == 'list':steps.append(dict(name='open',operation='open',execution='compiled',desc='Open validation page',arguments={'url':body.url,'reuse_current_page':True},on={'success':'extract','failed':'failed'}))
             steps.append(dict(name='extract',operation=step['operation'],execution='compiled',desc='Validate observed region',arguments=args,on={'success':'done','failed':'failed'}))
             result = await self.browser(job,source,key,program={'agent_type':'web','site_scope':[site_agents.scope_url(body.url)+'/**'],'steps':steps})
             if kind == 'list':
@@ -233,7 +403,9 @@ class IntelligenceCollector:
                 text = ' '.join(baseline.get('text','').split())
                 chunks = [text[i:i+min(100,len(text)//3)] for i in (0,len(text)//3,2*len(text)//3)]
                 samples, matched = 3, sum(bool(chunk) and chunk in ' '.join(result.get('text','').split()) for chunk in chunks)
-            if not samples or matched < min(2,samples) or matched/samples < .6:return
+            if kind == 'list':
+                if samples < 3 or matched < 3 or matched/samples < .8:return
+            elif not samples or matched < min(2,samples) or matched/samples < .6:return
             from ai2apps.agent_builder.models import StepOutcome
             repository = self.runtime.agent_builder
             repository.add_evidence(draft_id=candidate['draft_id'],owner_user_id=job['owner'],step_name='extract',generation_id=candidate['generation_id'],outcome=StepOutcome.SUCCESS,
@@ -251,7 +423,29 @@ class IntelligenceCollector:
         try:
             principal = IdentityRepository(self.runtime.database).local_principal_for(owner)
             run = self.store.get('runs', owner, id);channel = self.store.get('channels', owner, run['channel_id'])
-            for source in json.loads(job['data'])['sources']:
+            self.tree.create(owner, 'collection:'+id, '刷新情报 · '+channel['name'], kind='collection')
+            self.ensure_source_nodes(job)
+            saved_job=json.loads(job['data'])
+            if saved_job.get('retry_pages'):
+                pages=saved_job['retry_pages'];logs=saved_job['retry_logs']
+                for source in saved_job['sources']:
+                    own=[p for p in pages if p['source_id']==source['id']]
+                    log=next(l for l in logs if l.get('source_id')==source['id'])
+                    self.tree.finish(owner,'collection:'+id+':source:'+source['id'],result={'pages':own,'log':log,'source_id':source['id']})
+                self.progress(owner,id,'使用已采集内容重试 AI 整理',logs,details={'phase':'digest','active_pages':[],'articles_extracted':len(pages)})
+                await self.finish(principal,channel,id,pages,logs)
+                self.tree.finish(owner,'collection:'+id,result={'collection_run_id':id,'sources':logs})
+                return
+            async def collect_source(source):
+                pages=[]
+                source_node = 'collection:'+id+':source:'+source['id']
+                node = self.tree.get(owner, source_node)
+                cached = json.loads(node['result_json'])
+                cached = cached.get('result', cached)
+                if node['status'] in ('completed','failed','finishing') and 'pages' in cached:
+                    pages.extend(cached['pages']);logs.append(cached['log'])
+                    return pages
+                source_start = len(pages)
                 count, skipped, lease = 0, 0, None
                 started = time.monotonic();stats = {'reused': 0, 'fallback': 0, 'learning_calls': 0}
                 try:
@@ -263,13 +457,17 @@ class IntelligenceCollector:
                             data = json.loads(db.execute('SELECT data FROM collection_jobs WHERE run_id=?', (id,)).fetchone()['data'])
                         lease = data.get(lease_key)
                         if lease is None:
-                            lease = self.store.claim_social(owner, source['id'])
+                            lease = self.store.claim_social(owner, source['id'], manual=not run.get('scheduled', False))
                             data[lease_key] = lease
                             with self.store.connect() as db:db.execute('UPDATE collection_jobs SET data=? WHERE run_id=?', (json.dumps(data), id))
                         if not lease['allowed']:
-                            logs.append(dict(source_id=source['id'], name=source['name'], status='deferred', pages=0, skipped=0, message=lease['reason']));continue
-                    record = self.recipe(owner, source, 'list') if source.get('list_agent_generation_id') or not site else None
+                            log = dict(source_id=source['id'], name=source['name'], status='deferred', pages=0, skipped=0, message=lease['reason'])
+                            logs.append(log)
+                            self.tree.finish(owner, source_node, result={'source_id':source['id'], 'pages':[], 'log':log})
+                            return pages
+                    record = self.recipe(owner, source, 'list') if not social.xiaohongshu_search_url(source['url']) and not source.get('x_mode') and (source.get('list_agent_generation_id') or not site) else None
                     landing = None
+                    baseline = None
                     if record:
                         try:
                             result = await self.browser(job, source, 'list-rule', recipe=record, parameters={'url': source['url']})
@@ -279,20 +477,33 @@ class IntelligenceCollector:
                             if record.get('explicit'):raise
                             self.store.invalidate_site_recipe(owner, site_agents.recipe_key(source, 'list'), record['generation_id'])
                             record = None;stats['fallback'] += 1
+                    if record and not record.get('explicit') and not site and self.list_needs_check(result):
+                        baseline = await self.read_list(job, source, 'list-coverage')
+                        if self.list_undercovered(result, baseline):
+                            self.store.invalidate_site_recipe(owner, site_agents.recipe_key(source, 'list'), record['generation_id'])
+                            record = None
+                            result = baseline
+                            stats['fallback'] += 1
                     if not record:
-                        if site == 'youtube.com':
+                        if source.get('x_mode'):
+                            _, feeds = social.x_targets(source['x_mode'], source['x_values'], source.get('x_sort','latest'))
+                            combined = {}
+                            for index, url in enumerate(feeds):
+                                feed = await self.read(job, source, 'x-feed-'+str(index), url, x='feed')
+                                for item in feed.get('items', []):combined[item.get('post_id') or item['url']] = item
+                            result = {'items':list(combined.values())}
+                        elif site == 'youtube.com':
                             if urlsplit(source['url']).path == '/watch':result = {'items': [{'url': source['url'], 'title': source['name']}]}
                             else:result = await self.read(job, source, 'feed', source['url'], youtube='feed')
                         elif site == 'weibo.com':result = await self.read(job, source, 'feed', source['url'], weibo='feed')
                         else:
-                            result = await self.browser(job, source, 'list', program={
-                                **self.program(source, 'open', {'url': source['url'], 'delay_ms': 1200}),
-                                'steps': [dict(name='open', operation='open', execution='compiled', desc='Open source', arguments={'url': source['url'], 'delay_ms':1200}, on={'success':'extract','failed':'failed'}),
-                                    dict(name='extract',operation='extract_list',execution='compiled',desc='Read article list',arguments={'limit':20,'observe_regions':True},on={'success':'done','failed':'failed'})]})
+                            result = baseline if baseline is not None else await self.read_list(job, source)
                     if not record and not site:
                         await self.learn(job,source,principal,'list',result,'validate-list',stats)
+                    if result.get('discovery'):
+                        stats['list_discovery'] = result['discovery']
                     candidates = []
-                    for item in result.get('items', [])[:40]:
+                    for item in (result.get('items', []) if source.get('x_mode') else result.get('items', [])[:40]):
                         with suppress(ValueError):candidates.append(Candidate.model_validate({'url': item.get('url') or item.get('href'), 'title':str(item.get('title',''))[:500], 'text':str(item.get('text') or item.get('summary') or '')[:1500]}).model_dump())
                     pending = self.store.pending_candidates(owner, channel['id'], candidates, [u for p in pages for u in (p['url'],p['requested_url'])])
                     skipped = pending['skipped'];targets = pending['candidates']
@@ -304,14 +515,20 @@ class IntelligenceCollector:
                         for p,d in zip(eligible,decisions):
                             if d.reject:self.store.save_filtered_post(owner,channel['id'],{**p,'source_id':source['id']},d.reason,'list');rejected.add(p['url'])
                         targets = [p for p in targets if p['url'] not in rejected and history.get(p['url'],{}).get('status') != 'filtered']
+                    if not candidates and not site and urlsplit(source['url']).path in ('', '/'):
+                        raise RuntimeError('No article links extracted from source homepage; homepage was not imported as an article')
                     if not candidates and not site and not (record or {}).get('explicit') and landing is None:
                         landing = await self.browser(job, source, 'landing', recipe=self.recipe(owner,source,'article'), parameters={'url':source['url']}) if source.get('article_agent_generation_id') else await self.read(job, source, 'landing', source['url'])
                     if not candidates and landing:
                         landing = await self.ensure_images(job, source, landing, source['url'], 'landing-images', stats)
                         pages.append(self.evidence(source, landing, source['url']));count += 1
-                    for n,item in enumerate(targets[:2 if site else 3]):
+                    batch_limit = len(targets) if source.get('x_mode') else 2 if site else 10
+                    stats['post_failures'] = []
+                    stats['pending_remaining'] = max(0, len(targets)-batch_limit)
+                    async def read_article(pair):
+                        n,item=pair
                         if site:await asyncio.sleep(5)
-                        article = self.recipe(owner, source, 'article') if source.get('article_agent_generation_id') or not site else None
+                        article = self.recipe(owner, source, 'article') if not source.get('x_mode') and (source.get('article_agent_generation_id') or not site) else None
                         if article:
                             try:
                                 page = await self.browser(job, source, 'article-rule-'+str(n), recipe=article, parameters={'url':item['url']})
@@ -323,49 +540,138 @@ class IntelligenceCollector:
                                 self.store.invalidate_site_recipe(owner,site_agents.recipe_key(source,'article'),article['generation_id'])
                                 stats['fallback'] += 1;article = None
                         if not article:
-                            opts = {'youtube':'video'} if site == 'youtube.com' else {'weibo':'detail','social_source_url':source['url']} if site == 'weibo.com' else {}
-                            page = await self.read(job, source, 'article-'+str(n), item['url'], **opts)
-                            if not site:await self.learn(job,source,principal,'article',page,'validate-article-'+str(n),stats)
-                        page = await self.ensure_images(job, source, page, item['url'], 'article-images-'+str(n), stats)
-                        pages.append(self.evidence(source, page, item['url']));count += 1
-                    log = dict(source_id=source['id'],name=source['name'],status='success',pages=count,skipped=skipped,
-                        message=f'检查 {len(candidates)} 条，跳过 {skipped} 条，读取 {count} 篇；补图成功 {stats.get("image_recovered",0)}，未发现图片 {stats.get("image_missing",0)}，补图失败 {stats.get("image_failed",0)}；通过统一后台 Task 执行')
+                            opts = {'x':'detail'} if source.get('x_mode') else {'youtube':'video'} if site == 'youtube.com' else {'weibo':'detail','social_source_url':source['url']} if site == 'weibo.com' else {}
+                            try:
+                                page = await self.read(job, source, 'article-'+str(n), item['url'], **opts)
+                                if source.get('x_mode') and (page.get('outcome') == 'failed' or not page.get('text', '').strip()):
+                                    raise RuntimeError(page.get('reason') or 'x_post_body_not_visible')
+                            except RuntimeError as error:
+                                if not source.get('x_mode'):raise
+                                stats['post_failures'].append({'url':item['url'], 'reason':str(error)[:300]})
+                                self.progress(owner,id,'单篇读取失败，继续采集：'+source['name'],logs=None)
+                                return None
+                            if not site and n==0:await self.learn(job,source,principal,'article',page,'validate-article-'+str(n),stats)
+                        if not source.get('x_mode'):
+                            page = await self.ensure_images(job, source, page, item['url'], 'article-images-'+str(n), stats)
+                        evidence=self.evidence(source,page,item['url'])
+                        total=self.store.get('runs',owner,id).get('progress',{}).get('articles_extracted',0)+1
+                        self.progress(owner,id,'已提取文章：'+source['name'],details={'articles_extracted':total})
+                        return evidence
+                    async def collect_article(pair):
+                        try:return await read_article(pair)
+                        except asyncio.CancelledError:raise
+                        except Exception as error:
+                            stats['post_failures'].append({'url':pair[1]['url'],'reason':str(error)[:300]})
+                            self.progress(owner,id,'单篇读取失败，继续采集：'+source['name'])
+                            return None
+                    from ai2apps.browser.processing_pool import ordered_pool
+                    extracted=await ordered_pool(enumerate(targets[:batch_limit]),collect_article,1 if site else 3)
+                    pages.extend(p for p in extracted if p is not None);count+=sum(p is not None for p in extracted)
+                    log = dict(source_id=source['id'],name=source['name'],status='failed' if stats['post_failures'] else 'success',pages=count,skipped=skipped,
+                        message=f'检查 {len(candidates)} 条，跳过 {skipped} 条，读取 {count} 篇，单篇失败 {len(stats["post_failures"])} 篇，剩余 {stats.get("pending_remaining",0)} 篇待下次更新；补图成功 {stats.get("image_recovered",0)}，未发现图片 {stats.get("image_missing",0)}，补图失败 {stats.get("image_failed",0)}；通过统一后台 Task 执行')
                 except Exception as error:
                     logger.exception('Intelligence source collection failed')
                     log = dict(source_id=source['id'],name=source['name'],status='failed',pages=count,skipped=skipped,message=str(error)[:500])
                 if lease and lease.get('allowed'):
-                    with suppress(ValueError):self.store.finish_social(owner,source['id'],lease['token'],log['status'])
+                    with suppress(ValueError):self.store.finish_social(owner,source['id'],lease['token'],'success' if stats.get('post_failures') and count else log['status'])
                 log['agent_stats'] = {**stats, 'source_ms':round((time.monotonic()-started)*1000)}
-                logs.append(log);self.progress(owner,id,'已读取 '+source['name'],logs)
-            self.progress(owner,id,'后台正在比较新内容并生成情报',logs)
+                logs.append(log);self.progress(owner,id,'已读取 '+source['name'],logs,details={'sources_completed':len(logs),'active_pages':[]})
+                self.tree.finish(owner, source_node, 'failed' if log['status']=='failed' else 'completed', result={'source_id':source['id'], 'pages':pages[source_start:], 'log':log})
+                return pages
+            from ai2apps.browser.processing_pool import ordered_pool
+            batches=await ordered_pool(saved_job['sources'],collect_source,2)
+            seen=set()
+            for batch in batches:
+                for page in batch:
+                    if page['url'] not in seen:pages.append(page);seen.add(page['url'])
+            self.progress(owner,id,'后台正在比较新内容并生成情报',logs,details={'phase':'digest','active_pages':[],'articles_extracted':len(pages)})
             await self.finish(principal, channel, id, pages, logs)
+            self.tree.finish(owner, 'collection:'+id, 'failed' if any(log['status']=='failed' for log in logs) else 'completed', result={'collection_run_id':id, 'sources':logs})
         except asyncio.CancelledError:raise
         except Exception as error:
             logger.exception('Intelligence background collection failed')
+            with suppress(KeyError):
+                for source in json.loads(job['data'])['sources']:
+                    with suppress(KeyError):self.tree.finish(owner, 'collection:'+id+':source:'+source['id'], 'failed')
+                self.tree.finish(owner, 'collection:'+id, 'failed', {'error':str(error)[:400]})
             with suppress(ValueError,KeyError):self.store.progress(owner,id,'后台更新失败：'+str(getattr(error,'detail',error))[:400]+'；内容未标为已处理','failed',logs=logs)
-        finally:self.changed(owner,id)
+        finally:
+            self.browser_activity.pop(id,None)
+            self.changed(owner,id)
 
     async def finish(self, principal, channel, id, pages, logs):
         owner = principal.actor_user_id
-        history = self.store.filtered_posts(owner,channel['id'])
-        enabled = {s['id'] for s in self.store.snapshot(owner)['sources'] if s['enabled']}
-        restored = [r['page'] for r in history if r['status']=='restored' and r['stage']=='detail' and r['page']['source_id'] in enabled]
-        fresh = self.store.new_pages(owner,channel['id'],restored+pages)
-        limited, budget = [], 0
-        for page in fresh:
-            if budget+len(page['text']) > 120000:break
-            limited.append(page);budget += len(page['text'])
-        approved = {r['page']['url'] for r in history if r['status']=='restored'}
-        posts = [p for p in limited if post_filter.is_post(p) and p['url'] not in approved]
-        decisions = await post_filter.review(self.runtime,None,principal,channel,posts,self.store.preferences(owner,channel['id']))
-        rejected = set()
-        for p,d in zip(posts,decisions):
-            if d.reject:self.store.save_filtered_post(owner,channel['id'],p,d.reason,'detail');rejected.add(p['url'])
-        limited = [p for p in limited if p['url'] not in rejected]
-        previous = [a for a in self.store.snapshot(owner)['articles'] if a['channel_id']==channel['id']][:40]
-        articles = await service.digest(self.runtime,None,principal,channel,limited,previous)
-        self.store.finish(owner,id,limited,articles,logs)
-        self.changed(owner,id)
+        root = 'collection:'+id
+        self.tree.create(owner, root, '刷新情报 · '+channel['name'], kind='collection')
+        organize = root+':organize'
+        node = self.tree.create(owner, organize, '整理情报：去重、翻译、摘要与保存', parent_id=root, kind='organize')
+        if node['status'] == 'completed':
+            return
+        try:
+            await self._finish(principal, channel, id, pages, logs)
+        except asyncio.CancelledError:
+            # Local shutdown preserves this node for recovery; user cancellation
+            # has already marked the whole tree as cancelling.
+            raise
+        except Exception as error:
+            self.tree.finish(owner, organize, 'failed', {'error':str(error)[:400]})
+            raise
+        else:
+            self.tree.finish(owner, organize, result={'collection_run_id':id})
+
+    async def _finish(self, principal, channel, id, pages, logs):
+        owner = principal.actor_user_id
+        run = self.store.get('runs', owner, id)
+        articles = [a for a in self.store.snapshot(owner)['articles'] if a['channel_id']==channel['id']]
+        if run['status'] == 'running':
+            history = self.store.filtered_posts(owner,channel['id'])
+            enabled = {s['id'] for s in self.store.snapshot(owner)['sources'] if s['enabled']}
+            if run.get('source_id'):enabled &= {run['source_id']}
+            restored = [r['page'] for r in history if r['status']=='restored' and r['stage']=='detail' and r['page']['source_id'] in enabled]
+            fresh = self.store.new_pages(owner,channel['id'],restored+pages)
+            limited, budget = [], 0
+            for page in fresh:
+                if budget+len(page['text']) > 120000:break
+                limited.append(page);budget += len(page['text'])
+            approved = {r['page']['url'] for r in history if r['status']=='restored'}
+            posts = [p for p in limited if post_filter.is_post(p) and p['url'] not in approved]
+            decisions = await post_filter.review(self.runtime,None,principal,channel,posts,self.store.preferences(owner,channel['id']))
+            rejected = set()
+            for p,d in zip(posts,decisions):
+                if d.reject:self.store.save_filtered_post(owner,channel['id'],p,d.reason,'detail');rejected.add(p['url'])
+            limited = [p for p in limited if p['url'] not in rejected]
+            previous = [a for a in self.store.snapshot(owner)['articles'] if a['channel_id']==channel['id']][:40]
+            with self.store.connect() as db:
+                row = db.execute('SELECT data FROM collection_jobs WHERE run_id=?',(id,)).fetchone()
+                job_data = json.loads(row['data']) if row else {}
+            # Freeze the evidence numbering across restart and partial retry.
+            editorial = job_data.get('editorial') or {'pages':limited,'state':{}}
+            limited = editorial['pages']
+            def checkpoint(state):
+                editorial['state']=state
+                if row:
+                    with self.store.connect() as db:
+                        current=json.loads(db.execute('SELECT data FROM collection_jobs WHERE run_id=?',(id,)).fetchone()['data'])
+                        current['editorial']=editorial
+                        db.execute('UPDATE collection_jobs SET data=? WHERE run_id=?',(json.dumps(current),id))
+            def save_article(index,article):
+                import hashlib,copy
+                article['update_article_id']=article.get('update_article_id') or 'article_'+hashlib.sha256((id+':'+str(index)).encode()).hexdigest()[:32]
+                self.store.finish(owner,id,[],[copy.deepcopy(article)],[],final=False)
+                self.changed(owner,id)
+                self.progress(owner,id,'正在逐篇生成并保存情报',details={'articles_saved':len(editorial['state'].get('articles',{}))+1})
+            def editorial_progress(details):
+                labels={'planning':'正在合并重复报道、规划新事件','writing':'正在整理、翻译并生成文章','saving':'正在保存情报'}
+                phase=details.get('phase',self.store.get('runs',owner,id).get('progress',{}).get('phase'))
+                self.progress(owner,id,labels.get(phase,'正在整理情报'),details={**details,'waiting':False,'active_pages':[]})
+            articles = await service.digest(self.runtime,None,principal,channel,limited,previous,
+                checkpoint=editorial['state'],save_checkpoint=checkpoint,on_article=save_article,on_progress=editorial_progress)
+            failed_urls=getattr(articles,'failed_urls',set())
+            failures=getattr(articles,'failures',[])
+            if failures:logs=[*logs,{'source_id':'','name':'AI 整理','status':'failed','pages':0,'message':f'{len(failures)} 个事件整理失败，已保存其它文章；失败内容可重试'}]
+            import copy
+            self.store.finish(owner,id,[p for p in limited if p['url'] not in failed_urls],copy.deepcopy(articles),logs)
+            self.changed(owner,id)
         # These projections can fail independently without undoing collected evidence.
         try:
             await asyncio.to_thread(knowledge_sync.sync_pending,self.store,self.runtime.knowledge,principal,channel['id'])

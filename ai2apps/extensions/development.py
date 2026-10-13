@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -50,6 +51,7 @@ class DevelopmentPackageLoader:
     """Discover direct child Packages below a Bundle-provided repository root."""
 
     def __init__(self, source_root: Path) -> None:
+        self._validated: dict[Path, tuple[tuple, DevelopmentAppPackage]] = {}
         self.source_root = source_root.resolve(strict=True)
         if not (self.source_root / "ai2apps" / "__init__.py").is_file():
             raise ExtensionError(
@@ -65,6 +67,7 @@ class DevelopmentPackageLoader:
 
     def discover(self) -> tuple[DevelopmentAppPackage, ...]:
         result: list[DevelopmentAppPackage] = []
+        present: set[Path] = set()
         for candidate in sorted(self.packages_root.iterdir(), key=lambda item: item.name):
             if (
                 not candidate.is_dir()
@@ -73,7 +76,9 @@ class DevelopmentPackageLoader:
                 or not (candidate / "app.yaml").is_file()
             ):
                 continue
+            present.add(candidate.resolve(strict=True))
             result.append(self._load(candidate))
+        self._validated = {root: value for root, value in self._validated.items() if root in present}
         return tuple(result)
 
     def _load(self, candidate: Path) -> DevelopmentAppPackage:
@@ -84,6 +89,16 @@ class DevelopmentPackageLoader:
                 "Development Packages must be direct children of the packages root",
             )
         files = self._source_files(root)
+        # Scan on every request: additions, removals and forbidden links still
+        # take effect immediately. Skip hashing/parsing only unchanged files.
+        fingerprint = tuple(
+            (name, info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+            for name in sorted(files)
+            for info in [(root / name).stat()]
+        )
+        cached = self._validated.get(root)
+        if cached is not None and cached[0] == fingerprint:
+            return deepcopy(cached[1])
         try:
             outer = json.loads((root / "ai2apps.json").read_text(encoding="utf-8"))
             validation_copy = json.loads(json.dumps(outer))
@@ -164,7 +179,7 @@ class DevelopmentPackageLoader:
             )
         InteractiveArchive._validate_manifest(UnitKind.APP, app_manifest, set(files))
         path_hash = hashlib.sha256(str(root).encode("utf-8")).hexdigest()
-        return DevelopmentAppPackage(
+        loaded = DevelopmentAppPackage(
             package_id=runtime_key,
             package_version=package["version"],
             definition_version=f"{package['version']}+development.{path_hash[:8]}",
@@ -173,6 +188,8 @@ class DevelopmentPackageLoader:
             files=frozenset(files),
             manifest=app_manifest,
         )
+        self._validated[root] = (fingerprint, deepcopy(loaded))
+        return loaded
 
     @staticmethod
     def _source_files(root: Path) -> set[str]:

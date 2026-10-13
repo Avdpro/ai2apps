@@ -20,7 +20,7 @@ Service、模型 Service，以及包含 macOS 原生代码的 Runtime Package。
 - 每个 `package ID + version` 对应唯一、不可变的字节内容。发布后需要修正时必须增加版本。
 - 不得为了绕过失败临时更换 Package ID、Publisher、Publisher key 或版本。
 - 不得在聊天、命令行、日志或文档中输出 Publisher 私钥、Apple App 专用密码、Cookie 或 Cloud token。
-- 原生 Runtime 必须同时通过 Apple Developer ID、Hardened Runtime、notarization、staple 和 AI2Apps Publisher 签名。
+- macOS 原生 Runtime 必须同时通过 Apple Developer ID、Hardened Runtime、notarization、staple 和 AI2Apps Publisher 签名。Linux CUDA Runtime 采用第 6.4 节，不适用 Apple 平台校验。
 - 普通 Package 只需要 AI2Apps Publisher 签名；若内部带 Mach-O、`.dylib`、`.so`、可执行 Node addon 等原生载荷，仍按原生 Runtime 规则处理。
 - 有依赖关系时先发布 Runtime，再发布依赖它的模型或 Service Package。
 - Cloud 制品地址是永久兼容源。较大的 Package 原则上还应至少配置 ModelScope 和
@@ -298,8 +298,16 @@ Reviewer 使用同一脚本的 `--list-review` 查询队列，以 `--submission-
 
 脚本输出的 `packageId`、`version`、`sha256` 和 `size` 是本次发布收据的第一部分，应保存到发布记录中。
 
-当 App Package 的签名 `app.yaml` 已声明 Mini-App，但生产 Cloud 尚未接受可选的
-顶层 `miniApps` 搜索投影时，可以在上述命令显式增加：
+### 5.1 Mini-App 分类发布门禁（2026-10-13 修订）
+
+Mini-App Package 的底层类型保持 `app`。新开发必须在 `app.yaml.mini_apps` 显式声明
+`catalog.categories` 和宿主 `placements`；纯宿主组件包设置 `navigation.launcher: false`，
+有独立 App 入口的混合包保持 launcher 可见。标准构建器自动派生顶层 `miniApps`，不得手写第二份索引。
+提交前核对最终制品的投影与签名 app.yaml 一致；默认构建必须保留该字段。
+
+如果目标 Cloud 拒绝 `miniApps`，停止正常发布，记录 schema 错误与 submission 是否已创建，
+交由 Cloud 修正。不得把删除投影当成默认重试手段。只有用户明确批准临时兼容发布，且记录
+远端 Mini-App 分类缺失的影响及恢复负责人/计划，才可使用历史兼容选项：
 
 ```bash
   --omit-mini-app-catalog
@@ -307,8 +315,13 @@ Reviewer 使用同一脚本的 `--list-review` 查询队列，以 `--submission-
 
 该选项只从外层 Contract manifest 省略可选搜索投影；`app.yaml` 仍必须被文件索引和
 Publisher 签名覆盖，安装后客户端仍从有效 App 定义发现 Mini-App。不得把该选项用于
-省略 `app.yaml` 声明、绕过 Package 安装校验或伪造 Cloud 组件索引。Cloud 支持顶层
-`miniApps` 后，新发布应回到默认构建。
+省略 `app.yaml` 声明、绕过 Package 安装校验或伪造 Cloud 组件索引。此时只能报告“Package
+已发布、远端 Mini-App 发现验收未完成”，不能把安装成功作为分类成功。
+Cloud 支持投影后，新发布恢复默认构建；历史发布由 Cloud 从已签名 app.yaml 回填独立目录索引，
+不得覆盖旧包、改签名或要求逐包升版。交接及验收见
+[Cloud Mini-App 修正方案](ai2apps-cloud-mini-app-discovery-fix-20261013.md)。
+
+### 5.2 其他兼容构建与已有制品签名
 
 当模型 Package 源码已经声明并通过校验的 `modelInstall`，但生产 Cloud 尚未接受该
 顶层搜索/安装投影时，可以显式增加：
@@ -400,6 +413,22 @@ spctl --assess --type open --context context:primary-signature -v "$FINAL_DMG"
 
 构建器会验证 staple、Developer ID Team ID 和 Runtime 结构，并生成外层 Package 及 Publisher 签名。任何验证失败都必须回到对应阶段修复，不能关闭检查。
 
+### 6.4 Linux CUDA Runtime（OpenAPI 1.59.0）
+
+`ai2apps/runtime-cuda-torch` 是官方 Linux ARM64 service Runtime，沿用注册 Publisher
+签名，不要求 Apple Developer ID、公证或 DMG。使用第 5 节标准签名构建器封装已通过
+隔离实机验收的 tar.gz 源候选；不得换用临时 signer 或创建替代身份。
+
+公开 `/v1/registry/runtime-upload-capabilities` 是部署合同的核对入口。仅官方
+`ai2apps/runtime-omlx` / `ai2apps/runtime-cuda-torch` service 的文件、外层制品及 ZIP
+展开总量允许 4 GiB；普通包合同 1 GiB，普通上传 25 MiB 不变。标准发布脚本通过
+现有管理员 Runtime 路由提交，multipart 先 envelope 后 artifact。签名覆盖最终
+外层制品的完整大小与 SHA-256。权限、step-up、审核及不可变版本规则不变。
+
+构建、验签、上传和下载必须使用有界分块 IO；签名校验必须先于安装 ZIP 解析。
+发布后按第 11 节在 Spark 通过真实 Registry 下载、Publisher 验签、安装、Host 调用
+与恢复验收。合成大文件测试、源码适配器 smoke 均不能替代该验收。
+
 ## 7. 获取本次发布所需的管理员会话
 
 提交本身通常可使用 Installation Cloud session。批准和发布需要当前账户具备相应 Publisher 权限，并可能要求刚完成的管理员 step-up。
@@ -485,6 +514,26 @@ SUBMISSION_ID='<existing submission id>'
 
 恢复时不传 artifact/envelope，也不重新 submit。若不需要 Cookie，删除 `--browser-cookie-db` 参数。
 
+### 8.3 撤回从未发布的错误候选（Cloud OpenAPI 1.57.0）
+
+同版本修正仅适用于从未发布的候选；已发布、撤销或淘汰的版本仍不可覆盖。
+先查询列表并精确核对旧 submission ID 和摘要；不要恢复错误旧制品。
+由原 Publisher 有权限成员或有效 step-up 管理员显式执行：
+
+```bash
+./.venv/bin/python scripts/publish_signed_registry_artifact.py \
+  --base-path "$BASE_PATH" --security-instance-id "$SECURITY_INSTANCE_ID" \
+  --submission-id "$SUBMISSION_ID" --withdraw-submission \
+  --expected-artifact-sha256 '<旧候选完整SHA-256>' \
+  --withdraw-reason '修正未发布候选的模型身份绑定'
+```
+
+需要浏览器 Session 时仍先取得本次精确 Package/version Cookie 授权，再加
+`--browser-live`。撤回返回 `withdrawal`，旧签名/审核历史不变；旧 ID 不可复用。
+随后对已保存并验收的修正版原始 artifact/envelope 按 8.1 重新提交、重新审核、发布，
+保持同一未发布版本。`UNPUBLISHED_VERSION_EXISTS` 指明需要先撤回的候选；
+`PUBLISHED_VERSION_IMMUTABLE` 必须停止，不得更改已发布字节。
+
 ## 9. 配置 Package 多源分发
 
 多源配置是 Package Release 发布完成后的独立分发步骤，不属于 Publisher envelope，
@@ -509,13 +558,35 @@ SUBMISSION_ID='<existing submission id>'
 2. ModelScope URL 必须固定到不可变 revision；GitHub URL 必须使用
    `/releases/download/<immutable-tag>/...`。不得使用 branch、`latest`、可覆盖 tag 或
    含访问 token/临时签名参数的 URL。
-3. 每个外部源都必须支持匿名 HTTPS、`HEAD`、单 Range `GET`、正确的 `206`、
-   `Content-Range`、`Content-Length` 和 identity encoding。
+3. 每个外部源都必须支持匿名 HTTPS、`HEAD` 和单 Range `GET`。一般来源要求 HTTP
+   `206`；可信 ModelScope 固定 revision 来源允许既有 `package-single-range-v2` 的
+   `200 + Content-Range` 兼容模式。两种模式均须精确匹配请求 offset、total、
+   `Content-Length`，使用 identity encoding、非 multipart 和有界响应体；全部 piece
+   与完整 SHA-256 验证保持不变。不得仅凭状态码 200 拒绝该兼容来源，也不得接受普通
+   忽略 Range 的完整 200 响应。参见 `ai2apps/http_range.py` 及 Runtime 1.8.3 发布回执。
 4. 上传后分别验证完整文件大小和 SHA-256 与 `$ARTIFACT` 完全一致，并验证首段、中段、
    尾段及单字节 Range。任一项不一致都不得注册或激活该源。
 
 外部源的可信依据始终是已发布 Package 的完整摘要和 Cloud 生成的 piece hashes，不是
 ModelScope/GitHub 的文件名、仓库身份或 HTTP 状态码本身。
+
+### 9.2.1 ModelScope 200/206 判定表（已投产，不是待实现需求）
+
+| 响应与来源 | 判定 |
+| --- | --- |
+| HTTP 206，精确单段 Content-Range/Length，identity，字节与摘要匹配 | 允许继续预检 |
+| 可信 ModelScope HTTPS URL、40 位固定 revision，HTTP 200，且通过同样的严格校验 | 已支持；记为 `modelscope-content-range-200` / `http-200-content-range`，允许继续预检 |
+| HTTP 200 无 Content-Range、offset/total/length 不符、返回整个文件、multipart 或压缩变换 | 拒绝，不能写入分段目标位置 |
+| 非白名单来源、可变 revision 或带凭据/临时签名的 URL 返回 HTTP 200 | 不适用兼容例外，拒绝 |
+
+状态码是记录字段，不能单独决定来源失败。`strictRange206=false` 只表示不是标准 206，
+**不等于 Range 校验失败**。复用 `ai2apps/http_range.py` 和 Registry 来源资格检查，
+不要另写仅接受 206 的验收条件。完整 size/SHA-256、逐 piece SHA-256、签名 Snapshot
+仍是必需门禁；本地抽样通过不等于 Cloud 全部预检已通过。
+
+已投产证据：`docs/ai2apps-mlx-runtime-1.7.0-ssd-checkpoint-signed-build.md` 和
+`docs/ai2apps-mlx-runtime-1.8.3-live-telemetry-release.md`。旧需求稿、旧失败记录中的
+“所有源必须 206”不得覆盖此规则，也无需再要求 ModelScope 修改响应状态码。
 
 ### 9.3 注册、审批和激活
 
@@ -537,11 +608,29 @@ POST /v1/admin/registry/packages/{namespace}/{name}/versions/{version}/sources/r
 2. 分别注册 ModelScope 和 GitHub 不可变 URL，每次 mutation 使用唯一
    `Idempotency-Key` 和最新 `If-Match`；
 3. 轮询注册结果的 `statusUrl`，等待完整预检进入 `pending_approval`；
-4. 由不同于注册操作人的 reviewer/admin 使用 `validationId`、`validationDigest` 和最新
-   source ETag 激活；不得由同一操作人自审自批；
+4. 使用 `validationId`、`validationDigest` 和最新 source ETag 激活。非管理员不得自审；
+   已完成管理员二次验证（step-up）的系统管理员可按既有授权规则激活自己登记的源，
+   必须保留 `package.artifact_source.self_approval_override` 审计。其他 reviewer/admin
+   也可按权限审核。ModelScope 兼容模式不增加独立审核人要求；该策略已于 2026-09-18
+   更正并完成生产激活，见 `docs/ai2apps-mlx-runtime-1.7.0-ssd-checkpoint-signed-build.md`；
 5. 每激活一个源后重新读取最新 ETag，再处理下一个源；
 6. 保存 source ID、kind、不可变 URL、validation digest、激活操作人与审批人、新的
    Repository Snapshot digest，作为多源发布收据。
+
+#### 审批身份：不要求双管理员
+
+| 操作者 | 自己登记的 Source |
+| --- | --- |
+| 系统管理员，已完成有效 step-up | 允许激活；由 Cloud 记录 `package.artifact_source.self_approval_override` |
+| 系统管理员，step-up 缺失/过期 | 用户在 Account → Security 完成验证后恢复；不能代输密码 |
+| 非管理员 / 普通 reviewer | 不允许自审，由具备权限的其他人处理 |
+
+不同审核人是可选的正常审批路径，**不是所有发布的前置条件**。GitHub 206、ModelScope
+206 和兼容 200 使用相同授权矩阵，不得为 ModelScope 增加“双管理员”门禁。
+管理员身份、step-up、最新 passed validation、ETag、幂等键和审计全部保留；不能伪造
+第二用户或改数据库来绕过服务端拒绝。2026-09-18 已投产策略更正见上述 1.7.0 回执；
+历史交接稿中的“待实施”不代表当前仍未上线。只有 API 实际返回权限/验证错误时，
+才按具体错误处理，不能仅根据登记人与激活人相同要求用户找另一位管理员。
 
 Agent 执行上述操作时继续使用标准脚本，不手工拼 Cloud 请求：
 
@@ -575,7 +664,7 @@ SHA-256。不得直接修改 Cloud 数据库、已有 Release 行或已经签名
 - `artifact.pieces` 完整，`artifact.sources` 只包含 active 源，并至少包含 Cloud；
 - 大型 Package 的公开源列表包含 Cloud、ModelScope、GitHub 三种来源；
 - 新 Snapshot 签名验证成功，源列表、piece 清单和 Package 完整摘要属于同一个 Snapshot；
-- 客户端能在一个源超时、DNS 失败、错误返回 `200` 或 piece 损坏时，由其他源继续下载；
+- 客户端能在一个源超时、DNS 失败、忽略 Range 返回完整 `200` 或 piece 损坏时，由其他源继续下载；
 - 完成后仍执行完整文件 SHA-256 和 Publisher 签名校验，再进入安装。
 
 外部源异常时只禁用受影响的 source，并使用最新 ETag、受限原因和独立审计发布新的
@@ -594,6 +683,13 @@ Snapshot；Cloud fallback 必须保持可用。需要整体回退源集合时，
 每发布一层都应在 Cloud/Discover 中验证版本已经可解析，再发布下一层。模型 Package 的 dependency 必须指向刚验证过的 Runtime 版本范围。不得先发模型，再期望未发布的 Runtime 自动出现。
 
 ## 11. 发布后验证
+
+Mini-App 额外门禁：在**未安装该包的干净实例**检查公开 search/recommendations/detail
+均携带同版本组件信息；Mini-App 分类、子分类及宿主查询能找到组件，安装目标为正确父包。
+区分普通 App、纯组件提供包和混合包；目标分类不得把纯组件包显示为普通 App，混合包不得丢失
+独立入口。组件分页不得重复/遗漏，不能用“只查前 100 个包”替代完整验收。若旧客户端暂未支持
+launcher 分类或原生组件分页，明确记录 Desktop 待接入项，不能声称全链验收完成。
+发布收据附投影来源、目录 revision、查询结果及实例/客户端版本；已安装 Studio 可见性另行验证。
 
 发布命令成功并不等于交付完成。必须执行：
 
@@ -622,7 +718,7 @@ Snapshot；Cloud fallback 必须保持可用。需要整体回退源集合时，
 | Cloud Publisher key ID 被当成 `--keychain-secret` | 从同一 key 的成功发布上下文恢复本地 `keyRef` | 用 Cloud UUID 猜 Keychain account |
 | Keychain 记录存在但加载失败 | 核对原始 namespace 和 account `ai2apps.v1.<namespace>.<keyRef>`，再验证派生公钥指纹 | 猜 `dev`/`app-dev` namespace，或扫描全部 Keychain 记录 |
 | 本地记录派生指纹与 Cloud 不同 | 停止，重新核对成功发布上下文和唯一精确记录 | 使用另一个 active key、创建新 key 或复制实例数据 |
-| 相同版本已存在 | 比较 SHA；相同则停止重复发布，不同则提升版本 | 覆盖不可变版本 |
+| 相同版本已存在 | 比较 SHA；相同则查询并恢复；不同且从未发布时按 8.3 显式撤回后重新审核，曾发布则新建版本 | 覆盖已发布版本、重用已撤回旧 ID |
 | digest/size/signature 不匹配 | 重新构建 envelope，确认签的是同一 artifact | 手改 envelope JSON |
 | 已 submit、审核/发布失败 | 使用 submission ID 恢复 | 重新 submit |
 | Runtime 未 notarize/staple | 回到 Apple 公证阶段 | 关闭 Runtime 校验 |
@@ -630,7 +726,7 @@ Snapshot；Cloud fallback 必须保持可用。需要整体回退源集合时，
 | Package audit 要求批准 | 在产品 UI 中展示并让用户明确批准 | 自动绕过审计 |
 | 网络超时 | 查询 submission 判断请求是否已成功，再决定恢复 | 盲目重复发布 |
 | 外部源 size/SHA/piece 不一致 | 禁止激活，重新上传同一 artifact 后重新预检 | 修改 envelope 或接受近似一致的文件 |
-| 外部源不支持 Range/返回 `200` | 禁止激活或禁用该源，保留 Cloud fallback | 把完整响应写入 partial offset |
+| 外部源不支持 Range/返回未通过严格兼容验证的 `200` | 禁止激活或禁用该源，保留 Cloud fallback；可信固定 ModelScope 的精确 `200 + Content-Range` 按 v2 校验 | 把完整响应写入 partial offset，或仅凭 200 拒绝已有兼容模式 |
 | 已激活外部源故障 | 禁用单个故障源并发布新 Snapshot | 删除或覆盖 Package Release |
 | source revision/ETag 冲突 | 重新读取最新 sources 和 ETag 后重试当前 mutation | 忽略 `If-Match` 强行覆盖 |
 
@@ -642,6 +738,7 @@ Agent 每次发布只按下面顺序行动：
 - [ ] 明确 Package ID、版本、source、artifact、Publisher/key、实例；若恢复签名上下文，
       已确认 `keyRef`、namespace 与 Cloud 公钥指纹三者匹配；
 - [ ] 检查版本、依赖、平台约束、SBOM、license；
+- [ ] Mini-App 已显式声明分类/宿主/launcher 策略，默认制品保留 miniApps；未静默使用省略开关；
 - [ ] 执行相关测试和真实 Package smoke test；
 - [ ] 查询 Publisher 与已有 submission；
 - [ ] 普通 Package 走第 5 节，原生 Runtime 走第 6 节；
@@ -649,7 +746,10 @@ Agent 每次发布只按下面顺序行动：
 - [ ] 需要管理员浏览器会话时先取得本次明确 Cookie 授权；
 - [ ] 使用第 8 节脚本发布或恢复；
 - [ ] 大型 Package 按第 9 节上传并激活 ModelScope + GitHub 外部源；
+- [ ] ModelScope 200 已按严格兼容规则判断，未把 `strictRange206=false` 当成失败；
+- [ ] 管理员审批按 step-up/审计矩阵处理，未额外要求双管理员；
 - [ ] 按依赖拓扑逐层发布；
 - [ ] 完成第 11 节验证并报告 Package 与多源发布收据。
+- [ ] Mini-App 在未安装实例完成远端发现验收；兼容例外明确标记未完成项和 Cloud/Desktop 恢复计划。
 
 只要某一步失败，就在该步骤内诊断并修复。不得切换到 WebUI、临时 `curl`、手工数据库写入或另一套签名方式。

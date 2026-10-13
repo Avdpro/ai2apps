@@ -141,11 +141,14 @@ class ModelManagerStore:
             return None
         return value or None
 
-    def default_models(self) -> dict[str, str]:
+    def default_models(self, profile: str = "normal") -> dict[str, str]:
         """Return the complete system model routing table without stale keys."""
 
+        if profile not in {"normal", "privacy"}:
+            raise ValueError("Unknown model profile: " + profile)
+        path = self.defaults_path if profile == "normal" else self.defaults_path.with_name("privacy-models.json")
         try:
-            value = json.loads(self.defaults_path.read_text(encoding="utf-8"))
+            value = json.loads(path.read_text(encoding="utf-8"))
         except (FileNotFoundError, OSError, TypeError, json.JSONDecodeError):
             value = {}
         routes = value.get("routes", {}) if isinstance(value, dict) else {}
@@ -161,9 +164,12 @@ class ModelManagerStore:
         routes: Mapping[str, Any],
         *,
         available_model_ids: set[str] | None = None,
+        profile: str = "normal",
     ) -> dict[str, str]:
         """Atomically replace system defaults after validating every model id."""
 
+        if profile not in {"normal", "privacy"}:
+            raise ValueError("Unknown model profile: " + profile)
         unknown = set(routes) - set(DEFAULT_MODEL_PURPOSES)
         if unknown:
             raise ValueError(f"Unknown default model purpose: {sorted(unknown)[0]}")
@@ -181,7 +187,7 @@ class ModelManagerStore:
                 raise ValueError(f"Model is not available: {model_id}")
             normalized[purpose] = model_id
         _atomic_json(
-            self.defaults_path,
+            self.defaults_path if profile == "normal" else self.defaults_path.with_name("privacy-models.json"),
             {
                 "schema": "ai2apps.model-defaults/v1",
                 "routes": normalized,
@@ -189,14 +195,16 @@ class ModelManagerStore:
         )
         return normalized
 
-    def resolve_default_model(self, purpose: str, fallback: str | None = None) -> str | None:
+    def resolve_default_model(self, purpose: str, fallback: str | None = None, *, profile: str = "normal") -> str | None:
         """Resolve one purpose for runtime consumers, with an explicit fallback."""
 
         if purpose not in DEFAULT_MODEL_PURPOSES:
             raise ValueError(f"Unknown default model purpose: {purpose}")
-        explicit = self.default_models()[purpose]
+        explicit = self.default_models(profile)[purpose]
         if explicit:
             return explicit
+        if profile == "privacy":
+            return None
         from ai2apps.cloud_defaults import WORK_PURPOSES
         if purpose in WORK_PURPOSES:
             policy = self.cloud_default_policy()

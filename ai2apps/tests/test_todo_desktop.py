@@ -128,6 +128,36 @@ async def test_cancel_interrupts_and_releases_waiting_conversation(setup):
 
 
 @pytest.mark.asyncio
+async def test_cancel_during_approval_status_write_releases_request(setup):
+    s, task, path = setup
+    manager = s.runtime.codex
+    FakeClient.approval = True
+    waiting = asyncio.Event()
+
+    async def update(status, **fields):
+        if status == 'waiting_capability':
+            waiting.set()
+            await asyncio.Future()
+
+    async def bound(thread_id):
+        pass
+
+    job = asyncio.create_task(manager.execute(
+        'cancel-during-status', 'local', cwd=str(path), title='Test',
+        prompt='Test', on_update=update, on_thread=bound,
+    ))
+    await asyncio.wait_for(waiting.wait(), 1)
+    assert manager.desktop_requests
+    job.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await job
+    assert not manager.desktop_requests and not manager.desktop_threads
+    assert not manager.jobs
+    calls = [method for method, _ in FakeClient.instances[-1].calls]
+    assert 'turn/interrupt' in calls and 'thread/unsubscribe' in calls
+
+
+@pytest.mark.asyncio
 async def test_connection_loss_is_failed_not_success(setup):
     s,t,_=setup;FakeClient.disconnect=True
     s.launch('local',t['id'],principal=RequestPrincipal.legacy_local())

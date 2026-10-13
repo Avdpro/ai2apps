@@ -844,7 +844,9 @@ def create_agent_platform_router(
         for task in task_rows:
             if task['status'] == 'waiting_input' and task.get('run_id'):
                 task.update(_browser_task_wait_presentation(runtime.agents.list_interactions(task['run_id'])))
-        return {'domains': domains, 'domain_icons': domain_icons, 'domain_settings': {r['domain']: {'interaction_mode': r['interaction_mode']} for r in domain_rows}, 'tasks': task_rows, 'settings': tasks.settings(principal.actor_user_id)}
+        from ai2apps.browser.task_tree import TaskTreeRepository
+        task_tree = TaskTreeRepository(runtime.database).list(principal.actor_user_id)
+        return {'task_tree': task_tree, 'domains': domains, 'domain_icons': domain_icons, 'domain_settings': {r['domain']: {'interaction_mode': r['interaction_mode']} for r in domain_rows}, 'tasks': task_rows, 'settings': tasks.settings(principal.actor_user_id)}
 
     @router.post('/browser-workspace/domains', status_code=201)
     def add_browser_domain(request: BrowserDomainRequest, principal: RequestPrincipal = principal_dependency):
@@ -852,7 +854,7 @@ def create_agent_platform_router(
         try:
             parsed = urlsplit(request.domain if '://' in request.domain else 'https://' + request.domain)
             domain = (parsed.hostname or '').encode('idna').decode().lower()
-            valid = domain and not parsed.username and not parsed.password and not parsed.port and parsed.path in ('', '/') and not parsed.query and not parsed.fragment and parsed.scheme in ('http', 'https')
+            valid = domain and domain not in ('null', 'undefined') and not parsed.username and not parsed.password and not parsed.port and parsed.path in ('', '/') and not parsed.query and not parsed.fragment and parsed.scheme in ('http', 'https')
         except (ValueError, UnicodeError):
             valid = False
         if not valid:
@@ -979,9 +981,31 @@ def create_agent_platform_router(
     def cancel_browser_task(task_id: str, principal: RequestPrincipal = principal_dependency):
         runtime, tasks = task_store(principal)
         task = require_browser_task(tasks, principal.actor_user_id, task_id)
+        if task.get('execution_task_id'):
+            from ai2apps.browser.task_tree import TaskTreeRepository
+            for run_id in TaskTreeRepository(runtime.database).cancel(principal.actor_user_id, task['execution_task_id']):
+                runtime.agent_runtime.cancel(run_id)
+            sync_tasks(runtime, tasks, principal.actor_user_id)
+            runtime.notifications.notify()
+            return tasks.get(principal.actor_user_id, task_id)
         if task['run_id'] and task['status'] not in TERMINAL:
             runtime.agent_runtime.cancel(task['run_id'])
         return tasks.update(principal.actor_user_id, task_id, status='cancelled')
+
+    @router.post('/browser-workspace/roots/{root_id}/cancel')
+    def cancel_browser_root(root_id: str, principal: RequestPrincipal = principal_dependency):
+        runtime, tasks = task_store(principal)
+        from ai2apps.browser.task_tree import TaskTreeRepository
+        tree=TaskTreeRepository(runtime.database)
+        try:root=tree.get(principal.actor_user_id,root_id)
+        except KeyError:raise HTTPException(404,'Task root not found')
+        if root['parent_id']:raise HTTPException(409,'Only a root Task can be cancelled here')
+        if root['kind']=='collection':
+            runtime.intelligence_collector.cancel(principal.actor_user_id,root_id.removeprefix('collection:'))
+        else:
+            for run_id in tree.cancel(principal.actor_user_id,root_id):runtime.agent_runtime.cancel(run_id)
+        runtime.notifications.notify()
+        return {'ok':True}
 
     @router.get("/agent-capabilities")
     def capabilities(

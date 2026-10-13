@@ -37,7 +37,7 @@ OPERATIONS = frozenset(
         "read_results", "read_page", "wait_state",
         "ai.classify",
         "ai.extract",
-        "ai.transform",
+        "ai.transform", "search.api",
         "agent.call",
         "approval",
         "click",
@@ -124,7 +124,7 @@ def _parsed_transitions(description: str) -> dict[str, str]:
 def _effect(operation: str) -> str:
     if operation in {
         "assign", "condition", "inspect", "extract_list", "read_results", "complete", "ai.classify", "ai.extract",
-        "ai.transform", "approval",
+        "ai.transform", "search.api", "approval",
     }:
         return "read"
     if operation == "delete":
@@ -536,11 +536,15 @@ def _compile_single_source(source: dict[str, Any]) -> CompileResult:
                 {"path": f"validators.{index}", "code": "invalid_validator"}
             )
 
+    model_profile = source.get("model_profile", "normal")
+    if model_profile not in {"normal", "privacy"}:
+        errors.append({"path": "model_profile", "code": "invalid_model_profile"})
     digest = canonical_digest(source)
     ir = {
         "schema": "ai2apps.compiled-agent/v1",
         "agent_type": agent_type,
         "source_digest": digest,
+        "model_profile": model_profile,
         "compiler_version": COMPILER_VERSION,
         "policy_version": POLICY_VERSION,
         "name": str(source.get("name") or "Untitled Agent"),
@@ -619,6 +623,7 @@ def compile_source(source: dict[str, Any]) -> CompileResult:
             "schema": "ai2apps.agent-source/v1",
             "agent_type": source.get("agent_type", "web"),
             "name": capability.get("title") or capability_id,
+            "model_profile": capability.get("model_profile", source.get("model_profile", "normal")),
             "description": source.get("description", ""),
             "working_goal": str(capability.get("working_goal") or "").strip() or str(source.get("working_goal") or source.get("description") or "").strip(),
             "site_scope": source.get("site_scope", []),

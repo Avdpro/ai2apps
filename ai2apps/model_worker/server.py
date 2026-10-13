@@ -45,6 +45,7 @@ logger = logging.getLogger(__name__)
 
 PROTOCOL = "ai2apps-model-worker/v1"
 OPERATIONS = {
+    "depth_estimation": "/v1/images/depth",
     "embeddings": "/v1/embeddings",
     "chat_completions": "/v1/chat/completions",
     "responses": "/v1/responses",
@@ -399,6 +400,7 @@ def create_app(config_path: str | Path, *, token: str | None = None) -> FastAPI:
                     "owned_by": context.service_id,
                 }
                 for model in context.models
+                if model.get("model_type") != "component"
             ],
         }
 
@@ -581,6 +583,25 @@ def create_app(config_path: str | Path, *, token: str | None = None) -> FastAPI:
                 raise HTTPException(
                     status_code=400, detail="Request body must be an object"
                 )
+        requested_model = payload.get("model")
+        if isinstance(requested_model, str) and any(
+            model.get("model_type") == "component"
+            and requested_model in (model.get("id"), model.get("upstream_id"))
+            for model in context.models
+        ):
+            shutil.rmtree(request_root, ignore_errors=True)
+            raise ModelWorkerError(
+                "Checkpoint components cannot be invoked independently",
+                code="model_not_callable",
+                status_code=400,
+            )
+        if operation == "depth_estimation":
+            from .depth_estimation import validate_depth_estimation
+            try:
+                payload = validate_depth_estimation(payload, parts=parts, models=context.models)
+            except ModelWorkerError:
+                shutil.rmtree(request_root, ignore_errors=True)
+                raise
         if operation == "audio_generate":
             try:
                 payload = validate_audio_generation(payload, has_parts=bool(parts))

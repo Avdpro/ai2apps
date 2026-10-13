@@ -36,10 +36,24 @@ def authorize(broker, studio_id, mount_id, principal, capability):
     return mounted
 
 
+def preferred_prompt_language(model):
+    contract = model.metadata.get('audio_generation', {})
+    language = contract.get('preferred_prompt_language')
+    if language:
+        return language
+    # Compatibility for released packages without this optional metadata field.
+    if model.id in {
+        'ai2apps.model.stable-audio-mlx/music', 'ai2apps.model.stable-audio-mlx/sfx',
+        'ai2apps.model.stable-audio-cuda/music', 'ai2apps.model.stable-audio-cuda/sfx',
+    }:
+        return 'en'
+    return None
+
+
 def model_options(broker, studio_id, mount_id, principal, capability):
     authorize(broker, studio_id, mount_id, principal, capability)
     return {'items': [dict(id=m.id, label=m.display_name, ready=m.checkpoint_ready,
-        preferredPromptLanguage=m.metadata['audio_generation'].get('preferred_prompt_language'),
+        preferredPromptLanguage=preferred_prompt_language(m),
         minimumSeconds=m.metadata['audio_generation']['minimum_duration'],
         maximumSeconds=m.metadata['audio_generation']['maximum_duration'],
         lyrics=m.metadata['audio_generation']['lyrics'],
@@ -127,7 +141,7 @@ async def generate(broker, studio_id, mount_id, *, principal, request, capabilit
     watcher = asyncio.create_task(watch_disconnect())
     try:
         prepared_prompt = body['prompt']
-        if contract.get('preferred_prompt_language') == 'en':
+        if preferred_prompt_language(model) == 'en':
             prepared_prompt = await prepare_prompt(broker, body['prompt'], task=capability,
                 principal=principal, mounted=mounted, request=request, cancelled=cancelled)
         body = {**body, 'prompt': prepared_prompt}

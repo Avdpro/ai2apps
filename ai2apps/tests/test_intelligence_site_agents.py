@@ -68,6 +68,7 @@ def test_site_agent_api_validates_activation_and_reuses_across_channels(tmp_path
     assert client.get(base+'list').json()['recipe'] is None
     body={'generation_id':candidate['generation_id'],'samples':10,'matched':1}
     assert client.post(base+'activate',json=body).status_code==422
+    assert client.post(base+'activate',json={**body,'samples':1,'matched':1}).status_code==422
     body['matched']=9
     assert client.post('/intelligence/sources/'+c['id']+'/site-agent/activate',json=body).status_code==422
     assert client.post(base+'activate',json=body).status_code==200
@@ -77,3 +78,57 @@ def test_site_agent_api_validates_activation_and_reuses_across_channels(tmp_path
     assert client.get(base+'list').json()['recipe']
     client.post(base+'invalidate',json={'kind':'list','generation_id':candidate['generation_id']})
     assert client.get(base+'list').json()['recipe'] is None
+
+
+@pytest.mark.asyncio
+async def test_list_generation_can_cover_multiple_observed_regions(tmp_path,monkeypatch):
+    db=PlatformDatabase(tmp_path/'platform.sqlite3');db.initialize()
+    async def model(runtime,request,principal,id,instruction,data,validate):
+        with pytest.raises(ValueError):validate({'indices':[0,0]})
+        with pytest.raises(ValueError):validate({'indices':[-1]})
+        return validate({'indices':[0,1]})
+    monkeypatch.setattr(site_agents,'model_json',model)
+    source={'name':'News','channel_id':'c','url':'https://example.com/'}
+    body=site_agents.LearnRequest(kind='list',url=source['url'],regions=[
+        {'selector':'#lead','sample':'Lead stories','count':4},
+        {'selector':'#latest','sample':'Latest stories','count':12}])
+    result=await site_agents.learn(SimpleNamespace(database=db),None,SimpleNamespace(actor_user_id='a'),source,body)
+    args=result['ir']['steps'][0]['arguments']
+    assert args['site_extraction']['selector']=='#lead,#latest'
+    assert args['news_scan'] is True
+
+@pytest.mark.asyncio
+async def test_x_observed_rule_compiles_and_repairs_same_owned_draft(tmp_path,monkeypatch):
+    from ai2apps.intelligence import x_agents
+    db=PlatformDatabase(tmp_path/'platform.sqlite3');db.initialize()
+    runtime=SimpleNamespace(database=db);principal=SimpleNamespace(actor_user_id='alice')
+    observed={field:[{'selector':selector,'sample':'Observed','count':2}] for field,selector in
+        [('card','article[role="article"]'),('link','a[href]'),('text','p[lang="en"]'),('author','div[role="heading"]'),('photo','img')]}
+    async def model(*args):
+        validate=args[-1]
+        with pytest.raises(ValueError):validate(dict.fromkeys(x_agents.FIELDS,19))
+        return validate(dict.fromkeys(x_agents.FIELDS,0))
+    monkeypatch.setattr(x_agents,'model_json',model)
+    source={'name':'X F1','channel_id':'c','url':'https://x.com/F1'}
+    first=await x_agents.learn(runtime,principal,source,'feed',source['url'],observed)
+    assert first['ir']['steps'][0]['mode']=='compiled'
+    assert first['ir']['steps'][0]['arguments']['x_extraction']['text']=='p[lang="en"]'
+    repo=AgentBuilderRepository(db)
+    repo.activate_generation(first['draft_id'],first['generation_id'],'alice')
+    observed['text'][0]['selector']='div[data-testid="new-body"]'
+    second=await x_agents.learn(runtime,principal,source,'feed',source['url'],observed,first)
+    assert second['draft_id']==first['draft_id'] and second['generation_id']!=first['generation_id']
+    assert repo.get_generation(first['generation_id'],'alice').status.value=='active'
+    with pytest.raises(Exception):repo.get_draft(first['draft_id'],'bob')
+    with pytest.raises(ValueError):await x_agents.learn(runtime,principal,source,'feed','https://evil.example/',observed)
+
+
+def test_x_activation_rejects_wrong_identity_body_images_and_drift():
+    from ai2apps.intelligence.x_agents import matches
+    post={'post_id':'1','url':'https://x.com/F1/status/1','text':'Real news','images':[{'url':'https://pbs.twimg.com/media/one.jpg'}]}
+    baseline={'items':[post]};valid={'items':[post],'x_rule_valid':True}
+    assert matches(baseline,valid,'feed')
+    for changed in ({'post_id':'2'},{'text':'Navigation'},{'url':'https://x.com/other/status/1'},
+                    {'images':[{'url':'https://pbs.twimg.com/media/wrong.jpg'}]}):
+        assert not matches(baseline,{'items':[{**post,**changed}],'x_rule_valid':True},'feed')
+    assert not matches(baseline,{**valid,'x_rule_valid':False},'feed')

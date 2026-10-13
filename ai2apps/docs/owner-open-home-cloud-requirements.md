@@ -1,5 +1,7 @@
 # Owner Open-Home：Cloud 授权入口与会话续期需求
 
+> 当前 Mobile App 接入机制已更新：新增应用采用通用目录、挂载资源和 App Bridge。本文早期固定入口清单保留作历史兼容记录；以 [2026-10-10 通用挂载合同](mobile-app-access-gateway-2026-10-09.md) 为准。
+
 日期：2026-10-07
 状态：待 Cloud 项目确认、实现与部署；本仓库不修改 Cloud 代码。
 
@@ -66,3 +68,7 @@ Local 新接收入口已准备（源码及隔离测试完成，未因本次准�
 ## Local 后续
 
 Cloud 确认后增加能力协商和“我的应用”入口，接入续期/重新认证、Mobile Home 状态与错误反馈。若具体 App 尚不能通过公网受限 API 完成操作，应增加逐能力授权的 App 接口，不能把整个内部平台 API 加入公网白名单。
+
+## 2026-10-10：通用 App 机制澄清
+
+新增 App 不要求 Cloud 维护 App ID 或该 App 的原生 API 白名单。沿用已部署的 open/app-resource/app-mounts bridge 协议路径，由 Local 逐请求校验 manifest、actor、instance、mount 与设备开关。可信内置 host 的自身 API request 在此 Bridge 内执行；第三方 sandbox 仍只允许 context。不要开放 `/admin/*` 或 `/v1/platform/*` 通配代理。当前客户端合同见 [Mobile 通用挂载](mobile-app-access-gateway-2026-10-09.md)。本文早期冻结清单是历史兼容入口，不能作为新增 App 的接入流程。Cloud 未在本仓库修改；真实部署验收独立记录。

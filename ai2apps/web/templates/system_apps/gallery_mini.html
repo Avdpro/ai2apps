@@ -1,7 +1,7 @@
 {% extends app_base_template|default("base.html") %}
 
 {% block title %}{{ t('gallery.mini.title') }} - AI2Apps{% endblock %}
-{% block head %}<link rel="stylesheet" href="{{ static('css/gallery.css') }}?v=preview-gesture-20261008-1">{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ static('css/gallery.css') }}?v=mini-touch-isolation-20261010-1"><link rel="stylesheet" href="{{ static('css/gallery_mini.css') }}?v=mini-touch-isolation-20261010-1">{% endblock %}
 
 {% block content %}
 <div class="gallery-mini" x-data="galleryApp()" @scroll.window.capture="cancelAssetHold()" @blur.window="cancelAssetHold()" x-init="init()" data-app-id="ai2apps.gallery" data-gallery-surface="mini-entry" @dragover.prevent @drop.prevent="dropFiles($event)" @click="closeAssetContextMenu()">

@@ -458,7 +458,9 @@ class AgentRuntime:
                     run_id, "run_deadline_exceeded", "Agent deadline expired"
                 )
                 return
-            context = AgentExecutionContext(definition, run, steps, interactions)
+            from ai2apps.browser.task_tree import TaskTreeRepository
+            task_tree = TaskTreeRepository(self.repository.database, self.repository.events) if (run.input.get('parameters') or {}).get('execution_task_id') else None
+            context = AgentExecutionContext(definition, run, steps, interactions, task_tree=task_tree)
             await asyncio.to_thread(
                 self.repository.update_status_line,
                 run_id,

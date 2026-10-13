@@ -394,6 +394,12 @@ class InteractiveArchive:
                                 "invalid_studio_mini_app_placement",
                                 "Studio Mini-App placement is invalid",
                             )
+                    if any(p.get("studio") == "ai2apps.ai-browser" for p in placements):
+                        try:
+                            from ai2apps.browser.mini_apps import validate_web_agent
+                            validate_web_agent(item)
+                        except (ValueError, TypeError) as error:
+                            raise ExtensionError("invalid_web_agent_mini_app", str(error)) from error
             open_entry = manifest.get("open_entry")
             if open_entry is not None:
                 resource = open_entry.get("resource") if isinstance(open_entry, dict) else None

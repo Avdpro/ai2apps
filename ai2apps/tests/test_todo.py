@@ -757,3 +757,133 @@ def test_emoji_fallback_preserves_local_origin_and_error(tmp_path):
 def test_extract_ai_emoji(text, excluded, expected):
     from ai2apps.todo.models import extract_ai_emoji
     assert extract_ai_emoji(text, excluded) == expected
+
+
+def test_directory_rename_preserves_order_tasks_and_checks_owner(store):
+    directory = store.directory("alice", "Old")
+    other = store.directory("alice", "Other")
+    item = store.save("alice", {"directory_id": directory["id"], "title": "Keep"})
+    store.reorder_directories("alice", [other["id"], directory["id"]], [directory["id"], other["id"]])
+    saved = store.rename_directory("alice", directory["id"], " New ", "Old")
+    assert saved == {"id": directory["id"], "title": "New"}
+    assert [d["id"] for d in store.snapshot("alice")["directories"]] == [other["id"], directory["id"]]
+    assert store.get("alice", item["id"]) == item
+    with pytest.raises(KeyError):
+        store.rename_directory("bob", directory["id"], "No", "New")
+    with pytest.raises(ValueError, match="refresh before saving"):
+        store.rename_directory("alice", directory["id"], "Stale", "Old")
+    with pytest.raises(ValueError):
+        store.rename_directory("alice", directory["id"], " ", "New")
+
+
+def test_directory_rename_api(store):
+    principal = RequestPrincipal.legacy_local()
+    directory = store.directory(principal.actor_user_id, "Old")
+    app = FastAPI()
+    app.include_router(create_todo_router(lambda: SimpleNamespace(todo=SimpleNamespace(store=store)), lambda: principal))
+    with TestClient(app) as client:
+        path = "/todo/directories/" + directory["id"]
+        response = client.put(path, json={"title": "New", "expected_title": "Old"})
+        assert response.status_code == 200
+        assert response.json()["title"] == "New"
+        assert client.put(path, json={"title": "", "expected_title": "New"}).status_code == 422
+
+
+def test_delete_directory_requires_owner_name_and_empty_store(store):
+    directory = store.directory('alice', 'Empty')
+    other = store.directory('alice', 'Keep')
+    store.reorder_directories('alice', [directory['id'], other['id']], [directory['id'], other['id']])
+    with pytest.raises(KeyError):
+        store.delete_directory('bob', directory['id'], 'Empty')
+    with pytest.raises(ValueError, match='name does not match'):
+        store.delete_directory('alice', directory['id'], 'Wrong')
+    store.rename_directory('alice', directory['id'], 'Renamed', 'Empty')
+    with pytest.raises(ValueError):
+        store.delete_directory('alice', directory['id'], 'Empty')
+    assert store.delete_directory('alice', directory['id'], 'Renamed') == {'ok': True}
+    assert store.snapshot('alice')['directories'] == [other]
+    with store.connect() as db:
+        assert not db.execute('SELECT 1 FROM directory_order WHERE directory_id=?', (directory['id'],)).fetchone()
+
+
+def test_delete_directory_rejects_active_projects(store):
+    item = task(store)
+    with pytest.raises(ValueError, match='active projects'):
+        store.delete_directory('alice', item['directory_id'], 'Work')
+    assert store.get('alice', item['id']) == item
+
+
+@pytest.mark.parametrize('action', ['archive', 'trash'])
+def test_delete_directory_preserves_retained_tree_and_restore(store, action):
+    item = task(store)
+    child = store.save('alice', {'directory_id': item['directory_id'], 'parent_id': item['id'], 'title': 'Child'})
+    attachment = store.add_attachment('alice', item['id'], 'keep.txt', b'keep')
+    store.lifecycle('alice', item['id'], action)
+    store.delete_directory('alice', item['directory_id'], 'Work')
+    snapshot = store.snapshot('alice')
+    target = snapshot['directories'][0]
+    assert target['title'] == '归档与回收站'
+    assert all(t['directory_id'] == target['id'] for t in snapshot['tasks'])
+    assert store.get('alice', child['id'])['parent_id'] == item['id']
+    assert snapshot['attachments'][0]['id'] == attachment['id']
+    assert store.get('alice', item['id'])[('archived_at' if action == 'archive' else 'deleted_at')]
+    store.lifecycle('alice', item['id'], 'restore')
+    restored = store.get('alice', item['id'])
+    assert not restored.get('archived_at') and not restored.get('deleted_at')
+    assert restored['directory_id'] == target['id']
+
+
+
+def test_delete_directory_api(store):
+    principal = RequestPrincipal.legacy_local()
+    directory = store.directory(principal.actor_user_id, 'Empty')
+    app = FastAPI()
+    app.include_router(create_todo_router(lambda: SimpleNamespace(todo=SimpleNamespace(store=store)), lambda: principal))
+    with TestClient(app) as client:
+        path = '/todo/directories/' + directory['id']
+        assert client.request('DELETE', path, json={}).status_code == 422
+        assert client.request('DELETE', path, json={'confirm_title': 'Wrong'}).status_code == 422
+        assert client.request('DELETE', path, json={'confirm_title': 'Empty'}).status_code == 200
+        assert client.request('DELETE', path, json={'confirm_title': 'Empty'}).status_code == 404
+
+
+def test_delete_directory_mixed_projects_is_atomic_and_reuses_retained_directory(store):
+    item = task(store)
+    other = store.save('alice', {'directory_id': item['directory_id'], 'title': 'Active'})
+    target = store.directory('alice', '归档与回收站')
+    store.lifecycle('alice', item['id'], 'archive')
+    with pytest.raises(ValueError):
+        store.delete_directory('alice', item['directory_id'], 'Work')
+    assert store.get('alice', item['id'])['directory_id'] == item['directory_id']
+    store.lifecycle('alice', other['id'], 'trash')
+    store.delete_directory('alice', item['directory_id'], 'Work')
+    assert store.snapshot('alice')['directories'] == [target]
+    assert all(t['directory_id'] == target['id'] for t in store.snapshot('alice')['tasks'])
+
+
+def test_attachment_image_preview_is_owner_scoped_and_download_unchanged(store):
+    import io
+    from PIL import Image
+    principal = RequestPrincipal.legacy_local()
+    item = task(store, principal.actor_user_id)
+    output = io.BytesIO()
+    Image.new('RGB', (2000, 1000), 'red').save(output, format='JPEG')
+    raw = output.getvalue()
+    image = store.add_attachment(principal.actor_user_id, item['id'], 'photo.jpg', raw)
+    invalid = store.add_attachment(principal.actor_user_id, item['id'], 'fake.jpg', b'not an image')
+    stranger = task(store, 'other-owner')
+    private = store.add_attachment('other-owner', stranger['id'], 'private.jpg', raw)
+    app = FastAPI()
+    app.include_router(create_todo_router(lambda: SimpleNamespace(todo=SimpleNamespace(store=store)), lambda: principal))
+    with TestClient(app) as client:
+        url = '/todo/attachments/' + image['id']
+        response = client.get(url + '?preview=true')
+        assert response.status_code == 200
+        assert response.headers['content-type'] == 'image/png'
+        assert response.headers['x-content-type-options'] == 'nosniff'
+        with Image.open(io.BytesIO(response.content)) as preview:
+            assert preview.size == (1600, 800)
+        assert client.get(url).content == raw
+        assert 'attachment' in client.get(url).headers['content-disposition']
+        assert client.get('/todo/attachments/' + invalid['id'] + '?preview=true').status_code == 415
+        assert client.get('/todo/attachments/' + private['id'] + '?preview=true').status_code == 404

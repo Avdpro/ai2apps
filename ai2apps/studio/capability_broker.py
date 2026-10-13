@@ -493,11 +493,25 @@ class StudioCapabilityBroker:
     ) -> dict[str, Any]:
         """Probe an installed declaration without creating a persistent mount."""
 
-        detailed_models = self._detailed_models(self.runtime)
-        separation_models = self._separation_models(self.runtime)
-        voice_models = self._voice_models(self.runtime)
-        tts_models = self._tts_models(self.runtime)
+        if studio_id == "ai2apps.ai-browser":
+            from ai2apps.browser.mini_apps import capability_catalog
+            return {"schema": "ai2apps.studio-capability-probe/v1", "studioId": studio_id,
+                    "miniAppId": declaration["id"], "mountId": mount_id,
+                    "items": capability_catalog(declaration)}
         capabilities = _declared_capabilities(declaration)
+        # Probe only model families used by this declaration. In particular,
+        # opening an audio generator must not scan every speech pipeline.
+        replacement = {AUDIO_SPEAKER_REPLACEMENT_CAPABILITY, VIDEO_SPEAKER_REPLACEMENT_CAPABILITY}
+        detailed_models = self._detailed_models(self.runtime) if capabilities & (
+            replacement | {DETAILED_TRANSCRIPTION_CAPABILITY, DIARIZATION_CAPABILITY, VIDEO_AUDIO_TRANSLATION_CAPABILITY}
+        ) else ()
+        separation_models = self._separation_models(self.runtime) if capabilities & (
+            replacement | {SOURCE_SEPARATION_CAPABILITY, VIDEO_AUDIO_TRANSLATION_CAPABILITY}
+        ) else ()
+        voice_models = self._voice_models(self.runtime) if capabilities & (
+            replacement | {"audio.voice_conversion"}
+        ) else ()
+        tts_models = self._tts_models(self.runtime) if SPEECH_GENERATION_CAPABILITY in capabilities else ()
         optional_capabilities = _optional_capabilities(declaration)
         items = []
         for capability in sorted(capabilities):
@@ -510,6 +524,15 @@ class StudioCapabilityBroker:
             elif capability in AUDIO_GENERATION_CAPABILITIES:
                 models = generation_models(self.runtime, capability)
                 implemented = studio_id == "ai2apps.readaloud"
+            elif capability in {'image.frozen_time.da', 'image.frozen_time.vggt'}:
+                from ai2apps.studio.frozen_time_pipeline import DEPTH_MODELS, MERIDIAN
+                depth = DEPTH_MODELS[capability.rsplit('.', 1)[1]]
+                required = [(depth, 'depth_estimation'), (MERIDIAN, 'video_generation')]
+                ready = all((model := self.runtime.model_invocations.model(identifier)) is not None
+                            and model.checkpoint_ready and operation in model.capabilities for identifier, operation in required)
+                items.append({'capability': capability, 'implemented': studio_id == 'ai2apps.imagine-studio',
+                    'ready': ready, 'required': capability not in optional_capabilities, 'providers': []})
+                continue
             elif capability == AVATAR_CAPABILITY:
                 models = avatar_models(self.runtime)
                 implemented = studio_id == "ai2apps.video-studio"

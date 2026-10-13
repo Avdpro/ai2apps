@@ -92,7 +92,7 @@ def test_digest_failure_does_not_commit_and_success_retries(client,monkeypatch):
 
 @pytest.mark.asyncio
 async def test_recommendation_rejects_invented_urls(monkeypatch):
-    async def fake(runtime,request,principal,id,instruction,data,validator):
+    async def fake(runtime,request,principal,id,instruction,data,validator,**kwargs):
         with pytest.raises(ValueError):
             validator({'sources':[{'url':'https://invented.com/','name':'Fake','reason':'a'}]})
         return validator({'sources':[{'url':'https://example.com/','name':'Source','reason':'observed'}]})
@@ -103,14 +103,14 @@ async def test_recommendation_rejects_invented_urls(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_digest_rejects_bad_evidence_and_update_id(monkeypatch):
-    async def fake(runtime,request,principal,id,instruction,data,validator):
+    async def fake(runtime,request,principal,id,instruction,data,validator,**kwargs):
         draft={'title':'new','summary':'s','body':'b [1]','evidence_ids':[3]}
         with pytest.raises(ValueError):validator({'articles':[draft]})
         with pytest.raises(ValueError):validator({'articles':[{**draft,'evidence_ids':[1],'update_article_id':'foreign'}]})
         return validator({'articles':[{**draft,'evidence_ids':[1]}]})
     monkeypatch.setattr(service,'model_json',fake)
     page={'url':'https://example.com/','title':'title','source_name':'source','retrieved_at':'now','text':'evidence'}
-    result=await service.digest(None,None,None,{'id':'c'},[page],[])
+    result=await service.digest_event(None,None,None,{'id':'c'},[page],[])
     assert result[0]['sources'][0]['url']==page['url']
 
 
@@ -142,9 +142,9 @@ def test_profile_save_checks_owner_and_preserves_key(client,monkeypatch):
 
 @pytest.mark.asyncio
 async def test_digest_global_citations_remap_to_article_sources(monkeypatch):
-    async def fake(runtime,request,principal,id,instruction,data,validator):
+    async def fake(runtime,request,principal,id,instruction,data,validator,**kwargs):
         assert [p['evidence_id'] for p in data['evidence']] == [1,2,3]
-        draft={'title':'Event','summary':'New facts','body':'One fact [3]. Another [2]. Again [3].','evidence_ids':[3,2]}
+        draft={'title':'Event','summary':'New facts','body':'One fact [3]. Another [2]. Again [3].','evidence_ids':[3,2],'primary_evidence_id':3}
         with pytest.raises(ValueError):validator({'articles':[{**draft,'body':'Undeclared source [1]'}]})
         with pytest.raises(ValueError):validator({'articles':[{**draft,'body':'No citation'}]})
         with pytest.raises(ValueError):validator({'articles':[{**draft,'evidence_ids':[0]}]})
@@ -152,7 +152,7 @@ async def test_digest_global_citations_remap_to_article_sources(monkeypatch):
         return validator({'articles':[draft]})
     monkeypatch.setattr(service,'model_json',fake)
     pages=[{'url':f'https://example.com/{i}','title':str(i),'source_name':'source','retrieved_at':'now','text':'facts'} for i in range(1,4)]
-    result=await service.digest(None,None,None,{'id':'c'},pages,[])
+    result=await service.digest_event(None,None,None,{'id':'c'},pages,[])
     assert result[0]['body']=='One fact [1]. Another [2]. Again [1].'
     assert [p['url'] for p in result[0]['sources']]==['https://example.com/3','https://example.com/2']
 
@@ -204,7 +204,7 @@ def test_channel_sections_created_preserved_and_failure_atomic(client, monkeypat
 
 @pytest.mark.asyncio
 async def test_section_plan_validates_names_and_uses_interests(monkeypatch):
-    async def fake(runtime,request,principal,id,instruction,data,validator):
+    async def fake(runtime,request,principal,id,instruction,data,validator,**kwargs):
         assert data['interests']=='独立制表与机芯'
         sections=[{'name':n,'description':n+'的报道'} for n in ['新品发布','佩戴体验','机芯解析','行业观察']]
         with pytest.raises(ValueError):validator({'sections':sections[:2]})
@@ -219,7 +219,7 @@ async def test_section_plan_validates_names_and_uses_interests(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_classification_requires_complete_owned_ids(monkeypatch):
-    async def fake(runtime,request,principal,id,instruction,data,validator):
+    async def fake(runtime,request,principal,id,instruction,data,validator,**kwargs):
         for assignments in [[],[{'article_id':'other','section_id':'s'}],
                             [{'article_id':'a','section_id':'foreign'}],
                             [{'article_id':'a','section_id':'s'}]*2]:
@@ -232,14 +232,14 @@ async def test_classification_requires_complete_owned_ids(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_digest_requires_valid_channel_section(monkeypatch):
-    async def fake(runtime,request,principal,id,instruction,data,validator):
+    async def fake(runtime,request,principal,id,instruction,data,validator,**kwargs):
         draft={'title':'New','summary':'Facts','body':'Facts [1]','evidence_ids':[1]}
         for section in [None,'foreign']:
             with pytest.raises(ValueError):validator({'articles':[{**draft,'section_id':section}]})
         return validator({'articles':[{**draft,'section_id':'s'}]})
     monkeypatch.setattr(service,'model_json',fake)
     page={'url':'https://example.com/a','title':'New','source_name':'Source','retrieved_at':'now','text':'Facts'}
-    result=await service.digest(None,None,None,{'id':'c','sections':[{'id':'s','name':'新品发布'}]},[page],[])
+    result=await service.digest_event(None,None,None,{'id':'c','sections':[{'id':'s','name':'新品发布'}]},[page],[])
     assert result[0]['section_id']=='s'
 
 
@@ -247,7 +247,7 @@ def test_legacy_section_endpoint_failure_keeps_history_and_retry_succeeds(client
     async def legacy_plan(*args):return []
     monkeypatch.setattr(service,'plan_sections',legacy_plan)
     c,s=channel_and_source(client)
-    async def digest(*args):return [{'title':'新品','summary':'新表','body':'正文 [1]','sources':[]}]
+    async def digest(*args,**kwargs):return [{'title':'新品','summary':'新表','body':'正文 [1]','sources':[]}]
     monkeypatch.setattr(service,'digest',digest)
     run=legacy_run(client,c['id'])
     client.post('/intelligence/runs/'+run['id']+'/finish',json={'pages':[],'logs':[]})
@@ -288,7 +288,7 @@ def test_topics_cache_and_owner_scope(client,monkeypatch):
 def test_article_feedback_flow(client,monkeypatch):
     from ai2apps.intelligence import feedback
     c,s=channel_and_source(client)
-    async def digest(*args):
+    async def digest(*args,**kwargs):
         return [{'title':'三重追针','summary':'新品','body':'技术介绍','sources':[{'url':'https://example.com/a'}]}]
     monkeypatch.setattr(service,'digest',digest)
     run=legacy_run(client,c['id'])
@@ -314,7 +314,7 @@ def test_article_feedback_flow(client,monkeypatch):
 def test_manuscript_creation_revision_idempotency(client,monkeypatch):
     from ai2apps.intelligence import writing
     c,s=channel_and_source(client)
-    async def digest(*args):return [{'title':'新表','summary':'摘要','body':'新表机芯','sources':[{'url':'https://example.com/a'}]}]
+    async def digest(*args,**kwargs):return [{'title':'新表','summary':'摘要','body':'新表机芯','sources':[{'url':'https://example.com/a'}]}]
     monkeypatch.setattr(service,'digest',digest)
     run=legacy_run(client,c['id'])
     client.post('/intelligence/runs/'+run['id']+'/finish',json={'pages':[{'source_id':s['id'],'url':'https://example.com/a','title':'新表','text':'新表机芯'}],'logs':[]})

@@ -2,7 +2,7 @@
 from ai2apps.core import utc_now_text
 
 LEGACY_APPS = frozenset({'ai2apps.general-chat', 'ai2apps.todo', 'ai2apps.knowledge',
-    'ai2apps.gallery', 'ai2apps.imagine-studio', 'ai2apps.video-studio', 'ai2apps.readaloud'})
+    'ai2apps.gallery', 'ai2apps.ai-browser', 'ai2apps.imagine-studio', 'ai2apps.video-studio', 'ai2apps.readaloud'})
 
 class MobileAppPolicy:
     def __init__(self, database):

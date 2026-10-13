@@ -23,6 +23,7 @@
         'ai2apps.readaloud',
         'ai2apps.video-studio',
         'ai2apps.gallery',
+        'ai2apps.todo',
         'ai2apps.discover',
         'ai2apps.ai-browser',
         'ai2apps.knowledge',

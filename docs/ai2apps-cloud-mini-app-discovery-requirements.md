@@ -1,5 +1,10 @@
 # AI2Apps Cloud Mini-App Discover Requirements
 
+> 2026-10-13：本稿的分类、历史兼容和分页建议已由
+> [Mini-App 分类与历史索引修正方案](ai2apps-cloud-mini-app-discovery-fix-20261013.md) 取代。
+> 下文保留为原始设计背景；“一个 App 卡片加组件卡片”仅适用于有独立入口的混合包，
+> 预取最多 100 个 App 不是完整分页方案。Cloud 是否上线以新方案的部署验收回执为准。
+
 ## Objective
 
 Expose signed Mini-App component metadata in Discover without adding a `mini-app` Package type or a second

@@ -375,6 +375,10 @@ def create_imagine_studio_router(
             limit=limit, **scoped_kwargs(principal, app_instance_id)
         ))
         for index, item in enumerate(items):
+            if item["miniAppId"] == "ai2apps.imagine.frozen-time" and item["status"] == "running" and item["id"] not in active_frozen:
+                items[index] = repository.update_run(item["id"], status="failed", progress=100,
+                    detail="Interrupted", error={"code": "host_restarted", "message": "Frozen Time was interrupted by a Host restart. Please retry."},
+                    **scoped_kwargs(principal, app_instance_id))
             if item["miniAppId"] == "ai2apps.imagine.upscale-image" and item["status"] == "running" and item["id"] not in active_upscales:
                 items[index] = repository.update_run(item["id"], status="failed", progress=100,
                     detail="Interrupted", error={"code": "host_restarted", "message": "Image upscaling was interrupted by a Host restart. Please retry."},
@@ -393,6 +397,9 @@ def create_imagine_studio_router(
                 if result_id:
                     history(principal, app_instance_id).delete(result_id, actor_id=principal.actor_user_id, installation_id=principal.installation_id, app_instance_id=app_instance_id)
             repository.delete_run(run_id, getattr(runtime_provider(), 'workspace', None), **scoped_kwargs(principal, app_instance_id))
+            if run['miniAppId'] == 'ai2apps.imagine.frozen-time':
+                import shutil
+                shutil.rmtree(runtime_provider().config.paths.artifacts_path / 'imagine-frozen-time' / run['id'], ignore_errors=True)
         except StudioRepositoryError as error:
             return studio_error(error)
         return Response(status_code=204)
@@ -849,10 +856,23 @@ def create_imagine_studio_router(
         except StudioRepositoryError as error:
             return studio_error(error)
         result_id = str(artifact["metadata"].get("historyResultId") or "")
-        selected = history(principal, app_instance_id).content_path(
-            result_id, actor_id=principal.actor_user_id,
-            installation_id=principal.installation_id, app_instance_id=app_instance_id,
-        )
+        frozen = artifact['metadata'].get('miniAppId') == 'ai2apps.imagine.frozen-time'
+        if frozen:
+            if artifact['name'] not in {'output.mp4', 'LivePhoto.jpg', 'LivePhoto.mov'}:
+                raise HTTPException(415, 'This output cannot be added to Gallery')
+            try:
+                run = studio(principal, app_instance_id).get_run(artifact['runId'], **scoped_kwargs(principal, app_instance_id))
+            except StudioRepositoryError as error:
+                return studio_error(error)
+            if run['status'] != 'succeeded' or run['miniAppId'] != 'ai2apps.imagine.frozen-time':
+                raise HTTPException(409, 'Completed output required')
+            path = runtime.config.paths.artifacts_path / 'imagine-frozen-time' / run['id'] / artifact['name']
+            selected = ({'filename': artifact['name'], 'mediaType': artifact['mediaType']}, path) if path.is_file() else None
+        else:
+            selected = history(principal, app_instance_id).content_path(
+                result_id, actor_id=principal.actor_user_id,
+                installation_id=principal.installation_id, app_instance_id=app_instance_id,
+            )
         if selected is None:
             raise HTTPException(status_code=404, detail="Imagine Studio Artifact content was not found")
         record, path = selected
@@ -863,7 +883,7 @@ def create_imagine_studio_router(
                 media_type=record["mediaType"], collection_id=request.collection_id,
                 source_app_id=APP_ID, source_ref=artifact["uri"],
                 metadata={"artifact_id": artifact_id, "artifact_run_id": artifact["runId"]},
-                max_bytes=MAX_IMAGE_BYTES,
+                max_bytes=1024*1024*1024 if frozen and artifact['kind']=='video' else MAX_IMAGE_BYTES,
             )
         return {"asset": asset, "created": created}
 
@@ -885,4 +905,7 @@ def create_imagine_studio_router(
         history(principal, app_instance_id).clear(actor_id=principal.actor_user_id, installation_id=principal.installation_id, app_instance_id=app_instance_id)
         return Response(status_code=204)
 
+    from ai2apps.api.imagine_frozen_time import create_frozen_router
+    frozen_router, active_frozen = create_frozen_router(runtime_provider, principal_dependency, studio, scoped_kwargs, studio_error)
+    router.include_router(frozen_router)
     return router

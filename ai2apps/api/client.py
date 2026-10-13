@@ -23,6 +23,7 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 
 from ai2apps import __version__
+from ai2apps.native_export import native_export_broker
 from ai2apps.api.identity import PrincipalProvider
 from ai2apps.browser.profiles import BrowserProfileRepository
 from ai2apps.browser.shell_window import (
@@ -89,10 +90,10 @@ class BrowserAgentLaunchRequest(BaseModel):
 
 
 class BrowserAgentLaunchResponse(BaseModel):
-    user_context: str | None = None
     status: Literal["launched", "focused"]
     profile_id: str
     pid: int
+    user_context: str | None = None
 
 
 class LocalRestartResponse(BaseModel):
@@ -409,6 +410,29 @@ def create_client_router(
         )
         return await asyncio.to_thread(shell_browser_window_broker.wait, request_id)
 
+    @router.get('/client/native-export/next', include_in_schema=False)
+    async def next_native_export(request: Request):
+        _require_helper_authorization(request)
+        return Response(content=json.dumps(native_export_broker.claim_next()),
+            media_type='application/json', headers={'Cache-Control': 'no-store'})
+
+    @router.post('/client/native-export/{request_id}/complete', include_in_schema=False)
+    async def complete_native_export(request_id: str, request: Request):
+        _require_helper_authorization(request)
+        try:
+            body = await request.json()
+        except ValueError as error:
+            raise HTTPException(422, 'Invalid native export response') from error
+        if not isinstance(body, dict) or set(body) - {'path', 'error'}:
+            raise HTTPException(422, 'Invalid native export response')
+        if any(value is not None and (not isinstance(value, str) or len(value) > 4096)
+               for value in body.values()):
+            raise HTTPException(422, 'Invalid native export response')
+        try:
+            return await asyncio.to_thread(native_export_broker.finish, request_id, **body)
+        except ValueError as error:
+            raise HTTPException(409, str(error)) from error
+
     @router.get("/client/shell-browser-window/next", include_in_schema=False)
     async def next_shell_browser_window_request(request: Request):
         _require_helper_authorization(request)
@@ -526,6 +550,16 @@ def create_client_router(
                     principal.actor_user_id
                 )
             ]
+
+        @router.get("/client/browser-profile-bindings")
+        async def known_browser_profile_bindings(principal: RequestPrincipal = principal_dependency):
+            bindings = {}
+            for profile in browser_profile_repository().list_for_user(principal.actor_user_id):
+                identity = shell_browser_window_broker.known_binding(
+                    shell_browser_profile_key(principal.actor_user_id, profile.key))
+                if identity:
+                    bindings[profile.key] = identity
+            return {"bindings": bindings}
 
         @router.post(
             "/client/browser-profiles",

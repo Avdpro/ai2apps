@@ -47,6 +47,12 @@ class ShellBrowserWindowBroker:
     def __init__(self) -> None:
         self._condition = threading.Condition()
         self._requests: dict[str, _ShellBrowserRequest] = {}
+        self._bindings: dict[str, str] = {}
+
+    def known_binding(self, profile_key: str) -> str | None:
+        """Read an acknowledged native identity without launching or binding."""
+        with self._condition:
+            return self._bindings.get(profile_key)
 
     def enqueue(
         self,
@@ -121,6 +127,10 @@ class ShellBrowserWindowBroker:
                 request.result = {"status": status, "pid": pid}
                 if user_context:
                     request.result["user_context"] = user_context[:200]
+                    if request.action in {"open", "bind"}:
+                        self._bindings[request.profile_key] = user_context[:200]
+                if request.action == "delete":
+                    self._bindings.pop(request.profile_key, None)
             now = time.monotonic()
             _LOGGER.info("Browser window handoff finished request=%s status=%s total_ms=%.1f shell_ms=%.1f",
                          request.id, status, (now - request.created_at) * 1000,

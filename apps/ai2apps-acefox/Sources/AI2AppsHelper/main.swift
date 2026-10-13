@@ -2444,6 +2444,24 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate, NSMenuDeleg
               let expectedExecutable = arguments.aceFoxExecutable else {
             return nil
         }
+        // During cold launch, NSWorkspace can publish the live application
+        // before Launcher commits shell.json. Never fork a duplicate Profile.
+        let shellBundle = expectedExecutable.deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+        if let shellID = Bundle(url: shellBundle)?.bundleIdentifier {
+            for application in NSRunningApplication.runningApplications(withBundleIdentifier: shellID) {
+                guard !application.isTerminated,
+                      application.bundleURL?.resolvingSymlinksInPath() == shellBundle.resolvingSymlinksInPath(),
+                      processExecutablePath(pid: application.processIdentifier) == expectedExecutable.resolvingSymlinksInPath().path,
+                      Bundle(url: shellBundle)?.object(forInfoDictionaryKey: "AI2AppsInstanceID") as? String == arguments.instanceID.rawValue else { continue }
+                let recovered = ShellRunDescriptor(instanceID: arguments.instanceID,
+                    processID: application.processIdentifier,
+                    appBundlePath: appBundle.standardizedFileURL.path,
+                    executablePath: expectedExecutable.resolvingSymlinksInPath().path)
+                try? ContractCodec.save(recovered,to: paths.runDirectory.appendingPathComponent("shell.json"))
+                return application
+            }
+        }
         let descriptorURL = paths.runDirectory.appendingPathComponent("shell.json")
         guard let shell = try? ContractCodec.load(
             ShellRunDescriptor.self,

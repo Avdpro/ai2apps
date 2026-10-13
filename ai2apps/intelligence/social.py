@@ -50,9 +50,51 @@ def weibo_url(value):
     raise ValueError('微博账号请使用含数字 UID 的主页地址，例如 https://weibo.com/u/1234567890')
 
 
+def xiaohongshu_search_url(value):
+    u=urlsplit(value)
+    if (u.hostname or '').lower() not in ('xiaohongshu.com','www.xiaohongshu.com') or u.path.rstrip('/') != '/search_result':
+        return None
+    query=parse_qs(u.query).get('keyword',[''])[0].strip()
+    if not query or len(query)>300:
+        raise ValueError('Xiaohongshu search requires 1–300 characters')
+    return 'https://www.xiaohongshu.com/search_result?'+urlencode({'keyword':query,'source':'web_explore_feed'})
+
+
 def site_key(source):
     host=(urlsplit(source['url']).hostname or '').lower()
     if host in ('youtube.com','www.youtube.com','m.youtube.com','youtu.be'):return 'youtube.com'
     if host in ('weibo.com','www.weibo.com','s.weibo.com'):return 'weibo.com'
+    if xiaohongshu_search_url(source['url']):return 'xiaohongshu.com'
     if source.get('kind')=='social':return host.removeprefix('www.').removeprefix('m.')
     return ''
+
+
+def x_targets(mode, values, sort='latest'):
+    if sort not in ('latest','top'):raise ValueError('Invalid X search order')
+    """Normalize bounded account/search/list inputs; each target stays independent."""
+    if mode not in ('accounts', 'search', 'lists') or not 1 <= len(values) <= 20:
+        raise ValueError('X requires 1–20 accounts, search queries or list URLs')
+    normalized=[]
+    for value in values:
+        value=value.strip()
+        if mode=='accounts':
+            if '://' in value:
+                u=urlsplit(value)
+                if u.scheme not in ('http','https') or u.hostname not in ('x.com','www.x.com','twitter.com','www.twitter.com') or u.query or u.fragment or u.username or u.password or u.port:
+                    raise ValueError('Invalid X account URL')
+                value=u.path.strip('/')
+            value=value.lstrip('@')
+            if not re.fullmatch(r'[A-Za-z0-9_]{1,15}',value) or value.lower() in ('home','search','explore','settings','i','messages','notifications'):
+                raise ValueError('Invalid X account')
+            value=value.lower()
+        elif mode=='lists':
+            u=urlsplit(value)
+            match=re.fullmatch(r'/i/lists/([0-9]{1,20})/?',u.path)
+            if u.scheme not in ('http','https') or u.hostname not in ('x.com','www.x.com','twitter.com','www.twitter.com') or u.username or u.password or u.port or not match:
+                raise ValueError('Invalid X list URL; use https://x.com/i/lists/<ID>')
+            value='https://x.com/i/lists/'+match.group(1)
+        elif not value or len(value)>300 or '\n' in value or '\r' in value:
+            raise ValueError('X search query must contain 1–300 characters')
+        if value not in normalized:normalized.append(value)
+    urls=['https://x.com/'+value if mode=='accounts' else value if mode=='lists' else 'https://x.com/search?'+urlencode({'q':value,**({'f':'live'} if sort=='latest' else {})}) for value in normalized]
+    return normalized,urls

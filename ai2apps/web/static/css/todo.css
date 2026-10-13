@@ -262,3 +262,33 @@ html.dark .todo-row[data-highlight-color="lavender"]{--row-highlight:#3b3050}
 .todo-row-editor.is-progress{align-items:center;flex-wrap:nowrap;gap:12px}
 .todo-row-editor.is-progress input[type="range"]{flex:1;min-width:0}
 .todo-slider-value{flex:none;min-width:4ch;text-align:right;font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--td-text)}
+
+.todo-completed-group{min-height:40px;display:flex;align-items:center}
+.todo-completed-group>button{margin-left:48px;display:flex;align-items:center;gap:8px;background:transparent;color:var(--td-muted);border:0;padding:8px;border-radius:8px;cursor:pointer}
+.todo-completed-group>button:hover{background:var(--td-soft)}
+.todo-completed-group>button:focus-visible{outline:2px solid var(--td-muted)}
+.todo-completed-group svg{width:16px;height:16px}
+
+.todo-main-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.todo-toolbar{justify-content:flex-end}
+.todo-toolbar #search[hidden]{display:none}
+@media(max-width:540px){.todo-main-actions{flex-wrap:wrap;justify-content:flex-end}}
+
+#search-toolbar[hidden]{display:none}
+.todo-main-actions>button{display:inline-flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap}
+.todo-main-actions>select{min-height:38px;max-width:160px}
+.todo-main-head{flex-wrap:wrap;gap:12px}
+.todo-main-actions{margin-left:auto}
+
+.todo-delete-directory-dialog{width:440px;max-width:calc(100vw - 32px);box-sizing:border-box;border:1px solid var(--td-line);border-radius:14px;padding:24px;background:var(--td-bg);color:var(--td-text)}
+.todo-delete-directory-dialog::backdrop{background:#18152655}
+.todo-delete-directory-dialog input{width:100%;box-sizing:border-box;font:inherit;padding:10px;border:1px solid var(--td-line);border-radius:10px;background:var(--td-bg);color:var(--td-text)}
+.todo-delete-directory-dialog h2{margin:0 0 12px;font-size:18px;font-weight:600}
+.todo-delete-directory-dialog p{margin:0 0 12px;line-height:1.5;overflow-wrap:anywhere}
+.todo-delete-directory-dialog p:last-of-type{margin-bottom:18px}
+.todo-delete-directory-dialog input{display:block}
+.todo-delete-directory-dialog footer{display:flex;justify-content:flex-end;gap:10px;margin-top:20px}
+.todo-delete-directory-dialog .todo-danger{color:#c33}
+
+.todo-file a.todo-file-preview{flex:0 0 80px;width:80px;height:64px;display:flex;align-items:center;justify-content:center;background:var(--td-tint);border-radius:6px;overflow:hidden}
+.todo-file-preview img{display:block;max-width:100%;max-height:100%;object-fit:contain}

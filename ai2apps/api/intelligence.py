@@ -1,4 +1,4 @@
-"""Owner-scoped Intelligence Center API; browser actions stay in the BiDi SDK."""
+"""Owner-scoped Intelligence Center API; browser actions use the shared BiDi/WebAgent runtime."""
 from typing import Literal
 from threading import RLock
 from starlette.concurrency import run_in_threadpool
@@ -17,6 +17,12 @@ class SocialResult(BaseModel):
     outcome: Literal['success','failed','needs_user','restricted','not_started']
 
 
+class ManualLink(BaseModel):
+    url: str = Field(max_length=3000)
+    profile_key: str = Field(default='default', max_length=160)
+    _url = field_validator('url')(public_url)
+
+
 class ManualPage(BaseModel):
     page: Page
     profile_key: str = Field(default='default', max_length=160)
@@ -28,6 +34,7 @@ class SectionOrder(BaseModel):
 
 class Claim(BaseModel):
     scheduled: bool = False
+    source_id: str | None = Field(default=None, min_length=1, max_length=64)
 
 
 class Progress(BaseModel):
@@ -135,6 +142,10 @@ def create_intelligence_router(runtime_provider, principal_provider):
         if key != 'default':
             checked(BrowserProfileRepository(runtime_provider().database).require, owner, key)
 
+    @router.get('/browser-profiles')
+    def mobile_browser_profiles(principal=dep):
+        return [p.as_dict() for p in BrowserProfileRepository(runtime_provider().database).list_for_user(principal.actor_user_id)]
+
     @router.get('')
     def snapshot(principal=dep):
         return store().snapshot(principal.actor_user_id)
@@ -202,6 +213,18 @@ def create_intelligence_router(runtime_provider, principal_provider):
         except TimeoutError as error:
             raise HTTPException(504,'稿件生成超时，可重试；不会重复创建') from error
         finally:drafting.discard(token)
+
+    @router.put('/drafts/{id}/images')
+    def draft_images(id: str, body: writing.DraftImages, principal=dep):
+        owner = principal.actor_user_id
+        draft = checked(store().draft, owner, id)
+        if (owner,id) in drafting:
+            raise HTTPException(409, '此稿件正在修改，请稍后重试')
+        if draft['revision'] != body.revision:
+            raise HTTPException(409, '稿件已更新，请重新打开后修改')
+        images = checked(writing.place_images, draft, store().snapshot(owner)['articles'], body)
+        draft.update(images=images, revision=body.revision+1, updated_at=stamp())
+        return checked(store().save_draft, owner, draft, body.revision)
 
     @router.post('/drafts/{id}/revise')
     async def revise_draft(id: str, body: writing.ReviseDraft, request: Request, principal=dep):
@@ -384,14 +407,59 @@ def create_intelligence_router(runtime_provider, principal_provider):
 
     @router.post('/channels/{id}/import-url')
     async def import_url(id: str, body: ManualPage, request: Request, principal=dep):
-        checked(store().get, 'channels', principal.actor_user_id, id)
+        channel = checked(store().get, 'channels', principal.actor_user_id, id)
         p = body.page
         source = dict(url=p.url, title=p.title, source_name='手动收录', source_id='', profile_key=body.profile_key, retrieved_at=stamp(), content_type='webpage')
         images = [dict(url=i.url, alt=i.alt, source_url=p.url) for i in p.images if i.url]
         article = dict(title=p.title or p.url, summary=p.text[:500], body=p.text, sources=[source], images=images)
         if p.image_url:
             article['cover_image'] = dict(url=p.image_url, source_url=p.url)
+        from ai2apps.intelligence.manual_import import translate_article
+        article = await translate_article(runtime_provider(), request, principal, channel, article)
         return await save_manual(id, article, p.url, request, principal)
+
+    @router.post('/channels/{id}/import-link')
+    async def import_link(id: str, body: ManualLink, request: Request, principal=dep):
+        import asyncio
+        import uuid
+        from ai2apps.api.agent_platform import _session
+        from ai2apps.browser.invocation import WebAgentInvocation
+        from ai2apps.intelligence.collector import IntelligenceCollector
+        checked(store().get, 'channels', principal.actor_user_id, id)
+        check_profile(principal.actor_user_id, body.profile_key)
+        runtime = runtime_provider()
+        invocation = WebAgentInvocation(runtime)
+        source = {'url':body.url}
+        task = invocation.submit(owner=principal.actor_user_id, session_id=_session(runtime, principal, None),
+            profile=body.profile_key, name='收录文章', key='manual-import:'+str(uuid.uuid4()),
+            caller_app_id='ai2apps.intelligence', source=IntelligenceCollector.program(source, 'read_page',
+                {'url':body.url, 'max_chars':20000, 'include_cover':True, 'include_images':True,
+                 'observe_regions':True, 'new_tab':True, 'close_tab':True, 'delay_ms':1200}))
+        try:
+            async with asyncio.timeout(180):
+                async with runtime.notifications.subscribe() as wake:
+                    while True:
+                        task = invocation.tasks.get(principal.actor_user_id, task['id'])
+                        if task['status'] == 'completed':
+                            run = runtime.agents.get_run(task['run_id'])
+                            page = (run.output or {}).get('result', {})
+                            return await import_url(id, ManualPage(profile_key=body.profile_key, page=Page(
+                                source_id='', url=page.get('url') or body.url, title=page.get('title') or body.url,
+                                text=page.get('text') or '', images=page.get('images') or [],
+                                image_url=(page.get('cover_image') or {}).get('url',''), content_type='webpage')), request, principal)
+                        if task['status'] in ('failed','cancelled','interrupted','waiting_input'):
+                            raise HTTPException(409, task.get('message') or '请在本机 AI 浏览器处理此网页后重试')
+                        try:
+                            await asyncio.wait_for(wake.get(), 3)
+                        except TimeoutError:
+                            pass
+        except TimeoutError:
+            raise HTTPException(504, '网页读取超时，请重试')
+        finally:
+            if task['status'] != 'completed':
+                if task.get('run_id'):
+                    runtime.agent_runtime.cancel(task['run_id'])
+                invocation.tasks.update(principal.actor_user_id, task['id'], status='cancelled')
 
     @router.post('/channels/{id}/import-file')
     async def import_file(id: str, request: Request, file: UploadFile = File(...), title: str = Form(''), summarize_image: bool = Form(False), principal=dep):
@@ -581,7 +649,9 @@ def create_intelligence_router(runtime_provider, principal_provider):
             if (rule['origin'] != site_agents.scope_url(source['url']) or rule['kind'] not in ('list', 'article')
                 or draft.source.get('provenance', {}).get('intelligence_recipe_key') != site_agents.recipe_key(source, rule['kind'])):
                 raise ValueError('网站规则与信息源不匹配')
-            if body.matched > body.samples or body.matched / body.samples < .6 or body.matched < min(2, body.samples):
+            if (body.matched > body.samples or
+                (rule['kind'] == 'list' and (body.samples < 3 or body.matched < 3 or body.matched/body.samples < .8)) or
+                (rule['kind'] != 'list' and (body.matched/body.samples < .6 or body.matched < min(2,body.samples)))):
                 raise ValueError('运行时比对未通过')
             from ai2apps.agent_builder.models import StepOutcome
             repository.add_evidence(draft_id=draft.id, owner_user_id=owner, step_name='extract', generation_id=generation.id,
@@ -603,7 +673,7 @@ def create_intelligence_router(runtime_provider, principal_provider):
         from ai2apps.api.agent_platform import _session
         runtime = runtime_provider()
         return checked(runtime.intelligence_collector.submit, principal, id,
-                       _session(runtime, principal, None), body.scheduled)
+                       _session(runtime, principal, None), body.scheduled, body.source_id)
 
     @router.patch('/runs/{id}')
     def progress(id: str, body: Progress, principal=dep):
@@ -611,6 +681,8 @@ def create_intelligence_router(runtime_provider, principal_provider):
         if current.get('execution_owner') == 'local' and body.status != 'cancelled':
             raise HTTPException(409, '本轮更新由 Local 后台执行，前台不能覆盖进度')
         checked(store().progress, principal.actor_user_id, id, body.message, body.status)
+        if body.status == 'cancelled':
+            runtime_provider().intelligence_collector.cancel(principal.actor_user_id, id)
         runtime_provider().notifications.notify()
         return {'ok': True}
 

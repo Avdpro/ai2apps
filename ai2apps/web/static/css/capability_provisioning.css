@@ -18,3 +18,7 @@
 @media(prefers-reduced-motion:reduce){
     .acpf-actions .acpf-primary:not([hidden]):not(:disabled){animation:none;box-shadow:0 0 0 3px rgba(24,24,27,.14)}
 }
+
+.acpf-mini-catalog{display:grid;gap:10px;max-height:50vh;overflow:auto}.acpf-mini-package{border:1px solid #e4e4e7;border-radius:12px;padding:14px}.acpf-mini-package p{color:#71717a;font-size:13px}.acpf-mini-package button{margin-top:6px}
+
+.acpf-sheet>label{display:block;margin:16px 0 7px;font-weight:600}.acpf-sheet>input,.acpf-sheet>textarea{box-sizing:border-box;width:100%;padding:11px;border:1px solid #d6d3d1;border-radius:9px;font:inherit}.acpf-sheet>textarea{resize:vertical}

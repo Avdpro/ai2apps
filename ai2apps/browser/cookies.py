@@ -5,13 +5,7 @@ from __future__ import annotations
 COOKIE_CONSENT_SCRIPT = r"""
 const policy = String(arguments[0] || 'all');
 const normalize = value => String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
-const visible = element => {
-  if (!element || element.closest('[hidden],[aria-hidden="true"],[inert]')) return false;
-  const style = getComputedStyle(element);
-  const rect = element.getBoundingClientRect();
-  return style.display !== 'none' && style.visibility !== 'hidden' &&
-    style.opacity !== '0' && rect.width > 0 && rect.height > 0;
-};
+const visible = ai2appsDOMVisible;
 const roots = [document];
 for (let index = 0; index < roots.length; index++) {
   for (const host of roots[index].querySelectorAll('*')) {
@@ -49,3 +43,6 @@ for (const element of candidates) {
 }
 return {handled: false, policy, label: null};
 """
+
+from .dom_visibility import DOM_VISIBILITY_SOURCE
+COOKIE_CONSENT_SCRIPT = DOM_VISIBILITY_SOURCE + "\n" + COOKIE_CONSENT_SCRIPT

@@ -1122,7 +1122,7 @@
             },
             async loadMobileApps() {
                 this.mobileAppsLoading=true;
-                try { this.mobileApps=(await remoteRequest('/mobile-apps')).items||[]; }
+                try { this.mobileApps=(await remoteRequest('/mobile-apps?locale='+encodeURIComponent(document.documentElement.lang||'en'))).items||[]; }
                 catch(error){this.mobileApps=[];if(error.status!==401&&error.status!==403)this.fail(error);}
                 finally {this.mobileAppsLoading=false;}
             },

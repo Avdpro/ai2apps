@@ -8,7 +8,7 @@ import json
 import re
 import time
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlencode
 
 from .background_planner import BackgroundPlanner
 
@@ -29,7 +29,8 @@ def intent(step):
 
 
 def interaction_policy(step, target=None):
-    text = ' '.join([step.get('description', ''), intent(step), (target or {}).get('name', ''), (target or {}).get('role', '')])
+    text = ' '.join(str(value or '') for value in [step.get('description'), intent(step),
+                    (target or {}).get('name'), (target or {}).get('role')])
     if re.search('captcha|verify you are human|验证码|机器人验证', text, re.I):
         return {'outcome': 'needs_user', 'reason': 'captcha'}
     if re.search('paywall|checkout|purchase|buy now|subscribe to continue|付款|支付|购买|付费墙|订阅后继续', text, re.I):
@@ -46,6 +47,14 @@ class BackgroundExecutor:
 
     async def execute(self, page, request, run):
         step = request['step']
+        if step['operation'] == 'search.api':
+            from .search_api import search
+            args=step.get('arguments') or {}
+            try:
+                result=await search(self.runtime,run.input['parameters']['owner_user_id'],args['query'],args.get('limit',10),scopes=request.get('site_scope') or [])
+                return {'outcome':'success','evidence':{'operation':'search.api','result':result}}
+            except ValueError as error:
+                return {'outcome':'failed','evidence':{'reason':'search_api_failed','message':str(error)}}
         page.allowed_assets = self.asset_ids(request.get('invocation_input', {}))
         scopes = request.get('site_scope') or []
         preview = bool(request.get('preview'))
@@ -57,10 +66,33 @@ class BackgroundExecutor:
                     return dict(outcome='failed', evidence={'reason': 'unrelated_or_closed_window'})
                 page.context_id = selected
             await page.validate_context()
+            if (step.get('arguments') or {}).get('shopping_action'):
+                parameters = run.input.get('parameters', {})
+                profile=parameters.get('model_profile')
+                gift_normal=False
+                if profile=='normal' and (step['arguments']['shopping_action'] in {'gift_search','screen_gifts','cart_item','cart_report'}):
+                    from .tasks import BrowserTaskRepository
+                    task=BrowserTaskRepository(self.runtime.database).get(parameters['owner_user_id'],parameters['browser_task_id'])
+                    gift_normal=(task['capability'] in {'gift_recommend','gift_revise','gift_prepare_cart'}
+                        and task['browser_context'].get('model_profile')=='normal')
+                if (not str(parameters.get('caller_app_id', '')).endswith(':ai2apps.shopping-pro')
+                        or (profile!='privacy' and not gift_normal)):
+                    return dict(outcome='restricted', evidence={'reason':'shopping_scope_denied'})
+                from .shopping import execute
+                return await execute(page, step['arguments'])
             mode = step.get('mode', 'adaptive')
             if mode == 'interpreted' and not preview:
                 return await self.adaptive(page, request, run)
+            if not preview and step['operation'] == 'extract_list' and step.get('arguments', {}).get('custom_search'):
+                return await self.recover_list(page, request, run,
+                    {'outcome': 'not_found', 'evidence': {'reason': 'custom_search_results_unavailable'}})
             result = await self.compiled(page, step, scopes, preview)
+            if (not preview and step['operation'] == 'extract_list'
+                    and step.get('arguments', {}).get('mini_app_list_recovery')
+                    and result['outcome'] == 'not_found'
+                    and result.get('evidence', {}).get('reason') in (
+                        'site_rule_drift', 'search_markup_unavailable', 'search_page_not_loaded')):
+                return await self.recover_list(page, request, run, result)
             if not preview and mode == 'adaptive' and result['outcome'] in ('not_found', 'retryable_error', 'failed'):
                 # Exceptions are not caught here: an interrupted native command
                 # has an unknown result and must never enter adaptive replay.
@@ -77,11 +109,35 @@ class BackgroundExecutor:
             return set().union(*(BackgroundExecutor.asset_ids(item) for item in value))
         return set()
 
+    async def recover_list(self, page, request, run, failure):
+        from .list_recovery import CANDIDATES_SCRIPT, eligible, selected_result
+        args = request['step'].get('arguments') or {}
+        observed = await page.call_json(CANDIDATES_SCRIPT, [args.get('exclude_ads', True)])
+        if not scope_allows(observed.get('page_url', ''), request.get('site_scope') or []):
+            return dict(outcome='restricted', evidence={'reason': 'site_scope'})
+        observed['items'] = [c for c in observed.get('items', [])
+                             if eligible(c, args.get('search_provider'))
+                             and not (args.get('exclude_ads', True) and c.get('is_ad'))]
+        if not observed['items']:
+            return failure
+        try:
+            ids = await asyncio.wait_for(self.planner.select_list(run, request['step'], observed), timeout=45)
+            result = selected_result(observed, ids, args)
+        except Exception:
+            # No unverified success or model/configuration error can strand the queue.
+            # This catches only read-only model selection, never native commands.
+            return dict(outcome='not_found', evidence={**failure['evidence'],
+                        'recovery': 'failed', 'recovery_reason': 'list_recovery_unavailable'})
+        return dict(outcome='success', evidence={'operation': 'extract_list', 'result': result,
+                    'recovery': 'observed_links_ai', 'original_failure': failure['evidence'].get('reason')})
+
     async def compiled(self, page, step, scopes, preview=False):
         operation = step['operation']
         args = step.get('arguments') or {}
         before = await page.snapshot()
         url = args.get('url')
+        if operation == 'open' and args.get('github_repository_search') and url == 'https://github.com/search':
+            url += '?' + urlencode({'q': str(args.get('query', '')), 'type': 'repositories'})
         rule = args.get('site_extraction') or {}
         rule_url = None
         if rule.get('schema') == 'ai2apps.site-extraction/v1' and rule.get('origin'):
@@ -110,7 +166,7 @@ class BackgroundExecutor:
         if operation in ('open', 'read_page'):
             if not url or not scope_allows(url, scopes):
                 return dict(outcome='restricted', evidence={'reason': 'navigation_outside_scope', 'url': url, 'before': before})
-        elif not scope_allows(before['url'], scopes):
+        elif operation != 'read_results' and not scope_allows(before['url'], scopes):
             return dict(outcome='restricted', evidence={'reason': 'site_scope', 'before': before})
         target = None
         assets = args.get('asset_ids') if operation == 'input' else None
@@ -132,22 +188,32 @@ class BackgroundExecutor:
             return dict(outcome='success', evidence={'preview': True, 'operation': operation, 'target': target, 'before': before})
         if operation == 'open':
             try:
-                result = await page.navigate(url, args.get('delay_ms', 3000))
+                if args.get('search_provider') == 'xiaohongshu':
+                    url = await page.select_xhs_site(url)
+                    if not scope_allows(url, scopes):
+                        return dict(outcome='restricted', evidence={'reason':'navigation_outside_scope','url':url})
+                result = ({'url':url,'page_reused':True} if args.get('reuse_current_page') and before['url']==url
+                          else await page.navigate(url, args.get('delay_ms', 3000)))
             except (TimeoutError, RuntimeError) as error:
                 # Search GET navigation is safe to abandon for the alternate engine.
                 # Never apply this recovery to clicks, inputs or submissions.
-                if args.get('search_provider') not in ('google', 'bing'):
+                if args.get('search_provider') not in ('google', 'bing', 'duckduckgo', 'brave'):
                     raise
-                return dict(outcome='failed', evidence={'reason':'search_navigation_failed',
+                return dict(outcome='failed', evidence={'reason':'search_network_protocol_error' if 'NS_ERROR_NET_HTTP3_PROTOCOL_ERROR' in str(error) else 'search_navigation_failed',
                     'provider':args['search_provider'], 'detail':str(error)[:300]})
         elif operation == 'extract_list':
             try:
                 result = await page.extract_list(step)
             except RuntimeError as error:
+                if str(error).startswith('xiaohongshu_sort_'):
+                    return dict(outcome='not_found', evidence={'reason':str(error).split(':')[0], 'before':before})
                 if str(error) != 'site_rule_drift':
                     raise
                 return dict(outcome='not_found', evidence={'reason': 'site_rule_drift', 'before': before})
-            if args.get('search_provider') and not result.get('items'):
+            if args.get('search_provider') and result.get('classification') == 'needs_user':
+                return dict(outcome='needs_user', evidence={'reason':result['reason'],
+                    'assistance_kind':result.get('assistance_kind'), 'result':result, 'before':before})
+            if args.get('search_provider') and not result.get('items') and not result.get('empty'):
                 return dict(outcome='not_found', evidence={'reason':result.get('reason','search_results_unavailable'),
                     'provider':args['search_provider'], 'result':result, 'before':before})
         elif operation == 'read_page':
@@ -158,7 +224,7 @@ class BackgroundExecutor:
             items = args.get('items') or []
             if any(not scope_allows(item.get('url', ''), scopes) for item in items if isinstance(item, dict)):
                 return dict(outcome='restricted', evidence={'reason': 'navigation_outside_scope'})
-            result = await page.read_results(items, args.get('limit', 3), args.get('delay_ms', 0))
+            result = await page.read_results(items, args.get('limit', 3), args.get('delay_ms', 0), **({'skip_restricted':True} if args.get('skip_restricted') else {}))
             if result['outcome'] != 'success':
                 return dict(outcome=result['outcome'], evidence={'operation': operation, 'result': result})
         elif operation == 'page_access':
@@ -181,10 +247,13 @@ class BackgroundExecutor:
             if intent(step):
                 result['target'] = await page.find_target(intent(step))
         elif operation in ('click', 'delete', 'input', 'hover'):
+            if args.get('custom_search') and operation in ('click', 'delete') and re.search(
+                    r'\b(post|reply|comment|like|repost|follow|send|publish|delete|buy|pay|checkout)\b|发帖|发布|发送|评论|点赞|转发|关注|删除|购买|支付', target.get('name') or '', re.I):
+                return dict(outcome='restricted', evidence={'reason': 'custom_search_consequential_target'})
             if args.get('foundation_read_only') or args.get('foundation_preparation_only'):
                 if operation in ('click', 'delete') and re.search('buy|purchase|checkout|subscribe|upgrade|pay|order|send|publish|delete|submit|购买|支付|付款|订阅|升级|下单|发送|发布|删除|提交', target['name'], re.I):
                     return dict(outcome='restricted', evidence={'reason': 'foundation_consequential_target'})
-                if operation == 'input' and args.get('foundation_read_only') and not (re.search('搜索|查询|search|find', args.get('foundation_search_goal', ''), re.I) and re.search('search|搜索|查询', target.get('name', '') + target.get('role', ''), re.I)):
+                if operation == 'input' and args.get('foundation_read_only') and not (re.search('搜索|查询|search|find', args.get('foundation_search_goal', ''), re.I) and re.search('search|搜索|查询|检索|buscar|recherch|suche|検索|검색|pesquis|поиск', (target.get('name') or '') + (target.get('role') or '') + (target.get('type') or ''), re.I)):
                     return dict(outcome='restricted', evidence={'reason': 'foundation_input_not_search'})
                 if args.get('foundation_preparation_only') and re.search('press.*enter|submit|回车|提交', step.get('description', ''), re.I):
                     return dict(outcome='restricted', evidence={'reason': 'foundation_submission_disallowed'})
@@ -242,7 +311,16 @@ class BackgroundExecutor:
         for _ in range(8):
             observation = await page.observation()
             observation['windows'] = await page.related_windows()
-            decision = await self.planner.next(run=run, step=step, observation=observation, attempts=attempts, scopes=scopes)
+            planning = self.planner.next(run=run, step=step, observation=observation, attempts=attempts, scopes=scopes)
+            if (step.get('arguments') or {}).get('custom_search'):
+                try:
+                    decision = await asyncio.wait_for(planning, timeout=45)
+                except TimeoutError:
+                    return dict(outcome='failed', evidence={'reason': 'custom_search_planner_timeout', 'attempts': attempts})
+                except (ValueError, TypeError, KeyError):
+                    return dict(outcome='failed', evidence={'reason': 'custom_search_planner_invalid_action', 'attempts': attempts})
+            else:
+                decision = await planning
             if decision['decision'] == 'needs_user':
                 return dict(outcome='needs_user', evidence={'reason': decision.get('reason'), 'assistance_kind': decision['assistance_kind'], 'attempts': attempts})
             if decision['decision'] == 'complete':
@@ -256,8 +334,16 @@ class BackgroundExecutor:
                 return dict(outcome='success', evidence={'operation': step['operation'], 'result': result, 'attempts': attempts})
             action = decision['compiled_step']
             args = step.get('arguments') or {}
+            if args.get('custom_search'):
+                if action['browser_context'] != page.context_id:
+                    return dict(outcome='restricted', evidence={'reason': 'custom_search_unrelated_context'})
+                if action['operation'] == 'input':
+                    action['arguments'] = {**action.get('arguments', {}), 'value': args['query']}
+                action['arguments'] = {**action.get('arguments', {}), 'custom_search': True}
             if args.get('read_only') or args.get('preparation_only'):
                 permitted = ('inspect', 'extract_list', 'scroll', 'open', 'hover', 'click', 'page_access', 'input') if args.get('read_only') else ('inspect', 'input', 'hover', 'click', 'scroll')
+                if args.get('custom_search'):
+                    permitted = ('inspect', 'scroll', 'hover', 'click', 'page_access', 'input')
                 if action['operation'] not in permitted:
                     return dict(outcome='restricted', evidence={'reason': 'foundation_action_outside_contract'})
                 action['arguments'] = {**action.get('arguments', {}), 'foundation_read_only': bool(args.get('read_only')), 'foundation_preparation_only': bool(args.get('preparation_only')), 'foundation_search_goal': args.get('goal', '')}

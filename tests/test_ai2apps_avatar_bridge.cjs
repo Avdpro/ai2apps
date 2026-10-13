@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 (async () => {
   const listeners = {}, replies = [];
   const source = {postMessage() {}};
-  const frame = {src:'http://local/frame',contentWindow:source,isConnected:true,addEventListener(){},removeEventListener(){}};
+  const frame = {src:'http://local/frame',contentWindow:source,closest(){return null;},isConnected:true,addEventListener(){},removeEventListener(){}};
   let channel;
   const requests = [];
   const context = {

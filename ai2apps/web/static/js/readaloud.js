@@ -356,7 +356,8 @@
         get emotions() { return ['neutral', 'happy', 'sad', 'angry', 'calm', 'excited', 'whisper'].map(id => ({ id, name: tr(`readaloud.emotion.${id}`) })); },
 
         favoriteMiniApps: [],
-        openCoder() { if (window.ai2appsShell?.openEntry) window.ai2appsShell.openEntry({ appId: 'ai2apps.coder', query: { template: 'mini-app', placement: APP_ID } }); else window.open('/apps/ai2apps.coder?template=mini-app&placement='+encodeURIComponent(APP_ID), '_blank', 'noopener'); },
+        async installMiniApps() { try { const result=await window.AI2AppsCapabilities.openMiniAppPackages({placement:APP_ID}); if(result.installed){this.miniAppDefinitions=(await request('/mini-apps')).items||[];await this.refreshAllPackageMiniAppReadiness(); this.icons();} } catch(error){this.fail(error);} },
+        async openCoder() { try { await window.AI2AppsCapabilities.openMiniAppCustomization({placement:APP_ID}); } catch(error){this.fail(error);} },
         isFavorite(id) { return this.favoriteMiniApps.includes(id); },
         toggleFavorite(id) { this.favoriteMiniApps = this.isFavorite(id) ? this.favoriteMiniApps.filter(value => value !== id) : [...this.favoriteMiniApps, id]; try { localStorage.setItem('ai2apps.readaloud.favorites', JSON.stringify(this.favoriteMiniApps)); } catch (_) {} },
         miniAppStatusLabel(ready) { const zh = document.documentElement.lang.startsWith('zh'); return ready ? (zh ? '可用 · 切换收藏' : 'Available · Toggle favorite') : (zh ? '需要下载依赖' : 'Dependencies need download'); },
@@ -621,7 +622,8 @@
                 const mount = await window.AI2AppsStudioMiniApps.mount(APP_ID, item.id, { placement: 'inline' });
                 this.packageMiniAppMountId = mount.id || ''; this.packageMiniAppUrl = mount.content_url || '';
                 if (!this.packageMiniAppUrl) throw new Error('Mini-App content URL is unavailable');
-                await this.refreshPackageMiniAppReadiness(item, mount.id);
+                // Readiness updates the sidebar; it must not hold the iframe open.
+                this.refreshPackageMiniAppReadiness(item, mount.id).catch(() => {});
 
                 if (item.chat?.enabled === true) await new Promise(resolve => this.$nextTick(() => {
                     this.packageChatBridge?.dispose();

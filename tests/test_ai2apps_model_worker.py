@@ -118,6 +118,28 @@ def test_model_worker_manifest_has_system_owned_startup():
     assert parsed.raw["runtime"]["adapter"] == "src/adapter.py:create_adapter"
 
 
+def test_depth_worker_authenticated_multipart_and_cleanup(tmp_path):
+    package, data = _worker_files(tmp_path)
+    manifest = _manifest()
+    manifest["models"] = [{"id": "example.worker/depth", "model_type": "depth_estimation",
+                            "capabilities": ["depth_estimation"]}]
+    _, config = ManagedServiceSupervisor._model_worker_command(package, data, manifest, 9123)
+    payload = {"schema": "ai2apps.depth-estimation/v1", "model": "example.worker/depth", "input_size": 518}
+    headers = {"Authorization": "Bearer worker-secret"}
+    with TestClient(create_app(config, token="worker-secret")) as client:
+        assert client.post("/v1/images/depth", json=payload).status_code == 401
+        assert client.post("/v1/images/depth", json=payload, headers=headers).status_code == 400
+        response = client.post("/v1/images/depth", headers=headers,
+            data=payload, files={"image": ("input.png", b"fixture", "image/png")})
+        assert response.status_code == 200, response.text
+        assert response.json()["operation"] == "depth_estimation"
+        assert not Path(response.json()["part"]["path"]).exists()
+        bad = client.post("/v1/images/depth", headers=headers,
+            data={**payload, "url": "https://example.com/input.png"},
+            files={"image": ("input.png", b"fixture", "image/png")})
+        assert bad.status_code == 400
+
+
 def test_supervisor_builds_isolated_system_launcher(tmp_path):
     package, data = _worker_files(tmp_path)
     command, config_path = ManagedServiceSupervisor._model_worker_command(
@@ -674,3 +696,31 @@ def test_audio_process_transports_voice_zip_as_binary_and_cleans_request(tmp_pat
     assert not Path(body['part']['path']).exists()
     assert invalid.status_code == 400
     assert invalid.json()['error']['code'] == 'invalid_voice_bundle'
+
+
+def test_checkpoint_components_remain_context_only(tmp_path):
+    package, data = _worker_files(tmp_path)
+    manifest = _manifest()
+    manifest['models'].append({
+        'id': 'example.worker/vae', 'upstream_id': 'example-vae',
+        'model_type': 'component', 'capabilities': ['checkpoint_component'],
+        'metadata': {'internal': True},
+    })
+    _, config_path = ManagedServiceSupervisor._model_worker_command(
+        package, data, manifest, 9123
+    )
+    config = json.loads(Path(config_path).read_text())
+    assert config['models'][1]['id'] == 'example.worker/vae'
+    headers = {'Authorization': 'Bearer worker-secret'}
+    with TestClient(create_app(config_path, token='worker-secret')) as client:
+        listed = client.get('/v1/models', headers=headers)
+        assert [m['id'] for m in listed.json()['data']] == ['example-checkpoint']
+        for model in ('example.worker/vae', 'example-vae'):
+            result = client.post('/v1/chat/completions', headers=headers,
+                                 json={'model': model})
+            assert result.status_code == 400
+            assert result.json()['error']['code'] == 'model_not_callable'
+        result = client.post('/v1/chat/completions', headers=headers,
+                             json={'model': 'example-checkpoint'})
+        assert result.status_code == 200
+        assert result.json()['started'] is True

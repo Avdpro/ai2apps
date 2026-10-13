@@ -74,6 +74,21 @@ def transform(source):
             if (target.document.readyState == "complete") resolve();
             else target.addEventListener("load", resolve, { once: true });
           });
+          await new Promise((resolve, reject) => {
+            if (target.gBrowserInit?.delayedStartupFinished) { resolve(); return; }
+            const cleanup = () => {
+              Services.obs.removeObserver(observer, "browser-delayed-startup-finished");
+              window.clearTimeout(timer);
+            };
+            const observer = subject => {
+              if (subject !== target) return;
+              cleanup(); resolve();
+            };
+            const timer = window.setTimeout(() => {
+              cleanup(); reject(new Error("Browser Profile startup timed out"));
+            }, 15000);
+            Services.obs.addObserver(observer, "browser-delayed-startup-finished");
+          });
           const base = target.docShell.treeOwner
             .QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIAppWindow)
             .QueryInterface(Ci.nsIBaseWindow);

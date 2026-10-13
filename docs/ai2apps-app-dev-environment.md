@@ -148,3 +148,15 @@ Package。正式 Package 安装、签名校验、旧 Package Store 和 Cloud Reg
 - 需要吸收底层、Swift/AceFox 或依赖更新时重新执行固定构建脚本；
 - 开发构建不注册登录项，也不读取生产更新清单；
 - 它不是可发布制品，正式 Desktop 发布仍必须遵循 Desktop Release Runbook。
+
+## Mobile App 通用接入（2026-10-10）
+
+新增 App 不再通过扩充历史公网 App ID/API 清单接入。动态目录、mount-bound app-resource 和 app-mounts Bridge 是固定协议；设备 Mobile 可用应用开关是用户策略。Package sandbox 保持 opaque/context-only；可信内置 host 通过 mobile.gateway 声明模板/assets/自身后台 API，不能复制为第三方 Package 的权限。完整合同与情报中心 App Dev 激活记录见 `ai2apps/docs/mobile-app-access-gateway-2026-10-09.md`。每个实例单独保存 config/mobile-package-gateway.json 和 MobileAppPolicy，禁止复制实例状态。修改 omlx 路由后仍须按本文固定 App Dev 标准重建；普通 Python API 后续变更只需重启对应 Local。
+
+### 开发 Package 的增量校验
+
+资源访问仍扫描开发 Package 的文件集合、大小限制与符号链接边界。未变化的文件使用 dev/inode/size/mtime_ns/ctime_ns 指纹复用此前完整校验结果，避免每个静态资源都重复哈希及解析全部 Package；变更立即重新校验，不依赖 TTL。缓存返回独立 manifest 副本，移除 Package 清除对应项。此优化仅适用于受信任的开发源码挂载，不改变正式安装 Package 的资源哈希检查。
+
+### Dev 原生 Shell 同步（2026-10-13）
+
+通用 `build-dev-app.sh` 同样从当前匹配 AceFox 源码覆盖 Shell/document/prompt，并应用后台宿主补丁；打包要求 Profile bind 合同。可用 ACEFOX_SHELL_SOURCE 显式指定匹配源。仅用于 Development 构建，不改变生产打包。原生源码更新后如果固定路径/Gecko Build ID 未变，旧 startupCache 可能仍运行旧脚本；停止精确 Dev Helper/Shell 后归档 dev/browser-profiles/app-shell/startupCache 再启动。不得删除 Cookie/Profile 或处理其它实例的缓存。

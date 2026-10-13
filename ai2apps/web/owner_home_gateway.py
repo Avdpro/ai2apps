@@ -41,9 +41,11 @@ def public_allowed(method, path):
         return True
     if method == 'POST' and (path in ('/v1/mobile/apps/ai2apps.knowledge/open','/v1/mobile/apps/ai2apps.gallery/open') or re.fullmatch(r'/v1/mobile/knowledge/items/[A-Za-z0-9_-]+/collect',path)):
         return True
+    if method == 'GET' and re.fullmatch(r'/v1/mobile/todo/attachments/[A-Za-z0-9_-]+', path):
+        return True
     if method == 'GET' and path in ('/mobile/todo', '/v1/mobile/todo'):
         return True
-    if method == 'POST' and path in ('/v1/mobile/apps/ai2apps.todo/open', '/v1/mobile/todo/tasks', '/v1/mobile/todo/directories'):
+    if method == 'POST' and path in ('/v1/mobile/apps/ai2apps.todo/open', '/v1/mobile/todo/tasks', '/v1/mobile/todo/directories', '/v1/mobile/todo/navigation-trace', '/v1/mobile/todo/emoji/suggest'):
         return True
     if method == 'PUT' and re.fullmatch(r'/v1/mobile/todo/tasks/[A-Za-z0-9_-]+', path):
         return True

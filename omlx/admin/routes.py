@@ -1285,6 +1285,9 @@ shell_router = APIRouter(tags=["apps"])
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 static_dir = STATIC_DIR
 MOBILE_STATIC_FILES = frozenset({
+    'css/asset_slot.css',
+    'js/asset_slot.js',
+    'css/gallery_mini.css',
     'css/capability_provisioning.css',
     'css/gallery.css',
     'css/imagine_studio.css',
@@ -2393,7 +2396,10 @@ def _mobile_mount_payload(manager, mount: dict[str, Any]) -> dict[str, Any]:
         payload["content_url"] = "/mobile/app-content/" + content_url.removeprefix("/admin/app-content/")
     elif content_url.startswith("/admin/chat"):
         payload["content_url"] = "/mobile/chat"
-    if mount.get("renderer") == "sandbox":
+    from ai2apps.web.mobile_app_gateway import descriptor
+    if descriptor(manager, mount):
+        payload["content_url"] = f"/mobile/app-resource/{mount['id']}/{mount['app_instance_id']}/entry"
+    elif mount.get("renderer") == "sandbox":
         payload["content_url"] = (f"/mobile/app-resource/{quote(mount['id'], safe='')}/"
             f"{quote(mount['app_instance_id'], safe='')}/{quote(str(mount['resource']), safe='/')}")
     return payload
@@ -2853,7 +2859,7 @@ def _mobile_app_enabled(principal, app_key):
         return True
     if not principal.is_core or not package_gateway_ready():
         return False
-    return any(item['app_key'] == app_key and item.get('mobile_renderer') == 'sandbox'
+    return any(item['app_key'] == app_key and __import__('ai2apps.web.mobile_app_gateway', fromlist=['supported']).supported(item)
                for item in _shell_manager().list_mobile_apps(principal=principal))
 
 from ai2apps.web.mobile_todo import create_mobile_todo_router
@@ -2973,7 +2979,7 @@ def _mobile_package_mount(request, principal, mount_id, instance_id=None):
     manager = _shell_manager()
     try:
         mount = manager.mount_entry(mount_id, principal=principal)
-        if (mount.get("placement") != "mobile" or mount.get("renderer") != "sandbox"
+        if (mount.get("placement") != "mobile" or (mount.get("renderer") != "sandbox" and not __import__("ai2apps.web.mobile_app_gateway", fromlist=["descriptor"]).descriptor(manager, mount))
                 or (instance_id is not None and mount["app_instance_id"] != instance_id)
                 or not _mobile_app_enabled(principal, mount["app_key"])):
             raise HTTPException(403, "Mobile resource mount denied")
@@ -2985,7 +2991,26 @@ def _mobile_package_mount(request, principal, mount_id, instance_id=None):
 @shell_router.get("/mobile/app-resource/{mount_id}/{instance_id}/{resource:path}")
 async def mobile_package_resource(request: Request, mount_id: str, instance_id: str, resource: str,
                                   principal: RequestPrincipal = Depends(_mobile_access_dependency)):
-    _mobile_package_mount(request, principal, mount_id, instance_id)
+    mount = _mobile_package_mount(request, principal, mount_id, instance_id)
+    from ai2apps.web import mobile_app_gateway as gateway
+    spec = gateway.descriptor(_shell_manager(), mount)
+    if spec:
+        if resource.startswith('assets/'):
+            return gateway.asset_response(spec, resource)
+        if resource.startswith('api/'):
+            return await gateway.api_resource(_get_platform_runtime(), principal, spec, resource, request.url.query)
+        if resource != 'entry':
+            raise HTTPException(404, 'App resource not declared')
+        base = gateway.resource_url(mount, '')
+        context = {'app_base_template':'mobile_app_base.html', 'mobile_surface':True,
+                   'client_environment':'mobile', 'principal_actor_user_id':principal.actor_user_id,
+                   'principal_is_core':True, 'developer_surfaces_visible':False,
+                   'static':lambda path:base+'assets/'+path,
+                   'mobile_gateway_config':{'bridge':f'/v1/mobile/app-mounts/{mount_id}/bridge',
+                                            'resourceBase':base, 'apiPrefix':spec['api']['prefix']}}
+        return templates.TemplateResponse(request, spec['template'], context, headers={
+            'Cache-Control':'no-store', 'X-Content-Type-Options':'nosniff',
+            'Content-Security-Policy':"default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data: blob:; connect-src 'self'; frame-ancestors 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"})
     response = await shell_app_resource(request, instance_id, resource, mount_id, principal)
     response.headers["Content-Security-Policy"] = _sandbox_app_resource_csp(str(request.base_url).rstrip('/'), development=False) + "; frame-ancestors 'self'"
     return response
@@ -2996,6 +3021,10 @@ async def mobile_package_bridge(request: Request, mount_id: str,
                                 principal: RequestPrincipal = Depends(_mobile_access_dependency)):
     mount = _mobile_package_mount(request, principal, mount_id)
     body = await request.json()
+    from ai2apps.web import mobile_app_gateway as gateway
+    spec = gateway.descriptor(_shell_manager(), mount)
+    if spec and isinstance(body, dict) and body.get('method') == 'request':
+        return await gateway.bridge(_get_platform_runtime(), principal, spec, body)
     if not isinstance(body, dict) or set(body) - {'method'}:
         raise HTTPException(422, "Invalid Mobile bridge request")
     if body.get('method') == 'context':

@@ -8,6 +8,11 @@
 .sm-mobile [data-sm-panel]{position:relative!important;left:auto!important;right:auto!important;top:auto!important;bottom:auto!important;width:100%!important;height:100%!important;max-height:100%!important;min-height:0!important;margin:0!important;grid-column:auto!important;box-sizing:border-box;overflow:auto;}
 .sm-mobile[data-sm-page=library] [data-sm-panel=library]{display:flex!important;flex-direction:column}
 .sm-mobile[data-sm-page=create] [data-sm-panel=create],.sm-mobile[data-sm-page=output] [data-sm-panel=output]{display:block!important}
+/* Imagine Package frames own their scroll viewport. Do not let the mobile
+   block layout or a content-height message expand the iframe behind clipping. */
+.sm-mobile[data-sm-page=create] [data-sm-panel=create].is-mini-app-workspace.package-active{display:flex!important;flex-direction:column;overflow:hidden}
+.sm-mobile .is-mini-app-workspace.package-active>.is-package-mini-app{flex:1 1 0;min-height:0}
+.sm-mobile .is-mini-app-workspace.package-active .is-package-mini-app-frame{flex:1 1 0;height:0!important;min-height:0}
 .sm-mobile:not([data-sm-page=library]) [data-sm-panel=library],.sm-mobile:not([data-sm-page=create]) [data-sm-panel=create],.sm-mobile:not([data-sm-page=output]) [data-sm-panel=output]{display:none!important}
 .sm-mobile input,.sm-mobile select,.sm-mobile textarea{font-size:16px;max-width:100%;box-sizing:border-box}.sm-mobile .vs-controls,.sm-mobile .ra-form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.sm-mobile .ra-pipeline-workspace{padding:14px}.sm-mobile .vs-preview video{width:100%;max-height:50dvh}.sm-mobile .vs-preview-actions{flex-wrap:wrap}.sm-mobile .ra-training-layout,.sm-mobile .ra-voice-layout{grid-template-columns:1fr}.sm-mobile .vs-mini-app-card,.sm-mobile .ra-pipeline-card{min-height:72px}
 }
@@ -23,3 +28,9 @@
 .sm-mobile .is-studio-shell .vs-render-workspace>.is-image-preview.sm-collapsing-preview:not(.empty){height:calc(var(--sm-preview-expanded) - var(--sm-preview-shrink,0px));min-height:0;max-height:none;margin-bottom:calc(var(--sm-preview-margin,0px) + var(--sm-preview-shrink,0px));overflow-anchor:none}
 .sm-mobile .vs-render-workspace{overflow-anchor:none}
 }
+.sm-sheet .sm-assets{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:10px 0;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+.sm-sheet .sm-asset-card{min-width:0;margin:0;padding:8px;overflow:hidden}
+.sm-asset-preview{aspect-ratio:4/3;border-radius:7px;overflow:hidden;background:#eaeaf0;display:flex;align-items:center;justify-content:center;color:#71717a;font-size:34px}
+.sm-asset-preview img,.sm-asset-preview video{width:100%;height:100%;object-fit:contain;pointer-events:none}
+.sm-asset-name{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:7px;font-size:14px}
+.sm-asset-info{display:block;margin-top:3px;font-size:12px;color:#71717a}

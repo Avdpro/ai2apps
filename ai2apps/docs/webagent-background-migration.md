@@ -68,3 +68,32 @@ node --test ai2apps/tests/ai_browser_workspace.test.cjs ai2apps/tests/agent_run_
 - 同一轮列表 + 3 篇正文共 4 个 Browser Task 均 completed，复用编译规则 4 次、fallback 0、learning_calls 0，来源读取 21,757 ms。摘要与派生整理仍按业务需要调用 AI；编译提取不等于整个情报业务零 AI。
 - 实测也覆盖失败路径：旧规则预检失败与 Cloud 路由缺口已修复；一次模型正文缺少引用被拒绝，后续重试成功。微博读取到一篇后第二篇定位失败，任务保守中断，经取消后保存部分结果；本阶段不宣称所有社交站点端到端成功或绕过验证码。
 - 仅重启固定 app-dev Local 加载 Python 修改、刷新 HTML；未发布生产版本，未修改 Cloud 服务端代码。
+
+## 综合任务树（2026-10-10）
+
+Schema 88 的 task_nodes 保存 actor 隔离、不可变父节点与根节点、业务类型、状态和结果。TaskTreeRepository 提供 create/get/list/finish/cancel/reconcile。父节点负责协调，不创建浏览器执行器，也不占 Profile 名额。可信 WebAgentInvocation.submit(parent_task_id=...) 将 Browser Task 绑定到父节点，根节点由数据库计算；未传父节点的调用继续作为独立 Browser Task。
+
+情报中心新采集使用 collection 根节点 → source 刷新节点 → Browser Task。来源节点覆盖读取、翻译、摘要和保存全过程；协调者提交最终业务状态，允许读取失败经回退后成功。工作台 API 返回 task_tree，原 Browser Task 列表保留执行细节。
+
+浏览器原子 admission 按 owner、根 Task、Profile 计算执行组。同一根任务在不同 Profile 分别占名额，全局限制计算组数。组内并发固定为 1，网页操作串行。协调者及翻译/摘要不占浏览器名额；等待人工协助与中断仍占组，已记录任务自有页面的清理 pending 也保留名额。工作台计数按组去重。
+
+finish 先进入 finishing；子节点结束且任务自有页面清理 verified 或明确 retained 后才提交终态。Local Monitor 重启后继续核验 finishing 节点，复用既有 Task/Run/动作日志。取消原子标记子树、停止排队 Browser Task，返回运行 ID 给既有 Agent Runtime 取消；取消后拒绝新工作，并等待清理。无已创建资源的启动失败不会要求不存在的清理回执。
+
+本阶段不自动重放失败操作；新一轮刷新使用新 collection ID，同一轮恢复继续复用 collection/source/phase 幂等键。未发布、未重启真实实例；新版 Local 启动时自动执行 Schema 88 迁移。
+
+
+## 综合任务树完整接入（2026-10-10，Schema 89）
+
+本节替代上节的阶段性结构说明。情报刷新现在是 collection 根节点 → 多个 source 节点 → 列表/正文 browser_execution 节点；全部来源结束后，再执行独立 organize 节点，涵盖去重、翻译、摘要、保存与派生整理。source 不再承担跨来源的摘要保存。来源的读取证据和日志持久化在节点结果中，恢复时复用它们；已保存的业务 run 可恢复未结束的 organize，而不会再次摘要或覆盖已保存结果。
+
+AI Browser 的排队执行、测试和直接能力调用入口自动建立 webagent 根节点；有 parent_task_id 的 Browser Task 在现有根下建立 browser_execution 节点。Schema 89 保存 execution_task_id，Agent Run 参数携带该身份。内部 agent.call 每个调用帧建立 capability_call 子节点，嵌套调用继续形成树；调用帧共享原 Agent Run、动作日志、Tab 与执行组，不另占 Profile 名额。稳定帧 ID 保证交互重放不会重复创建节点。
+
+取消运行中的 Browser Task 先进入 cancelling，等待 Agent Runtime 确认终止；根节点继续等待所有后代以及自有页面的 verified/retained 回执。单次执行取消只取消该执行子树，整轮刷新取消则取消 collection 子树。父节点结束前不再允许提交新子工作。历史 execution_task_id 为空的记录保留原兼容路径，不补造已结束调用帧。
+
+工作台快照与节点事件使用同一数据库事件游标及 actor-scoped SSE。task_tree 只传身份、名称、类型和状态，完整文章证据 result_json 不进入工作台状态流；原 Browser Task 保留执行细节。没有新增浏览器控制协议，继续使用现有 BiDi Gateway、Runner 和页面清理机制。
+
+验证覆盖嵌套帧共享单次执行、交互重放、根任务等待清理、整理阶段独立、来源证据恢复和保存后恢复。此次未重启真实实例，未进行真实 F1 或原生浏览器验收；需要 Local 重启执行 Schema 89 并加载 Python 修改，随后刷新工作台前端。
+
+### 后台分身冷启动（2026-10-13）
+
+后台任务启动浏览器宿主时不能只依赖 shell.json 的 PID。Helper 在固定嵌入 App 的 bundle ID、路径、instance ID 和活进程 executable 全部匹配时复用该进程并恢复 Shell 描述文件；不能按显示名或其它实例复用。原生 bind 新窗口须等待 browser-delayed-startup-finished（有界等待）后才报告 bound，避免仅 chrome load 完成就执行 BiDi。网页控制和采集继续使用原生 BiDi，不增加 Actor DOM API。

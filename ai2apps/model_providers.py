@@ -65,6 +65,7 @@ from ai2apps.worker_scheduler import SchedulerLease, WorkerJobScheduler, Workloa
 
 MODEL_TYPES = frozenset(
     {
+        "depth_estimation",
         "llm",
         "vlm",
         "image_generation",
@@ -78,12 +79,14 @@ MODEL_TYPES = frozenset(
         "video_segmentation",
         "video_upscaling",
         "embedding",
+        "component",
     }
 )
 
 DEFAULT_CONVERSATION_CONTEXT_WINDOW = 32768
 
 DEFAULT_CAPABILITIES: dict[str, tuple[str, ...]] = {
+    "depth_estimation": ("depth_estimation",),
     "llm": ("work", "conversation"),
     "vlm": ("work", "conversation", "image_recognition"),
     "image_generation": ("image_generation",),
@@ -100,9 +103,11 @@ DEFAULT_CAPABILITIES: dict[str, tuple[str, ...]] = {
     "video_segmentation": ("video_segmentation", "object_tracking", "mask_video"),
     "video_upscaling": ("video_upscaling",),
     "embedding": ("text_embeddings",),
+    "component": ("checkpoint_component",),
 }
 
 DEFAULT_PATHS = {
+    "depth_estimation": "/v1/images/depth",
     "chat_completions": "/v1/chat/completions",
     "responses": "/v1/responses",
     "image_generation": "/v1/images/generations",
@@ -359,6 +364,13 @@ def validate_package_models(
         metadata = raw.get("metadata", {})
         if not isinstance(metadata, dict):
             raise ModelProviderContractError(f"models[{index}].metadata is invalid")
+        if model_type == "component" and (
+            metadata.get("internal") is not True
+            or tuple(capabilities) != ("checkpoint_component",)
+        ):
+            raise ModelProviderContractError(
+                f"models[{index}] component requires internal=true and only checkpoint_component capability"
+            )
         try:
             metadata = json.loads(json.dumps(metadata))
         except (TypeError, ValueError) as exc:
@@ -528,6 +540,27 @@ def _effective_image_declaration(raw: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def _package_model_checkpoints_ready(
+    model_id: str, models: Mapping[str, dict[str, Any]],
+    checkpoints: Mapping[str, dict[str, Any]], resolving: frozenset[str] = frozenset(),
+) -> bool:
+    """A callable model is ready only when its declared helper snapshots are ready."""
+    if model_id in resolving or model_id not in models:
+        return False
+    model = models[model_id]
+    checkpoint = checkpoints.get(model_id)
+    if checkpoint is not None and checkpoint.get("path") is None:
+        return False
+    if checkpoint is None and model.get("weights"):
+        return False
+    required = model.get("metadata", {}).get("required_model_ids", ())
+    if not isinstance(required, (list, tuple)) or any(not isinstance(x, str) for x in required):
+        return False
+    return all(_package_model_checkpoints_ready(
+        dependency, models, checkpoints, resolving | {model_id}
+    ) for dependency in required)
+
+
 def list_package_models(runtime: Any | None) -> tuple[PackageModel, ...]:
     if runtime is None or getattr(runtime, "services", None) is None:
         return ()
@@ -559,19 +592,33 @@ def list_package_models(runtime: Any | None) -> tuple[PackageModel, ...]:
             internal_headers = package_manager.supervisor.internal_headers(
                 service.service_key
             )
+        checkpoint_config = service.config
+        dependency_error = False
+        if package_manager is not None and any(
+            model.get("metadata", {}).get("checkpoint_dependencies")
+            for model in service.config.get("models", [])
+        ):
+            from ai2apps.packages.models import PackageError
+            installed = package_manager.packages.active(service.service_key)
+            try:
+                if installed is None:
+                    raise PackageError("checkpoint_dependency_unavailable", "Consumer Package is not active")
+                checkpoint_config = package_manager.supervisor.checkpoint_manifest(installed)
+            except PackageError:
+                dependency_error = True
         checkpoint_rows, _roots = (
             package_manager.supervisor._model_worker_checkpoints(
-                service.config,
+                checkpoint_config,
                 package_manager.supervisor._huggingface_hub_cache(),
                 package_manager.supervisor.model_root,
             )
-            if package_manager is not None
+            if package_manager is not None and not dependency_error
             else ((), ())
         )
         checkpoints = {row["model_id"]: row for row in checkpoint_rows}
+        declarations = {row["id"]: row for row in checkpoint_config.get("models", [])}
         for raw in service.config.get("models", []):
             raw = _effective_image_declaration(raw)
-            checkpoint = checkpoints.get(raw["id"])
             result.append(
                 PackageModel(
                     id=raw["id"],
@@ -626,8 +673,8 @@ def list_package_models(runtime: Any | None) -> tuple[PackageModel, ...]:
                         if running and instance.endpoint
                         else None
                     ),
-                    checkpoint_ready=(
-                        checkpoint is None or checkpoint.get("path") is not None
+                    checkpoint_ready=_package_model_checkpoints_ready(
+                        raw["id"], declarations, checkpoints
                     ),
                     weights=dict(raw.get("weights") or {}),
                     internal_headers=internal_headers,
@@ -1140,7 +1187,7 @@ async def proxy_package_json(
             # Video workers can take over two hours on Spark before returning an artifact.
             # Keep connection/upload bounds while allowing a bounded render wait.
             timeout=httpx.Timeout(300.0, connect=15.0,
-                                  read=14400.0 if operation == "video_generation" else 300.0),
+                                  read=14400.0 if operation in {"video_generation", "video_upscaling"} else 300.0),
             trust_env=False
         )
         worker_headers = dict(model.internal_headers or {})
@@ -1292,7 +1339,7 @@ async def proxy_package_multipart(
             # Video workers can take over two hours on Spark before returning an artifact.
             # Keep connection/upload bounds while allowing a bounded render wait.
             timeout=httpx.Timeout(300.0, connect=15.0,
-                                  read=14400.0 if operation == "video_generation" else 300.0),
+                                  read=14400.0 if operation in {"video_generation", "video_upscaling"} else 300.0),
             trust_env=False
         )
         worker_headers = dict(model.internal_headers or {})

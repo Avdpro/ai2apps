@@ -1,0 +1,78 @@
+(() => {
+ 'use strict';
+ const $=id=>document.getElementById(id);
+ const ranges={pitch:[-20,20],yaw:[-20,20],roll:[-20,20],radius:[.6,1.4],blur:[0,12],saturation:[0,2],exposure:[-2,2],brightness:[0,2]};
+ const origin={pitch:0,yaw:0,roll:0,radius:1,blur:0,saturation:1,exposure:0,brightness:1};
+ const colors={pitch:'#dc7c67',yaw:'#8256ff',roll:'#c5a14a',radius:'#579cad',blur:'#99939f',saturation:'#68a77c',exposure:'#b79b64',brightness:'#bf82ae'};
+ const labels={en:{title:'Edit movement',count:'Keyframes',parameter:'Parameter',value:'Selected keyframe value',reset:'Reset this keyframe to origin',return:'Return to origin',note:'Drag points horizontally for time and vertically for value. Enter commits and clamps values. Return requires one keyframe with every parameter at origin.',frames:'Model frames (24 fps); longer takes use more memory and time',pitch:'X rotation (°)',yaw:'Y rotation (°)',roll:'Z rotation (°)',radius:'Distance (× original)',blur:'Blur (px)',saturation:'Saturation',exposure:'Exposure (EV)',brightness:'Brightness',invalid:'Return to origin requires a fully neutral keyframe.'},zh:{title:'编辑动作',count:'关键点数量',parameter:'编辑参数',value:'选中关键点数值',reset:'将此关键点设为原点',return:'返回原点',note:'左右拖动调整时间，上下拖动调整数值；输入后按回车生效并自动裁剪。返回原点要求至少一个关键帧的全部参数均为原点。',frames:'模型帧数（24 fps）；帧数越多越耗时、占内存',pitch:'X轴旋转（°）',yaw:'Y轴旋转（°）',roll:'Z轴旋转（°）',radius:'距离（相对原图）',blur:'模糊（像素）',saturation:'饱和度',exposure:'曝光（EV）',brightness:'亮度',invalid:'请至少将一个关键帧的全部参数设为原点。'}};
+ const section=document.createElement('details'); section.id='curve-editor';
+ section.innerHTML='<summary data-editor="title"></summary><div class="grid"><label><span data-editor="count"></span><select id="key-count"><option>3</option><option selected>5</option><option>7</option><option>9</option><option>11</option><option>13</option><option>15</option></select></label><label><span data-editor="parameter"></span><select id="curve-parameter"></select></label></div><canvas id="curve-canvas" width="720" height="280" tabindex="0"></canvas><div class="curve-value"><label><span data-editor="value"></span><input id="curve-value" type="number" step="0.01"></label><button id="curve-origin" type="button" data-editor="reset"></button></div><label class="curve-return"><input id="return-origin" type="checkbox" checked><span data-editor="return"></span></label><p data-editor="note"></p><label><span data-editor="frames"></span><select id="curve-frames"></select></label><p id="curve-error" role="status"></p><div class="preset-save"><label><span data-editor="presetName"></span><input id="preset-name" maxlength="60"></label><button id="preset-save" type="button" data-editor="savePreset"></button></div><p id="preset-status" role="status"></p>';
+ $('hint').before(section);
+ const legend=document.createElement('div');legend.className='curve-legend';
+ for(const field of Object.keys(ranges)){const item=document.createElement('span');item.dataset.editor=field;item.style.color=colors[field];legend.append(item);}
+ const context=document.createElement('p');context.dataset.editor='context';context.className='curve-context';
+ labels.en.context='Dashed curves show other parameters, each scaled to its own range. The vertical scale belongs to the selected parameter.';
+ labels.zh.context='虚线为其它参数，分别按各自范围缩放；纵轴数值仅对应当前选中的参数。';
+ $('curve-canvas').after(legend,context);
+ labels.en.transition='Transition to next keyframe';labels.en.smooth='Smooth';labels.en.linear='Linear';
+ labels.zh.transition='到下一个关键点的过渡';labels.zh.smooth='平滑';labels.zh.linear='线性';
+ Object.assign(labels.en,{presetName:'Movement name',savePreset:'Save movement',saved:'Saved movements',savedOk:'Movement saved. Select it from Camera movement.',nameRequired:'Enter a name (up to 60 characters).',duplicate:'This name already exists. Choose another name.',full:'Up to 100 saved movements.'});
+ Object.assign(labels.zh,{presetName:'动作名称',savePreset:'保存动作',saved:'已保存的动作',savedOk:'动作已保存，可在镜头运动菜单选择。',nameRequired:'请输入名称（最多60个字符）。',duplicate:'名称已存在，请使用其它名称。',full:'最多保存100个动作。'});
+ labels.en.overwrite='A movement named “{name}” already exists. Overwrite it?';labels.zh.overwrite='动作“{name}”已存在，是否覆盖？';
+ const transitionLabel=document.createElement('label');transitionLabel.className='curve-transition';
+ transitionLabel.innerHTML='<span data-editor="transition"></span><select id="curve-transition"><option value="linear" data-editor="linear"></option><option value="smooth" data-editor="smooth"></option></select>';
+ $('curve-value').closest('.curve-value').after(transitionLabel);
+ for(const field of Object.keys(ranges)){const option=document.createElement('option');option.value=field;$('curve-parameter').append(option);}
+ $('curve-parameter').value='yaw';
+ for(const frames of [73,90,107,124,141,158,175,243]){const o=document.createElement('option');o.value=frames;o.textContent=frames+' · '+(frames/24).toFixed(2)+'s';$('curve-frames').append(o);}
+ const steps=()=>Number($('curve-frames').value)-1;
+ let keys=[],selected=0,locale='en',locked=false,dragging=false,savedPresets=[],supportedCounts=[73];
+ const text=key=>labels[/^zh/i.test(locale)?'zh':'en'][key];
+ const clamp=(x,lo,hi)=>Math.max(lo,Math.min(hi,x));
+ const atOrigin=k=>Object.keys(origin).every(f=>Math.abs(k[f]-origin[f])<1e-8);
+ function sample(list,t){let j=list.findIndex((k,i)=>i<list.length-1&&t<=list[i+1].t);if(j<0)j=list.length-2;const a=list[j],b=list[j+1];let u=clamp((t-a.t)/(b.t-a.t),0,1);if(a.transition==='smooth')u=u*u*(3-2*u);return {...Object.fromEntries(Object.keys(origin).map(f=>[f,a[f]*(1-u)+b[f]*u])),t,transition:a.transition||'linear'};}
+ function preset(){const scale={large:1,medium:2/3,small:1/3}[$('amplitude').value],a=15*scale,k=(yaw=0,pitch=0,radius=1)=>({...origin,yaw,pitch,radius,transition:'linear'});
+  const saved=savedPresets.find(p=>$('mode').value==='saved:'+p.id);if(saved){restoreKeys(saved.trajectory);if(!supportedCounts.includes(steps()+1)){$('curve-frames').value=supportedCounts[0];snapTimes();}selected=0;draw();return;}
+  const paths={orbit:[k(-a),k(),k(a)],'push-orbit':[k(-a,0,1+.22*scale),k(-a),k(),k(a)],'push-orbit2':[k(),k(0,0,1-.2*scale),k(-a,0,1-.2*scale),k(a,0,1-.2*scale)],arc:[k(-a),k(0,-12*scale),k(a),k()],vertical:[k(0,-a),k(),k(0,a)],diagonal:[k(-a,-9*scale,1+.18*scale),k(),k(a,9*scale)],float:[k(-8*scale,3*scale),k(0,-5*scale),k(8*scale,3*scale),k()]};
+  keys=paths[$('mode').value].map((key,i,list)=>({...key,t:Math.round(i/(list.length-1)*steps())/steps()}));resize(Number($('key-count').value));selected=0;draw();}
+ function resize(count){if(keys.length>count){const previous=keys;keys=Array.from({length:count},(_,i)=>sample(previous,Math.round(i/(count-1)*steps())/steps()));if($('return-origin').checked&&!keys.some(atOrigin)){const neutral=previous.find(atOrigin);if(neutral){const index=keys.reduce((best,k,i)=>Math.abs(k.t-neutral.t)<Math.abs(keys[best].t-neutral.t)?i:best,0);keys[index]={...origin,t:keys[index].t,transition:'linear'};}}}
+  while(keys.length<count){let gap=0;for(let i=1;i<keys.length-1;i++)if(keys[i+1].t-keys[i].t>keys[gap+1].t-keys[gap].t)gap=i;const t=Math.round((keys[gap].t+keys[gap+1].t)*steps()/2)/steps();keys.splice(gap+1,0,sample(keys,t));} selected=Math.min(selected,keys.length-1);}
+ function valid(){return !$('return-origin').checked||keys.some(atOrigin);}
+ function changed(){draw();window.dispatchEvent(new Event('frozen-curve-change'));}
+ function draw(){const canvas=$('curve-canvas'),ctx=canvas.getContext('2d'),field=$('curve-parameter').value,[lo,hi]=ranges[field];ctx.clearRect(0,0,720,280);ctx.fillStyle='#f4f4f5';ctx.fillRect(0,0,720,280);ctx.font='12px system-ui';
+  const x=t=>48+t*648,y=v=>244-(v-lo)/(hi-lo)*216;
+  for(let i=0;i<=10;i++){ctx.strokeStyle='#e5e5ea';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(x(i/10),28);ctx.lineTo(x(i/10),244);ctx.stroke();}
+  for(let i=0;i<=4;i++){const value=lo+(hi-lo)*i/4;ctx.strokeStyle='#d4d4d8';ctx.beginPath();ctx.moveTo(48,y(value));ctx.lineTo(696,y(value));ctx.stroke();ctx.fillStyle='#52525b';ctx.fillText(value.toFixed(2),3,y(value)+4);ctx.fillText((i*25)+'%',x(i/4)-10,266);}
+  ctx.save();ctx.setLineDash([5,5]);ctx.globalAlpha=.45;ctx.lineWidth=1.2;
+  for(const other of Object.keys(ranges)){if(other===field)continue;const [a,b]=ranges[other];ctx.strokeStyle=colors[other];ctx.beginPath();for(let i=0;i<=288;i++){const t=i/288,yy=244-(sample(keys,t)[other]-a)/(b-a)*216;if(i===0)ctx.moveTo(x(t),yy);else ctx.lineTo(x(t),yy);}ctx.stroke();}ctx.restore();
+  ctx.strokeStyle='#8256ff';ctx.lineWidth=2;ctx.beginPath();for(let i=0;i<=288;i++){const t=i/288,v=sample(keys,t)[field];if(i===0)ctx.moveTo(x(t),y(v));else ctx.lineTo(x(t),y(v));}ctx.stroke();
+  keys.forEach((key,i)=>{ctx.beginPath();ctx.arc(x(key.t),y(key[field]),i===selected?8:6,0,Math.PI*2);ctx.fillStyle=i===selected?'#18181b':'#8256ff';ctx.fill();ctx.fillStyle='#52525b';ctx.fillText(String(i+1),x(key.t)+9,y(key[field])-9);});
+  $('curve-value').value=Number(keys[selected][field].toFixed(4));$('curve-value').min=lo;$('curve-value').max=hi;$('curve-error').textContent=valid()?'':text('invalid');$('curve-transition').value=keys[selected].transition||'linear';$('curve-transition').disabled=locked||selected===keys.length-1;}
+ const canvas=$('curve-canvas');
+ function position(event){const r=canvas.getBoundingClientRect();return [(event.clientX-r.left)*720/r.width,(event.clientY-r.top)*280/r.height];}
+ canvas.onpointerdown=event=>{if(locked)return;const [x,y]=position(event),field=$('curve-parameter').value,[lo,hi]=ranges[field];let best=Infinity;keys.forEach((k,i)=>{const d=Math.hypot(x-(48+k.t*648),y-(244-(k[field]-lo)/(hi-lo)*216));if(d<best){best=d;selected=i;}});draw();if(best<24){dragging=true;canvas.setPointerCapture(event.pointerId);}};
+ canvas.onpointermove=event=>{if(!dragging||locked)return;const [x,y]=position(event),field=$('curve-parameter').value,[lo,hi]=ranges[field];keys[selected][field]=clamp(lo+(244-y)/216*(hi-lo),lo,hi);if(selected>0&&selected<keys.length-1)keys[selected].t=clamp(Math.round((x-48)/648*steps())/steps(),keys[selected-1].t+1/steps(),keys[selected+1].t-1/steps());changed();};
+ canvas.onpointerup=canvas.onpointercancel=()=>{dragging=false;};
+ canvas.onkeydown=event=>{if(locked)return;if(event.key==='ArrowLeft'||event.key==='ArrowRight'){selected=clamp(selected+(event.key==='ArrowLeft'?-1:1),0,keys.length-1);draw();event.preventDefault();}};
+ $('curve-value').onkeydown=event=>{if(event.key==='Enter'&&!locked){event.preventDefault();const v=Number($('curve-value').value),field=$('curve-parameter').value;if(Number.isFinite(v)){keys[selected][field]=clamp(v,...ranges[field]);changed();}}};
+ $('curve-origin').onclick=()=>{keys[selected]={...origin,t:keys[selected].t,transition:keys[selected].transition||'linear'};changed();};
+ $('curve-transition').onchange=()=>{keys[selected].transition=$('curve-transition').value;changed();};
+ $('curve-parameter').onchange=draw;$('key-count').onchange=()=>{resize(Number($('key-count').value));changed();};$('return-origin').onchange=changed;
+ $('mode').addEventListener('change',()=>{preset();changed();});$('amplitude').addEventListener('change',()=>{preset();changed();});
+ function snapTimes(){let previous=-1;keys=keys.map((k,i)=>{const frame=clamp(Math.round(k.t*steps()),previous+1,steps()-(keys.length-1-i));previous=frame;return {...k,t:i===0?0:i===keys.length-1?1:frame/steps()};});}
+ $('curve-frames').onchange=()=>{snapTimes();changed();};
+ function restoreKeys(value){try{const data=typeof value==='string'?JSON.parse(value):value;if(![3,5,7,9,11,13,15].includes(data.keys?.length)||![73,90,107,124,141,158,175,243].includes(data.frames||73)||typeof data.return_origin!=='boolean')return false;let last=-1;for(const k of data.keys){if(!Number.isFinite(k.t)||k.t<=last||k.t<0||k.t>1||!Object.keys(origin).every(f=>Number.isFinite(k[f])&&k[f]>=ranges[f][0]&&k[f]<=ranges[f][1])||!['smooth','linear'].includes(k.transition||'linear'))return false;last=k.t;}if(data.keys[0].t!==0||data.keys.at(-1).t!==1)return false;$('curve-frames').value=data.frames||73;keys=structuredClone(data.keys).map(k=>({...k,transition:k.transition||'linear'}));selected=0;$('key-count').value=keys.length;$('return-origin').checked=data.return_origin;snapTimes();return true;}catch{return false;}}
+ function presetMenu(){let group=$('saved-movements');const current=$('mode').value;if(!group){group=document.createElement('optgroup');group.id='saved-movements';$('mode').append(group);}group.label=text('saved');group.replaceChildren();for(const p of savedPresets){const option=document.createElement('option');option.value='saved:'+p.id;option.textContent=p.name;group.append(option);}if([...$('mode').options].some(o=>o.value===current))$('mode').value=current;group.hidden=!savedPresets.length;}
+ function savePreset(){if(locked||!valid())return;const entered=$('preset-name').value.trim(),current=savedPresets.find(p=>$('mode').value==='saved:'+p.id);const name=entered||current?.name||$('mode').selectedOptions[0]?.textContent.trim();if(!name||name.length>60){$('preset-status').textContent=text('nameRequired');return;}let p=!entered&&current?current:savedPresets.find(p=>p.name.toLocaleLowerCase()===name.toLocaleLowerCase());if(p&&(entered||p!==current)&&!window.confirm(text('overwrite').replace('{name}',p.name)))return;if(!p&&savedPresets.length>=100){$('preset-status').textContent=text('full');return;}const trajectory=JSON.parse(window.frozenEditor.serialize());if(p){p.trajectory=trajectory;}else{p={id:crypto.randomUUID(),name,trajectory};savedPresets.push(p);}presetMenu();$('mode').value='saved:'+p.id;$('preset-name').value='';$('preset-status').textContent=text('savedOk');window.dispatchEvent(new Event('frozen-presets-change'));}
+ $('preset-save').onclick=savePreset;
+ function renderPlan(){const frames=Array.from({length:steps()+1},(_,i)=>Object.fromEntries(Object.keys(origin).map(f=>[f,sample(keys,i/steps())[f]])));const order=frames.map((_,i)=>i);if($('return-origin').checked){const last=frames.findLastIndex(atOrigin);if(last<0)throw new Error(text('invalid'));for(let i=frames.length-2;i>=last;i--)order.push(i);}const poster=frames.reduce((best,k,i)=>k.yaw**2+k.pitch**2+(k.radius-1)**2<frames[best].yaw**2+frames[best].pitch**2+(frames[best].radius-1)**2?i:best,0);return JSON.stringify({schema:'ai2apps.camera-frames/v1',frames,playback:order,poster});}
+ window.frozenEditor={renderPlan,serialize:()=>JSON.stringify({keys,return_origin:$('return-origin').checked,frames:steps()+1}),valid,
+  restore(value){if(restoreKeys(value))draw();},
+  presets:()=>structuredClone(savedPresets),
+  restorePresets(value){savedPresets=Array.isArray(value)?value.slice(0,100).filter(p=>p&&typeof p.id==='string'&&/^[a-zA-Z0-9-]{1,80}$/.test(p.id)&&typeof p.name==='string'&&p.name.trim()&&p.name.length<=60&&p.trajectory&&Array.isArray(p.trajectory.keys)):[];presetMenu();},
+  translate(value){locale=value;section.querySelectorAll('[data-editor]').forEach(el=>el.textContent=text(el.dataset.editor));for(const o of $('curve-parameter').options)o.textContent=text(o.value);presetMenu();window.frozenScene?.translate(locale);draw();},
+  reset:preset,
+  configure(counts){supportedCounts=counts.length?counts:[73];for(const o of $('curve-frames').options)o.disabled=!counts.includes(Number(o.value));if(!counts.includes(steps()+1)){$('curve-frames').value=counts[0]||73;snapTimes();changed();}},
+  lock(value){locked=value;section.querySelectorAll('input,select,button').forEach(el=>el.disabled=value);$('curve-transition').disabled=value||selected===keys.length-1;canvas.setAttribute('aria-disabled',String(value));}};
+ preset();window.frozenEditor.translate('en');
+})();

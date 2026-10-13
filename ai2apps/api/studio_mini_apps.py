@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 import asyncio
 import io
 import json
@@ -26,7 +28,7 @@ from fastapi import (
     UploadFile,
 )
 from fastapi.responses import JSONResponse, Response, StreamingResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 from ai2apps.api.health import PlatformRuntimeProvider
 from ai2apps.api.identity import PrincipalProvider, resolve_request_principal
@@ -84,6 +86,11 @@ class AudioGenerationRequest(BaseModel):
     duration_mode: Literal["fixed", "auto"] = "fixed"
     generation: dict | None = None
     language: str = Field(default="unknown", max_length=16)
+
+
+class MiniAppDraftRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    value: str = Field(max_length=4 * 1024 * 1024)
 
 
 def _phase_percent(capability: str, phase_index: int, status: str, percent: int) -> int:
@@ -339,6 +346,34 @@ class StudioTextExportRequest(BaseModel):
     content: str = Field(max_length=4 * 1024 * 1024)
 
 
+class SearchApiConfigRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    provider: Literal['google','serpapi-google','serpapi-bing']
+    key: SecretStr = Field(min_length=1,max_length=4096)
+    cx: str = Field(default='',max_length=200)
+
+
+class WebAgentMiniAppTaskRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    capability: str = Field(min_length=1, max_length=128)
+    parameters: dict[str, Any] = Field(default_factory=dict)
+    profile: str = Field(default="default", min_length=1, max_length=100)
+    retain_pages: bool = False
+    request_id: str = Field(min_length=1, max_length=100, pattern=r"^[a-zA-Z0-9_-]+$")
+    batch_id: str | None = Field(default=None, min_length=1, max_length=100, pattern=r"^[a-zA-Z0-9_-]+$")
+    batch_size: int = Field(default=1, ge=1, le=20)
+
+
+class ProductImagesRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    task_ids: list[str] = Field(min_length=1, max_length=20)
+
+
+class CustomSearchSourceRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    task_id: str = Field(min_length=1, max_length=128)
+
+
 class StudioMiniAppMountRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
@@ -523,6 +558,205 @@ def create_studio_mini_app_router(
                 raise HTTPException(422, "Mobile Studio requires a sandbox Mini-App")
             content_url = content_url.replace("/admin/api/shell/app-instances/", "/mobile/app-content/studio-resource/", 1)
         return {**mount, "content_url": content_url}
+
+    def search_config_owner(mount_id, principal):
+        from ai2apps.browser.mini_apps import WebAgentMiniAppBroker
+        runtime, _ = manager()
+        mounted=WebAgentMiniAppBroker(runtime).mounted(mount_id,principal)
+        if mounted.declaration['id'] != 'ai2apps.search-all':
+            raise HTTPException(403,'Search settings require Search All')
+        return runtime, principal.actor_user_id
+
+    @router.get('/ai2apps.ai-browser/mini-app-mounts/{mount_id}/web-agent/search-config')
+    def search_api_status(mount_id: str, principal: RequestPrincipal = principal_dependency):
+        from ai2apps.browser.search_api import status
+        runtime,owner=search_config_owner(mount_id,principal)
+        return status(runtime,owner)
+
+    @router.put('/ai2apps.ai-browser/mini-app-mounts/{mount_id}/web-agent/search-config')
+    def search_api_configure(mount_id: str, body: SearchApiConfigRequest, principal: RequestPrincipal = principal_dependency):
+        from ai2apps.browser.search_api import configure
+        runtime,owner=search_config_owner(mount_id,principal)
+        try:return configure(runtime,owner,body.provider,body.key.get_secret_value(),body.cx)
+        except ValueError as error:raise HTTPException(422,str(error)) from None
+
+    @router.post("/ai2apps.ai-browser/mini-app-mounts/{mount_id}/web-agent/tasks", status_code=201)
+    def submit_web_agent_task(mount_id: str, body: WebAgentMiniAppTaskRequest,
+                              principal: RequestPrincipal = principal_dependency):
+        from ai2apps.browser.mini_apps import WebAgentMiniAppBroker
+        from jsonschema.exceptions import ValidationError
+        runtime, _ = manager()
+        try:
+            return WebAgentMiniAppBroker(runtime).submit(mount_id, principal,
+                capability=body.capability, parameters=body.parameters,
+                profile=body.profile, request_id=body.request_id, retain_pages=body.retain_pages,
+                batch_id=body.batch_id,batch_size=body.batch_size)
+        except StudioCapabilityError as error:
+            raise capability_error(error) from error
+        except (ValueError, ValidationError) as error:
+            raise HTTPException(422, str(error)[:1000]) from error
+        except (KeyError, ResourceNotFoundError) as error:
+            raise HTTPException(404, "WebAgent resource not found") from error
+
+    @router.get('/ai2apps.ai-browser/mini-app-mounts/{mount_id}/web-agent/custom-sources')
+    def custom_search_sources(mount_id: str, principal: RequestPrincipal = principal_dependency):
+        from ai2apps.browser.custom_search import CustomSearchRepository
+        runtime, owner = search_config_owner(mount_id, principal)
+        return {'sources': CustomSearchRepository(runtime.database).list(owner)}
+
+    @router.post('/ai2apps.ai-browser/mini-app-mounts/{mount_id}/web-agent/custom-sources')
+    def save_custom_search_source(mount_id: str, body: CustomSearchSourceRequest, principal: RequestPrincipal = principal_dependency):
+        from ai2apps.browser.custom_search import CustomSearchRepository
+        from ai2apps.browser.mini_apps import WebAgentMiniAppBroker
+        runtime, owner = search_config_owner(mount_id, principal)
+        try:
+            task = WebAgentMiniAppBroker(runtime).task(mount_id, principal, body.task_id)
+            return CustomSearchRepository(runtime.database).save(owner, task)
+        except StudioCapabilityError as error:
+            raise capability_error(error) from error
+        except (ValueError, KeyError, TypeError) as error:
+            raise HTTPException(422, str(error)[:1000]) from None
+
+    @router.delete('/ai2apps.ai-browser/mini-app-mounts/{mount_id}/web-agent/custom-sources/{source_id}')
+    def delete_custom_search_source(mount_id: str, source_id: str, principal: RequestPrincipal = principal_dependency):
+        from ai2apps.browser.custom_search import CustomSearchRepository
+        runtime, owner = search_config_owner(mount_id, principal)
+        CustomSearchRepository(runtime.database).delete(owner, source_id)
+        return {'deleted': True}
+
+    @router.get("/ai2apps.ai-browser/mini-app-mounts/{mount_id}/web-agent/tasks/{task_id}")
+    def read_web_agent_task(mount_id: str, task_id: str,
+                           principal: RequestPrincipal = principal_dependency):
+        from ai2apps.browser.mini_apps import WebAgentMiniAppBroker
+        runtime, _ = manager()
+        try:
+            return WebAgentMiniAppBroker(runtime).task(mount_id, principal, task_id)
+        except StudioCapabilityError as error:
+            raise capability_error(error) from error
+        except (KeyError, ResourceNotFoundError) as error:
+            raise HTTPException(404, "WebAgent task not found") from error
+
+    @router.post('/ai2apps.ai-browser/mini-app-mounts/{mount_id}/web-agent/product-images')
+    async def shopping_product_images(mount_id: str, body: ProductImagesRequest, principal: RequestPrincipal = principal_dependency):
+        from ai2apps.browser.mini_apps import WebAgentMiniAppBroker
+        runtime, _ = manager()
+        try:
+            return await WebAgentMiniAppBroker(runtime).product_images(mount_id, principal, body.task_ids)
+        except StudioCapabilityError as error:
+            raise capability_error(error) from error
+        except (KeyError, ResourceNotFoundError) as error:
+            raise HTTPException(404, 'Product task not found') from error
+
+    @router.get("/ai2apps.ai-browser/mini-app-mounts/{mount_id}/web-agent/retained-tasks")
+    def retained_web_agent_tasks(mount_id: str, principal: RequestPrincipal = principal_dependency):
+        from ai2apps.browser.mini_apps import WebAgentMiniAppBroker
+        runtime, _ = manager()
+        try:
+            return WebAgentMiniAppBroker(runtime).retained_tasks(mount_id, principal)
+        except StudioCapabilityError as error:
+            raise capability_error(error) from error
+
+    @router.post("/ai2apps.ai-browser/mini-app-mounts/{mount_id}/web-agent/tasks/{task_id}/open-result")
+    async def open_web_agent_result(mount_id: str, task_id: str, body: dict,
+                                   principal: RequestPrincipal = principal_dependency):
+        from ai2apps.browser.mini_apps import WebAgentMiniAppBroker
+        runtime, _ = manager()
+        try:
+            return await WebAgentMiniAppBroker(runtime).open_result(mount_id, principal, task_id, str(body.get('url', '')))
+        except StudioCapabilityError as error:
+            raise capability_error(error) from error
+        except (KeyError, ResourceNotFoundError) as error:
+            raise HTTPException(404, 'WebAgent task not found') from error
+
+    @router.post("/ai2apps.ai-browser/mini-app-mounts/{mount_id}/web-agent/tasks/{task_id}/pages/{action}")
+    async def manage_web_agent_task_pages(mount_id: str, task_id: str, action: Literal['list', 'focus', 'close'],
+                                          principal: RequestPrincipal = principal_dependency):
+        from ai2apps.browser.mini_apps import WebAgentMiniAppBroker
+        runtime, _ = manager()
+        try:
+            return await WebAgentMiniAppBroker(runtime).pages(mount_id, principal, task_id, action)
+        except StudioCapabilityError as error:
+            raise capability_error(error) from error
+        except (KeyError, ResourceNotFoundError) as error:
+            raise HTTPException(404, 'WebAgent task not found') from error
+
+    def draft_scope(studio_id, mount_id, principal):
+        runtime, _ = manager()
+        try:
+            mounted = StudioCapabilityBroker(runtime).mounted_mini_app(studio_id, mount_id, principal=principal)
+            instance = (mounted.mount.get("context") or {}).get("studioInstanceId")
+            if not isinstance(instance, str) or not instance:
+                raise HTTPException(409, "Studio draft scope is unavailable")
+            authorize_app_instance(runtime, principal, instance)
+            entry = runtime.extension_manager.instance_entry(instance, principal=principal)
+            if entry.get("app_key") != studio_id:
+                raise HTTPException(404, "Studio instance was not found")
+            return StudioRepository(runtime.database), dict(
+                actor_id=principal.actor_user_id, installation_id=principal.installation_id,
+                app_instance_id=instance, studio_id=studio_id,
+                mini_app_id=mounted.declaration["id"],
+            )
+        except StudioCapabilityError as error:
+            raise capability_error(error) from error
+        except ResourceNotFoundError as error:
+            raise HTTPException(404, str(error)) from error
+        except ExtensionError as error:
+            raise HTTPException(409, str(error)) from error
+
+    @router.post('/ai2apps.ai-browser/mini-app-mounts/{mount_id}/web-agent/delete-shopping-history')
+    def permanently_delete_shopping_history(mount_id: str, body: dict, principal: RequestPrincipal = principal_dependency):
+        from ai2apps.browser.mini_apps import WebAgentMiniAppBroker
+        from ai2apps.browser.shopping_deletion import delete_shopping_data
+        runtime, _ = manager()
+        try:
+            broker=WebAgentMiniAppBroker(runtime)
+            mounted=broker.mounted(mount_id,principal)
+            if mounted.declaration['id']!='ai2apps.shopping-pro':
+                raise StudioCapabilityError('shopping_delete_denied','Not a Shopping Mini-App',status_code=403)
+            _,scope=draft_scope('ai2apps.ai-browser',mount_id,principal)
+            return delete_shopping_data(runtime.database,owner=principal.actor_user_id,caller=broker.caller(mounted),scope=scope,confirmation=body.get('confirmation'))
+        except StudioCapabilityError as error:
+            raise capability_error(error) from error
+
+    @router.get("/{studio_id}/mini-app-mounts/{mount_id}/draft")
+    def get_package_draft(studio_id: str, mount_id: str, principal: RequestPrincipal = principal_dependency):
+        repository, scope = draft_scope(studio_id, mount_id, principal)
+        row = repository.get_draft(**scope)
+        return {"value": json.dumps(row["draft"], ensure_ascii=False) if row else None}
+
+    @router.put("/{studio_id}/mini-app-mounts/{mount_id}/draft")
+    def put_package_draft(studio_id: str, mount_id: str, body: MiniAppDraftRequest, principal: RequestPrincipal = principal_dependency):
+        repository, scope = draft_scope(studio_id, mount_id, principal)
+        if len(body.value.encode("utf-8")) > 4 * 1024 * 1024:
+            raise HTTPException(413, "Draft exceeds 4 MiB")
+        try:
+            draft = json.loads(body.value)
+        except ValueError as error:
+            raise HTTPException(422, "Invalid Mini-App draft") from error
+        if not isinstance(draft, dict) or draft.get("schema") != "ai2apps.mini-app-draft/v1" or draft.get("miniApp") != scope["mini_app_id"]:
+            raise HTTPException(422, "Invalid Mini-App draft")
+        if scope['mini_app_id']=='ai2apps.shopping-pro':
+            existing=repository.get_draft(**scope)
+            legacy=(existing or {}).get('draft',{}).get('deletedHistory')
+            if draft.get('deletedHistory') and draft['deletedHistory']!=legacy:
+                raise HTTPException(422, 'Shopping recovery copies are no longer supported')
+            if legacy and not draft.get('deletedHistory'):
+                raise HTTPException(409, 'Confirm permanent deletion to remove the old recovery copy')
+            with repository.database.transaction() as c:
+                gift=draft.get('gift') if isinstance(draft.get('gift'),dict) else {}
+                task_ids=[*draft.get('sourceTasks',[]),gift.get('taskId'),gift.get('cartTask')]
+                for task_id in filter(None,task_ids):
+                    row=c.execute('SELECT message FROM browser_tasks WHERE owner=? AND id=?',(principal.actor_user_id,task_id)).fetchone()
+                    if row and row['message']=='Shopping data permanently deleted':
+                        raise HTTPException(409,'Shopping data was permanently deleted; reload before saving')
+        repository.save_draft(**scope, draft=draft)
+        return {"value": None}
+
+    @router.delete("/{studio_id}/mini-app-mounts/{mount_id}/draft")
+    def delete_package_draft(studio_id: str, mount_id: str, principal: RequestPrincipal = principal_dependency):
+        repository, scope = draft_scope(studio_id, mount_id, principal)
+        repository.save_draft(**scope, draft={})
+        return {"value": None}
 
     @router.get("/{studio_id}/mini-app-mounts/{mount_id}/capabilities")
     def probe_mini_app_capabilities(

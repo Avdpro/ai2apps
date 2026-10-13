@@ -1,0 +1,480 @@
+{
+  "status": "published",
+  "package": "ai2apps/model-minimax-h3",
+  "candidate_version": "0.10.0",
+  "runtime": "1.8.8",
+  "refiner_assets_bytes": 1536290232,
+  "sources": {
+    "huggingface": {
+      "repo": "Avdpro/H3-Portrait-Refiner-MLX",
+      "revision": "b19653717a136186461fd1fa9ae7a6af000090a3"
+    },
+    "modelscope": {
+      "repo": "ai2apps/H3-Portrait-Refiner-MLX",
+      "revision": "861f0228351bfd7a2ded792e791b25030f4f8710"
+    }
+  },
+  "mouth_preprocessing_parity": {
+    "max_abs": 4.3392181396484375e-05,
+    "mean_abs": 1.1826703030237695e-06,
+    "argmax_agreement": 1.0,
+    "seconds": 0.21071854117326438
+  },
+  "long_motion": {
+    "identity": {
+      "image": "51bae8dba41172b1bded7b6094d9e59be888bcaae32a35dcabec2e98de054e12",
+      "audio": "35cbabb6beb97c6abb7d2521f2ee65a052a506c8b0ef1a1158491d0b07fae500",
+      "checkpoint": "base=9c9273578ed5c2daf0b9a42eace823a6a49050ba;lightx2v=2f015e66b37c585cea9dc4ae6f1850ea8788e742:4step-v1.2",
+      "width": 512,
+      "height": 512,
+      "steps": 4,
+      "seed": 42,
+      "prompt": "A continuous fixed-camera portrait shot. The person speaks naturally with precise lip movements matching the speech, subtle blinking and small head movements. Preserve identity, clothing, lighting and background. No subtitles.",
+      "window": 192,
+      "context": 39,
+      "context_image_anchor": true,
+      "implementation": "h3-avatar-v1",
+      "code": {
+        "avatar.py": "7422baa09edb52727c5f7ac5a3be99e57fa0681d7c91d623352ba8040018381a",
+        "avatar_timeline.py": "7c7eee7ffe735529b767014fde7102d2d5792fbf322a3e2643ab0686fa2fb5db",
+        "avatar_media.py": "2d225ed7fb745085f05bab7f48dbce85d9b2e0b1cfa74c2093b350dcbc2ff162",
+        "staged_pipeline.py": "95520bb88267683cb321df3e0652930be1fd046d8cf768e1f7ff3653d1134566",
+        "pipeline.py": "de6f3cfc18148a4f6cadaa4b7726ca444f65c0a40803e07330d327de13e2d7ee"
+      }
+    },
+    "segments": 10,
+    "frames": 1440,
+    "source_samples": 1323000,
+    "source_rate": 22050,
+    "output_sha256": "7c593d248bc222c5ab46550879589da5ec9f8e3270d148a8d6ae071b7b204e2b",
+    "wall_seconds": 1569.6015122921672,
+    "peak_mlx_bytes": 29980362412
+  },
+  "long_refinement": {
+    "frames": 1440,
+    "fps": 24,
+    "mouth_refiner": "musetalk-1.5-q4",
+    "seconds": 144.32556741707958,
+    "peak_bytes": 4369160118,
+    "runtime": "1.8.8",
+    "python": "3.11.10 (main, Oct 16 2024, 08:56:36) [Clang 18.1.8 ]"
+  },
+  "long_sync": [
+    {
+      "video": "/tmp/h3-avatar-endanchored60/avatar-refined.mp4",
+      "start_seconds": 0.0,
+      "duration_seconds": 2.7916666666666665,
+      "weights_sha256": "961e8696f888fce4f3f3a6c3d5b3267cf5b343100b238e79b2659bff2c605442",
+      "offset_frames": -1,
+      "offset_seconds": -0.04,
+      "confidence": 5.315090179443359,
+      "distance": 9.131998062133789,
+      "zero_offset_distance": 11.263814926147461,
+      "seconds": 1.9019787500146776,
+      "face_crop": "upstream-style geometry with Vision rectangles"
+    },
+    {
+      "video": "/tmp/h3-avatar-endanchored60/avatar-refined.mp4",
+      "start_seconds": 16.5,
+      "duration_seconds": 2.7916666666666665,
+      "weights_sha256": "961e8696f888fce4f3f3a6c3d5b3267cf5b343100b238e79b2659bff2c605442",
+      "offset_frames": -1,
+      "offset_seconds": -0.04,
+      "confidence": 5.70988655090332,
+      "distance": 8.989136695861816,
+      "zero_offset_distance": 11.801416397094727,
+      "seconds": 2.0291067499201745,
+      "face_crop": "upstream-style geometry with Vision rectangles"
+    },
+    {
+      "video": "/tmp/h3-avatar-endanchored60/avatar-refined.mp4",
+      "start_seconds": 32.958333333333336,
+      "duration_seconds": 2.7916666666666665,
+      "weights_sha256": "961e8696f888fce4f3f3a6c3d5b3267cf5b343100b238e79b2659bff2c605442",
+      "offset_frames": -1,
+      "offset_seconds": -0.04,
+      "confidence": 5.168998718261719,
+      "distance": 9.800537109375,
+      "zero_offset_distance": 12.035181045532227,
+      "seconds": 1.9507954579312354,
+      "face_crop": "upstream-style geometry with Vision rectangles"
+    },
+    {
+      "video": "/tmp/h3-avatar-endanchored60/avatar-refined.mp4",
+      "start_seconds": 56.041666666666664,
+      "duration_seconds": 2.7916666666666665,
+      "weights_sha256": "961e8696f888fce4f3f3a6c3d5b3267cf5b343100b238e79b2659bff2c605442",
+      "offset_frames": -1,
+      "offset_seconds": -0.04,
+      "confidence": 4.46701717376709,
+      "distance": 9.708979606628418,
+      "zero_offset_distance": 10.526021003723145,
+      "seconds": 1.787733124801889,
+      "face_crop": "upstream-style geometry with Vision rectangles"
+    }
+  ],
+  "limitations": [
+    "single frontal unobstructed face; local mouth softness",
+    "silent audio does not guarantee closed lips",
+    "generative head motion/expression; no gaze or emotion control",
+    "quality measured on short Chinese illustration and English photo fixtures, not broad demographic validation"
+  ],
+  "pending": [],
+  "previous_unanchored_failure": {
+    "long_motion": {
+      "identity": {
+        "image": "51bae8dba41172b1bded7b6094d9e59be888bcaae32a35dcabec2e98de054e12",
+        "audio": "35cbabb6beb97c6abb7d2521f2ee65a052a506c8b0ef1a1158491d0b07fae500",
+        "checkpoint": "base=9c9273578ed5c2daf0b9a42eace823a6a49050ba;lightx2v=2f015e66b37c585cea9dc4ae6f1850ea8788e742:4step-v1.2",
+        "width": 512,
+        "height": 512,
+        "steps": 4,
+        "seed": 42,
+        "prompt": "A continuous fixed-camera portrait shot. The person speaks naturally with precise lip movements matching the speech, subtle blinking and small head movements. Preserve identity, clothing, lighting and background. No subtitles.",
+        "window": 192,
+        "context": 39,
+        "implementation": "h3-avatar-v1",
+        "code": {
+          "avatar.py": "c428690f7505de3fd9f906c2f3defbf3b14c48adb3bd4b99dff5382909a1e288",
+          "avatar_timeline.py": "7c7eee7ffe735529b767014fde7102d2d5792fbf322a3e2643ab0686fa2fb5db",
+          "avatar_media.py": "2d225ed7fb745085f05bab7f48dbce85d9b2e0b1cfa74c2093b350dcbc2ff162",
+          "staged_pipeline.py": "a473ed35a0978f5db87d46f1ef633ca2a2b392444f861f324a6ba0e23cef5754",
+          "pipeline.py": "de6f3cfc18148a4f6cadaa4b7726ca444f65c0a40803e07330d327de13e2d7ee"
+        }
+      },
+      "segments": 10,
+      "frames": 1440,
+      "source_samples": 1323000,
+      "source_rate": 22050,
+      "output_sha256": "e278ab3c353029f799a4d453bcd94ca64cb23404b0f278b76c3bfe7be96237a4",
+      "wall_seconds": 1692.1033109580167,
+      "peak_mlx_bytes": 29979182756
+    },
+    "long_refinement": {
+      "frames": 1440,
+      "fps": 24,
+      "mouth_refiner": "musetalk-1.5-q4",
+      "seconds": 161.1152856249828,
+      "peak_bytes": 4369160118,
+      "runtime": "1.8.8",
+      "python": "3.11.10 (main, Oct 16 2024, 08:56:36) [Clang 18.1.8 ]"
+    },
+    "long_sync": [
+      {
+        "video": "/tmp/h3-avatar-photo60/avatar-refined.mp4",
+        "start_seconds": 0.0,
+        "duration_seconds": 2.7916666666666665,
+        "weights_sha256": "961e8696f888fce4f3f3a6c3d5b3267cf5b343100b238e79b2659bff2c605442",
+        "offset_frames": -1,
+        "offset_seconds": -0.04,
+        "confidence": 5.315090179443359,
+        "distance": 9.131998062133789,
+        "zero_offset_distance": 11.263814926147461,
+        "seconds": 2.1608166249934584,
+        "face_crop": "upstream-style geometry with Vision rectangles"
+      },
+      {
+        "video": "/tmp/h3-avatar-photo60/avatar-refined.mp4",
+        "start_seconds": 16.5,
+        "duration_seconds": 2.7916666666666665,
+        "weights_sha256": "961e8696f888fce4f3f3a6c3d5b3267cf5b343100b238e79b2659bff2c605442",
+        "offset_frames": -1,
+        "offset_seconds": -0.04,
+        "confidence": 5.633613586425781,
+        "distance": 8.73284912109375,
+        "zero_offset_distance": 11.33926010131836,
+        "seconds": 2.1690253750421107,
+        "face_crop": "upstream-style geometry with Vision rectangles"
+      },
+      {
+        "video": "/tmp/h3-avatar-photo60/avatar-refined.mp4",
+        "start_seconds": 32.958333333333336,
+        "duration_seconds": 2.7916666666666665,
+        "weights_sha256": "961e8696f888fce4f3f3a6c3d5b3267cf5b343100b238e79b2659bff2c605442",
+        "offset_frames": -1,
+        "offset_seconds": -0.04,
+        "confidence": 5.367898941040039,
+        "distance": 9.442493438720703,
+        "zero_offset_distance": 12.472574234008789,
+        "seconds": 2.2166560001205653,
+        "face_crop": "upstream-style geometry with Vision rectangles"
+      },
+      {
+        "video": "/tmp/h3-avatar-photo60/avatar-refined.mp4",
+        "start_seconds": 56.041666666666664,
+        "duration_seconds": 2.7916666666666665,
+        "weights_sha256": "961e8696f888fce4f3f3a6c3d5b3267cf5b343100b238e79b2659bff2c605442",
+        "offset_frames": -1,
+        "offset_seconds": -0.04,
+        "confidence": 3.9029321670532227,
+        "distance": 10.647027015686035,
+        "zero_offset_distance": 13.303126335144043,
+        "seconds": 2.1895218749996275,
+        "face_crop": "upstream-style geometry with Vision rectangles"
+      }
+    ]
+  },
+  "long_inspection": {
+    "frames": 1440,
+    "fps": 24.0,
+    "streams": [
+      {
+        "type": "video",
+        "codec": "h264",
+        "duration": 60.0
+      },
+      {
+        "type": "audio",
+        "codec": "aac",
+        "duration": 60.0
+      }
+    ],
+    "max_timestamp_error": 0.0,
+    "median_frame_delta": 0.3602689206600189,
+    "p95_frame_delta": 0.9063165009021757,
+    "seams": {
+      "187": 0.9780108332633972,
+      "340": 1.1848970651626587,
+      "493": 1.1414350271224976,
+      "646": 1.0004373788833618,
+      "799": 1.048261046409607,
+      "952": 0.9515673518180847,
+      "1105": 0.9989433288574219,
+      "1258": 0.9727274775505066,
+      "1411": 1.0723928213119507
+    }
+  },
+  "base50_refined_sync": {
+    "video": "/tmp/h3-avatar-release/base50-auto-refined.mp4",
+    "start_seconds": 0.0,
+    "duration_seconds": 2.8333333333333335,
+    "weights_sha256": "961e8696f888fce4f3f3a6c3d5b3267cf5b343100b238e79b2659bff2c605442",
+    "offset_frames": -1,
+    "offset_seconds": -0.04,
+    "confidence": 4.94744873046875,
+    "distance": 9.375459671020508,
+    "zero_offset_distance": 11.528031349182129,
+    "seconds": 1.3143847910687327,
+    "face_crop": "upstream-style geometry with Vision rectangles"
+  },
+  "long_total_seconds": 1713.9270797092468,
+  "visual_review": "End-anchor long sample retains face/background brightness across 60 s; localized mouth softness remains. Sampled contact sheet inspected; not a universal quality guarantee.",
+  "tests": {
+    "worker_adapter": 26,
+    "timeline_media_masks_common_avatar": 72
+  },
+  "distribution": {
+    "id": "dist_ai2apps_h3_portrait_refiner_b1965371_v1",
+    "digest": "sha256:86622208693a231725f898776ff1a8ca18835e3c075aeb9d1a1252b1aa3f2d59",
+    "files": 20,
+    "pieces": 184,
+    "verification": "full_dual_download",
+    "signed": true,
+    "published": true,
+    "submission_id": "8426579e-27d0-438a-8ee2-140ffe09abd4"
+  },
+  "base_distribution": {
+    "id": "dist_ai2apps_h3_portrait_refiner_base_b1965371_v1",
+    "digest": "sha256:c8f97897f0a7001e89ede9d3e447ed073dd3aea82492e464b6da5b0d16d6c7d7",
+    "submission_id": "7f6f4c0c-b814-45ba-a150-4c9a49d56ff8",
+    "published": true
+  },
+  "accepted_package": {
+    "artifact": "/Users/avdpropang/sdk/omlx-moe-cache/artifacts/h3-avatar-20261005/release/accepted/ai2apps-model-minimax-h3-0.10.0.ai2service",
+    "envelope": "/Users/avdpropang/sdk/omlx-moe-cache/artifacts/h3-avatar-20261005/release/accepted/ai2apps-model-minimax-h3-0.10.0.ai2service.envelope.json",
+    "packageId": "ai2apps/model-minimax-h3",
+    "version": "0.10.0",
+    "sha256": "5d87670df8f672497f6129c4c400428688dbed97447f74e56877255206cc05d9",
+    "size": 215634
+  },
+  "installed_acceptance": {
+    "runtime": {
+      "service": "ai2apps.runtime.omlx",
+      "version": "1.8.8",
+      "digest": "sha256:28aa0b680a3897388fde3177ecee1e2cfc35eea9feb44a6593b1523d1159c511",
+      "root": "/private/tmp/h3-avatar-release/corrected-installed-platform/platform/packages/inference-runtimes/ai2apps.runtime.omlx/1.8.8/28aa0b680a3897388fde3177ecee1e2cfc35eea9feb44a6593b1523d1159c511",
+      "python": "/private/tmp/h3-avatar-release/corrected-installed-platform/platform/packages/inference-runtimes/ai2apps.runtime.omlx/1.8.8/28aa0b680a3897388fde3177ecee1e2cfc35eea9feb44a6593b1523d1159c511/Contents/Resources/Runtime/Python/cpython-3.11/bin/python3.11"
+    },
+    "model": {
+      "service": "ai2apps.model.minimax-h3",
+      "version": "0.10.0",
+      "digest": "sha256:5d87670df8f672497f6129c4c400428688dbed97447f74e56877255206cc05d9",
+      "status": "running",
+      "endpoint": "http://127.0.0.1:63841"
+    },
+    "locks": [
+      {
+        "dependency": "ai2apps.runtime.omlx",
+        "version": "1.8.8",
+        "digest": "sha256:28aa0b680a3897388fde3177ecee1e2cfc35eea9feb44a6593b1523d1159c511"
+      }
+    ],
+    "checkpoints": [
+      {
+        "distribution": "dist_ai2apps_h3_portrait_refiner_base_b1965371_v1",
+        "snapshot": "/private/tmp/h3-avatar-release/installed-hub/models--Avdpro--H3-Portrait-Refiner-MLX/distributions/a9b0b814cc278b2866e523bc766e8cbbb4b9a2cef6448dcfb165ffff5c9b2863",
+        "cache_hit": false,
+        "source_bytes": {
+          "local_verified_fixture": 1536290232
+        }
+      },
+      {
+        "distribution": "dist_ai2apps_h3_portrait_refiner_b1965371_v1",
+        "snapshot": "/private/tmp/h3-avatar-release/installed-hub/models--Avdpro--H3-Portrait-Refiner-MLX/distributions/4d378ee6947259332c07346816f5961fcd1a631befd4d77614df714663c7e721",
+        "cache_hit": false,
+        "source_bytes": {
+          "local_verified_fixture": 1536290232
+        }
+      },
+      {
+        "distribution": "dist_ai2apps_minimax_h3_fl2va_4bit_9c927357_v1",
+        "snapshot": "/private/tmp/h3-avatar-release/installed-hub/models--ddalcu--MiniMax-H3-FL2VA-MLX-Serve-4bit/distributions/668a9d57c9d224e97a2605c93a20081e0dc726065106da8eddcd29fa69351bf5",
+        "cache_hit": false,
+        "source_bytes": {
+          "local_verified_fixture": 41108034229
+        }
+      },
+      {
+        "distribution": "dist_ai2apps_minimax_h3_lightx2v_4step_overlay_2f015e66_v1",
+        "snapshot": "/private/tmp/h3-avatar-release/installed-hub/models--lightx2v--Minimax-h3-Turbo/distributions/63bc69ddcf6268e297eb742c426edd221704c567da05175ef01d1f7b99ffb025",
+        "cache_hit": false,
+        "source_bytes": {
+          "local_verified_fixture": 1383679204
+        }
+      }
+    ],
+    "process_audio": [
+      {
+        "model": "ddalcu/MiniMax-H3-FL2VA-MLX-Serve-4bit:avatar",
+        "audio": "/tmp/h3-avatar-base-one-second.wav",
+        "profile": "strict",
+        "result": {
+          "model": "ddalcu/MiniMax-H3-FL2VA-MLX-Serve-4bit:avatar",
+          "status": 200,
+          "bytes": 104356,
+          "seconds": 300.9707579589449,
+          "output": "/tmp/h3-avatar-release/corrected/installed-base50.mp4",
+          "frames": 24,
+          "fps": "24",
+          "codec": "h264"
+        }
+      },
+      {
+        "model": "lightx2v/Minimax-h3-Turbo:fl2v-4step-v1.2-768p:avatar",
+        "audio": "/tmp/h3-avatar-english.wav",
+        "profile": "strict",
+        "result": {
+          "model": "lightx2v/Minimax-h3-Turbo:fl2v-4step-v1.2-768p:avatar",
+          "status": 200,
+          "bytes": 238728,
+          "seconds": 78.41795925004408,
+          "output": "/tmp/h3-avatar-release/corrected/installed-english.mp4",
+          "frames": 68,
+          "fps": "24",
+          "codec": "h264"
+        }
+      }
+    ],
+    "generate_audio": [
+      {
+        "advertised_model": "lightx2v/Minimax-h3-Turbo:fl2v-4step-v1.2-768p:avatar",
+        "model_count": 10
+      }
+    ],
+    "restart_status": "running",
+    "uninstall": {
+      "checkpointCleanup": {
+        "requested": false
+      }
+    }
+  },
+  "mini_app_discovery": [
+    {
+      "description": {
+        "id": "ai2apps.model.minimax-h3/avatar-lightx2v-4step-4bit",
+        "label": "MiniMax H3 Portrait 4-step Turbo Q4",
+        "ready": true,
+        "operation": "portrait_animation",
+        "presets": [
+          {
+            "id": "strict",
+            "label": "Standard (4 steps)"
+          }
+        ],
+        "resolutions": [
+          "source",
+          "512x512"
+        ],
+        "minimumSeconds": 1.0,
+        "maximumSeconds": 60,
+        "defaults": {
+          "preset": "strict",
+          "resolution": "source"
+        }
+      },
+      "plan": {
+        "model": "ai2apps.model.minimax-h3/avatar-lightx2v-4step-4bit",
+        "preset": "strict",
+        "resolution": "512x512",
+        "avatar_output_mode": "source"
+      }
+    },
+    {
+      "description": {
+        "id": "ai2apps.model.minimax-h3/avatar-base-4bit",
+        "label": "MiniMax H3 Portrait 50-step Q4",
+        "ready": true,
+        "operation": "portrait_animation",
+        "presets": [
+          {
+            "id": "strict",
+            "label": "Quality (50 steps)"
+          }
+        ],
+        "resolutions": [
+          "source",
+          "512x512"
+        ],
+        "minimumSeconds": 1.0,
+        "maximumSeconds": 8,
+        "defaults": {
+          "preset": "strict",
+          "resolution": "source"
+        }
+      },
+      "plan": {
+        "model": "ai2apps.model.minimax-h3/avatar-base-4bit",
+        "preset": "strict",
+        "resolution": "512x512",
+        "avatar_output_mode": "source"
+      }
+    }
+  ],
+  "publication_blocker": {
+    "prior_submission": "32a6d1c0-acdc-44f5-bf09-54865f251a5b",
+    "prior_status": "approved",
+    "prior_artifact_sha256": "4dd4d3cceacd410b6d1e5099c1422c0cbce28630198b91d77f90f2c7107e59f3",
+    "corrected_submission": "not returned or present in final query",
+    "error": "An internal error occurred",
+    "attempts": 2,
+    "root_cause": "unknown; Cloud diagnosis required",
+    "resolved": true,
+    "resolution": "OpenAPI 1.57.0 audited withdrawal; original accepted bytes published 2026-10-06"
+  },
+  "production": {
+    "submission_id": "1701c811-203a-469b-9227-b1a56f19b90e",
+    "snapshot": 255,
+    "artifact_verified": true,
+    "status": "published",
+    "date": "2026-10-06"
+  },
+  "acpf": {
+    "source_enabled": true,
+    "profiles": [
+      "apple-metal-h3-avatar-lightx2v-4step-4bit",
+      "apple-metal-h3-avatar-base-4bit"
+    ],
+    "tests_passed": 23,
+    "desktop_release_performed": false
+  }
+}

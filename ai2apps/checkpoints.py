@@ -163,6 +163,17 @@ def _verified_distribution_checkpoint_is_complete(
         # Stable Audio ships NPZ tensors; only a complete immutable Registry
         # receipt may authorize this layout (never the generic folder probe).
         payload_suffixes += (".npz",)
+    if model.get("model_type") == "video_generation":
+        # MuseTalk's official UNet is a .pth snapshot. Only the verified
+        # Registry receipt below may authorize this non-Transformer layout.
+        payload_suffixes += (".pth",)
+    if (
+        model.get("model_type") == "component"
+        and model.get("metadata", {}).get("internal") is True
+    ):
+        # Auxiliary face parsers/detectors are independent pinned snapshots.
+        # Do not broaden the unverified-folder probe for these formats.
+        payload_suffixes += (".pt", ".pth", ".onnx")
     if not any(path.endswith(payload_suffixes) for path in expected_paths):
         return False
     actual_paths = {

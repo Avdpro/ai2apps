@@ -14,9 +14,13 @@
 <div id="tasks"></div>
 </section>
 <section id="detail-view" hidden>
-<button id="back" type="button">{{ '‹ 返回列表' if todo_zh else '‹ Back to list' }}</button>
+<div class="detail-actions"><button id="back" type="button">{{ '‹ 返回列表' if todo_zh else '‹ Back to list' }}</button><button id="new-child" type="button">{{ '＋子任务' if todo_zh else '+ Subproject' }}</button></div>
 <form id="editor">
 <label>{{ '任务标题' if todo_zh else 'Project title' }}<input id="task-title" required maxlength="500"></label>
+<label for="task-emoji">{{ '项目 Emoji' if todo_zh else 'Project Emoji' }}</label>
+<div class="emoji-editor"><input id="task-emoji" maxlength="32" autocomplete="off" autocapitalize="off" spellcheck="false" aria-describedby="emoji-hint"><button id="generate-emoji" type="button">{{ 'AI 生成' if todo_zh else 'AI generate' }}</button><button id="clear-emoji" type="button">{{ '清除' if todo_zh else 'Clear' }}</button></div>
+<small id="emoji-hint">{{ '输入一个 Emoji，或从下方选择' if todo_zh else 'Enter one Emoji or choose below' }}</small>
+<div id="common-emojis" role="group" aria-label="{{ '常用 Emoji' if todo_zh else 'Common Emoji' }}"></div>
 <div class="highlight-field"><p>{{ '高亮颜色' if todo_zh else 'Highlight color' }}</p><div id="highlight-colors" role="group" aria-label="{{ '高亮颜色' if todo_zh else 'Highlight color' }}"></div></div>
 <label>{{ '描述' if todo_zh else 'Description' }}<textarea id="description" rows="7" maxlength="100000"></textarea></label>
 <div class="tools"><label>{{ '优先级' if todo_zh else 'Priority' }}<select id="priority"><option>U</option><option>S</option><option>A</option><option>B</option><option selected>C</option><option>D</option></select></label>
@@ -25,7 +29,6 @@
 <input id="task-progress-slider" type="range" min="0" max="100" step="5" value="0" aria-label="{{ '调整进度，每步 5%' if todo_zh else 'Adjust progress in steps of 5%' }}" hidden>
 <div class="tools"><button id="save" type="submit" class="primary">{{ '保存' if todo_zh else 'Save' }}</button><button id="complete" type="button">{{ '标记完成' if todo_zh else 'Mark complete' }}</button></div>
 </form>
-<button id="new-child" type="button">{{ '＋子任务' if todo_zh else '+ Subproject' }}</button>
 <section id="results"><h2>{{ '执行结果' if todo_zh else 'Execution results' }}</h2><div id="runs"></div></section>
 </section>
 </main>
@@ -37,4 +40,4 @@
 </form>
 </dialog>
 {% endblock %}
-{% block scripts %}<script src="{{ mobile_static('js/mobile_todo.js') }}"></script>{% endblock %}
+{% block scripts %}<script src="{{ mobile_static('js/mobile_todo.js') }}?v=native-back-20261010-3"></script>{% endblock %}

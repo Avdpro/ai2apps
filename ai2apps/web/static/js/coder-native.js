@@ -179,7 +179,9 @@
             options.models.forEach(function (item) { const option = document.createElement('option'); option.value = item.id; option.textContent = item.identity?.displayName || item.display_name || item.id; model.append(option); });
             startButton.disabled = !model.options.length; changesButton.disabled = !taskId; stopButton.disabled = true;
             progress.textContent = model.options.length ? '在隔离草稿中开发，审阅后写回 / Develop in a draft, review and apply' : '请先配置支持工具调用的模型 / Configure a model with tool-call support';
+            if(typeof options.initialPrompt==='string')prompt.value=options.initialPrompt;
             dialog.showModal();
+            if(options.autoStart&&options.initialPrompt&&model.options.length&&!taskId){form.requestSubmit();return;}
             if (taskId) refresh();
             else if (!stored) {
                 const openedGeneration = generation;

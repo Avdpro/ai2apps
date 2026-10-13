@@ -500,7 +500,8 @@ class ModelInvocationService:
             raise ModelInvocationError(
                 "operation_not_supported", f"Model does not support {operation}"
             )
-        body = {**dict(payload), "model": model.upstream_id}
+        # Depth's v1 transport validates the declared Package ID, not a Hub repo.
+        body = {**dict(payload), "model": model_id if operation == "depth_estimation" else model.upstream_id}
         if operation == "image_upscaling":
             source = (files or {}).get("image")
             try:

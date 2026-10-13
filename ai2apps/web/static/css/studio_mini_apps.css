@@ -17,6 +17,11 @@
 .vs-studio-sidebar>.vs-sidebar-panel,.ra-studio-sidebar>.ra-sidebar-panel{flex:1;min-height:0;height:auto;overflow-y:auto;overscroll-behavior:contain}
 .vs-studio-sidebar .vs-assets-panel,.ra-studio-sidebar .ra-assets-panel{min-height:0;height:auto}
 .vs-shell .vs-queue,.ra-render-workspace .ra-preview-list{max-height:none;overflow:visible}
+/* Package UI owns scrolling inside its iframe; the workspace only lays it out. */
+.vs-shell>.is-mini-app-workspace.package-active{overflow:hidden}
+.is-mini-app-workspace.package-active>.is-package-mini-app{display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.is-mini-app-workspace.package-active .is-package-mini-app-frame{flex:1 1 auto;height:100%;min-height:0}
+.is-mini-app-workspace.package-active .is-package-mini-app-state{flex:1 1 auto;min-height:0}
 @media(min-width:761px){
   .vs-app>.vs-shell,.readaloud-app>.ra-studio-shell{grid-template-columns:minmax(200px,280px) minmax(0,1fr) minmax(260px,360px)}
   .vs-app>.vs-shell.left-collapsed,.vs-app>.vs-shell.is-left-collapsed,.readaloud-app>.ra-studio-shell.left-collapsed{grid-template-columns:minmax(0,1fr) minmax(260px,360px)}
@@ -65,3 +70,12 @@
 .studio-mini-info-body p{margin:0 0 8px;overflow-wrap:anywhere}
 .is-mini-app-workspace{background:#fff;border:1px solid #e7e5e4;border-radius:18px;box-shadow:0 16px 50px rgba(28,25,23,.045)}
 .ra-quick-page>.ra-page-title,.ra-voice-page>.ra-page-title,.ra-training-page>.ra-page-title{justify-content:flex-end}
+
+/* Shared Mini-App library: only cards scroll; the action menu stays at the bottom. */
+.vs-studio-sidebar>.studio-mini-library,.ra-studio-sidebar>.studio-mini-library{display:flex;flex-direction:column;overflow:visible;padding-bottom:0}
+.studio-mini-scroll{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;align-content:start}
+.studio-mini-more{position:relative;flex:none;margin-top:10px;padding-top:10px;border-top:1px solid #e7e5e4}
+.studio-mini-more-toggle{display:flex;align-items:center;gap:9px;width:100%;min-height:42px;padding:10px;border:1px solid #e7e5e4;border-radius:10px;background:#fafaf9;color:#44403c;font:inherit;font-size:12px;cursor:pointer}
+.studio-mini-more-toggle span{flex:1;text-align:left}.studio-mini-more svg{width:16px;height:16px;flex:none}
+.studio-mini-more-menu{position:absolute;z-index:60;bottom:calc(100% + 4px);left:0;right:0;padding:5px;background:#fff;border:1px solid #d6d3d1;border-radius:12px;box-shadow:0 8px 30px #1c19171a}
+.studio-mini-more-menu button{display:flex;align-items:center;gap:9px;width:100%;padding:11px 9px;border:0;border-radius:8px;background:transparent;color:#44403c;font:inherit;font-size:12px;text-align:left;cursor:pointer}.studio-mini-more-menu button:hover{background:#f5f5f4}

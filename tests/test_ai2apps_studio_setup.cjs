@@ -1,7 +1,7 @@
 const vm = require('node:vm'), fs = require('node:fs'), assert = require('node:assert/strict');
 (async () => {
  const listeners = {}, replies = [], calls = [];
- const source = {postMessage() {}}, frame = {src: 'http://local/frame', contentWindow: source, isConnected: true, addEventListener(){}, removeEventListener(){}};
+ const source = {postMessage() {}}, frame = {src: 'http://local/frame', contentWindow: source, closest(){return null;}, isConnected: true, addEventListener(){}, removeEventListener(){}};
  let channel;
  const storage = new Map();
  let declared = 'audio.detailed_transcription';

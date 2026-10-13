@@ -27,7 +27,12 @@ _SYSTEM_APP_MANIFESTS_BASE: tuple[dict[str, Any], ...] = (
         "state": {"version": 1, "defaults": {}},
     },
     {
-        "schema": "ai2apps.app/v1", "id": "ai2apps.intelligence", "name": "Intelligence Center",
+        "schema": "ai2apps.app/v1", "id": "ai2apps.intelligence", "name": "Intel Center",
+        "mobile": {"ready": True, "gateway": {
+            "template": "system_apps/intelligence.html",
+            "assets": ["css/dashboard.css", "css/intelligence.css", "js/intelligence_i18n.js", "js/browser_bidi_client.js", "js/intelligence_site_agents.js", "js/intelligence_social.js", "js/intelligence_cards.js", "js/intelligence_entities.js", "js/intelligence.js", "js/mobile_app_gateway.js"],
+            "api": {"module": "intelligence", "factory": "create_intelligence_router", "prefix": "/v1/platform/intelligence"},
+        }},
         "description": "Follow interests, monitor sources and read evidence-backed briefings",
         "version": "0.1.0", "instances": {"mode": "singleton", "scope": "user"},
         "access": {"capabilities": ["app.use"]},
@@ -222,6 +227,11 @@ _SYSTEM_APP_MANIFESTS_BASE: tuple[dict[str, Any], ...] = (
     {
         "schema": "ai2apps.app/v1",
         "id": "ai2apps.ai-browser",
+        "mobile": {"ready": True, "gateway": {
+            "template": "mobile_ai_browser.html",
+            "assets": ["css/ai_browser.css", "js/ai_browser.js", "js/ai_browser_mobile_i18n.js", "js/studio_mini_apps.js", "js/mobile_app_gateway.js"],
+            "api": {"module": "ai_browser_mobile", "factory": "create_ai_browser_mobile_router", "prefix": "/v1/platform"},
+        }},
         "name": "AI Browser",
         "description": "Create and manage isolated AceFox browser Profiles",
         "version": "0.1.0",
@@ -469,7 +479,7 @@ _SYSTEM_APP_ZH: dict[str, tuple[str, str, str]] = {
     "ai2apps.general-chat": ("聊天", "与云端、Fusion、本地模型和智能体聊天", "AI 与聊天"),
     "ai2apps.ai-browser": ("AI 浏览器", "创建和管理相互隔离的 AceFox 浏览器 Profile", "AI 与聊天"),
     "ai2apps.messager": ("消息", "以本地加密通信为主、Cloud 离线消息为兜底的好友对话", "AI 与聊天"),
-    "ai2apps.gallery": ("图库", "统一管理本地 AI 生成的图片、视频、音频、网页与文件", "AI 与媒体"),
+    "ai2apps.gallery": ("素材库", "统一管理本地 AI 生成的图片、视频、音频、网页与文件", "AI 与媒体"),
     "ai2apps.knowledge": ("知识库", "保存、检索并引用私有或本机共享知识", "AI 与聊天"),
     "ai2apps.readaloud": ("语音工坊", "本地优先的朗读、有声书与多角色音频制作", "AI 与媒体"),
     "ai2apps.video-studio": ("视频工坊", "使用已安装的 AI2Apps 视频模型在本地创作视频", "AI 与媒体"),

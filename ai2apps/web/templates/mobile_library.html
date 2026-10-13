@@ -1,9 +1,9 @@
 {% extends "mobile_base.html" %}
-{% block title %}{{ "知识库" if library == "knowledge" else "图库" }} · AI2Apps{% endblock %}
+{% block title %}{{ "知识库" if library == "knowledge" else "素材库" }} · AI2Apps{% endblock %}
 {% block head %}<link rel="stylesheet" href="{{ mobile_static('css/mobile_library.css') }}">{% endblock %}
 {% block content %}
 <main id="library" data-library="{{ library }}">
-<header><div><small>AI2APPS</small><h1>{{ "知识库" if library == "knowledge" else "图库" }}</h1></div><button id="refresh" type="button">刷新</button></header>
+<header><div><small>AI2APPS</small><h1>{{ "知识库" if library == "knowledge" else "素材库" }}</h1></div><button id="refresh" type="button">刷新</button></header>
 <p id="notice" role="status" aria-live="polite"></p>
 <section id="browse">
 <form id="search-form"><input id="query" type="search" aria-label="搜索" placeholder="{{ '搜索知识内容' if library == 'knowledge' else '搜索文件名' }}"><button type="submit">搜索</button></form>

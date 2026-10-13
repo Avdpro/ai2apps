@@ -12,6 +12,18 @@ from contextlib import suppress
 from .shell_bidi_gateway import ShellBiDiEndpoint, attach_shell_bidi_session, shell_bidi_descriptor_path
 
 
+class BrowserTransportError(ConnectionError):
+    """The private BiDi attachment lost its connection."""
+
+
+class BrowserCommandTimeout(TimeoutError):
+    """No protocol response; a sent command may already have taken effect."""
+    def __init__(self, method, timeout, command_id):
+        self.method, self.timeout, self.command_id = method, timeout, command_id
+        self.outcome_unknown = True
+        super().__init__(f'BiDi {method} did not respond within {timeout} seconds')
+
+
 class BackgroundBiDi:
     def __init__(self):
         self._attachment = None
@@ -50,7 +62,7 @@ class BackgroundBiDi:
         return self
 
     async def _read(self):
-        failure = RuntimeError('Browser transport disconnected; action outcome may be unknown')
+        failure = BrowserTransportError('Browser transport disconnected; action outcome may be unknown')
         try:
             async for message in self._upstream:
                 value = json.loads(message)
@@ -62,7 +74,7 @@ class BackgroundBiDi:
                 else:
                     future.set_result(value.get('result', {}))
         except Exception as error:
-            failure = error
+            failure = BrowserTransportError('Browser transport reader failed; action outcome may be unknown')
         finally:
             for future in self._pending.values():
                 if not future.done():
@@ -70,7 +82,7 @@ class BackgroundBiDi:
 
     async def command(self, method, params, timeout=30):
         if self._reader is None or self._reader.done():
-            raise RuntimeError('Browser transport is not connected')
+            raise BrowserTransportError('Browser transport is not connected')
         self._next_id += 1
         command_id = self._next_id
         future = asyncio.get_running_loop().create_future()
@@ -78,9 +90,17 @@ class BackgroundBiDi:
         try:
             async with self._send_lock:
                 await self._upstream.send(json.dumps({'id': command_id, 'method': method, 'params': params}))
-            return await asyncio.wait_for(future, timeout)
+            try:
+                return await asyncio.wait_for(future, timeout)
+            except TimeoutError as error:
+                raise BrowserCommandTimeout(method,timeout,command_id) from error
         finally:
             self._pending.pop(command_id, None)
+
+    async def reconnect(self):
+        # Detach only this SDK client, never restart the Profile or create a Tab.
+        await self.close()
+        return await self.connect()
 
     async def close(self):
         if self._reader is not None:

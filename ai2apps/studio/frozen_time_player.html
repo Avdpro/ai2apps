@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; media-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'none'; base-uri 'none'; form-action 'none'">
+<title>静止时间 · Frozen Time</title>
+<style>
+html,body{margin:0;height:100%;background:#101014;color:white;font-family:system-ui,sans-serif}
+main{height:100%;display:grid;place-items:center;position:relative;overflow:hidden;touch-action:none;outline-offset:-4px}
+video{width:100%;height:100%;object-fit:contain;pointer-events:none}
+#hint{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;pointer-events:none;text-shadow:0 2px 10px black;animation:pulse 1.6s ease-in-out infinite}
+#hint[hidden]{display:none}#hint strong{font-size:24px}#hint span{font-size:16px}
+#error{position:absolute;padding:20px} @keyframes pulse{50%{opacity:.4}}
+@media(prefers-reduced-motion:reduce){#hint{animation:none}}
+</style>
+<main id="surface" role="slider" tabindex="0" aria-label="镜头动作进度 / Camera movement progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50">
+<video id="video" muted playsinline preload="auto" src="data:video/mp4;base64,__VIDEO_BASE64__"></video>
+<div id="hint"><strong>左右拖拽我</strong><span>Drag me left or right</span></div>
+<div id="error" hidden>无法播放视频 / Unable to play video</div>
+</main>
+<script>
+(() => {
+  'use strict';
+  const surface=document.getElementById('surface'), video=document.getElementById('video'), hint=document.getElementById('hint');
+  let position=.5, pointer=null, previousX=0, idleTimer=null, frame=null, ready=false;
+  function seek(){
+    frame=null;
+    if(!ready || video.seeking) return;
+    const time=position*Math.max(0,video.duration-1/24);
+    if(Math.abs(video.currentTime-time)>.001) video.currentTime=time;
+    surface.setAttribute('aria-valuenow',String(Math.round(position*100)));
+  }
+  function schedule(){if(frame===null) frame=requestAnimationFrame(seek);}
+  function interact(){hint.hidden=true;clearTimeout(idleTimer);}
+  function idle(){clearTimeout(idleTimer);idleTimer=setTimeout(()=>{if(pointer===null)hint.hidden=false;},10000);}
+  video.addEventListener('loadedmetadata',()=>{ready=Number.isFinite(video.duration)&&video.duration>0;schedule();});
+  video.addEventListener('seeked',schedule);
+  video.addEventListener('error',()=>{document.getElementById('error').hidden=false;hint.hidden=true;});
+  surface.addEventListener('pointerdown',e=>{
+    if(pointer!==null || !e.isPrimary || (e.pointerType==='mouse'&&e.button!==0))return;
+    pointer=e.pointerId;previousX=e.clientX;surface.setPointerCapture(pointer);interact();
+  });
+  surface.addEventListener('pointermove',e=>{
+    if(e.pointerId!==pointer)return;
+    position=Math.max(0,Math.min(1,position+(e.clientX-previousX)/Math.max(1,surface.clientWidth)));
+    previousX=e.clientX;schedule();
+  });
+  function release(e){if(e.pointerId!==pointer)return;pointer=null;idle();}
+  for(const event of ['pointerup','pointercancel','lostpointercapture'])surface.addEventListener(event,release);
+  surface.addEventListener('keydown',e=>{
+    if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;
+    e.preventDefault();interact();
+    position=e.key==='Home'?0:e.key==='End'?1:Math.max(0,Math.min(1,position+(e.key==='ArrowRight'?.02:-.02)));
+    schedule();idle();
+  });
+})();
+</script></html>

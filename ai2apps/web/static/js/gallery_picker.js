@@ -15,7 +15,7 @@
         return [...(transfer?.types || [])].some(type => ['Files', MIME, 'application/x-ai2apps-gallery-asset'].includes(type));
     }
     const labels = {
-        zh: {title:'从图库选择文件',search:'搜索文件',all:'最近文件',cancel:'取消',confirm:'添加所选文件',empty:'没有匹配的文件',loading:'正在加载…',limit:'最多选择 {count} 个文件',selected:'已选择 {count} 个文件'},
+        zh: {title:'从素材库选择文件',search:'搜索文件',all:'最近文件',cancel:'取消',confirm:'添加所选文件',empty:'没有匹配的文件',loading:'正在加载…',limit:'最多选择 {count} 个文件',selected:'已选择 {count} 个文件'},
         en: {title:'Choose files from Gallery',search:'Search files',all:'Recent files',cancel:'Cancel',confirm:'Add selected files',empty:'No matching files',loading:'Loading…',limit:'Choose up to {count} files',selected:'{count} files selected'},
     };
     async function open(options = {}) {

@@ -5,7 +5,66 @@
         return window.AI2AppsCapabilities?.appInstanceId?.()
             || document.querySelector('[data-app-instance-id]')?.dataset?.appInstanceId
             || new URLSearchParams(window.location.hash.slice(1)).get('ai2apps-instance')
+            || (window.AI2APPS_MOBILE_SURFACE&&window.location.pathname.startsWith('/mobile/app-resource/')?window.location.pathname.split('/')[4]:'')
             || '';
+    }
+
+    function mobileResultURL(task, raw) {
+        const url = new URL(raw);
+        if(url.protocol!=='https:' || url.username || url.password) throw new Error('Invalid result URL');
+        const items=[...(task.result?.items||[]),...(task.result?.articles||[])];
+        if(!items.some(item=>item.url===url.href)) throw new Error('Result URL was not observed by this Task');
+        return url;
+    }
+
+    function showMobileResult(url) {
+        const locale=(document.documentElement.lang||'en').split('-')[0];
+        const labels={
+            zh:['打开搜索结果','在小红书 App 打开','网页打开（新标签页）','关闭','请确认系统的 App 打开提示；未安装 App 时可选择网页入口。'],
+            en:['Open search result','Open in Xiaohongshu App','Open webpage in new tab','Close','Confirm the system App prompt. If the App is unavailable, use the webpage link.'],
+            ja:['検索結果を開く','小紅書 Appで開く','新しいタブで開く','閉じる','システムの確認画面で App を開いてください。利用できない場合はウェブをご利用ください。'],
+            ko:['검색 결과 열기','샤오홍슈 앱에서 열기','새 탭에서 웹페이지 열기','닫기','시스템 앱 열기 요청을 확인하세요. 앱이 없으면 웹페이지를 이용하세요.'],
+            fr:['Ouvrir le résultat','Ouvrir dans Xiaohongshu','Ouvrir dans un nouvel onglet','Fermer',"Confirmez l’ouverture de l’application. Sinon, utilisez le lien web."],
+            es:['Abrir resultado','Abrir en Xiaohongshu','Abrir en una pestaña nueva','Cerrar','Confirma la apertura de la app. Si no está disponible, usa el enlace web.'],
+            pt:['Abrir resultado','Abrir no Xiaohongshu','Abrir em nova aba','Fechar','Confirme a abertura do app. Se indisponível, use o link da página.'],
+            ru:['Открыть результат','Открыть в Xiaohongshu','Открыть в новой вкладке','Закрыть','Подтвердите открытие приложения. Если оно недоступно, используйте веб-ссылку.']
+        };
+        const [heading,appText,webText,closeText,hintText]=labels[locale]||labels.en;
+        const targets=mobileResultTargets(url);
+        const dialog=document.createElement('dialog');
+        dialog.style.cssText='box-sizing:border-box;width:calc(100vw - 40px);max-width:460px;max-height:calc(100dvh - 48px);overflow:auto;border:1px solid #ddd;border-radius:20px;padding:24px;color:#292524;background:#fff';
+        const title=document.createElement('h2');title.textContent=heading;title.style.cssText='font-size:20px;line-height:1.35;margin:0 0 10px';
+        const site=document.createElement('p');site.textContent=url.hostname;site.style.cssText='font-size:14px;color:#78716c;margin:0 0 20px;overflow-wrap:anywhere';
+        const actions=document.createElement('div');actions.style.cssText='display:grid;gap:12px';
+        const makeLink=(text,href,primary)=>{
+            const link=document.createElement('a');link.href=href;link.target='_blank';link.rel='noopener noreferrer';link.textContent=text;
+            link.style.cssText='box-sizing:border-box;display:block;width:100%;padding:14px 16px;min-height:48px;border:1px solid #d6d3d1;border-radius:12px;text-align:center;text-decoration:none;font-size:16px;line-height:1.4;'+(primary?'background:#171717;color:#fff':'background:#fff;color:#292524');
+            // Native user-activated links preserve Safari's App confirmation
+            // and open a new tab without an about:blank navigation race.
+            return link;
+        };
+        dialog.append(title,site);
+        if(targets.app){
+            actions.append(makeLink(appText,targets.app,true));
+            const hint=document.createElement('p');hint.textContent=hintText;hint.style.cssText='font-size:13px;line-height:1.5;color:#78716c;margin:0 0 18px';dialog.append(hint);
+        }
+        actions.append(makeLink(webText,targets.web,!targets.app));
+        const button=document.createElement('button');button.textContent=closeText;button.onclick=()=>dialog.close();button.style.cssText='font:inherit;min-height:44px;border:0;background:transparent;color:#78716c;padding:12px;margin-top:6px';actions.append(button);
+        dialog.addEventListener('close',()=>dialog.remove(),{once:true});
+        dialog.append(actions);document.body.append(dialog);dialog.showModal();
+        return dialog;
+    }
+
+    function mobileResultTargets(url) {
+        const web=new URL(url.href);
+        const note=/^\/(?:explore|search_result)\/([a-f0-9]{24})\/?$/i.exec(web.pathname);
+        if(/^(www\.)?(xiaohongshu|rednote)\.com$/.test(web.hostname)&&note){
+            web.pathname='/explore/'+note[1];
+            const app=new URL('xhsdiscover://item/'+note[1]);
+            for(const key of ['xsec_token','xsec_source'])if(web.searchParams.has(key))app.searchParams.set(key,web.searchParams.get(key));
+            return {web:web.href,app:app.href};
+        }
+        return {web:web.href,app:null};
     }
 
     function normalizedLocale(value) {
@@ -62,7 +121,12 @@
 
     async function payload(response) {
         const value = await response.json().catch(() => null);
-        if (!response.ok) throw new Error(value?.error?.message || value?.detail?.message || value?.detail || `Request failed (${response.status})`);
+        if (!response.ok) {
+            // Include only the path, never query parameters or credentials.
+            let route = '';
+            try { if (response.url) route = ' [' + new URL(response.url, location.origin).pathname + ']'; } catch (_) {}
+            throw new Error(`HTTP ${response.status}${route}: ` + (value?.error?.message || value?.detail?.message || value?.detail || 'Request failed'));
+        }
         return value;
     }
 
@@ -131,6 +195,7 @@
         '.ra-package-mini-app-frame',
         '.vs-package-mini-app-frame',
         '.is-package-mini-app-frame',
+        '.aib-package-mini-app-frame',
     ].join(',');
     function packageFrameForSource(source) {
         return [...document.querySelectorAll(PACKAGE_FRAME_SELECTORS)]
@@ -156,7 +221,7 @@
         'media.video_subtitles', 'media.video_audio_translation',
         'audio.speaker_voice_replacement', 'media.video_speaker_voice_replacement']);
     const audioGenerationCapabilities = new Set(['audio.music_generation', 'audio.sound_effects_generation', 'audio.song_generation']);
-    const setupCapabilities = new Set([...mediaCapabilities, ...audioGenerationCapabilities, 'audio.voice_clone']);
+    const setupCapabilities = new Set([...mediaCapabilities, ...audioGenerationCapabilities, 'audio.voice_clone', 'image.frozen_time.da', 'image.frozen_time.vggt']);
     const progressCapabilities = new Set([
         'video.avatar_generation',
         'media.video_subtitles',
@@ -179,13 +244,17 @@
         let busy = false;
         let avatarJobsState = "";
         const downloads = new Set();
+        const mobileDialogs = new Set();
         const progressSources = new Set();
         let audioRecorder = null;
         let audioGenerationAbort = null;
+        let webPollTimer = null;
         const abort = new AbortController();
         const active = () => !closed && frame.isConnected && frame.src === src && frame.contentWindow === source;
         const close = () => {
             closed = true; abort.abort(); audioGenerationAbort?.abort();
+            clearTimeout(webPollTimer);
+            mobileDialogs.forEach(dialog=>dialog.remove());mobileDialogs.clear();
             audioRecorder?.dispose();
             progressSources.forEach(source => source.close()); progressSources.clear();
             channel.port1.close(); observer.disconnect(); localeObserver.disconnect();
@@ -202,6 +271,58 @@
         frame.addEventListener('load', revoke);
         channels.set(frame, close);
         const base = `/v1/platform/studios/${encodeURIComponent(binding.studioId)}/mini-app-mounts/${encodeURIComponent(binding.mountId)}`;
+        const webTasks = new Set();
+        let webEvents = null;
+        const webTaskRefresh = new Map();
+        const webTaskVersions = new Map();
+        const watchWebTask = taskId => {
+            if (!active()) return Promise.resolve();
+            const current = webTaskRefresh.get(taskId);
+            if (current) { current.again = true; return current.promise; }
+            const refresh = {again: false};
+            refresh.promise = (async () => {
+                do {
+                    refresh.again = false;
+                    const task = await payload(await fetch(`${base}/web-agent/tasks/${encodeURIComponent(taskId)}`, {
+                        credentials:'same-origin',cache:'no-store',signal:abort.signal,
+                    }));
+                    const version = JSON.stringify([task.status,task.message,task.result,task.failure,
+                        task.status_label,task.assistance_kind,task.browser_context?.cleanup]);
+                    if(active() && webTaskVersions.get(taskId)!==version) {
+                        webTaskVersions.set(taskId,version);
+                        channel.port1.postMessage({type:'ai2apps:web-agent-task',task});
+                    }
+                    if(['completed','failed','cancelled'].includes(task.status)) webTasks.delete(taskId);
+                } while(active() && refresh.again);
+            })().finally(()=>webTaskRefresh.delete(taskId));
+            webTaskRefresh.set(taskId,refresh);
+            return refresh.promise;
+        };
+        const startWebPolling = () => {
+            if(webPollTimer || !active()) return;
+            webPollTimer = setTimeout(async () => {
+                webPollTimer = null;
+                await Promise.allSettled([...webTasks].map(id=>watchWebTask(id)));
+                if(active() && webTasks.size) startWebPolling();
+            }, 3000);
+        };
+        const startWebEvents = () => {
+            // Mobile proxies and suspended phone tabs can lose SSE updates.
+            // Refresh tracked tasks through the authenticated bridge as well.
+            startWebPolling();
+            if(webEvents) return;
+            webEvents = new EventSource('/v1/platform/browser-workspace/events',{withCredentials:true});
+            progressSources.add(webEvents);
+            webEvents.addEventListener('browser.workspace.snapshot',()=>{
+                for(const id of webTasks) void watchWebTask(id).catch(()=>{});
+            });
+            webEvents.addEventListener('browser.workspace.changed',event=>{
+                try { const id=JSON.parse(event.data)?.payload?.task?.id;
+                    if(webTasks.has(id)) void watchWebTask(id).catch(()=>{});
+                } catch (_) {}
+            });
+            webEvents.onopen=()=>{for(const id of webTasks)void watchWebTask(id).catch(()=>{});};
+        };
         const storageKey = `ai2apps.studio-draft.v1:${binding.owner}:${binding.provider}:${binding.resource}`;
         channel.port1.onmessage = async message => {
             const request = message.data;
@@ -223,7 +344,90 @@
                     credentials: 'same-origin', cache: 'no-store', signal: abort.signal,
                 }));
                 if (!active()) return;
-                if (request.operation === 'probe') reply({value: probe});
+                if (request.operation === 'asset.pick') {
+                    if (!['image/png,image/jpeg,image/webp','image/*','audio/*','video/*'].includes(request.accept)) throw new Error('Invalid asset types');
+                    reply({value: await window.AI2AppsMobileStudio.pickAsset(frame, {accept:request.accept,signal:abort.signal})});
+                }
+                else if (request.operation === 'probe') reply({value: probe});
+                else if (request.operation === 'web-agent.startup') {
+                    if(binding.studioId !== 'ai2apps.ai-browser') throw new Error('Not a Web-Agent Mini-App');
+                    // Independent, read-only startup data share one mount probe.
+                    // Custom sources also enforce their actor/mount scope at the API.
+                    const [profiles, sources] = await Promise.all([
+                        payload(await fetch('/v1/platform/client/browser-profiles', {
+                            credentials:'same-origin',cache:'no-store',signal:abort.signal,
+                        })),
+                        payload(await fetch(`${base}/web-agent/custom-sources`, {
+                            credentials:'same-origin',cache:'no-store',signal:abort.signal,
+                        })),
+                    ]);
+                    reply({value:{profiles:profiles.map(({key,name,is_default})=>({key,name,is_default})),sources:sources.sources}});
+                }
+                else if (request.operation === 'web-agent.profiles') {
+                    if(binding.studioId !== 'ai2apps.ai-browser') throw new Error('Not a Web-Agent Mini-App');
+                    const profiles = await payload(await fetch('/v1/platform/client/browser-profiles', {
+                        credentials:'same-origin',cache:'no-store',signal:abort.signal,
+                    }));
+                    reply({value:profiles.map(({key,name,is_default})=>({key,name,is_default}))});
+                }
+                else if(request.operation==='web-agent.search-config') {
+                    if(binding.studioId !== 'ai2apps.ai-browser')throw new Error('Not a Web-Agent Mini-App');
+                    reply({value:await payload(await fetch(`${base}/web-agent/search-config`,{method:request.config?'PUT':'GET',credentials:'same-origin',signal:abort.signal,headers:{'Content-Type':'application/json'},...(request.config?{body:JSON.stringify(request.config)}:{})}))});
+                }
+                else if(request.operation==='web-agent.custom-sources') {
+                    if(binding.studioId !== 'ai2apps.ai-browser')throw new Error('Not a Web-Agent Mini-App');
+                    const suffix=request.sourceId?'/'+encodeURIComponent(request.sourceId):'';
+                    reply({value:await payload(await fetch(`${base}/web-agent/custom-sources${suffix}`,{
+                        method:request.sourceId?'DELETE':request.taskId?'POST':'GET',credentials:'same-origin',
+                        cache:'no-store',signal:abort.signal,headers:{'Content-Type':'application/json'},
+                        ...(request.taskId?{body:JSON.stringify({task_id:request.taskId})}:{})}))});
+                }
+                else if(request.operation==='web-agent.delete-shopping-history') {
+                    if(binding.studioId !== 'ai2apps.ai-browser')throw new Error('Not a Web-Agent Mini-App');
+                    reply({value:await payload(await fetch(`${base}/web-agent/delete-shopping-history`,{method:'POST',credentials:'same-origin',signal:abort.signal,headers:{'Content-Type':'application/json'},body:JSON.stringify({confirmation:request.confirmation})}))});
+                }
+                else if(request.operation==='web-agent.product-images') {
+                    if(binding.studioId !== 'ai2apps.ai-browser')throw new Error('Not a Web-Agent Mini-App');
+                    reply({value:await payload(await fetch(`${base}/web-agent/product-images`,{method:'POST',credentials:'same-origin',signal:abort.signal,headers:{'Content-Type':'application/json'},body:JSON.stringify({task_ids:request.taskIds})}))});
+                }
+                else if(request.operation==='web-agent.retained-tasks') {
+                    if(binding.studioId !== 'ai2apps.ai-browser')throw new Error('Not a Web-Agent Mini-App');
+                    reply({value:await payload(await fetch(`${base}/web-agent/retained-tasks`,{credentials:'same-origin',cache:'no-store',signal:abort.signal}))});
+                }
+                else if (['web-agent.submit','web-agent.task','web-agent.watch','web-agent.pages','web-agent.open-result'].includes(request.operation)) {
+                    if(binding.studioId !== 'ai2apps.ai-browser') throw new Error('Not a Web-Agent Mini-App');
+                    if(request.operation==='web-agent.open-result') {
+                        if(window.AI2APPS_MOBILE_SURFACE || frame.closest('.sm-mobile,.aib-mobile')) {
+                            const task=await payload(await fetch(`${base}/web-agent/tasks/${encodeURIComponent(request.taskId)}`,{credentials:'same-origin',cache:'no-store',signal:abort.signal}));
+                            const url=mobileResultURL(task,request.url);
+                            const dialog=showMobileResult(url);mobileDialogs.add(dialog);
+                            dialog.addEventListener('close',()=>mobileDialogs.delete(dialog),{once:true});
+                            reply({value:{opened_on:'mobile',url:url.href}});
+                            return;
+                        }
+                        reply({value:await payload(await fetch(`${base}/web-agent/tasks/${encodeURIComponent(request.taskId)}/open-result`,{method:'POST',credentials:'same-origin',signal:abort.signal,headers:{'Content-Type':'application/json'},body:JSON.stringify({url:request.url})}))});
+                    } else if(request.operation==='web-agent.pages') {
+                        if(!['list','focus','close'].includes(request.action))throw new Error('Invalid page action');
+                        reply({value:await payload(await fetch(`${base}/web-agent/tasks/${encodeURIComponent(request.taskId)}/pages/${request.action}`,{method:'POST',credentials:'same-origin',signal:abort.signal}))});
+                    } else if(request.operation==='web-agent.submit') {
+                        const task = await payload(await fetch(`${base}/web-agent/tasks`, {
+                            method:'POST',credentials:'same-origin',signal:abort.signal,
+                            headers:{'Content-Type':'application/json'},
+                            body:JSON.stringify({capability:request.capability,parameters:request.parameters||{},
+                                profile:request.profile||'default',request_id:request.requestId,retain_pages:request.retainPages===true,
+                                ...(request.batchId?{batch_id:request.batchId,batch_size:request.batchSize}: {})}),
+                        }));
+                        webTasks.add(task.id);startWebEvents();reply({value:task});
+                        window.dispatchEvent(new CustomEvent('ai2apps:web-agent-submitted',{detail:{task}}));
+                        void watchWebTask(task.id).catch(()=>{});
+                    } else {
+                        const task=await payload(await fetch(`${base}/web-agent/tasks/${encodeURIComponent(request.taskId)}`, {
+                            credentials:'same-origin',cache:'no-store',signal:abort.signal,
+                        }));
+                        if(request.operation==='web-agent.watch'){webTasks.add(task.id);startWebEvents();}
+                        reply({value:task});
+                    }
+                }
                 else if (request.operation === 'audio-generation.models' || request.operation === 'audio-generation.generate') {
                     if (binding.studioId !== 'ai2apps.readaloud' || !audioGenerationCapabilities.has(request.capability)
                         || !probe.items?.some(item => item.capability === request.capability)) throw new Error('Capability is not allowed');
@@ -277,6 +481,68 @@
                         if (!audioRecorder) throw new Error('recording_empty');
                         reply({value: await audioRecorder.stop()});
                     } else { audioRecorder?.dispose(); audioRecorder = null; reply({value:{cancelled:true}}); }
+                }
+                else if (request.operation.startsWith('frozen.')) {
+                    if (binding.studioId !== 'ai2apps.imagine-studio' || binding.miniAppId !== 'ai2apps.imagine.frozen-time'
+                        || !probe.items?.some(item => item.capability === 'image.frozen_time.vggt')) throw new Error('Capability is not allowed');
+                    const headers = {'X-AI2Apps-App-Instance': appInstanceId()};
+                    const root = '/v1/platform/imagine-studio';
+                    if (request.operation === 'frozen.models') reply({value: await payload(await fetch(`${root}/frozen-time/models`, {credentials:'same-origin', headers, signal:abort.signal}))});
+                    else if (request.operation === 'frozen.latest') {
+                        const history=await payload(await fetch(`${root}/runs`,{credentials:'same-origin',headers,signal:abort.signal}));
+                        reply({value:history.items?.find(item=>item.miniAppId===binding.miniAppId&&item.status==='succeeded')||null});
+                    }
+                    else if (request.operation === 'frozen.input.read') reply({value: await readAvatarInput({...request, kind:request.kind==='audio'?'audio':'image'}, abort.signal)});
+                    else if (request.operation === 'frozen.preview') {
+                        if (!(request.image instanceof Blob) || !request.image.size || request.image.size>20*1024*1024) throw new Error('Image exceeds 20 MiB');
+                        const body = new FormData();body.append('image',request.image,request.image.name||'image.png');
+                        for (const key of ['depth','output','long_edge','trajectory']) body.append(key,String(request.options?.[key]??''));
+                        body.append('reference_speedup',String(request.options?.reference_speedup??true));
+                        reply({value:await payload(await fetch(`${root}/frozen-time/mounts/${encodeURIComponent(binding.mountId)}/previews`,{method:'POST',credentials:'same-origin',headers,body,signal:abort.signal}))});
+                    } else if (['frozen.preview.status','frozen.preview.video','frozen.preview.cancel'].includes(request.operation)) {
+                        if (!/^[a-f0-9]{32}$/.test(request.previewId||'')) throw new Error('Invalid preview');
+                        const response = await fetch(`${root}/frozen-time/previews/${request.previewId}${request.operation==='frozen.preview.video'?'/video':''}`,{method:request.operation==='frozen.preview.cancel'?'DELETE':'GET',credentials:'same-origin',headers,signal:abort.signal});
+                        if(request.operation==='frozen.preview.video') {if(!response.ok)throw new Error('Preview unavailable');reply({value:await response.blob()});}
+                        else reply({value:await payload(response)});
+                    }
+                    else if (request.operation === 'frozen.save-live-photo') {
+                        if (!/^strun_[a-zA-Z0-9_-]+$/.test(request.runId||''))throw new Error('Invalid Run');
+                        reply({value:await payload(await fetch(`${root}/frozen-time/mounts/${encodeURIComponent(binding.mountId)}/runs/${encodeURIComponent(request.runId)}/save-live-photo`,{method:'POST',credentials:'same-origin',headers,signal:abort.signal}))});
+                    }
+                    else if (request.operation === 'frozen.convert') {
+                        if (!/^strun_[a-zA-Z0-9_-]+$/.test(request.runId||''))throw new Error('Invalid Run');
+                        const body=new FormData();body.append('output',request.output||'');
+                        if (request.audio != null) {
+                            if (request.output!=='mp4'||!(request.audio instanceof Blob)||!request.audio.size||request.audio.size>100*1024*1024||!request.audio.type.startsWith('audio/'))throw new Error('Invalid MP4 soundtrack');
+                            body.append('audio',request.audio,request.audio.name||'soundtrack');
+                        }
+                        const result=await payload(await fetch(`${root}/frozen-time/mounts/${encodeURIComponent(binding.mountId)}/runs/${encodeURIComponent(request.runId)}/convert`,{method:'POST',credentials:'same-origin',headers,body,signal:abort.signal}));
+                        window.dispatchEvent(new CustomEvent('ai2apps:studio-output',{detail:{studioId:binding.studioId,miniAppId:binding.miniAppId,runId:result.id}}));
+                        reply({value:result});
+                    }
+                    else if (request.operation === 'frozen.run') {
+                        if (!/^[a-f0-9]{32}$/.test(request.previewId||'')) throw new Error('Preview the camera movement first');
+                        if (request.audio != null && (request.options?.output!=='mp4'||!(request.audio instanceof Blob)||!request.audio.size||request.audio.size>100*1024*1024||!request.audio.type.startsWith('audio/')))throw new Error('Invalid MP4 soundtrack');
+                        const run = await payload(await fetch(`${root}/frozen-time/mounts/${encodeURIComponent(binding.mountId)}/runs`, {method:'POST', credentials:'same-origin', headers, signal:abort.signal}));
+                        const body = new FormData(); body.append('preview_id',request.previewId);
+                        for (const key of ['depth','output','long_edge','seed','trajectory']) body.append(key, String(request.options?.[key] ?? ''));
+                        body.append('reference_speedup',String(request.options?.reference_speedup??true));
+                        if (request.audio != null) {
+                            if (request.options?.output!=='mp4'||!(request.audio instanceof Blob)||!request.audio.size||request.audio.size>100*1024*1024||!request.audio.type.startsWith('audio/'))throw new Error('Invalid MP4 soundtrack');
+                            body.append('audio',request.audio,request.audio.name||'soundtrack');
+                        }
+                        const result = await payload(await fetch(`${root}/runs/${encodeURIComponent(run.id)}/frozen-time`, {method:'POST', credentials:'same-origin', headers, body, signal:abort.signal}));
+                        window.dispatchEvent(new CustomEvent('ai2apps:studio-output', {detail:{studioId:binding.studioId, miniAppId:binding.miniAppId, runId:result.id}}));
+                        reply({value:result});
+                    } else if (request.operation === 'frozen.status' || request.operation === 'frozen.cancel') {
+                        if (!/^strun_[a-zA-Z0-9_-]+$/.test(request.runId || '')) throw new Error('Invalid Run');
+                        if (request.operation === 'frozen.cancel') await payload(await fetch(`${root}/runs/${encodeURIComponent(request.runId)}`, {credentials:'same-origin',headers,signal:abort.signal}));
+                        const result = await payload(await fetch(`${root}/runs/${encodeURIComponent(request.runId)}`, {method:request.operation === 'frozen.cancel'?'PATCH':'GET', credentials:'same-origin',
+                            headers:{...headers,...(request.operation==='frozen.cancel'?{'Content-Type':'application/json'}:{})},
+                            ...(request.operation==='frozen.cancel'?{body:JSON.stringify({status:'cancelled',detail:'Cancelled'})}:{}), signal:abort.signal}));
+                        if (['succeeded','failed','cancelled'].includes(result.status)) window.dispatchEvent(new CustomEvent('ai2apps:studio-output', {detail:{studioId:binding.studioId,miniAppId:binding.miniAppId,runId:result.id}}));
+                        reply({value:result});
+                    } else throw new Error('Unknown Frozen Time operation');
                 }
                 else if (request.operation === 'avatar.input.read') {
                     if (binding.studioId !== 'ai2apps.video-studio' || !probe.items?.some(item => item.capability === 'video.avatar_generation')) throw new Error('Capability is not allowed');
@@ -369,13 +635,33 @@
                         reply({value: await payload(await fetch(`${base}/subtitle-refinement`, {method:'POST', credentials:'same-origin', signal:abort.signal, headers:{'Content-Type':'application/json'}, body}))});
                     }
                 }
-                else if (request.operation === 'draft.get') reply({value: localStorage.getItem(storageKey)});
-                else if (request.operation === 'draft.remove') { localStorage.removeItem(storageKey); reply({value: null}); }
+                else if (request.operation === 'draft.get') {
+                    const saved = await payload(await fetch(`${base}/draft`, {credentials:'same-origin', cache:'no-store', signal:abort.signal}));
+                    let value = saved.value;
+                    // Migrate this exact App/Mini-App's old browser draft only if
+                    // no durable draft exists. Keep the old copy as a backup.
+                    const legacy = binding.studioId === 'ai2apps.ai-browser' ? null : localStorage.getItem(storageKey);
+                    if (value == null && legacy) {
+                        const draft = JSON.parse(legacy);
+                        if (draft?.schema === 'ai2apps.mini-app-draft/v1' && draft.miniApp === binding.miniAppId) {
+                            await payload(await fetch(`${base}/draft`, {method:'PUT', credentials:'same-origin', signal:abort.signal,
+                                headers:{'Content-Type':'application/json'}, body:JSON.stringify({value:legacy})}));
+                            value = legacy;
+                        }
+                    }
+                    reply({value});
+                }
+                else if (request.operation === 'draft.remove') {
+                    await payload(await fetch(`${base}/draft`, {method:'DELETE', credentials:'same-origin', signal:abort.signal}));
+                    localStorage.removeItem(storageKey); reply({value: null});
+                }
                 else if (request.operation === 'draft.set') {
                     if (typeof request.value !== 'string' || new TextEncoder().encode(request.value).length > 4 * 1024 * 1024) throw new Error('Draft exceeds 4 MiB');
                     const draft = JSON.parse(request.value);
                     if (draft?.schema !== 'ai2apps.mini-app-draft/v1' || draft.miniApp !== binding.miniAppId) throw new Error('Invalid Mini-App draft');
-                    localStorage.setItem(storageKey, request.value); reply({value: null});
+                    await payload(await fetch(`${base}/draft`, {method:'PUT', credentials:'same-origin', signal:abort.signal,
+                        headers:{'Content-Type':'application/json'}, body:JSON.stringify({value:request.value})}));
+                    reply({value: null});
                 } else if (request.operation === 'invoke') {
                     if (!mediaCapabilities.has(request.capability) || !probe.items?.some(item => item.capability === request.capability)) throw new Error('Capability is not allowed');
                     if (!Array.isArray(request.fields) || request.fields.length > 24) throw new Error('Invalid media fields');
@@ -477,7 +763,7 @@
                 }
             }
         };
-        source.postMessage({type: 'ai2apps:studio-connected', version: 1, locale: document.documentElement.lang || 'en'}, '*', [channel.port2]);
+        source.postMessage({type: 'ai2apps:studio-connected', version: 1, mobile:!!window.AI2APPS_MOBILE_SURFACE||!!frame.closest('.sm-mobile,.aib-mobile'), locale: document.documentElement.lang || 'en'}, '*', [channel.port2]);
     });
 
     window.AI2AppsStudioMiniApps = Object.freeze({
@@ -531,6 +817,9 @@
             return Object.fromEntries((catalog?.items || []).map(probe => {
                 const capabilities = Array.isArray(probe?.items) ? probe.items : [];
                 const required = capabilities.filter(value => value?.required !== false);
+                if (probe.miniAppId === 'ai2apps.imagine.frozen-time') {
+                    return [probe.miniAppId, capabilities.some(value => value?.implemented === true && value?.ready === true)];
+                }
                 return [probe.miniAppId, required.length > 0 && required.every(value => value?.implemented === true && value?.ready === true)];
             }));
         },

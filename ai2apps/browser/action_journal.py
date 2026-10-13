@@ -54,6 +54,20 @@ class BrowserActionJournal:
                 raise ValueError('Uncertain browser action requires explicit resolution')
             c.execute("UPDATE browser_action_executions SET state='completed',response_json=?,finished_at=? WHERE interaction_id=?", (encoded, time.time(), interaction_id))
 
+    def report_failure(self, interaction_id, response):
+        """Commit a failure observation, never assume success or re-admit the action."""
+        if response.get('outcome') != 'failed' or response.get('evidence', {}).get('action_outcome_unknown') is not True:
+            raise ValueError('Unknown action requires a failure observation')
+        encoded=json.dumps(response,ensure_ascii=False,separators=(',', ':'))
+        with self.database.transaction(write=True) as c:
+            row=c.execute('SELECT state,response_json FROM browser_action_executions WHERE interaction_id=?',(interaction_id,)).fetchone()
+            if row is None:raise KeyError(interaction_id)
+            if row['state']=='completed':
+                return json.loads(row['response_json'])
+            if row['state'] not in ('started','uncertain'):raise ValueError('Invalid action state')
+            c.execute("UPDATE browser_action_executions SET state='completed',response_json=?,finished_at=? WHERE interaction_id=?",(encoded,time.time(),interaction_id))
+        return response
+
     def lookup(self, interaction_id):
         with self.database.transaction() as c:
             row = c.execute("SELECT * FROM browser_action_executions WHERE interaction_id=?", (interaction_id,)).fetchone()

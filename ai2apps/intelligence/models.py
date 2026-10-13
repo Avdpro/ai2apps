@@ -120,11 +120,22 @@ class SourceInput(BaseModel):
     article_agent_generation_id: str = Field(default="", max_length=128)
     enabled: bool = True
     social_interval_hours: Literal[1, 3, 6, 12, 24] = 6
+    xiaohongshu_sort: Literal['latest', 'general'] = 'latest'
+    x_sort: Literal['latest', 'top'] = 'latest'
+    x_mode: Literal['', 'accounts', 'search', 'lists'] = ''
+    x_values: list[str] = Field(default_factory=list, max_length=20)
 
     @model_validator(mode='after')
     def social_source(self):
-        from .social import youtube_url, weibo_url
-        target=youtube_url(self.url) or weibo_url(self.url)
+        from .social import youtube_url, weibo_url, x_targets, xiaohongshu_search_url
+        if self.x_mode:
+            self.x_values, urls = x_targets(self.x_mode, self.x_values, self.x_sort)
+            self.url=urls[0]
+            self.kind='social'
+            self.list_agent_generation_id=''
+            self.article_agent_generation_id=''
+            return self
+        target=youtube_url(self.url) or weibo_url(self.url) or xiaohongshu_search_url(self.url)
         if target:
             self.url=target
             self.kind='social'
@@ -204,7 +215,19 @@ class ArticleDraft(BaseModel):
     summary: str = Field(min_length=1, max_length=800)
     body: str = Field(min_length=1, max_length=12000)
     evidence_ids: list[int] = Field(min_length=1, max_length=20)
+    primary_evidence_id: int | None = Field(default=None, ge=1)
     update_article_id: str | None = None
+
+
+class PlannedEvent(BaseModel):
+    title: str = Field(min_length=1, max_length=120)
+    section_id: str | None = None
+    evidence_ids: list[int] = Field(min_length=1, max_length=20)
+    update_article_id: str | None = None
+
+
+class EventPlan(BaseModel):
+    events: list[PlannedEvent] = Field(max_length=12)
 
 
 class Digest(BaseModel):

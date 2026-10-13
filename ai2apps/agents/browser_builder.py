@@ -141,7 +141,7 @@ def browser_builder_executor(context: AgentExecutionContext):
                 )
             return FailAction(
                 "browser_agent_step_failed",
-                "Browser Agent followed a failed transition",
+                str(evidence[-1].get('evidence',{}).get('message') or evidence[-1].get('evidence',{}).get('reason') or 'Browser Agent followed a failed transition') if evidence else 'Browser Agent followed a failed transition',
             )
         step = by_id.get(current)
         if step is None:
@@ -194,11 +194,22 @@ def browser_builder_executor(context: AgentExecutionContext):
                     for key in ("agent_id", "generation_id", "capability")}],
                 "draft_id": None, "generation_id": call["generation_id"],
                 "call_browser_context":step.get("browser_context") or parameters.get("call_browser_context")}
+            call_task_id = ''
+            if context.task_tree is not None and parameters.get('execution_task_id'):
+                import hashlib
+                call_task_id = 'call:'+context.run.id+':'+hashlib.sha256(f'{current}@{sequence}'.encode()).hexdigest()
+                context.task_tree.create(parameters['owner_user_id'], call_task_id,
+                    call['capability'], parent_id=parameters.get('call_task_id') or parameters['execution_task_id'], kind='capability_call')
+                child_parameters['call_task_id'] = call_task_id
             action = browser_builder_executor(replace(context, run=replace(context.run,
                 input={"parameters": child_parameters})))
             if not isinstance(action, (CompleteAction, FailAction)):
                 return action
             outcome = "success" if isinstance(action, CompleteAction) else "failed"
+            if call_task_id:
+                context.task_tree.finish(parameters['owner_user_id'], call_task_id,
+                    'completed' if outcome == 'success' else 'failed',
+                    {'capability':call['capability'], 'outcome':outcome})
             value = action.output.get("result", {}) if isinstance(action, CompleteAction) else {
                 "error": action.code, "message": action.message}
             evidence.append({"step_id": current, "outcome": outcome, "evidence": {
@@ -537,6 +548,9 @@ def install_browser_builder_agent(
                     "preview": {"type": "boolean"},
                     "execution_owner": {"type": "string", "enum": ["local", "frontend"]},
                     "browser_task_id": {"type": ["string", "null"]},
+                    "root_task_id": {"type": "string"},
+                    "parent_task_id": {"type": "string"},
+                    "execution_task_id": {"type": "string"},
                     "browser_context": {"type": "object"},
                     "invocation_input": {"type": "object"},
                     "caller_app_id": {"type": ["string", "null"]},
@@ -544,6 +558,7 @@ def install_browser_builder_agent(
                     "owner_user_id": {"type": ["string", "null"]},
                     "installation_id": {"type": ["string", "null"]},
                     "capability_name": {"type": ["string", "null"]},
+                    "model_profile": {"type": "string", "enum": ["normal", "privacy"]},
                     "ai_model_routes": {
                         "type": "object",
                         "additionalProperties": {"type": ["string", "null"]},

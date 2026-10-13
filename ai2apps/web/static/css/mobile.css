@@ -131,3 +131,9 @@ button { -webkit-tap-highlight-color: transparent; }
 /* A failed authorization must not retain ready-state cards. */
 .mobile-shell [hidden] { display: none !important; }
 .mobile-reauthorize { display: block; padding: 14px; border-radius: 14px; background: #171717; color: white; text-align: center; text-decoration: none; }
+
+.mobile-todo-surface{overflow:hidden;background:#f5f5f3}
+.mobile-todo-placeholder{position:absolute;inset:0;z-index:1;background:#f5f5f3;padding:20px 18px}
+.mobile-todo-placeholder[hidden]{display:none}
+.mobile-todo-placeholder>button{width:44px;height:44px;background:white;border:1px solid #dededb;border-radius:12px;font-size:28px;color:#202020}
+.mobile-todo-skeleton{margin-top:28px;height:240px;border-radius:12px;background:linear-gradient(#e5e5e2 0 16px,transparent 16px 36px,#fff 36px 84px,transparent 84px 108px,#e5e5e2 108px 124px,transparent 124px 144px,#fff 144px)}

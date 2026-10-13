@@ -6,7 +6,7 @@ from ai2apps.worker_scheduler import WorkerJobScheduler
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize('multipart', [False, True])
-@pytest.mark.parametrize('operation', ['audio_speech', 'video_generation'])
+@pytest.mark.parametrize('operation', ['audio_speech', 'video_generation', 'video_upscaling'])
 @pytest.mark.parametrize('explicit,body_id', [(None,'body-id'), ('explicit-cancel-id','body-id'), (None,None)])
 async def test_worker_request_id_matches_scheduler_and_preserves_auth(monkeypatch,multipart,explicit,body_id,operation):
     tickets=[]
@@ -26,7 +26,7 @@ async def test_worker_request_id_matches_scheduler_and_preserves_auth(monkeypatc
     def handler(request):
         seen.append(request.headers['x-request-id'])
         assert request.extensions['timeout'] == {
-            'connect':15.0, 'read':14400.0 if operation=='video_generation' else 300.0,
+            'connect':15.0, 'read':14400.0 if operation in {'video_generation', 'video_upscaling'} else 300.0,
             'write':300.0, 'pool':300.0}
         assert request.headers['authorization']=='Bearer fixture'
         assert request.headers.get_list('x-request-id')==tickets
@@ -35,7 +35,21 @@ async def test_worker_request_id_matches_scheduler_and_preserves_auth(monkeypatc
         return httpx.Response(200,content=b'ok')
     monkeypatch.setattr('ai2apps.model_providers.httpx.AsyncClient',lambda **kw:original(transport=httpx.MockTransport(handler),**kw))
     body={'model':model.id,'input':'hello','idempotencyKey':body_id}
-    if multipart:result=await proxy_package_multipart(model,operation,data=body,files={},request_id=explicit)
+    files={}
+    if multipart and operation == 'video_upscaling':
+        import io
+        import av
+        import numpy as np
+        buffer=io.BytesIO()
+        with av.open(buffer, mode='w', format='matroska') as media:
+            video=media.add_stream('ffv1', rate=1)
+            video.width=video.height=16
+            video.pix_fmt='yuv420p'
+            frame=av.VideoFrame.from_ndarray(np.zeros((16,16,3),dtype=np.uint8),format='rgb24')
+            for packet in video.encode(frame):media.mux(packet)
+            for packet in video.encode():media.mux(packet)
+        files={'video':('source.mkv',buffer.getvalue(),'video/x-matroska')}
+    if multipart:result=await proxy_package_multipart(model,operation,data=body,files=files,request_id=explicit)
     else:result=await proxy_package_json(model,operation,body,request_id=explicit)
     assert result.status_code==200 and seen==tickets
     state=await scheduler.snapshot();assert state['running']==0 and state['completed']==1
