@@ -2,6 +2,8 @@
 
 ### NXR-RELEASE-2261-PREFLIGHT-20261014：修复候选门禁后顺延发布
 
+- 最终回归门禁：历史根目录 Python 首轮 11016 passed、68 skipped、74 deselected、8 failed；八个失败文件完整重放 131 passed，全部失败已闭合。核心 Python 1301 passed / 2 skipped、前端 551 + 47、Swift 77 + 2 仍适用；不是宣称第一次全量调用全绿。2260 Apple 公证 Accepted、staple/Gatekeeper 通过，但按修复后的内容顺延 2261，不发布旧候选。范围审计更新到 `docs/ai2apps-desktop-2261-scope-audit.json`。
+
 - 状态：in_progress。2260 已构建、签名并提交 Apple，但扩大历史回归发现 Frozen Time ACPF 的四条双语文本缺少 locale 映射；补齐 en/zh 后本地化与 Studio 12 项回归通过。遵守不可覆盖工件规则，2260 留作未发布候选，最终版本维持 0.1.6，Build 顺延 2261。生产仍为 2259，未发布 GH/MS 或变更 Cloud 清单。
 - 其余扩大回归失败为旧测试合同：精确手机 App 目录、数据库迁移 88–91 与新增表、Mini-App 能力接口、原生导出 Helper 授权数量、Studio 样式版本和 durable Host 草稿/DOM fixture。保留精确断言、安全检查与测试覆盖；未通过跳过测试规避失败。目录 25、存储 23、安装/安全 65、Video Studio 6 项独立复验通过。
 - 2260 原子更新烟测：临时目录内签名 2259 → 2260 替换、备份及 post-update-health-only 成功，未启动 Helper/Local/UI 或触碰已安装 App；不是目标 Mac 完整升级验收。App 717688176 → 718566708 bytes，仍为 cloud 精简 Runtime。YuE2 延期范围和 2260 范围索引继续适用；2261 最终候选须重新构建、签名、公证。
