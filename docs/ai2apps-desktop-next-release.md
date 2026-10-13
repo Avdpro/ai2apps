@@ -1,5 +1,13 @@
 # AI2Apps Desktop 下一版 Release 台账
 
+### NXR-RELEASE-2261-PUBLISHED-20261014：0.1.6 / 2261 已推送 100%
+
+- 状态：`released_pending_target_mac`。2026-10-14 01:06（北京时间）完成 Apple 公证、双源固定工件、Cloud 完整下载/Range/摘要与公证元数据预检、0% 登记和 100% 扩灰。生产摘要 `2c52921a916137d47b129092232fedba5ed987f2c5cdf9478873f22c61969894`；GET/HEAD 200、条件请求 304、无 Cookie，容器 healthy、近期错误匹配 0。
+- 冻结源码 `a3b9d2d297b45c65248b85b32da89eb8ae84127e` 已同步 GitHub main/tag `v0.1.6-build2261`；MS revision `e3a28767c053758394f457fd9533dcafa3c11af6`。DMG 269095874 bytes，SHA-256 `da3c36e6e7b0a2f28085ea5b22d954eec57194e9d97746901171ba0889416557`。2260 为未发布公证候选，不覆盖或对外发布。
+- 纳入范围以 `docs/ai2apps-desktop-2261-scope-audit.json` 为不可变构建前索引，并归档到 `docs/ai2apps-desktop-0.1.6-build2261-release-2026-10-14.json`；源码纳入不等同于所有历史实机事项已验收。YuE2 未验收改动按用户要求延期，独立 Runtime/模型/Mini-App Package 未随 Desktop 发布；Cloud Mini-App 新部署不追溯改变本候选集成验收边界。
+- 最终核心回归 1301 passed / 2 skipped；历史 Python 11016 passed / 8 failed 后所有八个失败文件完整复验 131 passed；前端 551 + 47，Swift 77 + 2。包内 1395 个 Host 文件与冻结源码一致，frpc 仅签名元数据变化；2259 → 2261 临时目录更新器及 health-only 通过。目标 Mac 完整下载/安装/启动/旧备份清理与原生后台冷启动实机验收仍待完成。
+- 本轮未重建 Dev/App-Dev/Test，未读取 Dev Cookie，未改 Cloud 应用代码。发布准备中 Cloud 被其他部署更新；镜像保护先停止，复核新 healthy 镜像和未变清单后，通过新镜像编译 CLI 完成审计发布。GitHub CI 仍因 runner 缺少 av 收集失败；PyPI 因 Desktop tag 不匹配 Python 包版本而未发布；Homebrew 工作流成功。
+
 ### NXR-RELEASE-2261-PREFLIGHT-20261014：修复候选门禁后顺延发布
 
 - 最终回归门禁：历史根目录 Python 首轮 11016 passed、68 skipped、74 deselected、8 failed；八个失败文件完整重放 131 passed，全部失败已闭合。核心 Python 1301 passed / 2 skipped、前端 551 + 47、Swift 77 + 2 仍适用；不是宣称第一次全量调用全绿。2260 Apple 公证 Accepted、staple/Gatekeeper 通过，但按修复后的内容顺延 2261，不发布旧候选。范围审计更新到 `docs/ai2apps-desktop-2261-scope-audit.json`。
@@ -5042,13 +5050,13 @@
 
 固定上游 revision `92196c8e11f7b6cf2b7493e037d8c5345c559216`；官方 Hub 客户端下载配置返回 `GatedRepoError`，当前账号访问不足。没有读取/输出 Cookie、没有签名或发布，没有填写占位 distribution ID。待获得上游权重访问后完成固定双源字节核验、完整许可证/SBOM/source lock、签名分发、客户端安装映射、真实 managed install 和 Package 发布。候选 README 明确标注不可发布状态。
 
-当前生产基线：AI2Apps `0.1.5` Build `2259`；清单 SHA-256 `9ea49e72e57215baaa63d5489394c97c5daa417661dde9784530932c2783da74`
+当前生产基线：AI2Apps `0.1.6` Build `2261`；清单 SHA-256 `2c52921a916137d47b129092232fedba5ed987f2c5cdf9478873f22c61969894`
 
 生产清单：`https://coder.ai2apps.com/updates/stable.json`
 
-基线回执：`docs/ai2apps-desktop-0.1.5-build2259-release-2026-10-09.json`
+基线回执：`docs/ai2apps-desktop-0.1.6-build2261-release-2026-10-14.json`
 
-候选 Build：尚未分配；构建时必须严格大于 `2259`
+候选 Build：尚未分配；构建时必须严格大于 `2261`
 
 ## 1. 用途
 
