@@ -78,4 +78,3 @@ def test_real_offline_venv_install_and_import(tmp_path):
     for key,path in paths.items():
         evidence=verify_installed_wheel_files(inputs/'wheels'/path.name,environment_root=environment,scheme=scheme,root_is_purelib=True,python=python)
         assert any(name.endswith(f'{key}/__init__.py') for name in evidence['checked_files'])
-

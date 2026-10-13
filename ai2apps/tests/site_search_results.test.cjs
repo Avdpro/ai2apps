@@ -1,7 +1,7 @@
 const test=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs');
 const visibility=fs.readFileSync(__dirname+'/../web/static/js/browser_dom_visibility.js','utf8');
 const script=fs.readFileSync(__dirname+'/../browser/search.py','utf8').split("SITE_SEARCH_RESULTS_SCRIPT = r'''")[1].split("'''")[0];
-function read(provider,entries=[],text='',path='/search',query=''){ 
+function read(provider,entries=[],text='',path='/search',query=''){
  const hosts={wikipedia:'zh.wikipedia.org',x:'x.com',weibo:'s.weibo.com',xiaohongshu:'www.xiaohongshu.com',youtube:'www.youtube.com',bilibili:'search.bilibili.com'};
  const links=entries.map(([title,href,hidden=false])=>({parentElement:hidden?{getAttribute:k=>k==='aria-hidden'?'true':null}:null,href,innerText:title,textContent:title,getBoundingClientRect:()=>({width:10,height:10}),closest:s=>s.includes('header')?null:{querySelector:selector=>['.searchresult','[data-testid="tweetText"]','.txt','.title','#description-text','.bili-video-card__info--tit,.title'].includes(selector)?{innerText:title}:null}}));
  return vm.runInNewContext(`${visibility};(${script})`,{URL,decodeURIComponent,location:{hostname:hosts[provider],pathname:path,href:`https://${hosts[provider]}${path}`},document:{title:'Search',body:{innerText:text},querySelectorAll:s=>s.includes('dialog')?[]:links},getComputedStyle:()=>({display:'block',visibility:'visible'})})(provider,10,query);
