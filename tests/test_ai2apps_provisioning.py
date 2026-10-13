@@ -1578,7 +1578,7 @@ def test_shared_client_stores_only_opaque_resume_metadata_and_defers_ack() -> No
     assert "/select-profile" not in script
     assert "acpf-selected-tier" in script
     assert (
-        "window.AI2AppsCapabilities = { ensure, resume, probe, acknowledge, appInstanceId, chooseProfile, runSession, createTransferMeter, formatDownloadProgress }"
+        "window.AI2AppsCapabilities = { createPrivateMiniAppProject, openMiniAppCustomization, miniAppPackageComponents, openMiniAppPackages, ensure, resume, probe, acknowledge, appInstanceId, chooseProfile, runSession, createTransferMeter, formatDownloadProgress }"
         in script
     )
 

@@ -60,6 +60,8 @@ def test_database_bootstrap_creates_current_platform_schema(tmp_path):
         )
 
     assert tables == {
+        "task_nodes",
+        "custom_search_sources",
         "app_definitions",
         "app_instances",
         "chat_collections",
@@ -298,6 +300,10 @@ def test_database_bootstrap_creates_current_platform_schema(tmp_path):
         (85, "mobile_app_access"),
         (86, "visitor_spaces"),
         (87, "shared_webagent_programs"),
+        (88, "composite_task_tree"),
+        (89, "webagent_execution_tree"),
+        (90, "pause_waiting_browser_runs"),
+        (91, "owner_custom_search_sources"),
     ]
     assert all(row[2].endswith("Z") for row in ledger)
 

@@ -1,5 +1,11 @@
 # AI2Apps Desktop 下一版 Release 台账
 
+### NXR-RELEASE-2261-PREFLIGHT-20261014：修复候选门禁后顺延发布
+
+- 状态：in_progress。2260 已构建、签名并提交 Apple，但扩大历史回归发现 Frozen Time ACPF 的四条双语文本缺少 locale 映射；补齐 en/zh 后本地化与 Studio 12 项回归通过。遵守不可覆盖工件规则，2260 留作未发布候选，最终版本维持 0.1.6，Build 顺延 2261。生产仍为 2259，未发布 GH/MS 或变更 Cloud 清单。
+- 其余扩大回归失败为旧测试合同：精确手机 App 目录、数据库迁移 88–91 与新增表、Mini-App 能力接口、原生导出 Helper 授权数量、Studio 样式版本和 durable Host 草稿/DOM fixture。保留精确断言、安全检查与测试覆盖；未通过跳过测试规避失败。目录 25、存储 23、安装/安全 65、Video Studio 6 项独立复验通过。
+- 2260 原子更新烟测：临时目录内签名 2259 → 2260 替换、备份及 post-update-health-only 成功，未启动 Helper/Local/UI 或触碰已安装 App；不是目标 Mac 完整升级验收。App 717688176 → 718566708 bytes，仍为 cloud 精简 Runtime。YuE2 延期范围和 2260 范围索引继续适用；2261 最终候选须重新构建、签名、公证。
+
 ### NXR-RELEASE-2260-PREFLIGHT-20261013：新客户端发布检查
 
 - 扩展回归同步手机目录合同：新增情报中心与 AI 浏览器已经显式声明 mobile.ready，旧目录精确集合断言遗漏两项；更新测试期望，保留 Terminal/Coder 不可见断言，未修改生产权限逻辑。

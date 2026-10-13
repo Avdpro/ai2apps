@@ -111,7 +111,7 @@ def test_video_studio_uses_first_party_surface_and_async_video_api():
     assert "/acknowledge-return" in provisioning_script
     assert "session.plan?.requirements" not in provisioning_script
     assert "resumeToken: value.resumeToken || null" in provisioning_script
-    assert "AI2AppsCapabilities = { ensure, resume, probe, acknowledge, appInstanceId, chooseProfile, runSession, createTransferMeter, formatDownloadProgress }" in provisioning_script
+    assert "AI2AppsCapabilities = { createPrivateMiniAppProject, openMiniAppCustomization, miniAppPackageComponents, openMiniAppPackages, ensure, resume, probe, acknowledge, appInstanceId, chooseProfile, runSession, createTransferMeter, formatDownloadProgress }" in provisioning_script
     assert "returnTo: `/apps/${APP_ID}`" in script
     assert "resumed.session?.intent?.draft" not in script
     assert "draft: this.provisioningDraft(action)" not in script

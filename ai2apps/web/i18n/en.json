@@ -1,4 +1,8 @@
 {
+  "acpf.配置静止时间 / Set up Frozen Time": "Set up Frozen Time",
+  "acpf.安装几何模型、Meridian 及共享 H3 8-bit 底座。Install geometry, Meridian and the shared H3 base; license confirmation required.": "Install geometry models, Meridian and the shared H3 8-bit base. License confirmation is required.",
+  "acpf.下载并配置 / Download and configure": "Download and configure",
+  "acpf.静止时间已就绪 / Frozen Time ready": "Frozen Time ready",
   "intelligence.ui.572cf45ba436": "Back",
   "intelligence.ui.38844b135cf7": "More",
   "intelligence.ui.af2154b32f94": "Topics",

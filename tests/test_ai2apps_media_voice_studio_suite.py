@@ -218,7 +218,7 @@ def test_media_voice_suite_uses_the_studio_native_visual_contract():
         template = (
             ROOT / "ai2apps/web/templates/system_apps" / template_name
         ).read_text(encoding="utf-8")
-        assert "studio_mini_apps.css') }}?v=studio-native-v2" in template
+        assert "studio_mini_apps.css') }}?v=more-mini-apps-1" in template
 
     readaloud = (
         ROOT / "ai2apps/web/templates/system_apps/readaloud.html"

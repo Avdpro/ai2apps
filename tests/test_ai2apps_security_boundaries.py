@@ -147,7 +147,9 @@ def test_managed_browser_broker_bypasses_cookie_guard_only_for_helper_auth():
     broker_routes = client_api.split(
         '@router.get("/client/managed-browser/next"', 1
     )[1].split("@router.get(\n            \"/client/browser-profile\"", 1)[0]
-    assert broker_routes.count("_require_helper_authorization(request)") == 5
+    assert "'/client/native-export/next'" in broker_routes
+    assert "'/client/native-export/{request_id}/complete'" in broker_routes
+    assert broker_routes.count("_require_helper_authorization(request)") == 7
 
 
 def test_legacy_admin_cookie_and_inference_no_auth_cannot_bypass_core_login():
