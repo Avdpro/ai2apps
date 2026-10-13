@@ -232,6 +232,8 @@ def test_mobile_catalog_is_explicit_and_excludes_desktop_only_apps(tmp_path):
         "ai2apps.imagine-studio",
         "ai2apps.readaloud",
         "ai2apps.video-studio",
+        "ai2apps.intelligence",
+        "ai2apps.ai-browser",
     }
     assert catalog["ai2apps.general-chat"]["entry_source"] == "mobile_entry"
     assert catalog["ai2apps.general-chat"]["mobile_renderer"] == "host"

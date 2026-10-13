@@ -2,6 +2,8 @@
 
 ### NXR-RELEASE-2260-PREFLIGHT-20261013：新客户端发布检查
 
+- 扩展回归同步手机目录合同：新增情报中心与 AI 浏览器已经显式声明 mobile.ready，旧目录精确集合断言遗漏两项；更新测试期望，保留 Terminal/Coder 不可见断言，未修改生产权限逻辑。
+
 - 2026-10-14：用户明确批准暂缓 YuE2 未验收改动，继续 Desktop。候选为 0.1.6 / 2260，独立目录 `/private/tmp/ai2apps-release-2260`，基于 main 12971bba；开发目录及实验保留。候选排除 YuE2 风格兼容/翻译开关/器乐模块，音频 Suite 保留已发布基线；保留 Stable Audio 已验证的旧语言声明兼容。独立模型、Runtime 和 Mini-App 不随 Desktop 自动发布。
 - 候选回归：核心 Python 1301 passed、2 skipped；AI2Apps Node 551 passed（含真实无头 Chrome Mobile 渲染），根目录 Node 47 passed；Swift 77 Testing 通过。全量历史 Python 套件仍在执行，不能宣称全量通过。前端失败为测试运行目录/原生源码环境变量、缺失 Playwright/WebCrypto/DOM fixture 与三链接验证样本；补齐环境及契约，不放宽生产代码。相关修复已同步开发目录，YuE2 排除仅在候选。
 - 范围索引 `docs/ai2apps-desktop-2260-scope-audit.json` 覆盖 593 项记录（构建前快照）；来源/验收状态与纳入边界分别保留。正式签名、Apple 公证、双源和 Cloud 生产操作尚未执行；最终目标 Mac 升级与浏览器冷启动实机仍须验收。
