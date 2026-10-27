@@ -16,6 +16,8 @@ permissions:
 
 jobs:
   build-wheels:
+    # Desktop (-build) and independent Package tags are not Python releases.
+    if: ${{ startsWith(github.event.release.tag_name, 'v') && !contains(github.event.release.tag_name, '-build') }}
     runs-on: macos-15
     strategy:
       fail-fast: false
@@ -80,6 +82,8 @@ jobs:
           if-no-files-found: error
 
   build-sdist:
+    # Desktop (-build) and independent Package tags are not Python releases.
+    if: ${{ startsWith(github.event.release.tag_name, 'v') && !contains(github.event.release.tag_name, '-build') }}
     runs-on: macos-15
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -112,6 +116,8 @@ jobs:
           if-no-files-found: error
 
   attach-to-release:
+    # Desktop (-build) and independent Package tags are not Python releases.
+    if: ${{ startsWith(github.event.release.tag_name, 'v') && !contains(github.event.release.tag_name, '-build') }}
     needs: [build-wheels, build-sdist]
     runs-on: ubuntu-latest
     permissions:
@@ -130,6 +136,8 @@ jobs:
             --repo "${{ github.repository }}" --clobber
 
   publish:
+    # Desktop (-build) and independent Package tags are not Python releases.
+    if: ${{ startsWith(github.event.release.tag_name, 'v') && !contains(github.event.release.tag_name, '-build') }}
     name: Publish distributions to PyPI
     needs: [build-wheels, build-sdist]
     runs-on: ubuntu-latest

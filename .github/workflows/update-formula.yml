@@ -9,7 +9,8 @@ permissions:
 
 jobs:
   update-formula:
-    if: ${{ !contains(github.ref_name, 'dev') && (!github.event.release.prerelease || contains(github.ref_name, 'rc')) }}
+    # Desktop (-build) and independent Package tags must never change the formula.
+    if: ${{ startsWith(github.event.release.tag_name, 'v') && !contains(github.event.release.tag_name, '-build') && !contains(github.ref_name, 'dev') && (!github.event.release.prerelease || contains(github.ref_name, 'rc')) }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
