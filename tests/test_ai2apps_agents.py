@@ -78,6 +78,7 @@ async def _wait_status(runtime, run_id, statuses, timeout=3.0):
     raise AssertionError(
         f"Run {run_id} did not reach {sorted(item.value for item in statuses)}; "
         f"current={runtime.agents.get_run(run_id).status.value}; "
+        f"error={runtime.agents.get_run(run_id).error}; "
         f"steps={[(step.kind, step.status.value) for step in runtime.agents.list_steps(run_id)]}"
     )
 
@@ -558,9 +559,10 @@ def test_per_run_budget_is_bounded_by_agent_definition(tmp_path):
         "timeout_seconds": 30,
         "max_model_tokens": 500,
     }
-    assert runtime.agent_runtime._step_budget(
-        run, runtime.agents.get_definition(run.agent_definition_id)
-    ) == 2
+    from ai2apps.agents.token_budget import step_allowance
+    from ai2apps.agents.models import AgentExecutionContext
+    context = AgentExecutionContext(runtime.agents.get_definition(run.agent_definition_id), run, [], [])
+    assert step_allowance(context) == (2, 2)
     assert before + timedelta(seconds=29) < run.deadline_at
     assert run.deadline_at <= before + timedelta(seconds=31)
 
@@ -1809,20 +1811,29 @@ async def test_general_agent_budget_continue_resumes_pending_tool_once(tmp_path)
 async def test_general_agent_preserves_rich_input_and_per_run_instructions(tmp_path):
     runtime = _runtime(tmp_path)
     session_id = _session(runtime)
+    import base64
+    import io
+    from PIL import Image
+    image = io.BytesIO()
+    Image.new("RGB", (8, 8), "blue").save(image, format="PNG")
+    image_url = "data:image/png;base64," + base64.b64encode(image.getvalue()).decode()
     rich_content = [
-        {"type": "image_url", "image_url": {"url": "data:image/png;base64,AA=="}},
+        {"type": "image_url", "image_url": {"url": image_url}},
         {"type": "text", "text": "Describe this"},
     ]
 
     async def model_provider(request):
-        assert request["messages"][0] == {
+        assert {
             "role": "system",
             "content": "Be concise",
-        }
-        assert request["messages"][-1] == {
-            "role": "user",
-            "content": rich_content,
-        }
+        } in request["messages"]
+        message = request["messages"][-1]
+        assert message["role"] == "user"
+        assert message["content"][-1] == rich_content[-1]
+        assert any(part.get("type") == "image_url" and part["image_url"]["url"].startswith("data:image/") for part in message["content"])
+        assert any("artifact_id=" in part.get("text", "") for part in message["content"])
+        assert any(runtime.workspace.artifact_path(artifact).read_bytes() == image.getvalue()
+                   for artifact in runtime.workspace.list_artifacts(session_id))
         return {
             "choices": [
                 {

@@ -452,23 +452,28 @@ def test_mobile_shell_contract_exposes_dock_launcher_and_switcher():
     assert "/v1/mobile/apps" in script
     assert "/v1/mobile/mounts" in script
     assert "/v1/mobile/session/exchange" in script
-    assert "warmFrameLimit = 2" in script
+    assert "warmFrameLimit = 4" in script
     assert "env(safe-area-inset-bottom)" in styles
     assert "/admin/static/" not in template
     assert "/admin/static/" not in base
     assert "mobile_static('css/mobile.css')" in template
     assert "mobile_static('js/lucide.min.js')" in base
     mobile_chat = (WEB_ROOT / "templates" / "mobile_chat.html").read_text()
+    assert "{% include 'mobile_chat_content.html' %}" in mobile_chat
+    mobile_chat += (WEB_ROOT / "templates" / "mobile_chat_content.html").read_text()
     mobile_chat_script = (WEB_ROOT / "static" / "js" / "mobile_chat.js").read_text()
-    assert "Your local API key is never sent to the phone" in mobile_chat
+    assert "localStorage.getItem('api_key')" not in mobile_chat_script
+    assert "localStorage.getItem('apiKey')" not in mobile_chat_script
     assert '{% extends "mobile_base.html" %}' in mobile_chat
     assert "/admin/static/" not in mobile_chat
     assert "mobile_static('css/mobile_chat.css')" in mobile_chat
     assert "mobile_static('js/mobile_chat.js')" in mobile_chat
     assert "<style>" not in base
-    assert "/v1/mobile/chat/completions" in mobile_chat_script
+    assert "/turns" in mobile_chat_script
+    assert "/v1/mobile/chat/completions" not in mobile_chat_script
     assert "/v1/mobile/chat/threads" in mobile_chat_script
-    assert "/attachments" in mobile_chat_script
+    assert "/uploads" in mobile_chat_script
+    assert "storage:'reference'" in mobile_chat_script
     assert "/agent-runs" in mobile_chat_script
     assert "data-mobile-chat-status" in mobile_chat
     assert "data-mobile-chat-file" in mobile_chat
@@ -2012,7 +2017,7 @@ def test_chat_template_renders_member_principal_boundary():
     assert "const CHAT_DEVELOPER_SURFACES_VISIBLE = false" in rendered
     assert "model.owned_by !== 'omlx'" in rendered
     assert ">Agent</button>" not in rendered
-    assert "const useAgent = CHAT_PRINCIPAL_IS_CORE && this.agentMode" in rendered
+    assert "const useAgent = CHAT_PRINCIPAL_IS_CORE && selectedMode" in rendered
 
 
 def test_chat_template_keeps_agent_mode_for_core_only():

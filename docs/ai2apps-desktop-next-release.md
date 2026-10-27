@@ -1,5 +1,6 @@
 ### NXR-DESKTOP-RELEASE-2264-20261027
 
+- ModelScope 登录已恢复，最终双文件上传到不可变 revision `54e50976f87e2c06b3c137d1c2c1a5e18bc16cbd`，SDK 文件大小/摘要与本地一致。根目录全量补查首次 11059 passed / 28 failed / 16 errors：独立 AVTR 新测试和 CUDA/Spark 新断言在发布快照中与未纳入的源码范围对齐（开发原文件保留），其余旧夹具改用当前事件接口、英文回退、Agent 预算入口/合法图片归档与预览、持久 Studio Job、模型 profiles、ACPF runner key/配置选择、Mobile turns/分块上传/抽取模板、AaAT Provider 列表与当前 Chat 参数确认。权限检查、原图字节保留、实际任务执行和拒绝场景仍被断言。分组失败项复验通过后正在重跑完整根目录/CI；本轮不改变已公证 App 源码，不得将旧失败日志当成完整门禁通过。
 - 发布仍 blocked：Apple 已 Accepted/stapled/Gatekeeper 通过，最终 DMG 267911778 bytes、SHA-256 `f6732ec5fc86d07881995eeb559851e84e0542bdad357e92073581f722cde67a`，2262→2264 候选资格通过。ModelScope metadata 上传返回 HTTP 400 / `User not logged in`（request `c75d918c-2a9c-45ef-a195-d6b5fbf97ec4`），已请用户重新登录；不得绕过双源或读取 Cookie。补充根目录回归尚未通过：已修正事件/翻译回退/registry 夹具，独立 AVTR/CUDA 测试与本版 Package 范围重新对齐；模型管理旧静态断言等剩余问题仍待核查。GitHub PR #21 尚未合并、Release 尚未创建，Cloud 交接尚未执行，生产仍保持 2262。
 - 2264 已构建并签名，冷启动、2262→2264 隔离更新器替换和实际包内容对照通过；Apple Submission `8cf06047-f93b-409b-b365-c54032b83b1c` 已创建，公证/双源/Cloud 尚未完成。构建源码为 `b576ad17d325602cb45549f24f6081fb4cd3d30f`；之后仅清理发布分支独立实验测试副本并补齐 CI 的已声明 control-plane 依赖，不改变 App 代码或制品。用户明确授权将最终制品交“⭐️ 服务客户端需求”任务按 0% 验收后扩至 100%，不读取 Dev Cookie。
 - 发布前端全量复测 1009 passed / 0 failed（98.95s）；独立手机视频上传完整复测通过，覆盖 30 MiB 初次上传、26 MiB 参数素材替换和刷新恢复。旧夹具补齐真实 SDK/DOM/模型默认值/参数标题合同，未跳过权限检查或删掉行为断言。当前候选可进入源码冻结及正式构建，尚未发布。

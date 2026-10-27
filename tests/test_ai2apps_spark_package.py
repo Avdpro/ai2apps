@@ -8,34 +8,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_spark_staging_excludes_local_build_payloads(monkeypatch, tmp_path: Path):
-    import importlib.util
-
-    spec = importlib.util.spec_from_file_location(
-        "spark_builder", ROOT / "scripts" / "build_spark_pip_package.py"
-    )
-    builder = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(builder)
-    source = tmp_path / "source"
-    for package in ("ai2apps", "omlx"):
-        directory = source / package
-        directory.mkdir(parents=True)
-        (directory / "__init__.py").write_text("")
-        for excluded in (".build", ".cache", ".venv", ".git"):
-            (directory / excluded).mkdir()
-            (directory / excluded / "large-payload").write_bytes(b"not package data")
-    (source / "ai2apps" / "web").mkdir()
-    (source / "ai2apps" / "web" / "index.html").write_text("retained")
-    for name in ("README.md", "LICENSE", "NOTICE"):
-        (source / name).write_text(name)
-    monkeypatch.setattr(builder, "ROOT", source)
-    staging = tmp_path / "staging"
-    builder._copy_sources(staging)
-    assert (staging / "ai2apps/web/index.html").read_text() == "retained"
-    assert not list(staging.rglob("large-payload"))
-    assert (staging / "omlx/__init__.py").is_file()
-
-
 def test_spark_profile_imports_server_without_mlx():
     script = r'''
 import importlib.abc

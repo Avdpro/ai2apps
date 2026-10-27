@@ -938,6 +938,8 @@ def test_fastapi_lifespan_starts_and_stops_platform_runtime(tmp_path):
             assert response.json()["database"]["status"] == "ready"
             assert {item["service_key"] for item in services.json()["items"]} == {
                 "ai2apps.diagnostics",
+                "ai2apps.package-app-adapters",
+                "ai2apps.builtin-app-adapters",
                 "ai2apps.documents",
                 "ai2apps.images",
                 "ai2apps.knowledge-service",

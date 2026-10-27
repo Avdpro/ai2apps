@@ -16,7 +16,7 @@ def candidate(tmp_path, monkeypatch):
     monkeypatch.setenv('AI2APPS_SUPERVISED', 'helper')
     source = Path(__file__).resolve().parents[1] / 'packages/ai2apps-media-voice-studio-suite'
     archive = tmp_path / 'candidate.ai2app'
-    inspected = build_package(source, archive, include_mini_app_catalog=False)
+    inspected = build_package(source, archive, include_mini_app_catalog=True)
     private, public, fingerprint = generate_publisher_key()
     envelope = create_signature_envelope(inspected, private, publisher_id='publisher', publisher_key_id='key')
     archive.with_suffix('.ai2app.envelope.json').write_text(json.dumps(envelope))

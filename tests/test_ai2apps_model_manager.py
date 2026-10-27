@@ -90,7 +90,8 @@ def test_models_app_opens_with_default_model_routing_first():
     assert "models.defaults.work_simple.title" in template
     assert "models.defaults.speech_recognition.title" in template
     assert "defaultModels[route.id]" in template
-    assert "'/admin/api/model-manager/defaults'" in script
+    assert "/v1/platform/model-profiles" in script
+    assert "this.modelRoutingProfiles[this.modelRoutingProfile]" in script
     assert "modelsTab: 'defaults'" in script
     assert "speech_recognition" in script
     assert "speech_generation" in script
@@ -109,7 +110,8 @@ def test_default_model_routing_i18n_keys_exist_in_every_locale():
 
     assert required
     for locale_path in i18n_dir.glob("*.json"):
-        translations = json.loads(locale_path.read_text())
+        from omlx.admin.routes import _load_locale
+        translations = _load_locale(locale_path.stem)
         missing = required - translations.keys()
         assert not missing, (
             f"{locale_path.name} is missing default-model keys: {sorted(missing)}"
@@ -132,7 +134,8 @@ def test_cloud_provider_i18n_and_key_protection_notice_exist_in_every_locale():
 
     assert "models.cloud.key_security" in required
     for locale_path in i18n_dir.glob("*.json"):
-        translations = json.loads(locale_path.read_text())
+        from omlx.admin.routes import _load_locale
+        translations = _load_locale(locale_path.stem)
         missing = required - translations.keys()
         assert not missing, (
             f"{locale_path.name} is missing cloud-provider keys: {sorted(missing)}"
@@ -203,7 +206,7 @@ def test_cloud_capabilities_route_work_and_dedicated_models_separately():
         }
     )
 
-    assert image == {"image_generation"}
+    assert image == {"image_generation", "image_edit"}
     assert {"image_generation", "image_edit", "image_output"}.issubset(
         image_from_catalog
     )
