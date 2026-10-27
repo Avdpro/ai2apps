@@ -34,7 +34,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e ".[mcp,control-plane]"
-          python -m pip install pytest pytest-asyncio
+          python -m pip install pytest pytest-asyncio soundfile
 
       - name: Run unit tests
         run: python -m pytest tests/ -m "not slow and not integration"
