@@ -35,7 +35,7 @@ const fs = require('fs'), vm = require('vm'), assert = require('assert');
 const source = fs.readFileSync('ai2apps/web/static/js/capability_provisioning.js', 'utf8')
     .replace('window.AI2AppsCapabilities = {', 'window.translateForTest = tr; window.AI2AppsCapabilities = {');
 for (const language of ['en', 'zh']) {
-    const context = {window: {_t: JSON.parse(fs.readFileSync(`ai2apps/web/i18n/${language}.json`))}};
+    const context = {window: {addEventListener() {}, _t: JSON.parse(fs.readFileSync(`ai2apps/web/i18n/${language}.json`))}};
     vm.runInNewContext(source, context);
     const tr = context.window.translateForTest;
     assert.equal(tr('安装所选 {0} 个模型', 3), language === 'en' ? 'Install 3 selected models' : '安装所选 3 个模型');

@@ -1021,7 +1021,8 @@ def test_p2_exports_contract_package_and_provisions_installed_site_source(tmp_pa
     )
     runtime.extension_repository.activate_package(upgrade_record)
     runtime.registry_packages = SimpleNamespace(
-        install=AsyncMock(return_value=upgrade_record)
+        install=AsyncMock(return_value=upgrade_record),
+        _load_state=lambda: {"installed": {}},
     )
     rejected_upgrade = client.post(
         "/v1/platform/site-agent-registry/example/packaged-reader/install",
