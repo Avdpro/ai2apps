@@ -202,4 +202,3 @@ def compile_events(data):
     check['event_roundtrip'] = True
     check['scope'] = 'Portable compiler and independent ABC event parser; not the original training exporter'
     return text, check
-

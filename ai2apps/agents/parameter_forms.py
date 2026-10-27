@@ -231,4 +231,3 @@ def install_parameter_forms(agents,services,registry,*,service_id,provider_key,c
         description='Discover registered App and Mini-App capability strings, providers and parameter declarations. Optional capability filters results. Use app.collect_parameters for forms or app.interact for handoffs. Dynamic schemas are resolved by the selected provider when opening the form.',
         input_schema={'type':'object','properties':{'capability':{'type':'string'}},'additionalProperties':False},output_schema={'type':'object'},effects=(),timeout_ms=10000)
     registry.bind_tool('app.describe',provider_key=provider_key,handler=catalog)
-

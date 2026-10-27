@@ -160,4 +160,3 @@ def test_v41_drop_thinking_without_tools() -> None:
     )
     assert "r2" not in next_turn
     assert next_turn.endswith("q3<｜Assistant｜><think>")
-

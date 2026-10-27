@@ -15,10 +15,10 @@ def install():
         {'key':'language','type':'select','label':{'zh': '语言', 'en': 'Language'},'default':'auto','options':[{'value':'auto','label':{'zh': '自动', 'en': 'Auto'}},{'value':'zh','label':{'zh':'中文','en':'Chinese'}},{'value':'en','label':{'zh':'英文','en':'English'}}]},
         {'key':'model','type':'model','label':{'zh': '转写模型', 'en': 'Transcription model'},'capability':'audio.speech_recognition'},
     ), display_name={'zh':'音频转写','en':'Audio transcription'},summary={'zh':'选择音频及模型，转写后返回当前对话。','en':'Select audio and a model, then return the transcript to this conversation.'},mode='execute', describe=describe, validate=validate, complete=complete, prompt={'zh': '填写参数后开始音频转写', 'en': 'Complete parameters to transcribe audio'}))
-    
+
     # The Voice Design Mini-App uses the same host-owned input workflow.
     register_form(replace(FORMS['voice.transcribe'], key='voice-design.transcribe', mini_app_id='ai2apps.audio.voice-design',display_name={'zh':'语音设计参考音频转写','en':'Voice Design reference transcription'}))
-    
+
 
 import asyncio
 import json

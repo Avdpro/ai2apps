@@ -1,7 +1,7 @@
 # Cloud 图片请求超时排查与错误诊断需求
 
-日期：2026-10-18（Asia/Shanghai）  
-交接对象：AI2Apps Cloud 项目  
+日期：2026-10-18（Asia/Shanghai）
+交接对象：AI2Apps Cloud 项目
 范围：检查现网日志、定位本次图片编辑 504，完善 Cloud 错误协议与追踪信息。本文不包含 Cloud 代码修改或部署。
 
 ## 1. 问题与本地已核实证据

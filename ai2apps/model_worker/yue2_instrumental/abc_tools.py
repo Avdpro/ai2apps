@@ -287,4 +287,3 @@ def strip_chords(text: str, keep_voice="both") -> str:
     if keep_voice != "both":
         fail(any(v.notes for name, v in result.voices.items() if name != keep_voice), "Unselected voice was not silenced")
     return output
-

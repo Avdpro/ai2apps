@@ -21,4 +21,3 @@ def redacted_provider_error(response: httpx.Response, secret: str) -> str:
     except (ValueError, TypeError):
         pass
     return f"Cloud provider returned HTTP {response.status_code}"
-

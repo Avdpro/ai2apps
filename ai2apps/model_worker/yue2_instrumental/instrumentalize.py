@@ -115,4 +115,3 @@ def convert_score(text, *, overlap='vocal', keep_chords=True):
         overlap_policy=overlap,affected_ins_notes=affected,
         nominal_seconds=float(ins.time*60/source.bpm))
     return converted, check
-

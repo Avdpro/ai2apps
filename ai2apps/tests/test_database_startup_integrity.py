@@ -24,4 +24,3 @@ def test_existing_schema_avoids_full_data_scan(tmp_path):
     database.initialize()
     assert "PRAGMA quick_check('sqlite_schema')" in database.statements
     assert "PRAGMA quick_check" not in database.statements
-

@@ -12,4 +12,3 @@ def refresh_progress(run):
         'stage':str(data.get('phase','collecting'))[:100],'task_id':run['id'],
         'requires_user':bool(data.get('waiting')),
         'wait_reason':str(run.get('message',''))[:500] if state=='waiting' else '', 'metrics':metrics}}}
-
