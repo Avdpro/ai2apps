@@ -81,9 +81,8 @@ def install_document_service(
         }
 
     async def attachment_status(arguments, context):
-        return attachment_json(
-            documents.get(session(context), arguments["attachment_id"])
-        )
+        item=documents.get(session(context), arguments["attachment_id"])
+        return {**attachment_json(item),**documents.reference_status(session(context),item.id)}
 
     async def document_read(arguments, context):
         items = documents.blocks(

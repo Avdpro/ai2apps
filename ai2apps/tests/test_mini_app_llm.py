@@ -2,6 +2,7 @@ import asyncio
 from types import SimpleNamespace
 import pytest
 from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 from ai2apps.api.studio_mini_apps import MiniAppLLMRequest
 from ai2apps.studio.capability_broker import StudioCapabilityBroker, StudioCapabilityError
@@ -17,12 +18,20 @@ async def test_routes_and_privacy(monkeypatch,complexity,system_private,requeste
         resolutions.append((purpose,profile));return 'cloud/test/'+profile
     runtime=SimpleNamespace(extension_manager=None,model_manager=SimpleNamespace(resolve_default_model=resolve),privacy_mode=system_private)
     broker=StudioCapabilityBroker(runtime)
-    mounted=SimpleNamespace(capabilities={'llm.text'},declaration={'llm':{'profile':declared}})
+    mounted=SimpleNamespace(capabilities={'llm.text'},declaration={'id':'example.mini','llm':{'profile':declared}},
+        mount={'id':'mount','app_instance_id':'studio-instance'})
     monkeypatch.setattr(broker,'mounted_mini_app',lambda *a,**kw: checks.append(kw['principal']) or mounted)
     app=FastAPI()
     @app.post('/v1/chat/completions')
     async def complete(request:Request):
         payloads.append(await request.json());return {'choices':[{'message':{'content':'Answer'}}]}
+    async def cloud_complete(actual_runtime,payload,*,principal,session_id,app_instance_id,consumer_app_id):
+        assert actual_runtime is runtime and principal=='owner'
+        assert session_id.startswith('studio-mini-app:mount:mini-task-')
+        assert app_instance_id=='studio-instance' and consumer_app_id=='example.mini'
+        payloads.append(payload)
+        return JSONResponse({'choices':[{'message':{'content':'Answer'}}]})
+    monkeypatch.setattr('ai2apps.model_invocation.invoke_app_cloud_chat',cloud_complete)
     async def connected(): return False
     request=SimpleNamespace(app=app,headers={},is_disconnected=connected)
     result=await broker.llm_complete('studio','mount',principal='owner',request=request,

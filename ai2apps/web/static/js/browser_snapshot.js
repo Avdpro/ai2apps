@@ -6,6 +6,7 @@ const htmlMode = options.htmlMode;
 const selector = [
   'a[href]', 'button', 'input:not([type="hidden"])', 'textarea', 'select',
   '[role="button"]', '[role="link"]', '[contenteditable="true"]',
+  '[role="option"]', '[role="menuitem"]', '[role="treeitem"]', '[role="gridcell"]',
   '[tabindex]:not([tabindex="-1"])', '[onclick]', 'label'
 ].join(',');
 const allRoots = (root = document) => {
@@ -18,22 +19,44 @@ const allRoots = (root = document) => {
   return roots;
 };
 const queryAll = selector => allRoots().flatMap(root => [...root.querySelectorAll(selector)]);
-const visible = ai2appsDOMVisible;
+const visible = (node, options={}) => ai2appsDOMVisible(node,{...options,controlIcons:true});
 const items = [];
+const observedElements = new Set();
+const controlStructure = el => {
+  const path=[];
+  let node=el;
+  for(;node && path.length<32;node=node.parentElement||node.getRootNode()?.host) {
+    const siblings=node.parentElement?.children||node.getRootNode()?.children||[];
+    path.push([node.tagName,node.getAttribute('role')||'',
+      [...siblings].filter(n=>n.tagName===node.tagName).indexOf(node)]);
+  }
+  return node ? null : JSON.stringify(path);
+};
 if (!Number.isSafeInteger(window.__ai2appsNextElementRef)) {
   window.__ai2appsNextElementRef = 1;
 }
 if (!(window.__ai2appsElementRefs instanceof WeakMap)) {
   window.__ai2appsElementRefs = new WeakMap();
 }
+if (!(window.__ai2appsElementIdentities instanceof WeakMap)) {
+  window.__ai2appsElementIdentities = new WeakMap();
+}
 if (!window.__ai2appsRefFingerprints || typeof window.__ai2appsRefFingerprints !== 'object') {
   window.__ai2appsRefFingerprints = Object.create(null);
 }
 const elementRef = (el) => {
   let ref = window.__ai2appsElementRefs.get(el);
-  if (!ref) {
+  // Virtual lists reuse the same DOM node for a different option. A ref must
+  // identify its observed meaning, not just the retained node/coordinates.
+  const editable = el.matches('input,textarea,select,[contenteditable="true"]');
+  const identity = JSON.stringify([el.tagName,el.getAttribute('role')||'',
+    el.getAttribute('type')||'',el.getAttribute('aria-label')||'',
+    el.getAttribute('placeholder')||'',el.tagName==='A'?el.href:'',
+    editable?'':String(el.innerText||'').replace(/\s+/g,' ').trim().slice(0,300)]);
+  if (!ref || window.__ai2appsElementIdentities.get(el) !== identity) {
     ref = `e${window.__ai2appsNextElementRef++}`;
     window.__ai2appsElementRefs.set(el, ref);
+    window.__ai2appsElementIdentities.set(el, identity);
   }
   if (el.getAttribute('data-ai2apps-ref') !== ref) {
     el.setAttribute('data-ai2apps-ref', ref);
@@ -47,28 +70,84 @@ const roundedRect = (el) => {
   );
 };
 const candidates = new Set(queryAll(selector));
+// Observe real native/user pointer input, not synthetic DOM events. This is
+// only an observation anchor for roleless popups, never authority to click.
+if (!window.__ai2appsPointerObserverInstalled) {
+  window.addEventListener('pointerdown', event => {
+    if (event.isTrusted) window.__ai2appsPointerAnchor = {node:event.composedPath()[0],at:Date.now()};
+  }, true);
+  window.__ai2appsPointerObserverInstalled = true;
+}
+// Some autocomplete widgets use an unfocusable sibling popup and delegated
+// handlers, without roles or pointer cursors. Observe its rendered leaf rows
+// only while its own editor has focus; ordinary page text is not a control.
+const focusedEditor = document.activeElement;
+const activePopups = new Set();
+const anchors = [];
+if (focusedEditor?.matches('input:not([type="password"]),textarea,[contenteditable="true"]')) anchors.push(focusedEditor);
+const pointerAnchor=window.__ai2appsPointerAnchor;
+if (pointerAnchor?.node?.isConnected && Date.now()-pointerAnchor.at < 120000) anchors.push(pointerAnchor.node);
+for (const anchor of anchors) {
+  const editorRect = anchor.getBoundingClientRect();
+  for (const popup of queryAll('div,section,[tabindex="-1"]')) {
+    if (!visible(popup) || popup.contains(anchor) ||
+        popup.querySelector('input,textarea,[contenteditable="true"]')) continue;
+    const style = getComputedStyle(popup), rect = popup.getBoundingClientRect();
+    const siblingPopup = popup.getAttribute('tabindex') === '-1' &&
+      !popup.parentElement?.matches('body,html') && popup.parentElement?.contains(anchor);
+    const anchoredPopup = ['absolute','fixed'].includes(style.position) && Number(style.zIndex) > 0 &&
+      rect.top >= editorRect.top - 32 && rect.top <= editorRect.bottom + 80 &&
+      rect.right > editorRect.left && rect.left < editorRect.right;
+    if (!siblingPopup && !anchoredPopup) continue;
+    activePopups.add(popup);
+    let count = 0;
+    const visit = node => {
+      if (count >= 80 || !visible(node)) return;
+      const label = String(node.innerText || '').trim();
+      if (!label) return;
+      const blocks = [...node.children].filter(child =>
+        ['DIV','UL','OL','LI','SECTION','ARTICLE','TABLE','TR'].includes(child.tagName));
+      if (!blocks.length && label.length <= 300) {
+        candidates.add(node); count++;
+      } else {
+        for (const child of node.children) visit(child);
+      }
+    };
+    for (const child of popup.children) visit(child);
+  }
+}
 // Framework event handlers often live on div/span controls without ARIA roles.
-for (const el of queryAll('div,span')) {
+for (const el of queryAll('div,span,li,td,th,a,i,svg')) {
   if (!visible(el) || getComputedStyle(el).cursor !== 'pointer') continue;
   const label = String(el.innerText || el.getAttribute('aria-label') || '').trim();
-  if (!label || label.length > 80) continue;
-  if (el.parentElement && getComputedStyle(el.parentElement).cursor === 'pointer' &&
+  if (label.length > 80 || (!label && !el.matches('i,svg'))) continue;
+  if (el.parentElement && el.parentElement.matches('div,span,li,td,th,a') && getComputedStyle(el.parentElement).cursor === 'pointer' &&
       String(el.parentElement.innerText || '').trim() === label) continue;
   candidates.add(el);
 }
-for (const el of candidates) {
+// Open overlays/listboxes own input focus. Do not truncate their controls
+// behind long navigation or result lists in the background document.
+const overlayRank = el => Number(![...activePopups].some(popup=>popup.contains(el)) &&
+  !el.closest('[role="dialog"],[aria-modal="true"],[role="listbox"],[role="grid"],dialog[open]'));
+const orderedCandidates = [...candidates].sort((a,b) =>
+  overlayRank(a) - overlayRank(b) ||
+  Number(!visible(a,{viewport:true})) - Number(!visible(b,{viewport:true})));
+for (const el of orderedCandidates) {
   if (!visible(el) || items.length >= maxItems) continue;
   const ref = elementRef(el);
+  observedElements.add(el);
   const password = el.matches('input[type="password"]') ||
     ['current-password', 'new-password', 'one-time-code'].includes(el.autocomplete);
   items.push({
     ref,
     tag: el.tagName.toLowerCase(),
+    structure: controlStructure(el),
     role: el.getAttribute('role'),
     type: el.getAttribute('type'),
     text: password ? '[sensitive field]' :
       String(el.innerText || el.getAttribute('aria-label') ||
              el.getAttribute('placeholder') || el.value || '').trim().slice(0, 300),
+    value: !password && el.matches('input,textarea,select') ? String(el.value || '').slice(0,300) : '',
     href: el.tagName === 'A' ? el.href : null,
     disabled: Boolean(el.disabled || el.getAttribute('aria-disabled') === 'true'),
     sensitive: password,
@@ -77,6 +156,7 @@ for (const el of candidates) {
   });
   window.__ai2appsRefFingerprints[ref] = {
     tag: el.tagName.toLowerCase(),
+    structure: controlStructure(el),
     role: el.getAttribute('role') || '',
     type: el.getAttribute('type') || '',
     text: password ? '' : String(
@@ -143,7 +223,7 @@ const serializeAttributes = (el) => {
   if (el.disabled) attrs.push('disabled=""');
   if (el.checked) attrs.push('checked=""');
   if (el.selected) attrs.push('selected=""');
-  if (candidates.has(el)) attrs.push(`data-ai2apps-ref="${elementRef(el)}"`);
+  if (observedElements.has(el)) attrs.push(`data-ai2apps-ref="${elementRef(el)}"`);
   attrs.push(`data-ai2apps-rect="${roundedRect(el).join(',')}"`);
   return attrs.length ? ' ' + attrs.join(' ') : '';
 };
@@ -156,7 +236,7 @@ const textIsRendered = (node) => {
 };
 const snapElement = (el) => {
   if (excludedTags.has(el.tagName)) return '';
-  const hardHidden = !ai2appsDOMVisible(el, {requireBox:false});
+  const hardHidden = !visible(el, {requireBox:false});
   if (hardHidden) return '';
   const children = [];
   for (const child of el.childNodes) {
@@ -217,6 +297,7 @@ return {
   url: location.href,
   title: document.title,
   items, file_inputs:fileInputs,
+  controls_truncated: orderedCandidates.filter(el=>visible(el)).length > items.length,
   text: textParts.join(' ').replace(/\s+/g, ' ').trim().slice(0, maxText),
   html,
   htmlMode,

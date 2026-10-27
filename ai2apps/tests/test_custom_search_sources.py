@@ -142,4 +142,7 @@ async def test_custom_planning_failures_finish_without_browser_action(failure, r
         'arguments': {'custom_search': True}}, 'site_scope': ['https://example.com/**']}, None)
     assert result['outcome'] == 'failed'
     assert result['evidence']['reason'] == reason
-    assert result['evidence']['attempts'] == []
+    attempts = result['evidence']['attempts']
+    assert len(attempts) == 1
+    assert attempts[0]['source_step'] == {'operation': 'inspect', 'name': 'initial_observation'}
+    assert attempts[0]['outcome'] == 'success'

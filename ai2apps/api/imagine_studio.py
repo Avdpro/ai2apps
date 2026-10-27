@@ -61,6 +61,10 @@ MINI_APPS = (
 )
 MINI_APPS += ({"id": "ai2apps.imagine.try-on", "version": "1.0.0", "kind": "clip", "category": "create", "icon": "shirt", "source": "official", "entry": {"kind": "host-adapter", "adapter": "try-on"}, "inputs": ["image", "text"], "outputs": ["image"]},)
 MINI_APPS += ({"id": "ai2apps.imagine.upscale-image", "version": "1.0.0", "kind": "clip", "category": "edit", "icon": "scan", "source": "official", "entry": {"kind": "host-adapter", "adapter": "upscale-image"}, "inputs": ["image"], "outputs": ["image"]},)
+from ai2apps.images.capabilities import MINI_APP_CAPABILITIES
+for _mini_app in MINI_APPS:
+    if _mini_app["id"] in MINI_APP_CAPABILITIES:
+        _mini_app["agentCapabilities"] = [MINI_APP_CAPABILITIES[_mini_app["id"]]]
 MINI_APP_BY_ID = {item["id"]: item for item in MINI_APPS}
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
 
@@ -338,6 +342,12 @@ def create_imagine_studio_router(
             **scoped_kwargs(principal, app_instance_id),
         )
 
+    @router.post("/runs/recover-session-results")
+    def recover_agent_images(app_instance_id: str = Header(alias="X-AI2Apps-App-Instance"), principal: RequestPrincipal = principal_dependency):
+        studio(principal,app_instance_id)
+        from ai2apps.images.agent_recovery import recover_session_results
+        return recover_session_results(runtime_provider(),principal,app_instance_id)
+
     @router.get("/runs")
     def list_runs(
         limit: int = Query(default=50, ge=1, le=100),
@@ -375,11 +385,11 @@ def create_imagine_studio_router(
             limit=limit, **scoped_kwargs(principal, app_instance_id)
         ))
         for index, item in enumerate(items):
-            if item["miniAppId"] == "ai2apps.imagine.frozen-time" and item["status"] == "running" and item["id"] not in active_frozen:
+            if item["miniAppId"] == "ai2apps.imagine.frozen-time" and item["status"] == "running" and item["id"] not in active_frozen and not (getattr(runtime_provider(),"studio_jobs",None) and runtime_provider().studio_jobs.for_run(item["id"],principal)):
                 items[index] = repository.update_run(item["id"], status="failed", progress=100,
                     detail="Interrupted", error={"code": "host_restarted", "message": "Frozen Time was interrupted by a Host restart. Please retry."},
                     **scoped_kwargs(principal, app_instance_id))
-            if item["miniAppId"] == "ai2apps.imagine.upscale-image" and item["status"] == "running" and item["id"] not in active_upscales:
+            if item["miniAppId"] == "ai2apps.imagine.upscale-image" and item["status"] == "running" and item["id"] not in active_upscales and not (getattr(runtime_provider(),"studio_jobs",None) and runtime_provider().studio_jobs.for_run(item["id"],principal)):
                 items[index] = repository.update_run(item["id"], status="failed", progress=100,
                     detail="Interrupted", error={"code": "host_restarted", "message": "Image upscaling was interrupted by a Host restart. Please retry."},
                     **scoped_kwargs(principal, app_instance_id))
@@ -427,13 +437,24 @@ def create_imagine_studio_router(
             return studio_error(error)
 
     @router.patch("/runs/{run_id}")
-    def update_run(
+    async def update_run(
         run_id: str,
         request: StudioRunUpdateRequest,
         app_instance_id: str = Header(alias="X-AI2Apps-App-Instance"),
         principal: RequestPrincipal = principal_dependency,
     ):
         try:
+            runtime=runtime_provider()
+            studio(principal, app_instance_id).get_run(run_id, **scoped_kwargs(principal, app_instance_id))
+            jobs=getattr(runtime, 'studio_jobs', None)
+            if jobs:
+                owned=jobs.for_run(run_id, principal)
+                if owned:
+                    if request.status!='cancelled':
+                        raise HTTPException(409, 'Background task state is managed by Desktop')
+                    try: jobs.cancel(owned['id'], principal)
+                    except ValueError as error: raise HTTPException(409, str(error)) from error
+                    return studio(principal, app_instance_id).get_run(run_id, **scoped_kwargs(principal, app_instance_id))
             return studio(principal, app_instance_id).update_run(
                 run_id, status=request.status, progress=request.progress,
                 detail=request.detail, error=request.error,
@@ -441,6 +462,34 @@ def create_imagine_studio_router(
             )
         except StudioRepositoryError as error:
             return studio_error(error)
+
+    @router.post('/runs/{run_id}/adjust',status_code=202)
+    async def adjust_run(run_id:str, files:list[UploadFile]=File(), spec:str=Form(),
+                         app_instance_id:str=Header(alias='X-AI2Apps-App-Instance'),principal:RequestPrincipal=principal_dependency):
+        from ai2apps.studio.image_adjustments import AdjustState,freeze_target
+        from ai2apps.studio.extended_jobs import submit
+        runtime=runtime_provider();repository=studio(principal,app_instance_id);scope=scoped_kwargs(principal,app_instance_id)
+        try:run=repository.get_run(run_id,**scope)
+        except StudioRepositoryError as error:return studio_error(error)
+        if run['miniAppId']!='ai2apps.imagine.adjust-image' or run['status']!='queued':raise HTTPException(409,'Adjustment Run is not queued')
+        if len(spec)>256000:raise HTTPException(413,'Adjustment settings too large')
+        try:
+            settings=json.loads(spec);state=AdjustState.model_validate(settings['state']).model_dump();items=settings['items']
+            if not 1<=len(files)<=50 or len(files)!=len(items):raise ValueError('Choose 1 to 50 images')
+            frozen={};records=[];total=0
+            for index,(file,item) in enumerate(zip(files,items)):
+                data=await file.read(MAX_IMAGE_BYTES+1);total+=len(data)
+                if not data or len(data)>MAX_IMAGE_BYTES or total>256*1024*1024:raise ValueError('Adjustment input exceeds upload limit')
+                if not any(_matches_image_media_type(data,m) for m in ('image/png','image/jpeg','image/webp')):raise ValueError('PNG, JPEG or WebP required')
+                media=item.get('mediaType','image/png')
+                if media not in ('image/png','image/jpeg','image/webp'):raise ValueError('Invalid output format')
+                name=Path(item.get('name') or 'adjusted.png').name[:200]
+                target=freeze_target(runtime,principal,item['target']) if item.get('target') else None
+                if target and target['mediaType']!=media:raise ValueError('Output formats differ')
+                records.append({'name':name,'media_type':media,'target':target});frozen[str(index)]=data
+            submit(runtime,principal,app_instance_id,STUDIO_ID,run['miniAppId'],'image-adjust',{'state':state,'items':records},files=frozen,run_id=run_id)
+        except (ValueError,KeyError,TypeError) as error:raise HTTPException(422,str(error)) from error
+        return repository.get_run(run_id,**scope)
 
     @router.post("/runs/{run_id}/upscale", status_code=202)
     async def upscale_run(
@@ -476,6 +525,11 @@ def create_imagine_studio_router(
         parameters = {"scale": 2, "seed": seed}
         if prompt.strip():
             parameters["prompt"] = prompt.strip()
+        if getattr(runtime,'studio_jobs',None):
+            from ai2apps.studio.extended_jobs import submit
+            submit(runtime,principal,app_instance_id,STUDIO_ID,run['miniAppId'],'image-upscale',
+                {'model':model_id,'parameters':parameters,'media_type':media_type},files={'image':data},run_id=run_id)
+            return repository.get_run(run_id,**scope)
         # Reserve the Run before scheduling: a repeated submission cannot start
         # a second Worker invocation. Source paths never come from the browser.
         active_upscales.add(run_id)
@@ -549,6 +603,13 @@ def create_imagine_studio_router(
             return studio_error(error)
         if run["status"] != "queued":
             raise HTTPException(status_code=409, detail="Imagine Studio Run is not queued")
+        if getattr(runtime,'studio_jobs',None):
+            from ai2apps.studio.extended_jobs import submit
+            from ai2apps.api.studio_background import validate_image_references
+            body=request.model_dump(by_alias=True)
+            validate_image_references(body)
+            submit(runtime,principal,app_instance_id,STUDIO_ID,run['miniAppId'],'cloud-image',{'body':{**body,'source':'cloud'}},run_id=run_id)
+            return repository.get_run(run_id,**scope)
         repository.update_run(
             run_id, status="running", progress=10, detail="Generating image", **scope
         )
@@ -857,7 +918,21 @@ def create_imagine_studio_router(
             return studio_error(error)
         result_id = str(artifact["metadata"].get("historyResultId") or "")
         frozen = artifact['metadata'].get('miniAppId') == 'ai2apps.imagine.frozen-time'
-        if frozen:
+        workspace_id = artifact['metadata'].get('workspaceArtifactId')
+        workspace_session = artifact['metadata'].get('workspaceSessionId')
+        if workspace_id and workspace_session:
+            # Metadata is not authority: the underlying session must belong to
+            # the already-authorized Imagine App instance.
+            with runtime.database.transaction() as db:
+                owned = db.execute("SELECT 1 FROM sessions WHERE id=? AND app_instance_id=? AND status='active'",
+                    (workspace_session, app_instance_id)).fetchone()
+            if not owned:
+                raise HTTPException(404, 'Output session not found')
+            record = runtime.workspace.get_artifact(workspace_session, workspace_id)
+            if record.media_type not in {'image/png','image/jpeg','image/webp'}:
+                raise HTTPException(415, 'Only image output can be added to Gallery')
+            selected = ({'filename': record.name, 'mediaType': record.media_type}, runtime.workspace.artifact_path(record))
+        elif frozen:
             if artifact['name'] not in {'output.mp4', 'LivePhoto.jpg', 'LivePhoto.mov'}:
                 raise HTTPException(415, 'This output cannot be added to Gallery')
             try:

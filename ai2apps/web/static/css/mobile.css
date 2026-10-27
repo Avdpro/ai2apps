@@ -69,6 +69,10 @@ button { -webkit-tap-highlight-color: transparent; }
 .mobile-stage, .mobile-frame-host { position: absolute; inset: 0; background: white; }
 .mobile-app-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: white; }
 .mobile-app-frame[hidden] { display: none; }
+.mobile-dock-hidden .mobile-dock, .mobile-chat-composing .mobile-dock { display: none; }
+.mobile-dock-hidden .mobile-main, .mobile-chat-composing .mobile-main { bottom: env(safe-area-inset-bottom); }
+.mobile-topbar-hidden .mobile-topbar { display: none; }
+.mobile-topbar-hidden .mobile-main { top: env(safe-area-inset-top); }
 .mobile-loading, .mobile-error { position: absolute; z-index: 3; inset: 0; place-content: center; justify-items: center; padding: 28px; color: var(--mobile-muted); background: white; text-align: center; }
 .mobile-loading:not([hidden]), .mobile-error:not([hidden]) { display: grid; }
 .mobile-loading span { width: 27px; height: 27px; border: 2px solid #e5e5e5; border-top-color: #171717; border-radius: 50%; animation: mobile-spin .75s linear infinite; }
@@ -85,7 +89,7 @@ button { -webkit-tap-highlight-color: transparent; }
 .mobile-dock-item small { max-width: 58px; overflow: hidden; font-size: 8px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
 .mobile-dock-item.is-active { color: #171717; }.mobile-dock-item.is-active > span { color: white; background: #171717; box-shadow: 0 7px 18px rgba(0,0,0,.16); }
 .mobile-dock-item:active > span { transform: scale(.92); }
-.mobile-dock-item[data-running="true"] > span::after { content: ""; position: absolute; bottom: 3px; width: 4px; height: 4px; border-radius: 50%; background: currentColor; opacity: .55; }
+.mobile-dock-item[data-running="true"]:not(.is-active) > span::after { content: ""; position: absolute; bottom: 3px; width: 4px; height: 4px; border-radius: 50%; background: currentColor; opacity: .55; }
 
 .mobile-overlay { position: fixed; z-index: 70; inset: 0; display: none; }
 .mobile-overlay.is-open { display: block; }

@@ -3,8 +3,23 @@
 {% block title %}{{ t('chat.title') }}{% endblock %}
 
 {% block head %}
+<link rel="stylesheet" href="{{ static('css/chat_message_feedback.css') }}?v=20261026">
+<script src="{{ static('js/chat_message_feedback.js') }}?v=20261026"></script>
+<script src="{{ static('js/chat_session_activity.js') }}?v=20261027"></script>
+
+<link rel="stylesheet" href="{{ static('css/chat_message_stream.css') }}?v=bubbles-contrast-20261026">
 <link rel="stylesheet" href="{{ static('css/capability_provisioning.css') }}?v=action-breathe-v1">
 <script src="{{ static('js/capability_provisioning.js') }}?v=completion-v1"></script>
+<script src="{{ static('js/studio_audio_recorder.js') }}"></script>
+<link rel="stylesheet" href="{{ static('css/gallery_picker.css') }}">
+<script src="{{ static('js/gallery_picker.js') }}"></script>
+<script src="{{ static('js/conversation_model_policy.js') }}"></script>
+<script src="{{ static('js/agent_parameter_forms.js') }}?v=approval-countdown-20261027"></script>
+<script src="{{ static('js/chat_image_actions.js') }}"></script>
+<script src="{{ static('js/browser_bidi_client.js') }}?v=read-captcha-scope-20261027"></script>
+<script src="{{ static('js/agent_browser_task_controls.js') }}"></script>
+<script src="{{ static('js/aaat_result_views.js') }}?v=card-masonry-20261026"></script>
+<link rel="stylesheet" href="{{ static('css/aaat_result_views.css') }}?v=card-masonry-20261026">
 <!-- Markdown rendering -->
 <script src="/admin/static/js/purify.min.js"></script>
 <script src="/admin/static/js/marked.umd.js"></script>
@@ -26,6 +41,20 @@
 <script defer src="/admin/static/js/katex-auto-render.min.js"></script>
 
 <style>
+    /* Hidden controls must not reserve title space; keyboard focus reveals them too. */
+    .chat-history-actions { display: flex; flex-shrink: 0; width: 0; overflow: hidden; opacity: 0; pointer-events: none; }
+    .chat-history-actions > button { flex: 0 0 20px; }
+    .chat-session-state { width: 16px; height: 16px; display: inline-flex; flex: 0 0 16px; align-items: center; justify-content: center; }
+    .chat-session-busy { width: 12px; height: 12px; border: 2px solid var(--border-normal); border-top-color: var(--timeline-accent); border-radius: 50%; animation: chat-session-spin 1s linear infinite; }
+    .chat-session-unread { width: 8px; height: 8px; border-radius: 50%; background: var(--timeline-accent); }
+    .chat-session-attention { color: #b45309; font-weight: 800; font-size: 13px; border: 1.5px solid currentColor; border-radius: 50%; width: 15px; height: 15px; line-height: 12px; text-align: center; }
+    @keyframes chat-session-spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) { .chat-session-busy { animation: none; } }
+    .chat-history-row:hover .chat-history-actions,
+    .chat-history-row:focus-within .chat-history-actions { width: 60px; opacity: 1; pointer-events: auto; }
+    @media (hover: none) {
+        .chat-history-row .chat-history-actions { width: 60px; opacity: 1; pointer-events: auto; }
+    }
     /* CSS Variables for theming */
     :root {
         --bg-primary: #ffffff;
@@ -441,16 +470,20 @@
     }
 
     .assistant-message {
-        background: var(--bg-primary);
-        border: 1px solid var(--border-faint);
-        border-radius: 16px;
-        max-width: 768px;
+        background: transparent;
+        border: 0;
+        border-radius: 0;
+        max-width: 100%;
+        min-width: 0;
+        padding: 8px 0 20px;
     }
 
     .message-header {
-        padding: 8px 12px;
-        border-bottom: 1px solid var(--border-faint);
+        padding: 8px 0 0;
+        border-bottom: 0;
         display: flex;
+        flex-wrap: wrap;
+        gap: 8px 16px;
         justify-content: space-between;
         align-items: center;
         color: var(--text-primary);
@@ -460,37 +493,42 @@
         color: var(--text-tertiary);
     }
 
+    .message-header > :first-child {
+        min-width: 0;
+        flex-wrap: wrap;
+        font-size: 12px;
+    }
+
+    .message-header > :last-child {
+        flex-shrink: 0;
+    }
+
+    .message-header button:focus-visible,
+    .user-message-action-btn:focus-visible {
+        outline: 2px solid var(--text-secondary);
+        outline-offset: 2px;
+    }
+
     .message-body {
-        padding: 12px;
-        font-size: 14px;
-        line-height: 1.6;
+        padding: 8px 0;
+        font-size: 15px;
+        line-height: 1.75;
         color: var(--text-primary);
         overflow-x: auto;
         min-width: 0;
     }
 
     .user-message {
-        max-width: min(768px, 100%);
+        width: fit-content;
+        max-width: min(672px, 85%);
         align-self: flex-end;
         padding-bottom: 32px;
     }
 
     .user-message.is-editing {
         width: min(768px, 100%);
-        padding-bottom: 0;
-    }
-
-    .user-message-bubble {
-        background: var(--bg-secondary);
-        border-radius: 24px;
-        padding: 8px 16px;
-        font-size: 14px;
-        line-height: 1.6;
-        color: var(--text-primary);
         max-width: 100%;
-        min-width: 0;
-        overflow-wrap: anywhere;
-        word-break: break-word;
+        padding-bottom: 0;
     }
 
     .user-message-bubble p {
@@ -819,8 +857,13 @@
         transition: all 0.15s;
     }
 
-    .user-message:hover .user-message-actions {
+    .user-message:hover .user-message-actions,
+    .user-message:focus-within .user-message-actions {
         opacity: 1;
+    }
+
+    @media (hover: none) {
+        .user-message-actions { opacity: 1; }
     }
 
     .user-message-action-btn:hover {
@@ -860,7 +903,7 @@
         background: var(--bg-secondary);
         border: 1px solid var(--border-faint);
         border-radius: 0.75rem;
-        margin: 0.5em 0.75rem;
+        margin: 0.5em 0;
         overflow: hidden;
     }
 
@@ -1298,8 +1341,10 @@
         color: var(--text-primary);
         cursor: pointer;
     }
-    .agent-interaction-button:hover { background: var(--bg-tertiary); }
+    .agent-interaction-button:not(:disabled):hover { background: var(--bg-tertiary); }
     .agent-interaction-button--primary { background: var(--btn-primary); color: var(--btn-primary-text); }
+    .agent-interaction-button--primary:not(:disabled):hover,
+    .agent-interaction-button--primary:not(:disabled):active { background: var(--btn-primary-hover); color: var(--btn-primary-text); }
     .agent-interaction-button--danger { color: var(--text-danger); }
     .agent-interaction-input {
         width: 100%;
@@ -1353,6 +1398,10 @@
         pointer-events: none;
         user-select: none;
     }
+    .chat-model-selection-notice {
+        color: #c47878;
+    }
+
     .chat-agent-select {
         min-width: 7rem;
         max-width: 13rem;
@@ -1364,6 +1413,14 @@
         color: var(--text-secondary);
         font-size: 0.68rem;
     }
+    /* Explicit controls keep exact 10K deltas instead of native min/step grid rounding. */
+    .chat-agent-budget-field { display: inline-block; position: relative; width: 7rem; }
+    .chat-agent-budget { width: 100%; min-width: 0; padding-right: 1.25rem; -moz-appearance: textfield; appearance: textfield; }
+    .chat-agent-budget::-webkit-inner-spin-button, .chat-agent-budget::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    .chat-agent-budget-steps { position: absolute; right: 2px; top: 3px; bottom: 3px; width: 1rem; display: flex; flex-direction: column; }
+    .chat-agent-budget-steps button { display: flex; align-items: center; justify-content: center; flex: 1; padding: 0; border: 0; border-radius: 2px; color: var(--text-secondary); background: var(--bg-tertiary); font-size: 9px; line-height: 1; cursor: pointer; }
+    .chat-agent-budget-steps button:hover { background: var(--border-faint); }
+    @media (max-width: 767px), (pointer: coarse) { .chat-agent-budget-control { display: none !important; } }
     .agent-parameter-panel {
         margin: 0.45rem 0.65rem 0;
         border: 1px solid var(--border-faint);
@@ -1386,6 +1443,10 @@
     }
     .agent-input-error { margin: 0.35rem 0.65rem 0; color: var(--text-danger); font-size: 0.7rem; }
 
+    .chat-image-card { max-width: 100%; min-width: 0; }
+    .chat-image-actions { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .4rem; }
+    .chat-image-actions button { padding: .25rem .55rem; border: 1px solid var(--border-normal); border-radius: .5rem; background: var(--bg-primary); color: var(--text-secondary); font-size: .75rem; cursor: pointer; }
+    .chat-image-actions button:disabled { opacity: .5; cursor: wait; }
     .mini-entry-card { margin: .55rem 0 .2rem; overflow: hidden; border: 1px solid var(--border-normal); border-radius: .9rem; background: var(--bg-primary); }
     .mini-entry-head { min-height: 2.25rem; display: flex; align-items: center; gap: .45rem; padding: .4rem .55rem .4rem .7rem; border-bottom: 1px solid var(--border-faint); color: var(--text-secondary); font-size: .7rem; }
     .mini-entry-head strong { min-width: 0; flex: 1; overflow: hidden; color: var(--text-primary); text-overflow: ellipsis; white-space: nowrap; }
@@ -1393,7 +1454,7 @@
     .mini-entry-action:hover { color: var(--text-primary); background: var(--bg-tertiary); }
     .mini-entry-action svg { width: .85rem; height: .85rem; }
     .mini-entry-frame { width: 100%; height: 190px; display: block; border: 0; background: transparent; }
-    .mini-entry-sidebar-frame { width: 100%; height: 100%; display: block; border: 0; background: var(--bg-primary); }
+    .mini-entry-sidebar-frame { width: 100%; height: 0; min-height: 0; flex: 1 1 0%; display: block; border: 0; background: var(--bg-primary); }
     .mini-app-launcher {
         position: absolute;
         z-index: 300;
@@ -1602,9 +1663,14 @@
             </div>
             <template x-for="chat in filteredChatHistory()" :key="chat.id">
                 <div @click="if (renamingChatId !== chat.id) loadChat(chat.id)"
-                    class="group flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer hover:bg-surface-muted mb-1"
+                    class="chat-history-row group flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer hover:bg-surface-muted mb-1"
                     :class="{ 'bg-surface-muted': currentChatId === chat.id }">
-                    <i data-lucide="message-square" class="w-4 h-4 flex-shrink-0" style="color: var(--text-muted);"></i>
+                    <span class="chat-session-state" :title="sessionListActivityLabel(chat.id)" :aria-label="sessionListActivityLabel(chat.id)" role="img">
+                        <i x-show="sessionListActivityState(chat.id) === 'idle'" data-lucide="message-square" class="w-4 h-4" style="color: var(--text-muted);"></i>
+                        <span x-show="sessionListActivityState(chat.id) === 'busy'" class="chat-session-busy" aria-hidden="true"></span>
+                        <span x-show="sessionListActivityState(chat.id) === 'unread'" class="chat-session-unread" aria-hidden="true"></span>
+                        <span x-show="sessionListActivityState(chat.id) === 'attention'" class="chat-session-attention" aria-hidden="true">!</span>
+                    </span>
                     <button type="button" x-show="isChatStreaming(chat.id)" @click.stop="stopChatStreaming(chat.id)"
                         class="w-2 h-2 rounded-full flex-shrink-0 animate-pulse p-0 border-0 cursor-pointer"
                         style="background: var(--timeline-accent);" title="{{ t('chat.stop_generating_tooltip') }}"></button>
@@ -1635,23 +1701,24 @@
                             <span class="text-sm truncate flex-1" style="color: var(--text-primary);"
                                 :title="displayChatTitle(chat)"
                                 x-text="displayChatTitle(chat)"></span>
+                            <div class="chat-history-actions">
                             <button @click.stop="togglePinChat(chat.id)"
                                 class="p-1 hover:bg-surface-alt rounded transition-opacity"
-                                :class="chat.pinned ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'"
                                 :title="chat.pinned ? window.t('chat.unpin_chat') : window.t('chat.pin_chat')">
                                 <i x-show="!chat.pinned" data-lucide="pin" class="w-3 h-3" style="color: var(--text-muted);"></i>
                                 <i x-show="chat.pinned" data-lucide="pin-off" class="w-3 h-3" style="color: var(--text-muted);"></i>
                             </button>
                             <button @click.stop="startRenamingChat(chat)"
-                                class="opacity-0 group-hover:opacity-100 p-1 hover:bg-surface-alt rounded transition-opacity"
+                                class="p-1 hover:bg-surface-alt rounded transition-opacity"
                                 title="{{ t('chat.rename_tooltip') }}">
                                 <i data-lucide="pencil" class="w-3 h-3" style="color: var(--text-muted);"></i>
                             </button>
                             <button @click.stop="deleteChat(chat.id)"
-                                class="opacity-0 group-hover:opacity-100 p-1 hover:bg-danger-bg rounded transition-opacity"
+                                class="p-1 hover:bg-danger-bg rounded transition-opacity"
                                 title="{{ t('chat.delete_tooltip') }}">
                                 <i data-lucide="trash-2" class="w-3 h-3 text-danger"></i>
                             </button>
+                            </div>
                         </div>
                     </template>
                 </div>
@@ -1777,7 +1844,7 @@
                         <div x-show="msg.role === 'user'" class="flex justify-end">
                             <div class="user-message" :class="{ 'is-editing': editingIndex === index }">
                                 <div x-show="editingIndex !== index" class="user-message-actions" x-data="{ contextOpen: false }">
-                                    <button @click="copyMessage(msg.content)" class="user-message-action-btn"
+                                    <button @click="copyMessage(msg.content, $event.currentTarget)" class="user-message-action-btn"
                                         title="{{ t('chat.copy_tooltip') }}">
                                         <i data-lucide="copy" class="w-4 h-4"></i>
                                     </button>
@@ -1804,7 +1871,7 @@
                                                 <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
                                                 {{ t('chat.delete_message') }}
                                             </button>
-                                            <button @click="copyMarkdown(msg); contextOpen = false"
+                                            <button @click="copyMarkdown(msg, $event.currentTarget); contextOpen = false"
                                                 class="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left hover:bg-surface-muted"
                                                 style="color: var(--text-primary);">
                                                 <i data-lucide="file-text" class="w-3.5 h-3.5"></i>
@@ -1843,11 +1910,19 @@
                                         <template x-if="getImageUrls(msg.content).length > 0">
                                             <div class="flex flex-wrap gap-2 mb-2">
                                                 <template x-for="imgUrl in getImageUrls(msg.content)"
-                                                    :key="imgUrl.substring(0, 50)">
-                                                    <img src="" alt="Generated image"
-                                                        x-init="loadImageElement($el, imgUrl)"
-                                                        @click="openImageModal($el.src || imgUrl)"
-                                                        class="max-w-48 max-h-48 object-cover rounded-lg cursor-pointer">
+                                                    :key="imgUrl">
+                                                    <div class="chat-image-card" x-data="{ imageBusy: false, imageNotice: '' }">
+                                            <img src="" alt="Generated image" draggable="true"
+                                                x-init="loadImageElement($el, imgUrl)"
+                                                @dragstart="window.AI2AppsChatImages.drag($event, imgUrl)"
+                                                @click="openImageModal($el.src || imgUrl)"
+                                                class="max-w-48 max-h-48 object-cover rounded-lg cursor-pointer">
+                                            <div class="chat-image-actions">
+                                                <button type="button" :disabled="imageBusy" @click="imageBusy=true; imageNotice=''; try { await window.AI2AppsChatImages.save(imgUrl, getApiKey()); } catch(e) { imageNotice=e.message; } finally { imageBusy=false; }" x-text="window.AI2AppsChatImages.label('save')"></button>
+                                                <button type="button" :disabled="imageBusy" @click="imageBusy=true; imageNotice=''; try { await window.AI2AppsChatImages.addToGallery(imgUrl, getApiKey()); imageNotice=window.AI2AppsChatImages.label('added'); } catch(e) { imageNotice=e.message; } finally { imageBusy=false; }" x-text="window.AI2AppsChatImages.label('add_gallery')"></button>
+                                            </div>
+                                            <p x-show="imageNotice" x-text="imageNotice" role="status" class="text-xs mt-1"></p>
+                                        </div>
                                                 </template>
                                             </div>
                                         </template>
@@ -1937,32 +2012,36 @@
 
                         <!-- AgentRun card anchored beneath its invoking User Message. -->
                         <template x-if="msg.role === 'user' && agentRunForMessage(msg)">
-                            <div class="agent-run-card" x-data="{ run: agentRunForMessage(msg) }">
-                                <div class="agent-status-line">
+                            <div class="agent-run-card" x-data="{ run: agentRunForMessage(msg) }" x-init="loadAgentCallIcons()">
+                                <div class="agent-status-line" role="button" tabindex="0" style="cursor:pointer"
+                                    :aria-expanded="run.expanded ? 'true' : 'false'"
+                                    @click="toggleAgentRunDetails(run)"
+                                    @keydown.enter.self.prevent="toggleAgentRunDetails(run)"
+                                    @keydown.space.self.prevent="toggleAgentRunDetails(run)">
+                                    <template x-for="owner in agentRunOwners(run)" :key="owner.kind + owner.id">
+                                        <span class="inline-flex shrink-0" :title="owner.kind + ' · ' + owner.name"
+                                            :aria-label="owner.kind + ' · ' + owner.name" role="img" x-html="agentCallIcon(owner.icon)"></span>
+                                    </template>
                                     <span class="agent-status-icon"
                                         :class="['agent-tone-' + agentStatusView(run).tone, 'agent-effect-' + agentStatusView(run).effect]"
                                         x-text="agentStatusIcon(agentStatusView(run).icon)"></span>
                                     <span class="flex-1 min-w-0 truncate"
                                         :class="agentStatusView(run).effect === 'shimmer' ? 'agent-effect-shimmer' : ''"
-                                        x-text="agentStatusText(agentStatusView(run))"></span>
+                                        x-show="!run.expanded || !pendingAgentInteractions(run).some(item => item.ui_hints?.control === 'parameter_form')" :style="pendingAgentInteractions(run).some(item => item.ui_hints?.control === 'parameter_form') ? 'font-size:15px;font-weight:700' : ''" x-text="agentStatusText(agentStatusView(run))"></span>
                                     <span class="text-[10px] max-w-32 truncate" style="color:var(--text-tertiary);"
                                         x-text="agentRunName(run)" :title="run.agent_key || ''"></span>
                                     <span x-show="agentStatusView(run).progress !== null" class="text-[10px] tabular-nums"
                                         x-text="Math.round(agentStatusView(run).progress * 100) + '%'"></span>
-                                    <button x-show="agentRunHasDetails(run)" @click="run.expanded = !run.expanded"
-                                        class="w-6 h-6 inline-flex items-center justify-center rounded hover:bg-surface-muted"
-                                        :aria-expanded="run.expanded ? 'true' : 'false'">
-                                        <span x-text="run.expanded ? '−' : '+'"></span>
-                                    </button>
-                                    <button x-show="agentRunCanPause(run)" @click="pauseAgentRun(run.id)"
-                                        class="w-6 h-6 inline-flex items-center justify-center rounded hover:bg-surface-muted"
+                                    <span x-show="agentRunHasDetails(run)" @keydown.stop class="w-6 h-6 inline-flex items-center justify-center" aria-hidden="true" x-text="run.expanded ? '−' : '+'"></span>
+                                    <button x-show="agentRunCanPause(run)" @click.stop="pauseAgentRun(run.id)"
+                                        @keydown.stop class="w-6 h-6 inline-flex items-center justify-center rounded hover:bg-surface-muted"
                                         title="Pause Agent">Ⅱ</button>
                                     <button x-show="run.status === 'interrupted' && !agentRunHasUncertainStep(run)"
-                                        @click="resumeAgentRun(run.id)"
-                                        class="h-6 px-2 inline-flex items-center justify-center rounded hover:bg-surface-muted"
+                                        @click.stop="resumeAgentRun(run.id)"
+                                        @keydown.stop class="h-6 px-2 inline-flex items-center justify-center rounded hover:bg-surface-muted"
                                         title="Resume Agent">Resume</button>
-                                    <button x-show="agentRunIsActive(run)" @click="cancelAgentRun(run.id)"
-                                        class="w-6 h-6 inline-flex items-center justify-center rounded hover:bg-surface-muted"
+                                    <button x-show="agentRunIsActive(run)" @click.stop="cancelAgentRun(run.id)"
+                                        @keydown.stop class="w-6 h-6 inline-flex items-center justify-center rounded hover:bg-surface-muted"
                                         :title="window.t('chat.stop_tooltip')">×</button>
                                 </div>
                                 <div x-show="agentStatusView(run).effect === 'progress' || agentStatusView(run).effect === 'indeterminate'"
@@ -1971,6 +2050,39 @@
                                         :class="agentStatusView(run).effect === 'indeterminate' ? 'agent-progress-indeterminate' : ''"
                                         :style="agentStatusView(run).effect === 'progress' ? `width:${(agentStatusView(run).progress || 0) * 100}%` : ''"></div>
                                 </div>
+                                <div x-show="run.status_line?.content?.task_progress" class="agent-run-detail flex flex-wrap gap-3" aria-label="Tool progress metrics">
+                                    <template x-for="(metric, index) in (run.status_line?.content?.task_progress?.metrics || [])" :key="index">
+                                        <span x-text="metric.label + ' · ' + metric.value + (metric.total == null ? '' : ' / ' + metric.total)"></span>
+                                    </template>
+                                    <span x-show="run.status_line?.content?.task_progress?.state === 'waiting'"
+                                        x-text="run.status_line?.content?.task_progress?.wait_reason || ''"></span>
+                                </div>
+                                <div class="agent-run-detail" x-data="AI2AppsBrowserTaskControls((path, options) => agentPlatformFetch(path, options))"
+                                    x-effect="sync(run, run.status_line?.content?.browser_task_id, run.status_line?.content?.task_progress?.requires_user, run.status_line?.content?.task_progress?.wait_reason)"
+                                    x-show="task || error" aria-label="Browser Task assistance">
+                                    <div class="flex flex-wrap gap-2">
+                                        <button x-show="task?.status === 'waiting_input' && task?.requires_user && interactions.some(i => i.request.control !== 'agent_budget')" :disabled="busy" @click.stop="act('open')" class="px-3 py-2 rounded border">前往问题页面</button>
+                                        <template x-for="interaction in interactions" :key="interaction.id">
+                                            <span class="inline-flex gap-2">
+                                                <button :disabled="busy" @click.stop="act('continue', interaction)" class="px-3 py-2 rounded border"
+                                                    x-text="interaction.request.control === 'agent_budget' ? '继续并重置额度' : interaction.request.control === 'agent_confirmation' ? '确认继续' : '已处理，继续'"></button>
+                                                <button x-show="['agent_confirmation','agent_budget'].includes(interaction.request.control)" :disabled="busy" @click.stop="act('continue', interaction, false)" class="px-3 py-2 rounded border" x-text="interaction.request.control === 'agent_budget' ? '结束并保留结果' : '拒绝'"></button>
+                                            </span>
+                                        </template>
+                                        <button x-show="task && !['completed','failed','cancelled'].includes(task.status)" :disabled="busy" @click.stop="act('cancel')" class="px-3 py-2 rounded border">取消任务</button>
+                                    </div>
+                                    <p x-show="error" x-text="error" role="alert" class="text-red-500 mt-2"></p>
+                                </div>
+                                <div x-show="run.status_line?.content?.workflow_run_id" class="agent-run-detail flex flex-wrap gap-3">
+                                    <template x-for="source in (run.status_line?.content?.source_statuses || [])" :key="source.source">
+                                        <span x-text="(source.display_name || source.source) + ' · ' + source.status + ' · ' + source.count"></span>
+                                    </template>
+                                </div>
+                                <ol x-show="run.status_line?.content?.workflow_run_id && (run.status_line?.content?.results || []).length" class="agent-run-detail" aria-label="Search articles">
+                                    <template x-for="article in (run.status_line?.content?.results || [])" :key="article.url">
+                                        <li class="py-1"><a :href="article.url" target="_blank" rel="noopener noreferrer" class="text-accent hover:underline" x-text="article.title || article.url"></a></li>
+                                    </template>
+                                </ol>
                                 <ol x-show="(run.plan?.items || []).length" class="agent-run-detail"
                                     :aria-label="window.t('chat.agent_plan')">
                                     <template x-for="item in (run.plan?.items || [])" :key="item.id">
@@ -1984,6 +2096,25 @@
                                     <template x-for="detail in agentRunDetails(run)" :key="detail">
                                         <div class="py-0.5" x-text="detail"></div>
                                     </template>
+                                    <template x-for="call in agentToolCallDetails(run)" :key="call.id">
+                                        <div class="mt-2 border-t border-gray-200 dark:border-gray-700 pt-2">
+                                            <div class="font-medium" x-text="call.name + ' · ' + call.status"></div>
+                                            <template x-for="owner in call.owners" :key="owner.id">
+                                                <div class="flex items-center gap-2 py-1" style="min-width:0">
+                                                    <span class="inline-flex shrink-0" aria-hidden="true" x-html="agentCallIcon(owner.icon)"></span>
+                                                    <span style="overflow-wrap:anywhere" x-text="owner.kind + ' · ' + owner.name" :title="owner.id"></span>
+                                                </div>
+                                            </template>
+                                            <template x-for="field in call.execution" :key="field.key">
+                                                <div class="py-0.5" style="overflow-wrap:anywhere">
+                                                    <span x-text="agentCallLabel(field.key) + ': '"></span><span x-text="field.value"></span>
+                                                </div>
+                                            </template>
+                                            <div x-show="call.error" style="overflow-wrap:anywhere" x-text="call.error"></div>
+                                            <div x-text="agentCallLabel('parameters')"></div>
+                                            <pre class="text-xs mt-1" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:240px;overflow:auto" x-text="call.parameters"></pre>
+                                        </div>
+                                    </template>
                                     <div x-show="run.status === 'interrupted' && agentRunHasUncertainStep(run)"
                                         class="agent-interaction-actions">
                                         <button class="agent-interaction-button agent-interaction-button--danger"
@@ -1993,9 +2124,15 @@
                                     </div>
                                 </div>
                                 <template x-for="interaction in pendingAgentInteractions(run)" :key="interaction.id">
-                                    <div class="agent-interaction-card">
-                                        <div class="font-medium" x-text="interaction.prompt"></div>
-                                        <template x-if="interaction.kind === 'menu'">
+                                    <div class="agent-interaction-card" x-effect="if(interaction.kind === 'approval') window.AI2AppsParameterForms?.mountApproval($el, run, interaction, () => decideAgentInteraction(run, interaction, 'approve', 'once'))">
+                                        <div x-show="interaction.ui_hints?.control !== 'parameter_form'" class="font-medium" data-parameter-prompt x-text="window.AI2AppsParameterForms?.prompt(interaction) || interaction.prompt"></div><div x-show="interaction.ui_hints?.control === 'app_handoff'" class="agent-interaction-actions">
+ <button class="agent-interaction-button agent-interaction-button--primary" @click="openAppInteraction(run, interaction)" x-text="document.documentElement.lang.startsWith('zh') ? '前往 App 完成' : 'Continue in App'"></button>
+ <button class="agent-interaction-button" @click="submitAgentInteraction(run, interaction, {status: 'cancelled', result: {}})" x-text="document.documentElement.lang.startsWith('zh') ? '取消交接' : 'Cancel handoff'"></button>
+</div>
+                                        <template x-if="interaction.ui_hints?.control === 'parameter_form'">
+ <div x-init="window.AI2AppsParameterForms.mount($el, run, interaction, () => refreshAgentRun(run.id))"></div>
+ </template>
+ <template x-if="interaction.kind === 'menu'">
                                             <div class="agent-interaction-actions">
                                                 <template x-for="option in agentMenuOptions(interaction)" :key="String(option)">
                                                     <button class="agent-interaction-button"
@@ -2004,34 +2141,31 @@
                                                 </template>
                                             </div>
                                         </template>
-                                        <template x-if="interaction.kind === 'text' || interaction.kind === 'form' || interaction.ui_hints?.allow_other">
+                                        <template x-if="(interaction.kind === 'text' || interaction.kind === 'form' || interaction.ui_hints?.allow_other) && !['app_handoff','parameter_form'].includes(interaction.ui_hints?.control)">
                                             <form @submit.prevent="submitAgentText(run, interaction)">
                                                 <input class="agent-interaction-input" type="text"
                                                     x-model="run.interactionDrafts[interaction.id]"
                                                     :placeholder="interaction.ui_hints?.placeholder || ''">
+
                                                 <div class="agent-interaction-actions">
                                                     <button class="agent-interaction-button agent-interaction-button--primary" type="submit">Submit</button>
                                                 </div>
                                             </form>
                                         </template>
                                         <template x-if="interaction.kind === 'approval'">
-                                            <div>
+                                            <div><p class="mt-2 text-xs" x-text="document.documentElement.lang.startsWith('zh') ? '仅允许一次：只授权本次请求。记住工具：在发起对话的当前应用中，允许此工具访问不同资源；不适用于其他工具或整个 Desktop。' : 'Allow once approves this request. Remember tool allows different resources in the app hosting this conversation, not other tools or the whole Desktop.'"></p>
                                                 <div class="mt-2 text-xs" style="color:var(--text-tertiary);">
-                                                    <span x-text="'Capability: ' + ((interaction.request?.capabilities || []).join(', ') || 'unspecified')"></span>
-                                                    <span x-show="interaction.request?.tool_name" x-text="' · Tool: ' + interaction.request.tool_name"></span>
-                                                    <span x-show="(interaction.request?.effects || []).length" x-text="' · Effects: ' + interaction.request.effects.join(', ')"></span>
+                                                    <span x-text="(document.documentElement.lang.startsWith('zh') ? '能力：' : 'Capability: ') + ((interaction.request?.capabilities || []).join(', ') || 'unspecified')"></span>
+                                                    <span x-show="interaction.request?.tool_name" x-text="(document.documentElement.lang.startsWith('zh') ? ' · 工具：' : ' · Tool: ') + interaction.request.tool_name"></span>
+                                                    <span x-show="(interaction.request?.effects || []).length" x-text="(document.documentElement.lang.startsWith('zh') ? ' · 操作影响：' : ' · Effects: ') + interaction.request.effects.join(', ')"></span>
                                                 </div>
                                                 <div class="agent-interaction-actions">
                                                     <button class="agent-interaction-button agent-interaction-button--primary"
-                                                        @click="decideAgentInteraction(run, interaction, 'approve', 'run')">Allow once</button>
+                                                        @click="decideAgentInteraction(run, interaction, 'approve', 'once')" x-text="document.documentElement.lang.startsWith('zh') ? '仅允许这一次' : 'Allow once'"></button>
                                                     <button class="agent-interaction-button"
-                                                        @click="decideAgentInteraction(run, interaction, 'approve', 'session')">Allow for session</button>
-                                                    <button class="agent-interaction-button"
-                                                        @click="decideAgentInteraction(run, interaction, 'approve', 'agent')">Always allow Agent</button>
-                                                    <button class="agent-interaction-button"
-                                                        @click="decideAgentInteraction(run, interaction, 'approve', 'app')">Allow for App</button>
+                                                        x-show="interaction.response_schema?.properties?.resource_scope" @click="decideAgentInteraction(run, interaction, 'approve', 'app')" x-text="document.documentElement.lang.startsWith('zh') ? '在当前应用中记住此工具' : 'Remember tool in this app'"></button>
                                                     <button class="agent-interaction-button agent-interaction-button--danger"
-                                                        @click="decideAgentInteraction(run, interaction, 'deny')">Deny</button>
+                                                        @click="decideAgentInteraction(run, interaction, 'deny')" x-text="document.documentElement.lang.startsWith('zh') ? '拒绝' : 'Deny'"></button>
                                                 </div>
                                             </div>
                                         </template>
@@ -2059,7 +2193,7 @@
                                             <span class="agent-status-icon"
                                                 :class="['agent-tone-' + agentStatusView(child).tone, 'agent-effect-' + agentStatusView(child).effect]"
                                                 x-text="agentStatusIcon(agentStatusView(child).icon)"></span>
-                                            <span class="flex-1 min-w-0 truncate" x-text="agentStatusText(agentStatusView(child))"></span>
+                                            <span class="flex-1 min-w-0 truncate" x-show="!run.expanded || !pendingAgentInteractions(child).some(item => item.ui_hints?.control === 'parameter_form')" x-text="agentStatusText(agentStatusView(child))"></span>
                                             <span class="text-[10px] truncate" style="color:var(--text-tertiary);"
                                                 x-text="'↳ ' + agentRunName(child)"></span>
                                             <button x-show="agentRunCanPause(child)" @click="pauseAgentRun(child.id)"
@@ -2069,6 +2203,12 @@
                                             <button x-show="agentRunIsActive(child)" @click="cancelAgentRun(child.id)"
                                                 class="w-6 h-6 rounded hover:bg-surface-muted" title="Cancel child Agent">×</button>
                                         </div>
+                                        <template x-if="child.status === 'completed' && child.agent_key === 'ai2apps.search-workflow' && child.output?.markdown">
+                                            <section class="agent-run-detail prose dark:prose-invert max-w-none" aria-label="Completed search report">
+                                                <div class="font-medium" x-text="document.documentElement.lang.startsWith('zh') ? '已完成的搜索报告' : 'Completed search report'"></div>
+                                                <div x-html="renderMarkdown(child.output.markdown)"></div>
+                                            </section>
+                                        </template>
                                 <ol x-show="(child.plan?.items || []).length" class="agent-run-detail"
                                     :aria-label="window.t('chat.agent_plan')">
                                     <template x-for="item in (child.plan?.items || [])" :key="item.id">
@@ -2079,24 +2219,31 @@
                                     </template>
                                 </ol>
                                         <template x-for="interaction in pendingAgentInteractions(child)" :key="interaction.id">
-                                            <div class="agent-interaction-card">
-                                                <div class="font-medium" x-text="interaction.prompt"></div>
-                                                <div x-show="interaction.kind === 'menu'" class="agent-interaction-actions">
+                                            <div class="agent-interaction-card" x-effect="if(interaction.kind === 'approval') window.AI2AppsParameterForms?.mountApproval($el, child, interaction, () => decideAgentInteraction(child, interaction, 'approve', 'once'))">
+                                                <div x-show="interaction.ui_hints?.control !== 'parameter_form'" class="font-medium" data-parameter-prompt x-text="window.AI2AppsParameterForms?.prompt(interaction) || interaction.prompt"></div><div x-show="interaction.ui_hints?.control === 'app_handoff'" class="agent-interaction-actions">
+ <button class="agent-interaction-button agent-interaction-button--primary" @click="openAppInteraction(child, interaction)" x-text="document.documentElement.lang.startsWith('zh') ? '前往 App 完成' : 'Continue in App'"></button>
+ <button class="agent-interaction-button" @click="submitAgentInteraction(child, interaction, {status: 'cancelled', result: {}})" x-text="document.documentElement.lang.startsWith('zh') ? '取消交接' : 'Cancel handoff'"></button>
+</div>
+                                                <template x-if="interaction.ui_hints?.control === 'parameter_form'">
+ <div x-init="window.AI2AppsParameterForms.mount($el, child, interaction, () => refreshAgentRun(child.id))"></div>
+ </template>
+ <div x-show="interaction.kind === 'menu'" class="agent-interaction-actions">
                                                     <template x-for="option in agentMenuOptions(interaction)" :key="String(option)">
                                                         <button class="agent-interaction-button" @click="submitAgentMenu(child, interaction, option)" x-text="String(option)"></button>
                                                     </template>
                                                 </div>
-                                                <form x-show="interaction.kind === 'text' || interaction.kind === 'form' || interaction.ui_hints?.allow_other"
+                                                <form x-show="(interaction.kind === 'text' || interaction.kind === 'form' || interaction.ui_hints?.allow_other) && !['app_handoff','parameter_form'].includes(interaction.ui_hints?.control)"
                                                     @submit.prevent="submitAgentText(child, interaction)">
                                                     <input class="agent-interaction-input" type="text"
                                                         x-model="child.interactionDrafts[interaction.id]"
                                                         :placeholder="interaction.ui_hints?.placeholder || ''">
                                                     <div class="agent-interaction-actions"><button class="agent-interaction-button agent-interaction-button--primary" type="submit">Submit</button></div>
                                                 </form>
+                                                <p x-show="interaction.kind === 'approval'" class="mt-2 text-xs" x-text="document.documentElement.lang.startsWith('zh') ? '仅允许一次只授权本次请求；记住工具允许在发起对话的当前应用中更换资源，不适用于整个 Desktop。' : 'Allow once covers this request; remember tool permits different resources in the originating app, not the whole Desktop.'"></p>
                                                 <div x-show="interaction.kind === 'approval'" class="agent-interaction-actions">
-                                                    <button class="agent-interaction-button agent-interaction-button--primary" @click="decideAgentInteraction(child, interaction, 'approve', 'run')">Allow once</button>
-                                                    <button class="agent-interaction-button" @click="decideAgentInteraction(child, interaction, 'approve', 'session')">Allow for session</button>
-                                                    <button class="agent-interaction-button agent-interaction-button--danger" @click="decideAgentInteraction(child, interaction, 'deny')">Deny</button>
+                                                    <button class="agent-interaction-button agent-interaction-button--primary" @click="decideAgentInteraction(child, interaction, 'approve', 'once')" x-text="document.documentElement.lang.startsWith('zh') ? '仅允许这一次' : 'Allow once'"></button>
+                                                    <button class="agent-interaction-button" x-show="interaction.response_schema?.properties?.resource_scope" @click="decideAgentInteraction(child, interaction, 'approve', 'app')" x-text="document.documentElement.lang.startsWith('zh') ? '在当前应用中记住此工具' : 'Remember tool in this app'"></button>
+                                                    <button class="agent-interaction-button agent-interaction-button--danger" @click="decideAgentInteraction(child, interaction, 'deny')" x-text="document.documentElement.lang.startsWith('zh') ? '拒绝' : 'Deny'"></button>
                                                 </div>
                                                 <div x-show="interaction.kind === 'file'" class="agent-interaction-actions">
                                                     <label class="agent-interaction-button agent-interaction-button--primary">
@@ -2147,153 +2294,6 @@
 
                         <!-- Assistant Message -->
                         <div x-show="msg.role === 'assistant' && msg._ui !== false" class="assistant-message">
-                            <div class="message-header">
-                                <div class="flex items-center gap-2 text-sm font-medium"
-                                    style="color: var(--text-primary);">
-                                    <i data-lucide="cpu" class="w-4 h-4" style="color: var(--text-tertiary);"></i>
-                                    <span x-text="variantModelLabel(msg)"></span>
-                                    <span x-show="variantProfileLabel(msg)"
-                                        class="text-[10px] px-1.5 py-0.5 rounded-full bg-surface-muted border border-line"
-                                        style="color: var(--text-tertiary);"
-                                        x-text="variantProfileLabel(msg)"></span>
-                                </div>
-                                <div class="flex gap-1" x-data="{ contextOpen: false, externalReviewOpen: false }">
-                                    <!-- Timeline toggle: only visible when timeline data is attached -->
-                                    <button x-show="msg._perfLog?.length > 0"
-                                        @click="msg._perfVisible = !msg._perfVisible"
-                                        class="w-7 h-7 flex items-center justify-center rounded-md bg-transparent cursor-pointer transition-all hover:bg-surface-alt"
-                                        :style="msg._perfVisible ? 'color:var(--text-primary);' : 'color:var(--text-tertiary);'"
-                                        :title="msg._perfVisible
-                                            ? window.t('chat.hide_info_tooltip')
-                                            : window.t('chat.show_info_tooltip').replace('{count}', msg._perfTotal)">
-                                        <i data-lucide="activity" class="w-4 h-4"></i>
-                                    </button>
-                                    <button @click="copyMarkdown(msg)"
-                                        class="w-7 h-7 flex items-center justify-center rounded-md bg-transparent text-fg-tertiary cursor-pointer transition-all hover:bg-surface-alt hover:text-fg-secondary"
-                                        title="{{ t('chat.copy_tooltip') }}">
-                                        <i data-lucide="copy" class="w-4 h-4"></i>
-                                    </button>
-                                    <div class="chat-hover-tip chat-hover-tip-top chat-hover-tip-align-right flex-shrink-0"
-                                        :data-tooltip="availableAudioModelsByType('audio_tts').length === 0
-                                            ? window.t('chat.install_tts_tooltip')
-                                            : ((audioOutputBusy && audioPlayingMessageId !== msg.id) ? window.t('chat.tts_busy_tooltip') : '')">
-                                        <button
-                                            @click="requestSpeechSynthesis(msg)"
-                                            :disabled="audioOutputBusy && audioPlayingMessageId !== msg.id"
-                                            :aria-disabled="audioOutputBusy && audioPlayingMessageId !== msg.id"
-                                            class="w-7 h-7 flex items-center justify-center rounded-md bg-transparent text-fg-tertiary cursor-pointer transition-all hover:bg-surface-alt hover:text-fg-secondary disabled:opacity-40"
-                                            :title="availableAudioModelsByType('audio_tts').length === 0 ? '' : (audioPlayingMessageId === msg.id ? 'Stop reading' : (audioOutputBusy ? 'Generating speech…' : 'Read aloud'))">
-                                            <i :data-lucide="audioPlayingMessageId === msg.id ? 'square' : 'volume-2'" class="w-4 h-4"></i>
-                                        </button>
-                                    </div>
-                                    <button @click="regenerateMessage(index)"
-                                        class="w-7 h-7 flex items-center justify-center rounded-md bg-transparent text-fg-tertiary cursor-pointer transition-all hover:bg-surface-alt hover:text-fg-secondary"
-                                        title="{{ t('chat.regenerate_tooltip') }}">
-                                        <i data-lucide="refresh-cw" class="w-4 h-4"></i>
-                                    </button>
-                                    <div class="relative flex-shrink-0" x-show="fusionExternalReviewModels(msg).length > 0">
-                                        <button @click="externalReviewOpen = !externalReviewOpen" @click.outside="externalReviewOpen = false"
-                                            :disabled="msg._externalReview?.status === 'running'"
-                                            class="w-7 h-7 flex items-center justify-center rounded-md bg-transparent text-fg-tertiary cursor-pointer transition-all hover:bg-surface-alt hover:text-fg-secondary disabled:opacity-40"
-                                            title="External Review">
-                                            <i data-lucide="shield-check" class="w-4 h-4"></i>
-                                        </button>
-                                        <div x-show="externalReviewOpen" x-transition
-                                            class="absolute right-0 top-full mt-1 z-50 bg-surface border border-line rounded-lg shadow-lg py-1 min-w-[190px] max-h-52 overflow-y-auto custom-scrollbar">
-                                            <div class="px-3 pt-1 pb-1 text-[10px] font-bold uppercase tracking-wider" style="color:var(--text-tertiary);">External Review</div>
-                                            <template x-for="cloudModel in fusionExternalReviewModels(msg)" :key="cloudModel.id">
-                                                <button @click="externalReviewMessage(index, cloudModel.id); externalReviewOpen = false"
-                                                    class="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left hover:bg-surface-muted"
-                                                    style="color:var(--text-primary);">
-                                                    <i data-lucide="cloud" class="w-3.5 h-3.5 flex-shrink-0"></i>
-                                                    <span class="truncate" x-text="cloudModel.name"></span>
-                                                </button>
-                                            </template>
-                                        </div>
-                                    </div>
-                                    <div class="relative flex-shrink-0">
-                                        <button @click="contextOpen = !contextOpen" @click.outside="contextOpen = false"
-                                            class="w-7 h-7 flex items-center justify-center rounded-md bg-transparent text-fg-tertiary cursor-pointer transition-all hover:bg-surface-alt hover:text-fg-secondary"
-                                            title="{{ t('chat.more_actions_tooltip') }}">
-                                            <i data-lucide="more-vertical" class="w-4 h-4"></i>
-                                        </button>
-                                        <div x-show="contextOpen" x-transition
-                                            class="absolute right-0 top-full mt-1 z-50 bg-surface border border-line rounded-lg shadow-lg py-1 min-w-[150px]"
-                                            style="min-width: 160px; border-color: var(--border-normal);">
-                                            <button @click="branchChat(index); contextOpen = false"
-                                                class="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left hover:bg-surface-muted"
-                                                style="color: var(--text-primary);">
-                                                <i data-lucide="git-branch" class="w-3.5 h-3.5"></i>
-                                                {{ t('chat.branch_here') }}
-                                            </button>
-                                            <button @click="deleteMessage(index); contextOpen = false"
-                                                class="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-danger hover:bg-danger-bg">
-                                                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
-                                                {{ t('chat.delete_message') }}
-                                            </button>
-                                            <button @click="copyMarkdown(msg); contextOpen = false"
-                                                class="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left hover:bg-surface-muted"
-                                                style="color: var(--text-primary);">
-                                                <i data-lucide="file-text" class="w-3.5 h-3.5"></i>
-                                                {{ t('chat.copy_markdown') }}
-                                            </button>
-                                            <button @click="openKnowledgeSave(index, 'message'); contextOpen = false"
-                                                class="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left hover:bg-surface-muted"
-                                                style="color: var(--text-primary);">
-                                                <i data-lucide="library-big" class="w-3.5 h-3.5"></i>
-                                                <span x-text="window.t('chat.knowledge.save_message')"></span>
-                                            </button>
-                                            <button @click="openKnowledgeSave(index, 'turn'); contextOpen = false"
-                                                class="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left hover:bg-surface-muted"
-                                                style="color: var(--text-primary);">
-                                                <i data-lucide="messages-square" class="w-3.5 h-3.5"></i>
-                                                <span x-text="window.t('chat.knowledge.save_turn')"></span>
-                                            </button>
-                                            <button @click="openKnowledgeSave(index, 'selection'); contextOpen = false"
-                                                class="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left hover:bg-surface-muted"
-                                                style="color: var(--text-primary);">
-                                                <i data-lucide="text-select" class="w-3.5 h-3.5"></i>
-                                                <span x-text="window.t('chat.knowledge.save_selection')"></span>
-                                            </button>
-                                            <button @click="openKnowledgeSave(index, 'link'); contextOpen = false"
-                                                class="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left hover:bg-surface-muted"
-                                                style="color: var(--text-primary);">
-                                                <i data-lucide="link" class="w-3.5 h-3.5"></i>
-                                                <span x-text="window.t('chat.knowledge.save_link')"></span>
-                                            </button>
-                                            <button x-show="msg?.artifact_id||msg?.meta?.image_generation?.artifact_id" @click="openKnowledgeSave(index, 'artifact'); contextOpen = false"
-                                                class="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left hover:bg-surface-muted"
-                                                style="color: var(--text-primary);">
-                                                <i data-lucide="package-open" class="w-3.5 h-3.5"></i>
-                                                <span x-text="window.t('chat.knowledge.save_artifact')"></span>
-                                            </button>
-                                            <div class="my-1 border-t" style="border-color: var(--border-normal);"></div>
-                                            <button @click="regenerateMessage(index, { creative: true }); contextOpen = false"
-                                                class="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left hover:bg-surface-muted"
-                                                style="color: var(--text-primary);">
-                                                <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
-                                                <span x-text="window.t('chat.regenerate_creative')"></span>
-                                            </button>
-                                            <template x-if="availableModels.length > 1">
-                                                <div class="max-h-40 overflow-y-auto custom-scrollbar">
-                                                    <div class="px-3 pt-1 pb-0.5 text-[10px] font-bold uppercase tracking-wider"
-                                                        style="color: var(--text-tertiary);"
-                                                        x-text="window.t('chat.regenerate_with')"></div>
-                                                    <template x-for="m in availableModels" :key="m.id">
-                                                        <button x-show="m.id !== currentModel"
-                                                            @click="regenerateMessage(index, { model: m.id }); contextOpen = false"
-                                                            class="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left hover:bg-surface-muted"
-                                                            style="color: var(--text-primary);">
-                                                            <i data-lucide="refresh-cw" class="w-3.5 h-3.5 flex-shrink-0"></i>
-                                                            <span class="truncate" x-text="m.name"></span>
-                                                        </button>
-                                                    </template>
-                                                </div>
-                                            </template>
-                                        </div>
-               </div>
-            </div>
-        </div>
                             <!-- Collapsible performance timeline -->
                             <div x-show="msg._perfVisible === true && msg._perfLog?.length > 0"
                                 class="px-1 pt-1 pb-2 mb-1 border-b space-y-0.5"
@@ -2426,17 +2426,26 @@
                             <template x-if="getImageUrls(msg.content).length > 0">
                                 <div class="flex flex-wrap gap-2 mb-2">
                                     <template x-for="imgUrl in getImageUrls(msg.content)"
-                                        :key="imgUrl.substring(0, 50)">
-                                        <img src="" alt="Generated image"
-                                            x-init="loadImageElement($el, imgUrl)"
-                                            @click="openImageModal($el.src || imgUrl)"
-                                            class="max-w-full max-h-[32rem] object-contain rounded-lg cursor-pointer">
+                                        :key="imgUrl">
+                                        <div class="chat-image-card" x-data="{ imageBusy: false, imageNotice: '' }">
+                                            <img src="" alt="Generated image" draggable="true"
+                                                x-init="loadImageElement($el, imgUrl)"
+                                                @dragstart="window.AI2AppsChatImages.drag($event, imgUrl)"
+                                                @click="openImageModal($el.src || imgUrl)"
+                                                class="max-w-full max-h-[32rem] object-contain rounded-lg cursor-pointer">
+                                            <div class="chat-image-actions">
+                                                <button type="button" :disabled="imageBusy" @click="imageBusy=true; imageNotice=''; try { await window.AI2AppsChatImages.save(imgUrl, getApiKey()); } catch(e) { imageNotice=e.message; } finally { imageBusy=false; }" x-text="window.AI2AppsChatImages.label('save')"></button>
+                                                <button type="button" :disabled="imageBusy" @click="imageBusy=true; imageNotice=''; try { await window.AI2AppsChatImages.addToGallery(imgUrl, getApiKey()); imageNotice=window.AI2AppsChatImages.label('added'); } catch(e) { imageNotice=e.message; } finally { imageBusy=false; }" x-text="window.AI2AppsChatImages.label('add_gallery')"></button>
+                                            </div>
+                                            <p x-show="imageNotice" x-text="imageNotice" role="status" class="text-xs mt-1"></p>
+                                        </div>
                                     </template>
                                 </div>
                             </template>
                             <div class="message-body markdown-content" data-math-pending="true"
                                 :data-math-version="String(getTextContent(msg.content).length)"
                                 x-html="renderMarkdown(getTextContent(msg.content))"></div>
+                            <div class="aaat-result-views" x-effect="window.AI2AppsResultViews.render($el, msg.aaat_views || [])"></div>
                             <template x-if="msg.meta?.knowledge?.citations?.length">
                                 <div class="mt-3 pt-2 border-t flex flex-wrap gap-1.5"
                                     style="border-color: var(--border-normal);">
@@ -2454,6 +2463,153 @@
                                     </template>
                                 </div>
                             </template>
+                            <div class="message-header">
+                                <div class="flex items-center gap-2 text-sm font-medium"
+                                    style="color: var(--text-primary);">
+                                    <i data-lucide="cpu" class="w-4 h-4" style="color: var(--text-tertiary);"></i>
+                                    <span x-text="variantModelLabel(msg)"></span>
+                                    <span x-show="variantProfileLabel(msg)"
+                                        class="text-[10px] px-1.5 py-0.5 rounded-full bg-surface-muted border border-line"
+                                        style="color: var(--text-tertiary);"
+                                        x-text="variantProfileLabel(msg)"></span>
+                                </div>
+                                <div class="flex gap-1" x-data="{ contextOpen: false, externalReviewOpen: false }">
+                                    <!-- Timeline toggle: only visible when timeline data is attached -->
+                                    <button x-show="msg._perfLog?.length > 0"
+                                        @click="msg._perfVisible = !msg._perfVisible"
+                                        class="w-7 h-7 flex items-center justify-center rounded-md bg-transparent cursor-pointer transition-all hover:bg-surface-alt"
+                                        :style="msg._perfVisible ? 'color:var(--text-primary);' : 'color:var(--text-tertiary);'"
+                                        :title="msg._perfVisible
+                                            ? window.t('chat.hide_info_tooltip')
+                                            : window.t('chat.show_info_tooltip').replace('{count}', msg._perfTotal)">
+                                        <i data-lucide="activity" class="w-4 h-4"></i>
+                                    </button>
+                                    <button @click="copyMarkdown(msg, $event.currentTarget)"
+                                        class="w-7 h-7 flex items-center justify-center rounded-md bg-transparent text-fg-tertiary cursor-pointer transition-all hover:bg-surface-alt hover:text-fg-secondary"
+                                        title="{{ t('chat.copy_tooltip') }}">
+                                        <i data-lucide="copy" class="w-4 h-4"></i>
+                                    </button>
+                                    <div class="chat-hover-tip chat-hover-tip-top chat-hover-tip-align-right flex-shrink-0"
+                                        :data-tooltip="availableAudioModelsByType('audio_tts').length === 0
+                                            ? window.t('chat.install_tts_tooltip')
+                                            : ((audioOutputBusy && audioPlayingMessageId !== msg.id) ? window.t('chat.tts_busy_tooltip') : '')">
+                                        <button
+                                            @click="requestSpeechSynthesis(msg)"
+                                            :disabled="audioOutputBusy && audioPlayingMessageId !== msg.id"
+                                            :aria-disabled="audioOutputBusy && audioPlayingMessageId !== msg.id"
+                                            class="w-7 h-7 flex items-center justify-center rounded-md bg-transparent text-fg-tertiary cursor-pointer transition-all hover:bg-surface-alt hover:text-fg-secondary disabled:opacity-40"
+                                            :title="availableAudioModelsByType('audio_tts').length === 0 ? '' : (audioPlayingMessageId === msg.id ? 'Stop reading' : (audioOutputBusy ? 'Generating speech…' : 'Read aloud'))">
+                                            <i :data-lucide="audioPlayingMessageId === msg.id ? 'square' : 'volume-2'" class="w-4 h-4"></i>
+                                        </button>
+                                    </div>
+                                    <button @click="regenerateMessage(index)"
+                                        class="w-7 h-7 flex items-center justify-center rounded-md bg-transparent text-fg-tertiary cursor-pointer transition-all hover:bg-surface-alt hover:text-fg-secondary"
+                                        title="{{ t('chat.regenerate_tooltip') }}">
+                                        <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                                    </button>
+                                    <div class="relative flex-shrink-0" x-show="fusionExternalReviewModels(msg).length > 0">
+                                        <button @click="externalReviewOpen = !externalReviewOpen" @click.outside="externalReviewOpen = false"
+                                            :disabled="msg._externalReview?.status === 'running'"
+                                            class="w-7 h-7 flex items-center justify-center rounded-md bg-transparent text-fg-tertiary cursor-pointer transition-all hover:bg-surface-alt hover:text-fg-secondary disabled:opacity-40"
+                                            title="External Review">
+                                            <i data-lucide="shield-check" class="w-4 h-4"></i>
+                                        </button>
+                                        <div x-show="externalReviewOpen" x-transition
+                                            class="absolute right-0 top-full mt-1 z-50 bg-surface border border-line rounded-lg shadow-lg py-1 min-w-[190px] max-h-52 overflow-y-auto custom-scrollbar">
+                                            <div class="px-3 pt-1 pb-1 text-[10px] font-bold uppercase tracking-wider" style="color:var(--text-tertiary);">External Review</div>
+                                            <template x-for="cloudModel in fusionExternalReviewModels(msg)" :key="cloudModel.id">
+                                                <button @click="externalReviewMessage(index, cloudModel.id); externalReviewOpen = false"
+                                                    class="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left hover:bg-surface-muted"
+                                                    style="color:var(--text-primary);">
+                                                    <i data-lucide="cloud" class="w-3.5 h-3.5 flex-shrink-0"></i>
+                                                    <span class="truncate" x-text="cloudModel.name"></span>
+                                                </button>
+                                            </template>
+                                        </div>
+                                    </div>
+                                    <div class="relative flex-shrink-0">
+                                        <button @click="contextOpen = !contextOpen" @click.outside="contextOpen = false"
+                                            class="w-7 h-7 flex items-center justify-center rounded-md bg-transparent text-fg-tertiary cursor-pointer transition-all hover:bg-surface-alt hover:text-fg-secondary"
+                                            title="{{ t('chat.more_actions_tooltip') }}">
+                                            <i data-lucide="more-vertical" class="w-4 h-4"></i>
+                                        </button>
+                                        <div x-show="contextOpen" x-transition
+                                            class="absolute right-0 top-full mt-1 z-50 bg-surface border border-line rounded-lg shadow-lg py-1 min-w-[150px]"
+                                            style="min-width: 160px; border-color: var(--border-normal);">
+                                            <button @click="branchChat(index); contextOpen = false"
+                                                class="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left hover:bg-surface-muted"
+                                                style="color: var(--text-primary);">
+                                                <i data-lucide="git-branch" class="w-3.5 h-3.5"></i>
+                                                {{ t('chat.branch_here') }}
+                                            </button>
+                                            <button @click="deleteMessage(index); contextOpen = false"
+                                                class="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-danger hover:bg-danger-bg">
+                                                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                                                {{ t('chat.delete_message') }}
+                                            </button>
+                                            <button @click="copyMarkdown(msg, $event.currentTarget); contextOpen = false"
+                                                class="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left hover:bg-surface-muted"
+                                                style="color: var(--text-primary);">
+                                                <i data-lucide="file-text" class="w-3.5 h-3.5"></i>
+                                                {{ t('chat.copy_markdown') }}
+                                            </button>
+                                            <button @click="openKnowledgeSave(index, 'message'); contextOpen = false"
+                                                class="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left hover:bg-surface-muted"
+                                                style="color: var(--text-primary);">
+                                                <i data-lucide="library-big" class="w-3.5 h-3.5"></i>
+                                                <span x-text="window.t('chat.knowledge.save_message')"></span>
+                                            </button>
+                                            <button @click="openKnowledgeSave(index, 'turn'); contextOpen = false"
+                                                class="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left hover:bg-surface-muted"
+                                                style="color: var(--text-primary);">
+                                                <i data-lucide="messages-square" class="w-3.5 h-3.5"></i>
+                                                <span x-text="window.t('chat.knowledge.save_turn')"></span>
+                                            </button>
+                                            <button @click="openKnowledgeSave(index, 'selection'); contextOpen = false"
+                                                class="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left hover:bg-surface-muted"
+                                                style="color: var(--text-primary);">
+                                                <i data-lucide="text-select" class="w-3.5 h-3.5"></i>
+                                                <span x-text="window.t('chat.knowledge.save_selection')"></span>
+                                            </button>
+                                            <button @click="openKnowledgeSave(index, 'link'); contextOpen = false"
+                                                class="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left hover:bg-surface-muted"
+                                                style="color: var(--text-primary);">
+                                                <i data-lucide="link" class="w-3.5 h-3.5"></i>
+                                                <span x-text="window.t('chat.knowledge.save_link')"></span>
+                                            </button>
+                                            <button x-show="msg?.artifact_id||msg?.meta?.image_generation?.artifact_id" @click="openKnowledgeSave(index, 'artifact'); contextOpen = false"
+                                                class="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left hover:bg-surface-muted"
+                                                style="color: var(--text-primary);">
+                                                <i data-lucide="package-open" class="w-3.5 h-3.5"></i>
+                                                <span x-text="window.t('chat.knowledge.save_artifact')"></span>
+                                            </button>
+                                            <div class="my-1 border-t" style="border-color: var(--border-normal);"></div>
+                                            <button @click="regenerateMessage(index, { creative: true }); contextOpen = false"
+                                                class="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left hover:bg-surface-muted"
+                                                style="color: var(--text-primary);">
+                                                <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+                                                <span x-text="window.t('chat.regenerate_creative')"></span>
+                                            </button>
+                                            <template x-if="availableModels.length > 1">
+                                                <div class="max-h-40 overflow-y-auto custom-scrollbar">
+                                                    <div class="px-3 pt-1 pb-0.5 text-[10px] font-bold uppercase tracking-wider"
+                                                        style="color: var(--text-tertiary);"
+                                                        x-text="window.t('chat.regenerate_with')"></div>
+                                                    <template x-for="m in availableModels" :key="m.id">
+                                                        <button x-show="m.id !== currentModel"
+                                                            @click="regenerateMessage(index, { model: m.id }); contextOpen = false"
+                                                            class="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left hover:bg-surface-muted"
+                                                            style="color: var(--text-primary);">
+                                                            <i data-lucide="refresh-cw" class="w-3.5 h-3.5 flex-shrink-0"></i>
+                                                            <span class="truncate" x-text="m.name"></span>
+                                                        </button>
+                                                    </template>
+                                                </div>
+                                            </template>
+                                        </div>
+               </div>
+            </div>
+        </div>
                         </div>
                     </div>
                 </template>
@@ -2672,13 +2828,15 @@
                 </button>
             </div>
             <div class="max-w-4xl mx-auto">
+                <div x-show="messages.length<=2" class="flex flex-wrap gap-2 mb-2">
+                    <template x-for="topic in chatStarterSuggestions()" :key="topic">
+                        <button type="button" class="px-3 py-2 border border-line rounded-xl text-sm text-left" @click="inputMessage=topic;$nextTick(()=>$refs.messageInput?.focus())" x-text="topic"></button>
+                    </template>
+                </div>
                 <div class="input-container" :class="{ 'drag-over': isDragOver }" @dragover.prevent="isDragOver = true"
                     @dragleave.prevent="isDragOver = false" @drop.prevent="isDragOver = false; handleDrop($event)">
-                    <!-- Hidden file input for image upload (multiple) -->
-                    <input type="file" id="imageInput" accept="image/*" multiple x-ref="imageInput"
-                        @change="handleImageSelect($event)" class="hidden">
-                    <input type="file" id="documentInput" accept=".pdf,.docx,.pptx,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,text/markdown,text/x-markdown" multiple x-ref="documentInput"
-                        @change="handleDocumentSelect($event)" class="hidden">
+                    <input type="file" id="attachmentInput" multiple x-ref="attachmentInput"
+                        @change="handleAttachmentSelect($event)" class="hidden">
 
                     <div class="chat-mode-row" @click="focusComposerFromSurface($event)">
                         <div class="chat-mode-switch" role="group" aria-label="Conversation mode">
@@ -2693,18 +2851,24 @@
                                 :disabled="isLegacyChatStreaming()"
                                 @click="setConversationMode('agent')">Agent</button>{% endif %}
                         </div>
-                        {% if principal_is_core %}<select x-show="agentMode" class="chat-agent-select"
-                            :value="currentAgentKey"
-                            :disabled="isLegacyChatStreaming() || availableAgents.length === 0"
-                            aria-label="Selected Agent"
-                            @change="setConversationAgent($event.target.value)">
-                            <template x-for="agent in availableAgents" :key="agent.agent_key">
-                                <option :value="agent.agent_key" x-text="agent.display_name"></option>
-                            </template>
-                        </select>{% endif %}
+                        {% if principal_is_core %}<label x-show="agentMode" class="text-xs chat-agent-budget-control" title="每轮输入与输出 token 额度；用尽后询问是否继续并重置额度">
+                            <span x-text="document.documentElement.lang.startsWith('zh') ? '任务预算' : 'Task budget'"></span>
+                            <span class="chat-agent-budget-field">
+                            <input type="number" min="1" step="1" aria-label="Agent token budget" :placeholder="String(defaultAgentTokenBudget())"
+                                class="chat-agent-select chat-agent-budget" x-model.number="agentModelTokenBudget"
+                                @focus="ensureAgentTokenBudget($el)"
+                                @keydown.up.prevent="stepAgentTokenBudget(10000)" @keydown.down.prevent="stepAgentTokenBudget(-10000)"
+                                @change="localStorage.setItem('ai2apps.agentTokenBudget', String(agentModelTokenBudget))">
+                            <span class="chat-agent-budget-steps">
+                                <button type="button" @click.prevent="stepAgentTokenBudget(10000)" aria-label="Increase budget by 10K" title="+10K">▴</button>
+                                <button type="button" @click.prevent="stepAgentTokenBudget(-10000)" aria-label="Decrease budget by 10K" title="−10K">▾</button>
+                            </span>
+                            </span>
+                        </label>{% endif %}
                         <span class="chat-mode-hint"
                             x-text="agentMode ? selectedAgentDescription() : 'Direct model conversation'"></span>
                     </div>
+                    <p x-show="modelSelectionNotice" x-text="modelSelectionNotice" class="chat-model-selection-notice text-xs px-3 py-2" role="status"></p>
                     <details x-show="agentMode && agentParameterFields(currentAgentKey).length"
                         class="agent-parameter-panel">
                         <summary x-text="'Agent parameters · ' + agentRunName({ agent_key: currentAgentKey })"></summary>
@@ -2774,7 +2938,8 @@
                             <div class="relative group flex items-center gap-2 max-w-full px-2.5 py-1.5 rounded-lg border border-line bg-surface-muted text-xs">
                                 <i data-lucide="file-text" class="w-4 h-4 flex-shrink-0" style="color: var(--text-tertiary);"></i>
                                 <span class="truncate max-w-48" x-text="doc.filename"></span>
-                                <span x-show="!doc.base64" class="text-[10px]" style="color: var(--text-tertiary);">...</span>
+                                <span x-show="doc.nativePath" :title="document.documentElement.lang.startsWith('zh')?'引用原文件；移动或修改后需重新选择':'Original file; reselect after moving or changing'" x-text="document.documentElement.lang.startsWith('zh')?'本地引用':'Local reference'"></span>
+                                <span x-show="doc._pending" class="text-[10px]" style="color: var(--text-tertiary);">...</span>
                                 <button @click="removeDocument(idx)"
                                     class="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center bg-surface-alt border border-line-strong text-fg-tertiary cursor-pointer transition-all opacity-0 group-hover:opacity-100 hover:bg-surface-muted hover:text-fg"
                                     :title="window.t('chat.remove_document')">
@@ -2785,18 +2950,12 @@
                     </div>
 
                     <div class="flex items-end">
-                        <!-- Image upload button (only for VLM models) -->
-                        <button x-show="hasVisionSupport()" @click="$refs.imageInput.click()"
-                            :disabled="!apiKeySet || !currentModel || isCurrentChatStreaming() || imageLimitReached()"
+                        <button @click="$refs.attachmentInput.click()"
+                            :disabled="!apiKeySet || !currentModel || isCurrentChatStreaming()"
                             class="w-10 h-10 m-1 shrink-0 bg-surface-muted hover:bg-surface rounded-full border border-line transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
-                            :title="window.t('chat.upload_image')">
-                            <i data-lucide="image" class="w-4 h-4" style="color: var(--text-tertiary);"></i>
-                        </button>
-                        <button x-show="hasDocumentSupport()" @click="$refs.documentInput.click()"
-                            :disabled="!apiKeySet || !currentModel || isCurrentChatStreaming() || uploadDocuments.length >= markitdownSettings.max_files_per_request"
-                            class="w-10 h-10 m-1 shrink-0 bg-surface-muted hover:bg-surface rounded-full border border-line transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
-                            :title="window.t('chat.upload_document')">
-                            <i data-lucide="file-text" class="w-4 h-4" style="color: var(--text-tertiary);"></i>
+                            :title="document.documentElement.lang.startsWith('zh') ? '添加附件（本地大文件仅引用原文件）' : 'Attach files (large local files stay at their original path)'"
+                            :aria-label="document.documentElement.lang.startsWith('zh') ? '添加附件' : 'Attach files'">
+                            <i data-lucide="paperclip" class="w-4 h-4" style="color: var(--text-tertiary);"></i>
                         </button>
                         <div class="chat-hover-tip chat-hover-tip-top chat-hover-tip-align-left shrink-0"
                             :data-tooltip="availableAudioModelsByType('audio_stt').length === 0
@@ -2945,13 +3104,14 @@
             </div>
         </div>
 
-        <!-- Tab Content: Scrollable area -->
-        <div class="flex-1 overflow-y-auto custom-scrollbar">
+        <!-- Settings scroll here; embedded Apps own their internal scrolling. -->
+        <div class="flex-1 min-h-0 custom-scrollbar"
+            :style="{ overflowY: rightSidebarTab === 'apps' ? 'hidden' : 'auto' }">
 
             <!-- ==================== MINI-ENTRY APP TAB ==================== -->
-            <div x-show="rightSidebarTab === 'apps'" style="height: calc(100dvh - 74px);">
+            <div x-show="rightSidebarTab === 'apps'" class="h-full min-h-0 overflow-hidden">
                 <template x-if="sidebarMiniEntry">
-                    <div class="h-full flex flex-col">
+                    <div class="h-full min-h-0 flex flex-col overflow-hidden">
                         <div class="mini-entry-head flex-shrink-0">
                             <i data-lucide="app-window" class="w-3.5 h-3.5"></i>
                             <strong x-text="sidebarMiniEntry.display_name"></strong>
@@ -3931,6 +4091,9 @@
             // Chat State
             currentChatId: null,
             chatHistory: [],
+            sessionListRunSnapshots: [],
+            sessionListSeen: {},
+            sessionListActivityReady: false,
             backendChatReady: false,
             backendChatCollectionRevision: null,
             backendChatSyncState: 'idle',
@@ -3945,7 +4108,8 @@
             chatSessions: {},
             messages: [],
             inputMessage: '',
-            agentMode: false,
+            agentMode: CHAT_PRINCIPAL_IS_CORE && !{{ terminal_assistant | default(false) | tojson }},
+            agentModelTokenBudget: Number(localStorage.getItem('ai2apps.agentTokenBudget')) || null,
             availableAgents: [],
             currentAgentKey: 'ai2apps.general-agent',
             agentInputError: null,
@@ -3967,6 +4131,10 @@
             voiceSettingsExpanded: false,
             currentModel: null,
             preferredChatModel: null,
+            preferredAgentModel: null,
+            modelSelectionExplicit: false,
+            modelSelectionNotice: '',
+            _modelChoiceRevision: 0,
             localModelRecommendation: { status: 'idle', plan: null, error: '' },
 
             // Voice I/O is deliberately independent from the active LLM/VLM.
@@ -4073,6 +4241,9 @@
             },
 
             // VLM Detection State
+            agentCallCatalog: {apps: [], providers: [], minis: []},
+            agentCallCatalogLoading: false,
+            agentCallCatalogLoaded: false,
             modelTypeMap: {},            // { modelId: "llm"|"vlm"|"embedding"|"reranker" }
             modelStatusMap: {},          // { modelId: /v1/models/status entry }
             aliasToGateway: {},          // { aliasName: gatewayId } maps alias to directory name
@@ -4536,11 +4707,16 @@
 
             reconcileCurrentModelAfterLoad(defaultModel) {
                 if (!this.availableModels?.length) {
-                    this.currentModel = null;
+                    if (!this.modelSelectionExplicit) this.currentModel = null;
+                    return;
+                }
+                if (this.agentMode && !this.modelSelectionExplicit) {
+                    this.currentModel = this.resolvePreferredDefaultModel(defaultModel);
+                    this.modelSelectionNotice = this.currentModel ? '' : '没有符合自动默认条件的 Agent 模型，请明确选择模型。';
                     return;
                 }
                 if (!this.currentModel || !this.isModelAvailableOnServer(this.currentModel)) {
-                    this.currentModel = this.resolvePreferredDefaultModel(defaultModel);
+                    if (!this.modelSelectionExplicit) this.currentModel = this.resolvePreferredDefaultModel(defaultModel);
                 } else {
                     this.currentModel = this.resolveGatewayModelId(this.currentModel);
                 }
@@ -5056,6 +5232,7 @@
                     const file = part.file || {};
                     const data = file.file_data || file.data;
                     if (typeof data !== 'string' || !data.trim()) {
+                        if(file.file_id)parts.push({type:'text',text:`[Attachment reference: ${file.filename || 'file'}; attachment_id=${file.file_id}. ${file.preview_text ? 'Untrusted file excerpt (may be partial):]\n'+file.preview_text : 'Contents have not been loaded. Use Agent mode or a compatible App to process this file.]'}`});
                         continue;
                     }
                     parts.push(part);
@@ -5790,6 +5967,7 @@
                         rushEnabled: false,
                         kvPolicy: historyChat?.kvPolicy ?? 'session',
                         knowledgeEnabled: historyChat?.knowledgeEnabled === true,
+                        modelSelectionExplicit: historyChat?.modelSelectionExplicit ?? !!historyChat?.model,
                         agentMode: historyChat?.agentMode ?? false,
                         agentKey: historyChat?.agentKey ?? 'ai2apps.general-agent',
                         agentParametersByKey: this.cloneData(
@@ -5815,6 +5993,110 @@
 
             isLegacyChatStreaming(chatId = this.currentChatId) {
                 return Boolean(this.getStreamSession(chatId, false)?.isStreaming);
+            },
+
+            sessionListRuns(chatId) {
+                return window.AI2AppsChatSessionActivity.merge(this.sessionListRunSnapshots, Object.values(this.agentRuns))
+                    .filter(run => (run.chatId || run.session_id) === chatId);
+            },
+
+            sessionListActivityState(chatId) {
+                return window.AI2AppsChatSessionActivity.state(this.sessionListRuns(chatId),
+                    this.isLegacyChatStreaming(chatId), this.sessionListSeen[chatId], this.sessionListActivityReady);
+            },
+
+            sessionListActivityLabel(chatId) {
+                return window.t('chat.session_activity_' + this.sessionListActivityState(chatId));
+            },
+
+            markSessionListViewed(chatId = this.currentChatId) {
+                if (!chatId) return;
+                const run = window.AI2AppsChatSessionActivity.latest(this.sessionListRuns(chatId));
+                // A status receipt alone is not a viewed answer: wait for content hydration.
+                if (run?.status === 'completed' && run.output?.message_id &&
+                    !(this.getChatSession(chatId, false)?.messages || []).some(message => message.id === run.output.message_id)) return;
+                const marker = window.AI2AppsChatSessionActivity.stamp(run);
+                if (!marker || this.sessionListSeen[chatId] === marker) return;
+                this.sessionListSeen = {...this.sessionListSeen, [chatId]:marker};
+                this.persistSessionListSeen();
+            },
+
+            persistSessionListSeen() {
+                try { localStorage.setItem(this.chatHistoryStorageKey() + ':activity-v1', JSON.stringify({seen:this.sessionListSeen})); }
+                catch (_) { /* Reading a reply must remain possible when storage is full. */ }
+            },
+
+            initSessionListActivity() {
+                if (this.terminalAssistantMode || this._sessionListActivityStarted) return;
+                this._sessionListActivityStarted = true;
+                this._sessionListActivityBootAt = Date.now();
+                try {
+                    const saved = JSON.parse(localStorage.getItem(this.chatHistoryStorageKey() + ':activity-v1') || 'null');
+                    this._sessionListFirstInstall = !saved;
+                    this.sessionListSeen = saved?.seen && typeof saved.seen === 'object' ? saved.seen : {};
+                } catch (_) { this._sessionListFirstInstall = true; }
+                this._sessionListViewHandler = () => {
+                    if (document.visibilityState === 'visible' && document.hasFocus()) this.markSessionListViewed();
+                };
+                window.addEventListener('focus', this._sessionListViewHandler);
+                document.addEventListener('visibilitychange', this._sessionListViewHandler);
+                void this.refreshSessionListActivity();
+            },
+
+            async refreshSessionListActivity() {
+                if (this._sessionListActivityPolling || this._sessionListActivityDestroyed) return;
+                this._sessionListActivityPolling = true;
+                try {
+                    // Read snapshots only: never finalize, approve, resume or retry work here.
+                    const chatIds = new Set(this.chatHistory.map(chat => chat.id));
+                    const snapshots = [];
+                    const scanLimit = this.sessionListActivityReady ? 100 : 1000;
+                    for (let offset=0; offset<scanLimit; offset+=100) {
+                        const page = await this.agentPlatformFetch(`/agent-runs?limit=100&offset=${offset}`);
+                        snapshots.push(...(page.items || []).filter(run => chatIds.has(run.session_id)).map(window.AI2AppsChatSessionActivity.summary));
+                        if ((page.items || []).length < 100) break;
+                    }
+                    const returned = new Set(snapshots.map(run => run.id));
+                    const missingActive = this.sessionListRunSnapshots.filter(run => chatIds.has(run.session_id) &&
+                        !returned.has(run.id) && !['completed','failed','cancelled','interrupted'].includes(run.status));
+                    for (const run of missingActive.slice(0,100)) {
+                        try { snapshots.push(window.AI2AppsChatSessionActivity.summary(await this.agentPlatformFetch(`/agent-runs/${encodeURIComponent(run.id)}`))); }
+                        catch (_) { /* Preserve last known state on a detached observer. */ }
+                    }
+                    if (this._sessionListActivityDestroyed) return;
+                    this.sessionListRunSnapshots = window.AI2AppsChatSessionActivity.merge(this.sessionListRunSnapshots, snapshots)
+                        .filter(run => chatIds.has(run.session_id)).sort((a,b) =>
+                            String(b.created_at || '').localeCompare(String(a.created_at || ''))).slice(0,1000);
+                    if (this._sessionListFirstInstall) {
+                        // Do not badge the entire historical archive on first adoption.
+                        const seen = {...this.sessionListSeen};
+                        for (const id of chatIds) {
+                            const run = window.AI2AppsChatSessionActivity.latest(this.sessionListRuns(id));
+                            if (Date.parse(run?.finished_at || run?.updated_at || '') < this._sessionListActivityBootAt) {
+                                const marker = window.AI2AppsChatSessionActivity.stamp(run);
+                                if (marker) seen[id] = marker;
+                            }
+                        }
+                        this.sessionListSeen = seen;
+                        this._sessionListFirstInstall = false;
+                    }
+                    this.sessionListActivityReady = true;
+                    if (document.visibilityState === 'visible' && document.hasFocus()) this.markSessionListViewed();
+                    this.sessionListSeen = Object.fromEntries(Object.entries(this.sessionListSeen).filter(([id]) => chatIds.has(id)));
+                    this.persistSessionListSeen();
+                } catch (error) { console.warn('Could not refresh Session list activity', error); }
+                finally {
+                    this._sessionListActivityPolling = false;
+                    if (!this._sessionListActivityDestroyed) this._sessionListActivityTimer = setTimeout(
+                        () => this.refreshSessionListActivity(), document.visibilityState === 'visible' ? 10000 : 30000);
+                }
+            },
+
+            destroy() {
+                this._sessionListActivityDestroyed = true;
+                clearTimeout(this._sessionListActivityTimer);
+                window.removeEventListener('focus', this._sessionListViewHandler);
+                document.removeEventListener('visibilitychange', this._sessionListViewHandler);
             },
 
             isChatStreaming(chatId = this.currentChatId) {
@@ -5857,6 +6139,10 @@
 
             async stopChatStreaming(chatId) {
                 const stream = this.getStreamSession(chatId, false);
+                if (stream?.durableTurnId) {
+                    await this.platformChatFetch(`/threads/${chatId}/turns/${stream.durableTurnId}/cancel`, { method: 'POST' });
+                    return;
+                }
                 if (chatAudioPipeline?.chatId === chatId) {
                     this.stopSpeechOutput();
                 }
@@ -6255,7 +6541,10 @@
                 if (!window.ai2appsShell?.mountMiniEntry) return;
                 const appId = app.app_key || app.id;
                 const messageId = this.latestUserMessageId();
-                const effectivePlacement = messageId ? placement : 'sidebar';
+                const supported = app.mini_entry?.placements || [];
+                const preferred = messageId ? placement : 'sidebar';
+                const effectivePlacement = supported.includes(preferred)
+                    ? preferred : supported.includes('sidebar') ? 'sidebar' : preferred;
                 try {
                     const request = {
                         appId: appId,
@@ -6377,6 +6666,35 @@
             },
 
             setupMiniEntryBridge() {
+                window.addEventListener('ai2apps:host-context', async event => {
+                    const targetThread=event.detail?.chatThread?.id;
+                    if(targetThread&&this._openedContextThread!==targetThread){
+                        this._openedContextThread=targetThread;
+                        try{
+                            const deadline=Date.now()+30000;
+                            while(!this.backendChatReady&&Date.now()<deadline)await new Promise(resolve=>setTimeout(resolve,50));
+                            if(!this.backendChatReady)throw Error('Chat backend is not ready');
+                            const saved=this.localChatFromBackend(await this.platformChatFetch(`/threads/${encodeURIComponent(targetThread)}/content`));
+                            if(this._openedContextThread!==targetThread)return;
+                            const index=this.chatHistory.findIndex(c=>c.id===targetThread);
+                            if(index<0)this.chatHistory.unshift(saved);else this.chatHistory[index]=saved;
+                            Object.assign(this.getChatSession(targetThread,true),saved);
+                            await this.loadChat(targetThread);
+                            if(saved.agentMode)this.setConversationMode('agent');
+                        }catch(error){this._openedContextThread=null;console.warn('Unable to open Chat thread',error.message);}
+                    }
+                    const intent = event.detail?.appInteraction;
+                    if (!intent?.returning || this._returnedAppInteraction === intent.interactionId) return;
+                    this._returnedAppInteraction = intent.interactionId;
+                    try {
+                        if(intent.kind==='capability_setup'){window.AI2AppsParameterForms?.release(intent.interactionId);if(intent.sessionId)await this.loadChat(intent.sessionId);await this.refreshAgentRun(intent.runId);window.dispatchEvent(new CustomEvent('aaat:setup-return',{detail:intent}));await window.ai2appsShell?.acknowledgeHandoff(intent.interactionId);return;}
+                        const handoff = await this.agentPlatformFetch(`/agent-runs/${encodeURIComponent(intent.runId)}/interactions/${encodeURIComponent(intent.interactionId)}/handoff`);
+                        await this.loadChat(handoff.origin.session_id);
+                        await this.refreshAgentRun(intent.runId);
+                        await window.ai2appsShell?.acknowledgeHandoff(intent.interactionId);
+                    } catch (error) { console.warn('App interaction return failed', error.message); }
+                    finally { this._returnedAppInteraction = null; }
+                });
                 const outerHash = new URLSearchParams(window.location.hash.slice(1));
                 const outerMountToken = outerHash.get('ai2apps-mount');
                 const outerInstanceId = outerHash.get('ai2apps-instance');
@@ -6415,7 +6733,7 @@
                     if (event.origin !== window.location.origin && event.origin !== 'null') return;
                     const allowed = new Set([
                         'ai2apps.shell.ready', 'ai2apps.shell.request-dock', 'ai2apps.shell.set-badge',
-                        'ai2apps.shell.open-entry', 'ai2apps.shell.request-capability',
+                        'ai2apps.shell.open-entry', 'ai2apps.shell.open-handoff', 'ai2apps.shell.ack-handoff', 'ai2apps.shell.request-capability',
                         'ai2apps.shell.create-agent-run', 'ai2apps.shell.export-artifact', 'ai2apps.shell.close',
                     ]);
                     if (!allowed.has(message.type)) return;
@@ -6592,6 +6910,7 @@
         }
         this.loadChatHistory();
         await this.initializeBackendChat();
+        this.initSessionListActivity();
         await this.loadMiniEntriesForSession();
         this.fetchMcpTools();
         this.loadDynamoeStatus();
@@ -6604,6 +6923,7 @@
 
         this.applyTheme();
         this.setupMiniEntryBridge();
+        window.ai2appsShell?.ready();
         this.loadMiniAppCatalog();
         if (this.terminalAssistantMode) {
             this.sidebarOpen = false;
@@ -6637,6 +6957,7 @@
         this._modelsVisibilityTimer = null;
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState !== 'visible') return;
+            if (this.currentChatId) void this.restoreDirectChatTurns(this.currentChatId);
             if (!this.apiKeySet) return;
             clearTimeout(this._modelsVisibilityTimer);
             this._modelsVisibilityTimer = setTimeout(async () => {
@@ -6650,6 +6971,9 @@
                     console.error('Failed to refresh models on visibility:', e);
                 }
             }, 300);
+        });
+        window.addEventListener('online', () => {
+            if (this.currentChatId) void this.restoreDirectChatTurns(this.currentChatId);
         });
     },
 
@@ -6751,7 +7075,7 @@
 
     hasPendingUploads() {
         return this.uploadImages.some(img => !img.base64)
-            || this.uploadDocuments.some(doc => !doc.base64);
+            || this.uploadDocuments.some(doc => doc._pending || (!doc.base64 && !doc.nativePath && !doc.file && !doc.attachmentId));
     },
 
             // ===== MCP Tools =====
@@ -6859,16 +7183,78 @@
 
     // ===== Image Upload Functions =====
 
-    handleDrop(event) {
-        const files = event.dataTransfer?.files;
-        if (!files) return;
-        Array.from(files).forEach(file => {
-            if (this.hasVisionSupport() && file.type.startsWith('image/')) {
-                this.loadImageFile(file);
-            } else if (this.hasDocumentSupport() && this.isSupportedDocumentFile(file)) {
-                this.loadDocumentFile(file);
+    async handleDrop(event) {
+        // Read drag data synchronously: browsers protect it after the drop callback.
+        const transfer = event.dataTransfer;
+        const files = Array.from(transfer?.files || []);
+        try {
+            const ids = window.AI2AppsGalleryPicker.droppedAssetIds(transfer);
+            if (ids.length) {
+                await Promise.all(ids.map(id => this.addGalleryAttachment(id)));
+            } else {
+                files.forEach(file => this.addAttachmentFile(file));
             }
-        });
+        } catch (error) {
+            alert(error.message || window.t('chat.error.document_load_failed'));
+        }
+    },
+
+    async addGalleryAttachment(assetId) {
+        if (this.uploadDocuments.some(doc => doc.galleryAssetId === assetId)) return;
+        if (this.uploadDocuments.length >= 8) throw new Error(window.t('chat.error.too_many_documents'));
+        const documents = this.uploadDocuments;
+        const pending = {id:`gallery_${Date.now()}_${Math.random().toString(36).slice(2,7)}`,
+            galleryAssetId:assetId,filename:'Gallery',mimeType:'application/octet-stream',sizeBytes:0,_pending:true};
+        documents.push(pending);
+        const stillSelected = () => this.uploadDocuments === documents && documents.some(doc => doc.id === pending.id);
+        try {
+            // Ignore dragged URLs/names/paths; resolve through the owner-authenticated Gallery API.
+            const url = '/v1/platform/gallery/assets/' + encodeURIComponent(assetId);
+            const metadata = await fetch(url, {credentials:'same-origin'});
+            if (!metadata.ok) throw new Error(window.t('chat.error.document_load_failed') + ` (HTTP ${metadata.status})`);
+            const asset = await metadata.json();
+            if (!stillSelected()) return;
+            const entry = documents.find(doc => doc.id === pending.id);
+            entry.filename = asset.name;
+            entry.mimeType = asset.media_type || 'application/octet-stream';
+            entry.sizeBytes = asset.size_bytes;
+            const maxMb = entry.mimeType.startsWith('image/') ? (this.chatSettings.maxImageSizeMb || 10) : 25;
+            const sizeError = () => window.t(entry.mimeType.startsWith('image/')
+                ? 'chat.error.image_too_large' : 'chat.error.document_too_large').replace('{max}', maxMb);
+            if (!Number.isFinite(asset.size_bytes) || asset.size_bytes < 0 || asset.size_bytes > maxMb*1024*1024) {
+                throw new Error(sizeError());
+            }
+            const response = await fetch(url + '/content', {credentials:'same-origin'});
+            if (!response.ok) throw new Error(window.t('chat.error.document_load_failed') + ` (HTTP ${response.status})`);
+            const blob = await response.blob();
+            if (!stillSelected()) return;
+            if (blob.size > maxMb*1024*1024) throw new Error(sizeError());
+            const file = new File([blob], asset.name, {type:entry.mimeType});
+            documents.splice(documents.findIndex(doc => doc.id === pending.id), 1);
+            this.addAttachmentFile(file);
+        } finally {
+            const index = documents.findIndex(doc => doc.id === pending.id);
+            if (index >= 0) documents.splice(index, 1);
+        }
+    },
+
+    handleAttachmentSelect(event) {
+        Array.from(event.target.files || []).forEach(file => this.addAttachmentFile(file));
+        event.target.value = '';
+    },
+
+    addAttachmentFile(file) {
+        // Small images retain the existing vision flow; large inputs never
+        // become data URLs. AceFox exposes this path only on the trusted origin.
+        if (file.type.startsWith('image/') && this.hasVisionSupport()
+            && file.size <= (this.chatSettings.maxImageSizeMb || 10) * 1024 * 1024) {
+            this.loadImageFile(file); return;
+        }
+        if (this.uploadDocuments.length >= 8) { alert(window.t('chat.error.too_many_documents')); return; }
+        let nativePath = ''; try { nativePath = String(file.mozAI2AppsFullPath || ''); } catch (_) {}
+        this.uploadDocuments.push({id: `ref_${Date.now()}_${Math.random().toString(36).slice(2,7)}`,
+            filename: file.name, mimeType: file.type || this.mimeTypeForDocumentName(file.name),
+            sizeBytes: file.size, reference: true, nativePath, file: nativePath ? null : file});
     },
 
     handleImageSelect(event) {
@@ -7004,24 +7390,27 @@
         this.uploadDocuments.splice(index, 1);
     },
 
-    async persistDocuments(chatId, documents) {
+    async persistDocuments(chatId, documents, {preview = false} = {}) {
         for (const doc of documents) {
             if (doc.attachmentId) continue;
             doc._pending = true;
             try {
-                const response = await this.agentPlatformFetch(
-                    `/sessions/${chatId}/attachments`,
-                    {
-                        method: 'POST',
-                        body: JSON.stringify({
-                            filename: doc.filename,
-                            media_type: doc.mimeType,
-                            data: doc.base64,
-                        }),
-                    },
-                );
+                let response;
+                if (doc.nativePath) {
+                    response = await this.agentPlatformFetch(`/sessions/${chatId}/attachments/reference`, {
+                        method:'POST', body:JSON.stringify({source_path:doc.nativePath,filename:doc.filename,media_type:doc.mimeType})});
+                } else if (doc.file) {
+                    const body=new FormData();body.append('file',doc.file,doc.filename);
+                    response = await this.agentPlatformFetch(`/sessions/${chatId}/attachments/upload`, {method:'POST',body});
+                } else {
+                    response = await this.agentPlatformFetch(`/sessions/${chatId}/attachments`, {
+                        method:'POST',body:JSON.stringify({filename:doc.filename,media_type:doc.mimeType,data:doc.base64})});
+                }
                 doc.attachmentId = response.id;
                 doc.parseStatus = response.status;
+                if(preview && doc.reference && doc.sizeBytes <= 25*1024*1024 && this.isSupportedDocumentFile({name:doc.filename,type:doc.mimeType})){
+                    try {const parsed=await this.agentPlatformFetch(`/sessions/${chatId}/attachments/${doc.attachmentId}/blocks?limit=50`);doc.previewText=(parsed.items||[]).map(b=>b.text||'').join('\n').slice(0,24000);}catch(error){doc.previewError=error.message;}
+                }
             } finally {
                 delete doc._pending;
             }
@@ -7038,7 +7427,7 @@
             if (item.type.startsWith('image/')) {
                 const file = item.getAsFile();
                 if (file) {
-                    this.loadImageFile(file);
+                    this.addAttachmentFile(file);
                     event.preventDefault();
                     break;
                 }
@@ -7115,7 +7504,7 @@
             .filter(p => p.type === 'file' && p.file)
             .map(p => ({
                 filename: p.file.filename || window.t('chat.document_not_available'),
-                hasData: Boolean(p.file.file_data || p.file.data),
+                hasData: Boolean(p.file.file_data || p.file.data || p.file.file_id),
             }));
     },
 
@@ -7622,7 +8011,7 @@
             const spec = this.audioCapabilitySpec(kind);
             try {
                 const result = await window.AI2AppsCapabilities?.resume(
-                    'ai2apps.general-chat', { capability: spec.capability }
+                    'ai2apps.general-chat', { capability: spec.capability, actionId: spec.actionId }
                 );
                 if (result?.status === 'ready') {
                     await this.finishAudioCapabilitySetup(kind, result);
@@ -8187,9 +8576,12 @@
             const cloudDefaultsData = cloudDefaultsResponse?.ok ? await cloudDefaultsResponse.json() : {};
             this.availableModels = this.registerCloudDefaultModel(cloudDefaultsData.policy?.apiDefault, nextModels);
             const apiDefaultId = cloudDefaultsData.policy?.apiDefault?.modelId;
-            this.preferredChatModel = defaultsData.defaults?.work_standard
+            this.preferredChatModel = defaultsData.defaults?.work_chat || defaultsData.defaults?.work_standard
                 || (apiDefaultId ? `cloud/ai2apps/${apiDefaultId}` : null);
-            this.reconcileCurrentModelAfterLoad(this.preferredChatModel);
+            this.preferredAgentModel = AI2AppsConversationModelPolicy.agentDefault(this.availableModels,
+                defaultsData.defaults?.work_agent,
+                [defaultsData.defaults?.work_standard, defaultsData.defaults?.work_complex]);
+            this.reconcileCurrentModelAfterLoad(this.agentMode ? this.preferredAgentModel : this.preferredChatModel);
             // x-for can replace options without changing currentModel, so x-model
             // alone does not restore the native select after a catalog refresh.
             await this.$nextTick();
@@ -8889,9 +9281,20 @@
         if (session) session.systemPrompt = '';
     },
 
-    async selectModel(modelId) {
+    async selectModel(modelId, { explicit = true } = {}) {
+        this.modelSelectionExplicit = explicit;
+        if (explicit) this._modelChoiceRevision++;
+        this.modelSelectionNotice = '';
         const session = this.getChatSession(this.currentChatId, true);
         const gatewayId = this.resolveGatewayModelId(modelId);
+        if (!gatewayId) {
+            this.currentModel = null;
+            if (session) {
+                session.model = null;
+                session.modelSelectionExplicit = explicit;
+            }
+            return;
+        }
         try {
             if (session?.model && session.model !== gatewayId) {
                 session.rushEnabled = false;
@@ -8905,6 +9308,7 @@
             this.currentModel = gatewayId;
             if (session) {
                 session.model = gatewayId;
+                session.modelSelectionExplicit = explicit;
                 if (!this.loadModelSettingsForModel(session, gatewayId)) {
                     session.modelSettings = null;
                     session.speculativeEngine = null;
@@ -8924,8 +9328,34 @@
         await this.fetchWorkerStats({ force: true });
     },
 
-    setConversationMode(mode) {
+    defaultAgentTokenBudget() {
+        const declared = Number(this.availableAgents.find(agent => agent.agent_key === this.currentAgentKey)?.manifest?.max_total_model_tokens);
+        return Number.isSafeInteger(declared) && declared > 0 ? declared : 500000;
+    },
+
+    ensureAgentTokenBudget(input) {
+        if (Number.isSafeInteger(this.agentModelTokenBudget) && this.agentModelTokenBudget > 0) return;
+        this.agentModelTokenBudget = this.defaultAgentTokenBudget();
+        // Keep the focused input in sync before Alpine's next DOM update.
+        input.value = String(this.agentModelTokenBudget);
+    },
+
+    stepAgentTokenBudget(delta) {
+        const current = Number.isSafeInteger(this.agentModelTokenBudget) && this.agentModelTokenBudget > 0
+            ? this.agentModelTokenBudget : this.defaultAgentTokenBudget();
+        this.agentModelTokenBudget = Math.max(1, Math.min(Number.MAX_SAFE_INTEGER, current + delta));
+        localStorage.setItem('ai2apps.agentTokenBudget', String(this.agentModelTokenBudget));
+    },
+
+    async setConversationMode(mode) {
         this.agentMode = CHAT_PRINCIPAL_IS_CORE && mode === 'agent';
+        if (!this.modelSelectionExplicit) {
+            const selected = this.agentMode ? this.preferredAgentModel : this.resolvePreferredDefaultModel(this.preferredChatModel);
+            await this.selectModel(selected, {explicit: false});
+            if (this.agentMode && !selected) this.modelSelectionNotice = '没有声明支持中等及以上复杂度且工具调用可靠的可用模型，请明确选择模型，或完善模型能力声明。';
+        } else if (this.agentMode && !AI2AppsConversationModelPolicy.agentEligible(this.availableModels.find(m => m.id === this.currentModel))) {
+            this.modelSelectionNotice = '保留你明确选择的模型；其 Agent 能力声明尚不满足自动默认条件。';
+        }
         const session = this.getChatSession(this.currentChatId, true);
         if (session) {
             session.agentMode = this.agentMode;
@@ -8951,7 +9381,7 @@
         const headers = { ...(options.headers || {}) };
         const apiKey = this.getApiKey();
         if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
-        if (options.body != null) headers['Content-Type'] = 'application/json';
+        if (options.body != null && !(options.body instanceof FormData)) headers['Content-Type'] = 'application/json';
         const response = await fetch(`/v1/platform${path}`, {
             credentials: 'same-origin',
             ...options,
@@ -9123,7 +9553,18 @@
 
     agentRunForMessage(message) {
         const runId = message?.agent_run_id || message?._agentRunId;
-        return runId ? this.agentRuns[runId] || null : null;
+        if (!runId) return null;
+        // Optimistic and restored input messages can both reference the same
+        // durable Run. Render its shared card only at the last input anchor.
+        const anchors = this.messages || [];
+        for (let index = anchors.length - 1; index >= 0; index -= 1) {
+            const candidate = anchors[index];
+            if (candidate.role !== 'user'
+                || (candidate.agent_run_id || candidate._agentRunId) !== runId) continue;
+            if (candidate !== message) return null;
+            break;
+        }
+        return this.agentRuns[runId] || null;
     },
 
     agentRunIsActive(run) {
@@ -9150,6 +9591,16 @@
             text: run?.error?.message || run?.status || 'Agent is working…',
             presentation: run?.status === 'failed' ? 'error' : 'plain',
         });
+        const pendingForm = (run?.interactions || []).find(item => item.status === 'pending' && ['parameter_form','app_handoff','approval'].includes(item.ui_hints?.control));
+        if (['waiting_input','waiting_capability'].includes(run?.status) && pendingForm) {
+            const text = window.AI2AppsParameterForms?.prompt(pendingForm);
+            if (text) return { ...view, text };
+        }
+        if (run?.status === 'completed' && run?.output?.finish_reason === 'length') {
+            return { ...view, text: document.documentElement.lang.startsWith('zh')
+                ? '输出达到长度上限，内容未完成' : 'Output limit reached; response incomplete',
+                tone: 'warning', effect: 'none', icon: 'warning' };
+        }
         if (run?.status === 'completed') return { ...view, tone: 'success', effect: 'none', icon: 'check' };
         if (run?.status === 'failed') return { ...view, tone: 'danger', effect: 'none', icon: 'error' };
         if (run?.status === 'cancelled') return { ...view, tone: 'neutral', effect: 'none', icon: 'error' };
@@ -9165,6 +9616,129 @@
             activity: '✦', sparkles: '✦', check: '✓', success: '✓',
             warning: '!', error: '×', danger: '×', queue: '⋯', spin: '◌',
         })[icon] || '•';
+    },
+
+    agentToolCallDetails(run) {
+        const preview = value => {
+            let remaining = 6000;
+            const shorten = (item, depth = 0, key = '') => {
+                if (/^(api[_-]?key|authorization|password|secret|access[_-]?token|refresh[_-]?token|cookie)$/i.test(key)) return '[redacted]';
+                if (remaining <= 0) return '…';
+                if (typeof item === 'string') {
+                    if (/^data:[^,]*;base64,/i.test(item)) return '[Base64: ' + item.length + ' chars]';
+                    const limit = Math.min(800, remaining);
+                    remaining -= Math.min(item.length, limit);
+                    return item.length > limit ? item.slice(0, limit) + '… [' + item.length + ' chars]' : item;
+                }
+                if (item && typeof item === 'object') {
+                    if (depth >= 5) return '[…]';
+                    if (Array.isArray(item)) {
+                        const result = item.slice(0, 20).map(x => shorten(x, depth + 1));
+                        if (item.length > 20) result.push('… [' + item.length + ' items]');
+                        return result;
+                    }
+                    const result = {};
+                    const entries = Object.entries(item);
+                    for (const [name, child] of entries.slice(0, 30)) result[name] = shorten(child, depth + 1, name);
+                    if (entries.length > 30) result['…'] = entries.length + ' fields';
+                    return result;
+                }
+                remaining -= 16;
+                return item;
+            };
+            const text = JSON.stringify(shorten(value), null, 2) ?? '{}';
+            return text.length > 10000 ? text.slice(0, 10000) + '\n…' : text;
+        };
+        return (run?.steps || []).filter(step => step.kind === 'tool' && step.tool_name)
+            .map((step, index) => {
+                const recorded = step.output || step.error?.details || {};
+                const output = recorded.result?.executed_in_app ? recorded.result : recorded;
+                const execution = [];
+                // Execution evidence comes only from the recorded result, not
+                // from a requested Provider or today's registry mapping.
+                for (const key of ['provider', 'mini_app_id', 'model', 'studio_job_id', 'studio_run_id', 'phase']) {
+                    if (typeof output[key] === 'string' && output[key]) execution.push({key, value: output[key].slice(0, 512)});
+                }
+                if (Array.isArray(output.provider_attempts) && output.provider_attempts.length) {
+                    execution.push({key: 'provider_attempts', value: output.provider_attempts.slice(0, 20)
+                        .map(attempt => String(attempt.provider || '').slice(0, 256) + ' · ' + String(attempt.status || '').slice(0, 64) + (attempt.reason ? ': ' + String(attempt.reason).slice(0, 500) : '')).join(' → ')});
+                }
+                const catalog = this.agentCallCatalog || {apps: [], providers: [], minis: []};
+                const provider = catalog.providers.find(p => p.id === output.provider);
+                const appId = output.app_id || provider?.app_id;
+                const app = catalog.apps.find(a => a.id === appId);
+                const mini = catalog.minis.find(m => m.id === output.mini_app_id);
+                const owners = [];
+                if (appId) owners.push({id: appId, kind: 'App', name: app?.name || appId, icon: app?.icon || 'app-window'});
+                if (output.mini_app_id) owners.push({id: output.mini_app_id, kind: 'Mini-App',
+                    name: mini?.displayName || mini?.name || mini?.title || output.mini_app_id, icon: mini?.icon || 'app-window'});
+                return {id: step.id || String(step.sequence ?? index), name: step.tool_name,
+                    status: step.status, owners, execution, error: step.error?.message || '', parameters: preview(output.app_parameters || step.input || {})};
+            });
+    },
+
+    toggleAgentRunDetails(run) {
+        if (!this.agentRunHasDetails(run)) return;
+        run.expanded = !run.expanded;
+        if (run.expanded) this.loadAgentCallIcons();
+    },
+
+    agentRunOwners(run) {
+        const identity = run?.status_line?.content;
+        const calls = this.agentToolCallDetails(run);
+        if (identity?.provider) calls.push(...this.agentToolCallDetails({steps: [{kind: 'tool', tool_name: 'active', output: identity}]}));
+        // A later infrastructure Tool must not erase Apps used earlier in the Run.
+        const seen = new Set();
+        return calls.flatMap(call => call.owners).filter(owner => {
+            const key = owner.kind + ':' + owner.id;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
+    },
+
+    async loadAgentCallIcons() {
+        if (this.agentCallCatalogLoaded || this.agentCallCatalogLoading) return;
+        this.agentCallCatalogLoading = true;
+        const read = async url => {
+            const response = await fetch(url, {credentials: 'same-origin'});
+            if (!response.ok) throw new Error('Catalog unavailable');
+            return response.json();
+        };
+        try {
+            const [apps, capabilities] = await Promise.all([read('/admin/api/shell/apps'), read('/v1/platform/capability-catalog')]);
+            const providers = capabilities.providers || [];
+            const studioIds = [...new Set(providers.filter(p => p.mini_app_id).map(p => p.app_id))];
+            const minis = await Promise.all(studioIds.map(id => read('/v1/platform/studios/' + encodeURIComponent(id) + '/mini-apps').then(x => x.items || []).catch(() => [])));
+            this.agentCallCatalog = {providers, minis: minis.flat(), apps: (apps.items || []).map(a => ({
+                id: a.app_key || a.id || a.app_id, name: a.display_name || a.name,
+                icon: a.icon || a.navigation?.icon || a.manifest?.navigation?.icon,
+            }))};
+            this.agentCallCatalogLoaded = true;
+        } catch (_) { /* Keep recorded IDs visible if catalog access is unavailable. */ }
+        finally { this.agentCallCatalogLoading = false; }
+    },
+
+    agentCallIcon(name) {
+        // Generate SVG only from the bundled icon registry, never catalog HTML.
+        const key = String(name || 'app-window').replace(/(^|-)([a-z])/g, (_, dash, c) => c.toUpperCase());
+        const icons = window.lucide?.icons;
+        const icon = icons?.[key] || icons?.AppWindow;
+        return icon && window.lucide?.createElement ? window.lucide.createElement(icon, {width: 20, height: 20, 'stroke-width': 1.8}).outerHTML : '';
+    },
+
+    agentCallLabel(key) {
+        const labels = {
+            parameters: ['调用参数', 'Call parameters'], provider: ['实际 Provider', 'Actual Provider'],
+            mini_app_id: ['Mini-App', 'Mini-App'], model: ['实际模型', 'Actual model'],
+            studio_job_id: ['Studio 任务', 'Studio job'], studio_run_id: ['Studio Run', 'Studio Run'],
+            provider_attempts: ['提供者调用记录', 'Provider attempts'],
+            phase: ['到达阶段', 'Reached phase'],
+        };
+        const translationKey = 'chat.agent_call_' + key;
+        const translated = this.t(translationKey);
+        if (translated && translated !== translationKey) return translated;
+        return (labels[key] || [key, key])[(document.documentElement.lang || navigator.language || '').startsWith('zh') ? 0 : 1];
     },
 
     agentRunDetails(run) {
@@ -9205,6 +9779,13 @@
         };
         visit(run);
         return descendants;
+    },
+
+    async openAppInteraction(run, interaction) {
+        try {
+            if (!window.ai2appsShell?.openHandoff) throw new Error('Open this conversation in the AI2Apps Shell');
+            await window.ai2appsShell.openHandoff(run.id, interaction.id, false);
+        } catch (error) { run.interactionError = error.message; }
     },
 
     pendingAgentInteractions(run) {
@@ -9307,7 +9888,10 @@
                 body: JSON.stringify({
                     response_id: globalThis.crypto?.randomUUID?.()
                         || `decision-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-                    ...(decision === 'approve' ? { scope } : {}),
+                    ...(decision === 'approve' ? { scope,
+                        ...(scope === 'app' && interaction.response_schema?.properties?.resource_scope
+                            ? { resource_scope: 'tool' } : {}),
+                    } : {}),
                 }),
             });
             await this.refreshAgentRun(run.id);
@@ -9341,6 +9925,7 @@
     async refreshAgentRun(runId, includeChildren = true) {
         const snapshot = await this.agentPlatformFetch(`/agent-runs/${runId}`);
         const existing = this.agentRuns[runId] || null;
+        if (existing && Number(snapshot.status_line?.revision || 0) < Number(existing.status_line?.revision || 0)) return existing;
         const run = this.normalizeAgentRun(snapshot, existing);
         this.agentRuns[runId] = run;
         this.agentRuns = { ...this.agentRuns };
@@ -9495,8 +10080,14 @@
         const snapshot = await this.agentPlatformFetch(`/sessions/${chatId}/agent-runs`, {
             method: 'POST',
             headers: { 'Idempotency-Key': `chat:${chatId}:${userMessage.id}` },
-            body: JSON.stringify({ agent: agentKey || 'ai2apps.general-agent', input }),
+            body: JSON.stringify({ agent: agentKey || 'ai2apps.general-agent', input,
+                ...(Number.isSafeInteger(this.agentModelTokenBudget) && this.agentModelTokenBudget > 0
+                    ? {budget: {max_model_tokens: this.agentModelTokenBudget}} : {}) }),
         });
+        // Resolve through Alpine's reactive collection after the asynchronous request.
+        // The original plain object does not notify templates when new fields are added.
+        const originSession = this.getChatSession(chatId, false);
+        userMessage = originSession?.messages.find(message => message.id === userMessage.id) || userMessage;
         userMessage.agent_run_id = snapshot.id;
         userMessage.agent_input = true;
         userMessage._agentRunId = snapshot.id;
@@ -9510,6 +10101,10 @@
         run.anchorMessageId = userMessage.id;
         this.agentRuns[snapshot.id] = run;
         this.agentRuns = { ...this.agentRuns };
+        if (originSession) {
+            if (this.currentChatId === chatId) this.messages = [...originSession.messages];
+            this.saveCurrentChat(chatId, originSession.messages, originSession.model, originSession.systemPrompt);
+        }
         this.rememberActiveAgentRuns();
         this.connectAgentRunStream(snapshot.id);
         return run;
@@ -9532,6 +10127,7 @@
                     id: run.output.message_id,
                     role: 'assistant',
                     content: run.output.content ?? '',
+                    aaat_views: this.cloneData(run.output.aaat_views || []),
                     model: session.model || this.currentModel,
                     agent_run_id: run.id,
                     _agentRunId: run.id,
@@ -9590,7 +10186,7 @@
         const headers = { ...(options.headers || {}) };
         const apiKey = this.getApiKey();
         if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
-        if (options.body != null) headers['Content-Type'] = 'application/json';
+        if (options.body != null && !(options.body instanceof FormData)) headers['Content-Type'] = 'application/json';
         const response = await fetch(`/v1/platform/chat${path}`, {
             credentials: 'same-origin',
             ...options,
@@ -9608,12 +10204,20 @@
         return body;
     },
 
+    chatStarterSuggestions() {
+        const session=this.getChatSession(this.currentChatId,false);
+        return (Array.isArray(session?.starterSuggestions)?session.starterSuggestions:[]).filter(s=>typeof s==='string'&&s.length<=500).slice(0,5);
+    },
+
     backendSessionMetadata(chat, session = null) {
         const source = session || this.getChatSession(chat?.id, false) || {};
         return {
+            starterSuggestions: this.cloneData(source.starterSuggestions ?? chat?.starterSuggestions ?? []),
+            sourceContext: this.cloneData(source.sourceContext ?? chat?.sourceContext ?? null),
             surface: this.terminalAssistantMode ? 'terminal_assistant' : 'chat_app',
             manualTitle: !!chat?.manualTitle,
             model: source.model ?? chat?.model ?? null,
+            modelSelectionExplicit: source.modelSelectionExplicit ?? chat?.modelSelectionExplicit ?? !!(source.model || chat?.model),
             systemPrompt: source.systemPrompt ?? chat?.systemPrompt ?? '',
             activeProfile: source.activeProfile ?? chat?.activeProfile ?? null,
             modelSettings: this.cloneData(source.modelSettings ?? chat?.modelSettings ?? null),
@@ -9784,6 +10388,7 @@
 
     async performBackendChatSync(chatId) {
         if (this.terminalAssistantMode) return false;
+        if (this.getStreamSession(chatId, false)?.durableTurnId) return false;
         const chat = this.chatHistory.find(item => item.id === chatId);
         const session = this.getChatSession(chatId, false);
         if (!chat || !session || !Number.isInteger(chat.backendRevision)) return false;
@@ -9897,7 +10502,14 @@
         }
     },
 
-    async startNewChat({ initialModel = null } = {}) {
+    async startNewChat({ initialModel = null, initialModelExplicit = true, initialAgentMode = !this.terminalAssistantMode, initialAgentKey = null } = {}) {
+        const choiceRevision = this._modelChoiceRevision;
+        this.modelSelectionExplicit = !!initialModel && initialModelExplicit;
+        this.modelSelectionNotice = '';
+        // Apply defaults before awaiting creation: later explicit user choices
+        // must not be overwritten when the asynchronous setup finishes.
+        this.agentMode = CHAT_PRINCIPAL_IS_CORE && initialAgentMode;
+        this.currentAgentKey = initialAgentKey || this.defaultAgentKey();
         this.cancelPersistModelSettingsTimer();
         const prevChatId = this.currentChatId;
         if (chatAudioPipeline?.chatId === prevChatId) this.stopSpeechOutput();
@@ -9936,12 +10548,13 @@
         await this.loadModels();
         // First-send materialization must not replace the model chosen on the
         // empty page. Only an explicit New Chat adopts the configured default.
-        this.currentModel = initialModel
-            ? this.resolveGatewayModelId(initialModel)
-            : this.resolvePreferredDefaultModel(this.preferredChatModel);
+        if (choiceRevision === this._modelChoiceRevision) {
+            this.currentModel = initialModel
+                ? this.resolveGatewayModelId(initialModel)
+                : this.resolvePreferredDefaultModel(this.agentMode ? this.preferredAgentModel : this.preferredChatModel);
+        }
+        if (this.agentMode && !this.currentModel) this.modelSelectionNotice = '没有符合自动默认条件的 Agent 模型，请明确选择模型。';
         this.currentChatId = chatId;
-        this.agentMode = false;
-        this.currentAgentKey = this.defaultAgentKey();
         this.l1OptimizationMode = 'auto';
         this.engineBoostMode = 'natural';
         this.rushActive = false;
@@ -9965,6 +10578,7 @@
         const session = {
             messages: [],
             model: this.currentModel,
+            modelSelectionExplicit: this.modelSelectionExplicit,
             systemPrompt,
             activeProfile: this.activePromptProfile,
             modelSettings: null,
@@ -9976,7 +10590,7 @@
             rushEnabled: false,
             kvPolicy: 'session',
             knowledgeEnabled: false,
-            agentMode: false,
+            agentMode: this.agentMode,
             agentKey: this.currentAgentKey,
             agentParametersByKey: {},
             backendRevision: backendThread?.revision ?? null,
@@ -10070,6 +10684,8 @@
             this.kvPolicy = session.kvPolicy ?? 'session';
             this.knowledgeEnabled = session.knowledgeEnabled === true;
             this.agentMode = session.agentMode ?? false;
+            this.modelSelectionExplicit = session.modelSelectionExplicit ?? !!session.model;
+            this.modelSelectionNotice = '';
             this.currentAgentKey = this.availableAgents.some(
                 agent => agent.agent_key === session.agentKey
             ) ? session.agentKey : this.defaultAgentKey();
@@ -10107,7 +10723,9 @@
             this.scheduleEnhanceMessages();
             this.ensureStatsPollingForCurrentChat();
             await this.restoreAgentRunsForChat(chatId);
+            await this.restoreDirectChatTurns(chatId);
             await this.loadMiniEntriesForSession(chatId);
+            this.markSessionListViewed(chatId);
         }
         this.isMobile = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
         this.sidebarOpen = window.innerWidth >= 768;
@@ -10144,6 +10762,7 @@
                             type: 'file',
                             file: {
                                 filename: part.file?.filename || '',
+                                ...(part.file?.file_id ? {file_id:part.file.file_id,storage:part.file.storage,...(part.file.preview_text?{preview_text:part.file.preview_text}:{})} : {}),
                                 mime_type: part.file?.mime_type || '',
                                 data: '',
                             },
@@ -10189,6 +10808,7 @@
             engineBoostMode: session?.engineBoostMode ?? 'natural',
             kvPolicy: session?.kvPolicy ?? 'session',
             knowledgeEnabled: session?.knowledgeEnabled === true,
+            modelSelectionExplicit: session?.modelSelectionExplicit ?? this.modelSelectionExplicit,
             agentMode: session?.agentMode ?? this.agentMode,
             agentKey: session?.agentKey ?? this.currentAgentKey,
             agentParametersByKey: this.cloneData(session?.agentParametersByKey || {}),
@@ -10262,26 +10882,40 @@
     },
 
     async sendMessage() {
+        // Freeze the user's selection before thread creation/model loading can
+        // hydrate older session state asynchronously.
+        const selectedMode = this.agentMode;
+        const selectedAgent = this.currentAgentKey;
+        const selectedModel = this.currentModel;
+        const selectedPrompt = this.systemPrompt;
         const userText = this.inputMessage.trim();
         const images = this.uploadImages.filter(img => img.base64);
-        const documents = this.uploadDocuments.filter(doc => doc.base64);
+        const documents = this.uploadDocuments.filter(doc => doc.base64 || doc.nativePath || doc.file || doc.attachmentId);
 
         if (this.hasPendingUploads()) return;
         if (!userText && images.length === 0 && documents.length === 0) return;
         if (!this.currentModel || this.isCurrentChatStreaming()) return;
 
         if (!this.currentChatId) {
-            await this.startNewChat({ initialModel: this.currentModel });
+            await this.startNewChat({
+                initialModel: selectedModel,
+                initialModelExplicit: this.modelSelectionExplicit,
+                initialAgentMode: selectedMode,
+                initialAgentKey: selectedAgent,
+            });
         }
 
         const chatId = this.currentChatId;
-        const sourceModel = this.currentModel;
-        const sourceSystemPrompt = this.systemPrompt;
+        const sourceModel = selectedModel;
+        const sourceSystemPrompt = selectedPrompt;
         const chatSession = this.getChatSession(chatId, true);
         chatSession.model = sourceModel;
         chatSession.systemPrompt = sourceSystemPrompt;
 
-        const useAgent = CHAT_PRINCIPAL_IS_CORE && this.agentMode;
+        const useAgent = CHAT_PRINCIPAL_IS_CORE && selectedMode;
+        this.agentMode = useAgent;
+        this.currentAgentKey = selectedAgent;
+        chatSession.agentMode = useAgent;
         const invocation = useAgent
             ? this.resolveAgentInvocation(userText)
             : { agentKey: null, source: 'direct_model', prompt: userText };
@@ -10298,7 +10932,7 @@
         this.agentInputError = null;
 
         try {
-            await this.persistDocuments(chatId, documents);
+            await this.persistDocuments(chatId, documents, {preview:!useAgent});
         } catch (error) {
             console.error('Failed to persist attachment', error);
             if (useAgent) {
@@ -10330,8 +10964,8 @@
                     file: {
                         filename: doc.filename,
                         ...(useAgent
-                            ? { file_id: doc.attachmentId }
-                            : { file_data: doc.base64, file_id: doc.attachmentId }),
+                            ? { file_id: doc.attachmentId, storage: doc.reference ? 'reference' : undefined }
+                            : { ...(doc.base64 ? {file_data:doc.base64} : {}),file_id:doc.attachmentId,storage:doc.reference?'reference':undefined,...(doc.previewText?{preview_text:doc.previewText}:{}) }),
                     },
                 });
             }
@@ -10560,6 +11194,107 @@
         }
     },
 
+    async refreshDirectChatContent(chatId) {
+        const content = await this.platformChatFetch(`/threads/${chatId}/content`);
+        const session = this.getChatSession(chatId, true);
+        const saved = this.localChatFromBackend(content);
+        session.messages = saved.messages;
+        session.backendRevision = content.thread.revision;
+        const index = this.chatHistory.findIndex(c => c.id === chatId);
+        if (index >= 0) this.chatHistory[index] = { ...this.chatHistory[index], ...saved };
+        if (this.currentChatId === chatId) this.messages = session.messages;
+        if (this.currentChatId === chatId) this.syncFooterStatsFromMessages(session.messages);
+        this.saveChatHistory();
+        this.scheduleEnhanceMessages();
+    },
+
+    async observeDirectChatTurn(chatId, run) {
+        const stream = this.getStreamSession(chatId, true);
+        if (stream.durableTurnId === run.id && stream.isStreaming) return;
+        stream.durableTurnId = run.id;
+        stream.isStreaming = true;
+        stream.sourceModel = run.model;
+        stream._statusStart = Date.parse(run.created_at) || Date.now();
+        this.startStatsPolling(chatId);
+        let notice = null;
+        try {
+            while (true) {
+                const terminal = ['completed', 'failed', 'cancelled', 'interrupted'].includes(run.status);
+                if (terminal) {
+                    await this.refreshDirectChatContent(chatId);
+                    if (run.status === 'completed' && chatId === this.currentChatId) {
+                        const answer = this.getChatSession(chatId, false)?.messages.find(m => m.id === run.output?.message_id);
+                        if (answer) this.maybeAutoSpeak(answer);
+                    }
+                    if (run.status === 'failed' || run.status === 'interrupted') {
+                        notice = run.error?.message || run.status;
+                    }
+                    break;
+                }
+                const progress = run.status_line?.content || {};
+                stream.streamingContent = progress.completion_preview?.content || '';
+                stream.streamingThinking = progress.completion_preview?.reasoning_content || '';
+                if (progress.metrics) this.applyStreamMetrics(chatId, stream, progress.metrics);
+                this.setEngineStatus(chatId, {text: run.status_line?.text || run.status});
+                await new Promise(resolve => setTimeout(resolve, 750));
+                run = await this.platformChatFetch(`/threads/${chatId}/turns/${run.id}`);
+            }
+        } catch (error) {
+            // Observation failure never cancels or resubmits the durable work.
+            notice = '连接中断；回复保留在后台，重新连接后恢复。';
+            console.warn('Chat observation detached', error);
+        } finally {
+            stream.durableTurnId = null;
+            this.resetStreamSession(stream);
+            this.stopStatsPollingIfIdle();
+            if (notice) this.setEngineStatus(chatId, {text: notice});
+        }
+    },
+
+    async restoreDirectChatTurns(chatId) {
+        if (!this.backendChatReady || this.terminalAssistantMode || !chatId?.startsWith('ses_')) return;
+        if (this.getStreamSession(chatId, false)?.durableTurnId) return;
+        try {
+            const state = await this.platformChatFetch(`/threads/${chatId}/turns`);
+            const active = state.items.find(r => !['completed','failed','cancelled','interrupted'].includes(r.status));
+            if (state.items.length) await this.refreshDirectChatContent(chatId);
+            if (active) void this.observeDirectChatTurn(chatId, active);
+        } catch (error) { console.warn('Could not restore direct Chat', error); }
+    },
+
+    async startDirectChatTurn(context) {
+        const session = this.getChatSession(context.chatId, true);
+        const stream = this.getStreamSession(context.chatId, true);
+        stream.isStreaming = true;
+        try {
+            context._directModelOnly = true;
+            context._knowledgeContext = await this.retrieveChatKnowledge(session.messages, context);
+            const request = this.buildChatCompletionBody(session.messages, context, 0);
+            delete request.stream;
+            delete request.stream_options;
+            delete request.ai2apps_session_id;
+            delete request.ai2apps_idempotency_key;
+            const anchor = session.messages.filter(m => m.role === 'user').at(-1);
+            anchor._chatTurnRequestId = crypto.randomUUID();
+            this.saveCurrentChat(context.chatId, session.messages, session.model, context.systemPrompt);
+            if (!await this.flushBackendChatSync(context.chatId)) throw Error('请先重新连接并同步对话，再发送消息。');
+            const chat = this.chatHistory.find(c => c.id === context.chatId);
+            const targetUser = context._variantUserIndex != null ? session.messages[context._variantUserIndex] : anchor;
+            const run = await this.platformChatFetch(`/threads/${context.chatId}/turns`, {
+                method: 'POST', body: JSON.stringify({request_id: anchor._chatTurnRequestId,
+                    expected_revision: chat.backendRevision, request, anchor_message_id: targetUser?.id,
+                    presentation: this.captureGenerationContext(request.model, context.systemPrompt,
+                        context._profile, context._generationOverride)}),
+            });
+            stream.isStreaming = false;
+            return await this.observeDirectChatTurn(context.chatId, run);
+        } catch (error) {
+            this.resetStreamSession(stream);
+            this.setEngineStatus(context.chatId, {text: error.message});
+            await this.restoreDirectChatTurns(context.chatId);
+        }
+    },
+
             async streamResponse(streamContext = null, depth = 0) {
         const context = {
             chatId: streamContext?.chatId || this.currentChatId,
@@ -10589,6 +11324,14 @@
             chatSession.model = context.model;
         }
         chatSession.systemPrompt = context.systemPrompt;
+
+        if (depth === 0 && this.backendChatReady && !this.terminalAssistantMode && context.chatId?.startsWith('ses_')) {
+            return await this.startDirectChatTurn(context);
+        }
+        if (depth === 0 && !this.terminalAssistantMode) {
+            this.setEngineStatus(context.chatId, {text: '请先重新连接并同步对话，再发送消息。'});
+            return;
+        }
 
         if (depth > this.MAX_TOOL_DEPTH) {
             chatSession.messages.push({
@@ -11551,52 +12294,52 @@
 
     _copyFallback(text) {
         const textarea = document.createElement('textarea');
+        const focused = document.activeElement;
         textarea.value = text;
-        textarea.style.position = 'fixed';
-        textarea.style.opacity = '0';
+        textarea.style.cssText = 'position:fixed;opacity:0;left:-10000px';
         document.body.appendChild(textarea);
-        textarea.select();
         try {
-            document.execCommand('copy');
-        } catch (err) {
-            console.error('Failed to copy:', err);
+            textarea.select();
+            if (!document.execCommand('copy')) throw new Error('Clipboard unavailable');
+        } finally {
+            textarea.remove();
+            focused?.focus?.({preventScroll:true});
         }
-        document.body.removeChild(textarea);
     },
 
-    _copyText(text) {
-        return new Promise((resolve) => {
-            if (navigator.clipboard && window.isSecureContext) {
-                navigator.clipboard.writeText(text).then(resolve).catch(() => {
-                    this._copyFallback(text);
-                    resolve();
-                });
-            } else {
-                this._copyFallback(text);
-                resolve();
-            }
-        });
+    async _copyText(text) {
+        try {
+            if (!navigator.clipboard || !window.isSecureContext) throw new Error('Clipboard fallback');
+            await navigator.clipboard.writeText(text);
+        } catch (_) { this._copyFallback(text); }
     },
 
-    copyMessage(content) {
+    async _copyWithFeedback(text, button) {
+        try {
+            await this._copyText(text);
+            window.AI2AppsChatFeedback?.show(button, true);
+        } catch (_) { window.AI2AppsChatFeedback?.show(button, false); }
+    },
+
+    copyMessage(content, button = null) {
         const raw = typeof content === 'string' ? content : this.getTextContent(content);
         const text = typeof content === 'string'
             ? this.normalizeCopyText(this.extractThinking(raw).cleanText)
             : this.normalizeCopyText(raw);
-        this._copyText(text);
+        return this._copyWithFeedback(text, button);
     },
 
-    copyMarkdown(msg) {
+    copyMarkdown(msg, button = null) {
         const text = this.getCopyableMarkdown(msg);
         if (!text) {
             const hasImages = Array.isArray(msg?.content)
                 && msg.content.some(p => p.type === 'image_url');
             if (hasImages) {
-                this._copyText(this.getTextContent(msg.content));
+                return this._copyWithFeedback(this.getTextContent(msg.content), button);
             }
             return;
         }
-        this._copyText(text);
+        return this._copyWithFeedback(text, button);
     },
 
     async loadKnowledgeBucketsForSave() {
@@ -11849,6 +12592,7 @@
             modelSettingsByModel: session.modelSettingsByModel
                 ? this.cloneData(session.modelSettingsByModel) : {},
             knowledgeEnabled: session.knowledgeEnabled === true,
+            modelSelectionExplicit: session.modelSelectionExplicit ?? !!session.model,
             agentMode: session.agentMode ?? false,
             agentKey: session.agentKey ?? 'ai2apps.general-agent',
             agentParametersByKey: this.cloneData(session.agentParametersByKey || {}),
@@ -11871,6 +12615,7 @@
                             type: 'file',
                             file: {
                                 filename: part.file?.filename || '',
+                                ...(part.file?.file_id ? {file_id:part.file.file_id,storage:part.file.storage,...(part.file.preview_text?{preview_text:part.file.preview_text}:{})} : {}),
                                 mime_type: part.file?.mime_type || '',
                                 data: '',
                             },
@@ -12650,7 +13395,7 @@
                 this._copyText(codeBlock.textContent).then(() => {
                     copyBtn.innerHTML = copyIcon + ' Copied!';
                     setTimeout(() => copyBtn.innerHTML = copyIcon + ' Copy', 2000);
-                });
+                }).catch(() => window.AI2AppsChatFeedback?.show(copyBtn, false));
             };
             btnRow.appendChild(copyBtn);
             pre.parentElement.appendChild(btnRow);

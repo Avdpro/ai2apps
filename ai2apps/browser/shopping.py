@@ -4,11 +4,12 @@ from __future__ import annotations
 import asyncio
 import re
 import statistics
+import math
 import json
 from functools import lru_cache
 from pathlib import Path
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
-from datetime import datetime, date, timezone
+from datetime import datetime, date, timezone, timedelta
 from urllib.parse import urlsplit, urljoin, parse_qs, quote
 
 AMAZON = 'https://www.amazon.com'
@@ -65,7 +66,7 @@ HISTORY_SCRIPT = r'''async () => {
   if(orderLink&&cardItems.length)detail_requests.push({url:orderLink.href,items:cardItems.map(i=>({id:i.id,order_key:i.order_key}))});
  }
  const next=document.querySelector('.a-pagination .a-last:not(.a-disabled) a,a[aria-label="Next page"]');
- return {items,detail_requests,next_url:next?.href||'',page_url:location.href,cards:cards.length,empty:/no orders|haven.t placed any orders/i.test(document.querySelector('#ordersContainer')?.innerText||'')};
+ return {items,detail_requests,next_url:next?.href||'',page_url:location.href,cards:cards.length,ready_state:document.readyState,text_length:(document.body?.innerText||'').trim().length,empty:/no orders|haven.t placed any orders/i.test(document.querySelector('#ordersContainer')?.innerText||'')};
 }'''
 DETAIL_PRICES_SCRIPT = r'''() => {
  if(location.pathname.includes('/ap/signin')||/robot check|captcha/i.test(document.title))return {blocked:true};
@@ -139,11 +140,15 @@ CART_SCRIPT = r'''() => {
  for(const a of shoppingQuery(document,'a[href*="almBrandId="]')){try{const u=new URL(a.href);const brand=u.searchParams.get('almBrandId');const name=atob(brand||'');const channel=/^Amazon Fresh$/i.test(name)?'fresh':/^(?:Whole Foods(?: Market)?|WFMO)$/i.test(name)?'whole_foods':null;if(channel&&u.origin===location.origin&&/^[A-Za-z0-9_+-]{1,128}={0,2}$/.test(brand))store_routes.push({channel,brand});}catch{}}
  const emptyHeading=[...shoppingQuery(document,'h1,h2')].some(e=>/^(?:Amazon Fresh|Whole Foods(?: Market)?) Cart is Empty$/i.test((e.textContent||'').trim()));
  return {layout:{headings:shoppingQuery(document,'h1,h2,h3,[role=heading]').map(e=>(e.textContent||'').replace(/\s+/g,' ').trim()).filter(t=>/cart|fresh|whole foods/i.test(t)).slice(0,8),asin_nodes:shoppingQuery(document,'[data-asin]').length,cart_roots:roots.length,quantity_labels:shoppingQuery(document,'[aria-label*=quantity i],.a-dropdown-prompt').map(e=>e.getAttribute('aria-label')||e.textContent||'').filter(t=>/qty|quantity/i.test(t)).slice(0,8)},store_routes,empty:emptyHeading,recognized:emptyHeading||!!groceryHeading||!!document.querySelector('#sc-active-cart,.sc-your-amazon-cart-is-empty,[data-name=ActiveItems],form[action*="/cart"]'),items:roots.map(c=>{
- const increase=[...shoppingQuery(c,'button,[role=button],input,.a-button-text')].find(e=>/^(?:Increase quantity by one|Add (?!to cart))/i.test(e.getAttribute('aria-label')||e.getAttribute('title')||e.textContent||''));
+ const increase=[...shoppingQuery(c,'button,[role=button],input,.a-button-text,.a-button,[onclick]')].find(e=>(/^(?:Increase quantity(?: by one)?|Add (?!to cart))/i.test((e.getAttribute('aria-label')||e.getAttribute('title')||e.textContent||'').trim())||/^[+＋]$/.test((e.textContent||'').trim())));
  const label=increase?.getAttribute('aria-label')||'';
- const popup=[...shoppingQuery(c,'button,[role=button]')].find(e=>/current quantity/i.test(e.getAttribute('aria-label')||''));
- const quantity=Number((popup?.getAttribute('aria-label')||'').match(/Qty[: ]*(\d+)/i)?.[1]||c.querySelector('select[name="quantity"],select')?.value||c.querySelector('input[name="quantity"]')?.value||label.match(/Quantity is (\d+)/i)?.[1]||c.dataset.quantity||0);
- return {id:c.dataset.asin||shoppingQuery(c,'a[href]').map(e=>e.href.match(/\/(?:dp|gp\/product)\/([A-Z0-9]{10})/i)?.[1]).find(Boolean),title:(c.querySelector('.sc-product-title')?.innerText||'').slice(0,500),quantity,increment:rect(increase),...(()=>{const own=shoppingChannel(c);if(own.channel!=='unknown')return own;if(groceryHeading)return {...own,channel:/Whole Foods/i.test(groceryHeading.textContent)?'whole_foods':'fresh'};const group=c.closest('[data-store-name],[data-component="cartGroup"],#sc-active-cart,[data-name=ActiveItems],form[action*="/cart"]');const labels=group?[group.getAttribute('data-store-name')||'',...[...shoppingQuery(group,'h1,h2,h3,h4,[role=heading],.sc-store-name')].map(e=>(e.textContent||'').trim())]:[];const channels=new Set(labels.map(t=>/^(?:Fresh )?Amazon Fresh(?: cart| (?:No items selected\s*)?subtotal.*)?$/i.test(t)?'fresh':/^(?:Whole Foods )?Whole Foods(?: Market)?(?: cart| (?:No items selected\s*)?subtotal.*)?$/i.test(t)?'whole_foods':/^Amazon(?: cart| (?:No items selected\s*)?subtotal.*)?$/i.test(t)?'amazon':null).filter(Boolean));return {...own,channel:channels.size===1?[...channels][0]:'unknown'};})()};
+ const visibleQuantities=shoppingQuery(c,'button,[role=button],[aria-label],.a-dropdown-prompt').filter(ai2appsDOMVisible).map(e=>{
+  const text=(e.getAttribute('aria-label')||e.textContent||'').trim();
+  return text.match(/^(?:Current quantity\s*|Qty[: ]*)(\d+)\b/i)?.[1]||text.match(/^(\d+)\.\s*Click to change quantity$/i)?.[1];
+ }).filter(v=>v!==undefined);
+ const observedQuantities=[...new Set(visibleQuantities)];
+ const quantity=observedQuantities.length>1?0:Number(observedQuantities[0]??c.querySelector('select[name="quantity"],select')?.value??c.querySelector('input[name="quantity"]')?.value??label.match(/Quantity is (\d+)/i)?.[1]??c.dataset.quantity??0);
+ return {id:c.dataset.asin||shoppingQuery(c,'a[href]').map(e=>e.href.match(/\/(?:dp|gp\/product)\/([A-Z0-9]{10})/i)?.[1]).find(Boolean),title:(c.querySelector('.sc-product-title')?.innerText||'').slice(0,500),quantity,increment:rect(increase),increment_ref:increase?.getAttribute('data-ai2apps-ref')||null,quantity_control:rect(c.querySelector('select,[role=combobox]')),row_rect:rect(c),controls:shoppingQuery(c,'[data-ai2apps-ref]').filter(ai2appsDOMVisible).map(e=>({ref:e.getAttribute('data-ai2apps-ref'),label:e.getAttribute('aria-label')||e.getAttribute('title')||e.textContent||'',text:e.textContent||'',rect:rect(e)})),...(()=>{const own=shoppingChannel(c);if(own.channel!=='unknown')return own;if(groceryHeading)return {...own,channel:/Whole Foods/i.test(groceryHeading.textContent)?'whole_foods':'fresh'};const group=c.closest('[data-store-name],[data-component="cartGroup"],#sc-active-cart,[data-name=ActiveItems],form[action*="/cart"]');const labels=group?[group.getAttribute('data-store-name')||'',...[...shoppingQuery(group,'h1,h2,h3,h4,[role=heading],.sc-store-name')].map(e=>(e.textContent||'').trim())]:[];const channels=new Set(labels.map(t=>/^(?:Fresh )?Amazon Fresh(?: cart| (?:No items selected\s*)?subtotal.*)?$/i.test(t)?'fresh':/^(?:Whole Foods )?Whole Foods(?: Market)?(?: cart| (?:No items selected\s*)?subtotal.*)?$/i.test(t)?'whole_foods':/^Amazon(?: cart| (?:No items selected\s*)?subtotal.*)?$/i.test(t)?'amazon':null).filter(Boolean));return {...own,channel:channels.size===1?[...channels][0]:'unknown'};})()};
  }),page_url:location.href};
 }'''
 CONTROLS_SCRIPT = r'''() => {
@@ -151,8 +156,11 @@ CONTROLS_SCRIPT = r'''() => {
  const visible=ai2appsDOMVisible;
  const standard=document.querySelector('#add-to-cart-button,input[name="submit.add-to-cart"]');
  let btn=standard,box=standard?.closest('#desktop_buybox,#buybox'),grocery_add=false,grocery_channel='unknown';
- for(const candidate of shoppingQuery(document,'button,[role=button],input,.a-button-text')){
+ for(const candidate of shoppingQuery(document,'button,[role=button],input,.a-button-text,.a-button')){
   if(!visible(candidate)||!/^add to cart$/i.test(shoppingLabel(candidate).trim()))continue;
+  // Amazon overlays a low-opacity input on an aria-hidden text label.
+  // Use its visible wrapper only when it contains the actual submit control.
+  if(candidate.matches('.a-button')&&!candidate.querySelector('input[type=submit],button[type=submit]'))continue;
   let parent=shoppingParent(candidate);
   for(let depth=0;parent&&depth<10&&parent!==document.body;depth++,parent=shoppingParent(parent)){
    const badges=[...shoppingQuery(parent,'img,[role=img]')].filter(e=>visible(e)&&/^(?:Amazon\s*Fresh|Whole\s*Foods(?:\s*Market)?)$/i.test(e.getAttribute('alt')||e.getAttribute('aria-label')||e.getAttribute('title')||''));
@@ -162,9 +170,10 @@ CONTROLS_SCRIPT = r'''() => {
  }
  let qty=grocery_add?[...shoppingQuery(box,'button,[role=button],input,.a-button-text,a,[aria-label*=quantity i]')].find(e=>visible(e)&&/current quantity|click to change quantity|^qty[: ]*\d/i.test(shoppingLabel(e))):document.querySelector('#quantity');
  if(grocery_add&&!qty)qty=shoppingQuery(box,'*').filter(e=>visible(e)&&/^qty\s*:?\s*\d{1,2}$/i.test((e.textContent||'').trim())).sort((a,b)=>a.getBoundingClientRect().width*a.getBoundingClientRect().height-b.getBoundingClientRect().width*b.getBoundingClientRect().height)[0];
- const controls_layout=[...shoppingQuery(document,'button,[role=button],input,.a-button-text')].filter(e=>visible(e)&&/add.to.cart/i.test(shoppingLabel(e))).slice(0,8).map(e=>({id:e.id,tag:e.tagName,type:e.getAttribute('type'),label:(shoppingLabel(e)).trim().slice(0,80)}));
+ const controls_layout=[...shoppingQuery(document,'button,[role=button],input,.a-button-text,.a-button')].filter(e=>visible(e)&&/add.to.cart/i.test(shoppingLabel(e))).slice(0,8).map(e=>({id:e.id,tag:e.tagName,type:e.getAttribute('type'),label:(shoppingLabel(e)).trim().slice(0,80)}));
  const rect=e=>{if(!e||e.disabled||!ai2appsDOMVisible(e))return null;const r=e.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height};};
- return {controls_layout,grocery_add,blocked:location.pathname.includes('/ap/signin')||/robot check|captcha/i.test(document.title),
+ const availability=shoppingQuery(document,'#availability,#outOfStock,#availabilityInsideBuyBox_feature_div,[data-feature-name=availability],[data-feature-name=almOutOfStockBuyBox]').filter(e=>visible(e)&&(!e.getAttribute('data-csa-c-asin')||e.getAttribute('data-csa-c-asin')===(document.querySelector('#ASIN')?.value||location.pathname.match(/\/dp\/([A-Z0-9]{10})/)?.[1]))).map(e=>(e.textContent||'').replace(/\s+/g,' ').trim()).join(' ').slice(0,500);
+ return {availability,out_of_stock:!rect(btn)&&/\b(?:out of stock|currently unavailable|temporarily out of stock)\b/i.test(availability),controls_layout,grocery_add,blocked:location.pathname.includes('/ap/signin')||/robot check|captcha/i.test(document.title),
  asin:document.querySelector('#ASIN')?.value||location.pathname.match(/\/dp\/([A-Z0-9]{10})/)?.[1],
  quantity_mode:grocery_add?'popup':'select',cart_url:document.querySelector('#nav-cart,a[href*="/cart"][aria-label*="cart" i]')?.href||'',add:rect(btn),quantity:rect(qty),options:qty?.options?[...qty.options].map(o=>Number(o.value)):[],
  subscription:!!document.querySelector('input[name="purchase-option"][value*="sns"]:checked,#snsAccordionRowMiddle input:checked'),...shoppingChannel(box||document.querySelector('#desktop_buybox,#buybox')||document),...(grocery_add?{channel:grocery_channel}:{})};
@@ -299,7 +308,7 @@ def frequencies(items, today=None):
     for row in grouped.values():
         dates = sorted(row['purchase_dates'])
         intervals = [(date.fromisoformat(b)-date.fromisoformat(a)).days for a,b in zip(dates, dates[1:])]
-        average = round(statistics.median(intervals)) if intervals else None
+        average = math.ceil(statistics.median(intervals)) if intervals else None
         for field,prefix in (('channel','channel'),('delivery_window','delivery')):
             counts={}
             for event in row['purchase_events']:
@@ -333,8 +342,46 @@ async def navigate(page, url):
         raise ValueError('Amazon redirected outside scope')
 
 
+async def verify_existing_cart(page, item, count):
+    result={'id':item['id'],'quantity':count,'channel':item.get('preferred_channel','unknown'),
+            'already_present':True,'verified':True}
+    recovery=getattr(page,'visual_recovery',None)
+    if not recovery or recovery.policy['visual_review']!='always':
+        return {'outcome':'success','evidence':{'result':result}}
+    from .visual_recovery import VisualRecoveryUnavailable
+    observed=count
+    try:
+        # Re-read owner state, even though this path sends no input.
+        data=await page.call_json(CART_SCRIPT)
+        matches=cart_matches(data,item['id'],item)
+        rect=(matches[0].get('increment') or matches[0].get('quantity_control') or matches[0].get('row_rect')) if len(matches)==1 else None
+        if isinstance(rect,dict) and all(type(rect.get(k)) in (int,float) and math.isfinite(rect[k]) for k in ('x','y','width','height')):
+            viewport=await page.call_json('() => ({height:innerHeight})')
+            height=viewport.get('height',0)
+            if type(height) in (int,float) and height>0 and (rect['y']<0 or rect['y']+rect['height']>height):
+                await page.scroll(round(rect['y']+rect['height']/2-height/2))
+                # Scrolling is read-only; reobserve quantity before visual review.
+                data=await page.call_json(CART_SCRIPT)
+        observed=sum(int(r['quantity']) for r in cart_matches(data,item['id'],item))
+        value={'id':item['id'],'expected_quantity':item['quantity'],'observed_quantity':observed,
+               'verified':bool(data.get('recognized') and not data.get('blocked') and observed>=int(item['quantity']))}
+        checked=await recovery.verify(page,f'Confirm the observed quantity {observed} of {item.get("title",item["id"])} in its {item.get("preferred_channel","unknown")} cart. The requested minimum is {item["quantity"]}; existing additional units are authorized to remain and satisfy that minimum. Read only, no further action or removal.',value)
+    except VisualRecoveryUnavailable as error:
+        return {'outcome':'needs_user','evidence':{'reason':'amazon_cart_add_unverified','assistance_kind':'other',
+            'expected_quantity':item['quantity'],'observed_quantity':observed,'changed':False,
+            'verification_reason':'视觉复核不可用：'+str(error)[:180],
+            'assistance_message':'已有购物车数量需要视觉复核，但当前无法完成。请核对商品与数量；本次未加购。'+str(error)[:180]}}
+    if not checked['state_verified'] or not checked['visually_verified']:
+        return {'outcome':'needs_user','evidence':{'reason':'amazon_cart_add_unverified','assistance_kind':'other',
+            'expected_quantity':item['quantity'],'observed_quantity':observed,'changed':False,
+            'verification_reason':'DOM 回读或视觉复核未确认目标数量；本次未加购。',
+            'assistance_message':'购物车回读或视觉复核未确认目标数量，本次未加购，请核对页面。','visual_recovery':checked['evidence']}}
+    return {'outcome':'success','evidence':{'result':{**result,'quantity':observed},'visual_recovery':checked['evidence']}}
+
+
 async def top_up_cart(page, data, asin, quantity, item=None):
     """Click each observed increment once, verifying it before another click."""
+    visual_evidence=[]
     for _ in range(10):
         matches=cart_matches(data,asin,item)
         current=sum(int(r['quantity']) for r in matches)
@@ -344,9 +391,91 @@ async def top_up_cart(page, data, asin, quantity, item=None):
             if item and (review:=channel_review(item,row)):
                 return review
         if current>=quantity:
-            return {'outcome':'success','evidence':{'result':{'id':asin,'quantity':current,'verified':True}}}
-        if len(matches)!=1 or current<1 or not matches[0].get('increment'):
+            return {'outcome':'success','evidence':{'result':{'id':asin,'quantity':current,'verified':True},
+                **({'visual_recovery':visual_evidence} if visual_evidence else {})}}
+        if len(matches)!=1 or current<1:
             break
+        if not matches[0].get('increment') or (getattr(page,'visual_recovery',None) and page.visual_recovery.policy['visual_review']=='always'):
+            recovery=getattr(page,'visual_recovery',None)
+            if recovery is None:break
+            from .visual_recovery import VisualRecoveryUnavailable, VisualActionUncertain
+            rect=matches[0].get('increment') or matches[0].get('quantity_control') or matches[0].get('row_rect')
+            if isinstance(rect,dict):
+                for scroll_attempt in range(3):
+                    viewport=await page.call_json('() => ({height:innerHeight})')
+                    height=viewport.get('height',0)
+                    if not (type(height) in (int,float) and height>0):break
+                    if rect['y']>=0 and rect['y']+rect['height']<=height:break
+                    await page.scroll(round(rect['y']+min(rect['height'],height)/2-height/2))
+                    # Native wheel delivery can finish before smooth scrolling.
+                    await page.pause('natural')
+                    moved=await page.call_json(CART_SCRIPT)
+                    moved_rows=cart_matches(moved,asin,item)
+                    if len(moved_rows)!=1:break
+                    rect=moved_rows[0].get('increment') or moved_rows[0].get('quantity_control') or moved_rows[0].get('row_rect')
+                    if not isinstance(rect,dict):break
+            # Snapshot assigns host DOM refs; only this observed product/store
+            # row may supply candidates. Business limits remain owner-owned.
+            await page.snapshot(max_items=600)
+            latest=await page.call_json(CART_SCRIPT)
+            scoped=cart_matches(latest,asin,item)
+            if latest.get('blocked') or not latest.get('recognized') or len(scoped)!=1 or int(scoped[0]['quantity'])!=current:break
+            refs={c['ref'] for c in scoped[0].get('controls',[]) if c.get('ref') and c.get('rect')
+                  and (re.match(r'^Add (?!to cart\b)|^Increase quantity',c.get('label',''),re.I) or c.get('text','').strip()=='+')
+                  and not re.search(r'remove|delete|checkout|subscribe|buy now|pay',c.get('label',''),re.I)}
+            observed_increment=scoped[0].get('increment')
+            if not refs and not observed_increment:
+                return {'outcome':'needs_user','evidence':{'reason':'amazon_cart_add_unverified','assistance_kind':'other',
+                    'expected_quantity':quantity,'observed_quantity':current,'visual_recovery_reason':'No scoped DOM increment refs',
+                    'observed_controls':[{'label':c.get('label','')[:100],'ref':c.get('ref')} for c in scoped[0].get('controls',[])[:12]]}}
+            latest_data=latest
+            async def readback():
+                nonlocal latest_data
+                for attempt in range(4):
+                    await asyncio.sleep(.5)
+                    latest_data=await page.call_json(CART_SCRIPT)
+                    count=sum(int(r['quantity']) for r in cart_matches(latest_data,asin,item))
+                    if latest_data.get('blocked') or not latest_data.get('recognized') or count!=current:break
+                return {'product':(item or {}).get('title',asin),'previous_quantity':current,
+                        'expected_quantity':current+1,'observed_quantity':count,
+                        'verified':bool(latest_data.get('recognized') and not latest_data.get('blocked') and count==current+1)}
+            async def preflight():
+                nonlocal latest_data
+                latest_data=await page.call_json(CART_SCRIPT)
+                rows=cart_matches(latest_data,asin,item)
+                return bool(latest_data.get('recognized') and not latest_data.get('blocked') and len(rows)==1
+                            and int(rows[0]['quantity'])==current and not channel_review(item or {},rows[0]))
+            try:
+                goal=f'Increase ONLY {(item or {}).get("title",asin)} in its confirmed {(item or {}).get("preferred_channel","unknown")} cart by exactly one, from {current} to {current+1}; final target {quantity}. Select the row increment control, not the quantity menu, remove or a new product. Never checkout, pay, subscribe, replace or repeat an uncertain click.'
+                # Owner DOM has already located this row's increment. Review its
+                # marked target rather than asking vision to select it again.
+                target=await recovery.review_target(page,{'rect':observed_increment,**({'ref':scoped[0]['increment_ref']} if scoped[0].get('increment_ref') else {})},goal) if observed_increment else None
+                if target is None:
+                    from .control_recovery import ControlRuleRecovery
+                    target=await ControlRuleRecovery(recovery).resolve(page,goal,allowed_refs=refs,
+                        step={'operation':'click','arguments':{}})
+                result=await recovery.click(page,goal,
+                    **({'target':target} if target else {'allowed_refs':refs}),readback=readback,preflight=preflight)
+            except VisualActionUncertain as error:
+                return {'outcome':'needs_user','evidence':{'reason':'amazon_cart_add_unverified',
+                    'assistance_kind':'other','expected_quantity':quantity,**error.evidence,
+                    'visual_recovery':list(recovery.evidence)}}
+            except VisualRecoveryUnavailable as error:
+                data=latest_data
+                count=sum(int(r['quantity']) for r in cart_matches(data,asin,item))
+                if data.get('recognized') and not data.get('blocked') and count>=quantity:
+                    return {'outcome':'success','evidence':{'result':{'id':asin,'quantity':count,'verified':True,'already_present':True},
+                        'visual_recovery':list(recovery.evidence)}}
+                return {'outcome':'needs_user','evidence':{'reason':'amazon_cart_add_unverified','assistance_kind':'other',
+                    'expected_quantity':quantity,'observed_quantity':count,'visual_recovery_reason':str(error),'observed_controls':[{'label':c.get('label','')[:100],'ref':c.get('ref'),'rect':c.get('rect')} for c in scoped[0].get('controls',[])[:12]],'observed_increment':observed_increment,
+                    'visual_recovery':list(recovery.evidence)}}
+            data=latest_data
+            visual_evidence.extend(result['evidence'])
+            if not result['visually_verified'] or not result['readback']['verified']:
+                return {'outcome':'needs_user','evidence':{'reason':'amazon_cart_add_unverified','assistance_kind':'other',
+                    'expected_quantity':quantity,'observed_quantity':result['readback']['observed_quantity'],
+                    'action_outcome_unknown':True,'visual_recovery':result['evidence']}}
+            continue
         await page.pointer_to({'rect':matches[0]['increment']})
         # Observe an asynchronous cart update. An uncertain increment is never replayed.
         for attempt in range(4):
@@ -360,7 +489,84 @@ async def top_up_cart(page, data, asin, quantity, item=None):
     return {'outcome':'needs_user','evidence':{'reason':'amazon_cart_add_unverified','assistance_kind':'other','expected_quantity':quantity,'observed_quantity':sum(int(r['quantity']) for r in cart_matches(data,asin,item)),'cart_layout':data.get('layout',{})}}
 
 
+async def report_history_progress(browser_page, phase, **counts):
+    callback = getattr(browser_page, 'search_progress', None)
+    if callback:
+        data={'phase':phase,**counts}
+        await callback({'shopping_progress':data,'progress_snapshot':history_progress_view({
+            'id':'','status':'running','progress':data})})
+
+
+def history_progress_view(task):
+    """One task presentation, shared by Browser Task observers and AaAT."""
+    data = task.get('progress') or {}
+    phase = data.get('phase', 'preparing')
+    labels = {'order_list':'正在读取购物记录', 'order_details':'正在读取订单详情',
+              'analyzing':'正在整理购物记录', 'cart':'正在准备购物车', 'preparing':'购物达人正在准备'}
+    metrics = []
+    if phase == 'cart':
+        metrics.append({'label':'购物车商品','value':data.get('current',0),'total':data.get('total',0)})
+    elif phase == 'order_list':
+        metrics.append({'label':'订单列表页','value':data.get('page',0),'total':data.get('page_limit',1)})
+    elif phase == 'order_details':
+        metrics.append({'label':'订单详情','value':data.get('current',0),'total':data.get('total',0)})
+    else:
+        for key,label in (('pages_read','已读取页面'),('orders_read','已读取订单')):
+            if key in data:metrics.append({'label':label,'value':data[key]})
+    status = task['status']
+    state = 'waiting' if status=='waiting_input' and task.get('requires_user') else 'running'
+    if status in ('completed','failed','cancelled'):state=status
+    if status=='interrupted':state='failed'
+    text = labels.get(phase,'购物达人正在执行')
+    if phase=='order_list':
+        text+=f" · 第 {data.get('page',0)} / {data.get('page_limit',1)} 页"
+        if 'orders_found' in data:text+=f" · 找到 {data['orders_found']} 个订单、{data.get('products_found',0)} 项商品"
+    elif phase=='order_details':text+=f" · 第 {data.get('page',0)} 页 · 订单 {data.get('current',0)} / {data.get('total',0)}"
+    elif phase=='analyzing':text+=f" · 已读 {data.get('pages_read',0)} 页、{data.get('orders_read',0)} 个订单"
+    elif phase=='cart':text+=f" · 商品 {data.get('current',0)} / {data.get('total',0)}"
+    if state in ('completed','failed','cancelled'):text='购物记录刷新 · '+state
+    if state=='waiting':text=str(task.get('message') or '购物达人需要用户协助')[:2000]
+    return {'text':text,'phase':phase,'content':{'task_progress':{
+        'schema':'ai2apps.task-progress/v1','state':state,'stage':phase,'task_id':task['id'],
+        'requires_user':bool(task.get('requires_user')),
+        'wait_reason':str(task.get('message') or '')[:500] if state=='waiting' else '', 'metrics':metrics}}}
+
+
+def assistance_message(evidence, args):
+    """Owner instructions explain observations without guessing authentication."""
+    item=args.get('item') or {}
+    title=str(evidence.get('product_title') or item.get('title') or item.get('id') or '当前商品')[:500]
+    reason=evidence.get('reason')
+    if reason=='amazon_cart_add_unverified':
+        expected=evidence.get('expected_quantity',item.get('quantity','未知'))
+        observed=evidence.get('observed_quantity','未知')
+        detail=str(evidence.get('verification_reason') or evidence.get('visual_recovery_reason') or '')[:300]
+        return (f'购物车数量尚未核实：{title}。目标数量 {expected}，程序本次读取数量 {observed}；这不代表网站中的最终数量。'+
+                ('核验原因：'+detail+'。' if detail else '')+
+                '请点击“前往页面处理”，在同一浏览器分身的对应商店购物车核对该商品和数量。'
+                '不要重复点击加购，不要结账或付款；如页面要求登录或验证，请自行完成。'
+                '核对后再点“已处理，继续”，程序会重新读取购物车；若数量或商品不符，请先反馈实际情况或取消任务。')
+    if reason=='amazon_login_or_verification':
+        return '购物网站页面显示登录或验证阻塞。请点击“前往页面处理”，在该浏览器分身完成登录或验证，再点“已处理，继续”。不要结账或付款。'
+    messages={
+        'amazon_storefront_unavailable':'未找到已确认商店的购物车入口。请在任务页面打开原购买渠道的商店，核对后再继续，不要改用其他商店加购。',
+        'amazon_channel_confirmation_required':'当前商店渠道与已确认商品不一致或无法识别。请在任务页面核对原渠道后再继续。',
+        'amazon_delivery_confirmation_required':'当前配送时段与原记录不一致。请核对配送条件；如需改变原选择，请取消后重新确认。',
+        'amazon_cart_quantity_unknown':'未能读取购物车商品数量。请核对数量控件已加载，勿重复加购，核对后再继续。',
+        'amazon_quantity_unavailable':'页面未提供所需数量选项。请核对限购或库存；不要替换商品或改变已确认数量，可取消后重新选择。',
+        'amazon_product_unavailable_or_subscription':'未找到普通一次性购买入口。请核对库存和购买方式；不要订阅或购买替代商品。',
+    }
+    return f'{title}：'+messages.get(reason,'未能可靠识别购物页面。请核对页面是否完整加载，反馈实际情况；不要重复加购、结账或付款。')
+
+
 async def execute(page, args):
+    response=await _execute(page,args)
+    if response.get('outcome')=='needs_user':
+        response['evidence']['assistance_message']=assistance_message(response['evidence'],args)
+    return response
+
+
+async def _execute(page, args):
     kind = args['shopping_action']
     if kind == 'screen_gifts':
         from .gifts import screen_gifts
@@ -377,24 +583,33 @@ async def execute(page, args):
         return {'outcome':'success','evidence':{'result':{'items':list(products.values())[:60]}}}
     if kind == 'screen_plan':
         return {'outcome':'success','evidence':{'result':screen_plan(args['plan'],args['catalog'],args.get('locale','en'),args.get('message',''))}}
+    if kind == 'cached_history':
+        return {'outcome':'success','evidence':{'result':{'items':merge_history(args['known_items'],[]),'cache_used':True,'synced_at':args.get('synced_at'),'pages_read':0,'orders_read':0}}}
     if kind == 'history':
         previous=args.get('known_items') or [];known={(i['id'],e['key']) for i in previous for e in i.get('purchase_events',[])}
         known_dates={(i['id'],d) for i in previous for d in i.get('purchase_dates',[])}
         rows=[];visited=set();priced=set();details_read=0;price_layouts=[];stop_reason='end';url=AMAZON+'/gp/your-account/order-history?orderFilter=months-6';limit=min(6,max(1,int(args.get('pages',3))))
         saved_prices={(i['id'],e['key']):{**price_fields(e),'price_checked':True,'price_version':6} for i in previous for e in i.get('purchase_events',[]) if price_fields(e) or (e.get('price_checked') and e.get('price_version')==6)}
-        needs_prices=any(i.get('last_unit_price_minor') is None and not (i.get('purchase_events') and all(e.get('price_checked') and e.get('price_version')==6 for e in i['purchase_events'] if e['date']==i.get('last_purchase'))) for i in previous)
         for _ in range(limit):
             if url in visited:break
+            await report_history_progress(page, 'order_list', page=len(visited)+1, page_limit=limit)
             visited.add(url);await navigate(page,url);await page.pause('natural')
             data=await page.call_json(HISTORY_SCRIPT)
+            if not data.get('blocked') and not data.get('cards') and not data.get('empty') and hasattr(page,'wait_stable'):
+                # Reobserve the cold document only; never replay a cart action.
+                await page.wait_stable(timeout=20,require_content=True)
+                data=await page.call_json(HISTORY_SCRIPT)
             if data.get('blocked'):return {'outcome':'needs_user','evidence':{'reason':'amazon_login_or_verification','assistance_kind':'login'}}
             if not data.get('cards') and not data.get('empty'):
-                return {'outcome':'needs_user','evidence':{'reason':'amazon_history_layout_changed','assistance_kind':'other'}}
+                return {'outcome':'needs_user','evidence':{'reason':'amazon_history_document_not_ready' if data.get('text_length') is not None and data['text_length']<100 else 'amazon_history_layout_changed','assistance_kind':'other','ready_state':data.get('ready_state'),'text_length':data.get('text_length')}}
             page_rows=data.get('items',[])
             for item in page_rows:item.update(saved_prices.get((item['id'],item.get('order_key')),{}))
-            for detail in data.get('detail_requests',[]):
-                targets=[i for i in detail['items'] if i['id'] not in priced and not saved_prices.get((i['id'],i.get('order_key')))]
+            detail_requests = data.get('detail_requests', [])
+            await report_history_progress(page,'order_list',page=len(visited),page_limit=limit,orders_found=len(detail_requests),products_found=len(page_rows))
+            for detail_index, detail in enumerate(detail_requests, 1):
+                targets=[i for i in detail['items'] if i['id'] not in priced and (i['id'],i.get('order_key')) not in known and not saved_prices.get((i['id'],i.get('order_key')))]
                 if not targets or details_read>=30 or not order_details_url(detail['url']):continue
+                await report_history_progress(page, 'order_details', page=len(visited), current=detail_index, total=len(detail_requests))
                 await navigate(page,detail['url']);await page.pause('natural')
                 if hasattr(page,'wait_stable'):await page.wait_stable(timeout=8,require_content=True)
                 prices=await page.call_json(DETAIL_PRICES_SCRIPT);details_read+=1
@@ -415,22 +630,28 @@ async def execute(page, args):
             page_items=frequencies(data.get('items',[]))
             page_keys={(i['id'],e['key']) for i in page_items for e in i.get('purchase_events',[])}
             page_dates={(i['id'],d) for i in page_items for d in i.get('purchase_dates',[])}
-            if not needs_prices and page_keys and ((known and page_keys.issubset(known)) or (not known and known_dates and page_dates.issubset(known_dates))):
+            if page_keys and ((known and page_keys.issubset(known)) or (not known and known_dates and page_dates.issubset(known_dates))):
                 stop_reason='known_page';break
             if not next_url:break
             u=urlsplit(next_url)
             if u.scheme!='https' or u.netloc!='www.amazon.com' or not u.path.startswith(('/gp/your-account/order-history','/gp/css/order-history','/your-orders/orders')):break
             url=next_url
+        await report_history_progress(page, 'analyzing', pages_read=len(visited), orders_read=details_read)
         merged=merge_history(previous,rows)
         keys={(i['id'],d) for i in merged for d in i.get('purchase_dates',[])}
-        return {'outcome':'success','evidence':{'result':{'items':merged,'price_layouts':price_layouts,'pages_read':len(visited),'bounded':bool(next_url) and stop_reason!='known_page','stop_reason':stop_reason,'new_purchase_dates':len(keys-known_dates),'synced_at':datetime.now(timezone.utc).isoformat(),'observed_at':date.today().isoformat()}}}
+        return {'outcome':'success','evidence':{'result':{'items':merged,'price_layouts':price_layouts,'pages_read':len(visited),'orders_read':details_read,'bounded':bool(next_url) and stop_reason!='known_page','stop_reason':stop_reason,'new_purchase_dates':len(keys-known_dates),'synced_at':datetime.now(timezone.utc).isoformat(),'observed_at':date.today().isoformat()}}}
     if kind == 'search':
         await navigate(page,AMAZON+'/s?k='+quote(str(args['query'])[:500]));await page.pause('natural')
         data=await page.call_json(SEARCH_SCRIPT)
         if data.get('blocked'):return {'outcome':'needs_user','evidence':{'reason':'amazon_login_or_verification','assistance_kind':'login'}}
         return {'outcome':'success','evidence':{'result':data}}
     if kind == 'cart_report':
-        products=args.get('items',[])
+        await report_history_progress(page,'cart',current=len(args.get('items',[])),total=len(args.get('items',[])))
+        skipped=[r for r in args.get('item_results',[]) if r.get('status')=='unavailable']
+        skipped_ids={r['id'] for r in skipped}
+        products=[r for r in args.get('items',[]) if r['id'] not in skipped_ids]
+        if not products:
+            return {'outcome':'success','evidence':{'result':{'items':[],'skipped':skipped,'status':'partial','stores':[],'message':'所选商品均缺货，购物车未改变。'}}}
         channels=list(dict.fromkeys(item.get('preferred_channel','unknown') for item in products))
         if len(channels)>1:
             stores=[]
@@ -453,7 +674,13 @@ async def execute(page, args):
                     if data.get('blocked') or not data.get('recognized') or count<int(item['quantity']):
                         return {'outcome':'needs_user','evidence':{'reason':'amazon_cart_add_unverified','assistance_kind':'other','preferred_channel':channel,'expected_quantity':item['quantity'],'observed_quantity':count}}
                 stores.append({'channel':channel,'page_url':target,'items':[row for row in data.get('items',[]) if channel=='unknown' or row.get('channel')==channel]})
-            return {'outcome':'success','evidence':{'result':{'recognized':True,'stores':stores,'items':[row for store in stores for row in store['items']],'page_url':stores[-1]['page_url']}}}
+            return cart_report_result({'recognized':True,'stores':stores,'items':[row for store in stores for row in store['items']],'page_url':stores[-1]['page_url']},products,skipped)
+        if skipped and channels[0] in ('fresh','whole_foods'):
+            item=products[0]
+            await navigate(page,purchase_url(item));await page.pause('natural')
+            controls=await page.call_json(CONTROLS_SCRIPT)
+            if controls.get('blocked') or not controls.get('cart_url') or channel_review(item,controls):return route_missing(item)
+            await navigate(page,observed_cart_url(controls['cart_url']))
         current_url=(await page.snapshot())['url']
         try:
             target=observed_cart_url(current_url)
@@ -463,8 +690,9 @@ async def execute(page, args):
         data=await page.call_json(CART_SCRIPT)
         if data.get('blocked') or not data.get('recognized'):
             return {'outcome':'needs_user','evidence':{'reason':'amazon_cart_layout_or_login','assistance_kind':'other'}}
-        return {'outcome':'success','evidence':{'result':data}}
+        return cart_report_result({**data,'page_url':target,'stores':[{'channel':channels[0] if channels else 'amazon','page_url':target}]},products,skipped)
     if kind != 'cart_item':raise ValueError('Unknown shopping action')
+    await report_history_progress(page,'cart',current=args.get('index',0),total=args.get('total',1))
     item=args['item'];asin=product_url(item['url']);quantity=int(item['quantity'])
     if item['id']!=asin or not 1<=quantity<=10:raise ValueError('Invalid cart item')
     await navigate(page,AMAZON+'/gp/cart/view.html')
@@ -481,7 +709,7 @@ async def execute(page, args):
     if any(int(r['quantity'])<1 for r in matches):
         return {'outcome':'needs_user','evidence':{'reason':'amazon_cart_quantity_unknown','assistance_kind':'other'}}
     current=sum(int(r['quantity']) for r in matches)
-    if current>=quantity:return {'outcome':'success','evidence':{'result':{'id':asin,'quantity':current,'channel':preferred,'already_present':True}}}
+    if current>=quantity:return await verify_existing_cart(page,item,current)
     if current>0:return await top_up_cart(page,before,asin,quantity,item)
     if grocery:
         # A same-ASIN item in another store does not satisfy this store's list.
@@ -492,6 +720,7 @@ async def execute(page, args):
             item={**item,'preferred_channel_url':item['url']+'?almBrandId='+quote(route['brand'],safe='')}
     await navigate(page,purchase_url(item));await page.pause('natural')
     controls=await page.call_json(CONTROLS_SCRIPT)
+    if unavailable:=unavailable_item(item,controls):return unavailable
     if grocery:
         if controls.get('blocked'):return {'outcome':'needs_user','evidence':{'reason':'amazon_login_or_verification','assistance_kind':'login'}}
         if not controls.get('grocery_add'):
@@ -510,10 +739,11 @@ async def execute(page, args):
         if any(int(r['quantity'])<1 for r in matches):
             return {'outcome':'needs_user','evidence':{'reason':'amazon_cart_quantity_unknown','assistance_kind':'other'}}
         current=sum(int(r['quantity']) for r in matches)
-        if current>=quantity:return {'outcome':'success','evidence':{'result':{'id':asin,'quantity':current,'channel':preferred,'already_present':True}}}
+        if current>=quantity:return await verify_existing_cart(page,item,current)
         if current>0:return await top_up_cart(page,scoped,asin,quantity,item)
         await navigate(page,purchase_url(item));await page.pause('natural')
         controls=await page.call_json(CONTROLS_SCRIPT)
+    if unavailable:=unavailable_item(item,controls):return unavailable
     delta=quantity-current
     if controls.get('blocked'):return {'outcome':'needs_user','evidence':{'reason':'amazon_login_or_verification','assistance_kind':'login'}}
     if grocery and not controls.get('grocery_add'):
@@ -535,8 +765,34 @@ async def execute(page, args):
             return {'outcome':'needs_user','evidence':{'reason':'amazon_quantity_unavailable','assistance_kind':'other'}}
         await page.pointer_to({'rect':controls['quantity']})
         keys=['\ue011']+['\ue015']*controls['options'].index(delta)+['\ue007']
-        await page.connection.command('input.performActions',{'context':page.context_id,'actions':[{'type':'key','id':'shopping-quantity','actions':[action for key in keys for action in ({'type':'keyDown','value':key},{'type':'pause','duration':100},{'type':'keyUp','value':key},{'type':'pause','duration':100})]}]})
-    await page.pointer_to({'rect':controls['add']});await asyncio.sleep(5)
+        await page.dispatch_input([{'type':'key','id':'shopping-quantity','actions':[action for key in keys for action in ({'type':'keyDown','value':key},{'type':'pause','duration':100},{'type':'keyUp','value':key},{'type':'pause','duration':100})]}])
+    recovery=getattr(page,'visual_recovery',None)
+    visual_result=None
+    if recovery and recovery.policy['visual_review']=='always':
+        from .visual_recovery import VisualRecoveryUnavailable, VisualActionUncertain
+        async def read_added():
+            await asyncio.sleep(5)
+            await navigate(page,target_cart)
+            observed=await page.call_json(CART_SCRIPT)
+            count=sum(int(r['quantity']) for r in cart_matches(observed,asin,item))
+            return {'id':asin,'expected_quantity':quantity,'observed_quantity':count,
+                    'verified':bool(observed.get('recognized') and not observed.get('blocked') and count>=quantity)}
+        async def still_product():
+            observed=await page.call_json(CONTROLS_SCRIPT)
+            return observed.get('asin')==asin and observed.get('add')==controls['add'] and not observed.get('blocked') and not observed.get('subscription') and not channel_review(item,observed)
+        try:
+            goal=f'Add only {item.get("title",asin)} ({asin}) to its confirmed {preferred} cart, target quantity {quantity}. Never checkout, pay or subscribe.'
+            target=await recovery.review_target(page,{'rect':controls['add']},goal)
+            visual_result=await recovery.click(page,goal,target=target,readback=read_added,preflight=still_product)
+        except (VisualRecoveryUnavailable,VisualActionUncertain) as error:
+            return {'outcome':'needs_user','evidence':{'reason':'amazon_cart_add_unverified','assistance_kind':'other',
+                'assistance_message':'购物车视觉核验未通过。请检查实际商品和数量；若已加购请勿重复操作。'+str(error)[:180],
+                'action_outcome_unknown':isinstance(error,VisualActionUncertain),'visual_recovery_reason':str(error)[:300],'visual_recovery':list(recovery.evidence)}}
+        if not visual_result['visually_verified'] or not visual_result['state_verified']:
+            return {'outcome':'needs_user','evidence':{'reason':'amazon_cart_add_unverified','assistance_kind':'other',
+                'action_outcome_unknown':True,'visual_recovery':visual_result['evidence']}}
+    else:
+        await page.pointer_to({'rect':controls['add']});await asyncio.sleep(5)
     # Fresh updates its cart asynchronously; do not navigate away during the request.
     # Verify through a fresh read. Never replay an uncertain add-to-cart click.
     await navigate(page,target_cart)
@@ -544,7 +800,8 @@ async def execute(page, args):
     count=sum(int(r['quantity']) for r in cart_matches(after,asin,item))
     if after.get('blocked') or not after.get('recognized') or count<quantity:
         return await top_up_cart(page,after,asin,quantity,item)
-    return {'outcome':'success','evidence':{'result':{'id':asin,'quantity':count,'verified':True}}}
+    return {'outcome':'success','evidence':{'result':{'id':asin,'quantity':count,'verified':True},
+        **({'visual_recovery':visual_result['evidence']} if visual_result else {})}}
 
 
 def base(steps, inputs):
@@ -568,9 +825,28 @@ def _shopping_language(locale):
     return code.split('-')[0]
 
 
+def replenishment_date(item, today=None):
+    """Owner-computed, mutually exclusive calendar buckets; never model arithmetic."""
+    today=today or date.today()
+    dates=set()
+    for value in item.get('purchase_dates') or []:
+        try:
+            parsed=date.fromisoformat(value)
+            if parsed<=today:dates.add(parsed)
+        except (ValueError,TypeError):pass
+    dates=sorted(dates)
+    interval=math.ceil(statistics.median([(b-a).days for a,b in zip(dates,dates[1:])])) if len(dates)>=2 else None
+    due=dates[-1]+timedelta(days=interval) if interval else None
+    remaining=(due-today).days if due else None
+    bucket=('unknown' if remaining is None else 'overdue' if remaining<0 else 'due_today' if remaining==0
+            else 'next_3_days' if remaining<=3 else 'later')
+    return {'as_of':today.isoformat(),'interval_days':interval,'due_date':due.isoformat() if due else None,
+            'days_until_due':remaining,'due_bucket':bucket}
+
+
 def screen_plan(plan, catalog, locale='en', message='', today=None):
     """Apply observed-cycle eligibility to defaults; explicit user revisions retain control."""
-    if message:return plan
+    message_request=bool(message)
     today=today or date.today()
     observed={row['id']:row for row in catalog}
     output=[];seen=set();ratios={}
@@ -580,16 +856,13 @@ def screen_plan(plan, catalog, locale='en', message='', today=None):
     for suggestion in plan.get('items',[]):
         key=suggestion.get('id')
         if key not in observed or key in seen:continue
-        seen.add(key);item=observed[key];dates=[]
-        for value in set(item.get('purchase_dates') or []):
-            try:dates.append(date.fromisoformat(value))
-            except (ValueError,TypeError):continue
-        dates.sort()
-        interval=statistics.median([(b-a).days for a,b in zip(dates,dates[1:])]) if len(dates)>=2 else None
-        elapsed=(today-dates[-1]).days if dates else None
+        seen.add(key);item=observed[key]
+        facts=replenishment_date(item,today)
+        interval=facts['interval_days']
+        elapsed=interval-facts['days_until_due'] if interval else None
         eligible=bool(interval and elapsed is not None and elapsed>=0 and elapsed>=interval*.8)
-        row={**suggestion,'selected':bool(suggestion.get('selected') and eligible)}
-        if not eligible:
+        row={**suggestion,**facts,'selected':bool(suggestion.get('selected') and (bool(message) or eligible))}
+        if not eligible and not message:
             row['score']=min(int(row.get('score',0)),49)
             reason=('购买日期不足，无法确定补货周期。' if interval is None else '尚未接近历史补货周期。') if zh else ('Not enough distinct purchase dates to estimate a replenishment cycle.' if interval is None else 'Not yet close to the observed replenishment cycle.')
             reason = translations.get('insufficient' if interval is None else 'early', reason)
@@ -600,7 +873,7 @@ def screen_plan(plan, catalog, locale='en', message='', today=None):
     count=sum(row['selected'] for row in output)
     message=(f'根据重复购买日期及补货周期，默认勾选 {count} 种商品；其余保留为候选，可手动选择。' if zh else f'{count} products selected from observed repeat-purchase cycles; other products remain optional.')
     message = translations.get('selected', message).replace('{0}', str(count))
-    return {**plan,'items':output,'message':message}
+    return {**plan,'items':output,'message':plan.get('message','') if message_request else message}
 
 
 def plan_schema():
@@ -621,9 +894,11 @@ def plan_source(inputs, catalog=None):
 def cart_source(inputs, products):
     steps=[]
     for index,item in enumerate(products):
-        steps.append({'name':f'item_{index}','operation':'click','execution':{'mode':'compiled'},'arguments':{'shopping_action':'cart_item','item':item},'on':{'success':f'item_{index+1}' if index+1<len(products) else 'report','failed':'failed','needs_user':'pause'}})
-    steps.append({'name':'report','operation':'inspect','execution':{'mode':'compiled'},'arguments':{'shopping_action':'cart_report','items':products},'on':{'success':'done','failed':'failed','needs_user':'pause'}})
-    return base(steps,inputs)
+        steps.append({'name':f'item_{index}','operation':'click','execution':{'mode':'compiled'},'arguments':{'shopping_action':'cart_item','item':item,'index':index,'total':len(products)},'on':{'success':f'item_{index+1}' if index+1<len(products) else 'report','failed':'failed','needs_user':'pause'}})
+    steps.append({'name':'report','operation':'inspect','execution':{'mode':'compiled'},'arguments':{'shopping_action':'cart_report','items':products,'item_results':[f'${{steps.item_{i}.output}}' for i in range(len(products))]},'on':{'success':'done','failed':'failed','needs_user':'pause'}})
+    source=base(steps,inputs)
+    source['minimum_execution_policy']={'visual_review':'always','readback':True}
+    return source
 
 
 def product_rows(result):
@@ -646,7 +921,7 @@ def merge_history(previous, observed, today=None):
     return frequencies(records,today)
 
 
-def refresh_source(inputs, previous):
+def refresh_source(inputs, previous, *, cache_only=False, synced_at=None):
     source=plan_source(inputs)
     recommend=source['steps'][0]
     recommend['ai']['instruction']=recommend['ai']['instruction'].replace('input.catalog','the observed history step result')
@@ -655,8 +930,48 @@ def refresh_source(inputs, previous):
     screen['arguments']['message']=''
     screen['on']['success']='bundle'
     source['steps']=[{'name':'history','operation':'inspect','execution':{'mode':'compiled'},
-        'arguments':{'shopping_action':'history','pages':'${input.pages}','known_items':previous},
+        'arguments':{'shopping_action':'cached_history' if cache_only else 'history','pages':'${input.pages}','known_items':previous,**({'synced_at':synced_at} if cache_only else {})},
         'on':{'success':'recommend','failed':'failed','needs_user':'pause'}},recommend,screen,
         {'name':'bundle','operation':'assign','arguments':{'assignments':[{'variable':'shopping_report','expression':"{'history':steps.history.output,'plan':steps.screen.output}"}]},'on':{'success':'done','failed':'failed'}}]
     source['variables']={'type':'object','properties':{'shopping_report':{'type':'object','default':{}}}}
     return source
+
+
+def history_checkpoint(responses):
+    """Recover only completed host history reads, never a model-authored catalog."""
+    for response in responses:
+        evidence = response.get('evidence') or {}
+        history = evidence.get('result') or {}
+        if (response.get('outcome') == 'success' and evidence.get('operation') in (None, 'inspect')
+                and isinstance(history, dict) and isinstance(history.get('items'), list)
+                and history.get('synced_at') and isinstance(history.get('pages_read'), int)):
+            return history
+    return None
+
+
+def history_source(inputs,previous):
+    return base([{'name':'history','operation':'inspect','execution':{'mode':'compiled'},
+        'arguments':{'shopping_action':'history','pages':'${input.pages}','known_items':previous},
+        'on':{'success':'done','failed':'failed','needs_user':'pause'}}],inputs)
+
+
+def unavailable_item(item,controls):
+    # Only explicit visible availability on the requested product, before input.
+    if controls.get('blocked') or controls.get('asin')!=item['id'] or not controls.get('out_of_stock') or controls.get('add'):
+        return None
+    return {'outcome':'success','evidence':{'result':{'id':item['id'],'title':item.get('title',item['id']),
+        'quantity':item['quantity'],'status':'unavailable','reason':'out_of_stock',
+        'message':'商品缺货，已跳过；继续处理其他商品。','availability':str(controls.get('availability',''))[:300],'changed':False}}}
+
+
+def cart_report_result(data,products,skipped):
+    verified=[]
+    for item in products:
+        matches=cart_matches(data,item['id'],item)
+        quantity=sum(int(r['quantity']) for r in matches)
+        if quantity<int(item['quantity']):
+            return {'outcome':'needs_user','evidence':{'reason':'amazon_cart_add_unverified','assistance_kind':'other',
+                'product':item.get('title',item['id']),'expected_quantity':item['quantity'],'observed_quantity':quantity}}
+        verified.extend({**row,'verified':True} for row in matches)
+    return {'outcome':'success','evidence':{'result':{**data,'items':verified,'skipped':skipped,
+        'status':'partial' if skipped else 'complete','message':'部分商品缺货，其他商品已核实加入购物车；未下单、未付款。' if skipped else '所选商品和数量已回读核实；未下单、未付款。'}}}

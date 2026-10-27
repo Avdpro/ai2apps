@@ -3,7 +3,7 @@
   "package": {
     "id": "ai2apps/search-all",
     "type": "app",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "displayName": "Search All",
     "description": "Multi-source WebAgent search Mini-App."
   },
@@ -25,5 +25,59 @@
   ],
   "permissions": [],
   "dependencies": [],
-  "files": []
+  "files": [],
+  "capabilityCatalog": {
+    "schemaVersion": "ai2apps.package-capabilities.v1",
+    "entries": [
+      {
+        "kind": "mini-app",
+        "identity": "ai2apps.search-all",
+        "provides": [
+          "web.search"
+        ],
+        "tasks": [
+          "Search All",
+          "一搜到底"
+        ],
+        "inputTypes": [
+          "text"
+        ],
+        "outputTypes": [
+          "file"
+        ],
+        "requirements": {
+          "capabilities": []
+        },
+        "agent": {
+          "mode": "aaat",
+          "declarationVersion": "1.0.0",
+          "exports": [
+            {
+              "name": "web.search",
+              "interfaceVersion": "1.0.0",
+              "inputTypes": [
+                "text"
+              ],
+              "outputTypes": [
+                "file"
+              ]
+            }
+          ]
+        },
+        "scope": "Requires a Desktop host implementing these declared AaAT exports. UI bridge edits drafts only; execution uses host-owned durable tasks and shared output.",
+        "processing": "hybrid",
+        "pricing": "unknown",
+        "localizations": {
+          "en": {
+            "displayName": "Search All",
+            "description": "Search several sources, merge links and retain provenance."
+          },
+          "zh": {
+            "displayName": "一搜到底",
+            "description": "多源搜索、合并去重并保留来源。"
+          }
+        }
+      }
+    ]
+  }
 }

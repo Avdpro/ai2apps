@@ -1,12 +1,46 @@
 function aiBrowserApp() {
     return {
+        chatOpen:false,chatMiniUrl:'',chatController:null,packageChatBridge:null,
+        get currentMiniApp(){return this.miniApps.find(x=>x.id===this.miniAppId)||null;},
+        async describeMiniAppChat(){if(!this.packageChatBridge)throw Error('Mini-App UI is still loading');return this.packageChatBridge.describe(this.currentMiniApp);},
+        async invokeMiniAppChatTool(name,args){if(this.view!=='mini-app')throw Error('Return to the current Mini-App before changing its UI');return this.packageChatBridge.invoke(name,args);},
+        async mountMiniAppChat(){
+            const mini=this.currentMiniApp,frame=this.frames.get('mini-app:'+mini?.id)?.frame;
+            if(!mini?.chat?.enabled||!frame)return;
+            if(this.chatBridgeMini!==mini.id){this.packageChatBridge?.dispose();this.packageChatBridge=window.AI2AppsMiniAppChat.createPackageBridge(()=>frame,mini.chat);this.chatBridgeMini=mini.id;}
+            await window.AI2AppsStudioChat.mount(this,{appId:'ai2apps.ai-browser',outputs:o=>o.tasks||[],selectOutput:(o,id)=>o.openTask(o.tasks.find(t=>t.id===id)),refresh:o=>o.refresh()});
+        },
+        async toggleMiniChat(){this.chatOpen=!this.chatOpen;if(this.chatOpen)await this.mountMiniAppChat();},
         initialized:false,mobileMode:!!window.AI2APPS_MOBILE_SURFACE||window.innerWidth<=760,mobileSurface:'apps',mobileTaskOrigin:'tasks',
         resizeMobile(){this.mobileMode=!!window.AI2APPS_MOBILE_SURFACE||window.innerWidth<=760;if(this.mobileMode){this.navTab='apps';if(!['mini-app','task'].includes(this.view))this.mobileSurface='apps';}this.updateFrames();},
+        mobileHistoryReady:false,
+        shellBrowserNavigation(action,id){
+            if(!this.mobileMode||!window.AI2APPS_MOBILE_SURFACE)return false;
+            try{
+                const hash=new URLSearchParams(location.hash.slice(1));
+                return window.parent.ai2appsMobileBrowserNavigation?.(window,hash.get('ai2apps-mount'),hash.get('ai2apps-instance'),action,id)===true;
+            }catch(_){return false;}
+        },
+        setupMobileHistory(){
+            if(!this.mobileMode||this.mobileHistoryReady||this.shellBrowserNavigation('available'))return;
+            this.mobileHistoryReady=true;
+            history.replaceState({...history.state,aiBrowserMiniApp:null},'');
+            this.onMobileHistory=event=>{
+                const id=event.state?.aiBrowserMiniApp;
+                const item=this.miniApps.find(item=>item.id===id);
+                if(item){
+                    if(this.miniAppLoading&&this.miniAppId===id){this.mobileSurface='workspace';this.view='mini-app';this.updateFrames();}
+                    else void this.openMiniApp(item,false);
+                }
+                else{this.mobileSurface='apps';this.updateFrames();}
+            };
+            window.addEventListener('popstate',this.onMobileHistory);
+        },
         mobileTasksReturn:'apps',
         openMobileTasks(){if(!['tasks','task'].includes(this.mobileSurface))this.mobileTasksReturn=this.mobileSurface;this.mobileSurface='tasks';this.updateFrames();},
         closeMobileTasks(){this.mobileSurface=this.mobileTasksReturn==='workspace'&&this.miniAppId?'workspace':'apps';if(this.mobileSurface==='workspace')this.view='mini-app';this.updateFrames();},
-        mobileBack(){if(this.mobileSurface==='tasks'){this.closeMobileTasks();return;}this.mobileSurface=this.mobileSurface==='task'?this.mobileTaskOrigin:'apps';if(this.mobileSurface==='workspace')this.view='mini-app';this.updateFrames();},
-        moreMiniApps:false,showCustomMiniApp:false,customMiniAppName:'',customMiniAppRequest:'',customMiniAppBusy:false,miniApps: [], miniAppId:'', miniAppLoading:false, profiles: [], loading: true, busyKey: '', notice: '', noticeTone: 'success', noticeTimer: null,
+        mobileBack(){if(this.mobileSurface==='workspace'&&this.shellBrowserNavigation('back'))return;if(this.mobileSurface==='workspace'&&this.mobileHistoryReady&&history.state?.aiBrowserMiniApp){history.back();return;}if(this.mobileSurface==='tasks'){this.closeMobileTasks();return;}this.mobileSurface=this.mobileSurface==='task'?this.mobileTaskOrigin:'apps';if(this.mobileSurface==='workspace')this.view='mini-app';this.updateFrames();},
+        moreMiniApps:false,showCustomMiniApp:false,customMiniAppName:'',customMiniAppRequest:'',customMiniAppBusy:false,miniAppsState:'loading',miniApps: [], miniAppId:'', miniAppLoading:false, profiles: [], loading: true, busyKey: '', notice: '', noticeTone: 'success', noticeTimer: null,
         showCreate: false, creating: false, newName: '', deleteTarget: null, refreshAllBusy:false,
         tr(key, values = {}) {
             const text = window.t(key);
@@ -23,12 +57,12 @@ function aiBrowserApp() {
         get taskGroups(){
             const roots=this.taskTree.filter(node=>!node.parent_id&&node.kind!=='webagent');
             const ids=new Set(roots.map(node=>node.id));
-            return [...roots.map(node=>({...node,composite:true,children:this.tasks.filter(t=>t.root_task_id===node.id),profile_key:'',capability:'',message:'',created_at:node.created_at})),...this.tasks.filter(t=>!ids.has(t.root_task_id))].sort((a,b)=>b.created_at-a.created_at);
+            return [...roots.map(node=>{const children=this.tasks.filter(t=>t.root_task_id===node.id),active=children.filter(t=>!this.terminal(t.status));return {...node,composite:true,children,paused:active.length>0&&active.every(t=>t.paused),profile_key:'',capability:'',message:'',created_at:node.created_at};}),...this.tasks.filter(t=>!ids.has(t.root_task_id))].sort((a,b)=>b.created_at-a.created_at);
         },
         get currentTask(){return this.selectedTask?.composite?(this.taskGroups.find(t=>t.id===this.selectedTask.id)||this.selectedTask):this.selectedTask;},
         get activeTasks() { return this.taskGroups.filter(t=>!this.terminal(t.status)); },
         get recentTasks() { return this.taskGroups.filter(t=>this.terminal(t.status)).slice(0,40); },
-        statusLabel(status, task={}) { if(status==='finishing')status='running'; if(task.status_label)return this.localTaskText(task.status_label); return ({queued:this.tr('ai_browser.workspace.queued'),starting:this.tr('ai_browser.workspace.starting'),running:this.tr('ai_browser.workspace.running'),waiting_input:this.tr('ai_browser.workspace.waiting_input'),interrupted:this.tr('ai_browser.workspace.interrupted'),completed:this.tr('ai_browser.workspace.completed'),failed:this.tr('ai_browser.workspace.failed'),cancelled:this.tr('ai_browser.workspace.cancelled'),cancelling:this.tr('ai_browser.workspace.cancelling')})[status]||status; },
+        statusLabel(status, task={}) { if(task.paused)return this.tr('ai_browser.workspace.paused_waiting_help'); if(status==='finishing')status='running'; if(task.status_label)return this.localTaskText(task.status_label); return ({queued:this.tr('ai_browser.workspace.queued'),starting:this.tr('ai_browser.workspace.starting'),running:this.tr('ai_browser.workspace.running'),waiting_input:this.tr('ai_browser.workspace.waiting_input'),interrupted:this.tr('ai_browser.workspace.interrupted'),completed:this.tr('ai_browser.workspace.completed'),failed:this.tr('ai_browser.workspace.failed'),cancelled:this.tr('ai_browser.workspace.cancelled'),cancelling:this.tr('ai_browser.workspace.cancelling')})[status]||status; },
         localTaskText(text) {
             const labels = { '等待协助':'waiting_help', '等待确认':'waiting_confirmation',
                 '等待浏览器响应':'waiting_browser', '等待响应':'waiting_input',
@@ -45,11 +79,28 @@ function aiBrowserApp() {
             if(!response.ok){const error=Error(typeof body.detail==='string'?body.detail:body.error?.message||this.tr('ai_browser.request_failed',{status:response.status}));error.status=response.status;throw error;}
             return body;
         },
+        pendingTaskId:null,
+        consumeTaskIntent(){
+            const task=this.tasks.find(t=>t.id===this.pendingTaskId);
+            if(task){this.pendingTaskId=null;this.openTask(task);}
+        },
         async init() {
             if(this.initialized)return;this.initialized=true;
-            await this.loadProfiles();
-            await this.refresh();
+            window.addEventListener('message',event=>{
+                const m=event.data||{},hash=new URLSearchParams(location.hash.slice(1));
+                if(event.source!==window.parent||event.origin!==location.origin||m.type!=='ai2apps.host.context'||m.mountToken!==hash.get('ai2apps-mount')||m.instanceId!==hash.get('ai2apps-instance'))return;
+                if(/^btask_[a-zA-Z0-9_-]{1,120}$/.test(m.browserTask?.id||'')){this.pendingTaskId=m.browserTask.id;this.consumeTaskIntent();}
+            });
+            this.setupMobileHistory();
+            // Mini-App mounting must not wait for the task/authoring workspace
+            // or native browser status. Mobile detail documents run this too.
+            const profilesReady=this.loadProfiles();
+            void this.refresh();
             await this.refreshMiniApps();
+            if(this.shellBrowserNavigation('available')){
+                const id=new URLSearchParams(location.hash.slice(1)).get('ai2apps-browser-detail');
+                if(id){const item=this.miniApps.find(item=>item.id===id);if(item){await this.openMiniApp(item,false);if(this.$nextTick)this.$nextTick(()=>this.shellBrowserNavigation('ready'));else this.shellBrowserNavigation('ready');}}
+            }
             this.onMiniAppTask=()=>{void this.refresh();};
             window.addEventListener('ai2apps:web-agent-submitted',this.onMiniAppTask);
             this.onMiniAppRetry=event=>{
@@ -61,13 +112,13 @@ function aiBrowserApp() {
                 record.frame.remove();this.frames.delete(key);void this.openMiniApp(item);
             };
             window.addEventListener('message',this.onMiniAppRetry);
-            if(!this.mobileMode)void this.connectProfileStatus();
+            if(!this.mobileMode)void profilesReady.then(()=>this.connectProfileStatus()).catch(error=>this.fail(error));
             this.connectWorkspaceEvents();
             this.onWorkspaceFocus=()=>{void this.refresh();void this.refreshMiniApps();};
             window.addEventListener('focus',this.onWorkspaceFocus);
             window.addEventListener('pagehide',()=>this.destroy(),{once:true});
         },
-        destroy() { window.removeEventListener?.('message',this.onMiniAppRetry);window.removeEventListener?.('ai2apps:web-agent-submitted',this.onMiniAppTask);this.clearNotice();this.taskStream?.close();clearTimeout(this.metadataTimer);this.eventStream?.close();this.eventStream=null;window.removeEventListener?.('focus',this.onWorkspaceFocus);clearInterval(this.timer);void this.statusConnection?.close(); for(const session of this.sessions.values()) void session.connection.close(); },
+        destroy() { window.removeEventListener?.('popstate',this.onMobileHistory);window.removeEventListener?.('message',this.onMiniAppRetry);window.removeEventListener?.('ai2apps:web-agent-submitted',this.onMiniAppTask);this.clearNotice();this.taskStream?.close();clearTimeout(this.metadataTimer);this.eventStream?.close();this.eventStream=null;window.removeEventListener?.('focus',this.onWorkspaceFocus);clearInterval(this.timer);void this.statusConnection?.close(); for(const session of this.sessions.values()) void session.connection.close(); },
         async installMiniApps(){
             this.moreMiniApps=false;
             try{await window.AI2AppsCapabilities.openMiniAppPackages({placement:'ai2apps.ai-browser'});await this.refreshMiniApps();}catch(error){this.fail(error);}
@@ -85,23 +136,33 @@ function aiBrowserApp() {
             }catch(error){this.fail(error);}finally{this.customMiniAppBusy=false;}
         },
         async refreshMiniApps(){
-            if(!window.AI2AppsStudioMiniApps)return;
+            if(!window.AI2AppsStudioMiniApps){this.miniAppsState='error';return;}
+            this.miniAppsState='loading';
             try{
                 const catalog=await window.AI2AppsStudioMiniApps.list('ai2apps.ai-browser');
                 this.miniApps=catalog.items.filter(item=>item.source==='package'&&item.web_agent);
+                this.miniAppsState='ready';
                 this.refreshIcons();
                 for(const [key,item] of this.frames)if(key.startsWith('mini-app:')&&
                     !this.miniApps.some(app=>app.id===item.miniAppId&&app.provider?.digest===item.digest)){
                     item.frame.remove();this.frames.delete(key);
                 }
                 this.updateFrames();
-            }catch(error){this.fail(error,this.tr('ai_browser.workspace.load_mini_apps_failed'));}
+            }catch(error){this.miniAppsState='error';this.fail(error,this.tr('ai_browser.workspace.load_mini_apps_failed'));}
         },
-        async openMiniApp(item){
+        async openMiniApp(item,push=true){
             if(this.miniAppLoading)return;
+            if(push&&this.shellBrowserNavigation('open',item.id))return;
+            this.setupMobileHistory();
+            // Record the list -> Mini-App transition synchronously in the tap,
+            // before awaiting the mount, so native WebKit swipes retain it.
+            if(this.mobileMode&&push&&this.mobileHistoryReady&&history.state?.aiBrowserMiniApp!==item.id){
+                history.pushState({...history.state,aiBrowserMiniApp:item.id},'');
+            }
             this.navTab='apps';this.miniAppId=item.id;this.view='mini-app';if(this.mobileMode)this.mobileSurface='workspace';
+            this.updateFrames();
             const key='mini-app:'+item.id;
-            if(this.frames.has(key)){this.updateFrames();return;}
+            if(this.frames.has(key)){this.updateFrames();if(this.chatOpen)await this.mountMiniAppChat();return;}
             this.miniAppLoading=true;
             try{
                 const mount=await window.AI2AppsStudioMiniApps.mount('ai2apps.ai-browser',item.id);
@@ -115,7 +176,7 @@ function aiBrowserApp() {
                 this.frames.set(key,{frame,miniAppId:item.id,digest:item.provider?.digest});
                 this.updateFrames();
             }catch(error){this.fail(error,this.tr('ai_browser.workspace.open_mini_app_failed'));}
-            finally{this.miniAppLoading=false;}
+            finally{this.miniAppLoading=false;if(this.chatOpen)void this.mountMiniAppChat();}
         },
         async refreshAll(){
             if(this.refreshAllBusy)return;
@@ -143,7 +204,7 @@ function aiBrowserApp() {
                 const [workspace,drafts,catalog,recipes]=await Promise.all([
                     this.request('/browser-workspace'),...(this.mobileMode?[Promise.resolve({items:[]}),Promise.resolve({items:[]}),Promise.resolve({items:[]})]:[this.request('/agent-drafts'),this.request('/agent-capabilities'),this.request('/agent-recipes')]),
                 ]);
-                this.domainSettings=workspace.domain_settings||{};this.tasks=workspace.tasks;this.taskTree=workspace.task_tree||[];if(this.view!=='settings')this.settings=workspace.settings;this.drafts=[...(drafts.items||[]),...(recipes.items||[]).filter(recipe=>!recipe.committed_draft_id).map(recipe=>({...recipe,recipe_only:true}))];
+                this.domainSettings=workspace.domain_settings||{};this.tasks=workspace.tasks;this.consumeTaskIntent();this.taskTree=workspace.task_tree||[];if(this.view!=='settings')this.settings=workspace.settings;this.drafts=[...(drafts.items||[]),...(recipes.items||[]).filter(recipe=>!recipe.committed_draft_id).map(recipe=>({...recipe,recipe_only:true}))];
                 const expanded=new Map(this.domains.map(d=>[d.name,d.expanded]));
                 const validDomain=name=>{if(typeof name!=='string'||!name||['null','undefined'].includes(name.toLowerCase()))return false;try{return new URL('https://'+name).hostname===name;}catch(_){return false;}};
                 const groups=new Map((workspace.domains||[]).filter(validDomain).map(name=>[name,[]]));
@@ -373,7 +434,7 @@ function aiBrowserApp() {
         },
         get humanInteractions(){return (this.taskRun?.interactions||[]).filter(item=>item.status==='pending'&&['browser_user_assistance','agent_confirmation'].includes(item.request?.control));},
         async respondTask(interaction,approve=true){try{await this.request('/agent-draft-runs/'+encodeURIComponent(this.selectedTask.run_id)+'/interactions/'+encodeURIComponent(interaction.id)+'/respond','POST',{response:interaction.request.control==='agent_confirmation'?{decision:approve?'approve':'deny'}:{continued:true},response_id:crypto.randomUUID()});}catch(error){this.fail(error,this.tr('ai_browser.workspace.continue_failed'));}},
-        async showTaskPage(task){let connection;try{connection=new window.AI2AppsBiDi.AI2AppsBiDiConnection();await connection.connect();const context=task.browser_context?.bidi_context;if(!context)throw Error(this.tr('ai_browser.workspace.page_not_created'));await connection.command('browsingContext.activate',{context});}catch(error){this.fail(error,this.tr('ai_browser.workspace.open_task_failed'));}finally{await connection?.close();}},
+        async showTaskPage(task){let connection;try{connection=new window.AI2AppsBiDi.AI2AppsBiDiConnection();await connection.connect();const context=task.assistance_context||task.browser_context?.bidi_context;if(!context)throw Error(this.tr('ai_browser.workspace.page_not_created'));const tree=await connection.command('browsingContext.getTree',{});if(!(tree.contexts||[]).some(c=>c.context===context&&c.userContext===task.browser_context?.user_context))throw Error(this.tr('ai_browser.workspace.page_not_created'));await connection.command('browsingContext.activate',{context});}catch(error){this.fail(error,this.tr('ai_browser.workspace.open_task_failed'));}finally{await connection?.close();}},
         async resumeTask(task){try{const resumed=await this.request('/browser-workspace/tasks/'+task.id+'/resume','POST',{worker:'local-background'});this.selectedTask=resumed;void this.observeTask(resumed);}catch(error){this.fail(error,this.tr('ai_browser.workspace.resume_failed'));}},
         async cancelTask(task){try{await this.request('/browser-workspace/'+(task.composite?'roots/':'tasks/')+encodeURIComponent(task.id)+'/cancel','POST');const item=this.frames.get(task.id);if(item){item.frame.remove();this.frames.delete(task.id);}await this.refresh();}catch(error){this.fail(error,this.tr('ai_browser.workspace.cancel_failed'));}},
         async connectProfileStatus(){

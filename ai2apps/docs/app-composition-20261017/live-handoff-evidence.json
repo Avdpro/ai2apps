@@ -1,0 +1,36 @@
+{
+  "date": "2026-10-17",
+  "environment": "app-dev",
+  "port": 52079,
+  "run": {
+    "id": "run_0ff473cf7a8145479d7e20f667c653c4",
+    "status": "completed",
+    "session_id": "ses_1b9f3a6d8bc14bfd9211df0d4f6f243a"
+  },
+  "interaction_id": "int_2aeba161a9f244a7b88cf967939fb340",
+  "interaction_status": "submitted",
+  "channel_id": "c3639b930679162c1f545aae3caf9b3a",
+  "collection_run_id": "c51ca68eca1a408db635849d84d4bd2b",
+  "article_count": 10,
+  "brief_source_urls": [
+    "https://huggingface.co/blog/LiquidAI/lfm25-24b-a2b",
+    "https://huggingface.co/blog/allenai/hiro-acev2",
+    "https://huggingface.co/blog/flux-3",
+    "https://huggingface.co/blog/ibm-granite/granite-switch-4-1",
+    "https://huggingface.co/blog/meta-muse-spark-open",
+    "https://huggingface.co/blog/reflection-beam",
+    "https://huggingface.co/blog/tiiuae/falcon-asr"
+  ],
+  "all_brief_links_in_handoff": true,
+  "ui_verified": [
+    "真实模型调用 app.interact",
+    "创建频道与单次真实采集完成",
+    "刷新及暂时返回后交接保留",
+    "返回同一 Run 和 Session，显示 Completed 和简报"
+  ],
+  "brief_content": "频道已创建并返回了文章。以下是本次单次采集的中文简报。\n\n---\n\n# AI公开资讯·交接验收1017 — 单次采集简报\n\n**频道**：AI公开资讯·交接验收1017\n**关注方向**：人工智能研究、开源模型与开源发布、开源工具与框架\n**采集方式**：单次采集（未设置定时任务）\n**本次文章数**：10 篇\n**实际来源**：全部来自 Hugging Face 官方博客（1 个信息源）\n**采集时间**：2026-10-17\n\n---\n\n## 一、开源模型发布\n\n### 1. Reflection 发布 501B 开源 MoE 模型 Beam：Apache 2.0、百万上下文\n- 美国新实验室 Reflection 在 Hugging Face 发布首个开源模型 Beam，参数规模 501B 的 MoE 架构，每 token 激活 23B。\n- 支持 100 万 token 上下文，采用 Apache 2.0 许可，主要面向编码与智能体场景。\n- 来源：[https://huggingface.co/blog/reflection-beam](https://huggingface.co/blog/reflection-beam)\n\n### 2. Meta 开源 Muse Spark Open：约 816B 参数多模态 MoE 模型\n- Meta 发布开源权重模型 Muse Spark Open，总参数约 816B，每 token 激活约 42B。\n- 支持文本、图像、音频、视频输入，上下文窗口最高 100 万 token，面向智能体编码。\n- 来源：[https://huggingface.co/blog/meta-muse-spark-open](https://huggingface.co/blog/meta-muse-spark-open)\n\n### 3. Liquid AI 发布 LFM2.5-24B-A2B：24B 参数、2B 激活的端侧推理模型\n- 开源权重模型，总参数 24B、每 token 仅激活 2B，主打端侧推理与工具调用。\n- 官方称在同级 MoE 中智能体基准领先，但知识类与代码类任务仍落后于更大模型。\n- 来源：[https://huggingface.co/blog/LiquidAI/lfm25-24b-a2b](https://huggingface.co/blog/LiquidAI/lfm25-24b-a2b)\n\n### 4. Black Forest Labs 发布 FLUX.3 Image Klein，Diffusers 首日支持布局框控制\n- 单模型支持文生图、多参考图生图与边界框布局控制，提供蒸馏版与基础版两个开源权重。\n- 附带 NVFP4/FP8 量化加载与 LoRA 训练脚本。\n- 来源：[https://huggingface.co/blog/flux-3](https://huggingface.co/blog/flux-3)\n\n### 5. IBM 发布 Granite Switch 4.1：单一端点支持对话、决策与语音任务\n- 推出 8B 与 30B 两个版本，通过组合决策与语音适配器，让同一托管端点在对话、分类决策和语音转写之间切换。\n- 来源：[https://huggingface.co/blog/ibm-granite/granite-switch-4-1](https://huggingface.co/blog/ibm-granite/granite-switch-4-1)\n\n### 6. TII 发布 1.6B 参数阿拉伯语语音识别模型 Falcon-ASR\n- 阿布扎比 TII 发布的 1.6B 参数模型，主攻阿拉伯语及阿联酋方言。\n- 官方称在六项阿拉伯语测试集上平均 WER 为 20.92%。\n- 来源：[https://huggingface.co/blog/tiiuae/falcon-asr](https://huggingface.co/blog/tiiuae/falcon-asr)\n\n---\n\n## 二、AI 研究论文与成果\n\n### 7. Ai2 发布 HiRO-ACEv2：以约 1/300 成本生成全球 3 公里分辨率极端天气模拟\n- 新的降尺度模型 HiROv2 可同时预测多种高分辨率气象场，极端事件统计误差约 3%。\n- 全系统生成全球 3 公里数据的成本约为 X-SHiELD 的 1/300。\n- 来源：[https://huggingface.co/blog/allenai/hiro-acev2](https://huggingface.co/blog/allenai/hiro-acev2)\n\n### 8. NVIDIA 与 AI4Bharat 推出约 2.8 万亿 token 的 Indic 预训练语料及开放数据生成流水线\n- 发布 Nemotron-p",
+  "blockers": [
+    "最终模型 finish_reason=length，completion_tokens=1024；简报第8篇截断，而界面显示Completed"
+  ],
+  "full_brief_acceptance": false
+}

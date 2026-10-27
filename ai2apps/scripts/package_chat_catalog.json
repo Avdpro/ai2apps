@@ -1,0 +1,17 @@
+{
+ "ai2apps.audio-generation.music":["voice.generate_music"],
+ "ai2apps.audio-generation.sfx":["voice.generate_sound_effects"],
+ "ai2apps.audio-generation.song":["voice.generate_song"],
+ "ai2apps.avatar.photo-speaking":["video.avatar"],
+ "ai2apps.imagine.frozen-time":["image.frozen_time"],
+ "ai2apps.media-voice.source-separation":["voice.separate"],
+ "ai2apps.media-voice.transcription":["voice.detailed_transcription"],
+ "ai2apps.media-voice.audio-speaker-replacement":["voice.replace_speaker"],
+ "ai2apps.media-voice.video-subtitles":["video.subtitles"],
+ "ai2apps.media-voice.video-audio-translation":["video.dub"],
+ "ai2apps.media-voice.video-speaker-replacement":["video.replace_speaker"],
+ "ai2apps.search-all":["web.search"],
+ "ai2apps.web-reader":["web.fetch"],
+ "ai2apps.shopping-pro":["shopping.history","shopping.refresh_list","shopping.recommend","shopping.revise","shopping.prepare_cart","shopping.gift_recommend"],
+ "ai2apps.trip-planner":["travel.flights","travel.hotels","travel.guide","travel.refine"]
+}

@@ -3,10 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 
 import yaml
+import pytest
 
 from ai2apps.extensions.archive import InteractiveArchive
 from ai2apps.extensions.models import UnitKind
-from ai2apps.packages.contract_v1 import build_package, inspect_package
+from ai2apps.packages.contract_v1 import build_package, inspect_package, PackageContractError
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "packages" / "ai2apps-media-voice-studio-suite"
@@ -31,7 +32,7 @@ def test_media_voice_suite_builds_as_one_contract_package_with_six_mini_apps(tmp
     assert built.sha256 == inspected.sha256
     assert inspected.manifest["package"]["id"] == "ai2apps/media-voice-studio-suite"
     assert inspected.manifest["package"]["type"] == "app"
-    assert inspected.manifest["package"]["version"] == "0.2.2"
+    assert inspected.manifest["package"]["version"] == "0.2.3"
     assert len(inspected.manifest["miniApps"]) == 6
     assert {item["componentId"] for item in inspected.manifest["miniApps"]} == {
         "ai2apps.media-voice.transcription",
@@ -64,16 +65,12 @@ def test_media_voice_suite_builds_as_one_contract_package_with_six_mini_apps(tmp
     }.issubset(indexed)
 
 
-def test_media_voice_suite_legacy_cloud_build_keeps_signed_app_definition(tmp_path):
+def test_media_voice_suite_capability_catalog_cannot_omit_signed_mini_app_identities(tmp_path):
     artifact = tmp_path / "media-voice-studio-suite.ai2app"
-    inspected = build_package(
-        SOURCE,
-        artifact,
-        include_mini_app_catalog=False,
-    )
-
-    assert "miniApps" not in inspected.manifest
-    assert any(item.path == "app.yaml" for item in inspected.files)
+    # This candidate declares Mini-App AaAT identities. The legacy catalog-less
+    # export is no longer valid for it; preserve the positive signature gate.
+    with pytest.raises(PackageContractError, match='Capability identity'):
+        build_package(SOURCE, artifact, include_mini_app_catalog=False)
 
 
 def test_media_voice_suite_app_manifest_passes_installed_app_validation():
@@ -149,7 +146,9 @@ def test_every_media_voice_mini_app_has_a_distinct_mounted_ui_and_help():
         assert resource.is_file()
         assert help_resource.is_file()
         assert mini_app["entry"]["kind"] == "sandbox"
-        assert mini_app["chat"]["tools"] == []
+        assert [tool['name'] for tool in mini_app['chat']['tools']] == ['update_current_draft']
+        assert mini_app['chat']['tools'][0]['input_schema']['additionalProperties'] is False
+        assert 'package_mini_chat.js' in resource.read_text(encoding='utf-8')
         assert "当前 MVP" in help_resource.read_text(encoding="utf-8")
 
 

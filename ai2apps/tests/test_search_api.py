@@ -84,3 +84,42 @@ async def test_api_interaction_uses_task_journal_without_creating_browser_tab():
 async def test_api_provider_must_be_inside_reviewed_agent_scope():
     runtime=SimpleNamespace(secrets=Secrets());configure(runtime,'alice','google','private-key','engine')
     with pytest.raises(ValueError,match='outside'):await search(runtime,'alice','query',10,scopes=['https://example.com/**'])
+
+@pytest.mark.asyncio
+async def test_context_free_api_runs_through_real_sqlite_journal_and_replays_once(tmp_path,monkeypatch):
+    from test_browser_background import JournalDatabase
+    from ai2apps.browser.action_journal import BrowserActionJournal
+    from ai2apps.browser.background_runner import BackgroundBrowserRunner
+    from ai2apps.browser.background_executor import BackgroundExecutor
+    import ai2apps.browser.search_api as module
+    from unittest.mock import Mock
+    db=JournalDatabase(tmp_path/'strict-action-journal.sqlite')
+    request={'step':{'operation':'search.api','arguments':{'provider':'deepseek','query':'DeepSeek','limit':1}},
+             'site_scope':['https://api.deepseek.com/v1/tools/search']}
+    with db.transaction(write=True) as c:
+        c.execute('UPDATE agent_interactions SET request_json=? WHERE id=?',(json.dumps(request),'interaction'))
+    calls=[]
+    class Client:
+        async def __aenter__(self):return self
+        async def __aexit__(self,*args):pass
+        async def post(self,url,**kwargs):
+            calls.append(url)
+            return SimpleNamespace(status_code=200,content=b'{}',json=lambda:{'results':[{'title':'DeepSeek','url':'https://www.deepseek.com','snippet':'Official'}]})
+    monkeypatch.setattr(module,'byok_available',lambda *args:True)
+    monkeypatch.setattr(module.httpx,'AsyncClient',lambda **kwargs:Client())
+    run=SimpleNamespace(id='run',input={'parameters':{'owner_user_id':'alice'}})
+    interaction=SimpleNamespace(id='interaction',request=request)
+    runtime=SimpleNamespace(agents=SimpleNamespace(get_run=lambda _:run,list_interactions=lambda _:[interaction],respond_interaction=Mock()),
+        agent_runtime=SimpleNamespace(wake=Mock()),model_manager=SimpleNamespace(resolve_credential=lambda _:'fixture-key'))
+    runner=object.__new__(BackgroundBrowserRunner);runner.runtime=runtime
+    runner.journal=BrowserActionJournal(db);runner.executor=BackgroundExecutor(runtime)
+    runner.page_for=AsyncMock(side_effect=AssertionError('API must never create a page'))
+    await runner.execute_interaction({'run_id':'run','id':'interaction'})
+    saved=runner.journal.lookup('interaction')
+    assert saved['state']=='completed' and saved['context_id']==''
+    assert json.loads(saved['response_json'])['evidence']['result']['items'][0]['title']=='DeepSeek'
+    await runner.execute_interaction({'run_id':'run','id':'interaction'})
+    assert len(calls)==1
+    runner.page_for.assert_not_called()
+    with pytest.raises(ValueError,match='identity changed'):
+        runner.journal.claim(run_id='run',interaction_id='interaction',owner='alice',context_id='another-tab',request=request)

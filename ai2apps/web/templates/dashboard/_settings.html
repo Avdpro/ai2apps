@@ -1,6 +1,6 @@
             <div x-show="mainTab === 'settings'" x-cloak>
             <!-- Tab Navigation -->
-            <div class="flex items-center gap-2 mb-10 animate-fade-in-up">
+            <div class="flex flex-wrap items-center gap-2 mb-10 animate-fade-in-up">
                 <button
                     @click="setSettingsTab('global')"
                     :class="activeTab === 'global'
@@ -28,7 +28,18 @@
                 >
                     {{ t('settings.tab.integrations') }}
                 </button>
+                {% if system_app is defined and system_app.id == 'ai2apps.settings' %}
+                <button type="button" @click="setSettingsTab('capabilities')"
+                    :class="activeTab === 'capabilities' ? 'bg-neutral-900 text-white' : 'text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100'"
+                    class="px-5 py-2.5 rounded-full text-sm font-medium transition-all duration-200"
+                    x-text="window.AI2AppsCapabilityTree.label"></button>
+                {% endif %}
             </div>
+
+            {% if system_app is defined and system_app.id == 'ai2apps.settings' %}
+            <div x-show="activeTab === 'capabilities'" x-cloak
+                 x-effect="if (activeTab === 'capabilities') window.AI2AppsCapabilityTree.mountSettings($el)"></div>
+            {% endif %}
 
             <!-- Global Settings Tab -->
             <div x-show="activeTab === 'global'" x-cloak>

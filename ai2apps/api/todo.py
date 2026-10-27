@@ -110,7 +110,12 @@ async def generate_task_emoji(runtime, store, principal, request, body, id=None)
             model = invocations.model(model_id) if invocations else None
             for attempt in range(3):
                 request_id = "todo-emoji-" + uuid.uuid4().hex
-                if model is not None and "chat_completions" in model.endpoints:
+                if str(model_id).startswith('cloud/'):
+                    from ai2apps.model_invocation import invoke_app_cloud_chat
+                    response = await invoke_app_cloud_chat(runtime, payload, principal=principal,
+                        session_id=request_id, consumer_app_id='ai2apps.todo')
+                    content = bytes(response.body)
+                elif model is not None and "chat_completions" in model.endpoints:
                     response = await invocations.invoke_foreground_json(
                         model.id, "chat_completions", payload, request_id=request_id,
                         context=invocations.context_for_actor(principal.actor_user_id, session_id=request_id, consumer_app_id="ai2apps.todo"),
@@ -146,6 +151,31 @@ async def generate_task_emoji(runtime, store, principal, request, body, id=None)
     except (ValueError, KeyError, IndexError, TypeError, AttributeError) as error:
         raise HTTPException(502, "AI 未返回单个 Emoji，请重试 / AI did not return a single Emoji") from error
 
+async def bind_desktop_task(s, principal, id, body):
+    from pathlib import Path
+    from ai2apps.codex.transport import CodexDesktop
+    owner = principal.actor_user_id
+    s.desktop_access(owner)
+    task = s.store.get(owner, id)
+    binding = body.binding.model_dump()
+    cwd = binding['project_path']
+    if binding['host_id'] != 'local' or not Path(cwd).is_absolute() or not Path(cwd).is_dir():
+        raise HTTPException(422, 'Choose an existing local project directory')
+    binding.update(project_id='', project_path=str(Path(cwd).resolve()), inherit_project=False)
+    if binding['thread_id']:
+        try:
+            async with CodexDesktop() as client:
+                result = await client.call('thread/read', {'threadId':binding['thread_id'],'includeTurns':False})
+            thread = result['thread']
+            if Path(thread.get('cwd','')).resolve() != Path(cwd).resolve():
+                raise ValueError('Conversation does not belong to this directory')
+            binding['thread_title'] = thread.get('name') or binding['thread_id']
+        except (ValueError, OSError, TimeoutError) as error:
+            raise HTTPException(422, str(error) or 'Codex connection timed out') from error
+    data = {k:task[k] for k in TaskInput.model_fields}
+    data.update(codex=binding, executor='codex_desktop', working_directory=binding['project_path'])
+    return s.store.save(owner, data, id, body.revision)
+
 def create_todo_router(runtime_provider, principal_provider):
     router = APIRouter(
         prefix="/todo",
@@ -153,6 +183,8 @@ def create_todo_router(runtime_provider, principal_provider):
         dependencies=[Depends(require_app_capability(principal_provider, "app.use"))],
     )
     dep = Depends(principal_provider)
+    from ai2apps.api.system_tasks import install_system_task_routes
+    install_system_task_routes(router,runtime_provider,principal_provider)
 
     def service():
         value = getattr(runtime_provider(), "todo", None)
@@ -167,6 +199,25 @@ def create_todo_router(runtime_provider, principal_provider):
             raise HTTPException(404, str(error)) from error
         except ValueError as error:
             raise HTTPException(422, str(error)) from error
+
+    @router.get('/projects/resolve')
+    def resolve_project(query: str = Query(min_length=1,max_length=500),directory_id: str | None = None,
+                        limit: int = Query(10,ge=1,le=100),principal=dep):
+        from ai2apps.todo.aaat import query_projects
+        return checked(query_projects,service().store.snapshot(principal.actor_user_id),'todo.resolve_project',
+            {'query':query,'directory_id':directory_id,'limit':limit})
+
+    @router.get('/projects/{project_id}/stats')
+    def project_stats(project_id: str,scope: Literal['direct','recursive']='recursive',principal=dep):
+        from ai2apps.todo.aaat import query_projects
+        return checked(query_projects,service().store.snapshot(principal.actor_user_id),'todo.project_stats',{'project_id':project_id,'scope':scope})
+
+    @router.get('/projects/{project_id}/children')
+    def project_children(project_id: str,scope: Literal['direct','recursive']='direct',
+                         offset: int=Query(0,ge=0),limit: int=Query(20,ge=1,le=100),principal=dep):
+        from ai2apps.todo.aaat import query_projects
+        return checked(query_projects,service().store.snapshot(principal.actor_user_id),'todo.children',
+            {'project_id':project_id,'scope':scope,'offset':offset,'limit':limit})
 
     @router.get("")
     def snapshot(principal=dep):
@@ -190,29 +241,12 @@ def create_todo_router(runtime_provider, principal_provider):
 
     @router.put('/tasks/{id}/codex/desktop')
     async def desktop_bind(id: str, body: DesktopBindingRequest, principal=dep):
-        from pathlib import Path
-        from ai2apps.codex.transport import CodexDesktop
-        s = service(); owner = principal.actor_user_id
-        checked(s.desktop_access, owner)
-        task = checked(s.store.get, owner, id)
-        binding = body.binding.model_dump()
-        cwd = binding['project_path']
-        if binding['host_id'] != 'local' or not Path(cwd).is_absolute() or not Path(cwd).is_dir():
-            raise HTTPException(422, 'Choose an existing local project directory')
-        binding.update(project_id='', project_path=str(Path(cwd).resolve()), inherit_project=False)
-        if binding['thread_id']:
-            try:
-                async with CodexDesktop() as client:
-                    result = await client.call('thread/read', {'threadId':binding['thread_id'],'includeTurns':False})
-                thread = result['thread']
-                if Path(thread.get('cwd','')).resolve() != Path(cwd).resolve():
-                    raise ValueError('Conversation does not belong to this directory')
-                binding['thread_title'] = thread.get('name') or binding['thread_id']
-            except (ValueError, OSError, TimeoutError) as error:
-                raise HTTPException(422, str(error) or 'Codex connection timed out') from error
-        data = {k:task[k] for k in TaskInput.model_fields}
-        data.update(codex=binding, executor='codex_desktop', working_directory=binding['project_path'])
-        return checked(s.store.save, owner, data, id, body.revision)
+        try:
+            return await bind_desktop_task(service(), principal, id, body)
+        except KeyError as error:
+            raise HTTPException(404, str(error)) from error
+        except ValueError as error:
+            raise HTTPException(422, str(error)) from error
 
     @router.get("/backup")
     async def backup_export(directory_id: str | None = None, principal=dep):

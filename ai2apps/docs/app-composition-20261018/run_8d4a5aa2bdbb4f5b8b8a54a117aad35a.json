@@ -1,0 +1,35 @@
+{
+  "id": "run_8d4a5aa2bdbb4f5b8b8a54a117aad35a",
+  "status": "completed",
+  "session_id": "ses_d1648811cc564d1ba051b55764087231",
+  "created_at": "2026-10-17T19:29:10.752094Z",
+  "finished_at": "2026-10-17T19:29:39.312946Z",
+  "tools": [
+    {
+      "tool_name": "image.generate",
+      "status": "completed",
+      "output": {
+        "artifact": {
+          "download_url": "/v1/platform/sessions/ses_d1648811cc564d1ba051b55764087231/artifacts/art_5d9a2aed4a144a9fb94dce13da344350/download",
+          "id": "art_5d9a2aed4a144a9fb94dce13da344350",
+          "media_type": "image/png",
+          "name": "stjob_f215b97f75ac4ecc868b9f8e5e338c44.png",
+          "size_bytes": 705599,
+          "uri": "artifact://art_5d9a2aed4a144a9fb94dce13da344350"
+        },
+        "capability": "image.generate",
+        "mini_app_id": "ai2apps.imagine.text-to-image",
+        "model": "cloud/ai2apps/openai/gpt-image-2",
+        "provider": "ai2apps.imagine.text-to-image",
+        "provider_attempts": [
+          {
+            "provider": "ai2apps.imagine.text-to-image",
+            "status": "succeeded"
+          }
+        ],
+        "studio_job_id": "stjob_f215b97f75ac4ecc868b9f8e5e338c44",
+        "studio_run_id": "strun_e1dfabd93a74479e8a4dac9f0cbe15c8"
+      }
+    }
+  ]
+}

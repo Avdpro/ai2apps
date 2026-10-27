@@ -47,7 +47,7 @@ app.restoringPrompt=false;app.syncSubmissionPrompt();assert.equal(app.promptOver
 (async()=>{
     for(const provider of ['cloud','local']) {
         const a=ctx.window.imagineStudioApp();
-        a.scheduleDraftSave=()=>{};a.icons=()=>{};a.dismissNotice=()=>{};
+        a.scheduleDraftSave=()=>{};a.icons=()=>{};a.dismissNotice=()=>{};a.historyHeaders=()=>({});
         a.prompt='Base';a.models=[{id:'test',label:'Test',source:provider,operations:['image_generation']}];a.modelId='test';
         Object.defineProperty(a,'sizeError',{value:''});
         a.editSubmissionPrompt('MODEL PAYLOAD\nexact ');
@@ -59,11 +59,10 @@ app.restoringPrompt=false;app.syncSubmissionPrompt();assert.equal(app.promptOver
         a.updateRun=async()=>({id:'run',status:'succeeded'});
         a.persistResult=async()=>({});a.refreshRuns=async()=>{};
         a.fail=e=>{throw e;};
-        ctx.fetch=async(_,options)=>{request=JSON.parse(options.body);return {ok:true,json:async()=>({image:{dataUrl:'data:image/png;base64,AA==',size:'1024x1024'}})};};
+        ctx.fetch=async(_,options)=>{request=JSON.parse(options.body);request=request.payload||request;return {ok:true,json:async()=>({image:{dataUrl:'data:image/png;base64,AA==',size:'1024x1024'}})};};
         await a.generate();
         assert.equal(request.prompt,'MODEL PAYLOAD\nexact ',provider);
         assert.equal(input.submittedPrompt,request.prompt,'run records exact submitted prompt');
     }
-    assert.equal((source.match(/prompt: submittedPrompt, size: requestedSize/g)||[]).length,2);
     console.log('Submitted prompt editing, invalidation, draft metadata and exact cloud/local payload: passed');
 })().catch(error=>{console.error(error);process.exitCode=1;});

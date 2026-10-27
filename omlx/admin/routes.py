@@ -1365,7 +1365,7 @@ MOBILE_STATIC_FILES = frozenset({
     "css/mobile_app.css",
     "css/app-readability.css",
     "css/mobile_chat.css",
-    "css/mobile_todo.css",
+    "css/mobile_todo.css", "css/system_tasks.css", "js/system_tasks.js",
     "css/mobile_library.css",
     "css/tailwind.css",
     "css/dashboard.css",
@@ -1385,6 +1385,13 @@ MOBILE_STATIC_FILES = frozenset({
     "js/owner_session.js",
     "js/mobile_app.js",
     "js/mobile_chat.js",
+    "js/chat_message_feedback.js",
+    "css/chat_message_feedback.css",
+    "js/mobile_agent_connection.js",
+    "js/mobile_agent_chat.js", "js/aaat_result_views.js", "css/aaat_result_views.css",
+    "js/agent_parameter_forms.js", "js/conversation_model_policy.js",
+    "js/chat_context_handoff.js",
+    "js/mobile_chat_keyboard.js",
     "js/mobile_todo.js",
     "js/mobile_library.js",
     "js/purify.min.js",
@@ -3150,7 +3157,8 @@ async def _mobile_platform_proxy(
         headers={**_mobile_proxy_auth_headers(request), **(headers or {})},
         timeout=httpx.Timeout(connect=10, read=120, write=30, pool=10),
     ) as client:
-        response = await client.request(method, f"/v1/platform{path}", json=payload)
+        params = {'expected_revision': request.query_params.get('expected_revision', '')} if method == 'DELETE' else None
+        response = await client.request(method, f"/v1/platform{path}", json=payload, params=params)
     return Response(
         content=response.content,
         status_code=response.status_code,
@@ -3197,6 +3205,19 @@ async def remote_mobile_chat_thread_content(
     return await _mobile_platform_proxy(
         request, "GET", f"/chat/threads/{quote(thread_id, safe='')}/content"
     )
+
+
+@shell_router.api_route('/v1/mobile/chat/threads/{thread_id}', methods=['PATCH', 'DELETE'])
+@shell_router.post('/v1/mobile/chat/threads/{thread_id}/manage')
+async def remote_mobile_manage_chat_thread(
+    request: Request, thread_id: str,
+    principal: RequestPrincipal = Depends(_mobile_access_dependency),
+):
+    _require_system_app_access('ai2apps.general-chat', principal)
+    payload = await request.json() if request.method in ('PATCH', 'POST') else None
+    suffix = '/manage' if request.method == 'POST' else ''
+    return await _mobile_platform_proxy(request, request.method,
+        f"/chat/threads/{quote(thread_id, safe='')}{suffix}", payload=payload)
 
 
 @shell_router.put("/v1/mobile/chat/threads/{thread_id}/content")
@@ -3315,6 +3336,21 @@ async def remote_mobile_models(
         content=response.content, status_code=response.status_code,
         media_type=response.headers.get("content-type", "application/json"),
     )
+
+
+@shell_router.api_route('/v1/mobile/chat/threads/{thread_id}/turns', methods=['GET', 'POST'])
+@shell_router.api_route('/v1/mobile/chat/threads/{thread_id}/turns/{turn_id}', methods=['GET'])
+@shell_router.api_route('/v1/mobile/chat/threads/{thread_id}/turns/{turn_id}/cancel', methods=['POST'])
+async def remote_mobile_chat_turn(request: Request, thread_id: str, turn_id: str | None = None,
+                                  principal: RequestPrincipal = Depends(_mobile_access_dependency)):
+    _require_system_app_access('ai2apps.general-chat', principal)
+    path = f"/chat/threads/{quote(thread_id, safe='')}/turns"
+    if turn_id is not None:
+        path += '/' + quote(turn_id, safe='')
+        if request.url.path.endswith('/cancel'):
+            path += '/cancel'
+    payload = await request.json() if request.method == 'POST' and turn_id is None else None
+    return await _mobile_platform_proxy(request, request.method, path, payload=payload)
 
 
 @shell_router.post("/v1/mobile/chat/completions")
@@ -5005,7 +5041,7 @@ def _development_model_display_name(
     return f"Dev: {path}"
 
 
-from ai2apps.model_capabilities import cloud_model_capabilities as _cloud_model_capabilities
+from ai2apps.model_capabilities import cloud_model_capabilities as _cloud_model_capabilities, agent_capability_summary as _agent_capability_summary
 
 
 async def _ai2apps_cloud_provider(
@@ -5394,6 +5430,7 @@ async def list_models(
                     "model_type": cloud_model_type,
                     "config_model_type": "cloud",
                     "capabilities": sorted(cloud_capabilities),
+                    "agent_capability_declaration": _agent_capability_summary({**cloud_model, "model_type": cloud_model_type}),
                     "cache_moe": False,
                     "thinking_default": None,
                     "preserve_thinking_default": None,
@@ -5500,6 +5537,9 @@ async def list_models(
         models.append(package_model.public_catalog_entry())
         existing_ids.add(package_model.id)
 
+    from ai2apps.model_capabilities import agent_capability_summary
+    for model in models:
+        model.setdefault("agent_capability_declaration", agent_capability_summary(model))
     return {"models": models}
 
 

@@ -174,17 +174,22 @@
             if (titleMatches.length === 1) return titleMatches[0].context;
             throw new Error('The current browser page changed; refresh the Sidebar context');
         }
-        async callJSON(fn, args = [], timeoutMs = 15000) {
+        async callJSON(fn, args = [], timeoutMs = 15000, contextId = this.contextId) {
             if (!this.visibilitySource) {
-                const response = await fetch('/admin/static/js/browser_dom_visibility.js?v=1');
+                const response = await fetch('/admin/static/js/browser_dom_visibility.js?v=control-icons-20261026');
                 if (!response.ok) throw new Error('Cannot load shared DOM visibility helper');
                 this.visibilitySource = await response.text();
             }
+            let articleBinding='';
+            if(String(fn).includes('ai2appsArticleDocument')){
+                if(!this.articleDocumentSource){const response=await fetch('/admin/static/js/browser_article_document.js?v=1');if(!response.ok)throw Error('Cannot load shared article document helper');this.articleDocumentSource=await response.text();}
+                articleBinding=this.articleDocumentSource;
+            }
             const serializedArgs = JSON.stringify(args).replace(/</g, '\\u003c');
-            const declaration = `async function(){const ai2appsDOMVisible=(${this.visibilitySource});const fn=(${fn});const value=await fn(...${serializedArgs});return JSON.stringify(value);}`;
+            const declaration = `async function(){const ai2appsDOMVisible=(${this.visibilitySource});${articleBinding}const fn=(${fn});const value=await fn(...${serializedArgs});return JSON.stringify(value);}`;
             const result = await this.connection.command('script.callFunction', {
                 functionDeclaration: declaration,
-                target: {context: this.contextId},
+                target: {context: contextId},
                 awaitPromise: true,
             }, timeoutMs);
             if (result.type === 'exception') {
@@ -196,19 +201,19 @@
         }
         async snapshot({maxItems = 150, maxText = 20000, maxHtml = 60000} = {}) {
             if (!this.snapshotSource) {
-                const response = await fetch('/admin/static/js/browser_snapshot.js?v=upload-controls-2');
+                const response = await fetch('/admin/static/js/browser_snapshot.js?v=probe-consistency-20261026');
                 if (!response.ok) throw new Error('Cannot load shared browser snapshot helper');
                 this.snapshotSource = await response.text();
             }
             return this.callJSON(this.snapshotSource, [{maxItems, maxText, maxHtml, htmlMode:'visible'}], 30000);
         }
-        async pageState() {
-            const snapshot = await this.snapshot();
+        async pageState(options = {}) {
+            const snapshot = await this.snapshot(options);
             return {...snapshot, text_length:snapshot.text.length, text_sample:snapshot.text,
                 fingerprint:[snapshot.url,snapshot.items.length,snapshot.text.length,snapshot.html.length].join('|')};
         }
         async explorationObservation() {
-            const snapshot = await this.pageState();
+            const snapshot = await this.pageState({maxItems:600});
             const controls = snapshot.items.map(item => ({...item, name:item.text}));
             return {...snapshot, controls, control_count:controls.length,
                 link_count:controls.filter(item => item.tag === 'a').length,
@@ -310,10 +315,10 @@
                     retained=Boolean(temporary);
                     return {outcome:'success',context:this.contextId,original_context:original,temporary:Boolean(temporary),url:stability.page.url};
                 }
-                const access=await this.handlePageAccess();
+                const access=await this.handlePageAccess({readOnly:true});
                 if(['needs_user','restricted'].includes(access.classification)){
                     retained=Boolean(temporary&&access.classification==='needs_user');
-                    return {outcome:access.classification,reason:access.reason,url:stability.page.url,context:this.contextId,tab_closed:Boolean(temporary&&!retained)};
+                    return {outcome:access.classification,reason:access.reason,assistance_kind:access.assistance_kind,access,url:stability.page.url,context:this.contextId,tab_closed:Boolean(temporary&&!retained)};
                 }
                 let page;
                 if(options.youtube==='feed'){
@@ -327,7 +332,7 @@
                 }
                 else if(options.youtube==='video')page=await this.extractYouTubeVideo();
                 else if(options.site_extraction){
-                    try{page=await this.executeExtractionStep({mode:'compiled',operation:'read_page',arguments:{site_extraction:options.site_extraction}});}
+                    try{page=await this.executeExtractionStep({mode:'compiled',operation:'read_page',arguments:{site_extraction:options.site_extraction,max_chars:options.max_chars}});}
                     catch(_){page={...await this.extractRenderedPage({maxChars:options.max_chars}),extraction_fallback:true};}
                 }else page=await this.extractRenderedPage({maxChars:options.max_chars});
                 if(!options.youtube&&(options.include_cover||options.include_images)){try{page.cover_image=await this.extractLeadImage();if(options.include_images)page.images=page.cover_image.images||[];}catch(_){page.cover_image={url:'',method:'unavailable'};page.images=[];}}
@@ -546,7 +551,11 @@
             if(!['compiled','adaptive'].includes(step?.mode)||!rule||rule.schema!=='ai2apps.site-extraction/v1'||
                 !['list','article'].includes(rule.kind)||step.operation!==(rule.kind==='list'?'extract_list':'read_page')||
                 typeof rule.selector!=='string'||rule.selector.length>300)throw Error('invalid_extraction_step');
-            const result=await this.callJSON(`function(rule){
+            if(step?.operation==='extract_list'){
+                const access=await this.handlePageAccess({readOnly:true});
+                if(['needs_user','restricted'].includes(access.classification))return {...access,items:[]};
+            }
+            const result=await this.callJSON(`function(rule,maxChars){
                 const origin=String(rule.origin||'').trim(),path=String(rule.path||'').trim();
                 if((origin&&location.origin!==origin)||(path&&location.pathname!==path))return null;
                 const visible=ai2appsDOMVisible;
@@ -565,10 +574,16 @@
                     return {url:location.href,items};
                 }
                 const clone=root.cloneNode(true);
-                for(const n of clone.querySelectorAll('script,style,nav,header,footer,aside,form,input,textarea,[hidden],[aria-hidden=true],[role=dialog]'))n.remove();
+                // Prune against the live DOM before reading the detached clone.
+                let removedCount=0;
+                const prune=(live,copy)=>{const a=[...live.children],b=[...copy.children];for(let i=0;i<a.length;i++){if(!visible(a[i],{requireBox:false})){b[i].remove();removedCount++;}else prune(a[i],b[i]);}};
+                prune(root,clone);
+                const removed=clone.querySelectorAll('script,style,noscript,template,nav,header,footer,aside,form,input,textarea,[hidden],[aria-hidden=true],[role=dialog]');
+                removedCount+=removed.length;for(const n of removed)n.remove();
                 const text=(clone.textContent||'').trim().replace(/\\n[ \\t]+/g,'\\n');
-                return {url:location.href,title:document.querySelector('h1')?.innerText||document.title,text:text.slice(0,10000),extraction_method:'compiled-site-agent'};
-            }`,[rule]);
+                const limit=Math.min(100000,Math.max(100,Number(maxChars)||20000));
+                return {url:location.href,title:document.querySelector('h1')?.innerText||document.title,text:text.slice(0,limit),source_blocks:ai2appsArticleDocument({content:clone.innerHTML},limit),extraction_method:'compiled-site-agent',extracted_chars:text.length,returned_chars:Math.min(text.length,limit),truncated:text.length>limit,extraction_limit:limit,non_content_nodes_removed:removedCount};
+            }`,[rule,step.arguments.max_chars]);
             if(!result||(rule.kind==='list'?(!Array.isArray(result.items)||!result.items.length):(typeof result.text!=='string'||result.text.length<300)))throw Error('site_rule_drift');
             return result;
         }
@@ -581,15 +596,15 @@
                     if(!response.ok) throw Error('readability_source_unavailable');
                     this.readabilitySource=await response.text();
                 }
-                readability=await this.callJSON(`function(){${this.readabilitySource}
+                readability=await this.callJSON(`function(maxChars){${this.readabilitySource}
 setReadablility();
                     const clone=document.cloneNode(true);
                     for(const node of clone.querySelectorAll('script,style,input,textarea,[hidden],[aria-hidden="true"]')) node.remove();
                     const article=new globalThis.__ai2appsReadability(clone).parse();
-                    return article ? {title:article.title,text:article.textContent,url:location.href} : null;}`,[],30000);
+                    return article ? {title:article.title,text:article.textContent,source_blocks:ai2appsArticleDocument(article,maxChars),url:location.href} : null;}`,[maxChars],30000);
             } catch(error){warning=String(error.message||error).slice(0,160);}
             if(readability&&String(readability.text||'').trim().length>=100)
-                return {...readability,text:String(readability.text).trim().slice(0,maxChars),extraction_method:'readability'};
+                return {...readability,text:String(readability.text).trim().slice(0,maxChars),extraction_method:'readability',extracted_chars:String(readability.text).trim().length,returned_chars:Math.min(String(readability.text).trim().length,maxChars),truncated:String(readability.text).trim().length>maxChars,extraction_limit:maxChars};
 
             const snapshot = await this.snapshot({maxText:maxChars});
             const selection = await this.callJSON(`function(){return (getSelection()?.toString()||'').trim().slice(0,20000);}`);
@@ -817,16 +832,20 @@ setReadablility();
             return {file_count:paths.length, target_ref:target.ref, method:'native-bidi-setFiles'};
         }
         async findTarget(intent, {operation = ''} = {}) {
-            const snapshot = await this.snapshot();
+            const refs = [...new Set(String(intent || '').match(/\be\d+\b/g) || [])];
+            if (refs.length > 1) return null;
+            const requestedRef = refs[0];
+            const snapshot = await this.snapshot({maxItems:requestedRef ? 600 : 150});
             const query = String(intent || '').toLowerCase().replace(/页面上的|按钮|输入框|the|button|field/g,'').trim();
             let best = null;
             for (const item of snapshot.items) {
                 if (item.disabled) continue;
                 if (operation === 'input' && !item.editable && item.role !== 'textbox') continue;
+                if (requestedRef && item.ref !== requestedRef) continue;
                 const name = item.text || '', low = name.toLowerCase();
-                let score = item.ref === intent ? 120 : query && low === query ? 100 :
-                    query && low.includes(query) ? 70 : query && query.includes(low) && low.length > 1 ? 50 : 0;
-                if (/搜索|search/.test(query) && (/search|搜索/.test(low) || item.type === 'search')) score += 45;
+                let score = item.ref === (requestedRef || intent) ? 120 : query && low === query ? 100 :
+                    query && low.includes(query) ? 70 : 0;
+                if (/^(搜索|search)$/.test(query) && (/search|搜索/.test(low) || item.type === 'search')) score += 45;
                 if (!score) continue;
                 const [x,y,width,height] = item.rect;
                 const candidate = {...item,name,sensitive:item.sensitive || /password|one.?time|otp|验证码/i.test(name),
@@ -854,13 +873,14 @@ setReadablility();
             if (!target?.rect) throw new Error('Target has no visible rectangle');
             const {interaction_mode:mode}=await this.interactionSettings();
             await this.interactionPause(mode);
+            const inputContext=target.input_context||this.contextId;
             const rect = target.rect;
             const jitterX = ((seed * 17) % 21 - 10) / 100;
             const jitterY = ((seed * 29) % 21 - 10) / 100;
             const x = Math.round(rect.x + rect.width * (0.5 + jitterX));
             const y = Math.round(rect.y + rect.height * (0.5 + jitterY));
             const actions=[];
-            const prior=this.pointerPositions?.get(this.contextId) || {x:0,y:0};
+            const prior=this.pointerPositions?.get(inputContext) || {x:0,y:0};
             const count=mode==='fast'?1:12;
             for(let i=1;i<=count;i++){
                 const t=i/count, eased=mode==='fast'?t:t*t*(3-2*t);
@@ -871,9 +891,9 @@ setReadablility();
             if (click) actions.push({type:'pointerDown',button:0},
                 {type:'pause',duration:mode==='fast'?0:70},{type:'pointerUp',button:0});
             await this.connection.command('input.performActions', {
-                context:this.contextId,actions:[{type:'pointer',id:'ai2apps-natural-pointer',parameters:{pointerType:'mouse'},actions}],
+                context:inputContext,actions:[{type:'pointer',id:'ai2apps-natural-pointer',parameters:{pointerType:'mouse'},actions}],
             });
-            this.pointerPositions ||= new Map();this.pointerPositions.set(this.contextId,{x,y});
+            this.pointerPositions ||= new Map();this.pointerPositions.set(inputContext,{x,y});
             return {x,y,profile:mode};
         }
         async typeText(text, {replace = false, submit = false} = {}) {
@@ -994,7 +1014,7 @@ setReadablility();
                             context:this.contextId, url:item.url, wait:'complete',
                         }, 30000);
                         await pause();
-                        const access = await this.handlePageAccess();
+                        const access = await this.handlePageAccess({readOnly:true});
                         if (['needs_user', 'restricted'].includes(access?.classification)) {
                             failures.push({url:item.url, reason:access.reason}); continue;
                         }
@@ -1027,6 +1047,8 @@ setReadablility();
         }
 
         async extractArticleList(limit = 50) {
+            const access=await this.handlePageAccess({readOnly:true});
+            if(['needs_user','restricted'].includes(access.classification))return {...access,items:[]};
             return this.callJSON(`function(limit){
                 const visible=ai2appsDOMVisible;
                 const excluded=node=>Boolean(node.closest('header,nav,footer,[role=navigation],[role=banner],[role=contentinfo]'));
@@ -1116,34 +1138,112 @@ setReadablility();
                 return {action:'list',page_url:location.href,page_title:document.title,items};
             }`, [limit]);
         }
-        async handlePageAccess() {
+        async handlePageAccess({readOnly=false}={}) {
             // Dismiss only recognised consent UI, never unrelated page actions.
             // Re-observe after native input: sending a click is not proof of dismissal.
-            const inspect = () => this.callJSON(`function(){
-                const positive=/^(?:deny(?: all)?|reject(?: all)?(?: cookies)?|decline(?: all)?|only necessary|necessary only|reject optional cookies|拒绝(?:所有|全部)?|仅必要|只允许必要|关闭|close|not now|稍后|以后再说)$/i;
-                const visible=node=>ai2appsDOMVisible(node,{viewport:true});
-                const consentText=/cookies?|privacy preferences|consent preferences|隐私偏好|隐私设置/i;
-                const selector='#CybotCookiebotDialog,#onetrust-banner-sdk,#onetrust-consent-sdk,.qc-cmp2-container,[role=dialog],[aria-modal=true],[id*=cookie i],[class*=cookie-banner i],[class*=consent-banner i]';
-                const panels=[...document.querySelectorAll(selector)].filter(node=>visible(node)&&consentText.test(node.innerText||''));
-                for(const panel of panels){
-                    for(const node of panel.querySelectorAll('button,[role=button],a')){
-                        const name=(node.getAttribute('aria-label')||node.innerText||node.textContent||node.title||'').replace(/\s+/g,' ').trim();
-                        if(!visible(node)||node.disabled||node.getAttribute('aria-disabled')==='true'||!positive.test(name))continue;
-                        const r=node.getBoundingClientRect(),x=Math.max(0,r.left),y=Math.max(0,r.top);
-                        const width=Math.min(innerWidth,r.right)-x,height=Math.min(innerHeight,r.bottom)-y;
-                        const hit=document.elementFromPoint(x+width/2,y+height/2);
-                        if(!hit||!(hit===node||node.contains(hit)))continue;
-                        return {name,rect:{x,y,width,height},classification:'safe_dismiss'};
-                    }
+            const inspectContext = (contextId, consentFrame=false) => this.callJSON(`function(consentFrame=false,readOnly=false){
+ const visible=node=>ai2appsDOMVisible(node,{viewport:true});
+ const name=node=>(node.getAttribute('aria-label')||node.innerText||node.textContent||node.title||'').replace(/\\s+/g,' ').trim();
+ const readableArticle=()=>[...document.querySelectorAll('article p,main p,[role=main] p')].filter(n=>!n.closest('form,nav,footer,aside,[role=dialog],[aria-modal=true]')&&ai2appsDOMVisible(n,{viewport:false})).reduce((size,n)=>size+(n.innerText||'').trim().length,0)>=160;
+ const blocksReading=node=>{
+  if(!readOnly)return true;
+  if(node===document.body&&[...document.querySelectorAll('h1,[role=heading]')].some(n=>visible(n)&&!n.closest('form')&&/^(?:verify (?:that )?you are human|complete (?:the )?captcha|请完成人机验证|请完成验证码|验证您是人类)[.!！。:]?$/i.test(name(n))))return true;
+  for(let n=node;n&&n!==document.body;n=n.parentElement){
+   if(n.matches?.('[role=dialog],[aria-modal=true],dialog[open]'))return true;
+   const style=getComputedStyle(n),r=n.getBoundingClientRect();
+   if(/^(fixed|absolute)$/.test(style.position)&&r.width>=innerWidth*.6&&r.height>=innerHeight*.5&&r.left<innerWidth/2&&r.right>innerWidth/2&&r.top<innerHeight/2&&r.bottom>innerHeight/2)return true;
+  }
+  return !readableArticle();
+ };
+ const safeCookie=/^(?:deny(?: all)?|reject(?: all)?(?: (?:non[- ]essential|optional))?(?: cookies)?|decline(?: all)?|only necessary|necessary only|reject optional cookies|拒绝(?:所有|全部)?|仅必要|只允许必要|关闭|close|not now|稍后|以后再说)$/i;
+ const rejectCookie=/^(?:deny(?: all)?|reject(?: all)?(?: (?:non[- ]essential|optional))?(?: cookies)?|decline(?: all)?|only necessary|necessary only|拒绝(?:所有|全部)?|仅必要|只允许必要)$/i;
+ const safeClose=/^(?:close|dismiss|dismiss sign-in info[.]?|close sign-in (?:dialog|info)[.]?|no thanks|not now|maybe later|关闭|暂不|不用了|稍后|以后再说)$/i;
+ function control(panel,pattern,allowIconClose=false){
+  for(const node of panel.querySelectorAll('button,[role=button],a')){
+   const label=name(node);
+   // Optional promotions often draw X in CSS and leave the button unnamed.
+   // Only explicit dismiss semantics on a non-submit button qualify; never
+   // infer dismissal from position or a generic link to the promoted service.
+   const iconClose=allowIconClose&&!label&&node.tagName==='BUTTON'&&node.type!=='submit'&&(
+    /^(?:modal|dialog)$/.test(node.getAttribute('data-bs-dismiss')||node.getAttribute('data-dismiss')||'')||
+    /(?:^|\\s)(?:btn-close|modal-close|dialog-close|close-button)(?:\\s|$)/i.test(node.className||''));
+   if(!visible(node)||node.disabled||node.getAttribute('aria-disabled')==='true'||(!pattern.test(label)&&!iconClose))continue;
+   const r=node.getBoundingClientRect(),x=Math.max(0,r.left),y=Math.max(0,r.top);
+   const width=Math.min(innerWidth,r.right)-x,height=Math.min(innerHeight,r.bottom)-y;
+   const hit=document.elementFromPoint(x+width/2,y+height/2);
+   if(width>0&&height>0&&hit&&(hit===node||node.contains(hit)))return {name:label||(iconClose?'Close':''),rect:{x,y,width,height},classification:'safe_dismiss'};
+  }
+ }
+ const selector='#CybotCookiebotDialog,#onetrust-banner-sdk,#onetrust-consent-sdk,.qc-cmp2-container,[role=dialog],[aria-modal=true],[id*=cookie i],[class*=cookie-banner i],[class*=consent-banner i]';
+ const panels=[...document.querySelectorAll(selector)].filter(node=>{
+  if(!visible(node)||!/cookies?|privacy preferences|consent preferences|隐私偏好|隐私设置/i.test(node.innerText||''))return false;
+  if(node.matches('#CybotCookiebotDialog,#onetrust-banner-sdk,#onetrust-consent-sdk,.qc-cmp2-container,[id*=cookie i],[class*=cookie-banner i],[class*=consent-banner i]'))return true;
+  return [...node.querySelectorAll('button,[role=button]')].some(n=>visible(n)&&/^(accept(?: all)?(?: cookies)?|allow(?: all)?(?: cookies)?|reject(?: all)?(?: (?:non[- ]essential|optional))?(?: cookies)?|decline(?: all)?|manage(?: cookie)? preferences|cookie settings|接受(?:全部|所有)?(?: ?Cookie)?|允许(?:全部|所有)?(?: ?Cookie)?|拒绝(?:全部|所有)?|Cookie 设置|管理偏好)$/i.test(name(n)));
+ });
+ if(consentFrame&&/cookies?|privacy preferences|consent|Cookie|隐私/i.test(document.body?.innerText||''))panels.push(document.body);
+ for(const panel of panels){const candidate=control(panel,rejectCookie)||(!consentFrame&&control(panel,safeCookie));if(candidate)return {...candidate,reason:'cookie_consent'};}
+ if(panels.length)return {classification:'needs_user',reason:'cookie_consent',assistance_kind:'legal_consent'};
+ for(const frame of document.querySelectorAll('iframe')){
+  if(!visible(frame))continue;
+  const label=[frame.title,frame.id,frame.name,frame.getAttribute('src')].join(' ');
+  const r=frame.getBoundingClientRect(),x=Math.max(0,r.left),y=Math.max(0,r.top),w=Math.min(innerWidth,r.right)-x,h=Math.min(innerHeight,r.bottom)-y;
+  if(w<180||h<100||document.elementFromPoint(x+w/2,y+h/2)!==frame)continue;
+  if(/captcha|challenge|turnstile/i.test(label)&&blocksReading(frame))return {classification:'needs_user',reason:'captcha',assistance_kind:'captcha',frame:true};
+  if(/consent|cookie|privacy-manager|sourcepoint/i.test(label))return {classification:'needs_user',reason:'cookie_consent',assistance_kind:'legal_consent',frame:true,frame_index:[...document.querySelectorAll('iframe')].indexOf(frame),frame_viewport:{x:r.left+frame.clientLeft*(r.width/frame.offsetWidth),y:r.top+frame.clientTop*(r.height/frame.offsetHeight),scale_x:r.width/frame.offsetWidth,scale_y:r.height/frame.offsetHeight}};
+ }
+ for(const panel of document.querySelectorAll('[role=dialog],[aria-modal=true],dialog[open],[id*=newsletter i],[class*=newsletter i]')){
+  if(!visible(panel))continue;
+  const text=panel.innerText||'';
+  if(/captcha|verify you are human|验证码|机器人验证/i.test(text)&&blocksReading(panel))return {classification:'needs_user',reason:'captcha',assistance_kind:'captcha'};
+  if(/subscribe to (?:continue|read)|purchase to continue|订阅后继续|付费墙/i.test(text))return {classification:'restricted',reason:'paywall'};
+  if(/sign in|log in|create account|登录|登陆|注册/i.test(text)){
+   const dismiss=control(panel,safeClose,true);
+   if(dismiss)return {...dismiss,reason:'optional_sign_in_prompt'};
+   return {classification:'needs_user',reason:'authentication',assistance_kind:'authentication'};
+  }
+  const heading=panel.querySelector?.('h1,h2,h3,[role=heading]')?.textContent||'';
+  if(!/newsletter|notification|download (?:our|the) app|邮件订阅|订阅资讯|开启通知|下载.*客户端/i.test(heading+' '+(panel.id||'')+' '+(panel.className||'')))continue;
+  const candidate=control(panel,safeClose,true);if(candidate)return {...candidate,reason:'dismissible_prompt'};
+  return {classification:'needs_user',reason:'blocking_prompt',assistance_kind:'unsupported_interaction'};
+ }
+ const text=(document.body?.innerText||'').slice(0,50000);
+ // A dedicated sign-in page can also offer an OTP login tab. Classify the
+ // observed authentication form before treating that tab's label as CAPTCHA.
+ const authHeading=[document.title,...[...document.querySelectorAll('h1,h2,h3,[role=heading]')].filter(visible).map(name)].join(' ');
+ const authTitle=/sign[ -]?in|log[ -]?in|登录|登陆/i.test(authHeading);
+ const password=[...document.querySelectorAll('input[type=password]')].some(visible);
+ const authPath=location.pathname.split('/').some(segment=>/^(?:login|signin|sign-in|log-in)$/i.test(segment));
+ if(authTitle&&(password||authPath))return {classification:'needs_user',reason:'authentication',assistance_kind:'authentication'};
+ if(/too many requests|unusual traffic|访问过于频繁|操作过于频繁|请求过于频繁/i.test(text))return {classification:'restricted',reason:'rate_limited'};
+ if(/sign in to confirm you.re not a bot|登录以确认您不是机器人|captcha|verify you are human|验证码|机器人验证/i.test(text)&&blocksReading(document.body))return {classification:'needs_user',reason:'captcha',assistance_kind:'captcha'};
+ if(/subscribe to continue|purchase to continue|订阅后继续|付费墙/i.test(text))return {classification:'restricted',reason:'paywall'};
+ return {classification:'none'};
+}`, [consentFrame,readOnly], 15000, contextId);
+            const inspect = async () => {
+                let contextId=this.contextId, candidate=await inspectContext(contextId), transforms=[];
+                for(let depth=0;depth<3&&candidate.frame&&candidate.reason==='cookie_consent'&&Number.isInteger(candidate.frame_index);depth++){
+                    const frame=candidate;
+                    const remote=await this.connection.command('script.callFunction',{
+                        functionDeclaration:'function(i){return document.querySelectorAll("iframe")[i]?.contentWindow;}',
+                        arguments:[{type:'number',value:frame.frame_index}],target:{context:contextId},awaitPromise:false});
+                    const child=remote.result?.type==='window'&&remote.result.value?.context;
+                    if(!child)return frame;
+                    transforms.push({...frame.frame_viewport,contextId,index:frame.frame_index,blocker:frame});contextId=child;
+                    candidate=await inspectContext(contextId,true);
+                    if(candidate.classification==='none')return {...frame,frame_unresolved:true};
                 }
-                if(panels.length) return {classification:'needs_user',reason:'cookie_consent'};
-                const text=(document.body?.innerText||'').slice(0,50000);
-                if(/too many requests|unusual traffic|访问过于频繁|操作过于频繁|请求过于频繁/i.test(text))return {classification:'restricted',reason:'rate_limited'};
-                if(/sign in to confirm you.re not a bot|登录以确认您不是机器人/i.test(text))return {classification:'needs_user',reason:'captcha'};
-                if(/captcha|verify you are human|验证码|机器人验证/i.test(text)) return {classification:'needs_user',reason:'captcha'};
-                if(/subscribe to continue|purchase to continue|订阅后继续|付费墙/i.test(text)) return {classification:'restricted',reason:'paywall'};
-                return {classification:'none'};
-            }`);
+                if(candidate.classification==='safe_dismiss'&&transforms.length){
+                    const nativeRect={...candidate.rect};let r={...nativeRect};
+                    for(const t of transforms.reverse()){
+                        r={x:t.x+r.x*t.scale_x,y:t.y+r.y*t.scale_y,width:r.width*t.scale_x,height:r.height*t.scale_y};
+                        const hit=await this.callJSON('function(i,x,y){const f=document.querySelectorAll("iframe")[i];return !!f&&document.elementFromPoint(x,y)===f;}',[t.index,r.x+r.width/2,r.y+r.height/2],15000,t.contextId);
+                        if(!hit)return {...t.blocker,frame_obscured:true};
+                    }
+                    r={x:nativeRect.x+nativeRect.width/2-1,y:nativeRect.y+nativeRect.height/2-1,width:2,height:2};
+                    candidate={...candidate,rect:r,input_context:contextId,frame:true};
+                }
+                return candidate;
+            };
             let dismissed = false;
             for(let attempt=0;attempt<3;attempt++){
                 const candidate=await inspect();
@@ -1154,7 +1254,7 @@ setReadablility();
             }
             const remaining=await inspect();
             return remaining.classification==='safe_dismiss'
-                ? {classification:'needs_user',reason:'cookie_consent',dismissed:false}
+                ? {...remaining,classification:'needs_user',reason:remaining.reason||'blocking_prompt',dismissed:false}
                 : {...remaining,dismissed};
         }
         async pickElement() {

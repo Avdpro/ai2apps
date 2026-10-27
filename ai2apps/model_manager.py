@@ -29,6 +29,8 @@ from ai2apps.secrets import (
 _ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$")
 
 DEFAULT_MODEL_PURPOSES: tuple[str, ...] = (
+    "work_chat",
+    "work_agent",
     "work_simple",
     "work_standard",
     "work_complex",
@@ -203,6 +205,12 @@ class ModelManagerStore:
         explicit = self.default_models(profile)[purpose]
         if explicit:
             return explicit
+        if purpose == "work_chat":
+            return self.resolve_default_model("work_standard", fallback, profile=profile)
+        if purpose == "work_agent":
+            # Automatic Agent routing needs the live, declared capability catalog;
+            # never accept a caller's unconstrained Chat fallback here.
+            return None
         if profile == "privacy":
             return None
         from ai2apps.cloud_defaults import WORK_PURPOSES
@@ -419,6 +427,14 @@ class ModelManagerStore:
                             **(model.get("capabilities") or {}),
                             "imageInput": True,
                         }
+                    if model["id"] in {"deepseek-flash", "deepseek-v4-flash", "deepseek-v4-pro"}:
+                        # Official protocol declaration, consumed generically by
+                        # callers; no App policy in the provider catalog.
+                        # https://api-docs.deepseek.com/guides/thinking_mode/
+                        model["capabilities"] = {**(model.get("capabilities") or {}),
+                                                 "reasoningEfforts": ["low", "high", "max"],
+                                                 "reasoningControl": {"format":"thinking","efforts":["low","high","max"],"can_disable":True,
+                                                     "aliases":{"minimal":"low","medium":"high","xhigh":"high","ultra":"max"}}}
             # Provider APIs commonly return an arbitrary order.  Keep the
             # newest dated models first and place legacy/undated entries last.
             # Sorting here also upgrades already-cached provider inventories,
@@ -508,7 +524,11 @@ class ModelManagerStore:
             return None
         if model_id not in {str(item) for item in raw.get("enabled_model_ids", [])}:
             return None
+        capabilities = next(
+            (m.get('capabilities', {}) for p in self.list_cloud() if p['id'] == provider_id
+             for m in p.get('models', []) if m['id'] == model_id), {})
         return {
+            "capabilities": capabilities,
             "gateway_id": gateway_id,
             "provider_id": provider_id,
             "model_id": model_id,

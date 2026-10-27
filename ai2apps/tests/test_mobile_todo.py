@@ -48,7 +48,7 @@ def test_existing_execution_settings_preserved(env):
     assert saved['executor']=='codex' and saved['working_directory']=='/tmp'
     assert 'working_directory' not in c.get('/v1/mobile/todo').json()['tasks'][0]
 
-@pytest.mark.parametrize('method,path',[('POST','/v1/mobile/todo/tasks/x/run'),('GET','/v1/mobile/todo/backup'),('POST','/v1/mobile/todo/codex/connect'),('DELETE','/v1/mobile/todo/tasks/x'),('GET','/v1/platform/todo')])
+@pytest.mark.parametrize('method,path',[('GET','/v1/mobile/todo/backup'),('POST','/v1/mobile/todo/codex/connect'),('DELETE','/v1/mobile/todo/tasks/x'),('GET','/v1/platform/todo')])
 def test_public_boundary_denies_other_todo_operations(method,path):
     assert not public_allowed(method,path)
 
@@ -68,7 +68,7 @@ def test_owner_boundary_todo_cookie_and_origin(tmp_path,monkeypatch):
         return record
     service=SimpleNamespace(authorize=authorize,valid=lambda _:None,principal=lambda _:principal)
     manager=SimpleNamespace(owner_home=service,repository=SimpleNamespace(list=lambda:[device]),require_device=lambda _:device,authorize_session=AsyncMock(return_value=None))
-    runtime=SimpleNamespace(todo=SimpleNamespace(store=s),remote=manager)
+    runtime=SimpleNamespace(todo=SimpleNamespace(store=s,launch=lambda owner,id,*args:s.get(owner,id)),remote=manager)
     monkeypatch.setattr(gateway,'_runtime',lambda:runtime)
     def access(request:Request):
         grant=gateway.authority(request)
@@ -82,7 +82,8 @@ def test_owner_boundary_todo_cookie_and_origin(tmp_path,monkeypatch):
         assert c.get('/v1/mobile/todo',headers=headers).status_code==200
         assert c.post('/v1/mobile/todo/directories',headers=headers,json={'title':'Own'}).status_code==200
         assert c.post('/v1/mobile/todo/directories',headers={**headers,'Origin':'https://evil.example'},json={'title':'No'}).status_code==401
-        assert c.post('/v1/mobile/todo/tasks/id/run',headers=headers,json={}).status_code==401
+        assert c.post('/v1/mobile/todo/tasks/id/run',headers=headers,json={}).status_code==404
+        assert c.post('/v1/mobile/todo/tasks/id/run',headers={**headers,'Origin':'https://evil.example'},json={}).status_code==401
 
 
 def test_mobile_progress_edit_and_completion(env):
@@ -220,7 +221,7 @@ def test_mobile_attachment_list_preview_and_owner_boundary(env):
     Image.new('RGB',(20,10),'blue').save(content,format='PNG')
     file=s.add_attachment('alice',task['id'],'photo.png',content.getvalue())
     url='/v1/mobile/todo/attachments/'+file['id']
-    assert c.get('/v1/mobile/todo').json()['attachments'][0]['id']==file['id']
+    assert c.get('/v1/mobile/todo/tasks/'+task['id']+'/detail').json()['attachments'][0]['id']==file['id']
     assert c.get(url).content==content.getvalue()
     response=c.get(url+'?preview=true')
     assert response.status_code==200 and response.headers['content-type']=='image/png'
@@ -229,8 +230,118 @@ def test_mobile_attachment_list_preview_and_owner_boundary(env):
     secret=s.add_attachment('bob',foreign['id'],'secret.png',content.getvalue())
     assert c.get('/v1/mobile/todo/attachments/'+secret['id']+'?preview=true').status_code==404
     s.lifecycle('alice',task['id'],'archive')
-    assert c.get('/v1/mobile/todo').json()['attachments']==[]
+    assert c.get('/v1/mobile/todo/tasks/'+task['id']+'/detail').status_code==404
     assert c.get(url+'?preview=true').status_code==404
     assert public_allowed('GET',url)
     assert not public_allowed('DELETE',url)
     assert not public_allowed('POST',url)
+
+
+def test_mobile_upload_and_review(env):
+    import json
+    c,s=env
+    d=s.directory('alice','Mobile')
+    task=s.save('alice',{'directory_id':d['id'],'title':'Task'})
+    upload='/v1/mobile/todo/tasks/'+task['id']+'/attachments'
+    assert c.post(upload,files={'file':('test.txt',b'hello')}).status_code==200
+    attachment=c.get('/v1/mobile/todo/tasks/'+task['id']+'/detail').json()['attachments'][0]
+    assert c.get('/v1/mobile/todo/attachments/'+attachment['id']).content==b'hello'
+    other=s.directory('bob','Private')
+    foreign=s.save('bob',{'directory_id':other['id'],'title':'Private'})
+    assert c.post('/v1/mobile/todo/tasks/'+foreign['id']+'/attachments',files={'file':('x',b'x')}).status_code==404
+    with s.connect() as db:
+        db.execute('INSERT INTO runs VALUES(?,?,?,?,?)',('review-mobile','alice',task['id'],'ended',json.dumps({})))
+        db.execute('INSERT INTO runs VALUES(?,?,?,?,?)',('review-private','bob',foreign['id'],'ended',json.dumps({})))
+    review='/v1/mobile/todo/runs/review-mobile/review'
+    current=s.get('alice',task['id'])
+    assert c.post(review,json={'decision':'completed','revision':0}).status_code==422
+    assert c.post('/v1/mobile/todo/runs/review-private/review',json={'decision':'completed','revision':1}).status_code==404
+    assert c.post(review,json={'decision':'completed','revision':current['revision']}).status_code==200
+    assert s.get('alice',task['id'])['status']=='completed'
+    assert c.get('/v1/mobile/todo/tasks/'+task['id']+'/detail').json()['runs'][0]['review']['decision']=='completed'
+    assert public_allowed('POST',review) and public_allowed('POST',upload)
+
+
+def test_mobile_awaiting_acceptance(env):
+    c,s=env
+    d=s.directory('alice','Acceptance')
+    response=c.post('/v1/mobile/todo/tasks',json={'directory_id':d['id'],'title':'Review','status':'awaiting_acceptance','progress':100})
+    assert response.status_code==200
+    task=response.json()
+    assert task['status']=='awaiting_acceptance' and task['progress']==100
+    assert not s.get('alice',task['id'])['completed']
+    response=c.put('/v1/mobile/todo/tasks/'+task['id'],json={'title':'Reviewed','status':'completed','revision':task['revision'],'progress':100})
+    assert response.status_code==200 and response.json()['status']=='completed'
+
+
+def test_mobile_execution_configuration_and_owner_scope(env):
+    c,s=env
+    t=s.save('alice',{'directory_id':s.directory('alice','Own')['id'],'title':'Run me'})
+    path='/v1/mobile/todo/tasks/'+t['id']+'/execution'
+    assert c.get(path).json()['executor']==t['executor']
+    body={'revision':t['revision'],'executor':'codex','working_directory':'/tmp','model':'test-model'}
+    assert c.put(path,json=body).status_code==200
+    assert c.get(path).json()['working_directory']=='/tmp'
+    assert c.put(path,json=body).status_code==409
+    foreign=s.save('bob',{'directory_id':s.directory('bob','Private')['id'],'title':'Private'})
+    foreign_path='/v1/mobile/todo/tasks/'+foreign['id']+'/execution'
+    assert c.get(foreign_path).status_code==404
+    assert c.put(foreign_path,json=body).status_code==404
+    assert public_allowed('POST','/v1/mobile/todo/tasks/x/run')
+    assert public_allowed('PUT','/v1/mobile/todo/tasks/x/codex/desktop')
+    assert not public_allowed('POST','/v1/mobile/todo/codex/threads/x/open')
+
+
+def test_mobile_execution_requires_coder_permission(tmp_path,monkeypatch):
+    from ai2apps.apps import access
+    original=access.has_app_capability
+    monkeypatch.setattr(access,'has_app_capability',lambda p,c:False if c==access.APP_CODER_USE else original(p,c))
+    principal=RequestPrincipal.legacy_local()
+    app=FastAPI()
+    app.include_router(create_mobile_todo_router(lambda:SimpleNamespace(todo=SimpleNamespace(store=TodoStore(tmp_path))),lambda:principal,lambda *_:'Todo'))
+    with TestClient(app) as c:
+        for path in ['/executors','/codex/projects','/codex/threads?cwd=/tmp','/tasks/x/execution']:
+            assert c.get('/v1/mobile/todo'+path).status_code==403
+        assert c.post('/v1/mobile/todo/tasks/x/run',json={}).status_code==403
+
+
+def test_mobile_run_delegates_authenticated_principal(tmp_path):
+    from unittest.mock import Mock, AsyncMock
+    principal=replace(RequestPrincipal.legacy_local(),actor_user_id='alice',authentication_type='owner_home_lease')
+    launch=Mock(return_value={'id':'run','status':'queued'})
+    runtime=SimpleNamespace(todo=SimpleNamespace(store=TodoStore(tmp_path),launch=launch),codex=SimpleNamespace(projects=AsyncMock(return_value={'data':[]}),threads=AsyncMock(return_value={'data':[]})))
+    app=FastAPI();app.include_router(create_mobile_todo_router(lambda:runtime,lambda:principal,lambda *_:'Todo'))
+    with TestClient(app) as c:
+        assert c.post('/v1/mobile/todo/tasks/task/run',json={}).json()['status']=='queued'
+        launch.assert_called_once_with('alice','task',None,principal)
+        assert c.get('/v1/mobile/todo/codex/projects').json()=={'data':[]}
+        assert c.get('/v1/mobile/todo/codex/threads?cwd=/tmp&cursor=next').status_code==200
+        runtime.codex.threads.assert_awaited_once_with('/tmp','next')
+        runtime.codex.projects.side_effect=OSError('Codex unavailable')
+        assert c.get('/v1/mobile/todo/codex/projects').status_code==503
+
+
+def test_mobile_list_is_lightweight_and_detail_is_scoped(env):
+    import json
+    c,s=env
+    own=s.directory('alice','Own')
+    t=s.save('alice',{'directory_id':own['id'],'title':'Light','description':'large description'})
+    other=s.save('alice',{'directory_id':own['id'],'title':'Other'})
+    foreign=s.save('bob',{'directory_id':s.directory('bob','Private')['id'],'title':'Private'})
+    with s.connect() as db:
+        for task in [t,other,foreign]:
+            db.execute('INSERT INTO runs VALUES(?,?,?,?,?)',(task['id'], 'bob' if task==foreign else 'alice',task['id'],'ended',json.dumps({'output':'large output'})))
+    # Ensure the list path never falls back to the heavyweight snapshot.
+    s.snapshot=lambda *_:(_ for _ in ()).throw(AssertionError('full snapshot'))
+    data=c.get('/v1/mobile/todo').json()
+    assert set(data)=={'directories','tasks'}
+    assert all('description' not in task for task in data['tasks'])
+    assert c.get('/v1/mobile/todo?q=large%20description').json()['search_matches']==[t['id']]
+    response=c.get('/v1/mobile/todo/tasks/'+t['id']+'/detail')
+    assert response.status_code==200
+    assert response.json()['task']['description']=='large description'
+    assert [r['task_id'] for r in response.json()['runs']]==[t['id']]
+    assert c.get('/v1/mobile/todo/tasks/'+foreign['id']+'/detail').status_code==404
+    assert c.put('/v1/mobile/todo/tasks/'+t['id'],json={'revision':t['revision'],'title':'Light','priority':'A'}).status_code==200
+    assert s.get('alice',t['id'])['description']=='large description'
+    assert public_allowed('GET','/v1/mobile/todo/tasks/'+t['id']+'/detail')

@@ -21,6 +21,7 @@ from ai2apps.storage.records import canonical_json
 from ai2apps.terminal import TerminalManager, TerminalServiceError
 from ai2apps.testflight import TestFlightError, TestFlightManager
 
+from .environment import cli_search_path
 from .project import (
     DevSession,
     ProjectSourceError,
@@ -586,7 +587,7 @@ class CoderManager:
         managed = self.managed_cli_root / "node_modules" / ".bin" / agent
         if managed.is_file() and os.access(managed, os.X_OK):
             return str(managed)
-        return shutil.which(agent)
+        return shutil.which(agent, path=cli_search_path(self.managed_cli_root))
 
     def agents(self) -> list[dict[str, Any]]:
         labels = {"codex": "Codex", "opencode": "OpenCode", "claude": "Claude Code"}
@@ -915,12 +916,7 @@ class CoderManager:
             )
         else:
             command = self._default_agent_command(row["agent"], native_session_id)
-        managed_bin = self.managed_cli_root / "node_modules" / ".bin"
-        environment = {
-            "PATH": os.pathsep.join(
-                (str(managed_bin), os.environ.get("PATH", ""))
-            ).rstrip(os.pathsep)
-        }
+        environment = {"PATH": cli_search_path(self.managed_cli_root)}
         try:
             terminal = await self.terminal.create(
                 title=row["title"],

@@ -1,9 +1,30 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
 const app=fs.readFileSync(path.join(__dirname,'../web/static/js/intelligence.js'),'utf8');
 const host=fs.readFileSync(path.join(__dirname,'../web/static/js/mobile.js'),'utf8');
+test('dock visibility belongs to the active trusted mount, with identity checks',async()=>{
+ const active={frame:{contentWindow:{}},token:'active-token',instanceId:'one',renderer:'trusted'};
+ const background={frame:{contentWindow:{}},token:'other-token',instanceId:'two',renderer:'trusted'};
+ const changes=[];
+ const c={frames:new Map([['arbitrary.app',active],['different.app',background]]),activeAppId:'arbitrary.app',window:{location:{origin:'https://device.test'}},renderDock:()=>changes.push(active.dockVisible)};
+ vm.createContext(c);
+ const start=host.indexOf('        const record = Array.from(frames.values()).find');
+ const end=host.indexOf('\n    });',start);
+ vm.runInContext('async function message(event){'+host.slice(start,end)+'}',c);
+ const send=(record,data={},origin='https://device.test')=>c.message({source:record.frame.contentWindow,origin,data:{type:'ai2apps.shell.set-dock-visible',mountToken:record.token,instanceId:record.instanceId,visible:false,...data}});
+ await send(active,{mountToken:'wrong'});await send(active,{},'https://untrusted.test');await send(background);
+ assert.equal(changes.length,0);
+ active.renderer='sandbox';await send(active);assert.equal(changes.length,0);
+ active.renderer='trusted';await send(active);assert.equal(active.dockVisible,false);
+ await send(active,{visible:true});assert.equal(active.dockVisible,true);
+ assert.deepEqual(changes,[false,true]);
+ await send(background,{type:'ai2apps.shell.set-topbar-visible'});
+ assert.equal(background.topbarVisible,undefined);
+ await send(active,{type:'ai2apps.shell.set-topbar-visible'});assert.equal(active.topbarVisible,false);
+ await send(active,{type:'ai2apps.shell.set-topbar-visible',visible:true});assert.equal(active.topbarVisible,true);
+});
 test('Shell back returns one level once and forward restores the article without a reload',()=>{
  let listener;const sent=[];
- const c={URLSearchParams,location:{hash:'#ai2apps-mount=token&ai2apps-instance=instance',origin:'https://device.test'},window:{AI2APPS_MOBILE_SURFACE:true,parent:{postMessage:m=>sent.push(m)},addEventListener:(_,fn)=>listener=fn},mobileQuery:{matches:true},document:{querySelector:()=>null},$:()=>({scrollTop:25,classList:{add(){},remove(){}},getBoundingClientRect(){return {};}}),syncMobile(){},renderReader(){},requestAnimationFrame:fn=>fn()};
+ const c={URLSearchParams,location:{hash:'#ai2apps-mount=token&ai2apps-instance=instance',origin:'https://device.test'},window:{AI2APPS_MOBILE_SURFACE:true,parent:{postMessage:m=>sent.push(m)},addEventListener:(type,fn)=>{if(type==='message')listener=fn}},mobileQuery:{matches:true},document:{querySelector:()=>null,addEventListener(){}},$:()=>({scrollTop:25,classList:{add(){},remove(){}},getBoundingClientRect(){return {};}}),syncMobile(){},renderReader(){},requestAnimationFrame:fn=>fn()};
  vm.createContext(c);vm.runInContext("let mobilePage='channels',readerMode='chat',selectedId=null,previewDraft=null,mobilePanel=false;"+app.slice(app.indexOf('const mobileStack=[];'),app.indexOf('function syncMobile(){')),c);
  vm.runInContext("mobilePush('channel');mobilePush('reader');selectedId='article';mobileBack();mobileBack();",c);
  assert.equal(sent.filter(m=>m.type.endsWith('.back')).length,1);

@@ -1,0 +1,68 @@
+{
+  "shared_namespaces": {
+    "ai2apps.agents": "Shared execution and interaction protocols; explicit composition/specialized modules below are excluded.",
+    "ai2apps.core": "Platform records and errors",
+    "ai2apps.capabilities": "Platform authorization",
+    "ai2apps.context_engine": "Generic context management",
+    "ai2apps.events": "Platform event bus",
+    "ai2apps.storage": "Platform persistence",
+    "ai2apps.secrets": "Platform secret storage",
+    "ai2apps.packages": "Trusted package lifecycle",
+    "ai2apps.model_worker": "Model capability and runtime contracts",
+    "ai2apps.fusion": "Model inference transport and scheduling"
+  },
+  "shared_modules": {
+    "ai2apps": "Version-only package entrypoint",
+    "ai2apps.services": "Generic service facade",
+    "ai2apps.services.aaat": "AaAT contract",
+    "ai2apps.services.adapters": "Generic service transport adapters",
+    "ai2apps.services.capability_routing": "Generic provider routing",
+    "ai2apps.services.capability_catalog": "Generic capability inventory",
+    "ai2apps.services.models": "Service records",
+    "ai2apps.services.registry": "Tool gateway",
+    "ai2apps.services.repository": "Service persistence",
+    "ai2apps.browser.task_tree": "Shared task lifecycle protocol, not browser business execution",
+    "ai2apps.browser.tasks": "Shared task persistence",
+    "ai2apps.checkpoint_paths": "Model path validation",
+    "ai2apps.checkpoints": "Model metadata",
+    "ai2apps.cloud_client": "Model transport",
+    "ai2apps.cloud_defaults": "Transport defaults",
+    "ai2apps.cloud_gateway": "Model gateway",
+    "ai2apps.config": "Platform configuration",
+    "ai2apps.identity": "Platform identity",
+    "ai2apps.installation_security": "Installation identity",
+    "ai2apps.model_identity": "Model identity",
+    "ai2apps.model_invocation": "Host-owned inference invocation",
+    "ai2apps.model_manager": "Model lifecycle",
+    "ai2apps.model_providers": "Model transport providers",
+    "ai2apps.offline": "Transport availability policy",
+    "ai2apps.proc_memory": "Resource measurement",
+    "ai2apps.task_llm": "Generic model invocation preparation",
+    "ai2apps.video_policy": "Model media capability constraints",
+    "ai2apps.worker_resources": "Resource scheduling",
+    "ai2apps.worker_scheduler": "Resource scheduling"
+  },
+  "agent_exclusions": {
+    "ai2apps.agents": "Composition facade also exports specialized executors; shared code imports concrete shared modules instead.",
+    "ai2apps.agents.browser_builder": "Explicitly specialized workflow, not General Agent."
+  },
+  "compatibility_shims": {
+    "ai2apps.agents.builtin_apps": "ai2apps.services.builtin_apps",
+    "ai2apps.agents.citations": "ai2apps.research.citations"
+  },
+  "service_roots": [
+    "ai2apps.services.aaat",
+    "ai2apps.services.capability_routing",
+    "ai2apps.services.capability_catalog",
+    "ai2apps.services.registry"
+  ],
+  "platform_control_ids": {
+    "app.describe": "Capability discovery protocol",
+    "app.collect_parameters": "Parameter interaction protocol",
+    "app.interact": "App handoff protocol",
+    "agent.ask_user": "User interaction protocol",
+    "agent.read_tool_result": "Result paging protocol",
+    "agent.read_context_checkpoint": "Context paging protocol",
+    "agent.read_session_memory": "Session memory protocol"
+  }
+}

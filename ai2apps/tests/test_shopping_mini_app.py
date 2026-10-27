@@ -51,6 +51,8 @@ class Page:
         self.pointer_to=AsyncMock()
         self.connection=SimpleNamespace(command=AsyncMock())
     async def call_json(self,*args):return next(self.observations)
+    async def dispatch_input(self,actions):
+        return await self.connection.command('input.performActions',{'context':self.context_id,'actions':actions})
 
 
 @pytest.mark.asyncio
@@ -321,7 +323,11 @@ async def test_history_reads_only_observed_order_details_and_enriches_latest_uni
     details='https://www.amazon.com/uff/your-account/order-details?orderID=observed'
     page=Page([{'cards':1,'items':[row],'detail_requests':[{'url':details,'items':[{'id':ASIN,'order_key':'opaque'}]}]},
                {'items':[{'id':ASIN,'unit_price_text':'$5.97'}]}])
+    page.search_progress=AsyncMock()
     result=await execute(page,{'shopping_action':'history','pages':1})
+    phases=[call.args[0]['shopping_progress']['phase'] for call in page.search_progress.await_args_list]
+    assert [phase for index,phase in enumerate(phases) if not index or phase!=phases[index-1]]==['order_list','order_details','analyzing']
+    assert next(call.args[0]['shopping_progress'] for call in page.search_progress.await_args_list if call.args[0]['shopping_progress']['phase']=='order_details')['total']==1
     assert result['evidence']['result']['items'][0]['last_unit_price_minor']==597
     assert page.navigate.await_args.args[0]==details
 
@@ -481,7 +487,10 @@ def test_defaults_require_observed_repeat_cycle_and_eighty_percent_elapsed():
 def test_default_cycle_gate_preserves_user_requested_revision():
     from ai2apps.browser.shopping import screen_plan
     plan={'items':[{'id':'single','quantity':2,'score':50,'selected':True,'reason':'User request'}],'message':'Added','search_query':''}
-    assert screen_plan(plan,[{'id':'single','purchase_dates':['2026-09-01']}],message='Include this item')==plan
+    revised=screen_plan(plan,[{'id':'single','purchase_dates':['2026-09-01']}],message='Include this item')
+    assert revised['items'][0]['selected'] is True
+    assert revised['message']==plan['message']
+    assert revised['items'][0]['due_bucket']=='unknown'
 
 
 def test_cycle_gate_cannot_force_nonconsumable_selected_by_elapsed_time():
@@ -514,3 +523,115 @@ def test_cycle_screen_messages_follow_current_locale(locale, expected):
     assert expected in result['items'][0]['reason']
     assert result['items'][0]['selected'] is False
     assert result['items'][0]['reason'].endswith('model explanation')
+
+
+def test_failed_ai_step_can_recover_only_successful_native_history():
+    from ai2apps.browser.shopping import history_checkpoint
+    history = {'items': [{'id': ASIN, 'title': 'Paper'}], 'synced_at': '2026-10-14', 'pages_read': 3}
+    response = {'outcome': 'success', 'evidence': {'operation': 'inspect', 'result': history}}
+    assert history_checkpoint([response]) == history
+    assert history_checkpoint([{**response, 'outcome': 'failed'}]) is None
+    assert history_checkpoint([{'outcome': 'success', 'evidence': {'operation': 'ai.transform', 'result': history}}]) is None
+
+
+def test_recommend_reuses_failed_refresh_checkpoint_without_browser_read(broker,monkeypatch):
+    service,mount,principal=broker;mount.declaration=shopping_declaration()
+    prior={'status':'failed','history_checkpoint':True,'capability':'refresh_list','profile_key':'default',
+        'result':{'assigned':{'shopping_report':{'history':{'items':frequencies([
+            {'id':ASIN,'url':URL,'title':'Paper','purchased_at':'January 1, 2026'}])}}}}}
+    monkeypatch.setattr(service,'task',lambda *a:prior)
+    task=service.submit('mount',principal,capability='recommend',parameters={'source_tasks':['prior'],'locale':'zh'},profile='default',request_id='resume-plan')
+    from ai2apps.browser.tasks import BrowserTaskRepository
+    program,_=BrowserTaskRepository(service.runtime.database).program('owner',task['id'])
+    assert all(s.get('arguments', {}).get('shopping_action') != 'history' for s in program['steps'])
+    assert program['steps'][0]['operation'] == 'ai.transform'
+    assert task['browser_context']['model_profile']=='privacy'
+    prior['history_checkpoint']=False
+    with pytest.raises(StudioCapabilityError):
+        service.submit('mount',principal,capability='recommend',parameters={'source_tasks':['prior'],'locale':'zh'},profile='default',request_id='reject-plan')
+
+
+@pytest.mark.parametrize('capability,parameters', [('history', {'pages':3}),
+    ('refresh_list', {'pages':3,'locale':'zh','previous_task':''})])
+def test_missing_privacy_model_rejected_before_task_is_queued(broker, capability, parameters):
+    service,mount,principal=broker;mount.declaration=shopping_declaration()
+    service.runtime.model_manager.resolve_default_model=lambda *a, **kw: None
+    from ai2apps.browser.tasks import BrowserTaskRepository
+    before=BrowserTaskRepository(service.runtime.database).list('owner')
+    with pytest.raises(StudioCapabilityError) as error:
+        service.submit('mount',principal,capability=capability,parameters=parameters,profile='default',request_id='no-model')
+    assert error.value.code=='privacy_model_required'
+    assert BrowserTaskRepository(service.runtime.database).list('owner')==before
+
+
+@pytest.mark.asyncio
+async def test_history_progress_uses_durable_page_callback():
+    from ai2apps.browser.shopping import report_history_progress
+    progress=[]
+    async def publish(value): progress.append(value)
+    page=SimpleNamespace(search_progress=publish)
+    await report_history_progress(page,'order_list',page=1,page_limit=3)
+    await report_history_progress(page,'order_details',page=1,current=2,total=8)
+    await report_history_progress(page,'analyzing',orders_read=8)
+    phases=[p['shopping_progress']['phase'] for p in progress]
+    assert [phase for index,phase in enumerate(phases) if not index or phase!=phases[index-1]]==['order_list','order_details','analyzing']
+    assert next(p['shopping_progress'] for p in progress if p['shopping_progress']['phase']=='order_details')['current']==2
+
+@pytest.mark.asyncio
+async def test_cold_history_document_is_reobserved_before_layout_failure():
+    page=Page([{'cards':0,'empty':False,'text_length':0}, {'cards':0,'empty':True,'items':[]}])
+    page.wait_stable=AsyncMock()
+    result=await execute(page,{'shopping_action':'history','pages':1})
+    assert result['outcome']=='success'
+    assert page.wait_stable.await_count==2
+
+@pytest.mark.asyncio
+async def test_history_blank_document_preserves_readiness_diagnostics():
+    page=Page([{'cards':0,'empty':False,'text_length':0}]*2)
+    page.wait_stable=AsyncMock()
+    result=await execute(page,{'shopping_action':'history','pages':1})
+    assert result['evidence']['reason']=='amazon_history_document_not_ready'
+    assert result['evidence']['text_length']==0
+
+@pytest.mark.parametrize('has_submit,expected',[(True,True),(False,False)])
+def test_visible_fresh_wrapper_requires_submit_and_local_store_badge(has_submit,expected):
+    from ai2apps.browser.shopping import CONTROLS_SCRIPT,CHANNEL_HELPER,SHOPPING_DOM_HELPER
+    script=r'''
+const ai2appsDOMVisible=e=>!!e&&e.visible!==false;
+const badge={visible:true,getAttribute:k=>k==='alt'?'Amazon Fresh':null};
+const box={querySelectorAll:s=>s==='img,[role=img]'?[badge]:[],querySelector:()=>null};
+const candidate={textContent:'Add to cart',visible:true,parentElement:box,matches:s=>s==='.a-button',getAttribute:()=>null,closest:()=>null,querySelector:s=>HAS_SUBMIT?{}:null,getBoundingClientRect:()=>({x:1,y:2,width:100,height:30})};
+const document={body:{},title:'Banana',getElementById:()=>null,querySelector:()=>null,querySelectorAll:s=>s.includes('.a-button-text')?[candidate]:[]};
+const location={pathname:'/dp/B000123456'};
+'''.replace('HAS_SUBMIT','true' if has_submit else 'false')+CHANNEL_HELPER+SHOPPING_DOM_HELPER+'console.log(JSON.stringify(('+CONTROLS_SCRIPT+')()));'
+    result=json.loads(subprocess.check_output(['node','-e',script],text=True))
+    assert result['grocery_add'] is expected
+    if expected:assert result['channel']=='fresh' and result['add']['width']==100
+    else:assert result['add'] is None
+
+@pytest.mark.asyncio
+async def test_unverified_cart_explains_observation_and_next_steps():
+    page=Page([{'recognized':True,'items':[{'id':ASIN,'quantity':1}]}])
+    result=await execute(page,{'shopping_action':'cart_item','item':{'id':ASIN,'url':URL,'title':'Observed yogurt','quantity':2}})
+    evidence=result['evidence']
+    assert result['outcome']=='needs_user'
+    assert evidence['reason']=='amazon_cart_add_unverified'
+    message=evidence['assistance_message']
+    for text in ['Observed yogurt','目标数量 2','读取数量 1','前往页面处理','不要重复点击加购','已处理，继续']:
+        assert text in message
+    assert '页面显示登录' not in message
+    page.pointer_to.assert_not_called()
+
+@pytest.mark.parametrize('labels,expected', [(['2. Click to change quantity'],2),(['Current quantity 2'],2),(['Qty: 2'],2),(['Current quantity 0'],0),(['Qty: 2','Current quantity 1'],0)])
+def test_cart_prefers_visible_quantity_and_rejects_conflicts(labels,expected):
+    from ai2apps.browser.shopping import CART_SCRIPT
+    # Evaluate the actual production quantity-reading block against scoped controls.
+    quantity_source=CART_SCRIPT[CART_SCRIPT.index(' const visibleQuantities='):CART_SCRIPT.index(' return {id:c.dataset.asin')]
+    script="const labels="+json.dumps(labels)+r''';
+const ai2appsDOMVisible=e=>!e.hidden;
+const shoppingQuery=()=>labels.map(label=>({hidden:false,getAttribute:()=>label}));
+const c={dataset:{quantity:'1'},querySelector:()=>({value:'1'})};
+const label='';
+'''+quantity_source+'console.log(JSON.stringify(quantity));'
+    quantity=json.loads(subprocess.check_output(['node','-e',script],text=True))
+    assert quantity==expected

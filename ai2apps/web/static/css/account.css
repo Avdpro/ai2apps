@@ -222,3 +222,11 @@
 }
 
 .account-mobile-apps{margin-top:24px;padding-top:20px;border-top:1px solid var(--account-line,#e4e4e7)}.account-mobile-app-row{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:14px 0;border-bottom:1px solid #eee}.account-mobile-app-row>div{min-width:0}.account-mobile-app-row small{display:block;margin-top:5px;color:#71717a;font-size:13px;line-height:1.5}.account-mobile-app-row button{flex-shrink:0;min-width:64px;min-height:44px}
+
+/* User-owned VPN/tunnel controls share the existing Account surface. */
+.self-managed-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+.self-managed-hint { color:#777; font-size:13px; line-height:1.6; margin:14px 0; }
+.self-managed-access h3 { font-size:14px; margin:20px 0 10px; }
+@media(max-width:640px) { .self-managed-fields { grid-template-columns:1fr; } }
+
+[data-desktop-mobile-agent] [hidden]{display:none!important}

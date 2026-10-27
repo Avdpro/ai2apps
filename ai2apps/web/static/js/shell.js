@@ -264,48 +264,42 @@
         });
     }
 
-    const homeSpaceDialog = root.querySelector('[data-home-space-dialog]');
-    let homeSpaceRequest = 0;
-    root.querySelector('[data-home-space-open]')?.addEventListener('click', async () => {
-        const version = ++homeSpaceRequest;
-        const message = root.querySelector('[data-home-space-message]');
-        const qr = root.querySelector('[data-home-space-qr]');
-        const link = root.querySelector('[data-home-space-url]');
-        qr.hidden = link.hidden = true;
-        qr.removeAttribute('src');
-        link.removeAttribute('href');
-        link.textContent = '';
-        message.textContent = tr('shell.home.remote.loading');
-        homeSpaceDialog.showModal();
-        try {
-            const result = await request('/v1/platform/cloud/space');
-            if (version !== homeSpaceRequest || !homeSpaceDialog.open) return;
-            const url = new URL(result.spaceUrl);
-            if (url.protocol !== 'https:' || !url.pathname.startsWith('/u/')
-                || !String(result.spaceQrDataUrl).startsWith('data:image/svg+xml;base64,')) {
-                throw new Error(tr('shell.home.remote.qr_error'));
-            }
-            qr.src = result.spaceQrDataUrl;
-            link.href = result.spaceUrl;
-            link.textContent = result.spaceUrl;
-            qr.hidden = link.hidden = false;
-            message.textContent = '';
-        } catch (_) {
-            if (version === homeSpaceRequest && homeSpaceDialog.open) {
-                message.textContent = tr('shell.home.remote.qr_error');
-            }
-        }
-    });
-    homeSpaceDialog?.addEventListener('close', () => { homeSpaceRequest++; });
-
     const homeRemote = root.querySelector('[data-home-remote-devices]');
     const homeRemoteError = root.querySelector('[data-home-remote-error]');
+    const homeRemoteUsage = root.querySelector('[data-home-remote-usage]');
+    let homeUsageReadAt = null;
+    let homeUsageReading = false;
+    function remoteBytes(value) {
+        if (!/^\d+$/.test(String(value))) throw Error('Invalid traffic bytes');
+        const bytes = Number(value);
+        if (!Number.isFinite(bytes)) throw Error('Invalid traffic bytes');
+        const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB'];
+        const index = bytes > 0 ? Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024))) : 0;
+        return new Intl.NumberFormat(undefined, {maximumFractionDigits: index ? 1 : 0}).format(bytes / 1024 ** index) + ' ' + units[index];
+    }
+    async function refreshHomeUsage() {
+        if (!homeRemoteUsage || homeUsageReading) return;
+        if (offlineMode) { homeRemoteUsage.hidden = true; homeUsageReadAt = null; return; }
+        if (homeUsageReadAt !== null && Date.now() - homeUsageReadAt < 5 * 60 * 1000) return;
+        homeUsageReading = true;
+        try {
+            const usage = await request('/v1/platform/remote/usage');
+            homeRemoteUsage.textContent = remoteBytes(usage.totalBytes) + ' / ' + remoteBytes(usage.quotaBytes);
+            homeRemoteUsage.title = usage.usageMonth + ' (UTC) · ↑ ' + remoteBytes(usage.ingressBytes) + ' · ↓ ' + remoteBytes(usage.egressBytes);
+            homeRemoteUsage.hidden = false;
+        } catch (_) {
+            homeRemoteUsage.textContent = '—';
+            homeRemoteUsage.title = '';
+            homeRemoteUsage.hidden = false;
+        } finally { homeUsageReadAt = Date.now(); homeUsageReading = false; }
+    }
     let homeRemoteBusy = false;
     let homeRemoteReading = false;
     let offlineMode = false;
 
     async function refreshHomeRemote() {
         if (!homeRemote || homeRemoteReading || homeRemoteBusy) return;
+        refreshHomeUsage();
         if (offlineMode) {
             homeRemote.textContent = tr('login.offline.account_required');
             homeRemoteError.hidden = true;
@@ -913,7 +907,16 @@
             ).join('') + '</section>';
     }
 
+    const capabilityTree = window.AI2AppsCapabilityTree;
+    const capabilityTab = root.querySelector('[data-control-tab="capabilities"]');
+    if (capabilityTab) capabilityTab.textContent = capabilityTree.label;
+
     function renderControl() {
+        if (controlTab === 'capabilities') {
+            root.querySelectorAll('[data-control-tab]').forEach(b => b.classList.toggle('is-active', b.dataset.controlTab === controlTab));
+            if (!controlContent.querySelector('[data-capability-tree]')) capabilityTree.mount(controlContent, request);
+            return;
+        }
         root.querySelectorAll('[data-control-tab]').forEach((button) =>
             button.classList.toggle('is-active', button.dataset.controlTab === controlTab));
         if (!controlSnapshot) {
@@ -1342,11 +1345,25 @@
         return mount;
     }
 
+    // Persist navigation hints only; all authority and completion state live on Local.
+    let appInteractionIntents = {};
+    const chatThreadIntents = {};
+    const browserTaskIntents = {};
+    try { appInteractionIntents = JSON.parse(sessionStorage.getItem('ai2apps.app-interactions') || '{}'); } catch (_) {}
+    function saveInteractionIntent(instanceId, value) {
+        if (value) appInteractionIntents[instanceId] = value;
+        else delete appInteractionIntents[instanceId];
+        try { sessionStorage.setItem('ai2apps.app-interactions', JSON.stringify(appInteractionIntents)); } catch (_) {}
+    }
+
     function hostContext() {
         const app = byId.get(currentId);
         const instance = app?.instances.find((item) => item.id === currentInstanceId);
         return {
             type: 'ai2apps.host.context',
+            appInteraction: appInteractionIntents[currentInstanceId] || null,
+            chatThread: chatThreadIntents[currentInstanceId] || null,
+            browserTask: browserTaskIntents[currentInstanceId] || null,
             mountToken: currentMountToken,
             instanceId: currentInstanceId,
             appId: currentId,
@@ -1869,6 +1886,50 @@
                 const instanceId = parts[2] === 'instances' ? decodeURIComponent(parts[3] || '') : null;
                 await launch(appId, { instanceId: instanceId, navigate: true });
                 respondToFrame(message, true, { appId: appId, instanceId: currentInstanceId });
+            } else if (message.type === 'ai2apps.shell.ack-handoff') {
+                const intent = appInteractionIntents[currentInstanceId];
+                if (intent?.returning && intent.interactionId === message.interactionId) saveInteractionIntent(currentInstanceId, null);
+                respondToBridgeTarget(bridgeTarget, true, {});
+            } else if (message.type === 'ai2apps.shell.open-handoff') {
+                const path = '/v1/platform/agent-runs/' + encodeURIComponent(message.runId) + '/interactions/' + encodeURIComponent(message.interactionId) + '/handoff';
+                const handoff = await jsonRequest(path, 'GET');
+                const sourceInstanceId = currentInstanceId;
+                const destination = message.returning ? handoff.origin : handoff.target;
+                if (!message.returning && handoff.status !== 'pending') throw new Error('Interaction is no longer pending');
+                await launch(destination.app_id, {instanceId: destination.instance_id || null});
+                if (currentId !== destination.app_id) throw new Error('Target App could not be opened');
+                if (message.returning && appInteractionIntents[sourceInstanceId]?.interactionId === handoff.interaction_id) saveInteractionIntent(sourceInstanceId, null);
+                saveInteractionIntent(currentInstanceId, {runId: handoff.run_id, interactionId: handoff.interaction_id,
+                    returning: !!message.returning, sessionId: message.returning ? handoff.origin.session_id : null,
+                    miniAppId: destination.mini_app_id || null});
+                sendHostContext();
+                respondToBridgeTarget(bridgeTarget, true, {appId: currentId, instanceId: currentInstanceId});
+            } else if (message.type === 'ai2apps.shell.open-setup') {
+                const setup = await jsonRequest('/v1/platform/agent-runs/'+encodeURIComponent(message.runId)+'/interactions/'+encodeURIComponent(message.interactionId)+'/parameters/setup', 'GET');
+                const destination = message.returning ? setup.origin : setup.target;
+                const sourceInstanceId = currentInstanceId;
+                await launch(destination.app_id,{instanceId:destination.instance_id||null});
+                if(currentId!==destination.app_id)throw Error('Configuration App could not be opened');
+                if(message.returning)saveInteractionIntent(sourceInstanceId,null);
+                saveInteractionIntent(currentInstanceId,{kind:'capability_setup',runId:setup.run_id,interactionId:setup.interaction_id,
+                    returning:!!message.returning,sessionId:message.returning?setup.origin.session_id:null,miniAppId:destination.mini_app_id||null});
+                sendHostContext();
+                respondToBridgeTarget(bridgeTarget,true,{appId:currentId,instanceId:currentInstanceId});
+            } else if (message.type === 'ai2apps.shell.open-browser-task') {
+                if(!/^btask_[a-zA-Z0-9_-]{1,120}$/.test(message.taskId||''))throw Error('Invalid browser task');
+                await launch('ai2apps.ai-browser');
+                browserTaskIntents[currentInstanceId]={id:message.taskId};
+                sendHostContext();
+                respondToBridgeTarget(bridgeTarget,true,{taskId:message.taskId});
+            } else if (message.type === 'ai2apps.shell.open-chat-context') {
+                const recipient=await jsonRequest('/v1/platform/chat','GET');
+                const seed=window.AI2AppsChatContext.forRecipient(message.chatSeed,recipient.app_instance_id);
+                const thread = await jsonRequest('/v1/platform/chat/threads', 'POST', seed);
+                await launch('ai2apps.general-chat');
+                if(currentId!=='ai2apps.general-chat')throw Error('Chat could not be opened');
+                chatThreadIntents[currentInstanceId]={id:thread.id};
+                sendHostContext();
+                respondToBridgeTarget(bridgeTarget,true,{threadId:thread.id});
             } else if (message.type === 'ai2apps.shell.open-entry') {
                 const appId = String(message.appId || currentId);
                 await launch(appId, { instanceId: message.targetInstanceId || null });

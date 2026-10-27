@@ -96,3 +96,145 @@ async def test_monitor_settles_run_and_pushes_without_any_http_request(runtime):
     await monitor.shutdown()
     await stream.aclose()
     assert runtime.notifications.subscriber_count == 0
+
+@pytest.mark.parametrize('control', ['browser_user_assistance', 'agent_confirmation'])
+def test_human_pause_yields_profile_and_resumes_same_run_through_admission(runtime, control):
+    from ai2apps.browser.task_monitor import reconcile_browser_tasks
+    tasks=BrowserTaskRepository(runtime.database,runtime.events)
+    tasks.configure('alice',1,1)
+    first=enqueue(tasks);tasks.claim('alice','local-background')
+    tasks.update('alice',first['id'],run_id='existing-run',status='running',
+        browser_context_json=json.dumps({'created_by_run':'existing-run','bidi_context':'human-tab'}))
+    second=enqueue(tasks)
+    interaction=SimpleNamespace(status='pending',request={'control':control},prompt='Please sign in')
+    runtime.agents=SimpleNamespace(get_run=lambda _:SimpleNamespace(status=SimpleNamespace(value='waiting_input'),error=None),list_interactions=lambda _:[interaction])
+    reconcile_browser_tasks(runtime,tasks,'alice')
+    paused=tasks.get('alice',first['id'])
+    assert paused['paused'] and not paused['holds_browser_slot']
+    assert paused['browser_context']['bidi_context']=='human-tab'
+    assert tasks.claim('alice','local-background')['id']==second['id']
+    # Updating page metadata must not erase the scheduler-owned pause flag.
+    tasks.update('alice',first['id'],browser_context_json=json.dumps({'bidi_context':'human-tab'}))
+    assert tasks.get('alice',first['id'])['paused']
+    runtime.agents.list_interactions=lambda _:[]
+    reconcile_browser_tasks(runtime,tasks,'alice')
+    waiting=tasks.get('alice',first['id'])
+    assert waiting['status']=='queued' and not waiting['holds_browser_slot']
+    assert tasks.claim('alice','local-background') is None
+    tasks.update('alice',second['id'],status='completed')
+    claimed=tasks.claim('alice','local-background')
+    assert claimed['id']==first['id'] and claimed['run_id']=='existing-run'
+    assert claimed['holds_browser_slot'] and not claimed['paused']
+    assert claimed['browser_context']['bidi_context']=='human-tab'
+
+
+def test_automatic_browser_wait_does_not_release_admission(runtime):
+    from ai2apps.browser.task_monitor import reconcile_browser_tasks
+    tasks=BrowserTaskRepository(runtime.database,runtime.events)
+    tasks.configure('alice',1,1)
+    first=enqueue(tasks);tasks.claim('alice','local-background')
+    tasks.update('alice',first['id'],run_id='run',status='running')
+    enqueue(tasks)
+    runtime.agents=SimpleNamespace(get_run=lambda _:SimpleNamespace(status=SimpleNamespace(value='waiting_input'),error=None),list_interactions=lambda _:[SimpleNamespace(status='pending',request={'control':'browser_bidi_action'},prompt='')])
+    reconcile_browser_tasks(runtime,tasks,'alice')
+    assert not tasks.get('alice',first['id'])['paused']
+    assert tasks.get('alice',first['id'])['holds_browser_slot']
+    assert tasks.claim('alice','local-background') is None
+
+
+def test_dispatch_resumes_existing_run_without_creating_another(runtime, monkeypatch):
+    from ai2apps.browser.background_runner import BackgroundBrowserRunner
+    tasks=BrowserTaskRepository(runtime.database,runtime.events)
+    first=enqueue(tasks);tasks.claim('alice','local-background')
+    tasks.update('alice',first['id'],run_id='saved-run',status='queued',paused=True,
+        browser_context_json=json.dumps({'bidi_context':'original-tab'}))
+    runtime.agents=SimpleNamespace(get_run=lambda _:SimpleNamespace(status=SimpleNamespace(value='waiting_input'),error=None),list_interactions=lambda _:[])
+    def unexpected(*args,**kwargs):raise AssertionError('must not create a second AgentRun')
+    monkeypatch.setattr('ai2apps.agent_builder.service.create_ir_run',unexpected)
+    BackgroundBrowserRunner(runtime).dispatch_queue()
+    resumed=tasks.get('alice',first['id'])
+    assert resumed['status']=='running' and resumed['run_id']=='saved-run'
+    assert resumed['holds_browser_slot'] and resumed['browser_context']['bidi_context']=='original-tab'
+
+
+def test_no_progress_cancels_then_fails_without_replaying(runtime,monkeypatch):
+    from ai2apps.browser.task_monitor import reconcile_browser_tasks
+    clock=[0]
+    monkeypatch.setattr('ai2apps.browser.progress_watchdog.time.monotonic',lambda:clock[0])
+    monkeypatch.setattr('ai2apps.browser.task_monitor.completed_steps',lambda *a,**kw:'same-result')
+    tasks=BrowserTaskRepository(runtime.database,runtime.events)
+    task=enqueue(tasks);tasks.claim('alice','local-background')
+    tasks.update('alice',task['id'],status='running',run_id='existing-run',lease_until=99999999999)
+    state=['running'];cancelled=[]
+    runtime.agents=SimpleNamespace(get_run=lambda _:SimpleNamespace(status=SimpleNamespace(value=state[0]),error=None),list_interactions=lambda _:[])
+    runtime.agent_runtime=SimpleNamespace(cancel=cancelled.append)
+    reconcile_browser_tasks(runtime,tasks,'alice')
+    clock[0]=299
+    tasks.update('alice',task['id'],message='heartbeat',lease_until=99999999999)
+    reconcile_browser_tasks(runtime,tasks,'alice')
+    assert not cancelled
+    clock[0]=300
+    reconcile_browser_tasks(runtime,tasks,'alice')
+    assert cancelled==['existing-run']
+    assert tasks.get('alice',task['id'])['status']=='cancelling'
+    state[0]='cancelled'
+    reconcile_browser_tasks(runtime,tasks,'alice')
+    result=tasks.get('alice',task['id'])
+    assert result['status']=='failed' and result['run_id']=='existing-run'
+    assert '5 分钟' in result['message']
+
+
+def test_no_progress_watch_is_independent_for_sibling_tasks(runtime,monkeypatch):
+    from ai2apps.browser.task_monitor import reconcile_browser_tasks
+    clock=[0];signatures={};cancelled=[]
+    monkeypatch.setattr('ai2apps.browser.progress_watchdog.time.monotonic',lambda:clock[0])
+    monkeypatch.setattr('ai2apps.browser.task_monitor.completed_steps',lambda *a,**kw:signatures.get(kw['task_id'],0))
+    tasks=BrowserTaskRepository(runtime.database,runtime.events)
+    one=enqueue(tasks);two=enqueue(tasks)
+    for task in (one,two):
+        tasks.update('alice',task['id'],status='running',worker='local-background',run_id=task['id'],lease_until=99999999999)
+    runtime.agents=SimpleNamespace(get_run=lambda _:SimpleNamespace(status=SimpleNamespace(value='running'),error=None),list_interactions=lambda _:[])
+    runtime.agent_runtime=SimpleNamespace(cancel=cancelled.append)
+    reconcile_browser_tasks(runtime,tasks,'alice')
+    clock[0]=250;signatures[two['id']]=1
+    reconcile_browser_tasks(runtime,tasks,'alice')
+    clock[0]=300
+    reconcile_browser_tasks(runtime,tasks,'alice')
+    assert cancelled==[one['id']]
+    assert tasks.get('alice',two['id'])['status']=='running'
+
+
+@pytest.mark.parametrize('pause', ['task_queue', 'agent_queue', 'admission'])
+def test_watchdog_excludes_queue_and_restarts_after_admission(runtime, monkeypatch, pause):
+    from ai2apps.browser.task_monitor import reconcile_browser_tasks
+    clock = [0]
+    cancelled = []
+    monkeypatch.setattr('ai2apps.browser.progress_watchdog.time.monotonic', lambda: clock[0])
+    monkeypatch.setattr('ai2apps.browser.task_monitor.completed_steps', lambda *a, **kw: 'same')
+    tasks = BrowserTaskRepository(runtime.database, runtime.events)
+    task = enqueue(tasks)
+    tasks.update('alice', task['id'], status='running', worker='local-background', run_id='run', lease_until=99999999999)
+    state = ['running']
+    runtime.agents = SimpleNamespace(get_run=lambda _: SimpleNamespace(status=SimpleNamespace(value=state[0]), error=None), list_interactions=lambda _: [])
+    runtime.agent_runtime = SimpleNamespace(cancel=cancelled.append)
+    reconcile_browser_tasks(runtime, tasks, 'alice')
+    clock[0] = 250
+    if pause == 'task_queue':
+        tasks.update('alice', task['id'], status='queued')
+    elif pause == 'agent_queue':
+        state[0] = 'queued'
+    else:
+        tasks.update('alice', task['id'], paused=True)
+    reconcile_browser_tasks(runtime, tasks, 'alice')
+    clock[0] = 1200
+    reconcile_browser_tasks(runtime, tasks, 'alice')
+    assert not cancelled
+    tasks.update('alice', task['id'], status='running', paused=False)
+    state[0] = 'running'
+    reconcile_browser_tasks(runtime, tasks, 'alice')
+    clock[0] = 1499
+    reconcile_browser_tasks(runtime, tasks, 'alice')
+    assert not cancelled
+    clock[0] = 1500
+    reconcile_browser_tasks(runtime, tasks, 'alice')
+    assert cancelled == ['run']

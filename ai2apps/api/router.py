@@ -30,7 +30,9 @@ from ai2apps.api.messager import create_messager_router
 from ai2apps.api.model_share import create_model_share_router
 from ai2apps.api.packages import create_package_router
 from ai2apps.api.provisioning import create_provisioning_router
+from ai2apps.api.studio_background import create_studio_background_router
 from ai2apps.api.readaloud import create_readaloud_router
+from ai2apps.api.notifications import create_notification_router
 from ai2apps.api.remote import create_remote_router
 from ai2apps.api.resources import create_resource_router
 from ai2apps.api.secrets import create_secret_router
@@ -57,6 +59,9 @@ def create_ai2apps_router(
 
     router = APIRouter(prefix="/v1/platform", tags=["platform"])
     router.include_router(create_health_router(config_provider, runtime_provider))
+    if runtime_provider is not None:
+        from ai2apps.api.self_managed import create_self_managed_router
+        router.include_router(create_self_managed_router(runtime_provider, principal_provider))
     effective_principal_provider = principal_provider
     if runtime_provider is not None:
         if principal_provider is resolve_request_principal:
@@ -84,7 +89,11 @@ def create_ai2apps_router(
         router.include_router(create_model_profiles_router(runtime_provider, effective_principal_provider))
         router.include_router(create_codex_router(runtime_provider, effective_principal_provider))
         router.include_router(create_todo_router(runtime_provider, effective_principal_provider))
+        from ai2apps.api.app_chat import create_app_chat_router
+        router.include_router(create_app_chat_router(runtime_provider, effective_principal_provider))
         router.include_router(create_intelligence_router(runtime_provider, effective_principal_provider))
+        from ai2apps.api.parameter_forms import create_parameter_forms_router
+        router.include_router(create_parameter_forms_router(runtime_provider, effective_principal_provider))
         router.include_router(
             create_cloud_router(runtime_provider, effective_principal_provider)
         )
@@ -112,6 +121,7 @@ def create_ai2apps_router(
         router.include_router(
             create_knowledge_router(runtime_provider, effective_principal_provider)
         )
+        router.include_router(create_studio_background_router(runtime_provider, effective_principal_provider))
         router.include_router(
             create_readaloud_router(runtime_provider, effective_principal_provider)
         )
@@ -172,6 +182,7 @@ def create_ai2apps_router(
             create_document_router(runtime_provider, effective_principal_provider)
         )
         router.include_router(create_browser_router(runtime_provider))
+        router.include_router(create_notification_router(runtime_provider, effective_principal_provider))
         router.include_router(
             create_secret_router(runtime_provider, effective_principal_provider)
         )

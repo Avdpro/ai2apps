@@ -50,3 +50,18 @@ def test_package_cannot_declare_trusted_host():
 
 def test_asset_path_traversal_denied():
     with pytest.raises(HTTPException):gateway.asset_response({'assets':[]},'assets/../../secrets')
+
+@pytest.mark.asyncio
+async def test_request_identifier_is_forwarded_and_logged_without_query_or_body(declared, caplog):
+    caplog.set_level('INFO',logger='ai2apps.web.mobile_app_gateway')
+    request_id='a'*32
+    result=await gateway.api_response(object(),SimpleNamespace(actor_user_id='alice'),SPEC,{
+        'path':'/v1/platform/fixture/actor?secret=query-secret',
+        'headers':{'x-ai2apps-request-id':request_id,'x-ai2apps-request-attempt':'1'}})
+    assert result.status_code==200
+    assert f'request_id={request_id}' in caplog.text
+    assert 'request start' in caplog.text and 'request end' in caplog.text
+    assert 'status=200' in caplog.text and 'attempt=1' in caplog.text
+    assert 'query-secret' not in caplog.text
+    with pytest.raises(HTTPException):
+        await gateway.api_response(object(),None,SPEC,{'path':'/v1/platform/fixture/actor','headers':{'x-ai2apps-request-id':'bad\nvalue'}})

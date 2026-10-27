@@ -10,7 +10,7 @@ from ai2apps.browser.background_runner import BackgroundBrowserRunner
     ('cancelled','ai2apps.intelligence',True,['root','child']),
     ('waiting_input','ai2apps.intelligence',True,[]),
     ('completed','ai2apps.intelligence',False,['child']),
-    ('completed','ai2apps.other',True,['root','child']),
+    ('completed','ai2apps.other',True,['root','child','grandchild']),
 ])
 async def test_only_terminal_collection_owned_tabs_close(status, caller, owned, expected):
     closed=[]
@@ -19,11 +19,11 @@ async def test_only_terminal_collection_owned_tabs_close(status, caller, owned, 
         async def command(self, method, params):
             if method=='browsingContext.getTree':
                 return {'contexts':[{'context':c,'userContext':p} for c,p in
-                    [('root','profile'),('child','profile'),('foreign','other'),('user','profile')] if c not in closed]}
+                    [('root','profile'),('child','profile'),('grandchild','profile'),('foreign','other'),('user','profile')] if c not in closed]}
             closed.append(params['context'])
         async def close(self): self.detached=True
     connection=Connection()
-    page=SimpleNamespace(connection=connection,created_contexts={'child':'root'})
+    page=SimpleNamespace(connection=connection,created_contexts={'child':'root',**({'grandchild':'child'} if caller=='ai2apps.other' else {})})
     run=SimpleNamespace(id='run',status=SimpleNamespace(value=status),input={'parameters':{
         'caller_app_id':caller,'browser_context':{'bidi_context':'root','user_context':'profile',
         'created_by_run':'run' if owned else None}}})

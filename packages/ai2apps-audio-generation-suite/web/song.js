@@ -82,4 +82,6 @@
     localize(new URLSearchParams(location.search).get('locale')||'en');window.addEventListener('message',accept);
     window.addEventListener('load',()=>window.parent.postMessage({type:'ai2apps:studio-connect',version:1},'*'),{once:true});
     new ResizeObserver(()=>window.parent.postMessage({type:'ai2apps:mini-app-resize',version:1,height:document.documentElement.scrollHeight},'*')).observe(document.body);
+window.ai2appsSaveDraft=save;
+ window.ai2appsCurrentUI=()=>({draft:draft(),models:models.map(m=>({id:m.id,label:m.label,ready:m.ready})),busy});
 })();

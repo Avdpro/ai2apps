@@ -104,7 +104,9 @@ class AceFoxBrowserBackend:
         self,
         config: BrowserRuntimeConfig,
         helper_provider: HelperProvider = HelperControlClient.from_environment,
+        *, require_profile_binding: bool = False,
     ) -> None:
+        self.require_profile_binding = require_profile_binding
         self.config = config
         self.helper_provider = helper_provider
         self.connection: AceFoxBiDiConnection | None = None
@@ -117,6 +119,12 @@ class AceFoxBrowserBackend:
             raise BrowserError(
                 "browser_actor_required",
                 "AceFox Agent requires an authenticated actor",
+            )
+        if self.require_profile_binding:
+            raise BrowserError(
+                "browser_profile_binding_required",
+                "Desktop browser actions must use a Profile-bound BrowserTask in the existing native browser. "
+                "Use the selected App capability and its recovery/assistance controls; do not launch an isolated browser or bypass login/confirmation.",
             )
         if self.connection is not None:
             if actor_user_id != self._actor_user_id:

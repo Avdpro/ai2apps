@@ -148,7 +148,7 @@ def _target_hint(step: dict[str, Any]) -> dict[str, Any]:
     return {"intent": (match.group(1).strip() if match else description[:120])}
 
 
-def _compile_single_source(source: dict[str, Any]) -> CompileResult:
+def _compile_single_source(source: dict[str, Any], *, probe: dict[str, Any] | None = None) -> CompileResult:
     errors: list[dict[str, Any]] = []
     warnings: list[dict[str, Any]] = []
     if not isinstance(source, dict):
@@ -539,12 +539,26 @@ def _compile_single_source(source: dict[str, Any]) -> CompileResult:
     model_profile = source.get("model_profile", "normal")
     if model_profile not in {"normal", "privacy"}:
         errors.append({"path": "model_profile", "code": "invalid_model_profile"})
+    from .execution_policy import resolve_policy
+    try:
+        execution_policy = resolve_policy(source.get("execution_policy"), source.get("minimum_execution_policy"))
+    except ValueError as error:
+        errors.append({"path": "execution_policy", "code": "invalid_execution_policy", "message": str(error)})
+        execution_policy = resolve_policy()
+    probe_coverage = None
+    if probe is not None:
+        from .probe_contract import coverage, validate_step
+        probe_coverage = coverage(probe)
+        for index, compiled_step in enumerate(compiled_steps):
+            errors.extend({'path':f'steps.{index}.target',**error} for error in validate_step(compiled_step,probe))
     digest = canonical_digest(source)
     ir = {
         "schema": "ai2apps.compiled-agent/v1",
         "agent_type": agent_type,
         "source_digest": digest,
         "model_profile": model_profile,
+        "execution_policy": execution_policy,
+        "minimum_execution_policy": source.get("minimum_execution_policy") or {},
         "compiler_version": COMPILER_VERSION,
         "policy_version": POLICY_VERSION,
         "name": str(source.get("name") or "Untitled Agent"),
@@ -572,18 +586,19 @@ def _compile_single_source(source: dict[str, Any]) -> CompileResult:
         "capability_exports": normalized_exports,
         "fixture_results": fixture_results,
         "validator_results": validator_results,
+        **({"probe_coverage":probe_coverage} if probe_coverage is not None else {}),
     }
     return CompileResult(ir=ir, report=report, source_digest=digest)
 
 
-def compile_source(source: dict[str, Any]) -> CompileResult:
+def compile_source(source: dict[str, Any], *, probe: dict[str, Any] | None = None) -> CompileResult:
     """Compile legacy one-pipeline sources or P1.1 multi-capability Site Agents."""
 
     if not isinstance(source, dict):
         raise ValueError("Agent Source must be a JSON object")
     capabilities = source.get("capabilities")
     if capabilities is None:
-        return _compile_single_source(source)
+        return _compile_single_source(source,probe=probe)
     digest = canonical_digest(source)
     errors: list[dict[str, Any]] = []
     warnings: list[dict[str, Any]] = []
@@ -619,11 +634,14 @@ def compile_source(source: dict[str, Any]) -> CompileResult:
             errors.append({"path": f"{prefix}.name", "code": "duplicate_capability"})
             continue
         export_names.add(export_name)
+        from .execution_policy import combine_minimum
         subsource = {
             "schema": "ai2apps.agent-source/v1",
             "agent_type": source.get("agent_type", "web"),
             "name": capability.get("title") or capability_id,
             "model_profile": capability.get("model_profile", source.get("model_profile", "normal")),
+            "execution_policy": capability.get("execution_policy", source.get("execution_policy")),
+            "minimum_execution_policy": combine_minimum(capability.get("minimum_execution_policy", {}), source.get("minimum_execution_policy", {})),
             "description": source.get("description", ""),
             "working_goal": str(capability.get("working_goal") or "").strip() or str(source.get("working_goal") or source.get("description") or "").strip(),
             "site_scope": source.get("site_scope", []),

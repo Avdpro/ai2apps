@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import shutil
 import threading
 from dataclasses import dataclass
@@ -77,6 +79,10 @@ class UpscalingJobs:
         for run in self.repository.list_runs(**scope, limit=100):
             if run["input"].get("upscalingOperation") != CAPABILITY or run["status"] in TERMINAL:
                 continue
+            with self.runtime.database.transaction() as db:
+                durable = db.execute("SELECT 1 FROM studio_background_jobs WHERE run_id=?", (run['id'],)).fetchone()
+            if durable:
+                continue
             if run["id"] not in self.active:
                 self.repository.update_run(run["id"], **scope, status="failed",
                                            progress=run["progress"], detail="Host restarted",
@@ -104,10 +110,13 @@ class UpscalingJobs:
                     break
             raise
 
-    async def _run(self, run_id, scope, context, stopped):
+    async def _run(self, run_id, scope, context, stopped, *, durable=False):
         run = self.repository.get_run(run_id, **scope)
         root = self.root / run_id
-        source = root / "source.mp4"
+        reference_file = root / "source-reference.json"
+        from .source_reference import resolve
+        source_reference = json.loads(reference_file.read_text()) if reference_file.exists() else None
+        source = resolve(source_reference) if source_reference else root / "source.mp4"
         model_id = run["input"]["modelId"]
         capabilities = run["input"].get("videoUpscalingCapabilities")
         parameters = {"scale": 2, "seed": run["input"]["seed"]}
@@ -174,6 +183,9 @@ class UpscalingJobs:
                                    check=check,
                                    progress=lambda done, total: update(87 + 11 * done / total, "叠帧拼合，复用原音轨"))
             check()
+            if source_reference:resolve(source_reference)
+            if durable:
+                return final, {'filename': 'upscaled.mp4', 'kind': 'video', 'media_type': 'video/mp4', 'model': model_id}
             session_id = self.runtime.video_tasks.artifact_session()
             artifact = await self._thread(
                 self.runtime.workspace.import_artifact, stopped, session_id, final,
@@ -190,10 +202,15 @@ class UpscalingJobs:
                                        detail="视频放大完成")
             shutil.rmtree(root, ignore_errors=True)
         except (InterruptedError, asyncio.CancelledError):
+            stopped.set()
+            if durable:
+                raise asyncio.CancelledError()
             self.repository.update_run(run_id, **scope, status="cancelled", progress=0,
                                        detail="视频放大已停止",
                                        error={"code": "generation_cancelled", "message": "Video upscaling was cancelled"})
         except Exception as error:
+            if durable:
+                raise
             cancelled = stopped.is_set() or getattr(error, "code", None) == "generation_cancelled"
             self.repository.update_run(
                 run_id, **scope, status="cancelled" if cancelled else "failed", progress=0,
@@ -220,8 +237,9 @@ def jobs_for_builtin(runtime, scope):
 
 
 async def start_builtin_job(runtime, scope, principal, *, content, filename,
-                            media_type, model_id, seed, prompt):
-    if not content or len(content) > MAX_UPLOAD_BYTES or not (
+                            media_type, model_id, seed, prompt, key=None):
+    size = content.stat().st_size if isinstance(content, Path) else len(content)
+    if not size or size > MAX_UPLOAD_BYTES or not (
         media_type.startswith("video/") or media_type == "application/octet-stream"
     ):
         raise _error("invalid_video", "Select a video up to 1 GiB")
@@ -237,6 +255,17 @@ async def start_builtin_job(runtime, scope, principal, *, content, filename,
     if prompt.strip() and model.metadata.get("prompt_mode") != "custom":
         raise _error("prompt_configuration_required", "Select the Custom Prompt model")
     manager = _manager(runtime)
+    from .source_reference import describe
+    reference=describe(content) if isinstance(content, Path) else None
+    identity=json.dumps(reference,sort_keys=True).encode() if reference else content
+    fingerprint=hashlib.sha256(identity+json.dumps([scope,filename,media_type,model_id,seed,prompt],sort_keys=True).encode()).hexdigest()
+    if key:
+        with runtime.database.transaction() as db:
+            old=db.execute('SELECT * FROM studio_background_jobs WHERE actor_id=? AND installation_id=? AND studio_id=? AND idempotency_key=?',
+                (principal.actor_user_id,principal.installation_id,STUDIO_ID,key)).fetchone()
+        if old:
+            if json.loads(old['request_json']).get('source_fingerprint')!=fingerprint:raise ValueError('Invocation already used for different upscaling input')
+            return _job(manager.repository.get_run(old['run_id'],**scope))
     run = manager.repository.create_run(**scope, mini_app_id=MINI_APP_ID,
                                         mini_app_version="1.0.0",
                                         placement="inline", title="放大视频", step_label="视频 2× 放大",
@@ -247,11 +276,17 @@ async def start_builtin_job(runtime, scope, principal, *, content, filename,
     root = manager.root / run["id"]
     try:
         root.mkdir(mode=0o700)
-        (root / "source.mp4").write_bytes(content)
+        if reference:
+            reference_file=root/'source-reference.json'
+            reference_file.write_text(json.dumps(reference));reference_file.chmod(0o600)
+        else:
+            (root / "source.mp4").write_bytes(content)
         context = ModelInvocationContext.from_principal(
             principal, session_id=f"video-upscaling:{run['id']}",
             app_instance_id=scope["app_instance_id"], consumer_app_id=STUDIO_ID)
-        manager.launch(run, scope, context)
+        runtime.studio_jobs.submit(principal=principal, app_instance_id=scope['app_instance_id'],
+            studio_id=STUDIO_ID, mini_app_id=MINI_APP_ID, kind='video-upscale',
+            key=key or 'upscale-' + run['id'], run_id=run['id'], payload={'source_fingerprint':fingerprint})
         return _job(run)
     except BaseException as error:
         shutil.rmtree(root, ignore_errors=True)
@@ -265,6 +300,15 @@ async def mutate_builtin_job(runtime, scope, principal, job_id, action):
     run = manager.repository.get_run(job_id, **scope)
     if run["miniAppId"] != MINI_APP_ID or run["input"].get("upscalingOperation") != CAPABILITY:
         raise _error("job_not_found", "Upscaling job was not found", 404)
+    durable = getattr(runtime, 'studio_jobs', None)
+    job = durable.for_run(job_id, principal) if durable else None
+    if job:
+        try:
+            if action == 'cancel': durable.cancel(job['id'], principal)
+            else: durable.retry(job['id'], principal)
+        except ValueError as error:
+            raise _error('job_not_retryable', str(error), 409) from error
+        return _job(manager.repository.get_run(job_id, **scope))
     if action == "cancel":
         active = manager.active.get(job_id)
         if active is not None:

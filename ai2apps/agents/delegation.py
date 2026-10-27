@@ -27,6 +27,7 @@ def install_delegation_service(
     runtime: AgentRuntime,
     services: ServiceRepository,
     registry: ServiceRegistry,
+    *, capability_router=None,
 ) -> None:
     """Expose durable child AgentRuns as the ``agent.delegate`` Tool."""
 
@@ -50,7 +51,7 @@ def install_delegation_service(
         service_id=service.id, provider_key=instance.provider_key,
     )
     install_control_tools(
-        agents, services, registry, service_id=service.id, provider_key=instance.provider_key
+        agents, services, registry, service_id=service.id, provider_key=instance.provider_key, capability_router=capability_router
     )
     services.ensure_tool(
         service_id=service.id,

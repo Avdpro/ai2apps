@@ -3,6 +3,8 @@ import hashlib
 import json
 import uuid
 import re
+from .entity_identity import canonical, references
+from .entity_attributes import Domain, SCHEMA_REVISION, Attribute, Attributes, INSTRUCTION as ATTRIBUTE_INSTRUCTION, validate_attributes, aggregate
 from urllib.parse import urlsplit
 from .models import cover_url
 from typing import Literal
@@ -31,7 +33,11 @@ class EntityDraft(BaseModel):
     aliases: list[str] = Field(default_factory=list,max_length=10)
     coverage: Literal['substantive','mention'] = 'mention'
     coverage_reason: str = Field(default='',max_length=600)
+    brand: str = Field(default='',max_length=160)
+    reference: str = Field(default='',max_length=160)
     image_ids: list[str] = Field(default_factory=list,max_length=48)
+    attribute_domain: Domain = 'other'
+    attributes: list[Attribute] = Field(default_factory=list,max_length=30)
     facts: list[Fact] = Field(min_length=1,max_length=8)
 
 
@@ -113,6 +119,7 @@ class Repository:
                         for f in e['facts'] if f['article_id'] in articles]
             current=[f for f in e['facts'] if not f.get('historical')]
             e['dossier_status']='substantive' if e.get('watched') or e.get('manual') or any(f.get('coverage')=='substantive' for f in current) else ('pending' if any('coverage' not in f for f in current) else 'mention')
+            e['attribute_groups']=aggregate(e.get('attributes',[]),articles)
             e['images']=related_images(e,articles)
             e['cover_image']=next((i for i in e['images'] if i['id']==e.get('cover_image_id')),next(iter(e['images']),None))
             e['channel_ids']=list(dict.fromkeys(f['channel_id'] for f in e['facts']))
@@ -164,6 +171,15 @@ class Repository:
     def pending(self,owner,articles):
         with self.store.connect() as db:
             done={r['article']:r['signature'] for r in db.execute('SELECT * FROM entity_articles WHERE owner=?',(owner,))}
+            # Upgrade exact legacy cache hits without asking the model to repeat
+            # already validated extraction. Changed legacy evidence stays pending.
+            for article in articles:
+                legacy=signature(['entity-attributes-v2',article_signature(article),image_candidates(article)])
+                if done.get(article['id'])==legacy:
+                    current=extraction_signature(article)
+                    db.execute('UPDATE entity_articles SET signature=? WHERE owner=? AND article=? AND signature=?',
+                        (current,owner,article['id'],legacy))
+                    done[article['id']]=current
         pending=[a for a in articles if done.get(a['id'])!=extraction_signature(a)]
         known={f['article_id'] for e in self.snapshot(owner)['entities'] for f in e['facts']}
         return sorted(pending,key=lambda a:a['id'] not in known)
@@ -183,14 +199,24 @@ class Repository:
                         f.update(coverage='mention',coverage_reason='本轮未获得实质介绍证据',image_ids=[])
                 db.execute('UPDATE entity_dossiers SET data=? WHERE owner=? AND id=?',(json.dumps(old),owner,old['id']))
             for draft in plan.entities:
-                names={normalized(n) for n in [draft.name,*draft.aliases]}
-                blocked=[e for e in existing if e.get('dismissed') and names.intersection(normalized(n) for n in [e['name'],*e['aliases']])]
+                names={canonical(n) for n in [draft.name,*draft.aliases]}
+                blocked=[e for e in existing if e.get('dismissed') and names.intersection(canonical(n) for n in [e['name'],*e['aliases']])]
                 if blocked:
                     for e in blocked:
                         e['aliases']=list(dict.fromkeys([*e['aliases'],draft.name,*draft.aliases]))
                         db.execute('UPDATE entity_dossiers SET data=? WHERE owner=? AND id=?',(json.dumps(e),owner,e['id']))
                     continue
-                matches=[e for e in existing if (e['kind']==draft.kind or (draft.kind=='model' and e['kind']=='product')) and names.intersection(normalized(n) for n in [e['name'],*e['aliases']])]
+                matches=[e for e in existing if (e['kind']==draft.kind or {draft.kind,e['kind']}=={'product','model'}) and (not draft.brand or not e.get('brand') or canonical(draft.brand)==canonical(e['brand'])) and (not draft.reference or not e.get('reference') or canonical(draft.reference)==canonical(e['reference'])) and names.intersection(canonical(n) for n in [e['name'],*e['aliases']])]
+                draft_refs=references(draft.model_dump())
+                matches=[e for e in matches if not draft_refs or not references(e) or draft_refs.intersection(references(e))]
+                resolved={}
+                for match in matches:
+                    visited=set()
+                    while match.get('redirect'):
+                        if match['id'] in visited:raise ValueError('实体归属存在循环，请修正档案')
+                        visited.add(match['id']);match=next(x for x in existing if x['id']==match['redirect'])
+                    resolved[match['id']]=match
+                matches=list(resolved.values())
                 # Ambiguous aliases never silently merge two records.
                 if len(matches)==1:
                     e=matches[0]
@@ -208,6 +234,8 @@ class Repository:
                     if draft.kind == 'model' and e['kind'] == 'product':
                         e['kind'] = 'model'
                     e['aliases']=list(dict.fromkeys([*e['aliases'],draft.name,*draft.aliases]))[:20]
+                for field in ('brand','reference'):
+                    if getattr(draft,field,'') and not e.get(field):e[field]=getattr(draft,field)
                 for fact in draft.facts:
                     target=e.get('fact_moves',{}).get(signature([article['id'],fact.quote]))
                     dest=next((x for x in existing if x['id']==target),e)
@@ -222,9 +250,97 @@ class Repository:
                     if dest is not e:
                         dest['revision']+=1;dest['updated_at']=stamp()
                         db.execute('UPDATE entity_dossiers SET data=? WHERE owner=? AND id=?',(json.dumps(dest),owner,dest['id']))
+                if draft.attribute_domain!='other' or draft.attributes:
+                    validate_attributes(draft.attribute_domain,draft.attributes,'\n'.join(article.get(k,'') for k in ('title','summary','body')),article['id'])
+                    self._record_attributes(e,article,draft.attribute_domain,draft.attributes)
                 e['revision']+=1;e['updated_at']=stamp()
                 db.execute('INSERT INTO entity_dossiers VALUES(?,?,?) ON CONFLICT(owner,id) DO UPDATE SET data=excluded.data',(owner,e['id'],json.dumps(e)))
             db.execute('INSERT INTO entity_articles VALUES(?,?,?) ON CONFLICT(owner,article) DO UPDATE SET signature=excluded.signature',(owner,article['id'],extraction_signature(article)))
+
+    @staticmethod
+    def _record_attributes(entity,article,domain,attributes):
+        # Retain old versions; re-extraction replaces assertions only for this version.
+        version=article_signature(article)
+        entity['attributes']=[a for a in entity.get('attributes',[]) if not (a['article_id']==article['id'] and a['article_version']==version)]
+        for attr in attributes:
+            value={**attr.model_dump(),'domain':domain,'article_id':article['id'],'article_version':version,'observed_at':article['updated_at']}
+            value['id']=signature([entity['id'],article['id'],version,domain,attr.key,attr.label,attr.unit,attr.value,attr.conditions,attr.basis,attr.status,attr.quote,attr.context_quote])[:32]
+            if not any(a['id']==value['id'] for a in entity['attributes']):entity['attributes'].append(value)
+        entity['attribute_domain']=domain
+        entity['attribute_schema_revision']=SCHEMA_REVISION
+        entity.setdefault('attributes_checked',{})[article['id']]=version
+
+    def save_attributes(self,owner,id,revision,articles,plan):
+        with self.store.connect() as db:
+            row=db.execute('SELECT data FROM entity_dossiers WHERE owner=? AND id=?',(owner,id)).fetchone()
+            if not row:raise KeyError('实体不存在')
+            entity=json.loads(row['data'])
+            if entity['revision']!=revision or entity.get('redirect') or entity.get('dismissed'):raise ValueError('档案已变化，请重新提取属性')
+            allowed={f['article_id'] for f in entity['facts']}
+            if any(a.article_id not in {v['id'] for v in articles} for a in plan.attributes):raise ValueError('Unknown attribute article')
+            for article in articles:
+                current=db.execute('SELECT * FROM articles WHERE owner=? AND id=?',(owner,article['id'])).fetchone()
+                if article['id'] not in allowed or not current or article_signature(self.store.unpack(current))!=article_signature(article):raise ValueError('引用文章已变化，请重新提取')
+                attrs=[a for a in plan.attributes if a.article_id==article['id']]
+                validate_attributes(plan.domain,attrs,'\n'.join(article.get(k,'') for k in ('title','summary','body')),article['id'])
+                self._record_attributes(entity,article,plan.domain,attrs)
+            entity['revision']+=1;entity['updated_at']=stamp()
+            db.execute('UPDATE entity_dossiers SET data=? WHERE owner=? AND id=?',(json.dumps(entity),owner,id))
+        return entity
+
+    def merge_duplicate(self,owner,left,right,left_revision,right_revision,reason):
+        from .entity_identity import compatible
+        if left==right:raise ValueError('请选择不同实体')
+        with self.store.connect() as db:
+            values={r['id']:json.loads(r['data']) for r in db.execute('SELECT * FROM entity_dossiers WHERE owner=? AND id IN (?,?)',(owner,left,right))}
+            if len(values)!=2:raise KeyError('实体不存在或不属于当前用户')
+            a,b=values[left],values[right]
+            if a['revision']!=left_revision or b['revision']!=right_revision:raise ValueError('档案已变化，请重新核对')
+            if not compatible(a,b):raise ValueError('实体类型、型号或用户设置不允许自动合并')
+            # Preserve the followed/older entry, so existing links remain useful.
+            a,b=sorted([a,b],key=lambda e:(not e.get('watched'),e.get('created_at',''),e['id']))
+            a['aliases']=list(dict.fromkeys([*a['aliases'],b['name'],*b['aliases']]))[:20]
+            known={f['id'] for f in a['facts']}
+            a['facts'] += [f for f in b['facts'] if f['id'] not in known]
+            a['watched']=bool(a.get('watched') or b.get('watched'))
+            attr_ids={v['id'] for v in a.get('attributes',[])}
+            a.setdefault('attributes',[]).extend(v for v in b.get('attributes',[]) if v['id'] not in attr_ids)
+            # Missing checkpoint entries are intentionally reviewed again after merging.
+            a['attributes_checked']={}
+            if not a.get('attribute_domain') or a['attribute_domain']=='other':a['attribute_domain']=b.get('attribute_domain','other')
+            for field in ('rule','brand','reference','cover_image_id'):
+                if not a.get(field) and b.get(field):a[field]=b[field]
+            a['excluded_image_ids']=list(set(a.get('excluded_image_ids',[]))|set(b.get('excluded_image_ids',[])))
+            if a.get('cover_image_id') in a['excluded_image_ids']:a.pop('cover_image_id',None)
+            a.setdefault('fact_moves',{}).update(b.get('fact_moves',{}))
+            a['fact_moves']={k:a['id'] if v==b['id'] else v for k,v in a['fact_moves'].items()}
+            for row in db.execute('SELECT id,data FROM entity_dossiers WHERE owner=?',(owner,)).fetchall():
+                value=json.loads(row['data'])
+                if value['id'] in (a['id'],b['id']):continue
+                moves=value.get('fact_moves',{})
+                changed=False
+                for k,v in moves.items():
+                    if v==b['id']:moves[k]=a['id'];changed=True
+                if value.get('redirect')==b['id']:value['redirect']=a['id'];changed=True
+                if changed:db.execute('UPDATE entity_dossiers SET data=? WHERE owner=? AND id=?',(json.dumps(value),owner,value['id']))
+            b['redirect']=a['id']
+            audit={'source_id':b['id'],'target_id':a['id'],'reason':reason,'merged_at':stamp()}
+            a.setdefault('identity_merges',[]).append(audit);b['identity_merge']=audit
+            for value in (a,b):
+                value['revision']+=1;value['updated_at']=stamp();value.pop('evaluated_signature',None)
+                db.execute('UPDATE entity_dossiers SET data=? WHERE owner=? AND id=?',(json.dumps(value),owner,value['id']))
+            for row in db.execute('SELECT id,data FROM entity_leads WHERE owner=?',(owner,)).fetchall():
+                lead=json.loads(row['data'])
+                if lead['entity_id']==b['id']:
+                    lead.update(entity_id=a['id'],entity_name=a['name'])
+                    db.execute('UPDATE entity_leads SET data=? WHERE owner=? AND id=?',(json.dumps(lead),owner,row['id']))
+            for row in db.execute('SELECT id,data FROM channels WHERE owner=?',(owner,)).fetchall():
+                channel=json.loads(row['data']);taxonomy=channel.get('entity_taxonomy') or {}
+                if b['id'] in taxonomy.get('assignments',{}):
+                    assignment=taxonomy['assignments'].pop(b['id']);taxonomy['assignments'].setdefault(a['id'],assignment)
+                    taxonomy.get('signatures',{}).pop(b['id'],None)
+                    db.execute('UPDATE channels SET data=? WHERE owner=? AND id=?',(json.dumps(channel),owner,row['id']))
+        return audit
 
     def settings(self,owner,id,body):
         with self.store.connect() as db:
@@ -260,6 +376,9 @@ class Repository:
             if not a['facts'] and a['kind']==b['kind']:
                 if b.get('redirect'): raise ValueError('目标实体已合并，请选择有效档案')
                 a['redirect']=target
+                attr_ids={v['id'] for v in b.get('attributes',[])}
+                b.setdefault('attributes',[]).extend(v for v in a.get('attributes',[]) if v['id'] not in attr_ids)
+                b['attributes_checked']={}
             for e in [a,b]:
                 e['revision']+=1;e['identity_locked']=True;e.pop('evaluated_signature',None)
                 db.execute('UPDATE entity_dossiers SET data=? WHERE owner=? AND id=?',(json.dumps(e),owner,e['id']))
@@ -304,7 +423,9 @@ def image_candidates(article):
 
 
 def extraction_signature(article):
-    return signature(['entity-relevance-v2',article_signature(article),image_candidates(article)])
+    # Cache only extraction evidence; preserve separate historical versions.
+    return signature(['entity-attributes-v3', {k:article.get(k) for k in
+        ('title','summary','body')},image_candidates(article)])
 
 
 async def extract(runtime,request,principal,article):
@@ -322,6 +443,8 @@ async def extract(runtime,request,principal,article):
             seen.add((e.kind,normalized(e.name)))
             if e.name.casefold() not in text.casefold(): raise ValueError('Entity name absent from ARTICLE text: '+repr(e.name)+'. Copy a literal name from article text, never from image captions, or omit this entity.')
             if any(not a.strip() or len(a)>160 or a.casefold() not in text.casefold() for a in e.aliases): raise ValueError('Aliases must appear in evidence')
+            if any(v and v.casefold() not in text.casefold() for v in [e.brand,e.reference]):raise ValueError('Brand and reference must occur in evidence')
+            validate_attributes(e.attribute_domain,e.attributes,text,article.get('id',''))
             if any(f.quote not in text for f in e.facts): raise ValueError('Quotes must be exact excerpts')
         return plan
     return await service.model_json(runtime,request,principal,article['channel_id'],
@@ -333,9 +456,15 @@ async def extract(runtime,request,principal,article):
         'never inherit all article images or its cover. An image of another model/brand/person is not this entity. Empty or ambiguous captions mean no assignment. '
         'Do not claim visual inspection; only captions are supplied. Mentions get no image_ids. '
         'Separate brand, product series and exact model/size/variant; never merge different model numbers. '
+        'Include brand and reference only when explicitly stated in the article, copying their literal spelling; otherwise use empty strings. '
+        'List literal alternative spellings and bilingual equivalents as aliases only when this article establishes the same entity. '
+        'When a reference number identifies the same watch as its full model name, put that literal reference in aliases/reference, not a second dossier. '
+        'Do not create another dossier for a generic color/material description of an already extracted exact model. '
+        'Extract series separately only when the text substantively discusses the series itself; background series membership is a mention. '
         'Image captions are ONLY for matching images to entities already evidenced in article text; NEVER extract additional entities from captions or URLs. '
         'Copy names and aliases exactly from article text without translating, expanding brand prefixes or changing spacing. '
         'Names and aliases must occur literally in the article. Avoid generic categories and publication names unless the article is about them. '
+        +ATTRIBUTE_INSTRUCTION+'Use attribute_domain (not domain) in each entity object. Use kind=model for a specific model/version in ANY domain, product for a general product; kind and attribute_domain are independent. '
         'Each fact needs an exact supporting quote from supplied text. Preserve qualifiers, dates, units and distinction between asking and transaction prices. '
         'reported means reported by this article, NOT independently verified. Use opinion or rumour appropriately. '
         'Do not infer a release date from collection time. Return empty entities if unsupported. Schema: '+json.dumps(Extraction.model_json_schema()),
@@ -344,6 +473,8 @@ async def extract(runtime,request,principal,article):
 
 class RelevanceDecision(BaseModel):
     entity_id: str
+    attribute_domain: Domain = 'other'
+    attributes: list[Attribute] = Field(default_factory=list,max_length=30)
     coverage: Literal['substantive','mention']
     coverage_reason: str = Field(min_length=1,max_length=600)
     image_ids: list[str] = Field(default_factory=list,max_length=48)
@@ -369,6 +500,7 @@ async def extract_or_review(runtime,request,principal,article,repo):
         for d in review.decisions:
             if not set(d.image_ids).issubset(image_ids):raise ValueError('Only supplied captioned image IDs may be assigned')
             if d.coverage=='mention' and d.image_ids:raise ValueError('Incidental mentions have no images')
+            validate_attributes(d.attribute_domain,d.attributes,'\n'.join(article.get(k,'') for k in ('title','summary','body')),article['id'])
         return review
     result=await service.model_json(runtime,request,principal,article['channel_id'],
         'Review existing entity dossiers against the article. Do NOT rewrite names or facts. '
@@ -377,6 +509,7 @@ async def extract_or_review(runtime,request,principal,article,repo):
         'Give a localized coverage_reason grounded in this article. Assign image_ids only when the caption explicitly identifies this exact entity '
         '(clear bilingual name equivalents are allowed). Never inherit the article cover or all article images. '
         'Do not assign pictures of other models, brands or people; ambiguous or missing captions mean no image. '
+        +ATTRIBUTE_INSTRUCTION+'Use attribute_domain in each decision. '
         'No pixels were provided, so do not claim visual recognition. mention must have empty image_ids. Schema: '+json.dumps(RelevanceReview.model_json_schema()),
         {'article':{k:article.get(k,'') for k in ('title','summary','body')},
          'entities':[{'id':e['id'],'name':e['name'],'aliases':e['aliases'],'facts':[f['quote'] for f in facts]} for e,facts in existing],
@@ -384,7 +517,7 @@ async def extract_or_review(runtime,request,principal,article,repo):
     decisions={d.entity_id:d for d in result.decisions}
     return Extraction.model_construct(entities=[EntityDraft.model_construct(name=e['name'],kind=e['kind'],aliases=e['aliases'],
         facts=[Fact(text=f['text'],quote=f['quote'],status=f['status']) for f in facts],
-        coverage=decisions[e['id']].coverage,coverage_reason=decisions[e['id']].coverage_reason,image_ids=decisions[e['id']].image_ids)
+        coverage=decisions[e['id']].coverage,coverage_reason=decisions[e['id']].coverage_reason,image_ids=decisions[e['id']].image_ids,attribute_domain=decisions[e['id']].attribute_domain,attributes=decisions[e['id']].attributes)
         for e,facts in existing])
 
 

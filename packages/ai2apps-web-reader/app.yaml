@@ -2,7 +2,7 @@
   "schema": "ai2apps.app/v1",
   "id": "ai2apps.web-reader",
   "name": "Web Reader",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": {
     "id": "ai2apps"
   },
@@ -22,7 +22,7 @@
       "schema": "ai2apps.mini-app/v1",
       "id": "ai2apps.web-reader",
       "name": "Web Reader",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "kind": "project",
       "icon": "globe",
       "description": "Extract links or read an article using background tasks.",
@@ -103,7 +103,12 @@
                     "failed": "failed"
                   }
                 }
-              ]
+              ],
+              "execution_policy": {
+                "visual_locating": false,
+                "visual_review": "off",
+                "readback": true
+              }
             }
           },
           {
@@ -112,7 +117,8 @@
             "source": {
               "agent_type": "web",
               "site_scope": [
-                "https://watchesbysjx.com/**"
+                "https://*/**",
+                "http://*/**"
               ],
               "inputs": {
                 "type": "object",
@@ -120,6 +126,12 @@
                   "url": {
                     "type": "string",
                     "minLength": 1
+                  },
+                  "max_chars": {
+                    "type": "integer",
+                    "minimum": 1000,
+                    "maximum": 100000,
+                    "default": 20000
                   }
                 },
                 "required": [
@@ -139,15 +151,63 @@
                     "new_tab": true,
                     "close_tab": true,
                     "delay_ms": 1500,
-                    "max_chars": 20000
+                    "max_chars": "${input.max_chars}"
                   },
                   "on": {
                     "success": "done",
                     "failed": "failed"
                   }
                 }
-              ]
+              ],
+              "execution_policy": {
+                "visual_locating": true,
+                "visual_review": "on_recovery",
+                "readback": true
+              }
             }
+          }
+        ]
+      },
+      "chat": {
+        "schema": "ai2apps.mini-app-chat/v1",
+        "enabled": true,
+        "system_prompt": "Read and edit only declared current UI fields. Execute functions through the registered owner AaAT, never through a UI run button. Preserve task, model, material and shared output ownership.",
+        "context": {
+          "transport": "studio-bridge",
+          "maxBytes": 40000
+        },
+        "help": {
+          "resource": "help/mini-chat/help.md",
+          "max_bytes": 32768
+        },
+        "tools": [
+          {
+            "name": "update_current_draft",
+            "description": "Update declared UI draft fields without submitting work.",
+            "input_schema": {
+              "type": "object",
+              "properties": {
+                "capability": {
+                  "type": "string",
+                  "maxLength": 8000
+                },
+                "url": {
+                  "type": "string",
+                  "maxLength": 8000
+                },
+                "limit": {
+                  "type": "number",
+                  "minimum": 1.0,
+                  "maximum": 100.0
+                },
+                "profile": {
+                  "type": "string",
+                  "maxLength": 8000
+                }
+              },
+              "additionalProperties": false
+            },
+            "confirmation": "never"
           }
         ]
       }

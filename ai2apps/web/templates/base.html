@@ -172,6 +172,15 @@
                         instanceId: instanceId
                     }));
                 },
+                acknowledgeHandoff: function(interactionId) {
+                    return request('ai2apps.shell.ack-handoff', {interactionId: interactionId});
+                },
+                openSetup: function(runId, interactionId, returning) {
+                    return request('ai2apps.shell.open-setup', {runId:runId, interactionId:interactionId, returning:!!returning});
+                },
+                openHandoff: function(runId, interactionId, returning) {
+                    return request('ai2apps.shell.open-handoff', {runId: runId, interactionId: interactionId, returning: !!returning});
+                },
                 openGalleryPreview: function(options) {
                     return request('ai2apps.shell.open-gallery-preview', options || {});
                 },

@@ -79,9 +79,14 @@ class RemoteAccessManager:
         self.repository = repository
         self.secret_backend = secret_backend
         self.client_version = client_version
+        from .notifications import NotificationProducer
+
+        self.notifications = NotificationProducer(self)
         self.sessions = RemoteSessionStore()
         self.space = PersonalSpace(self)
         self.owner_home = OwnerHome(self)
+        from .mobile_agent import MobileAgent
+        self.mobile_agent = MobileAgent(self)
         self.frpc = frpc or RemoteFrpcSupervisor(None, secret_backend)
         self.identity_repository = identity_repository
         if access_projection_interval_seconds <= 0:
@@ -90,6 +95,7 @@ class RemoteAccessManager:
         self._access_projection_etag: str | None = None
         self._access_projection_stop: asyncio.Event | None = None
         self._access_projection_task: asyncio.Task[None] | None = None
+        self._access_projection_lock = asyncio.Lock()
 
     @staticmethod
     async def _payload(response: httpx.Response) -> dict[str, Any]:
@@ -118,6 +124,7 @@ class RemoteAccessManager:
         device: RemoteDeviceRecord | None = None,
         cloud: AI2AppsCloudClient | None = None,
         headers: dict[str, str] | None = None,
+        server_time: bool = False,
     ) -> dict[str, Any]:
         request_headers = dict(headers or {})
         if device is not None:
@@ -132,7 +139,12 @@ class RemoteAccessManager:
             method, path, json=json, headers=request_headers or None
         )
         try:
-            return await self._payload(response)
+            value=await self._payload(response)
+            if server_time:
+                from email.utils import parsedate_to_datetime
+                try:value['_server_time']=parsedate_to_datetime(response.headers['date']).timestamp()+1
+                except (KeyError,ValueError,TypeError) as error:raise RemoteAccessError(503,'MOBILE_AGENT_CLOCK_UNAVAILABLE','Cloud clock unavailable') from error
+            return value
         finally:
             await response.aclose()
 
@@ -445,6 +457,11 @@ class RemoteAccessManager:
     async def refresh_access_projection(self) -> bool:
         """Refresh the complete Cloud authorization projection for this installation."""
 
+        async with self._access_projection_lock:
+            return await self._refresh_access_projection()
+
+    async def _refresh_access_projection(self) -> bool:
+
         if self.identity_repository is None:
             return False
         installation = self.identity_repository.get_installation()
@@ -723,6 +740,7 @@ class RemoteAccessManager:
         return record
 
     async def stop(self, device_id: str | None = None) -> RemoteDeviceRecord | None:
+        self.mobile_agent.close()
         self.space.revoke()
         self.owner_home.clear()
         await self.frpc.stop()
@@ -732,6 +750,8 @@ class RemoteAccessManager:
         return self.repository.set_enabled(device_id, False)
 
     async def startup(self) -> None:
+        self.notifications.start()
+        await self.mobile_agent.startup()
         enabled = next((item for item in self.repository.list() if item.enabled and item.status == "active"), None)
         if (
             enabled is not None
@@ -755,6 +775,8 @@ class RemoteAccessManager:
             )
 
     async def shutdown(self) -> None:
+        self.mobile_agent.close()
+        await self.notifications.stop()
         if self._access_projection_stop is not None:
             self._access_projection_stop.set()
         if self._access_projection_task is not None:
@@ -976,6 +998,9 @@ class RemoteAccessManager:
                 "Installation identity storage is unavailable",
             )
         installation = self.identity_repository.get_installation()
+        if installation is not None and installation.status == "suspended":
+            await self._recover_suspended_binding(cloud=cloud or self.cloud)
+            installation = self.identity_repository.get_installation()
         if installation is None or installation.status != "active":
             raise RemoteAccessError(
                 409,
@@ -1009,6 +1034,65 @@ class RemoteAccessManager:
                 "Cloud returned an invalid Local member handoff",
             )
         return await self.exchange_member_handoff(handoff=handoffs[0])
+
+    async def _recover_suspended_binding(self, *, cloud: AI2AppsCloudClient) -> None:
+        """Repair the original device credential after an authenticated Core login.
+
+        Never register a replacement device, change authority, or revive a Cloud
+        suspension/revocation. Local content remains attached to the same IDs.
+        """
+        async with self._access_projection_lock:
+            await self._recover_suspended_binding_locked(cloud=cloud)
+
+    async def _recover_suspended_binding_locked(self, *, cloud: AI2AppsCloudClient) -> None:
+        installation = self.identity_repository.get_installation()
+        if installation is None or installation.status != "suspended":
+            return
+        detail = await self._request(
+            "GET", f"/v1/installations/{installation.id}", cloud=cloud,
+        )
+        authority = {
+            'installationId': installation.id,
+            'cloudDeviceId': installation.cloud_device_id,
+            'organizationId': installation.organization_id,
+            'organizationType': installation.organization_type.value,
+            'coreUserId': installation.core_user_id,
+            'billingAccountId': installation.billing_account_id,
+        }
+        if any(detail.get(key) != value for key, value in authority.items()):
+            raise RemoteAccessError(409, "INSTALLATION_DEVICE_MISMATCH",
+                                    "Recovery must retain the original installation authority")
+        if detail.get('role') not in ('core', 'owner'):
+            raise RemoteAccessError(403, "INSTALLATION_OWNER_RECOVERY_REQUIRED",
+                                    "Sign in as this device's Core account to repair device authorization")
+        device = await self._request(
+            "GET", f"/v1/remote/devices/{installation.cloud_device_id}", cloud=cloud,
+        )
+        if (device.get('id') != installation.cloud_device_id or device.get('status') != 'active'
+                or detail.get('status', 'active') != 'active'):
+            raise RemoteAccessError(403, "REMOTE_DEVICE_NOT_ACTIVE",
+                                    "Cloud device authorization is not active; local data has been retained")
+        # Validate epochs before rotating, without writing an active local binding.
+        try:
+            access_epoch = int(detail['accessEpoch'])
+            session_epoch = int(detail.get('localSessionEpoch') or installation.local_session_epoch)
+        except (KeyError, TypeError, ValueError) as error:
+            raise RemoteAccessError(502, "INSTALLATION_PROJECTION_INVALID",
+                                    "Cloud installation epochs are invalid") from error
+        if (access_epoch < installation.access_epoch or session_epoch < installation.local_session_epoch):
+            raise RemoteAccessError(409, "INSTALLATION_PROJECTION_INVALID",
+                                    "Cloud installation epoch regressed")
+        await self.rotate(installation.cloud_device_id, cloud=cloud)
+        self._access_projection_etag = None
+        await self.sync_installation_identity(device_id=installation.cloud_device_id,
+                                             installation_id=installation.id, cloud=cloud)
+        # Prove the repaired Device credential works before issuing any session.
+        try:
+            await self._refresh_access_projection()
+        except BaseException:
+            self.identity_repository.deactivate_installation('suspended')
+            raise
+        logger.info('Recovered the existing Local installation device authorization')
 
     async def authorize_session(self, token: str | None) -> RemoteMobileSession | None:
         session = self.sessions.get(token)

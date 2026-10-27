@@ -10,8 +10,9 @@ const projects = [
 ];
 const drafts = {};
 const context = {
+  crypto: {randomUUID:()=>"unique-request-id"},
   window: {location: {origin: "http://localhost"}}, File: class File { constructor(parts, name, options) { this.name=name; this.type=options.type; } }, document: {querySelector: () => ({dataset: {appInstanceId: 'test'}})},
-  localStorage: {setItem() {}}, clearTimeout, setTimeout, AbortController,
+  localStorage: {setItem() {}}, clearTimeout, setTimeout, setInterval:()=>1, clearInterval:()=>{}, AbortController,
   fetch: async (url, options) => {
     const route = url.replace('/v1/platform/readaloud', '');
     let result;
@@ -59,13 +60,16 @@ vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../ai2apps/web/static/j
   context.URL = class extends URL { static createObjectURL() { return 'blob:result'; } static revokeObjectURL() {} };
   context.fetch = async (url, options) => {
     if (url === '/v1/platform/readaloud/outputs') return {ok:true,json:async()=>({items:[{id:'audio',title:'Hello',mediaType:'audio/wav',status:'succeeded',downloadUrl:'/v1/platform/sessions/session/artifacts/audio/download'}]})};
-    assert.equal(url, '/v1/platform/readaloud/quick-read');
-    const body = JSON.parse(options.body);
+    if(url.startsWith('/v1/platform/studio-jobs?'))return {ok:true,json:async()=>({items:[{id:'job-'+called,status:'succeeded'}]})};
+    if(url.endsWith('/quick-read/history'))return {ok:true,json:async()=>({items:Array.from({length:called},(_,i)=>({id:'quick-'+i,status:'succeeded',url:'/v1/platform/sessions/session/artifacts/audio/download',downloadUrl:'/v1/platform/sessions/session/artifacts/audio/download'}))})};
+    assert.equal(url, '/v1/platform/studio-jobs');
+    const submission=JSON.parse(options.body);assert.equal(submission.kind,'quick-read');
+    const body = submission.payload;
     assert.equal(body.text, 'Hello world');
     assert.equal(body.voice, 'bob');
     assert.equal(body.projectId, undefined);
     called++;
-    return {ok: true, headers: {get: () => '/v1/platform/sessions/session/artifacts/audio/download'}, blob: async () => ({size: 20})};
+    return {ok:true,json:async()=>({id:'job-'+called,status:'queued'})};
   };
   app.scheduleDraft = () => {};
   app.$nextTick = callback => callback();
@@ -76,7 +80,7 @@ vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../ai2apps/web/static/j
   assert.equal(app.quickTasks.length, 1);
   assert.equal(app.quickTasks[0].status, 'succeeded');
   const firstTask = app.quickTasks[0];
-  assert.equal(app.quickAudioUrl, 'blob:result');
+  assert.equal(app.quickAudioUrl, '/v1/platform/sessions/session/artifacts/audio/download');
   assert.equal(app.outputAudioUrl, '/v1/platform/sessions/session/artifacts/audio/download');
   app.previewAudioBlob={type:'audio/wav'};app.previewAudioBlobUrl=app.outputAudioUrl;
   assert.equal(app.quickDownloadUrl, '/v1/platform/sessions/session/artifacts/audio/download');
@@ -92,7 +96,7 @@ vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../ai2apps/web/static/j
   app.dragPreviewAudio({dataTransfer: {setData: (key,value) => { dragData[key]=value; }, items: {add: file => dragFiles.push(file)}}, preventDefault() { throw Error('Drag unexpectedly rejected'); }});
   assert.equal(JSON.parse(dragData['application/x-ai2apps-audio-artifact']).artifactId, 'audio');
   assert.equal(dragFiles[0].type, 'audio/wav');
-  assert.equal(played, true);
+  assert.equal(played, false);
   assert.equal(app.quickGenerating, false);
   for (const mode of ['quick','voice','training','audiobook']) {
     app.pipelineMode=mode;
@@ -119,9 +123,9 @@ vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../ai2apps/web/static/j
   assert.equal(app.quickCharacter.name,'Alice');assert.equal(app.quickProvider.id,'speech');
   app.quickForm.text='Character speech';
   context.fetch=async(url,options)=> {
-    if(url.endsWith('/outputs'))return {ok:true,json:async()=>({items:[]})};
-    const body=JSON.parse(options.body);assert.equal(body.voice_profile_id,'character-one');assert.equal(body.voice,null);
-    return {ok:true,headers:{get:()=>'/v1/platform/sessions/session/artifacts/audio/download'},blob:async()=>({size:20})};
+    if(!options?.body)return {ok:true,json:async()=>({items:[]})};
+    const body=JSON.parse(options.body).payload;assert.equal(body.voice_profile_id,'character-one');assert.equal(body.voice,null);
+    return {ok:true,json:async()=>({id:'character-job',status:'queued'})};
   };
   await app.generateQuickRead();
   const asrApp=context.window.readAloudApp();

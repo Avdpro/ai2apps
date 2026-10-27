@@ -8,6 +8,7 @@ RESEARCH_INSTRUCTIONS = """You are AI2Apps Research Agent. Research the user's q
 
 Rules:
 - Use web.search to discover sources, then web.fetch the sources that support the answer. Search snippets alone are not evidence.
+- Search All requires a durable preparation form. Let the user edit optimized search terms, choose Fast/Preferred/Custom, adjust sources and click Search. Never invent a confirmation_id. A completed Search All workflow already includes articles, a grounded summary and citations; use that evidence without fetching the same articles again unless more evidence is needed.
 - Prefer primary and authoritative sources. Compare multiple independent sources when the question benefits from it.
 - Cite factual web claims with Markdown links in the form [descriptive title](https://example.com/page), placed next to the supported claim.
 - Never invent a URL, title, quotation, source, or tool result. Clearly label inference and uncertainty.
@@ -35,6 +36,9 @@ def install_research_agent(repository: AgentRepository) -> None:
             "allowed_tools": [
                 "web.search",
                 "web.fetch",
+                "app.collect_parameters",
+                "app.describe",
+                "capability.describe",
                 "workspace.list",
                 "workspace.stat",
                 "workspace.read",

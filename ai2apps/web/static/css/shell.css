@@ -408,7 +408,9 @@ body {
 }
 
 .desktop-home-remote { width: 100%; margin-top: 24px; padding-top: 20px; border-top: 1px solid #e5e5e5; }
-.desktop-home-remote > strong { font-size: 14px; }
+.desktop-home-remote-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.desktop-home-remote-heading > strong { font-size: 14px; }
+.desktop-home-remote-heading > small { color: #737373; font-size: 11px; }
 [data-home-remote-devices] { margin-top: 12px; font-size: 12px; color: #737373; }
 .desktop-home-remote-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; }
 .desktop-home-remote-copy { min-width: 0; overflow-wrap: anywhere; }
@@ -429,3 +431,17 @@ body {
 .desktop-home-space-dialog p { font-size: 13px; line-height: 1.6; color: #737373; }
 .desktop-home-space-dialog img { max-width: 100%; height: auto; margin: 12px auto; }
 .desktop-home-space-dialog a { overflow-wrap: anywhere; font-size: 12px; color: #525252; }
+
+/* The existing Home QR dialog owns Mobile pairing and post-scan consent. */
+[data-desktop-mobile-agent] [hidden] { display: none !important; }
+.desktop-pair-qr { position: relative; width: 240px; max-width: 100%; margin: 12px auto; }
+.desktop-pair-qr img { display: block; margin: 0; }
+.desktop-pair-scanned { position: absolute; inset: 0; display: grid; place-items: center; color: #16845b; font-size: 96px; font-weight: 700; background: rgba(255,255,255,.90); border-radius: 16px; }
+.desktop-pair-agent { display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 15px; }
+.desktop-pair-agent:has(input:disabled) { color: #a3a3a3; }
+.desktop-pair-agent input { width: 18px; height: 18px; accent-color: #16845b; }
+.desktop-pair-help { font-size: 12px !important; }
+.desktop-pair-actions { display: flex; gap: 12px; justify-content: center; margin-top: 18px; }
+.desktop-pair-actions button { border: 1px solid #d4d4d4; border-radius: 10px; padding: 9px 14px; font: inherit; cursor: pointer; }
+.desktop-pair-actions button:first-child { background: #171717; color: white; }
+.desktop-pair-actions button:disabled { opacity: .4; cursor: default; }

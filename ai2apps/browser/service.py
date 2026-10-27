@@ -9,6 +9,7 @@ from ai2apps.services import (
     ServiceRegistry,
     ServiceRepository,
     ServiceRuntimeMode,
+    ServiceStatus,
     ToolCallContext,
     ToolProviderError,
 )
@@ -273,7 +274,7 @@ def install_browser_service(
         (
             "browser.open",
             "Open browser",
-            "Open the visible managed Chrome browser, optionally at an HTTP(S) URL.",
+            "Open a standalone managed browser when supported. Desktop requires a Profile-bound BrowserTask/App capability and rejects isolated fallback; this Tool cannot reuse native Profile login state.",
             {
                 "type": "object",
                 "properties": {"url": {"type": "string", "format": "uri"}},
@@ -693,6 +694,11 @@ def install_browser_service(
             screenshot,
         ),
     )
+    # This service owns legacy standalone transports only. Native Profile-bound
+    # tasks use their owner's BiDi gateway, not these tools.
+    if getattr(manager.backend, "require_profile_binding", False):
+        repository.set_service_status(service.id, expected_revision=service.revision, status=ServiceStatus.DISABLED)
+        return
     for (
         name,
         title,

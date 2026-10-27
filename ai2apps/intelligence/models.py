@@ -59,7 +59,8 @@ class ChannelInput(BaseModel):
     name: str = Field(min_length=1, max_length=80)
     interests: str = Field(min_length=1, max_length=3000)
     excluded: str = Field(default='', max_length=1000)
-    interval_hours: Literal[0, 1, 6, 12, 24] = 0
+    auto_topics: bool = False
+    interval_hours: Literal[0, 1, 2, 6, 12, 24] = 0
     knowledge_bucket_ids: list[str] | None = Field(default=None, max_length=20)
 
     @field_validator('knowledge_bucket_ids')
@@ -119,7 +120,7 @@ class SourceInput(BaseModel):
     list_agent_generation_id: str = Field(default="", max_length=128)
     article_agent_generation_id: str = Field(default="", max_length=128)
     enabled: bool = True
-    social_interval_hours: Literal[1, 3, 6, 12, 24] = 6
+    social_interval_hours: Literal[0.25, 1, 3, 6, 12, 24] = 6
     xiaohongshu_sort: Literal['latest', 'general'] = 'latest'
     x_sort: Literal['latest', 'top'] = 'latest'
     x_mode: Literal['', 'accounts', 'search', 'lists'] = ''
@@ -176,7 +177,26 @@ class ArticleCover(BaseModel):
     _image = field_validator('image_url')(cover_url)
 
 
+class SourceBlock(BaseModel):
+    model_config = {'extra':'forbid'}
+    type: Literal['paragraph','image']
+    id: str = Field(default='',max_length=80)
+    text: str = Field(default='',max_length=12000)
+    url: str = Field(default='',max_length=4096)
+    alt: str = Field(default='',max_length=300)
+    paragraph_id: str | None = Field(default=None,max_length=80)
+    _url = field_validator('url')(cover_url)
+
+
 class Page(BaseModel):
+    source_blocks: list[SourceBlock] = Field(default_factory=list,max_length=256)
+    extraction_method: str = Field(default='', max_length=80)
+    fallback_reason: str = Field(default='', max_length=200)
+    extracted_chars: int | None = Field(default=None, ge=0)
+    returned_chars: int | None = Field(default=None, ge=0)
+    extraction_limit: int | None = Field(default=None, ge=0)
+    non_content_nodes_removed: int | None = Field(default=None, ge=0)
+    truncated: bool = False
     content_type: Literal['', 'webpage', 'post', 'video', 'audio', 'image', 'document'] = ''
     duration_seconds: int | None = Field(default=None, ge=1, le=604800)
     page_count: int | None = Field(default=None, ge=1, le=100000)
@@ -184,7 +204,8 @@ class Page(BaseModel):
     post_id: str = Field(default='', max_length=100)
     author: str = Field(default='', max_length=200)
     published_at: str = Field(default='', max_length=100)
-    coverage: Literal['', 'description', 'transcript'] = ''
+    coverage: Literal['', 'description', 'transcript', 'preview'] = ''
+    access_reason: str = Field(default='', max_length=80)
     images: list[PageImage] = Field(default_factory=list, max_length=24)
     image_url: str = Field(default='', max_length=4096)
     _image = field_validator('image_url')(cover_url)
@@ -209,25 +230,73 @@ class Candidate(BaseModel):
     _url = field_validator('url')(public_url)
 
 
+class ArticleImagePlacement(BaseModel):
+    model_config = {'extra':'forbid'}
+    after_paragraph: int = Field(ge=0, le=127)
+    image_id: str = Field(pattern=r'^img_[0-9a-f]{24}$')
+
+
+class SourceFocus(BaseModel):
+    model_config = {'extra':'forbid'}
+    evidence_id: int = Field(ge=1)
+    focus: Literal['dedicated','mention','uncertain']
+    subject_quote: str = Field(default='', max_length=400)
+    reason: str = Field(min_length=1, max_length=500)
+    detail_score: int = Field(default=0, ge=0, le=5)
+
+
+class MergeProof(BaseModel):
+    model_config = {'extra':'forbid'}
+    evidence_id: int = Field(ge=1)
+    quote: str = Field(min_length=8, max_length=800)
+
+
+class ArticleChange(BaseModel):
+    model_config = {'extra':'forbid'}
+    operation: Literal['add','replace','remove','move']
+    paragraph_id: str | None = Field(default=None, max_length=80)
+    after_id: str | None = Field(default=None, max_length=80)
+    section_title: str = Field(default='', max_length=100)
+    text: str = Field(default='', max_length=12000)
+    reason: str = Field(min_length=1, max_length=500)
+    proofs: list[MergeProof] = Field(default_factory=list, max_length=8)
+
+
 class ArticleDraft(BaseModel):
+    source_focus: list[SourceFocus] = Field(default_factory=list, max_length=40)
+    subject: str = Field(default='', max_length=200)
+    paragraph_topics: list[str] = Field(default_factory=list, max_length=128)
+    merge_changes: list[ArticleChange] = Field(default_factory=list, max_length=64)
+    image_placements: list[ArticleImagePlacement] = Field(default_factory=list, max_length=6)
+    image_omission_reason: str = Field(default='',max_length=500)
     section_id: str | None = None
     title: str = Field(min_length=1, max_length=200)
     summary: str = Field(min_length=1, max_length=800)
-    body: str = Field(min_length=1, max_length=12000)
+    body: str = Field(default='', max_length=40000)
     evidence_ids: list[int] = Field(min_length=1, max_length=20)
     primary_evidence_id: int | None = Field(default=None, ge=1)
     update_article_id: str | None = None
 
 
 class PlannedEvent(BaseModel):
+    presentation: Literal['event','important_post'] = 'event'
+    importance_reason: str = Field(default='',max_length=500)
+    supporting_evidence_ids: list[int] = Field(default_factory=list,max_length=20)
     title: str = Field(min_length=1, max_length=120)
     section_id: str | None = None
     evidence_ids: list[int] = Field(min_length=1, max_length=20)
     update_article_id: str | None = None
 
 
+class WebpageExclusion(BaseModel):
+    evidence_id: int = Field(ge=1)
+    category: Literal['spam', 'blatant_advertising', 'substantiated_fabrication', 'abusive_smear']
+    reason: str = Field(min_length=20, max_length=600)
+
+
 class EventPlan(BaseModel):
-    events: list[PlannedEvent] = Field(max_length=12)
+    events: list[PlannedEvent] = Field(max_length=120)
+    excluded_pages: list[WebpageExclusion] = Field(default_factory=list, max_length=120)
 
 
 class Digest(BaseModel):

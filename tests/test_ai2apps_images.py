@@ -19,6 +19,7 @@ async def test_image_tool_uses_default_model_and_creates_session_artifact(
     async def fake_image_request(payload, **_kwargs):
         assert payload["model"] == "cloud/ai2apps/openai/gpt-image-2"
         assert payload["prompt"] == "a tiny blue robot"
+        assert _kwargs["cloud_headers"] == {"X-Test-Actor": "local"}
         assert payload["idempotencyKey"].startswith("agent-image-tinv_")
         return {
             "requestId": "req-image-settlement",
@@ -40,6 +41,7 @@ async def test_image_tool_uses_default_model_and_creates_session_artifact(
     monkeypatch.setattr("ai2apps.images.service.request_cloud_image", fake_image_request)
     runtime = PlatformRuntime(PlatformConfig.from_base_path(tmp_path))
     runtime.start()
+    monkeypatch.setattr(runtime, "cloud_ai_authorization_headers", lambda principal: {"X-Test-Actor": principal.actor_user_id})
     ModelManagerStore(tmp_path).put_default_models(
         {"image_generation": "cloud/ai2apps/openai/gpt-image-2"}
     )
@@ -55,6 +57,8 @@ async def test_image_tool_uses_default_model_and_creates_session_artifact(
         context=ToolCallContext(
             caller_id="agent:ai2apps.general-agent",
             session_id=session_id,
+            actor_user_id="local",
+            installation_id="local",
             trace_id="run-image",
             granted_capabilities=frozenset(
                 {"image.generate", "workspace.write", "artifact.create"}

@@ -4,6 +4,9 @@ Packages retain their opaque sandbox and context-only bridge. A host descriptor
 is executable configuration and is accepted only from built-in definitions.
 """
 import base64
+import logging
+import re
+import time
 from importlib import import_module
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -14,6 +17,7 @@ from starlette.responses import Response
 
 
 _APPS = {}
+logging.getLogger(__name__).info('Mobile diagnostic gateway loaded from %s',__file__)
 
 def supported(item):
     return item.get('mobile_renderer') == 'sandbox' or bool(item.get('mobile_gateway'))
@@ -66,8 +70,18 @@ async def api_response(runtime, principal, spec, body):
     if len(content) > 21 * 1024 * 1024:
         raise HTTPException(413, 'App body too large')
     headers = body.get('headers') or {}
-    if not isinstance(headers, dict) or any(key.lower() not in {'content-type','x-intelligence-language','x-ai2apps-app-instance'} for key in headers):
+    if not isinstance(headers, dict) or any(key.lower() not in {'content-type','x-intelligence-language','x-ai2apps-app-instance','x-ai2apps-request-id','x-ai2apps-request-attempt'} for key in headers):
         raise HTTPException(403, 'App header denied')
+    request_id = next((v for k,v in headers.items() if k.lower()=='x-ai2apps-request-id'),'')
+    attempt = next((v for k,v in headers.items() if k.lower()=='x-ai2apps-request-attempt'),'0')
+    if request_id and (not isinstance(request_id,str) or not re.fullmatch(r'[a-f0-9-]{16,64}',request_id)):
+        raise HTTPException(422,'Invalid request identifier')
+    if attempt not in ('0','1','2'):
+        raise HTTPException(422,'Invalid request attempt')
+    logger = logging.getLogger(__name__)
+    started = time.monotonic()
+    if request_id:
+        logger.info('MobileApp request start request_id=%s attempt=%s verb=%s path=%s',request_id,attempt,verb,parsed.path)
     key = (id(runtime), spec['api']['module'], spec['api']['factory'])
     if key not in _APPS:
         async def actor(request: Request):
@@ -81,7 +95,14 @@ async def api_response(runtime, principal, spec, body):
         scope.setdefault('state', {})['mobile_app_principal'] = principal
         await app(scope, receive, send)
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=scoped), base_url='http://app.local', timeout=None) as client:
-        result = await client.request(verb, path, headers=headers, content=content)
+        try:
+            result = await client.request(verb, path, headers=headers, content=content)
+        except Exception as error:
+            if request_id:
+                logger.warning('MobileApp request exception request_id=%s attempt=%s verb=%s path=%s error=%s elapsed_ms=%s',request_id,attempt,verb,parsed.path,type(error).__name__,round((time.monotonic()-started)*1000))
+            raise
+    if request_id:
+        logger.info('MobileApp request end request_id=%s attempt=%s verb=%s path=%s status=%s content_type=%s bytes=%s elapsed_ms=%s',request_id,attempt,verb,parsed.path,result.status_code,result.headers.get('content-type',''),len(result.content),round((time.monotonic()-started)*1000))
     return result
 
 

@@ -5,7 +5,7 @@ function setup(){
  const record={token:'list-token',instanceId:'instance',renderer:'trusted',loaded:true,frame:{hidden:false,src:'https://device/mobile/todo#ai2apps-mount=list-token&ai2apps-instance=instance',classList:{add(){}},contentWindow:{postMessage(m){messages.push(m)}}}};
  const c={URL,URLSearchParams,activeAppId:'ai2apps.todo',frames:new Map([['ai2apps.todo',record]]),location:{origin:'https://device',href:'https://device/mobile#app=ai2apps.todo',hash:'#app=ai2apps.todo'},
  window:{addEventListener:(n,f)=>events[n]=f},crypto:{randomUUID:()=> 'detail-token'},document:{documentElement:{lang:'zh'},createElement:()=>({children:[],append(...nodes){this.children.push(...nodes)},setAttribute(){},hidden:false,contentWindow:{mobileTodoCanLeave:()=>true,postMessage(m){messages.push(m)}},remove(){this.removed=true}})},frameHost:{appendChild:f=>children.push(f)},history:{state:{appId:'ai2apps.todo'},pushState(s){this.state=s},back(){this.backCalled=true}},loading:{hidden:true},errorView:{hidden:true},stage:{hidden:false},showToast(){},openApp(){throw Error('must not reopen App')},showHome(){}};
- vm.createContext(c);
+ c.pendingAppNavigation=null;vm.createContext(c);
  vm.runInContext(source.slice(source.indexOf('    // Todo-only'),source.indexOf('    function sendBridgeResponse(')),c);
  const a=source.indexOf("    window.addEventListener('popstate',");vm.runInContext(source.slice(a,source.indexOf('    async function boot()',a)),c);
  const send=(frame,token,type,extra={})=>events.message({origin:'https://device',source:frame.contentWindow,data:{type,mountToken:token,instanceId:'instance',...extra}});
@@ -18,7 +18,7 @@ test('Shell owns detail history and switches preloaded frames on back/forward',(
  f.send(detail,'detail-token','ai2apps.todo.detail-ready');assert.equal(detail.hidden,false);assert.equal(f.record.frame.hidden,true);assert.equal(f.c.history.state.todoDetail,true);
  f.events.popstate({state:{appId:'ai2apps.todo'}});assert.equal(detail.hidden,true);assert.equal(f.record.frame.hidden,false);assert.equal(f.children.length,1);
  f.events.popstate({state:{appId:'ai2apps.todo',todoDetail:true}});assert.equal(detail.hidden,false);
- f.send(detail,'detail-token','ai2apps.todo.changed');assert.equal(f.messages[0].type,'ai2apps.todo.refresh');
+ f.send(detail,'detail-token','ai2apps.todo.changed');assert.equal(f.messages.at(-1).type,'ai2apps.todo.refresh');
 });
 test('foreign messages and rejected unsaved changes cannot switch frames',()=>{
  const f=setup();f.send(f.record.frame,'wrong','ai2apps.todo.open-detail');assert.equal(f.children.length,0);

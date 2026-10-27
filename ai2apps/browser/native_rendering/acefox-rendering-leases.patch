@@ -1,0 +1,327 @@
+--- a/widget/nsIWidget.h
++++ b/widget/nsIWidget.h
+@@ -842,6 +842,10 @@
+   /** Ask whether the widget is fully occluded */
+   bool IsFullyOccluded() const { return mIsFullyOccluded; }
+ 
++  // Privileged, window-scoped automation lease. Unsupported platforms fail closed.
++  virtual int32_t AI2AppsRenderingLeaseCount() const { return -1; }
++  virtual bool AdjustAI2AppsRenderingLease(int32_t aDelta) { return false; }
++
+   /**
+    * Enable or disable this Widget
+    *
+--- a/widget/cocoa/nsCocoaWindow.h
++++ b/widget/cocoa/nsCocoaWindow.h
+@@ -468,6 +468,10 @@
+ 
+   void DispatchSizeModeEvent();
+   void DispatchOcclusionEvent();
++  int32_t AI2AppsRenderingLeaseCount() const override {
++    return mAI2AppsRenderingLeaseCount;
++  }
++  bool AdjustAI2AppsRenderingLease(int32_t aDelta) override;
+ 
+   // be notified that a some form of drag event needs to go into Gecko
+   bool DragEvent(unsigned int aMessage, mozilla::gfx::Point aMouseGlobal,
+@@ -655,6 +659,7 @@
+   // window during the fullscreen transition animation because only focused
+   // contexts are permitted to enter DOM fullscreen.
+   int mIgnoreOcclusionCount;
++  int32_t mAI2AppsRenderingLeaseCount = 0;
+ 
+   // Set to true when a native fullscreen transition is initiated -- either to
+   // or from fullscreen -- and set to false when it is complete. During this
+--- a/widget/cocoa/nsCocoaWindow.mm
++++ b/widget/cocoa/nsCocoaWindow.mm
+@@ -6999,6 +6999,18 @@
+   }
+ }
+ 
++bool nsCocoaWindow::AdjustAI2AppsRenderingLease(int32_t aDelta) {
++  if (!mWindow || (aDelta != 1 && aDelta != -1) ||
++      mAI2AppsRenderingLeaseCount + aDelta < 0 ||
++      mAI2AppsRenderingLeaseCount + aDelta > 1024) {
++    return false;
++  }
++  mAI2AppsRenderingLeaseCount += aDelta;
++  // Recompute immediately on both edges, without ordering/focusing the window.
++  DispatchOcclusionEvent();
++  return true;
++}
++
+ void nsCocoaWindow::DispatchOcclusionEvent() {
+   if (!mWindow) {
+     return;
+@@ -7014,6 +7026,7 @@
+   // Dedicated automation hosts keep rendering while the desktop is locked.
+   bool newOcclusionState =
+       !isAI2AppsAgent && !isAI2AppsBackgroundHost &&
++      mAI2AppsRenderingLeaseCount == 0 &&
+       !(mHasStartedNativeFullscreen ||
+         ([mWindow occlusionState] & NSWindowOcclusionStateVisible));
+ 
+--- a/dom/interfaces/base/nsIDOMWindowUtils.idl
++++ b/dom/interfaces/base/nsIDOMWindowUtils.idl
+@@ -838,6 +838,10 @@
+ 
+   readonly attribute boolean isWindowFullyOccluded;
+ 
++  // Chrome-only native automation primitive; protocol owns expiry and identity.
++  readonly attribute long ai2AppsRenderingLeaseCount;
++  unsigned long adjustAI2AppsRenderingLease(in long delta);
++
+   readonly attribute boolean isCompositorPaused;
+ 
+   /**
+--- a/dom/base/nsDOMWindowUtils.cpp
++++ b/dom/base/nsDOMWindowUtils.cpp
+@@ -1488,6 +1488,33 @@
+ }
+ 
+ NS_IMETHODIMP
++nsDOMWindowUtils::GetAi2AppsRenderingLeaseCount(int32_t* aResult) {
++  NS_ENSURE_ARG_POINTER(aResult);
++  *aResult = -1;
++  if (nsIWidget* widget = GetWidget()) {
++    if (nsIWidget* top = widget->GetTopLevelWidget()) {
++      *aResult = top->AI2AppsRenderingLeaseCount();
++    }
++  }
++  return NS_OK;
++}
++
++NS_IMETHODIMP
++nsDOMWindowUtils::AdjustAI2AppsRenderingLease(int32_t aDelta, uint32_t* aResult) {
++  NS_ENSURE_ARG_POINTER(aResult);
++  if (aDelta != 1 && aDelta != -1) return NS_ERROR_INVALID_ARG;
++  if (nsIWidget* widget = GetWidget()) {
++    if (nsIWidget* top = widget->GetTopLevelWidget()) {
++      if (top->AdjustAI2AppsRenderingLease(aDelta)) {
++        *aResult = top->AI2AppsRenderingLeaseCount();
++        return NS_OK;
++      }
++    }
++  }
++  return NS_ERROR_NOT_AVAILABLE;
++}
++
++NS_IMETHODIMP
+ nsDOMWindowUtils::GetIsWindowFullyOccluded(bool* aResult) {
+   NS_ENSURE_ARG_POINTER(aResult);
+   *aResult = false;
+--- a/remote/webdriver-bidi/modules/root/browsingContext.sys.mjs
++++ b/remote/webdriver-bidi/modules/root/browsingContext.sys.mjs
+@@ -3,6 +3,8 @@
+  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ 
+ import { RootBiDiModule } from "chrome://remote/content/webdriver-bidi/modules/RootBiDiModule.sys.mjs";
++
++import { setTimeout, clearTimeout } from "resource://gre/modules/Timer.sys.mjs";
+ 
+ const lazy = {};
+ 
+@@ -210,6 +212,7 @@
+  */
+ 
+ class BrowsingContextModule extends RootBiDiModule {
++  #renderingLeases = new Map();
+   #blockedCreateCommands;
+   #contextListener;
+   #navigationListener;
+@@ -271,6 +274,7 @@
+   }
+ 
+   destroy() {
++    for (const id of [...this.#renderingLeases.keys()]) this.#dropRenderingLease(id);
+     this.#blockedCreateCommands = new WeakMap();
+ 
+     this.#contextListener.off("attached", this.#onContextAttached);
+@@ -1942,6 +1946,107 @@
+     );
+   }
+ 
++  // Native resource conditions only: these commands confer no browsing authority.
++  #renderingWindow(contextId) {
++    const role = Services.env.get("AI2APPS_BROWSER_ROLE");
++    if (!["shell", "agent"].includes(role)) {
++      throw new lazy.error.UnsupportedOperationError("AI2Apps rendering leases unavailable");
++    }
++    const context = this._getNavigable(contextId);
++    if (context.parent) throw new lazy.error.InvalidArgumentError("Top-level context required");
++    const window = context.topChromeWindow;
++    const utils = window?.windowUtils;
++    if (!utils || typeof utils.adjustAI2AppsRenderingLease !== "function" ||
++        !Number.isInteger(utils.ai2AppsRenderingLeaseCount) || utils.ai2AppsRenderingLeaseCount < 0) {
++      throw new lazy.error.UnsupportedOperationError("Native window leases unavailable");
++    }
++    return window;
++  }
++
++  async getRenderingLeaseCapabilities({ context }) {
++    this.#renderingWindow(context);
++    return { version: 1, scope: "window", purposes: ["layout", "capture", "input"],
++      maxTtlMs: 60000, foregroundActivation: false,
++      permanentSafeguard: Services.env.get("AI2APPS_BACKGROUND_HOST") === "1" ||
++        Services.env.get("AI2APPS_BROWSER_ROLE") === "agent",
++      disconnectCleanup: "connection-close-and-ttl", sessionEndCleanup: true };
++  }
++
++  async acquireRenderingLease({ context, purpose, holder, ttlMs = 30000 }) {
++    lazy.assert.string(holder, "Expected a holder identity");
++    if (!holder || holder.length > 128 || !["layout", "capture", "input"].includes(purpose) ||
++        !Number.isInteger(ttlMs) || ttlMs < 100 || ttlMs > 60000) {
++      throw new lazy.error.InvalidArgumentError("Invalid rendering lease");
++    }
++    const window = this.#renderingWindow(context);
++    const lease = Services.uuid.generateUUID().toString();
++    window.windowUtils.adjustAI2AppsRenderingLease(1);
++    if (this.#renderingLeases.size >= 1024) {
++      window.windowUtils.adjustAI2AppsRenderingLease(-1);
++      throw new lazy.error.UnsupportedOperationError("Rendering lease limit reached");
++    }
++    const entry = { context, browsingContext: this._getNavigable(context), purpose, holder, window, expiresAt: Date.now() + ttlMs };
++    try {
++      entry.timer = setTimeout(() => this.#dropRenderingLease(lease), ttlMs);
++      this.#renderingLeases.set(lease, entry);
++      this.#contextListener.startListening();
++    } catch (error) {
++      clearTimeout(entry.timer);
++      this.#renderingLeases.delete(lease);
++      window.windowUtils.adjustAI2AppsRenderingLease(-1);
++      throw error;
++    }
++    lazy.logger.debug(`Rendering lease acquired: context=${context} purpose=${purpose} scope=window`);
++    return { lease, context, purpose, holder, expiresAt: entry.expiresAt,
++      scope: "window", windowRefCount: window.windowUtils.ai2AppsRenderingLeaseCount };
++  }
++
++  #dropRenderingLease(lease) {
++    const entry = this.#renderingLeases.get(lease);
++    if (!entry) return false;
++    this.#renderingLeases.delete(lease);
++    lazy.logger.debug(`Rendering lease released: context=${entry.context} purpose=${entry.purpose} scope=window`);
++    clearTimeout(entry.timer);
++    if (!this.#renderingLeases.size &&
++        !this.#subscribedEvents.has("browsingContext.contextCreated") &&
++        !this.#subscribedEvents.has("browsingContext.contextDestroyed")) {
++      this.#contextListener.stopListening();
++    }
++    try {
++      if (!entry.window.closed) entry.window.windowUtils.adjustAI2AppsRenderingLease(-1);
++    } catch (error) {
++      lazy.logger.debug("Rendering lease window already destroyed");
++    }
++    return true;
++  }
++
++  async getRenderingLeaseState({ context }) {
++    const window = this.#renderingWindow(context);
++    return { scope: "window", windowRefCount: window.windowUtils.ai2AppsRenderingLeaseCount,
++      contextLeaseCount: [...this.#renderingLeases.values()].filter(e => e.context === context).length };
++  }
++
++  async renewRenderingLease({ context, lease }) {
++    const entry = this.#renderingLeases.get(lease);
++    if (!entry || entry.context !== context) {
++      throw new lazy.error.InvalidArgumentError("Rendering lease expired or context mismatch");
++    }
++    clearTimeout(entry.timer);
++    entry.expiresAt = Date.now() + 60000;
++    entry.timer = setTimeout(() => this.#dropRenderingLease(lease), 60000);
++    return { expiresAt: entry.expiresAt };
++  }
++
++  async releaseRenderingLease({ context, lease }) {
++    lazy.assert.string(lease, "Expected a lease identity");
++    const entry = this.#renderingLeases.get(lease);
++    if (entry && entry.context !== context) {
++      throw new lazy.error.InvalidArgumentError("Rendering lease context mismatch");
++    }
++    // Idempotent release also works after context destruction or expiry.
++    return { released: this.#dropRenderingLease(lease) };
++  }
++
+   async hideBrowserWindow(options = {}) {
+     return this.#setBrowserWindowVisibility(options, false);
+   }
+@@ -2277,6 +2382,9 @@
+ 
+   #onContextDiscarded = async (eventName, data = {}) => {
+     const { browsingContext, why } = data;
++    for (const [id, entry] of this.#renderingLeases) {
++      if (browsingContext === entry.browsingContext) this.#dropRenderingLease(id);
++    }
+ 
+     // In case the newly created browsing context got discarded immediately resolve pending promise.
+     if (this.#waitForContextCreatedEvent.has(browsingContext)) {
+@@ -2584,7 +2692,7 @@
+       this.#subscribedEvents.has("browsingContext.contextCreated") ||
+       this.#subscribedEvents.has("browsingContext.contextDestroyed");
+ 
+-    if (!hasContextEvent) {
++    if (!hasContextEvent && !this.#renderingLeases.size) {
+       this.#contextListener.stopListening();
+     }
+   }
+--- a/remote/webdriver-bidi/WebDriverBiDiConnection.sys.mjs
++++ b/remote/webdriver-bidi/WebDriverBiDiConnection.sys.mjs
+@@ -24,6 +24,8 @@
+ 
+ export class WebDriverBiDiConnection extends WebSocketConnection {
+   #sessionConfigFlags;
++  #renderingLeases = new Map();
++  #renderingLeaseConnectionClosed = false;
+ 
+   /**
+    * @param {WebSocket} webSocket
+@@ -160,6 +162,14 @@
+    * Called by the `transport` when the connection is closed.
+    */
+   onConnectionClose() {
++    this.#renderingLeaseConnectionClosed = true;
++    // Connections can share a session: release only leases issued to this socket.
++    const session = this.session;
++    for (const [lease, { context }] of this.#renderingLeases) {
++      session?.execute("browsingContext", "releaseRenderingLease", { context, lease })
++        .catch(() => lazy.logger.debug("Disconnected rendering lease awaits TTL cleanup"));
++    }
++    this.#renderingLeases.clear();
+     this.unregisterSession();
+ 
+     super.onConnectionClose();
+@@ -235,7 +245,33 @@
+         }
+ 
+         // Finally, instruct the session to execute the command
+-        result = await this.session.execute(module, command, params);
++        for (const [lease, entry] of this.#renderingLeases) {
++          if (entry.expiresAt <= Date.now()) this.#renderingLeases.delete(lease);
++        }
++        const leaseCommand = module === "browsingContext" &&
++          ["releaseRenderingLease", "renewRenderingLease"].includes(command);
++        if (leaseCommand && !this.#renderingLeases.has(params.lease)) {
++          if (command === "releaseRenderingLease") {
++            result = { released: false };
++          } else {
++            throw new lazy.error.InvalidArgumentError("Rendering lease not owned by connection");
++          }
++        } else {
++          const session = this.session;
++          result = await session.execute(module, command, params);
++          if (module === "browsingContext" && command === "acquireRenderingLease") {
++            if (this.#renderingLeaseConnectionClosed) {
++              await session.execute(module, "releaseRenderingLease", {
++                context: params.context, lease: result.lease });
++            } else {
++              this.#renderingLeases.set(result.lease, { context: params.context, expiresAt: result.expiresAt });
++            }
++          } else if (leaseCommand && command === "releaseRenderingLease") {
++            this.#renderingLeases.delete(params.lease);
++          } else if (leaseCommand && command === "renewRenderingLease") {
++            this.#renderingLeases.get(params.lease).expiresAt = result.expiresAt;
++          }
++        }
+       }
+ 
+       this.sendResult(id, result);

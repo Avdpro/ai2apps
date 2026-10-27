@@ -1,0 +1,73 @@
+{
+  "channel": "AI进展",
+  "model": "cloud/deepseek/deepseek-flash",
+  "timezone": "Asia/Shanghai",
+  "after_run_id": "5013feca208e43e69d8e1746a4714417",
+  "after_status": "completed",
+  "after_read": 10,
+  "after_changed": 3,
+  "after_elapsed_seconds": 170.1634,
+  "after_tasks": [
+    {
+      "kind": "intelligence.refresh",
+      "status": "completed"
+    },
+    {
+      "kind": "intelligence.derive.knowledge",
+      "status": "completed"
+    }
+  ],
+  "scope": "Intelligence model stage usage logs; completion includes reasoning, not added twice. Not billing. Different evidence/workload across runs. Historical total excludes later derived calls, so is conservative.",
+  "before": {
+    "start": "2026-10-21 00:33:52",
+    "end_exclusive": "2026-10-21 00:40:56",
+    "articles": 15,
+    "stages": {
+      "editorial": {
+        "calls": 1,
+        "input": 7183,
+        "output": 3256,
+        "reasoning_in_output": 2627
+      },
+      "event_plan": {
+        "calls": 3,
+        "input": 329304,
+        "output": 32845,
+        "reasoning_in_output": 31177
+      },
+      "article": {
+        "calls": 15,
+        "input": 1468735,
+        "output": 25052,
+        "reasoning_in_output": 18671
+      }
+    },
+    "total_tokens": 1866375
+  },
+  "after": {
+    "start": "2026-10-21 01:55:36",
+    "end_exclusive": "2026-10-21 01:58:27",
+    "articles": 3,
+    "stages": {
+      "editorial": {
+        "calls": 4,
+        "input": 9210,
+        "output": 5477,
+        "reasoning_in_output": 4904
+      },
+      "event_plan": {
+        "calls": 1,
+        "input": 17486,
+        "output": 2119,
+        "reasoning_in_output": 1917
+      },
+      "article": {
+        "calls": 3,
+        "input": 6226,
+        "output": 4273,
+        "reasoning_in_output": 2888
+      }
+    },
+    "total_tokens": 44791
+  }
+}

@@ -15,7 +15,7 @@ from urllib.parse import urlsplit
 from .action_journal import BrowserActionJournal
 from .background_bidi import BackgroundBiDi
 from .background_executor import BackgroundExecutor
-from .background_page import BackgroundPage
+from .background_page import BackgroundPage, NativeInputNotDispatched
 from .profiles import BrowserProfileRepository
 from .shell_window import shell_browser_profile_key, shell_browser_window_broker
 from .tasks import BrowserTaskRepository
@@ -36,6 +36,7 @@ class BackgroundBrowserRunner:
         self._stop = asyncio.Event()
         self._loop_task = None
         self.worker = 'local-background'
+        self._last_lease_renewal = 0
 
     async def startup(self):
         if self._loop_task is not None:
@@ -47,7 +48,9 @@ class BackgroundBrowserRunner:
             uncertain=[dict(r) for r in c.execute("SELECT run_id,interaction_id FROM browser_action_executions WHERE state='uncertain'")]
         for item in uncertain:
             try:
-                self.deliver_failure(item['run_id'],item['interaction_id'],reason='browser_process_interrupted')
+                run=self.runtime.agents.get_run(item['run_id'])
+                readback=await self.uncertain_readback(run)
+                self.deliver_failure(item['run_id'],item['interaction_id'],reason='browser_process_interrupted',readback=readback)
                 for owner in self.tasks.owners():
                     for task in self.tasks.list(owner):
                         if task['run_id']==item['run_id'] and task['status']=='interrupted':
@@ -179,6 +182,7 @@ class BackgroundBrowserRunner:
             from .processing_pool import InputLock
             if not hasattr(self,'input_locks'):self.input_locks={}
             page.input_lock=self.input_locks.setdefault((owner,profile_key),InputLock())
+            page.run_id = run.id
             page.owner = owner
             page.database = self.runtime.database
             page.profile_key = profile_key
@@ -250,11 +254,16 @@ class BackgroundBrowserRunner:
         from ai2apps.agent_builder.compiler import compile_source
         from ai2apps.agent_builder.service import create_ir_run
         for owner in self.tasks.owners():
+            from .task_monitor import reconcile_browser_tasks
+            reconcile_browser_tasks(self.runtime, self.tasks, owner)
             for _ in range(16):
                 task = self.tasks.claim(owner, self.worker)
                 if task is None:
                     break
                 try:
+                    if task['run_id']:
+                        self.tasks.update(owner, task['id'], status='running')
+                        continue
                     if not task['session_id']:
                         raise ValueError('Task has no authenticated session; enqueue it again')
                     program, caller = self.tasks.program(owner, task['id'])
@@ -273,7 +282,8 @@ class BackgroundBrowserRunner:
                                       'parallel_limit': task.get('browser_context',{}).get('parallel_limit',1),
                                       'model_profile': task.get('browser_context', {}).get('model_profile', 'normal'),
                                       'retain_pages_reason': task.get('browser_context', {}).get('retain_pages_reason', ''),
-                                      'reuse_scope': task.get('browser_context', {}).get('reuse_scope', '')},
+                                      'reuse_scope': task.get('browser_context', {}).get('reuse_scope', ''),
+                                      **{k:v for k,v in task.get('browser_context',{}).items() if k in ('task_deadline_at','recovery_budget')}},
                                   caller_app_id=caller, owner_user_id=owner, idempotency_key=task['id'])
                 except Exception as error:
                     logger.exception('Could not start queued browser task %s', task['id'])
@@ -303,10 +313,15 @@ class BackgroundBrowserRunner:
                 await connection.close()
 
     def renew_leases(self):
-        for owner in self.tasks.owners():
-            for task in self.tasks.list(owner):
-                if task['worker'] == self.worker and task['status'] in ('starting', 'running', 'waiting_input'):
-                    self.tasks.update(owner, task['id'], lease_until=time.time() + 90)
+        now = time.monotonic()
+        if now - self._last_lease_renewal < 15:
+            return
+        # Renewal is not a visible event. Avoid decoding 200 historical tasks
+        # and opening two more transactions for every active child on each wake.
+        with self.runtime.database.transaction(write=True) as db:
+            db.execute("UPDATE browser_tasks SET lease_until=? WHERE worker=? AND status IN ('starting','running','waiting_input')",
+                       (time.time() + 90, self.worker))
+        self._last_lease_renewal = now
 
     def pending(self):
         with self.runtime.database.transaction() as c:
@@ -315,13 +330,36 @@ class BackgroundBrowserRunner:
                 WHERE i.status='pending' AND r.status='waiting_input'
                 AND json_extract(i.request_json,'$.control')='browser_bidi_action'
                 AND json_extract(r.input_json,'$.parameters.execution_owner')='local'
+                AND NOT EXISTS(SELECT 1 FROM browser_tasks t WHERE t.run_id=r.id
+                    AND (t.status NOT IN ('starting','running','waiting_input')
+                         OR COALESCE(json_extract(t.browser_context_json,'$.admission_paused'),0)=1))
                 ORDER BY i.created_at LIMIT 100""").fetchall()
         return [dict(row) for row in rows]
 
-    def deliver_failure(self, run_id, interaction_id, *, reason, error=None):
+    async def uncertain_readback(self,run,page=None):
+        """Observe only the original bound context; never create a recovery tab."""
+        context=getattr(run,'input',{}).get('parameters',{}).get('browser_context') or {}
+        if page is None and not context.get('bidi_context'):
+            return {'status':'unavailable','reason':'original_context_not_bound'}
+        try:
+            async def observe():
+                bound=page or await self.page_for(run)
+                await bound.validate_context()
+                observed=await bound.snapshot()
+                if hasattr(bound,'input_diagnostics') and bound.input_diagnostics.attempted:
+                    bound.input_diagnostics.readback='observed'
+                return observed
+            observed=await asyncio.wait_for(observe(),timeout=10)
+            return {'status':'observed','observation':observed,'verified_effect':False}
+        except Exception as error:
+            return {'status':'unavailable','reason':type(error).__name__}
+
+    def deliver_failure(self, run_id, interaction_id, *, reason, error=None, readback=None, input_dispatch=None):
         record=self.journal.lookup(interaction_id)
         evidence={'reason':reason,'message':'浏览器命令失败；已发送的操作可能生效，请先检查当前页面再决定恢复，勿盲目重复点击或提交。',
             'action_outcome_unknown':bool(record),'automatic_replay_allowed':False}
+        if readback is not None:evidence['recovery_readback']=readback
+        if input_dispatch is not None:evidence['input_dispatch']=input_dispatch
         if error is not None:
             evidence['error_type']=type(error).__name__
             if getattr(error,'method',None):
@@ -333,12 +371,53 @@ class BackgroundBrowserRunner:
         if record:
             response=self.journal.report_failure(interaction_id,response)
         run=self.runtime.agents.get_run(run_id)
+        from ai2apps.agent_builder.execution_policy import resolve_policy
+        if not resolve_policy((getattr(run,'input',{}).get('parameters',{}).get('ir') or {}).get('execution_policy'))['allow_user_intervention']:
+            response['evidence']['message']='Browser Task failed; no user intervention requested'
+            response['evidence']['requires_user']=False
         status=getattr(getattr(run,'status',None),'value',None)
         if status in ('completed','failed','cancelled'):return
         self.runtime.agents.respond_interaction(run_id,interaction_id,response=response,response_id='local-browser:'+interaction_id)
         self.runtime.agent_runtime.wake()
 
+    def execution_budget(self, run, policy=None):
+        from .execution_budget import TaskExecutionBudget
+        from ai2apps.agent_builder.execution_policy import resolve_policy
+        parameters=run.input.get('parameters',{})
+        effective=resolve_policy(policy or (parameters.get('ir') or {}).get('execution_policy'))
+        context=parameters.get('browser_context') or {}
+        deadline=context.get('task_deadline_at')
+        if effective['timeout_seconds'] is not None:
+            own=run.created_at.timestamp()+effective['timeout_seconds']
+            deadline=own if deadline is None else min(deadline,own)
+        def checkpoint(state):
+            with self.runtime.database.transaction(write=True) as c:
+                row=c.execute('SELECT input_json FROM agent_runs WHERE id=?',(run.id,)).fetchone()
+                current=json.loads(row['input_json'])
+                ctx=current['parameters'].setdefault('browser_context',{})
+                ctx['recovery_budget']=state
+                c.execute('UPDATE agent_runs SET input_json=? WHERE id=?',(json.dumps(current),run.id))
+                task_id=parameters.get('browser_task_id')
+                if task_id:
+                    row=c.execute('SELECT browser_context_json FROM browser_tasks WHERE owner=? AND id=?',(parameters['owner_user_id'],task_id)).fetchone()
+                    if row:
+                        task_context=json.loads(row['browser_context_json']);task_context['recovery_budget']=state
+                        c.execute('UPDATE browser_tasks SET browser_context_json=? WHERE owner=? AND id=?',(json.dumps(task_context),parameters['owner_user_id'],task_id))
+        return TaskExecutionBudget(effective,deadline_at=deadline,state=context.get('recovery_budget'),checkpoint=checkpoint)
+
     async def execute_interaction(self, item):
+        run=self.runtime.agents.get_run(item['run_id'])
+        budget=self.execution_budget(run)
+        try:
+            async with asyncio.timeout(budget.remaining()):
+                await self._execute_interaction(item)
+        except TimeoutError as error:
+            page=self.pages.get(run.id)
+            diagnostics=getattr(page,'input_diagnostics',None)
+            self.deliver_failure(run.id,item['id'],reason='browser_task_timeout',error=error,
+                input_dispatch=diagnostics.snapshot() if diagnostics else None)
+
+    async def _execute_interaction(self, item):
         run = self.runtime.agents.get_run(item['run_id'])
         interaction = next(value for value in self.runtime.agents.list_interactions(run.id) if value.id == item['id'])
         owner = run.input['parameters']['owner_user_id']
@@ -357,6 +436,7 @@ class BackgroundBrowserRunner:
             api_only = interaction.request.get('step', {}).get('operation') == 'search.api'
             if not api_only:
                 page = await self.page_for(run)
+                page.execution_budget=self.execution_budget(run,interaction.request.get('execution_policy'))
                 initial_contexts = {item['context'] for item in (await page.connection.command(
                     'browsingContext.getTree', {'maxDepth': 0})).get('contexts', [])}
             record, admitted = self.journal.claim(run_id=run.id, interaction_id=interaction.id,
@@ -365,23 +445,51 @@ class BackgroundBrowserRunner:
                 if record['state'] == 'completed':
                     response = json.loads(record['response_json'])
                 else:
-                    self.deliver_failure(run.id,interaction.id,reason='browser_action_outcome_unknown')
-                    return
+                    observe=getattr(self.executor,'recover_observation',None)
+                    response=await observe(interaction.request,run) if observe else None
+                    if response is None:
+                        self.deliver_failure(run.id,interaction.id,reason='browser_action_outcome_unknown',readback=await self.uncertain_readback(run,page))
+                        return
+                    response=self.journal.complete_observation(interaction.id,response)
             else:
+                if page is not None and hasattr(page,'reset_input_diagnostics'):
+                    page.reset_input_diagnostics()
                 response = await self.executor.execute(page, interaction.request, run)
-                self.journal.complete(interaction.id, response)
+                if page is not None and hasattr(page,'input_diagnostics'):
+                    response.setdefault('evidence',{})['input_dispatch']=page.input_diagnostics.snapshot()
+                response = self.journal.complete(interaction.id, response)
             self.runtime.agents.respond_interaction(run.id, interaction.id, response=response,
                                                     response_id='local-browser:' + interaction.id)
             self.runtime.agent_runtime.wake()
         except asyncio.CancelledError:
             raise
+        except NativeInputNotDispatched:
+            # Verified pre-dispatch failures are ordinary durable responses,
+            # not an uncertain sent action. Do not re-admit or replay them.
+            from .background_executor import native_input_assistance
+            from ai2apps.agent_builder.execution_policy import resolve_policy
+            policy=resolve_policy(interaction.request.get('execution_policy') or
+                (run.input.get('parameters',{}).get('ir') or {}).get('execution_policy'))
+            response={'outcome':'needs_user' if policy['allow_user_intervention'] else 'failed',
+                'evidence':{'reason':'native_input_not_dispatched','input_dispatched':False,
+                    'action_outcome_unknown':False,'automatic_replay_allowed':False,
+                    'assistance_kind':'unsupported_interaction',
+                    'assistance_message':native_input_assistance(interaction.request.get('step',{}))}}
+            if page is not None and hasattr(page,'input_diagnostics'):
+                response['evidence']['input_dispatch']=page.input_diagnostics.snapshot()
+            response=self.journal.complete(interaction.id,response)
+            self.runtime.agents.respond_interaction(run.id,interaction.id,response=response,
+                response_id='local-browser:'+interaction.id)
+            self.runtime.agent_runtime.wake()
         except Exception as error:
             # Feed the failure to the Agent's normal transitions. Never replay
             # the command merely because its response was lost.
             logger.exception('Background browser action failed for run %s',run.id)
             try:
                 self.deliver_failure(run.id,interaction.id,
-                    reason='browser_command_timeout' if isinstance(error,TimeoutError) else 'browser_command_failed',error=error)
+                    reason='browser_command_timeout' if isinstance(error,TimeoutError) else 'browser_command_failed',error=error,
+                    readback=await self.uncertain_readback(run,page),
+                    input_dispatch=page.input_diagnostics.snapshot() if page is not None and hasattr(page,'input_diagnostics') else None)
             except Exception:
                 logger.exception('Browser failure delivery failed for run %s',run.id)
                 # Failure to deliver must also terminate visibly, not wait forever.
@@ -414,9 +522,9 @@ class BackgroundBrowserRunner:
                         with suppress(Exception): task.result()
                         del self._active[key]
                 try:
-                    self.renew_leases()
+                    await asyncio.to_thread(self.renew_leases)
                     self.dispatch_queue()
-                    for item in self.pending():
+                    for item in await asyncio.to_thread(self.pending):
                         if item['run_id'] not in self._active:
                             self._active[item['run_id']] = asyncio.create_task(self.execute_interaction(item))
                     for run_id, page in list(self.pages.items()):

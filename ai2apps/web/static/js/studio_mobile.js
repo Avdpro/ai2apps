@@ -73,6 +73,10 @@
         if(!sidebar||!workspace||!output) return;
         if(isImagine)mountOutputCollapse(output,media);
         sidebar.dataset.smPanel='library'; workspace.dataset.smPanel='create';output.dataset.smPanel='output';
+        function shellNavigation(action,id){
+            if(!media.matches)return false;
+            try{const hash=new URLSearchParams(location.hash.slice(1));return window.parent.ai2appsMobileStudioNavigation?.(window,hash.get('ai2apps-mount'),hash.get('ai2apps-instance'),action,id,root.dataset.appId)===true;}catch(_){return false;}
+        }
         let page='library',returnPage='library',bypass=false;
         const header=root.querySelector('.studio-header');
         const back=document.createElement('button'),out=document.createElement('button');
@@ -80,7 +84,11 @@
         back.textContent='‹ '+t.back;out.textContent=t.output;out.classList.add('sm-output');
         header.prepend(back);header.append(out);
         function go(next){page=next;root.dataset.smPage=next;back.hidden=next==='library';out.hidden=next==='output';if(isImagine)app.mobileSurface=next; if(next==='library')app.leftView='mini-apps';}
-        back.onclick=()=>go(page==='output'?returnPage:'library');
+        window.ai2appsRestoreStudioSurface=surface=>{
+            if(!root.isConnected||!['library','create'].includes(surface))return false;
+            go(surface);return true;
+        };
+        back.onclick=()=>{if(page==='create'&&shellNavigation('back'))return;go(page==='output'?returnPage:'library');};
         function showOutput(){if(page!=='output')returnPage=page;go('output');}
         out.onclick=showOutput;
         if(isImagine){
@@ -146,10 +154,44 @@
             if(app.$nextTick)app.$nextTick(showOutput);else showOutput();
         });
         const select=app.selectMiniApp;
+        const isVoice=root.dataset.appId==='ai2apps.readaloud';
+        let deferredVoiceId=null;
+        if(isVoice){
+            app.showMobileMiniAppShell=()=>{
+                if(!media.matches)return;
+                go('create');
+                if(app.$nextTick)app.$nextTick(()=>shellNavigation('ready'));else shellNavigation('ready');
+            };
+            const showLeftView=app.showLeftView;
+            app.showLeftView=async function(view){
+                if(media.matches && view==='assets' && deferredVoiceId){
+                    const id=deferredVoiceId;deferredVoiceId=null;
+                    // Preparing the retained drop target must not navigate the list.
+                    const reveal=this.showMobileMiniAppShell;this.showMobileMiniAppShell=()=>{};
+                    try{await select.call(this,id);}finally{this.showMobileMiniAppShell=reveal;}
+                }
+                return showLeftView.call(this,view);
+            };
+        }
         app.selectMiniApp=async function(id){
-            if(media.matches && this.currentMiniApp?.id===id){go('create');return;}
+            if(shellNavigation('open',id)){
+                if(isImagine)this.miniAppId=id;
+                else if(isVoice){deferredVoiceId=id;this.mobileActiveMiniAppId=id;this.mobileWorkspaceReady=false;}
+                else await select.call(this,id); // Prepare the retained Gallery drop target only after an explicit selection.
+                return;
+            }
+            if(media.matches && this.hasActiveMiniApp!==false && this.currentMiniApp?.id===id){await this.ensureSelectedMiniAppFrame?.();go('create');return;}
             await select.call(this,id);
             if(media.matches && this.currentMiniApp?.id===id)go('create');
+        };
+        app.openShellMiniApp=async function(){
+            if(!shellNavigation('available'))return;
+            const id=new URLSearchParams(location.hash.slice(1)).get('ai2apps-browser-detail');
+            if(!id||!this.miniApps.some(item=>item.id===id))return;
+            await select.call(this,id);if(this.currentMiniApp?.id===id)go('create');
+            // Reveal only the selected workspace, never this document's initial library.
+            if(this.$nextTick)this.$nextTick(()=>shellNavigation('ready'));
+            else shellNavigation('ready');
         };
         function resize(){root.classList.toggle('sm-mobile',media.matches);if(media.matches)go(page);}
         media.addEventListener('change',resize);resize();
@@ -161,7 +203,11 @@
             const saved=galleryDrag;galleryDrag=null;clearTimeout(dragTimeout);
             saved.ghost?.remove();saved.target?.classList.remove('sm-drop-target');
             root.classList.remove('sm-gallery-drag');
-            if(accepted)go('create');else{go(saved.page);app.leftView=saved.leftView;}
+            if(accepted){
+                // Keep the file input and live Mini-App document. Record the
+                // retained library before exposing the workspace, with no remount.
+                go('library');shellNavigation('adopt-drag',saved.miniAppId);go('create');
+            }else{go(saved.page);app.leftView=saved.leftView;}
         }
         function dragSlot(x,y){
             let target=document.elementFromPoint(x,y);
@@ -192,6 +238,7 @@
             if(!media.matches||!root.isConnected||!frame||event.origin!==window.location.origin||event.source!==frame.contentWindow||data?.type!=='ai2apps.gallery.studio-drag')return;
             if(!['start','move','end','cancel'].includes(data.phase)||!data.asset||typeof data.asset.id!=='string'||data.asset.id.length>200||!data.asset.id||typeof data.asset.name!=='string'||data.asset.name.length>1000||!Number.isFinite(data.x)||!Number.isFinite(data.y))return;
             if(data.phase==='start'){
+                if(app.hasActiveMiniApp===false || (isVoice && app.mobileWorkspaceReady===false))return;
                 finishGalleryDrag(false);
                 const rect=frame.getBoundingClientRect();
                 galleryDrag={asset:{...data.asset},frame,rect,page,leftView:app.leftView,touch:data.touch===true,miniAppId:app.currentMiniApp?.id,dropped:false};

@@ -1,0 +1,82 @@
+[
+  {
+    "package_id": "ai2apps/audio-generation-suite",
+    "version": "0.2.3",
+    "sha256": "72b2d0a3afdfba2a7f0800edabc0b582e3205cf27abd257b257036843847a9c8",
+    "size": 33722,
+    "mini_apps": 3,
+    "capability_entries": 3,
+    "signed": false,
+    "purpose": "local preflight only"
+  },
+  {
+    "package_id": "ai2apps/avatar-studio-suite",
+    "version": "0.1.4",
+    "sha256": "e907b37cb7b29c361e531b84a724358e02c00d0bde52e567b117c147fb86db55",
+    "size": 31803,
+    "mini_apps": 1,
+    "capability_entries": 1,
+    "signed": false,
+    "purpose": "local preflight only"
+  },
+  {
+    "package_id": "ai2apps/frozen-time",
+    "version": "0.1.2",
+    "sha256": "99a4184b5e3c19865cdc1d1caef9544552d17c66febe9e821b748aaa351ce3a8",
+    "size": 37155,
+    "mini_apps": 1,
+    "capability_entries": 1,
+    "signed": false,
+    "purpose": "local preflight only"
+  },
+  {
+    "package_id": "ai2apps/media-voice-studio-suite",
+    "version": "0.2.3",
+    "sha256": "e4a3f35c234c6911243e7801d1defb91d54dc53223091852f2670bf7c4f12bad",
+    "size": 70441,
+    "mini_apps": 6,
+    "capability_entries": 6,
+    "signed": false,
+    "purpose": "local preflight only"
+  },
+  {
+    "package_id": "ai2apps/search-all",
+    "version": "0.1.1",
+    "sha256": "e34d6c33d0e9fca3d5d899dac28d889dc224044baf8ddba9a55b48b4f81ab3eb",
+    "size": 73404,
+    "mini_apps": 1,
+    "capability_entries": 1,
+    "signed": false,
+    "purpose": "local preflight only"
+  },
+  {
+    "package_id": "ai2apps/shopping-pro",
+    "version": "0.1.1",
+    "sha256": "6192924a107218d7cc379310f2a20366479423e0d51789cdd4d28da19cadfc9d",
+    "size": 60798,
+    "mini_apps": 1,
+    "capability_entries": 1,
+    "signed": false,
+    "purpose": "local preflight only"
+  },
+  {
+    "package_id": "ai2apps/trip-planner",
+    "version": "0.1.1",
+    "sha256": "b7cceb4776d7be050b54aa6f578e2879d72547b7d2a1bc950eae4d923bbe3b83",
+    "size": 34406,
+    "mini_apps": 1,
+    "capability_entries": 1,
+    "signed": false,
+    "purpose": "local preflight only"
+  },
+  {
+    "package_id": "ai2apps/web-reader",
+    "version": "0.1.1",
+    "sha256": "1cacbd01cdb168c73cf0dc790a6bf189376bbb388f1011b421204487c5bd6b71",
+    "size": 10621,
+    "mini_apps": 1,
+    "capability_entries": 1,
+    "signed": false,
+    "purpose": "local preflight only"
+  }
+]

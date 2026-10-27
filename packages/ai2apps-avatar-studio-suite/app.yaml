@@ -1,7 +1,7 @@
 schema: ai2apps.app/v1
 id: ai2apps.avatar-studio-suite
 name: Avatar Studio Suite
-version: 0.1.3
+version: 0.1.4
 description: Create talking portrait videos locally.
 publisher:
   id: ai2apps
@@ -45,7 +45,7 @@ mini_apps:
 - schema: ai2apps.mini-app/v1
   id: ai2apps.avatar.photo-speaking
   name: Talking Portrait
-  version: 0.1.3
+  version: 0.1.4
   kind: clip
   icon: user-round
   description: Animate a portrait with speech using a compatible local avatar model.
@@ -106,3 +106,31 @@ mini_apps:
     ru:
       name: Говорящий портрет
       description: Выберите портрет и аудио.
+  chat:
+    schema: ai2apps.mini-app-chat/v1
+    enabled: true
+    system_prompt: Read and edit only declared current UI fields. Execute functions through the registered owner
+      AaAT, never through a UI run button. Preserve task, model, material and shared output ownership.
+    context:
+      transport: studio-bridge
+      maxBytes: 40000
+    help:
+      resource: help/mini-chat/help.md
+      max_bytes: 32768
+    tools:
+    - name: update_current_draft
+      description: Update declared UI draft fields without submitting work.
+      input_schema:
+        type: object
+        properties:
+          model:
+            type: string
+            maxLength: 8000
+          preset:
+            type: string
+            maxLength: 8000
+          resolution:
+            type: string
+            maxLength: 8000
+        additionalProperties: false
+      confirmation: never

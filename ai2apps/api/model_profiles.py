@@ -18,8 +18,10 @@ def create_model_profiles_router(runtime_provider, principal_provider):
         manager = runtime_provider().model_manager
         return {"profiles": {key: manager.default_models(key) for key in ("normal", "privacy")}}
 
-    @router.put("/privacy")
-    async def save(request: RoutesRequest, http_request: Request):
+    @router.put("/{profile}")
+    async def save(profile: str, request: RoutesRequest, http_request: Request):
+        if profile not in {"normal", "privacy"}:
+            raise HTTPException(422, "Unknown model profile")
         runtime = runtime_provider()
         # Use the same live catalog and compatibility checks as Normal settings,
         # including local, Fusion and enabled personal/AI2Apps Cloud models.
@@ -32,13 +34,15 @@ def create_model_profiles_router(runtime_provider, principal_provider):
             model = catalog.get(model_id)
             if model is None:
                 raise HTTPException(422, "Model is not available: " + model_id)
-            if not _supports_default_model_purpose(model, purpose):
+            from ai2apps.model_capabilities import agent_model_selectable
+            compatible = agent_model_selectable(model) if purpose == 'work_agent' else _supports_default_model_purpose(model, purpose)
+            if not compatible:
                 raise HTTPException(422, "Model is not compatible with " + purpose)
         try:
-            routes = runtime.model_manager.put_default_models(request.routes, profile="privacy", available_model_ids=set(catalog))
+            routes = runtime.model_manager.put_default_models(request.routes, profile=profile, available_model_ids=set(catalog))
         except ValueError as error:
             raise HTTPException(422, str(error)) from error
-        return {"defaults": routes, "profile": "privacy"}
+        return {"defaults": routes, "profile": profile}
     return router
 
 

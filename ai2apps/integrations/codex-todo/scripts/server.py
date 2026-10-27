@@ -30,7 +30,7 @@ TOOLS = [
     tool('todo_bind','Replace the explicit Codex binding after reading the task. Preserve existing binding fields you want to keep. Bindings do not start execution. Empty binding clears explicit links and restores project inheritance.',
          {**REV,'binding':BINDING},('task_id','revision','binding')),
     tool('todo_update','Update requested task fields and/or append a concise progress/result summary. Read revision first. Conversation end does not mean task completed. 100 percent marks completion.',
-         {**REV,'status':{'type':'string','enum':['not_started','in_progress','completed','paused']},'progress':{'type':'integer','minimum':0,'maximum':100},'priority':PRIORITY,'summary':{'type':'string','minLength':1,'maxLength':8000}},('task_id','revision')),
+         {**REV,'status':{'type':'string','enum':['not_started','in_progress','awaiting_acceptance','completed','paused']},'progress':{'type':'integer','minimum':0,'maximum':100},'priority':PRIORITY,'summary':{'type':'string','minLength':1,'maxLength':8000}},('task_id','revision')),
 ]
 
 

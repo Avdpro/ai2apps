@@ -49,7 +49,8 @@ def test_new_runs_are_owned_by_local_and_reject_frontend_writes(client):
     assert run['execution_owner'] == 'local'
     assert client.post('/intelligence/runs/'+run['id']+'/finish', json={'pages':[], 'logs':[]}).status_code == 409
     assert client.patch('/intelligence/runs/'+run['id'], json={'message':'forged'}).status_code == 409
-    assert client.post('/intelligence/channels/'+channel['id']+'/runs', json={}).status_code == 409
+    duplicate = client.post('/intelligence/channels/'+channel['id']+'/runs', json={})
+    assert duplicate.status_code == 200 and duplicate.json()['id'] == run['id']
 
 
 def channel_and_source(client):
@@ -361,3 +362,178 @@ def test_source_agent_bindings_saved_and_cleared(client, monkeypatch):
     assert client.put('/intelligence/sources/'+s['id'], json=body).status_code == 409
     body.update(list_agent_generation_id='', article_agent_generation_id='')
     assert client.put('/intelligence/sources/'+s['id'], json=body).json()['article_agent_generation_id'] == ''
+
+
+def test_mobile_scoped_router_cloud_writing_never_loops_into_chat_route(client,monkeypatch):
+    """Mobile delegates to an isolated App router with no /v1/chat/completions."""
+    from types import SimpleNamespace as NS
+    c,s=channel_and_source(client)
+    async def digest(*args,**kwargs):return [{'title':'Nezumi VM2','summary':'12.9 mm case','body':'The case is 12.9 mm thick.','sources':[{'url':'https://example.com/watch'}]}]
+    monkeypatch.setattr(service,'digest',digest)
+    run=legacy_run(client,c['id'])
+    client.post('/intelligence/runs/'+run['id']+'/finish',json={'pages':[{'source_id':s['id'],'url':'https://example.com/watch','title':'Nezumi VM2','text':'12.9 mm'}],'logs':[]})
+    article=client.get('/intelligence').json()['articles'][0]
+    runtime=client.app.state.runtime;calls=[]
+    async def invoke(payload,*,context):
+        calls.append((payload,context))
+        assert context.actor_user_id==RequestPrincipal.legacy_local().actor_user_id
+        assert context.consumer_app_id=='ai2apps.intelligence'
+        assert context.session_id=='intelligence-'+c['id']
+        return {'choices':[{'finish_reason':'stop','message':{'content':json.dumps({'title':'VM2 review','content':'The 12.9 mm case feels thick [1].','note':'Based on stated thickness.','evidence_ids':[1]})}}]}
+    monkeypatch.setattr(runtime,'model_manager',NS(resolve_default_model=lambda _:'cloud/openai/test'))
+    monkeypatch.setattr(runtime,'model_invocations',NS(model=lambda _:None,invoke_agent_cloud_json=invoke))
+    path='/intelligence/channels/'+c['id']+'/drafts'
+    body={'request_id':'mobile-write-123','scope':'article','scope_id':article['id'],'kind':'short_post','guidance':'吐槽机芯偏厚'}
+    result=client.post(path,json=body)
+    assert result.status_code==200,result.text
+    assert result.json()['current']['content'].endswith('[1].')
+    assert client.post(path,json=body).json()['id']==body['request_id'] and len(calls)==1
+    revision={'request_id':'mobile-revise-123','revision':1,'guidance':'Make it shorter'}
+    result=client.post('/intelligence/drafts/'+body['request_id']+'/revise',json=revision)
+    assert result.status_code==200,result.text
+    assert result.json()['revision']==2 and len(calls)==2
+
+
+def test_manual_manuscript_edit_preserves_images_and_is_idempotent(client,monkeypatch):
+    from ai2apps.intelligence import writing
+    c,_=channel_and_source(client)
+    store=client.app.state.runtime.intelligence_collector.store
+    owner=RequestPrincipal.legacy_local().actor_user_id
+    original={'id':'manual-draft','channel_id':c['id'],'kind':'long_article','scope':'article','scope_id':'a','scope_label':'Watch','total_articles':1,'title':'Title','revision':1,'updated_at':'now','turns':[],
+        'current':{'title':'Title','content':'First [1]\n\nSecond','evidence_ids':[1],'note':'Initial'},'evidence':[{'id':'a','evidence_id':1}],
+        'images':[{'article_id':'a','url':'https://example.com/one.jpg','before':'First [1]'}]}
+    store.save_draft(owner,original)
+    path='/intelligence/drafts/manual-draft/text'
+    body={'request_id':'manual-edit-123','revision':1,'title':'My title','content':'Edited first [1]\n\nSecond'}
+    response=client.put(path,json=body);assert response.status_code==200,response.text
+    draft=response.json();assert draft['revision']==2 and draft['current']['content']==body['content']
+    assert draft['images'][0]['before']=='Edited first [1]' and draft['turns'][-1]['kind']=='manual'
+    assert client.put(path,json=body).json()['revision']==2
+    assert client.put(path,json={**body,'content':'Other'}).status_code==409
+    assert client.put(path,json={**body,'request_id':'stale-edit-123'}).status_code==409
+    assert client.put(path,json={**body,'request_id':'blank-edit-123','revision':2,'content':'  '}).status_code==422
+    async def compose(runtime,request,principal,channel_id,base,guidance):
+        assert base['current']['content']==body['content']
+        return {'title':'AI revision','content':'Revised [1]','evidence_ids':[1],'note':'Revised user text'}
+    monkeypatch.setattr(writing,'compose',compose)
+    response=client.post('/intelligence/drafts/manual-draft/revise',json={'request_id':'after-manual-123','revision':2,'guidance':'Improve'})
+    assert response.status_code==200 and response.json()['revision']==3
+    assert client.put('/intelligence/drafts/missing/text',json=body).status_code==404
+
+
+def test_article_favorites_persist_without_reordering_and_survive_updates(client):
+    channel, source = channel_and_source(client)
+    owner = RequestPrincipal.legacy_local().actor_user_id
+    store = client.app.state.runtime.intelligence_collector.store
+    article = store.import_article(owner, channel['id'], {
+        'title': 'Saved story', 'summary': 'Summary', 'body': 'Body',
+        'sources': [], 'section_id': channel['sections'][0]['id'],
+    }, 'https://example.com/saved')
+    endpoint = '/intelligence/articles/' + article['id']
+    saved = client.patch(endpoint, json={'favorite': True}).json()
+    assert saved['favorite'] is True
+    assert saved['updated_at'] == article['updated_at']
+    assert saved['read'] is False and saved['feedback'] == ''
+    from ai2apps.intelligence.store import IntelligenceStore
+    assert IntelligenceStore(store.root).get('articles', owner, article['id'])['favorite'] is True
+    assert client.patch(endpoint, json={'read': True}).json()['favorite'] is True
+    assert client.patch(endpoint, json={'favorite': False}).json()['favorite'] is False
+    client.patch(endpoint, json={'favorite': True})
+    run = legacy_run(client, channel['id'])
+    store.finish(owner, run['id'], [], [{
+        'update_article_id': article['id'], 'title': 'Updated story', 'summary': 'New facts',
+        'body': 'Updated body', 'sources': [], 'section_id': article['section_id'],
+    }], [{'source_id': source['id'], 'name': 'Source', 'status': 'success', 'pages': 1}])
+    updated = store.get('articles', owner, article['id'])
+    assert updated['favorite'] is True and updated['read'] is False
+    with pytest.raises(KeyError):
+        store.feedback('another-owner', article['id'], favorite=False)
+
+
+def test_mobile_client_diagnostics_are_bounded_and_structured(client, caplog):
+    caplog.set_level('WARNING',logger='ai2apps.api.intelligence')
+    event={'event_id':'a'*32,'request_id':'b'*32,'timestamp':'2026-10-18T00:00:00Z',
+           'method':'GET','path':'/v1/platform/intelligence','phase':'relay_json',
+           'code':'mobile_gateway_invalid_json','status':200,'relay_status':200,
+           'response_kind':'html','response_bytes':123,'view':'channel','tab':'runs'}
+    response=client.post('/intelligence/client-diagnostics',json={'events':[event]})
+    assert response.status_code==200,response.text
+    assert response.json()['accepted']==[event['event_id']]
+    assert 'Mobile Intelligence diagnostic actor=' in caplog.text
+    assert event['request_id'] in caplog.text and '"tab":"runs"' in caplog.text
+    first_log=caplog.text
+    assert client.post('/intelligence/client-diagnostics',json={'events':[event]}).status_code==200
+    assert caplog.text==first_log
+    for invalid in ({**event,'response_body':'private article'}, {**event,'path':'/v1/platform/intelligence?token=secret'}, {**event,'status':999}):
+        assert client.post('/intelligence/client-diagnostics',json={'events':[invalid]}).status_code==422
+    assert client.post('/intelligence/client-diagnostics',json={'events':[event]*21}).status_code==422
+
+
+def test_progressive_channel_counts_and_cursor_cards(client):
+    store = client.app.state.runtime.intelligence_collector.store
+    owner = RequestPrincipal.legacy_local().actor_user_id
+    c, source = channel_and_source(client)
+    other = client.post('/intelligence/channels',json={'name':'Other','interests':'Other'}).json()
+    for n in range(45):
+        store.import_article(owner,c['id'],{'title':f'Story {n}', 'summary':'Short', 'body':'LARGE_BODY_'*1000,
+            'section_id':c['sections'][0]['id'], 'sources':[{'url':'https://example.com/'+str(n),'content_type':'webpage'}]},str(n))
+    store.import_article(owner,other['id'],{'title':'Other', 'summary':'Other','body':'Other body','sources':[]},'other')
+    selected = next(a for a in store.snapshot(owner)['articles'] if a['channel_id']==c['id'])
+    store.feedback(owner,selected['id'],read=True,favorite=True)
+    overview = client.get('/intelligence?view=channels')
+    assert overview.status_code == 200 and 'LARGE_BODY_' not in overview.text
+    data = overview.json()
+    assert data['progressive'] and data['articles']==data['sources']==[]
+    stats = next(ch['article_stats'] for ch in data['channels'] if ch['id']==c['id'])
+    assert (stats['total'],stats['unread'],stats['favorite'])==(45,44,1)
+    assert stats['sections'][c['sections'][0]['id']]==45
+    view = client.get('/intelligence/channels/'+c['id']+'/view').json()
+    assert view['channel']['id']==c['id'] and [s['id'] for s in view['sources']]==[source['id']]
+    path='/intelligence/channels/'+c['id']+'/articles'
+    first=client.get(path).json()
+    assert len(first['items'])==20 and first['total']==45 and first['next_cursor']
+    assert all(a['_summary'] and 'body' not in a and a['channel_id']==c['id'] for a in first['items'])
+    assert 'LARGE_BODY_' not in client.get(path).text
+    second=client.get(path,params={'cursor':first['next_cursor']}).json()
+    third=client.get(path,params={'cursor':second['next_cursor']}).json()
+    ids=[a['id'] for page in (first,second,third) for a in page['items']]
+    assert len(ids)==len(set(ids))==45 and len(third['items'])==5 and third['next_cursor'] is None
+    favorites=client.get(path,params={'section':'$favorites'}).json()
+    assert favorites['total']==1 and favorites['items'][0]['id']==selected['id']
+    assert client.get(path,params={'status':'unread'}).json()['total']==44
+    assert client.get(path,params={'q':'LARGE_BODY_'}).json()['total']==45
+    assert client.get(path,params={'format':'post'}).json()['total']==0
+    assert client.get(path,params={'format':'webpage'}).json()['total']==45
+    detail=client.get('/intelligence/articles/'+selected['id']).json()
+    assert detail['body'].startswith('LARGE_BODY_') and detail['favorite'] and detail['read']
+    assert client.get('/intelligence/channels/missing/articles').status_code==404
+    assert client.get('/intelligence/articles/missing').status_code==404
+    assert client.get(path,params={'cursor':'bad'}).status_code==409
+    assert 'LARGE_BODY_' in client.get('/intelligence').text
+
+
+def test_active_system_task_overrides_early_completed_run_in_all_views(client):
+    runtime=client.app.state.runtime
+    store=runtime.intelligence_collector.store
+    owner=RequestPrincipal.legacy_local().actor_user_id
+    c,_=channel_and_source(client)
+    run=legacy_run(client,c['id'])
+    store.finish(owner,run['id'],[],[],[])
+    task=runtime.system_tasks.submit(owner,'ai2apps.intelligence','intelligence.refresh','Finishing',{'channel_id':c['id'],'run_id':run['id']})
+    for path in ('/intelligence','/intelligence?view=channels','/intelligence/channels/'+c['id']+'/view'):
+        result=next(r for r in client.get(path).json()['runs'] if r['id']==run['id'])
+        assert result['status']=='running' and result['collection_status']=='completed'
+        assert 'finished_at' not in result and result['progress']['phase']=='finalizing'
+        assert result['system_task_id']==task['id']
+    runtime.system_tasks._update(owner,task['id'],{'status':'completed'})
+    assert client.get('/intelligence').json()['runs'][0]['status']=='completed'
+
+
+def test_channel_auto_topics_setting_and_legacy_update_preservation(client):
+    c,_=channel_and_source(client)
+    assert c['auto_topics'] is False
+    data={'name':c['name'],'interests':c['interests'],'auto_topics':True}
+    assert client.put('/intelligence/channels/'+c['id'],json=data).json()['auto_topics'] is True
+    data.pop('auto_topics')
+    assert client.put('/intelligence/channels/'+c['id'],json=data).json()['auto_topics'] is True
+    assert client.put('/intelligence/channels/'+c['id'],json={**data,'auto_topics':False}).json()['auto_topics'] is False

@@ -3,7 +3,7 @@
   "package": {
     "id": "ai2apps/avatar-studio-suite",
     "type": "app",
-    "version": "0.1.3",
+    "version": "0.1.4",
     "displayName": "Avatar Studio Suite",
     "description": "Local talking portrait Mini-App."
   },
@@ -29,5 +29,63 @@
   "sbom": {
     "format": "spdx-json-2.3",
     "path": "META/sbom.spdx.json"
+  },
+  "capabilityCatalog": {
+    "schemaVersion": "ai2apps.package-capabilities.v1",
+    "entries": [
+      {
+        "kind": "mini-app",
+        "identity": "ai2apps.avatar.photo-speaking",
+        "provides": [
+          "video.avatar"
+        ],
+        "tasks": [
+          "Talking Portrait",
+          "照片说话"
+        ],
+        "inputTypes": [
+          "audio",
+          "image"
+        ],
+        "outputTypes": [
+          "video"
+        ],
+        "requirements": {
+          "capabilities": [
+            "video.avatar_generation"
+          ]
+        },
+        "agent": {
+          "mode": "aaat",
+          "declarationVersion": "1.0.0",
+          "exports": [
+            {
+              "name": "video.avatar",
+              "interfaceVersion": "1.0.0",
+              "inputTypes": [
+                "audio",
+                "image"
+              ],
+              "outputTypes": [
+                "video"
+              ]
+            }
+          ]
+        },
+        "scope": "Requires a Desktop host implementing these declared AaAT exports. UI bridge edits drafts only; execution uses host-owned durable tasks and shared output.",
+        "processing": "local",
+        "pricing": "unknown",
+        "localizations": {
+          "en": {
+            "displayName": "Talking Portrait",
+            "description": "Animate a portrait with speech using a compatible local avatar model."
+          },
+          "zh": {
+            "displayName": "照片说话",
+            "description": "选择人像和音频开始生成。"
+          }
+        }
+      }
+    ]
   }
 }

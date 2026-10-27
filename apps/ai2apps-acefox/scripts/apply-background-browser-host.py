@@ -13,7 +13,8 @@ def replace(source, old, new):
     return source.replace(old, new, 1)
 
 def transform(source):
-    source = replace(source, '  let activeConnection = null;', r'''  let backgroundHost = Services.env.get("AI2APPS_BACKGROUND_HOST") === "1";
+    source = replace(source, '  let activeConnection = null;', r'''  let backgroundHost = Services.env.get("AI2APPS_BACKGROUND_HOST") === "1" &&
+      Services.env.get("AI2APPS_SHOW_SHELL") !== "1";
   let hostHidden = backgroundHost;
   const nativeBaseWindow = window.docShell.treeOwner
     .QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIAppWindow)

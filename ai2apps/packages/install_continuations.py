@@ -19,7 +19,8 @@ class RegistryInstallContinuationRepository:
             "packageId": row["package_id"],
             "version": row["package_version"],
             "approveReview": bool(row["approve_review"]),
-            "dependency": json.loads(row["dependency_json"]),
+            "dependency": {k:v for k,v in json.loads(row["dependency_json"]).items() if k!="_installationTarget"},
+            **({"installationTarget":json.loads(row["dependency_json"])["_installationTarget"]} if "_installationTarget" in json.loads(row["dependency_json"]) else {}),
             "createdAt": row["created_at"],
             "updatedAt": row["updated_at"],
         }
@@ -42,7 +43,12 @@ class RegistryInstallContinuationRepository:
         version: str | None,
         approve_review: bool,
         dependency: dict[str, Any],
+        installation_target: dict[str,str] | None = None,
     ) -> dict[str, Any]:
+        if installation_target is not None:
+            from .capability_catalog import validate_target
+            installation_target=validate_target(installation_target,package_id,version)
+            dependency={**dependency,"_installationTarget":installation_target}
         now = utc_now_text()
         with self.database.transaction(write=True) as connection:
             connection.execute(

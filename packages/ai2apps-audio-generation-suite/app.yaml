@@ -2,7 +2,7 @@ schema: ai2apps.app/v1
 id: ai2apps.audio-generation-suite
 name: Music and Sound Effects
 description: Generate music, sound effects and songs locally in Voice Studio.
-version: 0.2.2
+version: 0.2.3
 publisher:
   id: ai2apps
 instances:
@@ -21,11 +21,10 @@ mini_apps:
 - schema: ai2apps.mini-app/v1
   id: ai2apps.audio-generation.music
   name: Music Generation
-  version: 0.2.2
+  version: 0.2.3
   kind: clip
   icon: music
-  description: Create audio from a description. Results appear in the shared Preview
-    & Output.
+  description: Create audio from a description. Results appear in the shared Preview & Output.
   localizations:
     zh-CN:
       name: 音乐生成
@@ -55,22 +54,50 @@ mini_apps:
   chat:
     schema: ai2apps.mini-app-chat/v1
     enabled: true
-    system_prompt: Explain this Mini-App using its help. Do not claim to run or modify
-      it.
+    system_prompt: Read and edit only declared current UI fields. Execute functions through the registered owner
+      AaAT, never through a UI run button. Preserve task, model, material and shared output ownership.
     context:
       transport: studio-bridge
+      maxBytes: 40000
     help:
       resource: help/music/help.md
       max_bytes: 32768
-    tools: []
+    tools:
+    - name: update_current_draft
+      description: Update declared UI draft fields without submitting work.
+      input_schema:
+        type: object
+        properties:
+          model:
+            type: string
+            maxLength: 8000
+          prompt:
+            type: string
+            maxLength: 2000
+          lyrics:
+            type: string
+            maxLength: 4096
+          duration:
+            type: number
+            minimum: 1.0
+            maximum: 120.0
+          seed:
+            type: number
+            minimum: 0.0
+            maximum: 4294967295.0
+          steps:
+            type: number
+            minimum: 1.0
+            maximum: 100.0
+        additionalProperties: false
+      confirmation: never
 - schema: ai2apps.mini-app/v1
   id: ai2apps.audio-generation.sfx
   name: Sound Effects
-  version: 0.2.2
+  version: 0.2.3
   kind: clip
   icon: audio-waveform
-  description: Create audio from a description. Results appear in the shared Preview
-    & Output.
+  description: Create audio from a description. Results appear in the shared Preview & Output.
   localizations:
     zh-CN:
       name: 音效生成
@@ -100,18 +127,47 @@ mini_apps:
   chat:
     schema: ai2apps.mini-app-chat/v1
     enabled: true
-    system_prompt: Explain this Mini-App using its help. Do not claim to run or modify
-      it.
+    system_prompt: Read and edit only declared current UI fields. Execute functions through the registered owner
+      AaAT, never through a UI run button. Preserve task, model, material and shared output ownership.
     context:
       transport: studio-bridge
+      maxBytes: 40000
     help:
       resource: help/sfx/help.md
       max_bytes: 32768
-    tools: []
+    tools:
+    - name: update_current_draft
+      description: Update declared UI draft fields without submitting work.
+      input_schema:
+        type: object
+        properties:
+          model:
+            type: string
+            maxLength: 8000
+          prompt:
+            type: string
+            maxLength: 2000
+          lyrics:
+            type: string
+            maxLength: 4096
+          duration:
+            type: number
+            minimum: 1.0
+            maximum: 120.0
+          seed:
+            type: number
+            minimum: 0.0
+            maximum: 4294967295.0
+          steps:
+            type: number
+            minimum: 1.0
+            maximum: 100.0
+        additionalProperties: false
+      confirmation: never
 - schema: ai2apps.mini-app/v1
   id: ai2apps.audio-generation.song
   name: Song Creation
-  version: 0.2.2
+  version: 0.2.3
   kind: project
   icon: music
   description: Compose songs with lyrics, musical planning and an optional ABC score.
@@ -144,11 +200,52 @@ mini_apps:
   chat:
     schema: ai2apps.mini-app-chat/v1
     enabled: true
-    system_prompt: Explain this Mini-App using its help. Do not claim to run or modify
-      it.
+    system_prompt: Read and edit only declared current UI fields. Execute functions through the registered owner
+      AaAT, never through a UI run button. Preserve task, model, material and shared output ownership.
     context:
       transport: studio-bridge
+      maxBytes: 40000
     help:
       resource: help/song/help.md
       max_bytes: 32768
-    tools: []
+    tools:
+    - name: update_current_draft
+      description: Update declared UI draft fields without submitting work.
+      input_schema:
+        type: object
+        properties:
+          model:
+            type: string
+            maxLength: 8000
+          prompt:
+            type: string
+            maxLength: 2000
+          translate-style:
+            type: boolean
+          lyrics:
+            type: string
+            maxLength: 4096
+          planning:
+            type: string
+            maxLength: 8000
+          limit:
+            type: number
+            minimum: 10.0
+            maximum: 120.0
+          abc:
+            type: string
+            maxLength: 16000
+          seed:
+            type: number
+            minimum: 0.0
+            maximum: 4294967295.0
+          steps:
+            type: number
+            minimum: 1.0
+            maximum: 100.0
+          guidance:
+            type: number
+            minimum: 1.0
+            maximum: 10.0
+        additionalProperties: false
+      confirmation: never

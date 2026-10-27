@@ -6,6 +6,10 @@ async def test_x_accumulates_virtualized_results_until_requested_limit(monkeypat
     page = BackgroundPage(None, 'owned')
     rounds = iter([[{'url':'a'}, {'url':'b'}], [{'url':'b'}, {'url':'c'}], [{'url':'d'}]])
     async def read(*a): return {'provider':'x', 'items':next(rounds)}
+    async def access(name,*args):
+        assert name=='handlePageAccess:0'
+        return {'classification':'none'}
+    monkeypatch.setattr(page,'helper',access)
     scrolls = []
     async def scroll(delta): scrolls.append(delta)
     async def sleep(*a): pass
@@ -21,6 +25,10 @@ async def test_x_accumulates_virtualized_results_until_requested_limit(monkeypat
 async def test_x_stops_after_three_stalled_scrolls(monkeypatch):
     page = BackgroundPage(None, 'owned')
     async def read(*a): return {'items':[{'url':'a'}]}
+    async def access(name,*args):
+        assert name=='handlePageAccess:0'
+        return {'classification':'none'}
+    monkeypatch.setattr(page,'helper',access)
     scrolls = []
     async def scroll(delta): scrolls.append(delta)
     async def sleep(*a): pass
@@ -37,7 +45,10 @@ async def test_scroll_targets_viewport_content_not_navigation_corner(monkeypatch
     class Connection:
         async def command(self, method, args): commands.append((method,args))
     page=BackgroundPage(Connection(),'owned')
-    async def read(*args): return {'x':600,'y':400}
+    async def read(source,*args):
+        if 'visibilityState' in source:return {'visible':True,'document_focus':False}
+        if 'elementFromPoint' in source:return [[0,700 if commands else 0]]
+        return {'x':600,'y':400}
     async def mode(): return 'fast'
     monkeypatch.setattr(page,'call_json',read)
     monkeypatch.setattr(page,'mode',mode)

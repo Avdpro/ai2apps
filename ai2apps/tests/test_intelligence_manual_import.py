@@ -53,7 +53,7 @@ def test_manual_import_routes(client, monkeypatch):
     body = {'page': {'source_id':'','url':'https://example.com/story','title':'Story','text':'Full article'}}
     result = client.post(base+'/import-url',json=body)
     assert result.status_code == 200, result.text
-    assert result.json()['body']=='新闻译文'
+    assert result.json()['body']=='新闻译文 [1]'
     assert result.json()['original_content']['body']=='Full article'
     assert client.post(base+'/import-url',json=body).json()['id'] == result.json()['id']
     assert client.post(base+'/import-file',files={'file':('bad.png',b'not image','image/png')}).status_code == 422
@@ -84,15 +84,16 @@ def test_image_summary_is_opt_in_and_upgrades_original(client, monkeypatch):
 @pytest.mark.asyncio
 async def test_translation_preserves_all_segments_sources_and_images(monkeypatch):
     seen=[]
-    async def model(runtime,request,principal,channel,instruction,data,validate):
+    async def model(runtime,request,principal,channel,instruction,data,validate,**kwargs):
+        assert kwargs['stage']=='translation'
         seen.append(data)
         assert data['channel']['output_language']=='zh'
-        return validate({'title':'译文标题','summary':'摘要','body':data['body_segment']})
+        return validate({'title':'译文标题','summary':'摘要','paragraphs':data['paragraphs']})
     monkeypatch.setattr(service,'model_json',model)
     article={'title':'Title','body':'A'*13001,'summary':'old','sources':[{'url':'https://example.com/a'}],'images':[{'url':'https://example.com/image.jpg'}]}
     result=await manual_import.translate_article(None,None,None,{'id':'c','output_language':'zh'},article)
-    assert len(seen)==3
-    assert ''.join(d['body_segment'] for d in seen)==article['body']
+    assert len(seen)==1  # A long paragraph is never cut mid-word.
+    assert ''.join(p['text'] for d in seen for p in d['paragraphs'])==article['body']
     assert result['original_content']['body']==article['body']
     assert result['sources']==article['sources'] and result['images']==article['images']
     assert result['translation_language']=='Simplified Chinese'
@@ -106,3 +107,37 @@ def test_reimport_upgrades_untranslated_manual_article(tmp_path):
         'original_content':{'body':'Original'},'ai_translation':True},'url')
     assert translated['id']==first['id'] and translated['body']=='翻译正文'
     assert len(store.snapshot('a')['articles'])==1
+
+
+def test_committed_import_result_is_owner_and_channel_scoped(tmp_path):
+    store=IntelligenceStore(tmp_path)
+    one=store.save_channel('a',{'name':'One','interval_hours':0})
+    two=store.save_channel('a',{'name':'Two','interval_hours':0})
+    requested='https://example.com/redirect';canonical='https://example.com/article'
+    article=store.import_article('a',one['id'],{'title':'Committed','body':'b','sources':[{'url':canonical}],
+        'manual_backbone':True,'import_requested_url':requested},canonical)
+    assert store.manual_import_result('a',one['id'],requested)['id']==article['id']
+    assert store.manual_import_result('a',one['id'],canonical)['id']==article['id']
+    assert store.manual_import_result('a',two['id'],canonical) is None
+    assert store.manual_import_result('a',one['id'],'https://example.com/other') is None
+    with pytest.raises(KeyError):store.manual_import_result('b',one['id'],canonical)
+
+
+def test_import_result_route_is_read_only_and_missing_is_not_success(client,monkeypatch):
+    async def translate(runtime,request,principal,channel,article):
+        return {**article,'ai_translation':True,'original_content':{'body':article['body']}}
+    async def classify(runtime,request,principal,channel,sections,articles):return {'manual':sections[0]['id']}
+    monkeypatch.setattr(manual_import,'translate_article',translate)
+    monkeypatch.setattr(service,'classify_articles',classify)
+    channel=client.post('/intelligence/channels',json={'name':'Test','interests':'Watches'}).json()
+    base='/intelligence/channels/'+channel['id']
+    url='https://example.com/story'
+    assert client.get(base+'/import-result',params={'url':url}).json()=={'article':None}
+    imported=client.post(base+'/import-url',json={'page':{'source_id':'','url':url,'requested_url':'https://example.com/redirect','title':'Original','text':'Entire original'}})
+    assert imported.status_code==200,imported.text
+    for identity in [url,'https://example.com/redirect']:
+        result=client.get(base+'/import-result',params={'url':identity})
+        assert result.status_code==200 and result.json()['article']['id']==imported.json()['id']
+        assert result.headers['cache-control']=='no-store'
+    assert client.get('/intelligence/channels/missing/import-result',params={'url':url}).status_code==404
+    assert client.get(base+'/import-result',params={'url':'file:///private/file'}).status_code==409

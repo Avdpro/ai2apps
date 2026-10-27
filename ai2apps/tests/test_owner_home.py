@@ -13,6 +13,7 @@ import httpx
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from ai2apps.remote import owner_home as oh
+from ai2apps.secrets.backends import MemorySecretBackend
 from ai2apps.remote.security import RemoteTokenError
 from ai2apps.web.owner_home_gateway import leased_response
 
@@ -27,6 +28,9 @@ def stamp(value):
 
 class OwnerLeaseTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
+        self.legacy_mode = patch.dict("os.environ", AI2APPS_OWNER_MOBILE_UNIFIED_READY="0")
+        self.legacy_mode.start()
+        self.addCleanup(self.legacy_mode.stop)
         self.now = int(time.time())
         self.mono = 1000
         self.clock = patch.object(oh, 'time', SimpleNamespace(time=lambda: self.now, monotonic=lambda: self.mono))
@@ -57,10 +61,22 @@ class OwnerLeaseTests(unittest.IsolatedAsyncioTestCase):
             if path.endswith('/revoke'):
                 return {}
             return self.result()
-        self.manager = SimpleNamespace(require_device=lambda _:self.device, _request=request,
+        self.manager = SimpleNamespace(secret_backend=MemorySecretBackend(), require_device=lambda _:self.device, _request=request,
             space=SimpleNamespace(installation=lambda _:self.installation, running=lambda _:True))
         self.service = oh.OwnerHome(self.manager)
         self.manager.owner_home = self.service
+
+    def test_login_resume_requires_cloud_capability_and_bound_origin(self):
+        self.device.public_origin = 'https://device-55e5e8695abeba14497c4a5cacc933a7.ai2apps.com'
+        self.assertIsNone(self.service.resume_url(self.device.device_id))
+        self.service.capabilities[self.device.device_id] = {'ownerLoginResumeProtocol': 'owner-login-resume-v1'}
+        from urllib.parse import urlsplit, parse_qs
+        url = urlsplit(self.service.resume_url(self.device.device_id))
+        self.assertEqual(url.netloc, 'coder.ai2apps.com')
+        self.assertEqual(url.path, '/u/' + self.installation.core_user_id)
+        self.assertEqual(parse_qs(url.query)['device_origin'], [self.device.public_origin])
+        self.device.public_origin = 'https://device-55e5e8695abeba14497c4a5cacc933a7.ai2apps.com.evil.test'
+        self.assertIsNone(self.service.resume_url(self.device.device_id))
 
     async def asyncTearDown(self):
         task = self.service.task
@@ -69,6 +85,16 @@ class OwnerLeaseTests(unittest.IsolatedAsyncioTestCase):
             await asyncio.gather(task, return_exceptions=True)
         self.ready.stop()
         self.clock.stop()
+
+    def test_signed_unified_mobile_bindings_are_validated(self):
+        from ai2apps.remote.mobile_unified import PROTOCOL
+        changes=dict(mobile_access_protocol=PROTOCOL,mobile_client_id=str(uuid4()),mobile_client_epoch=1,mapping_revision=0)
+        token=self.token('ai2apps-owner-home-lease-v1',changes)
+        verified=oh.verify(token,self.jwks,audience='ai2apps-owner-home-lease-v1',now=self.now)
+        self.assertEqual(verified['mobile_client_id'],changes['mobile_client_id'])
+        for bad in [dict(mobile_access_protocol=PROTOCOL),dict(changes,mobile_client_epoch=True),dict(changes,mobile_client_id='bad')]:
+            with self.assertRaises(RemoteTokenError):
+                oh.verify(self.token('ai2apps-owner-home-lease-v1',bad),self.jwks,audience='ai2apps-owner-home-lease-v1',now=self.now)
 
     def token(self, audience, changes=None):
         claims = dict(self.claims, aud=audience, iat=self.now, nbf=self.now, exp=self.now+60)
@@ -83,6 +109,32 @@ class OwnerLeaseTests(unittest.IsolatedAsyncioTestCase):
 
     async def exchange(self):
         return await self.service.exchange(self.device, 'oh1.'+str(uuid4())+'.'+'x'*43)
+
+    async def test_unified_exchange_retries_exact_persisted_request_and_rejects_downgrade(self):
+        from ai2apps.remote.mobile_unified import PROTOCOL, COMMIT_MODE
+        contract = dict(mobileAccessProtocol=PROTOCOL, commitMode=COMMIT_MODE)
+        self.service.capabilities[self.device.device_id] = contract
+        self.claims.update(mobile_access_protocol=PROTOCOL, mobile_client_id=str(uuid4()), mobile_client_epoch=1, mapping_revision=0)
+        receipts = []
+        self.manager.mobile_agent = SimpleNamespace(apply_unified_receipt=lambda *a, **kw: receipts.append((a,kw)))
+        bodies = []
+        async def request(method,path,**kwargs):
+            if path.endswith('jwks.json'): return self.jwks
+            bodies.append(dict(kwargs['json']))
+            if len(bodies)==1: raise httpx.ReadError('lost response')
+            return dict(self.result(), **contract, commitReceipt={'fixture':True})
+        self.manager._request = request
+        with patch.dict('os.environ', AI2APPS_OWNER_MOBILE_UNIFIED_READY='1'):
+            _, record = await self.exchange()
+            self.assertEqual(bodies[0], bodies[1])
+            self.assertIn('exchangeRequestId', bodies[0])
+            self.assertEqual(receipts[0][1]['session'], record.claims['session_id'])
+            # A negotiated operation cannot silently return legacy authority.
+            self.claims.pop('mobile_access_protocol')
+            self.claims.pop('mobile_client_id')
+            self.claims.pop('mobile_client_epoch')
+            self.claims['mapping_revision']=1
+            with self.assertRaises(RemoteTokenError): await self.exchange()
 
     async def test_independent_cookie_no_local_session_and_replay(self):
         cookie, record = await self.exchange()
@@ -228,6 +280,184 @@ class OwnerLeaseTests(unittest.IsolatedAsyncioTestCase):
             await self.service.exchange(wrong, 'oh1.'+str(uuid4())+'.'+'x'*43)
         self.assertFalse(self.service.sessions)
 
+
+    async def test_offline_logout_survives_service_restart_and_blocks_handoff(self):
+        _, record = await self.exchange()
+        original = self.manager._request
+        async def offline(*args, **kwargs):
+            raise ConnectionError('offline')
+        self.manager._request = offline
+        result = await self.service.revoke(record)
+        self.assertTrue(result['revocationPending'])
+        self.assertTrue(record.revoked)
+        self.service.clear()
+        restored = oh.OwnerHome(self.manager)
+        try:
+            self.assertTrue(restored.logout_outbox.pending())
+            with self.assertRaises(RemoteTokenError):
+                await restored.exchange(self.device, 'oh1.'+str(uuid4())+'.'+'x'*43)
+            with self.assertRaises(RemoteTokenError):
+                await restored.declare(self.device)
+            self.manager._request = original
+            async with restored.logout_outbox.lock:
+                await restored.logout_outbox.drain()
+            self.assertFalse(restored.logout_outbox.pending())
+        finally:
+            restored.clear()
+
+    async def test_failed_storage_preserves_session_for_logout_retry(self):
+        _, record = await self.exchange()
+        with patch.object(self.manager.secret_backend, 'store', side_effect=OSError('disk')):
+            with self.assertRaises(RemoteTokenError):
+                await self.service.revoke(record)
+        self.assertFalse(record.revoked)
+        self.assertIn(record, self.service.sessions.values())
+        self.assertTrue((await self.service.revoke(record))['cloudConfirmed'])
+
+    async def test_corrupt_storage_never_declares_or_exchanges(self):
+        from ai2apps.remote.owner_logout import KEY
+        self.manager.secret_backend.store(KEY, 'broken')
+        with self.assertRaises(RemoteTokenError):
+            await self.exchange()
+        with self.assertRaises(RemoteTokenError):
+            await self.service.declare(self.device)
+        self.assertEqual(self.calls, [])
+
+    async def test_cloud_success_failed_ack_retries_idempotently(self):
+        _, record = await self.exchange()
+        store = self.manager.secret_backend.store
+        def fail_empty(key, value):
+            if value == '{}':
+                raise OSError('disk')
+            store(key, value)
+        with patch.object(self.manager.secret_backend, 'store', side_effect=fail_empty):
+            self.assertTrue((await self.service.revoke(record))['revocationPending'])
+        self.assertTrue(self.service.logout_outbox.pending())
+        await self.service.logout_outbox.drain()
+        self.assertFalse(self.service.logout_outbox.pending())
+        self.assertEqual(sum(path.endswith('/revoke') for _, path, _ in self.calls), 2)
+
+    async def test_handoff_cannot_overtake_inflight_logout(self):
+        _, record = await self.exchange()
+        entered, release = asyncio.Event(), asyncio.Event()
+        original = self.manager._request
+        async def blocked(method, path, **kwargs):
+            if path.endswith('/revoke'):
+                entered.set()
+                await release.wait()
+                raise ConnectionError('offline')
+            return await original(method, path, **kwargs)
+        self.manager._request = blocked
+        logout = asyncio.create_task(self.service.revoke(record))
+        await entered.wait()
+        exchange = asyncio.create_task(self.exchange())
+        await asyncio.sleep(0)
+        self.assertFalse(exchange.done())
+        release.set()
+        await logout
+        with self.assertRaises(RemoteTokenError):
+            await exchange
+        self.assertEqual(sum(path.endswith('/exchange') for _,path,_ in self.calls),1)
+
+    async def test_declaration_includes_reliable_logout_contract(self):
+        async def declare(method, path, **kwargs):
+            self.assertEqual(kwargs['json']['ownerLoginResumeLogoutProtocol'], 'owner-login-resume-logout-v1')
+            return {'ownerAuthorizationUrl':'https://coder.ai2apps.com/u/'+self.claims['sub']+'?entry=owner-home'}
+        self.manager._request = declare
+        await self.service.declare(self.device)
+
+
+    async def test_one_scan_bound_app_handoff_keeps_independent_owner_cookie(self):
+        cid=str(uuid4());original=self.result
+        self.claims.update(app_handoff_protocol=oh.APP_HANDOFF_PROTOCOL,app_handoff_connection_id=cid,app_handoff_agent=0,mapping_revision=0)
+        binding=dict(protocol=oh.APP_HANDOFF_PROTOCOL,connectionId=cid,deviceId=self.device.device_id,
+            installationId=self.installation.id,actorUserId=self.claims['actor_user_id'],agent=False)
+        self.result=lambda:dict(original(),appHandoff=binding)
+        cookie,record=await self.service.exchange(self.device,'oh1.'+str(uuid4())+'.'+'x'*43,mobile_connection_id=cid)
+        self.assertEqual(self.service.principal(record).authentication_type,'owner_home_lease')
+        self.assertEqual((await self.service.authorize(cookie)),record)
+        payload=next(call[2]['json'] for call in self.calls if call[1].endswith('member-handoffs/exchange'))
+        self.assertEqual(payload['mobileConnectionId'],cid)
+        self.assertEqual(payload['appHandoffProtocol'],oh.APP_HANDOFF_PROTOCOL)
+
+    async def test_one_scan_binding_or_unacknowledged_agent_never_sets_session(self):
+        cid=str(uuid4());original=self.result
+        self.claims.update(app_handoff_protocol=oh.APP_HANDOFF_PROTOCOL,app_handoff_connection_id=cid,app_handoff_agent=0,mapping_revision=0)
+        good=dict(protocol=oh.APP_HANDOFF_PROTOCOL,connectionId=cid,deviceId=self.device.device_id,
+            installationId=self.installation.id,actorUserId=self.claims['actor_user_id'],agent=False)
+        for field in ['protocol','connectionId','deviceId','installationId','actorUserId','agent']:
+            bad=dict(good);bad[field]='wrong'
+            self.result=lambda:dict(original(),appHandoff=bad)
+            with self.assertRaises(RemoteTokenError):
+                await self.service.exchange(self.device,'oh1.'+str(uuid4())+'.'+'x'*43,mobile_connection_id=cid)
+            self.assertFalse(self.service.sessions)
+        self.result=lambda:dict(original(),appHandoff=good)
+        with self.assertRaises(RemoteTokenError):
+            await self.service.exchange(self.device,'oh1.'+str(uuid4())+'.'+'x'*43)
+        self.assertFalse(self.service.sessions)
+        self.result=lambda:dict(original(),appHandoff={**good,'agent':True})
+        self.manager.mobile_agent=SimpleNamespace(require=lambda _:dict(active=str(uuid4())))
+        with self.assertRaises(RemoteTokenError):
+            await self.service.exchange(self.device,'oh1.'+str(uuid4())+'.'+'x'*43,mobile_connection_id=cid)
+        self.assertFalse(self.service.sessions)
+        self.claims['app_handoff_agent']=1
+        self.manager.mobile_agent=SimpleNamespace(require=lambda _:dict(active=cid))
+        await self.service.exchange(self.device,'oh1.'+str(uuid4())+'.'+'x'*43,mobile_connection_id=cid)
+        self.assertEqual(len(self.service.sessions),1)
+
+    async def test_one_scan_http_exchange_reuses_cookie_and_origin_guards(self):
+        import httpx
+        from fastapi import FastAPI
+        from ai2apps.web.space_routes import create_space_router
+        cid=str(uuid4());original=self.result
+        self.claims.update(app_handoff_protocol=oh.APP_HANDOFF_PROTOCOL,app_handoff_connection_id=cid,app_handoff_agent=0,mapping_revision=0)
+        self.result=lambda:dict(original(),appHandoff=dict(protocol=oh.APP_HANDOFF_PROTOCOL,
+            connectionId=cid,deviceId=self.device.device_id,installationId=self.installation.id,
+            actorUserId=self.claims['actor_user_id'],agent=False))
+        self.device.public_origin='https://device.example'
+        self.manager.repository=SimpleNamespace(list=lambda:[self.device])
+        app=FastAPI();app.include_router(create_space_router(lambda:self.manager))
+        body=dict(handoff='oh1.'+str(uuid4())+'.'+'x'*43,mobileConnectionId=cid,appHandoffProtocol=oh.APP_HANDOFF_PROTOCOL)
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url=self.device.public_origin) as client:
+            response=await client.post('/v1/mobile/member-session/exchange',json=body,headers={'Origin':'https://evil.example'})
+            self.assertEqual(response.status_code,403);self.assertFalse(self.service.sessions)
+            response=await client.post('/v1/mobile/member-session/exchange',json={**body,'appHandoffProtocol':'wrong'},headers={'Origin':self.device.public_origin})
+            self.assertEqual(response.status_code,401);self.assertFalse(self.service.sessions)
+            response=await client.post('/v1/mobile/member-session/exchange',json=body,headers={'Origin':self.device.public_origin})
+            self.assertEqual(response.status_code,200,response.text)
+            cookie=response.headers['set-cookie'];self.assertIn(oh.COOKIE,cookie)
+            for flag in ('HttpOnly','Secure','SameSite=strict'):self.assertIn(flag,cookie)
+            self.assertNotIn('ai2apps_local_session',cookie)
+            response=await client.post('/v1/mobile/member-session/exchange',json=body,headers={'Origin':self.device.public_origin})
+            self.assertEqual(response.status_code,401);self.assertNotIn('set-cookie',response.headers)
+
+    async def test_signed_handoff_binding_is_required_and_cannot_change_on_refresh(self):
+        cid=str(uuid4());original=self.result
+        binding=dict(protocol=oh.APP_HANDOFF_PROTOCOL,connectionId=cid,deviceId=self.device.device_id,
+            installationId=self.installation.id,actorUserId=self.claims['actor_user_id'],agent=False)
+        self.result=lambda:dict(original(),appHandoff=binding)
+        with self.assertRaises(RemoteTokenError):
+            await self.service.exchange(self.device,'oh1.'+str(uuid4())+'.'+'x'*43,mobile_connection_id=cid)
+        self.assertFalse(self.service.sessions)
+        self.claims.update(app_handoff_protocol=oh.APP_HANDOFF_PROTOCOL,app_handoff_connection_id=cid,app_handoff_agent=0,mapping_revision=0)
+        _,record=await self.service.exchange(self.device,'oh1.'+str(uuid4())+'.'+'x'*43,mobile_connection_id=cid)
+        self.claims['app_handoff_connection_id']=str(uuid4())
+        with self.assertRaises(RemoteTokenError):self.service.apply(self.result(),self.jwks,previous=record)
+        self.claims['app_handoff_connection_id']=cid
+        self.claims['app_handoff_agent']=False
+        with self.assertRaises(RemoteTokenError):oh.verify(self.token('ai2apps-owner-home-lease-v1'),self.jwks,audience='ai2apps-owner-home-lease-v1',now=self.now)
+
+    def test_zero_mapping_is_only_valid_for_signed_device_bound_handoff(self):
+        audience='ai2apps-owner-home-lease-v1'
+        self.claims['mapping_revision']=0
+        with self.assertRaises(RemoteTokenError):oh.verify(self.token(audience),self.jwks,audience=audience,now=self.now)
+        self.claims.update(app_handoff_protocol=oh.APP_HANDOFF_PROTOCOL,app_handoff_connection_id=str(uuid4()),app_handoff_agent=1)
+        self.assertEqual(oh.verify(self.token(audience),self.jwks,audience=audience,now=self.now)['mapping_revision'],0)
+        for field in oh.EPOCHS:
+            if field=='mapping_revision':continue
+            with self.assertRaises(RemoteTokenError):oh.verify(self.token(audience,{field:0}),self.jwks,audience=audience,now=self.now)
+        for change in ({'mapping_revision':-1},{'mapping_revision':False},{'app_handoff_connection_id':'wrong'}, {'app_handoff_protocol':'unknown'},{'app_handoff_agent':True}):
+            with self.assertRaises(RemoteTokenError):oh.verify(self.token(audience,change),self.jwks,audience=audience,now=self.now)
 
 class StreamDeadlineTests(unittest.IsolatedAsyncioTestCase):
     async def test_silent_stream_producer_cancelled_on_expiry(self):

@@ -32,3 +32,31 @@ async def load_public_image(url):
     if not mime:
         raise HTTPException(502,'来源未返回可显示的图片')
     return data,mime
+
+
+async def load_article_thumbnail(article):
+    """Only the saved cover; no caller-supplied URL or redirect expansion."""
+    import asyncio
+    import io
+    from PIL import Image
+    from ai2apps.research.provider import SafeHttpClient,WebProviderError
+    cover=article.get('cover_image') or next(iter(article.get('images') or []),{})
+    if not isinstance(cover,dict):raise HTTPException(422,'文章没有可用的公开封面')
+    url=cover.get('url','')
+    try:
+        parsed=urlsplit(url)
+        valid=parsed.scheme=='https' and parsed.hostname and parsed.port in (None,443) and not parsed.username and not parsed.password
+    except (ValueError,TypeError):valid=False
+    if not valid:raise HTTPException(422,'文章没有可用的公开封面')
+    class CoverClient(SafeHttpClient):
+        ALLOWED_TYPES=frozenset({'image/jpeg','image/png','image/webp','image/gif','image/avif'})
+    def load():
+        response=CoverClient(timeout_seconds=12,max_bytes=8*1024*1024,max_redirects=0).get(url)
+        if response.truncated:raise ValueError('Cover exceeds size limit')
+        with Image.open(io.BytesIO(response.body)) as image:
+            if image.width*image.height>16_000_000:raise ValueError('Cover pixel limit')
+            image.thumbnail((640,360));output=io.BytesIO();image.convert('RGB').save(output,format='JPEG',quality=82)
+        return output.getvalue(),'image/jpeg'
+    try:return await asyncio.to_thread(load)
+    except (WebProviderError,ValueError,OSError,Image.DecompressionBombError) as error:
+        raise HTTPException(502,'文章封面暂时无法加载') from error

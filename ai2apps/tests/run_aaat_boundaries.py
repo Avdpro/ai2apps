@@ -1,0 +1,52 @@
+"""Run the mandatory AaAT architecture/behavior regression gate from any cwd."""
+from pathlib import Path
+import subprocess
+import sys
+
+ROOT = Path(__file__).resolve().parents[2]
+TESTS = (
+    'ai2apps/tests/test_package_generation_aaat.py',
+    'ai2apps/tests/test_studio_app_chat.py',
+    'ai2apps/tests/test_app_chat_durable.py',
+    'ai2apps/tests/test_todo_aaat_context.py',
+    'ai2apps/tests/test_agent_budget_rounds.py',
+    'ai2apps/tests/test_agent_token_budget.py',
+    'ai2apps/tests/test_webagent_repair_cache.py',
+    'ai2apps/tests/test_probe_control_recovery.py',
+    'ai2apps/tests/test_shopping_chat_recovery.py',
+    'ai2apps/tests/test_agent_browser_task_controls.py',
+    'ai2apps/tests/test_explicit_tool_consent.py',
+    'ai2apps/tests/test_aaat_architecture.py',
+    'ai2apps/tests/test_package_app_exports.py',
+    'ai2apps/tests/test_discover_bilingual.py',
+    'ai2apps/tests/test_voice_processing_aaat.py',
+    'ai2apps/tests/test_video_processing_aaat.py',
+    'ai2apps/tests/test_video_localization_aaat.py',
+    'ai2apps/tests/test_stereo_speaker_preservation.py',
+    'ai2apps/tests/test_aaat_boundary_behavior.py',
+    'ai2apps/tests/test_aaat_declaration_context.py',
+    'ai2apps/tests/test_aaat_discovery_context.py',
+    'ai2apps/tests/test_aaat_progress.py',
+    'ai2apps/tests/test_aaat_views.py',
+    'ai2apps/tests/test_mobile_agent_transport.py',
+    'ai2apps/tests/test_mobile_agent_protocol.py',
+    'ai2apps/tests/test_mobile_agent_gateway.py',
+    'ai2apps/tests/test_mobile_agent_app_scope.py',
+    'ai2apps/tests/test_task_progress_observer.py',
+    'ai2apps/tests/test_intelligence_aaat.py',
+    'ai2apps/tests/test_aaat_execution_flow.py',
+    'ai2apps/tests/test_imagine_reference_context.py',
+    'ai2apps/tests/test_imagine_reference_tools.py',
+    'ai2apps/tests/test_provider_parameters.py',
+    'ai2apps/tests/test_capability_routing.py',
+    'ai2apps/tests/test_parameter_forms.py',
+    'ai2apps/tests/test_aaat_form_i18n.py',
+    'ai2apps/tests/test_social_aaat.py',
+    'ai2apps/tests/test_social_metrics_recovery.py',
+    'ai2apps/tests/test_app_interactions.py',
+    'ai2apps/tests/test_parameter_app_continuation.py',
+    'tests/test_ai2apps_tool_recovery.py',
+)
+
+if __name__ == '__main__':
+    raise SystemExit(subprocess.run([sys.executable, '-m', 'pytest', *TESTS, *sys.argv[1:]], cwd=ROOT).returncode)

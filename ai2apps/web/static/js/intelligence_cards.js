@@ -44,7 +44,10 @@ function render(article,{selected=false,section='',updated='',failedImages=new S
  const glyph=icon=>it`<i data-lucide="${icon}" aria-hidden="true"></i>`;
  const visual=(icon,label)=>it`<div class="intel-format-placeholder">${glyph(icon)}<span>${esc(label)}</span></div>`;
  const cover=photos[0]?it`<div class="intel-card-media">${img(photos[0])}</div>`:'';
- if(compact)return it`<article class="intel-story intel-story-compact${selected?' selected':''}" data-article="${esc(article.id)}" tabindex="0" role="button" aria-label="${esc(article.title)}">${cover}<h2>${esc(article.title)}</h2>${article.summary?it`<p class="intel-card-summary">${esc(article.summary)}</p>`: ''}</article>`;
+ const unread=article.read?'':it`<span class="intel-unread-ribbon" aria-hidden="true"><span>${lt('未读')}</span></span>`;
+ const favorite=article.favorite?`<span class="intel-card-favorite" aria-hidden="true">★</span>`:'';
+ const corner=it`<button type="button" class="intel-card-corner" data-card-menu="${esc(article.id)}" aria-label="${esc(lt('更多'))}" aria-haspopup="menu" aria-expanded="false"></button>`;
+ if(compact)return it`<article class="intel-story intel-story-compact${selected?' selected':''}" data-article="${esc(article.id)}" tabindex="0" role="button" aria-label="${esc(article.title)}${article.read?'':' · '+esc(lt('未读'))}${article.favorite?' · '+esc(lt('已收藏')):''}"><div class="intel-card-content">${cover}<h2><span>${esc(article.title)}</span></h2>${article.summary?it`<p class="intel-card-summary">${esc(article.summary)}</p>`: ''}</div>${favorite}${unread}${corner}</article>`;
  const badge=it`<span class="intel-format-badge">${glyph(info.icon)}${mixed?lt('混合来源'):info.label}</span>`;
  const provenance=it`<span>${article.image_ai_summary?lt('AI 图片总结'):article.manual_import?lt('手动收录'):refs.length>1?lt('AI 综合'):lt('AI 摘要')}${article.versions?.length?lt(' · 后续进展'):''}</span>`;
  const sourceLine=refs.length>1?it`${refs.length} 个引用来源 · ${[...new Set(refs.map(platform))].join(' / ')}`:[ref.author,platform(ref)].filter(Boolean).join(' · ');
@@ -70,7 +73,47 @@ function render(article,{selected=false,section='',updated='',failedImages=new S
   let extension=lt('文档');try{extension=new URL(ref.url).pathname.match(/\.(pdf|docx?|pptx?|xlsx?|epub)$/i)?.[1].toUpperCase()||extension;}catch(_){}
   body=it`${meta}<div class="intel-document-heading">${glyph('file-text')}<div><strong>${esc(extension)}</strong><small>${refs.length===1&&Number.isInteger(ref.page_count)&&ref.page_count>0?ref.page_count+lt(' 页'):lt('文档 / 报告')} · AI 内容摘要</small></div></div>${byline}${heading}`;
  }else{body=it`${cover}${meta}${byline}${heading}`;}
- return it`<article class="intel-story intel-story-${kind}${selected?' selected':''}" data-article="${esc(article.id)}" tabindex="0" role="button" aria-label="${esc((mixed?lt('混合来源'):info.label)+'：'+article.title)}">${body}${date}${footer}</article>`;
+ return it`<article class="intel-story intel-story-${kind}${selected?' selected':''}" data-article="${esc(article.id)}" tabindex="0" role="button" aria-label="${esc((mixed?lt('混合来源'):info.label)+'：'+article.title)}">${body}${refs.some(r=>r.coverage==='preview')?it`<div class="intel-evidence-note">基于预览 · 原文可能需要登录或订阅</div>`:''}${date}${footer}</article>`;
 }
-window.IntelligenceCards={types,typeOf,describe,render,imageURL,isAvatar};
+const layouts=new WeakMap();
+function clearLayout(root,keepGrid=false){
+ const state=layouts.get(root);if(!state)return;
+ state.observer?.disconnect();if(state.frame)cancelAnimationFrame(state.frame);
+ layouts.delete(root);if(!keepGrid)root.classList.remove('intel-article-masonry');
+}
+function layout(root){
+ clearLayout(root,true);
+ const cards=[...root.querySelectorAll(':scope > .intel-story-compact')];
+ if(!cards.length||typeof ResizeObserver==='undefined'){root.classList.remove('intel-article-masonry');return;}
+ root.classList.add('intel-article-masonry');
+ const state={frame:0,observer:null};
+ const update=()=>{
+  state.frame=0;
+  for(const card of cards){
+   const content=card.querySelector('.intel-card-content');if(!content)continue;
+   const span='span '+Math.ceil(content.getBoundingClientRect().height+2+14);
+   if(card.style.gridRowEnd!==span)card.style.gridRowEnd=span;
+  }
+ };
+ state.observer=new ResizeObserver(()=>{if(!state.frame)state.frame=requestAnimationFrame(update);});
+ layouts.set(root,state);update();
+ state.observer.observe(root);
+ for(const card of cards)state.observer.observe(card.querySelector('.intel-card-content'));
+}
+window.IntelligenceCards={types,typeOf,describe,render,imageURL,isAvatar,layout,clearLayout};
+})();
+
+/* Bounded list presentation shared by Desktop and Mobile. */
+(() => {
+ const states=new Map(),size=20;
+ function page(kind,scope,items){
+  let state=states.get(kind);
+  if(!state||state.scope!==scope){state={scope,limit:size};states.set(kind,state);}
+  return {items:items.slice(0,state.limit),more:items.length>state.limit};
+ }
+ function more(kind){const state=states.get(kind);if(state)state.limit+=size;}
+ function reset(){states.clear();}
+ function button(kind,hasMore){return hasMore?'<div class="intel-list-more"><button type="button" data-list-more="'+kind+'">'+(window.IntelligenceI18n?.text('加载更多')||'加载更多')+'</button></div>':'';}
+ function newest(items){return [...items].sort((a,b)=>String(b.updated_at||b.created_at||b.started_at||'').localeCompare(String(a.updated_at||a.created_at||a.started_at||''))||String(b.id||'').localeCompare(String(a.id||'')));}
+ window.IntelligencePagination={page,more,reset,button,newest};
 })();

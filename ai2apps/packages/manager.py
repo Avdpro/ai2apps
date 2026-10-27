@@ -11,6 +11,7 @@ import shutil
 import stat
 import sys
 import tempfile
+import time
 from contextlib import suppress
 from dataclasses import asdict
 from pathlib import Path
@@ -609,6 +610,8 @@ class ServicePackageManager:
         package = self.packages.get_by_digest(package.package_digest)
         self._declare(package)
         await self.runtime.start(package)
+        changed=getattr(self.registry,"bindings_changed",None)
+        if changed:changed()
 
     def _compatible_runtime_dependents(
         self, package: InstalledPackageRecord
@@ -1097,6 +1100,8 @@ class ServicePackageManager:
             self._declare(package)
 
     async def startup(self) -> None:
+        startup_started = time.perf_counter()
+        logger.info("Service package startup source=%s", __file__)
         await asyncio.to_thread(self.supervisor.recover_orphans)
         had_pending_runtime = any(
             item.status is PackageStatus.INSTALLED
@@ -1106,11 +1111,23 @@ class ServicePackageManager:
         staged = ()
 
         async def start_active() -> None:
-            for package in self._active_start_order():
+            ordered = self._active_start_order()
+            active = {package.service_key: package for package in ordered}
+            dependencies = {
+                key: {
+                    lock.dependency_key
+                    for lock in self.packages.locks(package.package_digest)
+                    if lock.dependency_key in active
+                }
+                for key, package in active.items()
+            }
+            startup_limit = asyncio.Semaphore(8)
+
+            async def start_one(package: InstalledPackageRecord) -> None:
                 service = self.services.get_service(package.service_key)
                 if service.status is ServiceStatus.ENABLED:
                     try:
-                        self._validate_installed(package)
+                        await asyncio.to_thread(self._validate_installed, package)
                         await self.runtime.start(package)
                     except Exception as error:
                         # Installed Services are an optional extension layer. A
@@ -1173,9 +1190,24 @@ class ServicePackageManager:
                                 package.service_key,
                             )
 
+            # A dependency may only start after its own startup has settled.
+            # Independent Services can validate and reach readiness together;
+            # the semaphore bounds simultaneous Worker launches and I/O.
+            remaining = set(active)
+            while remaining:
+                ready = sorted(
+                    key for key in remaining if not dependencies[key] & remaining
+                )
+                async def limited_start(key: str) -> None:
+                    async with startup_limit:
+                        await start_one(active[key])
+                await asyncio.gather(*(limited_start(key) for key in ready))
+                remaining.difference_update(ready)
+
         try:
             staged = self._activate_staged_inference_runtimes()
             await start_active()
+            logger.info("Service package startup complete: %.3fs", time.perf_counter() - startup_started)
         except BaseException:
             if not staged and not had_pending_runtime:
                 raise
@@ -1475,4 +1507,6 @@ class ServicePackageManager:
                     "deletedPaths": [],
                     "reclaimedBytes": 0,
                 }
+        changed=getattr(self.registry,"bindings_changed",None)
+        if changed:changed()
         return {"checkpointCleanup": checkpoint_cleanup}

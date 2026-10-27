@@ -12,10 +12,11 @@ from ai2apps.remote.visitor_sessions import LeaseUnavailable
 
 COOKIE = '__Secure-ai2apps_space'
 HEADERS = {'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer',
-           'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"}
+           'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' https://coder.ai2apps.com; media-src 'self'; frame-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"}
 
 
 def create_space_router(manager_provider, mobile_renderer=None, extension_provider=None):
+    logging.getLogger(__name__).info("Visitor space routes loaded from %s", __file__)
     router = APIRouter()
 
     def device_for(request):
@@ -47,7 +48,14 @@ def create_space_router(manager_provider, mobile_renderer=None, extension_provid
         if not isinstance(handoff, str) or not 24 <= len(handoff) <= 200:
             raise HTTPException(422, 'Invalid member handoff')
         try:
-            token, session = await manager.owner_home.exchange(device, handoff)
+            connection=payload.get('mobileConnectionId')
+            if connection is not None or 'appHandoffProtocol' in payload:
+                from ai2apps.remote.owner_home import APP_HANDOFF_PROTOCOL
+                if payload.get('appHandoffProtocol')!=APP_HANDOFF_PROTOCOL or not isinstance(connection,str):
+                    raise RemoteTokenError('App handoff protocol mismatch')
+                token, session = await manager.owner_home.exchange(device,handoff,mobile_connection_id=connection)
+            else:
+                token, session = await manager.owner_home.exchange(device, handoff)
         except RemoteTokenError as error:
             logging.getLogger(__name__).warning('Owner handoff validation failed: %s', error)
             raise HTTPException(401, 'Owner authorization must be restarted') from None
@@ -123,9 +131,11 @@ def create_space_router(manager_provider, mobile_renderer=None, extension_provid
             raise HTTPException(401, 'Owner authorization required')
         service, record = authority
         service.valid(record)
-        return JSONResponse({'authorized': True, 'leaseExpiresAt': record.deadline,
+        from ai2apps.remote.mobile_unified import authorized as agent_authorized
+        return JSONResponse({'authorized': True, 'agentAuthorized': agent_authorized(record.claims), 'leaseExpiresAt': record.deadline,
             'absoluteExpiresAt': record.absolute, 'idleExpiresAt': record.idle,
-            'ownerAuthorizationUrl': service.urls.get(record.claims['device_id'])}, headers={'Cache-Control':'no-store'})
+            'ownerAuthorizationUrl': service.urls.get(record.claims['device_id']),
+            'ownerResumeUrl': getattr(service, 'resume_url', lambda _: None)(record.claims['device_id'])}, headers={'Cache-Control':'no-store'})
 
     @router.post('/v1/mobile/owner-home/activity')
     async def owner_activity(request: Request):
@@ -146,10 +156,10 @@ def create_space_router(manager_provider, mobile_renderer=None, extension_provid
         if authority is None:
             raise HTTPException(401, 'Owner authorization required')
         try:
-            await authority[0].revoke(authority[1])
+            result = await authority[0].revoke(authority[1])
         except Exception:
-            pass  # Local revocation takes effect even if Cloud is unavailable.
-        response = JSONResponse({'signedOut':True})
+            raise HTTPException(503, 'Logout could not be saved; please retry') from None
+        response = JSONResponse({'signedOut':True, **(result or {})})
         response.delete_cookie(OWNER_COOKIE, secure=True, httponly=True, samesite='strict')
         return response
 
@@ -170,9 +180,14 @@ def create_space_router(manager_provider, mobile_renderer=None, extension_provid
         except RemoteTokenError:
             raise HTTPException(401, 'Personal space login must be restarted') from None
         settings = manager.space.visitor_settings(device)
+        # Avatar is current public identity, independent of the publication/JWT.
+        from ai2apps.remote.visitor_avatar import VisitorAvatar
+        if not hasattr(manager.space, 'visitor_avatar'):
+            manager.space.visitor_avatar = VisitorAvatar(manager)
+        avatar = await manager.space.visitor_avatar.get(claims['owner_user_id'])
         # Only the published snapshot; never Local principal or private mounts.
         from ai2apps.remote.owner_home import READY
-        return JSONResponse({'mode': claims['access_mode'], 'expiresAt': claims['exp'],
+        return JSONResponse({**avatar, 'mode': claims['access_mode'], 'expiresAt': claims['exp'],
                              'sessionProtocol': claims.get('protocol'), 'leaseVersion': claims.get('lease_version'),
                              'absoluteExpiresAt': claims.get('absolute_expires_at', claims['exp']),
                              'idleExpiresAt': claims.get('idle_expires_at', claims['exp']),
@@ -180,9 +195,24 @@ def create_space_router(manager_provider, mobile_renderer=None, extension_provid
                              'userUrl': 'https://coder.ai2apps.com/u/' + claims['owner_user_id'],
                              'entries': [], 'ownerAuthorizationUrl': manager.owner_home.urls.get(device.device_id) if READY and claims['access_mode'] == 'owner' else None}, headers={'Cache-Control': 'no-store'})
 
+    @router.api_route('/mobile/space/media/{revision}/{asset_id}',methods=['GET','HEAD'])
+    async def space_media(request: Request, revision: int, asset_id: str):
+        from ai2apps.remote.visitor_assets import VisitorAssets, published_asset_ids, content_gateway_ready, HTML_CSP
+        from fastapi.responses import FileResponse
+        manager,device=device_for(request)
+        try:
+            await visitor_authorize(manager,device,request)
+            settings=manager.space.visitor_settings(device)
+            if not content_gateway_ready() or revision!=settings['revision'] or asset_id not in published_asset_ids(settings['published']):
+                raise ValueError('Asset is not published')
+            installation=manager.space.installation(device)
+            meta,path=VisitorAssets(manager.repository.database,installation.id).get(asset_id)
+        except (RemoteTokenError,ValueError): raise HTTPException(403,'Visitor asset access denied') from None
+        return FileResponse(path,media_type=meta['mime'],headers={'Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff','Content-Security-Policy':HTML_CSP})
+
     @router.get('/mobile/space/app/{revision}/{app_key}/{resource:path}')
     async def app_resource(request: Request, revision: int, app_key: str, resource: str):
-        from ai2apps.remote.visitor_space import resolve_resource, app_gateway_ready
+        from ai2apps.remote.visitor_space import resolve_resource, app_gateway_ready, walk_cards
         from fastapi.responses import FileResponse
         manager, device = device_for(request)
         try:
@@ -190,7 +220,7 @@ def create_space_router(manager_provider, mobile_renderer=None, extension_provid
             settings = manager.space.visitor_settings(device)
             if not app_gateway_ready() or revision != settings['revision']:
                 raise ValueError('Visitor App unavailable')
-            card = next(c for c in settings['published']['cards'] if c['kind'] == 'app' and c['appKey'] == app_key)
+            card = next(c for c in walk_cards(settings['published']['cards']) if c['kind'] == 'app' and c['appKey'] == app_key)
             if extension_provider is None:
                 raise ValueError('Visitor App unavailable')
             path = resolve_resource(extension_provider(), card, resource)

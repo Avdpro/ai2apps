@@ -325,6 +325,8 @@ include = ["ai2apps*", "omlx*"]
 namespaces = false
 
 [tool.setuptools.package-data]
+"ai2apps.intelligence" = ["*.json"]
+"ai2apps.packages" = ["schemas/*.json"]
 "ai2apps" = ["engines/**/*.json"]
 "ai2apps.remote" = [
     "frpc-device.toml",

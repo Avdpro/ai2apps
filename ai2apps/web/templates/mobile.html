@@ -3,19 +3,23 @@
 {% block title %}AI2Apps Mobile{% endblock %}
 
 {% block head %}
-<link rel="stylesheet" href="{{ mobile_static('css/mobile.css') }}?v=owner-resume-20261007-1">
+<link rel="stylesheet" href="{{ mobile_static('css/chat_message_feedback.css') }}?v=20261026">
+<script src="{{ mobile_static('js/chat_message_feedback.js') }}?v=20261026"></script>
+
+<link rel="stylesheet" href="{{ mobile_static('css/mobile.css') }}?v=chat-keyboard-20261026">
+{% if mobile_agent_home|default(false) %}<link rel="stylesheet" href="{{ mobile_static('css/mobile_chat.css') }}?v=message-contrast-20261026"><link rel="stylesheet" href="{{ mobile_static('css/aaat_result_views.css') }}?v=card-masonry-20261026">{% endif %}
 {% endblock %}
 
 {% block content %}
 {% set receiving_handoff = request.url.path in ["/mobile/member/complete", "/mobile/complete"] %}
-<div id="ai2apps-mobile" class="mobile-shell" data-view="home">
+<div id="ai2apps-mobile" class="mobile-shell" data-view="home"{% if mobile_agent_home|default(false) %} data-agent-home="true"{% endif %}>
     <header class="mobile-topbar">
         <button class="mobile-brand" type="button" data-mobile-action="home" aria-label="AI2Apps Home">
             <img src="{{ mobile_static('favicon.svg') }}" alt="">
             <span><small>AI2Apps</small><strong data-mobile-title>Mobile</strong></span>
         </button>
         <span class="mobile-connection" title="Connection status">
-            <i data-lucide="wifi"></i><span>{{ "Connecting" if receiving_handoff else ("Owner" if owner_home else "Local") }}</span>
+            <i data-lucide="wifi"></i><span>{{ "Agent" if mobile_agent_home|default(false) else ("Connecting" if receiving_handoff else ("Owner" if owner_home else "Local")) }}</span>
         </span>
         {% if owner_home %}<button class="mobile-round-button" type="button" data-owner-logout aria-label="退出 Owner 会话" title="退出 Owner 会话"><i data-lucide="log-out"></i></button>{% endif %}
     </header>
@@ -26,7 +30,7 @@
                 <p class="mobile-eyebrow">This Mac</p>
                 <h1>Your AI Apps,<br>ready when you are.</h1>
                 <p>Everything runs on this Mac. {% if owner_home %}Your private Chat is ready over your secure Owner connection.{% else %}Remote access uses the same private Mobile Shell.{% endif %}</p>
-                <div class="mobile-hero-status"><span></span> {{ "正在验证访问授权…" if receiving_handoff else ("Owner session connected" if owner_home else "Connected on local network") }}</div>
+                <div class="mobile-hero-status"{% if mobile_agent_home|default(false) %} data-agent-pair-note role="status"{% endif %}><span></span> {{ "正在验证访问授权…" if receiving_handoff else ("Owner session connected" if owner_home else "Connected on local network") }}</div>
             </div>
 
             <section class="mobile-section" aria-labelledby="mobile-quick-title">
@@ -49,6 +53,9 @@
 
         <section class="mobile-stage" aria-label="Active App" hidden>
             <div class="mobile-frame-host"></div>
+            {% if mobile_agent_home|default(false) %}<section data-mobile-inline-agent hidden>
+                {% with mobile_agent_signed=true, mobile_agent_ready=true, mobile_agent_inline=true, owner_home=false %}{% include 'mobile_chat_content.html' %}{% endwith %}
+            </section>{% endif %}
             <div class="mobile-loading" hidden><span></span><p>Opening App…</p></div>
             <div class="mobile-error" hidden>
                 <i data-lucide="triangle-alert"></i><h2>App could not open</h2>
@@ -104,5 +111,8 @@
 
 {% block scripts %}
 
-<script src="{{ mobile_static('js/mobile.js') }}?v=icon-numeric-20261013"></script>
+<script src="{{ mobile_static('js/mobile_agent_connection.js') }}?v=chat-notifications-20261023"></script>
+<script src="{{ mobile_static('js/chat_context_handoff.js') }}?v=20261024-2"></script>{% if mobile_agent_home|default(false) %}<script src="{{ mobile_static('js/aaat_result_views.js') }}?v=card-masonry-20261026"></script><script src="{{ mobile_static('js/agent_parameter_forms.js') }}?v=approval-countdown-20261027"></script><script src="{{ mobile_static('js/conversation_model_policy.js') }}"></script><script src="{{ mobile_static('js/marked.umd.js') }}"></script><script src="{{ mobile_static('js/purify.min.js') }}"></script><script src="{{ mobile_static('js/mobile_agent_chat.js') }}?v=approval-countdown-20261027"></script><script src="{{ mobile_static('js/mobile_chat.js') }}?v=default-agent-20261027"></script>{% endif %}
+<script src="{{ mobile_static('js/mobile.js') }}?v=bounded-reading-20261024"></script>
+<script src="{{ mobile_static('js/mobile_chat_keyboard.js') }}?v=20261026"></script>
 {% endblock %}

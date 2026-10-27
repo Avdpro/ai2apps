@@ -29,6 +29,7 @@ from fastapi import (
 )
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
+from jsonschema import ValidationError
 
 from ai2apps.api.health import PlatformRuntimeProvider
 from ai2apps.api.identity import PrincipalProvider, resolve_request_principal
@@ -379,6 +380,20 @@ class WebAgentMiniAppTaskRequest(BaseModel):
     batch_id: str | None = Field(default=None, min_length=1, max_length=100, pattern=r"^[a-zA-Z0-9_-]+$")
     batch_size: int = Field(default=1, ge=1, le=20)
 
+class SearchPreparationRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    query: str = Field(min_length=1,max_length=1024)
+    profile: str = Field(default='default',min_length=1,max_length=100)
+    locale: str = Field(default='zh',max_length=32)
+    request_id: str = Field(min_length=1,max_length=100)
+    fast: bool = False
+
+class SearchConfirmationRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    preparation_id: str = Field(min_length=1,max_length=100)
+    values: dict
+    request_id: str | None = Field(default=None,min_length=1,max_length=100)
+
 
 class ProductImagesRequest(BaseModel):
     model_config = ConfigDict(extra='forbid')
@@ -584,10 +599,113 @@ def create_studio_mini_app_router(
         return runtime, principal.actor_user_id
 
     @router.get('/ai2apps.ai-browser/mini-app-mounts/{mount_id}/web-agent/search-config')
-    def search_api_status(mount_id: str, principal: RequestPrincipal = principal_dependency):
-        from ai2apps.browser.search_api import status
+    async def search_api_status(mount_id: str, principal: RequestPrincipal = principal_dependency):
+        from ai2apps.browser.search_api import status,byok_available
         runtime,owner=search_config_owner(mount_id,principal)
+        if not byok_available(runtime,owner):
+            from ai2apps.browser.cloud_search import refresh_offer
+            await refresh_offer(runtime,owner)
         return status(runtime,owner)
+
+    @router.api_route('/ai2apps.ai-browser/mini-app-mounts/{mount_id}/web-agent/cloud-search-requests/{task_id}',methods=['GET','POST','DELETE'])
+    async def cloud_search_request(mount_id:str,task_id:str,request:Request,principal:RequestPrincipal=principal_dependency):
+        from ai2apps.browser.cloud_search import observe,CloudSearchError
+        runtime,owner=search_config_owner(mount_id,principal)
+        from ai2apps.browser.mini_apps import WebAgentMiniAppBroker
+        # Task ownership and exact App mount/caller guard, in addition to request ledger identity.
+        WebAgentMiniAppBroker(runtime).task(mount_id,principal,task_id)
+        try:return await observe(runtime,owner,task_id,action='cancel' if request.method=='POST' else 'delete' if request.method=='DELETE' else 'GET')
+        except CloudSearchError as error:raise HTTPException(409,str(error)) from None
+
+    def search_binding(mount_id,principal):
+        from ai2apps.browser.mini_apps import WebAgentMiniAppBroker
+        from ai2apps.api.agent_platform import _session
+        runtime,_=manager()
+        mini=WebAgentMiniAppBroker(runtime).mounted(mount_id,principal)
+        if mini.declaration['id']!='ai2apps.search-all':raise HTTPException(403,'Search All required')
+        local=principal
+        if principal.client_scope!='desktop':
+            from ai2apps.identity import IdentityRepository
+            local=IdentityRepository(runtime.database).local_principal_for(principal.actor_user_id)
+        session=_session(runtime,local,mini.mount.get('interaction_session_id') if principal.client_scope=='desktop' else None)
+        return runtime,mini,session,'app:'+mini.mount['app_instance_id']
+
+    @router.post('/ai2apps.ai-browser/mini-app-mounts/{mount_id}/web-agent/search-preparations')
+    async def prepare_search(mount_id:str,body:SearchPreparationRequest,principal:RequestPrincipal=principal_dependency):
+        from ai2apps.research import search_preparation as search
+        runtime,mini,session,scope=search_binding(mount_id,principal)
+        if body.fast:
+            from ai2apps.browser.search_api import byok_available
+            if not byok_available(runtime,principal.actor_user_id):
+                from ai2apps.browser.cloud_search import refresh_offer
+                await refresh_offer(runtime,principal.actor_user_id)
+        try:return search.begin(runtime,principal,mini,scope=scope,session_id=session,**body.model_dump())
+        except (ValueError,ValidationError) as error:raise HTTPException(422,str(error)) from error
+
+    @router.get('/ai2apps.ai-browser/mini-app-mounts/{mount_id}/web-agent/search-preparations/{preparation_id}')
+    def get_search_preparation(mount_id:str,preparation_id:str,principal:RequestPrincipal=principal_dependency):
+        from ai2apps.research import search_preparation as search
+        runtime,mini,session,scope=search_binding(mount_id,principal)
+        try:return search.view(runtime,principal,mini,preparation_id,scope=scope)
+        except (ValueError,ValidationError) as error:raise HTTPException(422,str(error)) from error
+
+    @router.post('/ai2apps.ai-browser/mini-app-mounts/{mount_id}/web-agent/search-workflows')
+    async def start_search_workflow(mount_id:str,body:SearchConfirmationRequest,principal:RequestPrincipal=principal_dependency):
+        from ai2apps.research import search_preparation as search, search_workflow as workflow
+        runtime,mini,session,scope=search_binding(mount_id,principal)
+        if 'deepseek' in body.values.get('sources',[]):
+            from ai2apps.browser.search_api import byok_available
+            if not byok_available(runtime,principal.actor_user_id):
+                from ai2apps.browser.cloud_search import refresh_offer
+                await refresh_offer(runtime,principal.actor_user_id)
+        try:
+            row=search.owned(runtime,principal,body.preparation_id,scope=scope)
+            identifier=(search.execution_preparation(runtime,principal,mini,body.preparation_id,body.request_id,scope=scope)
+                        if body.request_id else body.preparation_id)
+            arguments=search.confirm(runtime,principal,mini,identifier,body.values,scope=scope)
+            workflow.start(runtime,principal,arguments['confirmation_id'],session_id=row['session_id'],auto_summary=False)
+            return {**workflow.view(runtime,principal,arguments['confirmation_id'],session_id=row['session_id']),
+                    'preparation_id':identifier}
+        except (ValueError,ValidationError) as error:raise HTTPException(422,str(error)) from error
+
+    @router.get('/ai2apps.ai-browser/mini-app-mounts/{mount_id}/web-agent/search-workflows/{preparation_id}')
+    def search_workflow_state(mount_id:str,preparation_id:str,principal:RequestPrincipal=principal_dependency):
+        from ai2apps.research import search_preparation as search, search_workflow as workflow
+        runtime,mini,session,scope=search_binding(mount_id,principal)
+        try:
+            row=search.owned(runtime,principal,preparation_id,scope=scope)
+            return workflow.view(runtime,principal,preparation_id,session_id=row['session_id'])
+        except (ValueError,ValidationError) as error:raise HTTPException(422,str(error)) from error
+
+    @router.post('/ai2apps.ai-browser/mini-app-mounts/{mount_id}/web-agent/search-workflows/{preparation_id}/summary')
+    def start_search_summary(mount_id:str,preparation_id:str,principal:RequestPrincipal=principal_dependency):
+        from ai2apps.research import search_preparation as search, search_workflow as workflow
+        runtime,mini,session,scope=search_binding(mount_id,principal)
+        try:
+            row=search.owned(runtime,principal,preparation_id,scope=scope)
+            workflow.start_summary(runtime,principal,preparation_id,session_id=row['session_id'])
+            return workflow.view(runtime,principal,preparation_id,session_id=row['session_id'],summary=True)
+        except (ValueError,ValidationError) as error:raise HTTPException(422,str(error)) from error
+
+    @router.get('/ai2apps.ai-browser/mini-app-mounts/{mount_id}/web-agent/search-workflows/{preparation_id}/summary')
+    def search_summary_state(mount_id:str,preparation_id:str,principal:RequestPrincipal=principal_dependency):
+        from ai2apps.research import search_preparation as search, search_workflow as workflow
+        runtime,mini,session,scope=search_binding(mount_id,principal)
+        try:
+            row=search.owned(runtime,principal,preparation_id,scope=scope)
+            return workflow.view(runtime,principal,preparation_id,session_id=row['session_id'],summary=True)
+        except (ValueError,ValidationError) as error:raise HTTPException(422,str(error)) from error
+
+    @router.post('/ai2apps.ai-browser/mini-app-mounts/{mount_id}/web-agent/search-workflows/{preparation_id}/chat')
+    def search_result_chat(mount_id:str,preparation_id:str,body:dict,principal:RequestPrincipal=principal_dependency):
+        from ai2apps.research import search_preparation as search, search_workflow as workflow
+        runtime,mini,session,scope=search_binding(mount_id,principal)
+        request_id=body.get('request_id','')
+        if not isinstance(request_id,str) or not 8<=len(request_id)<=100:raise HTTPException(422,'Invalid request ID')
+        try:
+            row=search.owned(runtime,principal,preparation_id,scope=scope)
+            return workflow.new_agent_chat(runtime,principal,preparation_id,session_id=row['session_id'],request_id=request_id)
+        except (ValueError,ValidationError) as error:raise HTTPException(422,str(error)) from error
 
     @router.put('/ai2apps.ai-browser/mini-app-mounts/{mount_id}/web-agent/search-config')
     def search_api_configure(mount_id: str, body: SearchApiConfigRequest, principal: RequestPrincipal = principal_dependency):
@@ -651,6 +769,20 @@ def create_studio_mini_app_router(
             raise capability_error(error) from error
         except (KeyError, ResourceNotFoundError) as error:
             raise HTTPException(404, "WebAgent task not found") from error
+
+    @router.get('/ai2apps.ai-browser/shopping/tasks/{task_id}/products/{product_id}/image')
+    async def owned_shopping_image(task_id:str,product_id:str,principal:RequestPrincipal=principal_dependency):
+        import base64
+        from fastapi.responses import Response
+        from ai2apps.browser.shopping_aaat import owned_product_image
+        from ai2apps.services import ToolProviderError
+        runtime,_=manager()
+        try:
+            image=await owned_product_image(runtime,principal,task_id,product_id)
+        except (ToolProviderError,KeyError,ResourceNotFoundError):
+            raise HTTPException(404,'Observed product image unavailable')
+        return Response(base64.b64decode(image.split(',',1)[1]),media_type='image/jpeg',
+            headers={'Cache-Control':'private, max-age=3600','X-Content-Type-Options':'nosniff'})
 
     @router.post('/ai2apps.ai-browser/mini-app-mounts/{mount_id}/web-agent/product-images')
     async def shopping_product_images(mount_id: str, body: ProductImagesRequest, principal: RequestPrincipal = principal_dependency):
@@ -773,6 +905,29 @@ def create_studio_mini_app_router(
         repository, scope = draft_scope(studio_id, mount_id, principal)
         repository.save_draft(**scope, draft={})
         return {"value": None}
+
+    @router.post("/{studio_id}/mini-app-mounts/{mount_id}/notifications", status_code=202)
+    async def send_mini_app_notification(studio_id: str, mount_id: str, request: Request,
+                                         principal: RequestPrincipal = principal_dependency):
+        from ai2apps.remote.notification_host import NotificationHost
+        runtime, _ = manager()
+        raw=bytearray()
+        async for chunk in request.stream():
+            raw.extend(chunk)
+            if len(raw)>32768:
+                raise HTTPException(413,'Notification request too large')
+        try:
+            data=json.loads(raw)
+            await runtime.remote.notifications.refresh_policy(force=True)
+            return await asyncio.to_thread(NotificationHost(runtime).send_mounted,principal,studio_id,mount_id,data)
+        except (ValueError,KeyError):
+            raise HTTPException(403,'Notification request unavailable or not authorized') from None
+        except StudioCapabilityError as error:
+            raise capability_error(error) from error
+        except ResourceNotFoundError:
+            raise HTTPException(404,'Notification caller unavailable') from None
+        except ExtensionError:
+            raise HTTPException(409,'Notification caller changed or unavailable') from None
 
     @router.get("/{studio_id}/mini-app-mounts/{mount_id}/capabilities")
     def probe_mini_app_capabilities(
@@ -920,6 +1075,26 @@ def create_studio_mini_app_router(
         from ai2apps.studio.audio_generation import generate
         runtime, _ = manager()
         try:
+            if request.headers.get("Prefer") == "respond-async":
+                from fastapi.responses import JSONResponse
+                from ai2apps.studio.audio_generation import authorize, validate_request
+                broker = StudioCapabilityBroker(runtime)
+                mounted = authorize(broker, studio_id, mount_id, principal, body.capability)
+                inputs = body.model_dump(exclude={"capability"}, exclude_unset=True, by_alias=True)
+                validate_request(runtime, body.capability, inputs)
+                key = request.headers.get("Idempotency-Key", "")
+                if not 8 <= len(key) <= 160:
+                    raise HTTPException(422, "Idempotency-Key is required")
+                jobs = getattr(runtime, 'studio_jobs', None)
+                if jobs is None:
+                    raise HTTPException(503, "Studio task service is not ready")
+                try:
+                    job = jobs.submit(principal=principal, app_instance_id=mounted.mount['app_instance_id'],
+                        studio_id=studio_id, mini_app_id=mounted.declaration['id'], kind='audio-generation',
+                        key=key, payload={'capability': body.capability, 'input': inputs})
+                except ValueError as error:
+                    raise HTTPException(409, str(error)) from error
+                return JSONResponse(job, status_code=202)
             invocation_id = request.headers.get("X-AI2Apps-Invocation-ID")
             scope = progress_scope(principal, studio_id, mount_id, body.capability)
             if invocation_id:
@@ -1203,6 +1378,61 @@ def create_studio_mini_app_router(
 
         try:
             broker = StudioCapabilityBroker(runtime)
+            from ai2apps.studio.video_jobs import PACKAGE_CAPABILITIES, VOICE_CAPABILITIES, submit_package
+            durable_video = (((studio_id == VIDEO_STUDIO_ID and capability in PACKAGE_CAPABILITIES)
+                or (studio_id == READALOUD_STUDIO_ID and capability in VOICE_CAPABILITIES))
+                and request.headers.get('Prefer') == 'respond-async'
+                and not (capability == 'media.video_subtitles' and subtitle_action == 'extract')
+                and not (capability in ('media.video_speaker_voice_replacement', 'audio.speaker_voice_replacement') and action != 'replace'))
+            if durable_video:
+                mounted = broker.mounted_mini_app(studio_id, mount_id, principal=principal)
+                if capability not in mounted.capabilities:
+                    raise StudioCapabilityError('capability_not_declared', 'Video workflow is not allowed', status_code=403)
+                if getattr(runtime, 'studio_jobs', None) is None:
+                    raise HTTPException(503, 'Studio task service is not ready')
+                if capability == 'audio.speaker_voice_replacement':
+                    required = {'audio.speaker_voice_replacement', 'audio.detailed_transcription', 'audio.speaker_diarization', 'audio.source_separation', 'audio.voice_conversion'}
+                    if required - mounted.capabilities:
+                        raise HTTPException(403, 'Voice replacement capabilities are not declared')
+                    if not consent:
+                        raise HTTPException(403, 'Voice replacement requires explicit rights confirmation')
+                    if not target_speaker or reference is None:
+                        raise HTTPException(422, 'A target speaker and reference voice are required')
+                if capability == 'media.video_subtitles':
+                    if len(subtitle_segments.encode()) > 2 * 1024 * 1024:
+                        raise HTTPException(413, 'Subtitle segments exceed 2 MiB')
+                    try: segments = json.loads(subtitle_segments) if subtitle_segments else None
+                    except ValueError as error: raise HTTPException(422, 'Invalid subtitle segments') from error
+                    options = dict(source_language=source_language or None, target_language=target_language or None,
+                        subtitle_format=subtitle_format, bilingual=bilingual, burn_in=burn_in,
+                        speaker_labels=speaker_labels, subtitle_font_size=subtitle_font_size,
+                        subtitle_background=subtitle_background, extract_only=False, edited_segments=segments,
+                        llm_policy=_parse_video_llm_policy(llm_policy))
+                elif capability == 'media.video_audio_translation':
+                    options = dict(source_language=source_language or None, target_language=target_language,
+                        voice_profile_id=voice_profile_id, voice_clone_model_id=voice_clone_model_id or None,
+                        asr_verification=asr_verification, llm_policy=_parse_video_llm_policy(llm_policy))
+                elif capability == 'audio.source_separation':
+                    options = dict(profile=profile)
+                elif capability == 'audio.detailed_transcription':
+                    options = dict(profile=profile, language=language or None, word_timestamps=word_timestamps,
+                        diarization=diarization, output_format=output_format)
+                else:
+                    options = dict(action=action, target_speaker=target_speaker or None,
+                        reference_filename=reference.filename if reference else None,
+                        reference_media_type=reference.content_type if reference else None,
+                        conversion_profile=conversion_profile, consent=consent)
+                reference_content = await reference.read(MAX_REFERENCE_UPLOAD_BYTES + 1) if reference else None
+                if reference_content is not None and len(reference_content) > MAX_REFERENCE_UPLOAD_BYTES:
+                    raise HTTPException(413, 'Reference exceeds 100 MiB')
+                key = request.headers.get('Idempotency-Key', '')
+                if not 8 <= len(key) <= 160: raise HTTPException(422, 'Idempotency-Key is required')
+                try:
+                    job = submit_package(runtime, principal, mounted, capability, options, content,
+                        file.filename or 'media', file.content_type, reference_content, key=key, studio_id=studio_id)
+                except ValueError as error:
+                    raise HTTPException(409, str(error)) from error
+                return JSONResponse(job, status_code=202)
             if capability == "video.avatar_generation":
                 from ai2apps.studio.avatar import generate_avatar
 

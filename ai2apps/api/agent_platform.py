@@ -619,7 +619,12 @@ async def _create_presentation_for_result(
         raw_response = None
         invocation_request_id = request_id if attempt == 0 else f"{request_id}-repair-{attempt}"
         try:
-            if model is not None and "chat_completions" in model.endpoints:
+            if str(model_id).startswith('cloud/'):
+                from ai2apps.model_invocation import invoke_app_cloud_chat
+                response = await invoke_app_cloud_chat(runtime, completion_payload, principal=principal,
+                    session_id=session_id or invocation_request_id, consumer_app_id='ai2apps.agents')
+                response_content = bytes(response.body)
+            elif model is not None and "chat_completions" in model.endpoints:
                 context = invocations.context_for_actor(
                     principal.actor_user_id,
                     session_id=session_id,
@@ -843,7 +848,7 @@ def create_agent_platform_router(
         task_rows = tasks.list(principal.actor_user_id)
         for task in task_rows:
             if task['status'] == 'waiting_input' and task.get('run_id'):
-                task.update(_browser_task_wait_presentation(runtime.agents.list_interactions(task['run_id'])))
+                task.update(_browser_task_wait_presentation(runtime.agents.list_interactions(task['run_id']), task.get('browser_context')))
         from ai2apps.browser.task_tree import TaskTreeRepository
         task_tree = TaskTreeRepository(runtime.database).list(principal.actor_user_id)
         return {'task_tree': task_tree, 'domains': domains, 'domain_icons': domain_icons, 'domain_settings': {r['domain']: {'interaction_mode': r['interaction_mode']} for r in domain_rows}, 'tasks': task_rows, 'settings': tasks.settings(principal.actor_user_id)}
@@ -1194,7 +1199,12 @@ def create_agent_platform_router(
     ) -> Any:
         invocations = getattr(runtime, "model_invocations", None)
         model = None if invocations is None else invocations.model(model_id)
-        if model is not None and "chat_completions" in model.endpoints:
+        if str(model_id).startswith('cloud/'):
+            from ai2apps.model_invocation import invoke_app_cloud_chat
+            response = await invoke_app_cloud_chat(runtime, payload, principal=principal,
+                session_id=session_id or request_id, consumer_app_id='ai2apps.agents')
+            content = bytes(response.body)
+        elif model is not None and "chat_completions" in model.endpoints:
             context = invocations.context_for_actor(
                 principal.actor_user_id,
                 session_id=session_id,
@@ -1874,7 +1884,8 @@ def create_agent_platform_router(
                         {"steps": [candidate["step"]]},
                         model_id,
                     )
-                    compiled = compile_source(source)
+                    selected_probe=next((w for w in request.observation.get('windows',[]) if w.get('context')==candidate.get('browser_context')),request.observation)
+                    compiled = compile_source(source,probe=selected_probe)
                     if not compiled.valid or len(compiled.ir.get("steps") or []) != 1:
                         invalid_details = {"report": compiled.report}
                         raise ValueError("the proposed action did not pass preflight")
@@ -2024,12 +2035,19 @@ def create_agent_platform_router(
                 suffix += 1
             used_names.add(name)
             step["name"] = name
-            successful.append(step)
             evidence = item.get("evidence") if isinstance(item.get("evidence"), dict) else {}
+            from ai2apps.agent_builder.probe_contract import validate_step, coverage
+            before_probe=evidence.get('before') or {}
+            if not isinstance(before_probe,dict):before_probe={}
+            if before_probe.get('items') or before_probe.get('controls'):
+                violations=validate_step(step,before_probe)
+                if violations:return platform_error_response(status_code=422,code='probe_target_not_observed',message='Successful-path target is not covered by its Probe evidence.',details={'errors':violations})
+            successful.append(step)
             if "result" in evidence:
                 presentation_result = evidence["result"]
             evidence_summary.append({
                 "step": name,
+                "probe_coverage":coverage(before_probe),
                 "outcome": "success",
                 "before_fingerprint": (evidence.get("before") or {}).get("fingerprint")
                 if isinstance(evidence.get("before"), dict) else None,
@@ -3422,4 +3440,6 @@ def create_agent_platform_router(
             ).fetchone()
         return dict(row)
 
+    from ai2apps.browser.aaat_controls import create_router as browser_controls_router
+    router.include_router(browser_controls_router(runtime_provider,principal_provider))
     return router

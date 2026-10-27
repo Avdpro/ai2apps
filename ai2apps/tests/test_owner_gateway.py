@@ -145,6 +145,34 @@ def test_real_chat_repository_roundtrip(env,tmp_path):
         assert client.get('/v1/mobile/chat/threads/'+str(__import__('uuid').uuid4())+'/content').status_code==404
 
 
+def test_owner_chat_turn_routes_do_not_require_or_expose_agent_authority(env, tmp_path):
+    from ai2apps.platform_runtime import PlatformRuntime
+    from ai2apps.config import PlatformConfig
+    client, _, _, _, _ = env
+    manager = gateway._runtime().remote
+    runtime = PlatformRuntime(PlatformConfig.from_base_path(tmp_path))
+    runtime.start(); runtime.remote = manager
+    try:
+        with patch.object(gateway, '_runtime', lambda: runtime):
+            thread = client.post('/v1/mobile/chat/threads', json={'title':'Durable Owner Chat'}).json()
+            base = '/v1/mobile/chat/threads/' + thread['id']
+            saved = client.put(base + '/content', json={'expected_revision':thread['revision'],
+                'messages':[{'role':'user','content':'hello'}]}).json()
+            payload = {'request_id':'mobile-stable-key', 'expected_revision':saved['thread']['revision'],
+                'request':{'model':'fixture','messages':[{'role':'user','content':'hello'}]}}
+            created = client.post(base + '/turns', json=payload)
+            assert created.status_code == 202, created.text
+            rid = created.json()['id']
+            assert client.get(base + '/turns').json()['items'][0]['id'] == rid
+            assert client.get(base + '/turns/' + rid).json()['status'] == 'queued'
+            assert client.post(base + '/turns',json=payload).json()['id'] == rid
+            assert client.post(base + '/turns/' + rid + '/cancel').json()['status']=='cancelled'
+            assert client.get('/v1/mobile/chat/threads/not-owned/turns/'+rid).status_code==404
+            assert client.get('/v1/mobile/agent-runs/'+rid).status_code==401
+            assert client.post(base + '/turns/'+rid+'/resume').status_code==401
+    finally: runtime.stop()
+
+
 def test_disabled_app_blocks_catalog_reopen_and_direct_content(env):
     from ai2apps.remote.mobile_apps import MobileAppPolicy
     client,_,shell,_,actor=env

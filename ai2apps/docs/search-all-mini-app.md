@@ -139,3 +139,52 @@ AI 使用 standard 档，指令要求只依据实际读到的文本、给事实�
 按钮当前针对网页文章；原始帖子/视频仍由其现有结果卡片展示，不将未读取的视频内容或搜索列表标题当作文章原文。
 
 验收：86 项 Python 和 22 项 Node 回归通过，覆盖来源 Task 授权、逐 URL 作用范围、付费受限跳过与默认兼容、可信读取结果封装、未知引用拒绝、空正文和危险链接拒绝及旧搜索流程。App-Dev 实测 `Python asyncio documentation`：Google 搜索/排序完成，用户点击总结后一个后台 Task 成功读到 3 篇原文，生成中文要点、官方文档优先的可信度理由和 6000 字符/未独立核实的限制说明。引用按钮在 Default 打开 `https://docs.python.org/3/library/asyncio.html`，已核对实际文档；测试引用 Tab 已关闭，用户原有 Tab 保留。按钮、报告和引用布局经 AX 与原生截图确认。
+## 2026-10-19：Agentic 与 Mini-App 共享确认流程
+
+当前入口使用 `web/workflow.js`，替代旧版点击优选后立即搜索的提交处理器。
+第一次点击“优化搜索词”只运行共享准备 Task；展示优化词和推荐原因后，用户选择模式，
+编辑搜索词和来源，再点击“搜索”。优选和自定义共用来源复选框，快速使用已配置 API 或 Google。
+准备记录、确认回执和后端 Run 与 Agentic 参数表单共用，不能以模型 JSON 伪造确认。
+
+确认后显示来源搜索进度、文章列表及逐篇正文阅读进度，随后自动根据已读正文总结并保留引用。
+当前最多读取五篇、每篇 12000 字符；读取失败单列，全部无正文时失败。刷新恢复草稿或观察
+原 Run，不重新搜索；原搜索页面保留/清理确认继续复用共享任务生命周期。
+这一流程替代下文历史版本的“优选立即执行”和手动点击原文总结行为。
+
+
+### 启动草稿读取与保存（2026-10-22）
+
+公共 WebAgent SDK `draft()` 返回 JSON 字符串或 `null`，不是 HTTP 的 `{value: ...}` 包装。首次使用没有草稿时按空状态启动；已有字符串先解析，再由一搜到底校验工作流标识。保存必须使用公共 `ai2apps.mini-app-draft/v1` envelope，`miniApp=ai2apps.search-all`、`workflowSchema=search-workflow/v1`；业务准备状态仍由 Mini-App 拥有。恢复只观察原任务，不重新提交搜索。兼容已有 `search-workflow/v1` 业务对象的只读恢复。
+
+本次修复仅在所属 UI 适配公共 SDK 契约，不修改 AaAT 发现、路由、授权、后台执行或共享草稿入口。验证使用 SDK 空值/字符串夹具及 Chrome 手机视口，未冒充真实手机运行记录。
+
+### 逐来源展示、手动总结与 Agent 对话（2026-10-22）
+
+Mini-App 搜索只执行确认后的来源搜索。所属 WebMiniAppAdapters 在每个来源完成及其 Google 地址解析完成后发布该源的结果，标准进度内容保留所有已完成来源的交错去重列表；人工协助和普通浏览器等待使用原 Task 状态。一个来源等待不再使其它来源的结果不可见。最终结果和中间结果复用同一 owner 合并方法。
+
+Mini-App 的“帮我总结”单独启动持久 Search workflow Run，冻结当前服务器核验过的搜索结果，复用 Web Reader、正文证据与引用验证；不重新搜索。Agentic `web.search` 默认仍按原契约完成搜索、正文阅读和总结。总结动作和状态查询均验证 Mini-App mount、actor/Installation、App scope、原 Session/confirmation，客户端不能指定任意正文 URL 或伪造搜索结果。
+
+“在 Chat 中继续（Agent）”只在明确点击时创建新 Chat 线程，携带最多 50 条已观察结果（标题、URL、摘要、来源、Browser Task）与搜索 Run 引用。上下文以 USER 参考资料保存，标记 untrusted，不提升为 system prompt、工具声明或购买授权；线程启用 Agent 模式，等待用户输入后才执行。创建使用请求 ID 幂等并选中新线程，复用 ChatRepository 的 actor/client-scope 归属。Desktop/Mobile 经目标 Shell 重新读取所选线程，已有任务继续归公用后台所有。未对 General Agent 添加站点、商品或购买特例。
+
+验证：同一来源集合中一个 wait_task 夹具挂起时，已完成源的结果已出现在进度；真实 Chrome 手机视口验证列表、手动总结和 Chat 点击入口。后台 Run 夹具验证搜索不自动读正文、总结不重搜、引用来自实际读到的证据、Chat 新线程及幂等、无自动 Agent/购买执行、Session 隔离。UI 外部网页和模型为夹具，不代表真机外部站点购买验收。
+
+## DeepSeek Search（2026-10-24）
+
+新增受信任声明 `deepseek`，使用官方独立 Search API；复用 Model Manager 已保存的官方 DeepSeek BYOK，不要求启用某个聊天模型。只有当前 Installation 的活动 core/owner 可复用该凭据。官方地址须为 https://api.deepseek.com 或其 /v1 形式；自定义代理和 Cloud 模型不能冒充官方 BYOK。Key 只在后台请求前解析，不进入 Package/Task/模型输入/返回值。
+
+正常模式下 BYOK 可用即加入 Search All 与 AaAT 的候选，快速模式优先 DeepSeek。请求前复核身份、配置、精确站点作用域、query 1–128 字符及系统/Task 隐私模式。隐私模式下禁止外发到该搜索 API，模型整理仍沿公共隐私路由；不静默截断查询、不在失败后改走付费 Cloud。结果沿公共 Task / 逐源进度 / 合并与手动正文总结流程；首版不接 Fetch。Desktop/Mobile 使用同一 Package 页面。
+
+Cloud OpenAPI 1.78.0 已接入：优先官方 BYOK；没有 BYOK 时探测 Cloud 能力，按明确确认的价格版本与费用上限执行。成功且非空收取 1 Point；失败、超时、空结果不收费。未知请求只回读同一 request_id，不自动重发或切换来源。隐私模式阻断外发。Desktop/Mobile 与 AaAT 共用 owner 业务服务和确认守卫；付费同意默认不勾选。快速搜索可直接准备原始搜索词，无需 LLM 优化；费用确认独立显示。详见 [Local 接入与验收](deepseek-cloud-search-local-acceptance-20261024.md)。
+
+### 重复搜索与确认隔离（2026-10-24）
+
+Mini-App 每次明确点击搜索提交稳定 request_id，owner 在同一作用域内创建独立执行 preparation，复用已经完成的规划 Task。原确认永不改写；相同请求重放复用同一 preparation / Run，改参重放仍拒绝。正在运行的搜索或总结不能被复制为新的执行。Agent Run 所有的确认不得通过此 App 入口复制，继续原 AaAT 确认守卫。旧客户端无 request_id 时保留原确认幂等行为。
+
+Desktop/Mobile 草稿持久化尚未确认收到响应的提交体，冻结条件并允许用户按同一提交重试；收到确认后才切换到新执行记录。页面更新后旧 Package 版本的草稿重新进入准备阶段，保留搜索文本，不绕过 digest 守卫。
+
+
+## 搜索读取的无人值守策略（2026-10-24）
+
+Search All和其搜索结果Web Reader适配器统一使用 `stop_on_assistance=True`：登录、验证码、同意、未知弹层等人工等待都视为单页不可读，通过TaskTree取消该子任务，父搜索不转发求助入口，也不等待用户。每来源/每页10秒内完成或失败；在同一次已确认搜索结果中有限补位，保留成功正文。无可读来源时结束为失败，不伪造摘要或绕过访问控制。独立交互式Web Reader原有needs_user接口兼容；不是搜索任务的交互可保留协助。
+
+详见 [时间预算与无人值守策略](bounded-search-reading-20261024.md)。

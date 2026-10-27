@@ -1465,7 +1465,6 @@ async def test_subtitle_translation_batches_through_configured_cloud_route():
     app = FastAPI()
     calls = []
 
-    @app.post("/v1/chat/completions")
     async def complete(payload: dict):
         calls.append(payload)
         texts = json.loads(payload["messages"][1]["content"].split("\n", 1)[1])["subtitle_texts"]
@@ -1487,6 +1486,11 @@ async def test_subtitle_translation_batches_through_configured_cloud_route():
             "cloud/openai/standard" if purpose == "work_standard" else None
         )
     )
+    async def cloud_completion(payload, *, context):
+        assert context.consumer_app_id == mounted.declaration['id']
+        assert context.app_instance_id == mounted.mount['app_instance_id']
+        return await complete(payload)
+    runtime.model_invocations.invoke_agent_cloud_json = cloud_completion
     mounted = StudioCapabilityBroker(runtime).mounted_mini_app(
         STUDIO_ID, MOUNT_ID, principal=RequestPrincipal.legacy_local()
     )
@@ -1512,7 +1516,6 @@ async def test_subtitle_translation_recovers_when_model_changes_batch_item_count
     app = FastAPI()
     batch_sizes = []
 
-    @app.post("/v1/chat/completions")
     async def complete(payload: dict):
         texts = json.loads(payload["messages"][1]["content"].split("\n", 1)[1])["subtitle_texts"]
         batch_sizes.append(len(texts))
@@ -1527,6 +1530,11 @@ async def test_subtitle_translation_recovers_when_model_changes_batch_item_count
             "cloud/openai/standard" if purpose == "work_standard" else None
         )
     )
+    async def cloud_completion(payload, *, context):
+        assert context.consumer_app_id == mounted.declaration['id']
+        assert context.app_instance_id == mounted.mount['app_instance_id']
+        return await complete(payload)
+    runtime.model_invocations.invoke_agent_cloud_json = cloud_completion
     mounted = StudioCapabilityBroker(runtime).mounted_mini_app(
         STUDIO_ID, MOUNT_ID, principal=RequestPrincipal.legacy_local()
     )
@@ -1549,7 +1557,6 @@ async def test_subtitle_translation_recovers_when_model_changes_batch_item_count
 async def test_subtitle_translation_rejoins_single_item_split_by_model():
     app = FastAPI()
 
-    @app.post("/v1/chat/completions")
     async def complete(_payload: dict):
         return {"choices": [{"message": {"content": json.dumps(["前半句", "后半句"])}}]}
 
@@ -1559,6 +1566,11 @@ async def test_subtitle_translation_rejoins_single_item_split_by_model():
             "cloud/openai/standard" if purpose == "work_standard" else None
         )
     )
+    async def cloud_completion(payload, *, context):
+        assert context.consumer_app_id == mounted.declaration['id']
+        assert context.app_instance_id == mounted.mount['app_instance_id']
+        return await complete(payload)
+    runtime.model_invocations.invoke_agent_cloud_json = cloud_completion
     mounted = StudioCapabilityBroker(runtime).mounted_mini_app(
         STUDIO_ID, MOUNT_ID, principal=RequestPrincipal.legacy_local()
     )

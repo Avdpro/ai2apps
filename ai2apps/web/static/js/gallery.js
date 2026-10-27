@@ -151,7 +151,7 @@
         async dropFiles(event) {
             const studioReference=event.dataTransfer?.getData('application/x-ai2apps-studio-artifact');
             if(studioReference){try{const ref=JSON.parse(studioReference);if(ref.studioId!=='ai2apps.imagine-studio'||!ref.artifactId||!ref.appInstanceId)throw new Error(tr('gallery.error.artifact_invalid'));this.busy=true;const response=await fetch(`/v1/platform/imagine-studio/artifacts/${encodeURIComponent(ref.artifactId)}/gallery`,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-AI2Apps-App-Instance':ref.appInstanceId},body:JSON.stringify({collectionId:this.selectedCollectionId==='recent'?null:this.selectedCollectionId})});if(!response.ok)throw new Error(tr('gallery.error.request_failed'));await this.loadCollections();await this.loadAssets();}catch(error){this.fail(error);}finally{this.busy=false;}return;}
-            const raw = event.dataTransfer?.getData('application/x-ai2apps-audio-artifact') || event.dataTransfer?.getData('application/x-ai2apps-video-artifact');
+            const raw = event.dataTransfer?.getData('application/x-ai2apps-session-artifact') || event.dataTransfer?.getData('application/x-ai2apps-audio-artifact') || event.dataTransfer?.getData('application/x-ai2apps-video-artifact');
             if (raw) {
                 try { await this.importArtifactReference(JSON.parse(raw)); } catch (error) { this.fail(error); }
                 return;

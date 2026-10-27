@@ -55,3 +55,12 @@ Python/API 变更重启当前 Local；若修改 omlx/ 或嵌入 Runtime，按 Ap
 重启后账户 → 设备 → Mobile 可用应用实际显示 Intel Center 已开启，支持标记有效。64 项 Python 回归（包括模板及声明资源）和 11 项前端卡片/聊天/写作测试通过；隔离 Chrome 手机导航测试通过。旧摘要引用映射测试补齐此前主来源字段合同，不改变业务逻辑。
 
 真实手机和生产 Cloud 完整访问未验收。隔离测试浏览器无法使用已注册设备的离线激活；测试用 Cloud 成员激活被自动审批拒绝，因可能改变账户/设备状态，未执行。没有修改 Cloud 或其它实例。
+
+
+## App / Mini-App Cloud 模型调用（2026-10-16）
+
+Mobile App API 可能运行在仅挂载自身路由的独立 ASGI 容器中，不能假设 request.app 包含 /v1/chat/completions。前台非流式 Cloud 调用统一使用 ai2apps.model_invocation.invoke_app_cloud_chat(runtime, payload, principal=principal, session_id=..., consumer_app_id=..., app_instance_id=...)，通过系统 ModelInvocationService 执行，不向当前 App 容器发模型 HTTP 请求，也不复制 Cookie/Authorization。
+
+业务接口须先完成原有 Owner、App、资源、mount 和 capability 校验。principal 必须来自已认证依赖；Mini-App 的 consumer_app_id 和 app_instance_id 来自宿主验证后的声明和 mount，不能取自请求正文。调用保留 actor、Installation、membership epoch、计费和 Session 身份；Cloud 身份变化仍由服务层拒绝。后台 durable Task 继续按持久记录的 actor 解析身份。Package 模型沿用共享前台/后台调用入口，不因本次 Cloud 路由修复改变调度。
+
+已迁移：情报中心编辑/稿件、Todo Emoji、Studio Mini-App 文本/翻译/缩写、Agent 展示与编译、访客 HTML AI 编辑。普通 Owner Chat/Studio 网关已有专用模型入口，不向 Mobile 通用 App API 扩张任意模型路由或认证白名单。

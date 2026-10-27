@@ -7,6 +7,27 @@ from omlx.admin.routes import _shell_mount_payload
 ROOT = Path(__file__).parents[1]
 
 
+def test_builtin_mini_app_help_uses_admin_static_route():
+    script = (ROOT / 'ai2apps/web/static/js/mini_app_chat.js').read_text()
+    method = script.split('    async function loadBuiltinHelp(miniApp) {', 1)[1].split(
+        '\n    window.AI2AppsMiniAppChat', 1
+    )[0]
+    program = 'async function loadBuiltinHelp(miniApp) {' + method + r'''
+const assert = require('node:assert/strict');
+let requested = '';
+global.fetch = async url => {
+    requested = url;
+    return {ok: true, text: async () => '# Help'};
+};
+(async () => {
+    const result = await loadBuiltinHelp({id:'fixture.mini', name:'Fixture'});
+    assert.equal(requested, '/admin/static/help/mini_apps/fixture.mini/help.md');
+    assert.equal(result.content, '# Help');
+})().catch(error => {console.error(error); process.exitCode = 1;});
+'''
+    subprocess.run(['node', '-e', program], check=True, capture_output=True, text=True)
+
+
 def test_mini_model_install_action_restores_selection_and_uses_acpf():
     script = (ROOT / 'ai2apps/web/static/js/mini_app_chat.js').read_text()
     method = script.split('    function createModelInstaller(select, reload, onError) {', 1)[1].split(

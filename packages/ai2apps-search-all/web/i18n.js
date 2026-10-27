@@ -2,6 +2,32 @@
 (function(g){'use strict';
  const dictionaries={
  "zh-TW": {
+  "Charged": "已收費",
+  "Released": "已釋放預留",
+  "Reserved": "已預留",
+  "Cloud copy deleted": "Cloud 副本已刪除",
+  "DeepSeek search is unavailable in privacy mode.": "隱私模式下無法使用 DeepSeek 外部搜尋。",
+
+  "Fast search (no AI optimization)": "快速搜尋（不使用 AI 優化）",
+
+  "DeepSeek Cloud is available. Each successful non-empty search requires Points confirmation.": "DeepSeek Cloud 可用，成功且非空的搜尋須確認 Points 費用。",
+  "Cloud search is unavailable. Check sign-in, balance or organization policy.": "Cloud 搜尋暫不可用，請檢查登入、餘額或組織政策。",
+  "Use DeepSeek Cloud for this search? Up to {0} Point for successful non-empty results. Failures, timeouts and empty results are free. Cancellation after dispatch may still be charged.": "確認使用 DeepSeek Cloud 搜尋？成功且非空最多收取 {0} Point；失敗、逾時及空結果不收費。送出後取消仍可能收費。",
+  "DeepSeek Cloud: {0} Point per successful non-empty search; confirmation required.": "DeepSeek Cloud：成功且非空每次 {0} Point，須確認後執行。",
+  "Confirm paid search": "確認付費搜尋",
+  "Read search status": "讀取搜尋狀態",
+  "Cancel Cloud search": "取消 Cloud 搜尋",
+  "Delete Cloud result": "刪除 Cloud 結果",
+  "Cancel this Cloud search? A request already dispatched may still be charged.": "確認取消 Cloud 搜尋？已送出的請求仍可能收費。",
+  "Delete the Cloud copy of this result? Local results and billing records are retained; deletion does not refund Points.": "確認刪除結果的 Cloud 副本？本機結果與帳單仍保留，刪除不會退還 Points。",
+
+  "Uses official DeepSeek BYOK. Search terms: up to 128 characters.": "使用官方 DeepSeek BYOK，搜尋詞最多 128 個字元。",
+  "Configure official DeepSeek BYOK. Unavailable in privacy mode; Cloud search is coming soon.": "請設定官方 DeepSeek BYOK。隱私模式下不可用；Cloud 搜尋尚未上線。",
+
+  "Summarize for me": "幫我總結",
+  "Continue in Chat (Agent)": "在 Chat 中繼續（Agent）",
+  "Results appear as each source finishes. Choose Summarize for me to read original pages and summarize.": "各來源結果陸續顯示；點擊「幫我總結」後讀取原文並總結。",
+
   "Reading post…": "正在讀取貼文…",
   "Search All": "一搜到底",
   "Search multiple sources. Merge results and keep their origins.": "搜尋多個來源，合併結果並保留來源。",
@@ -157,6 +183,31 @@
   "Google Search Engine ID": "Google 搜尋引擎 ID"
  },
  "ja": {
+  "Charged": "課金済み",
+  "Released": "予約解除済み",
+  "Reserved": "予約済み",
+  "Cloud copy deleted": "Cloud コピーを削除しました",
+  "DeepSeek search is unavailable in privacy mode.": "プライバシーモードでは DeepSeek 外部検索を利用できません。",
+
+  "Fast search (no AI optimization)": "高速検索（AI最適化なし）",
+
+  "DeepSeek Cloud is available. Each successful non-empty search requires Points confirmation.": "DeepSeek Cloud が利用可能です。結果のある検索には Points の承認が必要です。",
+  "Cloud search is unavailable. Check sign-in, balance or organization policy.": "Cloud 検索は利用できません。ログイン、残高、組織ポリシーを確認してください。",
+  "Use DeepSeek Cloud for this search? Up to {0} Point for successful non-empty results. Failures, timeouts and empty results are free. Cancellation after dispatch may still be charged.": "DeepSeek Cloud で検索しますか？結果がある場合は最大 {0} Point。失敗、タイムアウト、空の結果は無料です。送信後の取消でも課金される場合があります。",
+  "DeepSeek Cloud: {0} Point per successful non-empty search; confirmation required.": "DeepSeek Cloud：結果がある検索は {0} Point。承認が必要です。",
+  "Confirm paid search": "有料検索を承認",
+  "Read search status": "検索状況を確認",
+  "Cancel Cloud search": "Cloud 検索を取消",
+  "Delete Cloud result": "Cloud の結果を削除",
+  "Cancel this Cloud search? A request already dispatched may still be charged.": "Cloud 検索を取り消しますか？送信済みのリクエストには課金される場合があります。",
+  "Delete the Cloud copy of this result? Local results and billing records are retained; deletion does not refund Points.": "Cloud の結果を削除しますか？ローカル結果と請求記録は残り、Points は返金されません。",
+
+  "Uses official DeepSeek BYOK. Search terms: up to 128 characters.": "公式 DeepSeek BYOK を使用します。検索語は128文字まで。",
+  "Configure official DeepSeek BYOK. Unavailable in privacy mode; Cloud search is coming soon.": "公式 DeepSeek BYOK を設定してください。プライバシーモードでは利用できません。Cloud 検索は準備中です。",
+  "Summarize for me": "まとめてください",
+  "Continue in Chat (Agent)": "Chat で続ける（Agent）",
+  "Results appear as each source finishes. Choose Summarize for me to read original pages and summarize.": "各ソースが完了すると結果を表示します。要約ボタンで原文を読み、まとめます。",
+
   "Reading post…": "投稿を読み込み中…",
   "Search All": "まとめて検索",
   "Search multiple sources. Merge results and keep their origins.": "複数の情報源を検索し、出典を保持して統合します。",
@@ -311,6 +362,31 @@
   "Google Search Engine ID": "Google 検索エンジン ID"
  },
  "ko": {
+  "Charged": "청구됨",
+  "Released": "예약 해제됨",
+  "Reserved": "예약됨",
+  "Cloud copy deleted": "Cloud 사본 삭제됨",
+  "DeepSeek search is unavailable in privacy mode.": "개인정보 보호 모드에서는 DeepSeek 외부 검색을 사용할 수 없습니다.",
+
+  "Fast search (no AI optimization)": "빠른 검색 (AI 최적화 없음)",
+
+  "DeepSeek Cloud is available. Each successful non-empty search requires Points confirmation.": "DeepSeek Cloud를 사용할 수 있습니다. 결과가 있는 검색에는 Points 확인이 필요합니다.",
+  "Cloud search is unavailable. Check sign-in, balance or organization policy.": "Cloud 검색을 사용할 수 없습니다. 로그인, 잔액 또는 조직 정책을 확인하세요.",
+  "Use DeepSeek Cloud for this search? Up to {0} Point for successful non-empty results. Failures, timeouts and empty results are free. Cancellation after dispatch may still be charged.": "DeepSeek Cloud로 검색할까요? 결과가 있으면 최대 {0} Point가 청구됩니다. 실패, 시간 초과, 빈 결과는 무료입니다. 전송 후 취소해도 청구될 수 있습니다.",
+  "DeepSeek Cloud: {0} Point per successful non-empty search; confirmation required.": "DeepSeek Cloud: 결과가 있는 검색당 {0} Point, 확인 후 실행됩니다.",
+  "Confirm paid search": "유료 검색 확인",
+  "Read search status": "검색 상태 확인",
+  "Cancel Cloud search": "Cloud 검색 취소",
+  "Delete Cloud result": "Cloud 결과 삭제",
+  "Cancel this Cloud search? A request already dispatched may still be charged.": "Cloud 검색을 취소할까요? 이미 전송된 요청에는 요금이 청구될 수 있습니다.",
+  "Delete the Cloud copy of this result? Local results and billing records are retained; deletion does not refund Points.": "Cloud 결과 사본을 삭제할까요? 로컬 결과와 청구 기록은 유지되며 Points는 환불되지 않습니다.",
+
+  "Uses official DeepSeek BYOK. Search terms: up to 128 characters.": "공식 DeepSeek BYOK를 사용합니다. 검색어는 최대 128자입니다.",
+  "Configure official DeepSeek BYOK. Unavailable in privacy mode; Cloud search is coming soon.": "공식 DeepSeek BYOK를 설정하세요. 개인정보 보호 모드에서는 사용할 수 없습니다. Cloud 검색은 준비 중입니다.",
+  "Summarize for me": "요약해 주세요",
+  "Continue in Chat (Agent)": "Chat에서 계속하기 (Agent)",
+  "Results appear as each source finishes. Choose Summarize for me to read original pages and summarize.": "각 출처가 완료되면 결과를 표시합니다. 요약 버튼을 누르면 원문을 읽고 요약합니다.",
+
   "Reading post…": "게시물을 읽는 중…",
   "Search All": "통합 검색",
   "Search multiple sources. Merge results and keep their origins.": "여러 출처를 검색하고 출처를 유지하며 결과를 합칩니다.",
@@ -465,6 +541,31 @@
   "Google Search Engine ID": "Google 검색 엔진 ID"
  },
  "fr": {
+  "Charged": "Facturé",
+  "Released": "Réservation libérée",
+  "Reserved": "Réservé",
+  "Cloud copy deleted": "Copie Cloud supprimée",
+  "DeepSeek search is unavailable in privacy mode.": "La recherche externe DeepSeek est indisponible en mode privé.",
+
+  "Fast search (no AI optimization)": "Recherche rapide (sans optimisation IA)",
+
+  "DeepSeek Cloud is available. Each successful non-empty search requires Points confirmation.": "DeepSeek Cloud est disponible. Une recherche avec résultats nécessite votre accord pour les Points.",
+  "Cloud search is unavailable. Check sign-in, balance or organization policy.": "Recherche Cloud indisponible. Vérifiez la connexion, le solde ou la politique de votre organisation.",
+  "Use DeepSeek Cloud for this search? Up to {0} Point for successful non-empty results. Failures, timeouts and empty results are free. Cancellation after dispatch may still be charged.": "Rechercher avec DeepSeek Cloud ? Jusqu’à {0} Point si des résultats sont obtenus. Échecs, délais dépassés et résultats vides sont gratuits. Une annulation après envoi peut rester facturée.",
+  "DeepSeek Cloud: {0} Point per successful non-empty search; confirmation required.": "DeepSeek Cloud : {0} Point par recherche avec résultats ; confirmation requise.",
+  "Confirm paid search": "Confirmer la recherche payante",
+  "Read search status": "Lire le statut",
+  "Cancel Cloud search": "Annuler la recherche Cloud",
+  "Delete Cloud result": "Supprimer le résultat Cloud",
+  "Cancel this Cloud search? A request already dispatched may still be charged.": "Annuler cette recherche Cloud ? Une requête déjà envoyée peut rester facturée.",
+  "Delete the Cloud copy of this result? Local results and billing records are retained; deletion does not refund Points.": "Supprimer la copie Cloud ? Les résultats locaux et la facturation sont conservés ; aucun remboursement de Points.",
+
+  "Uses official DeepSeek BYOK. Search terms: up to 128 characters.": "Utilise votre clé officielle DeepSeek BYOK. Recherche limitée à 128 caractères.",
+  "Configure official DeepSeek BYOK. Unavailable in privacy mode; Cloud search is coming soon.": "Configurez DeepSeek BYOK officiel. Indisponible en mode privé ; recherche Cloud à venir.",
+  "Summarize for me": "Résumer pour moi",
+  "Continue in Chat (Agent)": "Continuer dans Chat (Agent)",
+  "Results appear as each source finishes. Choose Summarize for me to read original pages and summarize.": "Les résultats apparaissent dès que chaque source termine. Choisissez le résumé pour lire les pages originales et les synthétiser.",
+
   "Reading post…": "Lecture de la publication…",
   "Search All": "Recherche globale",
   "Search multiple sources. Merge results and keep their origins.": "Recherchez plusieurs sources et fusionnez les résultats en conservant leur origine.",
@@ -619,6 +720,31 @@
   "Google Search Engine ID": "ID du moteur Google"
  },
  "es": {
+  "Charged": "Cobrado",
+  "Released": "Reserva liberada",
+  "Reserved": "Reservado",
+  "Cloud copy deleted": "Copia Cloud eliminada",
+  "DeepSeek search is unavailable in privacy mode.": "La búsqueda externa DeepSeek no está disponible en modo privado.",
+
+  "Fast search (no AI optimization)": "Búsqueda rápida (sin optimización IA)",
+
+  "DeepSeek Cloud is available. Each successful non-empty search requires Points confirmation.": "DeepSeek Cloud está disponible. Las búsquedas con resultados requieren confirmar los Points.",
+  "Cloud search is unavailable. Check sign-in, balance or organization policy.": "Búsqueda Cloud no disponible. Comprueba sesión, saldo o política de la organización.",
+  "Use DeepSeek Cloud for this search? Up to {0} Point for successful non-empty results. Failures, timeouts and empty results are free. Cancellation after dispatch may still be charged.": "¿Buscar con DeepSeek Cloud? Hasta {0} Point si hay resultados. Los fallos, tiempos de espera y resultados vacíos son gratis. Cancelar tras el envío puede generar un cargo.",
+  "DeepSeek Cloud: {0} Point per successful non-empty search; confirmation required.": "DeepSeek Cloud: {0} Point por búsqueda con resultados; requiere confirmación.",
+  "Confirm paid search": "Confirmar búsqueda de pago",
+  "Read search status": "Consultar estado",
+  "Cancel Cloud search": "Cancelar búsqueda Cloud",
+  "Delete Cloud result": "Eliminar resultado Cloud",
+  "Cancel this Cloud search? A request already dispatched may still be charged.": "¿Cancelar esta búsqueda Cloud? Una solicitud enviada puede generar un cargo.",
+  "Delete the Cloud copy of this result? Local results and billing records are retained; deletion does not refund Points.": "¿Eliminar la copia Cloud? Se conservan los resultados locales y la facturación; no se devuelven Points.",
+
+  "Uses official DeepSeek BYOK. Search terms: up to 128 characters.": "Usa DeepSeek BYOK oficial. Consulta de hasta 128 caracteres.",
+  "Configure official DeepSeek BYOK. Unavailable in privacy mode; Cloud search is coming soon.": "Configura DeepSeek BYOK oficial. No disponible en modo privado; búsqueda Cloud próximamente.",
+  "Summarize for me": "Resumir para mí",
+  "Continue in Chat (Agent)": "Continuar en Chat (Agent)",
+  "Results appear as each source finishes. Choose Summarize for me to read original pages and summarize.": "Los resultados aparecen al terminar cada fuente. Elige resumir para leer las páginas originales y sintetizarlas.",
+
   "Reading post…": "Leyendo publicación…",
   "Search All": "Búsqueda total",
   "Search multiple sources. Merge results and keep their origins.": "Busca en varias fuentes y combina resultados conservando su origen.",
@@ -773,6 +899,31 @@
   "Google Search Engine ID": "ID del buscador Google"
  },
  "pt-BR": {
+  "Charged": "Cobrado",
+  "Released": "Reserva liberada",
+  "Reserved": "Reservado",
+  "Cloud copy deleted": "Cópia Cloud excluída",
+  "DeepSeek search is unavailable in privacy mode.": "A busca externa DeepSeek está indisponível no modo privado.",
+
+  "Fast search (no AI optimization)": "Busca rápida (sem otimização por IA)",
+
+  "DeepSeek Cloud is available. Each successful non-empty search requires Points confirmation.": "DeepSeek Cloud disponível. Buscas com resultados exigem confirmação de Points.",
+  "Cloud search is unavailable. Check sign-in, balance or organization policy.": "Busca Cloud indisponível. Confira login, saldo ou política da organização.",
+  "Use DeepSeek Cloud for this search? Up to {0} Point for successful non-empty results. Failures, timeouts and empty results are free. Cancellation after dispatch may still be charged.": "Buscar com DeepSeek Cloud? Até {0} Point se houver resultados. Falhas, tempo esgotado e resultados vazios são gratuitos. Cancelar após o envio ainda pode gerar cobrança.",
+  "DeepSeek Cloud: {0} Point per successful non-empty search; confirmation required.": "DeepSeek Cloud: {0} Point por busca com resultados; confirmação obrigatória.",
+  "Confirm paid search": "Confirmar busca paga",
+  "Read search status": "Consultar status",
+  "Cancel Cloud search": "Cancelar busca Cloud",
+  "Delete Cloud result": "Excluir resultado Cloud",
+  "Cancel this Cloud search? A request already dispatched may still be charged.": "Cancelar esta busca Cloud? Uma solicitação já enviada ainda pode ser cobrada.",
+  "Delete the Cloud copy of this result? Local results and billing records are retained; deletion does not refund Points.": "Excluir a cópia Cloud? Os resultados locais e registros de cobrança serão mantidos; não há reembolso de Points.",
+
+  "Uses official DeepSeek BYOK. Search terms: up to 128 characters.": "Usa DeepSeek BYOK oficial. Pesquisa limitada a 128 caracteres.",
+  "Configure official DeepSeek BYOK. Unavailable in privacy mode; Cloud search is coming soon.": "Configure o DeepSeek BYOK oficial. Indisponível no modo privado; busca Cloud em breve.",
+  "Summarize for me": "Resumir para mim",
+  "Continue in Chat (Agent)": "Continuar no Chat (Agent)",
+  "Results appear as each source finishes. Choose Summarize for me to read original pages and summarize.": "Os resultados aparecem conforme cada fonte termina. Escolha resumir para ler as páginas originais e gerar um resumo.",
+
   "Reading post…": "Lendo publicação…",
   "Search All": "Busca completa",
   "Search multiple sources. Merge results and keep their origins.": "Pesquise várias fontes e combine resultados preservando a origem.",
@@ -927,6 +1078,31 @@
   "Google Search Engine ID": "ID do buscador Google"
  },
  "ru": {
+  "Charged": "Списано",
+  "Released": "Резерв снят",
+  "Reserved": "Зарезервировано",
+  "Cloud copy deleted": "Копия Cloud удалена",
+  "DeepSeek search is unavailable in privacy mode.": "В приватном режиме внешний поиск DeepSeek недоступен.",
+
+  "Fast search (no AI optimization)": "Быстрый поиск (без оптимизации ИИ)",
+
+  "DeepSeek Cloud is available. Each successful non-empty search requires Points confirmation.": "DeepSeek Cloud доступен. Поиск с результатами требует подтверждения списания Points.",
+  "Cloud search is unavailable. Check sign-in, balance or organization policy.": "Поиск Cloud недоступен. Проверьте вход, баланс или правила организации.",
+  "Use DeepSeek Cloud for this search? Up to {0} Point for successful non-empty results. Failures, timeouts and empty results are free. Cancellation after dispatch may still be charged.": "Искать через DeepSeek Cloud? До {0} Point при наличии результатов. Ошибки, тайм-ауты и пустые результаты бесплатны. Отмена после отправки не гарантирует отсутствие списания.",
+  "DeepSeek Cloud: {0} Point per successful non-empty search; confirmation required.": "DeepSeek Cloud: {0} Point за поиск с результатами; требуется подтверждение.",
+  "Confirm paid search": "Подтвердить платный поиск",
+  "Read search status": "Проверить статус",
+  "Cancel Cloud search": "Отменить поиск Cloud",
+  "Delete Cloud result": "Удалить результат Cloud",
+  "Cancel this Cloud search? A request already dispatched may still be charged.": "Отменить поиск Cloud? Отправленный запрос всё ещё может быть оплачен.",
+  "Delete the Cloud copy of this result? Local results and billing records are retained; deletion does not refund Points.": "Удалить копию Cloud? Локальные результаты и история оплаты сохранятся; Points не возвращаются.",
+
+  "Uses official DeepSeek BYOK. Search terms: up to 128 characters.": "Используется официальный ключ DeepSeek BYOK. Запрос — до 128 символов.",
+  "Configure official DeepSeek BYOK. Unavailable in privacy mode; Cloud search is coming soon.": "Настройте официальный DeepSeek BYOK. В приватном режиме недоступно; поиск Cloud появится позже.",
+  "Summarize for me": "Подвести итог",
+  "Continue in Chat (Agent)": "Продолжить в Chat (Agent)",
+  "Results appear as each source finishes. Choose Summarize for me to read original pages and summarize.": "Результаты появляются по мере завершения источников. Нажмите кнопку сводки, чтобы прочитать исходные страницы и подвести итог.",
+
   "Reading post…": "Чтение публикации…",
   "Search All": "Общий поиск",
   "Search multiple sources. Merge results and keep their origins.": "Поиск по нескольким источникам с объединением результатов и сохранением источников.",
@@ -1081,6 +1257,33 @@
   "Google Search Engine ID": "ID поисковой системы Google"
  },
  "zh": {
+  "Charged": "已收费",
+  "Released": "已释放预留",
+  "Reserved": "已预留",
+  "Cloud copy deleted": "Cloud 副本已删除",
+  "DeepSeek search is unavailable in privacy mode.": "隐私模式下不可使用 DeepSeek 外部搜索。",
+
+  "Fast search (no AI optimization)": "快速搜索（不使用 AI 优化）",
+  "Cancel": "取消",
+
+  "DeepSeek Cloud is available. Each successful non-empty search requires Points confirmation.": "DeepSeek Cloud 可用，成功非空搜索须确认 Points 费用。",
+  "Cloud search is unavailable. Check sign-in, balance or organization policy.": "Cloud 搜索暂不可用，请检查登录、余额或组织策略。",
+  "Use DeepSeek Cloud for this search? Up to {0} Point for successful non-empty results. Failures, timeouts and empty results are free. Cancellation after dispatch may still be charged.": "确认使用 DeepSeek Cloud 搜索？成功且非空最多收取 {0} Point；失败、超时和空结果不收费。请求发出后取消仍可能收费。",
+  "DeepSeek Cloud: {0} Point per successful non-empty search; confirmation required.": "DeepSeek Cloud：成功非空搜索每次 {0} Point，须确认后执行。",
+  "Confirm paid search": "确认付费搜索",
+  "Read search status": "回读搜索状态",
+  "Cancel Cloud search": "取消 Cloud 搜索",
+  "Delete Cloud result": "删除 Cloud 结果",
+  "Cancel this Cloud search? A request already dispatched may still be charged.": "确认取消 Cloud 搜索？请求已发出时仍可能收费。",
+  "Delete the Cloud copy of this result? Local results and billing records are retained; deletion does not refund Points.": "确认删除这条结果的 Cloud 副本？本机结果和账单记录仍保留，删除不会退还 Points。",
+
+  "Uses official DeepSeek BYOK. Search terms: up to 128 characters.": "使用官方 DeepSeek BYOK，搜索词最多 128 个字符。",
+  "Configure official DeepSeek BYOK. Unavailable in privacy mode; Cloud search is coming soon.": "请配置官方 DeepSeek BYOK。隐私模式下不可用；Cloud 搜索尚未上线。",
+
+  "Summarize for me": "帮我总结",
+  "Continue in Chat (Agent)": "在 Chat 中继续（Agent）",
+  "Results appear as each source finishes. Choose Summarize for me to read original pages and summarize.": "各来源结果陆续展示；点击“帮我总结”后读取正文并总结。",
+
   "Reading post…": "正在读取帖子…",
   "Task unavailable": "任务不可用",
   "Incomplete AI result": "AI 结果不完整",

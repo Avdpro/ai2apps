@@ -152,3 +152,13 @@ def test_task_wait_labels_distinguish_browser_and_human(control, label):
     assert result['status_label'] == label
     if control != 'browser_bidi_action':
         assert result['message'] == 'Concrete reason'
+
+
+def test_form_values_are_current_evidence_and_sensitive_values_are_excluded():
+    from ai2apps.agent_builder.exploration_prompt import _exploration_prompt
+    prompt = _exploration_prompt(SimpleNamespace(goal='Configure a search', attempts=[], observation={
+        'controls': [{'name':'Origin','value':'San Francisco'},
+                     {'name':'Password','type':'password','value':'do-not-reveal'}]}))
+    assert 'San Francisco' in prompt
+    assert 'do-not-reveal' not in prompt
+    assert 'already correct values' in prompt

@@ -173,12 +173,12 @@ def test_imagine_studio_adjust_image_is_a_local_non_ai_mini_app():
     assert "imagine_adjust.js" in template
     assert template.index("imagine_adjust.js") < template.index("imagine_studio.js")
     assert "isAdjustMode" in script and "localAdjustments" in script
-    assert "exportAdjustment" in script and "local/image-adjustments" in script
+    assert "exportAdjustment" in script and "submitAdjustment" in script
     assert "window.ImagineAdjustEngine" in engine
     assert "fetch(dataUrl)" not in script
     assert "atob(match[3])" in script
     assert "canvas.toBlob" in script
-    assert "imageFile = await canvasFile" in script
+    assert "/adjust`,{method:" in script
     assert "result.imageFile.arrayBuffer()" in script
     assert "fetch(`${HISTORY_API}/chunks`" in script
     assert "cropRect" in engine and "context.rotate" in engine
@@ -224,7 +224,6 @@ def test_imagine_studio_uses_cloud_and_local_image_models_with_capability_aware_
     assert "model.source === 'cloud' && model.id === managedModelId" in script
     assert "/v1/platform/cloud/ai/models" in script
     assert "const LOCAL_MODELS_API = '/v1/platform/imagine-studio/models'" in script
-    assert "const IMAGE_API = '/v1/images'" in script
     assert "executeCloudRun" in script
     assert "waitForRun" in script and "monitorActiveRun" in script
     assert "`${STUDIO_API}/runs/${encodeURIComponent(runId)}/execute`" in script
@@ -249,8 +248,9 @@ def test_imagine_studio_uses_cloud_and_local_image_models_with_capability_aware_
     assert "'1024x1536': { size: '848×1264', ratio: '2:3' }" in script
     assert "Google 当前真实 1K 输出尺寸" in script
     assert "artifact.metadata?.size" in template
-    assert "`${IMAGE_API}/${editing ? 'edits' : 'generations'}`" in script
-    assert "'Idempotency-Key': `imagine-${id}`" in script
+    assert "kind:editing?'local-image-edit':'local-image'" in script
+    assert "fetch('/v1/platform/studio-jobs'" in script
+    assert "'Idempotency-Key':`imagine-${run.id}`" in script
     assert "credentials: 'same-origin'" in script
     assert "imageDataUrls" in script
     assert "window.confirm" in script

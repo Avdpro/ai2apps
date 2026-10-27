@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from copy import deepcopy
 from typing import Any
 
@@ -173,6 +174,20 @@ def create_ir_run(
                 generation_id or "", str(ir.get("name") or capability_name or "WebAgent")[:160],
                 invocation_input, browser_context or {}, key=(session_id + ":" + idempotency_key) if idempotency_key else None,
             )
+    from ai2apps.agent_builder.execution_policy import resolve_policy
+    import time, math
+    policy=resolve_policy(ir.get('execution_policy'))
+    browser_context=dict(browser_context or {})
+    if policy['timeout_seconds'] is not None:
+        created=task_record['created_at'] if task_record else time.time()
+        deadline=browser_context.get('task_deadline_at',created+policy['timeout_seconds'])
+        browser_context['task_deadline_at']=deadline
+        remaining=deadline-time.time()
+        if remaining<=0:
+            if task_store and task_record:task_store.update(owner_user_id,task_record['id'],status='failed',message='Browser Task total time budget expired')
+            raise ValueError('Browser Task total time budget expired')
+        run_timeout=min(86400,max(1,math.ceil(remaining)))
+    else:run_timeout=86400
     try:
         run, _ = runtime.agents.create_run(
             session_id=session_id,
@@ -201,14 +216,15 @@ def create_ir_run(
                 }
             },
             idempotency_key=idempotency_key,
-            budget={"max_steps": 100, "timeout_seconds": 86_400},
+            budget={"max_steps": 100, "timeout_seconds": run_timeout},
         )
     except Exception:
         if task_store and task_record:
             task_store.update(owner_user_id, task_record["id"], status="failed", message="创建运行失败")
         raise
     if task_store and task_record:
-        task_store.update(owner_user_id, task_record["id"], run_id=run.id, status="running")
+        task_store.update(owner_user_id, task_record["id"], run_id=run.id, status="running",
+            **({'browser_context_json':json.dumps({**task_record.get('browser_context',{}),'task_deadline_at':browser_context['task_deadline_at']})} if browser_context.get('task_deadline_at') is not None else {}))
     runtime.agent_runtime.wake()
     return run
 

@@ -265,6 +265,103 @@ def _voice_rights_scope(
     return scope
 
 
+async def render_quick_read(runtime, request, principal, *, background=False, snapshot=None, snapshot_materials=None):
+    repository = lambda: ReadAloudRepository(runtime.database, runtime.events)
+    materials = lambda: snapshot_materials or VoiceMaterials(runtime.database, runtime.config.paths.artifacts_path)
+    render_manager = lambda: runtime.readaloud_tasks
+    text = request.text.strip()
+    if not text:
+        raise HTTPException(status_code=422, detail="Enter text to read")
+    invocations = getattr(runtime, "model_invocations", None)
+    if invocations is None:
+        raise HTTPException(status_code=503, detail="Speech service is not ready")
+    profile = snapshot.get('profile') if snapshot is not None else None
+    if snapshot is None and request.voice_profile_id:
+        try:
+            profile = repository().get_voice_profile(principal.actor_user_id, request.voice_profile_id)
+        except RepositoryError as error:
+            raise HTTPException(status_code=404, detail="Character not found") from error
+    model = invocations.model(profile['model_id'] if profile else request.model_id)
+    if model is None or model.model_type != "audio_tts":
+        raise HTTPException(status_code=422, detail="Select a speech model")
+    if not model.checkpoint_ready:
+        raise HTTPException(status_code=503, detail="Speech model is not ready")
+    named = (model.audio_capabilities or {}).get("tts", {}).get("named_voices", {})
+    voices = named.get("voices", [])
+    voice = None if profile else request.voice or (voices[0] if voices else None)
+    if not profile and request.voice and request.voice not in voices:
+        raise HTTPException(status_code=422, detail="Select an actor supported by this model")
+    payload = {"model": model.id, "input": text, "response_format": "wav"}
+    speed_caps = (model.audio_capabilities or {}).get('tts', {}).get('speed', {})
+    native_speed = (speed_caps.get('mode') == 'native'
+                    and float(speed_caps.get('minimum', 0.5)) <= request.speed <= float(speed_caps.get('maximum', 2.0)))
+    if native_speed:
+        payload['speed'] = request.speed
+    if voice:
+        payload["voice"] = voice
+    request_id = f"quick-read-{uuid.uuid4().hex}"
+    options = dict(request_id=request_id, context=invocations.context_for_actor(
+        principal.actor_user_id, session_id=request_id, consumer_app_id=READALOUD_STUDIO_ID))
+    warnings = []
+    verifier = None
+    if request.asr_verification:
+        asr_model = next((item for item in list_package_models(runtime)
+                          if item.model_type == 'audio_stt' and item.checkpoint_ready
+                          and (not request.asr_model_id or item.id == request.asr_model_id)), None)
+        if asr_model is None:
+            warnings.append('所选 ASR 模型不可用，本次未校验朗读内容；请重新选择或安装语音识别模型。' if request.asr_model_id else '未找到可用的 ASR 模型，本次未校验朗读内容；请安装语音识别模型后重试。')
+        else:
+            verifier = speech_verifier((invocations.invoke_background_multipart if background else invocations.invoke_foreground_multipart), asr_model.id,
+                                       request_id=request_id, context=options['context'])
+    options.update(verifier=verifier, warnings=warnings)
+    training = (profile or {}).get('training') or {}
+    if training.get('samples'):
+        try:
+            spec, samples, files = await asyncio.to_thread(prepare_training, model, training['samples'], materials(), principal.actor_user_id, for_execution=True)
+            if not spec['executable']:
+                raise ValueError('Character reference model is not executable')
+            if training.get('model_revision') is not None and training['model_revision'] != spec['revision']:
+                raise ValueError('Character model changed; rebind and preview the character first')
+            reference_audio, reference_text = combined_reference(samples, files)
+        except (ValueError, RepositoryError, ResourceNotFoundError) as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        if reference_text:
+            payload['ref_text'] = reference_text
+        response = await invoke_speech((invocations.invoke_background_multipart if background else invocations.invoke_foreground_multipart), model.id, 'audio_speech', data=payload,
+            files={'reference_audio': ('reference.wav', reference_audio, 'audio/wav')}, **options)
+    else:
+        description = training.get('design', {}).get('description')
+        if profile and not description:
+            raise HTTPException(status_code=422, detail="Character has no usable voice configuration")
+        if description:
+            payload['instructions'] = description
+        response = await invoke_speech((invocations.invoke_background_json if background else invocations.invoke_foreground_json), model.id, 'audio_speech', payload, **options)
+    if response.status_code >= 400:
+        raise HTTPException(status_code=502, detail="Speech generation failed; please try again")
+    content = bytes(response.body)
+    if not content or len(content) > 64 * 1024 * 1024:
+        raise HTTPException(status_code=502, detail="Speech output is empty or too large")
+    if not native_speed and request.speed != 1.0:
+        from ai2apps.audio_codecs import change_speech_tempo
+        try:
+            content = await asyncio.to_thread(change_speech_tempo, content, request.speed)
+        except Exception as error:
+            raise HTTPException(status_code=502, detail="Could not adjust speech speed") from error
+    if background:
+        return content, {"title": text[:80], "model_label": getattr(model, "display_name", model.id), "voice": profile["name"] if profile else voice or "", "warnings": warnings}
+    manager = render_manager()
+    if isinstance(manager, JSONResponse):
+        return manager
+    try:
+        download_url = manager.save_quick_audio(principal.actor_user_id, content, title=text[:80], model_label=getattr(model, "display_name", model.id), voice=profile["name"] if profile else voice or "", warnings=warnings)
+    except (RepositoryError, ReadAloudRenderError) as error:
+        raise HTTPException(status_code=503, detail="Could not save generated audio") from error
+    return Response(content, media_type="audio/wav", headers={
+        "X-AI2Apps-Download-URL": download_url,
+        "Cache-Control": "no-store",
+        "Content-Disposition": 'attachment; filename="quick-read.wav"',
+    })
+
 def create_readaloud_router(
     runtime_provider: PlatformRuntimeProvider,
     principal_provider: PrincipalProvider = resolve_request_principal,
@@ -601,97 +698,7 @@ def create_readaloud_router(
         request: QuickReadRequest,
         principal: RequestPrincipal = principal_dependency,
     ):
-        text = request.text.strip()
-        if not text:
-            raise HTTPException(status_code=422, detail="Enter text to read")
-        runtime = runtime_provider()
-        invocations = getattr(runtime, "model_invocations", None)
-        if invocations is None:
-            raise HTTPException(status_code=503, detail="Speech service is not ready")
-        profile = None
-        if request.voice_profile_id:
-            try:
-                profile = repository().get_voice_profile(principal.actor_user_id, request.voice_profile_id)
-            except RepositoryError as error:
-                raise HTTPException(status_code=404, detail="Character not found") from error
-        model = invocations.model(profile['model_id'] if profile else request.model_id)
-        if model is None or model.model_type != "audio_tts":
-            raise HTTPException(status_code=422, detail="Select a speech model")
-        if not model.checkpoint_ready:
-            raise HTTPException(status_code=503, detail="Speech model is not ready")
-        named = (model.audio_capabilities or {}).get("tts", {}).get("named_voices", {})
-        voices = named.get("voices", [])
-        voice = None if profile else request.voice or (voices[0] if voices else None)
-        if not profile and request.voice and request.voice not in voices:
-            raise HTTPException(status_code=422, detail="Select an actor supported by this model")
-        payload = {"model": model.id, "input": text, "response_format": "wav"}
-        speed_caps = (model.audio_capabilities or {}).get('tts', {}).get('speed', {})
-        native_speed = (speed_caps.get('mode') == 'native'
-                        and float(speed_caps.get('minimum', 0.5)) <= request.speed <= float(speed_caps.get('maximum', 2.0)))
-        if native_speed:
-            payload['speed'] = request.speed
-        if voice:
-            payload["voice"] = voice
-        request_id = f"quick-read-{uuid.uuid4().hex}"
-        options = dict(request_id=request_id, context=invocations.context_for_actor(
-            principal.actor_user_id, session_id=request_id, consumer_app_id=READALOUD_STUDIO_ID))
-        warnings = []
-        verifier = None
-        if request.asr_verification:
-            asr_model = next((item for item in list_package_models(runtime)
-                              if item.model_type == 'audio_stt' and item.checkpoint_ready
-                              and (not request.asr_model_id or item.id == request.asr_model_id)), None)
-            if asr_model is None:
-                warnings.append('所选 ASR 模型不可用，本次未校验朗读内容；请重新选择或安装语音识别模型。' if request.asr_model_id else '未找到可用的 ASR 模型，本次未校验朗读内容；请安装语音识别模型后重试。')
-            else:
-                verifier = speech_verifier(invocations.invoke_foreground_multipart, asr_model.id,
-                                           request_id=request_id, context=options['context'])
-        options.update(verifier=verifier, warnings=warnings)
-        training = (profile or {}).get('training') or {}
-        if training.get('samples'):
-            try:
-                spec, samples, files = await asyncio.to_thread(prepare_training, model, training['samples'], materials(), principal.actor_user_id, for_execution=True)
-                if not spec['executable']:
-                    raise ValueError('Character reference model is not executable')
-                if training.get('model_revision') is not None and training['model_revision'] != spec['revision']:
-                    raise ValueError('Character model changed; rebind and preview the character first')
-                reference_audio, reference_text = combined_reference(samples, files)
-            except (ValueError, RepositoryError, ResourceNotFoundError) as error:
-                raise HTTPException(status_code=422, detail=str(error)) from error
-            if reference_text:
-                payload['ref_text'] = reference_text
-            response = await invoke_speech(invocations.invoke_foreground_multipart, model.id, 'audio_speech', data=payload,
-                files={'reference_audio': ('reference.wav', reference_audio, 'audio/wav')}, **options)
-        else:
-            description = training.get('design', {}).get('description')
-            if profile and not description:
-                raise HTTPException(status_code=422, detail="Character has no usable voice configuration")
-            if description:
-                payload['instructions'] = description
-            response = await invoke_speech(invocations.invoke_foreground_json, model.id, 'audio_speech', payload, **options)
-        if response.status_code >= 400:
-            raise HTTPException(status_code=502, detail="Speech generation failed; please try again")
-        content = bytes(response.body)
-        if not content or len(content) > 64 * 1024 * 1024:
-            raise HTTPException(status_code=502, detail="Speech output is empty or too large")
-        if not native_speed and request.speed != 1.0:
-            from ai2apps.audio_codecs import change_speech_tempo
-            try:
-                content = await asyncio.to_thread(change_speech_tempo, content, request.speed)
-            except Exception as error:
-                raise HTTPException(status_code=502, detail="Could not adjust speech speed") from error
-        manager = render_manager()
-        if isinstance(manager, JSONResponse):
-            return manager
-        try:
-            download_url = manager.save_quick_audio(principal.actor_user_id, content, title=text[:80], model_label=getattr(model, "display_name", model.id), voice=profile["name"] if profile else voice or "", warnings=warnings)
-        except (RepositoryError, ReadAloudRenderError) as error:
-            raise HTTPException(status_code=503, detail="Could not save generated audio") from error
-        return Response(content, media_type="audio/wav", headers={
-            "X-AI2Apps-Download-URL": download_url,
-            "Cache-Control": "no-store",
-            "Content-Disposition": 'attachment; filename="quick-read.wav"',
-        })
+        return await render_quick_read(runtime_provider(), request, principal)
 
     @router.get("/providers")
     def providers(principal: RequestPrincipal = principal_dependency):
@@ -815,18 +822,38 @@ def create_readaloud_router(
         except (ValueError, RepositoryError) as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
 
+    def _preview_scope(runtime,principal,instance):
+        if not instance:raise HTTPException(422,'Studio instance is required')
+        authorize_app_instance(runtime,principal,instance)
+        if runtime.extension_manager.instance_entry(instance,principal=principal).get('app_key')!=READALOUD_STUDIO_ID:
+            raise HTTPException(404,'Voice Studio not found')
+        if principal.authentication_type=='owner_home_lease':
+            from ai2apps.remote.mobile_apps import app_enabled
+            if not app_enabled(runtime,principal,READALOUD_STUDIO_ID):raise HTTPException(403,'Voice Studio is disabled for Mobile')
+        if not getattr(runtime,'studio_jobs',None):raise HTTPException(503,'Studio tasks unavailable')
+
     @router.post('/design/profiles')
     def save_designed_voice(request: DesignRequest, principal: RequestPrincipal = principal_dependency):
         return _camel(save_design(request, principal))
 
     @router.post('/design/preview')
-    async def preview_designed_voice(request: DesignRequest, principal: RequestPrincipal = principal_dependency):
+    async def preview_designed_voice(request: DesignRequest, http_request: Request, app_instance_id: str | None = Header(default=None, alias="X-AI2Apps-App-Instance"), principal: RequestPrincipal = principal_dependency):
         model = design_model(request.model_id)
         if not model.checkpoint_ready:
             raise HTTPException(status_code=409, detail='Configure the selected Voice Design model first')
         profile = save_design(request, principal)
         runtime = runtime_provider()
         invocations = runtime.model_invocations
+        if http_request.headers.get('Prefer') == 'respond-async':
+            _preview_scope(runtime, principal, app_instance_id)
+            from ai2apps.studio.extended_jobs import submit
+            body={'model':model.id,'input':request.text.strip(),'instructions':request.description.strip(),'response_format':'wav',**_preview_expression(model,request.emotion,request.speed)}
+            job=submit(runtime,principal,app_instance_id,READALOUD_STUDIO_ID,'ai2apps.audio.voice-design','voice-preview',
+                {'operation':'design','body':body,'model':model.id,'title':request.name.strip(),'model_label':getattr(model,'display_name',model.id),
+                 'profile_id':profile['id'],'expected':[model.id,request.description.strip(),request.text.strip()],
+                 'preview':{'emotion':request.emotion,'speed':request.speed,'text':request.text.strip(),'model_id':model.id,'model_revision':str((model.weights or {}).get('revision') or ''),'description':request.description.strip()}},
+                key=http_request.headers.get('Idempotency-Key'))
+            return JSONResponse(job,status_code=202)
         request_id = 'design-preview-' + uuid.uuid4().hex
         response = await invoke_speech(invocations.invoke_foreground_json, model.id, 'audio_speech',
             {'model':model.id,'input':request.text.strip(),'instructions':request.description.strip(),'response_format':'wav', **_preview_expression(model, request.emotion, request.speed)},
@@ -959,7 +986,7 @@ def create_readaloud_router(
         ))
 
     @router.post("/training/preview")
-    async def preview_training(request: TrainingRequest, principal: RequestPrincipal = principal_dependency):
+    async def preview_training(request: TrainingRequest, http_request: Request, app_instance_id: str | None = Header(default=None, alias="X-AI2Apps-App-Instance"), principal: RequestPrincipal = principal_dependency):
         runtime, model, spec, samples, files = await asyncio.to_thread(training_input, request, principal, execute=True)
         if not spec['executable']:
             raise HTTPException(status_code=409, detail="This model’s training or multi-reference execution adapter is not connected. Materials can be saved.")
@@ -977,6 +1004,14 @@ def create_readaloud_router(
             payload['emotion'] = style['emotion']
             payload['emotion_strength'] = style['emotion_strength']
         invocations = runtime.model_invocations
+        if http_request.headers.get('Prefer') == 'respond-async':
+            _preview_scope(runtime,principal,app_instance_id)
+            from ai2apps.studio.extended_jobs import submit
+            job=submit(runtime,principal,app_instance_id,READALOUD_STUDIO_ID,'ai2apps.audio.voice-design','voice-preview',
+                {'operation':'clone','body':payload,'model':model.id,'title':request.name,'model_label':getattr(model,'display_name',model.id),'profile_id':request.profile_id,
+                 'expected':{'model_id':model.id,'source_type':request.source_type,'rights_scope':_voice_rights_scope(request,principal),'training':{'samples':samples,'model_revision':spec['revision']}}},
+                files={'reference':reference_audio},key=http_request.headers.get('Idempotency-Key'))
+            return JSONResponse(job,status_code=202)
         request_id = 'voice-preview-' + uuid.uuid4().hex
         response = await invoke_speech(invocations.invoke_foreground_multipart,
             model.id, 'audio_speech', data=payload,

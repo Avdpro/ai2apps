@@ -195,6 +195,7 @@ class ToolCallAction:
     timeout_ms: int | None = None
     recover_input_errors: bool = False
     recover_tool_errors: bool = False
+    resolved_interaction_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

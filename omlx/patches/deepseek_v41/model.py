@@ -56,6 +56,9 @@ class Model:
         """Clear request KV/hash state while retaining the warmed expert banks."""
         if self.prefill_executor is not None:self.prefill_executor.release()
         self.hash=HashState(self.c,self.tokenizer,self.max_seq);self.states={};self.shared={}
+        # Prefill changes Hot slots. Decode must rebuild the device mapping from
+        # the final bank contents, not reuse the previous request's slot IDs.
+        self.lookups={};self.ages={};self.ticks={};self.main_slot_masks={}
         self.cache_counters=mx.zeros((self.c.n_layers,3),dtype=mx.uint32)
         self.boost_counts=mx.zeros((self.c.n_layers,4),dtype=mx.uint32)
         self.stats=dict(route_requests=0,l1_hits=0,l0_hits=0,misses=0,all_hit_steps=0,decode_host_ids=0,prefill_groups=0)
@@ -81,6 +84,15 @@ class Model:
         kind=self.s.entries[name+'.weight'][2]['dtype']
         if kind=='F8_E4M3':
             w,s=self.s.fp8(name);a=quant(x).astype(mx.bfloat16)
+            if getattr(self,'verify_active',False) and a.ndim==3 and a.shape[1]>1:
+                # Independent one-row QMV problems, dispatched together. A
+                # regular batched QMM changes the FP32 reduction order.
+                count=a.shape[0]*a.shape[1]
+                out=mx.gather_qmm(a.reshape(count,1,a.shape[-1]),w[None],s[None],
+                    lhs_indices=mx.arange(count,dtype=mx.uint32),
+                    rhs_indices=mx.zeros((count,),dtype=mx.uint32),
+                    group_size=32,bits=8,mode='mxfp8',sorted_indices=True)
+                return out.reshape(*a.shape[:-1],w.shape[0]).astype(mx.bfloat16)
             return mx.quantized_matmul(a,w,s,group_size=32,bits=8,mode='mxfp8').astype(mx.bfloat16)
         w=self.w(name+'.weight',mx.float32 if force_f32 else None)
         return x.astype(w.dtype)@w.T
@@ -88,7 +100,13 @@ class Model:
     def hc_pre(self,x,pre):return mx.sum(pre[...,None]*x.astype(mx.float32),axis=2).astype(x.dtype)
     def hc_mixes(self,p,x,kind):
         f=x.reshape(*x.shape[:2],-1).astype(mx.float32)
-        mix=(f@self.w(p+'.hc_'+kind+'_fn').T)*mx.rsqrt(mx.mean(f*f,axis=-1,keepdims=True)+self.c.norm_eps)
+        weight=self.w(p+'.hc_'+kind+'_fn')
+        if getattr(self,'verify_active',False) and f.shape[1]>1:
+            # Tiny HC coefficient errors cross BF16 rounding boundaries in the
+            # next residual stream. Preserve Decode's GEMV reduction order.
+            projected=mx.stack([f[:,i]@weight.T for i in range(f.shape[1])],axis=1)
+        else:projected=f@weight.T
+        mix=projected*mx.rsqrt(mx.mean(f*f,axis=-1,keepdims=True)+self.c.norm_eps)
         return sinkhorn(mix,self.w(p+'.hc_'+kind+'_scale'),self.w(p+'.hc_'+kind+'_base'),self.c.hc_mult,self.c.hc_sinkhorn_iters,self.c.hc_eps)
     def hc_post(self,x,residual,post,comb):
         return (post[...,None]*x[:,:,None,:]+mx.sum(comb[...,None]*residual[:,:,:,None,:],axis=2)).astype(x.dtype)
@@ -133,7 +151,10 @@ class Model:
         if l in c.kv_source_layers and latent is not None:
             positions=mx.arange(0,x.shape[1]-x.shape[1]%ratio,ratio) if start==0 else mx.array([start+1-ratio])
             k=self.norm(p+'.k_norm',self.linear(p+'.wk',latent));k=rope_selected(k,freq,positions,rd);k=quant(k,32,True)
-            self.states[l]['index'][:,start//ratio:start//ratio+k.shape[1]]=k;self.shared['index']=self.states[l]['index']
+            self.states[l]['index'][:,start//ratio:start//ratio+k.shape[1]]=k
+        # Even between compression boundaries, publish THIS source layer's
+        # index cache; the previous token left a later source in shared.
+        if l in c.kv_source_layers:self.shared['index']=self.states[l]['index']
         q=self.linear(p+'.wq_b',qr).reshape(1,x.shape[1],c.index_n_heads,c.index_head_dim)
         q=quant(rope(q,freq,start,rd),32,True);k=self.shared['index'][:,:end//ratio]
         weights=self.linear(p+'.weights_proj',x)*(c.index_head_dim**-.5*c.index_n_heads**-.5)
@@ -238,8 +259,12 @@ class Model:
     def prepare_miss(self,l,bank,host,scores):
         return bank.prepare(host)
     def moe(self,l,x,start):
+        shared=None
         c=self.c;p=f'layers.{l}.ffn.gate';flat=x.reshape(-1,c.dim)
         scores=(flat.astype(mx.float32)@self.w(p+'.weight',mx.float32).T)/c.gate_temp
+        if getattr(self,'verify_active',False) and flat.shape[0]>1:
+            router=self.w(p+'.weight',mx.float32)
+            scores=mx.concatenate([flat[i:i+1].astype(mx.float32)@router.T for i in range(flat.shape[0])],axis=0)/c.gate_temp
         scores=mx.sqrt(mx.logaddexp(scores,mx.array(0.,dtype=mx.float32)))
         bias=self.w(p+'.bias')
         if getattr(self,'image_mask',None) is not None:bias=mx.where(self.image_mask.reshape(-1,1),self.w(p+'.bias_vl'),bias)
@@ -256,12 +281,23 @@ class Model:
             self.banks[l]=LRUMetalBank(self.expert_store/f'layer-{l}.bin',selected,l0_slots=self.hot_slots,no_cache=self.expert_no_cache)
         bank=self.banks[l]
         if flat.shape[0]>1 and self.prefill_executor is not None:
-            out=self.prefill_executor.dispatch(self,l,flat,ids,weights,bank,scores)
+            if getattr(self,'verify_active',False) and getattr(self,'verify_overlap_shared',False):
+                # Immutable shared weights are independent of routed-bank writes.
+                # Submit after destination-buffer fences, immediately before
+                # reads, so an earlier fence cannot drain this independent work.
+                shared=self.shared_expert(l,x)
+                out=self.prefill_executor.dispatch(self,l,flat,ids,weights,bank,scores,
+                    on_io_ready=lambda:mx.async_eval(shared))
+            else:
+                out=self.prefill_executor.dispatch(self,l,flat,ids,weights,bank,scores)
         elif flat.shape[0]>1:
             mx.eval(ids);host=ids.tolist();pairs={}
             for row,es in enumerate(host):
                 for rank,e in enumerate(es):pairs.setdefault(e,[]).append((row,rank))
-            main=[e for e in sorted(pairs) if e in bank.main];cold=[e for e in sorted(pairs) if e not in bank.main]
+            # Consume existing Hot experts before loading any cold groups;
+            # otherwise a later-needed resident expert can be evicted/re-read.
+            main=[e for e in sorted(pairs) if e in bank.main or e in bank.hot]
+            cold=[e for e in sorted(pairs) if e not in bank.main and e not in bank.hot]
             groups=([main] if main else [])+[cold[i:i+self.hot_slots] for i in range(0,len(cold),self.hot_slots)]
             values=[];positions=[]
             for es in groups:
@@ -323,7 +359,9 @@ class Model:
             bank.track(out)
         y=mx.zeros((flat.shape[0],c.dim),dtype=mx.float32)
         for rank in range(c.n_activated_experts):y=y+out[:,rank,:].astype(mx.float32)
-        return (y.reshape(x.shape)+self.shared_expert(l,x)).astype(x.dtype)
+        if shared is None:shared=self.shared_expert(l,x)
+        if self.trace:self.emit(f'layers.{l}.routed',y.reshape(x.shape));self.emit(f'layers.{l}.shared',shared)
+        return (y.reshape(x.shape)+shared).astype(x.dtype)
     def __call__(self,ids,start=0):
         c=self.c
         if ids.shape[0]!=1 or start+ids.shape[1]>self.max_seq:raise ValueError('batch/context limit')
@@ -342,18 +380,81 @@ class Model:
         h=mx.repeat(h[:,:,None,:],c.hc_mult,axis=2)
         # Official initial mix selects the first residual stream.
         pre=mx.zeros(h.shape[:-1],dtype=mx.float32);pre[:,:,0]=1.0
+        captured=[]
+        capture_ids=getattr(self,'dspark_capture_layers',())
         for l in range(c.n_layers):
             p=f'layers.{l}'
             if l in c.engram_layer_ids:h=self.engram(l,h,hashes[:,:,c.engram_layer_ids.index(l),:])
+            if l in capture_ids:captured.append(mx.mean(h,axis=2))
             residual=h;attn_pre,attn_post,attn_comb=self.hc_mixes(p,h,'attn')
             x=self.norm(p+'.attn_norm',self.hc_pre(h,pre));x=self.attention(l,x,start);self.emit(p+'.attn',x)
             h=self.hc_post(x,residual,attn_post,attn_comb)
             residual=h;ffn_pre,ffn_post,ffn_comb=self.hc_mixes(p,h,'ffn')
-            x=self.norm(p+'.ffn_norm',self.hc_pre(h,attn_pre));x=self.moe(l,x,start)
+            x=self.norm(p+'.ffn_norm',self.hc_pre(h,attn_pre));self.emit(p+'.ffn_input',x);x=self.moe(l,x,start)
             h=self.hc_post(x,residual,ffn_post,ffn_comb);pre=ffn_pre;self.emit(p,h)
+        if capture_ids:self.dspark_hidden=mx.concatenate(captured,axis=-1)
         h=self.norm('norm',self.hc_pre(h,pre))
         logits=h[:,-1].astype(mx.float32)@self.w('head.weight',mx.float32).T
         return logits
+    def verify_block(self,ids,start):
+        self.verify_active=True
+        try:return self._verify_block(ids,start)
+        finally:self.verify_active=False
+
+    def _verify_block(self,ids,start):
+        """Experimental layer-wise verification; with serial attention parity.
+
+        HC, Engram, routing, expert dispatch and output head process the block.
+        Compression/index state is advanced in token order inside each layer.
+        Prefix state handles allow committing without target replay.
+        """
+        c=self.c;n=ids.shape[1]
+        if ids.shape[0]!=1 or n<1 or start<1 or start+n>self.max_seq:
+            raise ValueError('invalid verification block')
+        if self.boost_top!=c.n_activated_experts:raise ValueError('verification requires natural routing')
+        self.image_mask=None
+        hashes=self.hash(ids,start)
+        h=mx.repeat(self.s.embedding('embed',ids)[:,:,None,:],c.hc_mult,axis=2)
+        pre=mx.zeros(h.shape[:-1],dtype=mx.float32);pre[:,:,0]=1
+        captured=[];capture_ids=getattr(self,'dspark_capture_layers',())
+        shared=[{} for _ in range(n)];prefix=[{} for _ in range(n)]
+        # A verify dispatch can replace Hot slots; never reuse its old mapping.
+        self.lookups={};self.ages={};self.ticks={};self.main_slot_masks={}
+        for l in range(c.n_layers):
+            p=f'layers.{l}'
+            if l in c.engram_layer_ids:h=self.engram(l,h,hashes[:,:,c.engram_layer_ids.index(l),:])
+            if l in capture_ids:captured.append(mx.mean(h,axis=2))
+            residual=h;ap,ao,ac=self.hc_mixes(p,h,'attn')
+            x=self.norm(p+'.attn_norm',self.hc_pre(h,pre));parts=[]
+            if getattr(self,'verify_attention_mode','serial')=='projected':
+                from .verify_attention import projected_attention
+                attn=projected_attention(self,l,x,start,shared,prefix)
+            else:
+                for i in range(n):
+                    self.shared=shared[i]
+                    parts.append(self.attention(l,x[:,i:i+1],start+i))
+                    prefix[i][l]={k:mx.array(v) for k,v in self.states[l].items()}
+                attn=mx.concatenate(parts,axis=1)
+            self.emit(p+'.attn',attn)
+            h=self.hc_post(attn,residual,ao,ac)
+            residual=h;pre,fo,fc=self.hc_mixes(p,h,'ffn')
+            x=self.norm(p+'.ffn_norm',self.hc_pre(h,ap));self.emit(p+'.ffn_input',x)
+            executor=self.prefill_executor
+            try:
+                # Use a separately bounded verify scratch pipeline when enabled;
+                # otherwise fall back to the existing bank grouping path.
+                self.prefill_executor=getattr(self,'verify_prefill',None)
+                y=self.moe(l,x,start)
+            finally:self.prefill_executor=executor
+            h=self.hc_post(y,residual,fo,fc);self.emit(p,h)
+        self.shared=shared[-1]
+        self.lookups={};self.ages={};self.ticks={};self.main_slot_masks={}
+        hidden=mx.concatenate(captured,axis=-1) if captured else None
+        if hidden is not None:self.dspark_hidden=hidden
+        h=self.norm('norm',self.hc_pre(h,pre))
+        logits=mx.stack([h[:,i].astype(mx.float32)@self.w('head.weight',mx.float32).T for i in range(n)],axis=1)
+        return logits,hidden,prefix,shared
+
     def complete_forward(self,*outputs):
         """Materialize token state and release bank graphs at the eval boundary."""
         persistent=[self.cache_counters]
@@ -362,6 +463,7 @@ class Model:
         mx.eval(*outputs,*persistent,*self.ages.values())
         for bank in self.banks.values():bank.release_completed_uses()
     def close(self):
+        if getattr(self,'verify_prefill',None) is not None:self.verify_prefill.release()
         if self.prefill_executor is not None:self.prefill_executor.release()
         for b in self.banks.values():b.close()
         self.s.close()

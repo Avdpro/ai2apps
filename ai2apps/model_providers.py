@@ -22,6 +22,7 @@ from fastapi import HTTPException
 from fastapi.responses import Response, StreamingResponse
 
 from ai2apps.model_identity import with_model_identity
+from ai2apps.model_worker.reasoning_capabilities import adapt_reasoning_effort, validate_reasoning_effort, ReasoningEffortError
 from ai2apps.model_worker.audio_capabilities import (
     AudioCapabilitiesError,
     default_audio_capabilities,
@@ -1147,6 +1148,20 @@ async def proxy_package_json(
             status_code=400, detail=f"Model does not support {operation}"
         )
     body = dict(payload)
+    if body.get("reasoning_effort") is not None:
+        try:
+            validate_reasoning_effort(body["reasoning_effort"])
+            reasoning = model.metadata.get("reasoning") or {}
+            control = reasoning.get("effort_control")
+            if reasoning.get("mode") == "none":
+                control = {"format": "none"}
+            if control is None:
+                raise ReasoningEffortError("Selected Model Package does not declare reasoning effort control")
+            if reasoning.get("mode") == "required" and body["reasoning_effort"] == "none":
+                raise ReasoningEffortError("Selected model requires reasoning")
+            body = adapt_reasoning_effort(body, control)
+        except ReasoningEffortError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
     body["model"] = model.upstream_id
     lease: SchedulerLease | None = None
     if model.scheduler is not None:

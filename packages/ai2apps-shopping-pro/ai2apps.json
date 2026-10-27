@@ -3,7 +3,7 @@
   "package": {
     "id": "ai2apps/shopping-pro",
     "type": "app",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "displayName": "Shopping Pro",
     "description": "Personal replenishment suggestions and a shopping cart for you to review."
   },
@@ -25,5 +25,114 @@
   ],
   "permissions": [],
   "dependencies": [],
-  "files": []
+  "files": [],
+  "capabilityCatalog": {
+    "schemaVersion": "ai2apps.package-capabilities.v1",
+    "entries": [
+      {
+        "kind": "mini-app",
+        "identity": "ai2apps.shopping-pro",
+        "provides": [
+          "shopping.history",
+          "shopping.refresh_list",
+          "shopping.recommend",
+          "shopping.revise",
+          "shopping.prepare_cart",
+          "shopping.gift_recommend"
+        ],
+        "tasks": [
+          "Shopping Pro",
+          "购物达人"
+        ],
+        "inputTypes": [
+          "text"
+        ],
+        "outputTypes": [
+          "file"
+        ],
+        "requirements": {
+          "capabilities": []
+        },
+        "agent": {
+          "mode": "aaat",
+          "declarationVersion": "1.0.0",
+          "exports": [
+            {
+              "name": "shopping.history",
+              "interfaceVersion": "1.0.0",
+              "inputTypes": [
+                "text"
+              ],
+              "outputTypes": [
+                "file"
+              ]
+            },
+            {
+              "name": "shopping.refresh_list",
+              "interfaceVersion": "1.0.0",
+              "inputTypes": [
+                "text"
+              ],
+              "outputTypes": [
+                "file"
+              ]
+            },
+            {
+              "name": "shopping.recommend",
+              "interfaceVersion": "1.0.0",
+              "inputTypes": [
+                "text"
+              ],
+              "outputTypes": [
+                "file"
+              ]
+            },
+            {
+              "name": "shopping.revise",
+              "interfaceVersion": "1.0.0",
+              "inputTypes": [
+                "text"
+              ],
+              "outputTypes": [
+                "file"
+              ]
+            },
+            {
+              "name": "shopping.prepare_cart",
+              "interfaceVersion": "1.0.0",
+              "inputTypes": [
+                "text"
+              ],
+              "outputTypes": [
+                "file"
+              ]
+            },
+            {
+              "name": "shopping.gift_recommend",
+              "interfaceVersion": "1.0.0",
+              "inputTypes": [
+                "text"
+              ],
+              "outputTypes": [
+                "file"
+              ]
+            }
+          ]
+        },
+        "scope": "Requires a Desktop host implementing these declared AaAT exports. UI bridge edits drafts only; execution uses host-owned durable tasks and shared output.",
+        "processing": "hybrid",
+        "pricing": "unknown",
+        "localizations": {
+          "en": {
+            "displayName": "Shopping Pro",
+            "description": "Replenishment and gift recommendations."
+          },
+          "zh": {
+            "displayName": "购物达人",
+            "description": "日常补货与礼物推荐。"
+          }
+        }
+      }
+    ]
+  }
 }

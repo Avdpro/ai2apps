@@ -24,6 +24,7 @@ class TodoStore:
                 CREATE TABLE IF NOT EXISTS directories(id TEXT PRIMARY KEY, owner TEXT NOT NULL, title TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS tasks(id TEXT PRIMARY KEY, owner TEXT NOT NULL, data TEXT NOT NULL, revision INTEGER NOT NULL, next_due TEXT, created_at TEXT NOT NULL);
                 CREATE INDEX IF NOT EXISTS task_owner ON tasks(owner);
+                CREATE TABLE IF NOT EXISTS task_creation_receipts(owner TEXT NOT NULL, request_key TEXT NOT NULL, input_json TEXT NOT NULL, task_id TEXT NOT NULL, PRIMARY KEY(owner,request_key));
                 CREATE TABLE IF NOT EXISTS attachments(id TEXT PRIMARY KEY, owner TEXT NOT NULL, task_id TEXT NOT NULL, name TEXT NOT NULL, size INTEGER NOT NULL);
                 CREATE TABLE IF NOT EXISTS runs(id TEXT PRIMARY KEY, owner TEXT NOT NULL, task_id TEXT NOT NULL, status TEXT NOT NULL, data TEXT NOT NULL);
                 CREATE INDEX IF NOT EXISTS run_owner ON runs(owner,task_id);
@@ -75,6 +76,38 @@ class TodoStore:
             "updated_at": data.get("updated_at", row["created_at"]),
             "update_time_estimated": data.get("update_time_estimated", "updated_at" not in data),
         }
+
+    def mobile_list(self, owner, query=""):
+        # Do not materialize descriptions, execution payloads or attachment metadata.
+        with self.connect() as db:
+            directories = [dict(r) for r in db.execute(
+                "SELECT d.id,d.title FROM directories d LEFT JOIN directory_order o ON o.directory_id=d.id AND o.owner=d.owner WHERE d.owner=? ORDER BY COALESCE(o.position,2147483647),d.rowid", (owner,))]
+            keys = ('directory_id','parent_id','title','emoji','priority','status','progress','highlight','position','updated_at','completed')
+            columns = ','.join("json_extract(data, '$.%s') AS %s" % (k,k) for k in keys)
+            tasks = []
+            for row in db.execute("SELECT id,revision,created_at," + columns + " FROM tasks WHERE owner=? AND json_extract(data,'$.archived_at') IS NULL AND json_extract(data,'$.deleted_at') IS NULL ORDER BY rowid", (owner,)):
+                t = dict(row)
+                t['status'] = t['status'] or ('completed' if t['completed'] else 'not_started')
+                t['progress'] = t['progress'] if t['progress'] is not None else (100 if t['completed'] else 0)
+                t['updated_at'] = t['updated_at'] or t['created_at']
+                for key, default in [('priority','C'),('emoji',''),('highlight',''),('position',0)]:
+                    if t[key] is None: t[key] = default
+                tasks.append(t)
+            result = {'directories': directories, 'tasks': tasks}
+            if query:
+                result['search_matches'] = [r['id'] for r in db.execute(
+                    "SELECT id FROM tasks WHERE owner=? AND instr(lower(coalesce(json_extract(data,'$.title'),'') || ' ' || coalesce(json_extract(data,'$.description'),'')),lower(?))>0", (owner,query))]
+            return result
+
+    def mobile_detail(self, owner, task_id):
+        with self.connect() as db:
+            task = self.task(db.execute('SELECT * FROM tasks WHERE owner=? AND id=?', (owner,task_id)).fetchone())
+            if task.get('archived_at') or task.get('deleted_at'):
+                raise KeyError('Project not found')
+            attachments = [dict(r) for r in db.execute('SELECT id,task_id,name,size FROM attachments WHERE owner=? AND task_id=?', (owner,task_id))]
+            runs = [{**json.loads(r['data']), 'id':r['id'], 'task_id':r['task_id'], 'status':r['status']} for r in db.execute(
+                "SELECT * FROM runs WHERE owner=? AND task_id=? AND (status IN ('queued','running','planning','waiting_input','waiting_capability') OR id IN (SELECT id FROM runs WHERE owner=? AND task_id=? ORDER BY rowid DESC LIMIT 200)) ORDER BY rowid DESC", (owner,task_id,owner,task_id))]
+            return {'task':task, 'attachments':attachments, 'runs':runs}
 
     def snapshot(self, owner):
         with self.connect() as db:
@@ -166,7 +199,7 @@ class TodoStore:
                 raise ValueError("Directories changed; refresh before reordering")
             db.executemany("INSERT OR REPLACE INTO directory_order VALUES(?,?,?)", [(owner, id, position) for position, id in enumerate(ids)])
 
-    def save(self, owner, value, id=None, revision=None):
+    def save(self, owner, value, id=None, revision=None, *, creation_key=None):
         data = TaskInput.model_validate(value).model_dump()
         data["title"] = data["title"].strip()
         if not data["title"]:
@@ -174,6 +207,13 @@ class TodoStore:
         now = datetime.now(UTC)
         due = next_due(data["schedule"], now)
         with self.connect() as db:
+            receipt_input = json.dumps(data, sort_keys=True, separators=(',', ':'))
+            if creation_key:
+                if id: raise ValueError('Creation key cannot edit an existing task')
+                receipt = db.execute('SELECT * FROM task_creation_receipts WHERE owner=? AND request_key=?', (owner, creation_key)).fetchone()
+                if receipt:
+                    if receipt['input_json'] != receipt_input: raise ValueError('Creation key belongs to different parameters')
+                    return self.task(db.execute('SELECT * FROM tasks WHERE owner=? AND id=?', (owner, receipt['task_id'])).fetchone())
             if not db.execute(
                 "SELECT 1 FROM directories WHERE id=? AND owner=?",
                 (data["directory_id"], owner),
@@ -252,6 +292,8 @@ class TodoStore:
                     old["created_at"] if old else now.isoformat(),
                 ),
             )
+            if creation_key:
+                db.execute('INSERT INTO task_creation_receipts VALUES(?,?,?,?)', (owner, creation_key, receipt_input, id))
             return self.task(
                 db.execute("SELECT * FROM tasks WHERE id=?", (id,)).fetchone()
             )

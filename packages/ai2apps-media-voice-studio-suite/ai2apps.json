@@ -3,7 +3,7 @@
   "package": {
     "id": "ai2apps/media-voice-studio-suite",
     "type": "app",
-    "version": "0.2.2",
+    "version": "0.2.3",
     "displayName": "Media Voice Studio Suite",
     "description": "Six local-first Mini-Apps for transcription, source separation, voice replacement, video dubbing, and subtitles.",
     "localizations": {
@@ -15,8 +15,12 @@
   },
   "compatibility": {
     "ai2apps": ">=0.1.0 <2.0.0",
-    "platforms": ["darwin"],
-    "architectures": ["arm64"]
+    "platforms": [
+      "darwin"
+    ],
+    "architectures": [
+      "arm64"
+    ]
   },
   "entrypoints": [
     {
@@ -31,5 +35,349 @@
   "sbom": {
     "format": "spdx-json-2.3",
     "path": "META/sbom.spdx.json"
+  },
+  "capabilityCatalog": {
+    "schemaVersion": "ai2apps.package-capabilities.v1",
+    "entries": [
+      {
+        "kind": "mini-app",
+        "identity": "ai2apps.media-voice.source-separation",
+        "provides": [
+          "voice.separate"
+        ],
+        "tasks": [
+          "Voice and Background Separation",
+          "人声与背景音分离"
+        ],
+        "inputTypes": [
+          "audio"
+        ],
+        "outputTypes": [
+          "audio"
+        ],
+        "requirements": {
+          "capabilities": [
+            "audio.source_separation"
+          ]
+        },
+        "agent": {
+          "mode": "aaat",
+          "declarationVersion": "1.0.0",
+          "exports": [
+            {
+              "name": "voice.separate",
+              "interfaceVersion": "1.0.0",
+              "inputTypes": [
+                "audio"
+              ],
+              "outputTypes": [
+                "audio"
+              ]
+            }
+          ]
+        },
+        "scope": "Requires a Desktop host implementing these declared AaAT exports. UI bridge edits drafts only; execution uses host-owned durable tasks and shared output.",
+        "processing": "local",
+        "pricing": "unknown",
+        "localizations": {
+          "en": {
+            "displayName": "Voice and Background Separation",
+            "description": "Separate vocals or dialogue from music and background audio."
+          },
+          "zh": {
+            "displayName": "人声与背景音分离",
+            "description": "从音乐和背景音中分离人声或对白，并保持原始时间线。"
+          }
+        }
+      },
+      {
+        "kind": "mini-app",
+        "identity": "ai2apps.media-voice.transcription",
+        "provides": [
+          "voice.detailed_transcription"
+        ],
+        "tasks": [
+          "Detailed Transcription",
+          "详细转写"
+        ],
+        "inputTypes": [
+          "audio"
+        ],
+        "outputTypes": [
+          "subtitle",
+          "transcript"
+        ],
+        "requirements": {
+          "capabilities": [
+            "audio.detailed_transcription",
+            "audio.speaker_diarization"
+          ]
+        },
+        "agent": {
+          "mode": "aaat",
+          "declarationVersion": "1.0.0",
+          "exports": [
+            {
+              "name": "voice.detailed_transcription",
+              "interfaceVersion": "1.0.0",
+              "inputTypes": [
+                "audio"
+              ],
+              "outputTypes": [
+                "subtitle",
+                "transcript"
+              ]
+            }
+          ]
+        },
+        "scope": "Requires a Desktop host implementing these declared AaAT exports. UI bridge edits drafts only; execution uses host-owned durable tasks and shared output.",
+        "processing": "local",
+        "pricing": "unknown",
+        "localizations": {
+          "en": {
+            "displayName": "Detailed Transcription",
+            "description": "Create timestamped transcripts, detect speakers, and let the user assign names."
+          },
+          "zh": {
+            "displayName": "详细转写",
+            "description": "生成带时间戳的文本记录、识别说话人，并允许用户为角色命名。"
+          }
+        }
+      },
+      {
+        "kind": "mini-app",
+        "identity": "ai2apps.media-voice.audio-speaker-replacement",
+        "provides": [
+          "voice.replace_speaker"
+        ],
+        "tasks": [
+          "Audio Speaker Voice Replacement",
+          "录音角色换声"
+        ],
+        "inputTypes": [
+          "audio",
+          "voice-profile"
+        ],
+        "outputTypes": [
+          "audio"
+        ],
+        "requirements": {
+          "capabilities": [
+            "audio.speaker_voice_replacement",
+            "audio.detailed_transcription",
+            "audio.speaker_diarization",
+            "audio.source_separation",
+            "audio.voice_conversion"
+          ]
+        },
+        "agent": {
+          "mode": "aaat",
+          "declarationVersion": "1.0.0",
+          "exports": [
+            {
+              "name": "voice.replace_speaker",
+              "interfaceVersion": "1.0.0",
+              "inputTypes": [
+                "audio",
+                "voice-profile"
+              ],
+              "outputTypes": [
+                "audio"
+              ]
+            }
+          ]
+        },
+        "scope": "Requires a Desktop host implementing these declared AaAT exports. UI bridge edits drafts only; execution uses host-owned durable tasks and shared output.",
+        "processing": "local",
+        "pricing": "unknown",
+        "localizations": {
+          "en": {
+            "displayName": "Audio Speaker Voice Replacement",
+            "description": "Replace one selected speaker in an audio recording with an authorized target voice."
+          },
+          "zh": {
+            "displayName": "录音角色换声",
+            "description": "使用已获授权的目标声音替换录音中选定角色的声音。"
+          }
+        }
+      },
+      {
+        "kind": "mini-app",
+        "identity": "ai2apps.media-voice.video-subtitles",
+        "provides": [
+          "video.subtitles"
+        ],
+        "tasks": [
+          "Video Subtitles and Translation",
+          "视频字幕与翻译"
+        ],
+        "inputTypes": [
+          "video"
+        ],
+        "outputTypes": [
+          "subtitle",
+          "video"
+        ],
+        "requirements": {
+          "capabilities": [
+            "media.video_subtitles",
+            "audio.detailed_transcription",
+            "media.subtitle.export",
+            "media.video.subtitle_burn_in"
+          ]
+        },
+        "agent": {
+          "mode": "aaat",
+          "declarationVersion": "1.0.0",
+          "exports": [
+            {
+              "name": "video.subtitles",
+              "interfaceVersion": "1.0.0",
+              "inputTypes": [
+                "video"
+              ],
+              "outputTypes": [
+                "subtitle",
+                "video"
+              ]
+            }
+          ]
+        },
+        "scope": "Requires a Desktop host implementing these declared AaAT exports. UI bridge edits drafts only; execution uses host-owned durable tasks and shared output.",
+        "processing": "local",
+        "pricing": "unknown",
+        "localizations": {
+          "en": {
+            "displayName": "Video Subtitles and Translation",
+            "description": "Generate, translate, export, or burn subtitles into a video."
+          },
+          "zh": {
+            "displayName": "视频字幕与翻译",
+            "description": "生成和翻译字幕，可导出字幕文件或将字幕直接添加到视频。"
+          }
+        }
+      },
+      {
+        "kind": "mini-app",
+        "identity": "ai2apps.media-voice.video-audio-translation",
+        "provides": [
+          "video.dub"
+        ],
+        "tasks": [
+          "Video Audio Translation",
+          "视频音轨翻译"
+        ],
+        "inputTypes": [
+          "video",
+          "voice-profile"
+        ],
+        "outputTypes": [
+          "video"
+        ],
+        "requirements": {
+          "capabilities": [
+            "media.video_audio_translation",
+            "audio.detailed_transcription",
+            "llm.text",
+            "audio.source_separation",
+            "audio.speech_generation",
+            "media.audio.extract",
+            "media.video.audio_mux"
+          ]
+        },
+        "agent": {
+          "mode": "aaat",
+          "declarationVersion": "1.0.0",
+          "exports": [
+            {
+              "name": "video.dub",
+              "interfaceVersion": "1.0.0",
+              "inputTypes": [
+                "video",
+                "voice-profile"
+              ],
+              "outputTypes": [
+                "video"
+              ]
+            }
+          ]
+        },
+        "scope": "Requires a Desktop host implementing these declared AaAT exports. UI bridge edits drafts only; execution uses host-owned durable tasks and shared output.",
+        "processing": "local",
+        "pricing": "unknown",
+        "localizations": {
+          "en": {
+            "displayName": "Video Audio Translation",
+            "description": "Translate a single narrator and dub with a Voice Studio Character or a temporary clone of the original voice."
+          },
+          "zh": {
+            "displayName": "视频音轨翻译",
+            "description": "翻译单人旁白，并使用语音工坊角色或原始音色的临时克隆重新配音。"
+          }
+        }
+      },
+      {
+        "kind": "mini-app",
+        "identity": "ai2apps.media-voice.video-speaker-replacement",
+        "provides": [
+          "video.replace_speaker"
+        ],
+        "tasks": [
+          "Video Speaker Voice Replacement",
+          "视频角色换声"
+        ],
+        "inputTypes": [
+          "video",
+          "voice-profile"
+        ],
+        "outputTypes": [
+          "audio",
+          "video"
+        ],
+        "requirements": {
+          "capabilities": [
+            "media.video_speaker_voice_replacement",
+            "audio.speaker_voice_replacement",
+            "media.audio.extract",
+            "audio.detailed_transcription",
+            "audio.speaker_diarization",
+            "audio.source_separation",
+            "audio.voice_conversion",
+            "media.video.audio_mux"
+          ]
+        },
+        "agent": {
+          "mode": "aaat",
+          "declarationVersion": "1.0.0",
+          "exports": [
+            {
+              "name": "video.replace_speaker",
+              "interfaceVersion": "1.0.0",
+              "inputTypes": [
+                "video",
+                "voice-profile"
+              ],
+              "outputTypes": [
+                "audio",
+                "video"
+              ]
+            }
+          ]
+        },
+        "scope": "Requires a Desktop host implementing these declared AaAT exports. UI bridge edits drafts only; execution uses host-owned durable tasks and shared output.",
+        "processing": "local",
+        "pricing": "unknown",
+        "localizations": {
+          "en": {
+            "displayName": "Video Speaker Voice Replacement",
+            "description": "Replace one selected speaker in a video while preserving its picture and ambience."
+          },
+          "zh": {
+            "displayName": "视频角色换声",
+            "description": "替换视频中选定角色的声音，同时保留原始画面和环境声。"
+          }
+        }
+      }
+    ]
   }
 }

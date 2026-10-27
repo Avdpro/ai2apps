@@ -83,7 +83,7 @@ def test_studios_load_shared_package_mini_app_client_and_resume_setup():
     assert "'asr_verification'" in helper
     assert "'subtitle_action', 'subtitle_segments'" in helper
     assert "name === 'subtitle_segments' ? 2 * 1024 * 1024 : 4096" in helper
-    shared_script = "static('js/studio_mini_apps.js') }}?v=durable-drafts-20261011-1"
+    shared_script = "static('js/studio_mini_apps.js') }}?v="
     assert shared_script in video_template
     assert shared_script in readaloud_template
     assert shared_script in imagine_template

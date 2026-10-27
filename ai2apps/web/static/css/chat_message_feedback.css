@@ -1,0 +1,8 @@
+/* Visible on hover/keyboard focus; touch copy receives the same acknowledgement. */
+[data-chat-tip]{position:relative}
+[data-chat-tip]::after{content:attr(data-chat-tip);position:absolute;bottom:calc(100% + 7px);left:0;transform:none;z-index:100;max-width:240px;width:max-content;padding:6px 9px;border-radius:7px;background:#252525;color:#fff;font-size:12px;line-height:1.4;font-weight:400;white-space:normal;pointer-events:none;opacity:0;visibility:hidden;transition:opacity .12s}
+[data-chat-tip]:hover::after,[data-chat-tip]:focus-visible::after,.chat-tip-visible[data-chat-tip]::after{opacity:1;visibility:visible}
+[data-chat-tip=""]::after{display:none}
+[data-copy-success="true"]{color:#16803c!important}
+.chat-copy-notice{position:fixed;bottom:calc(100px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);z-index:10000;padding:9px 16px;border-radius:10px;background:#252525;color:#fff;box-shadow:0 4px 18px #0002;font-size:13px;pointer-events:none}
+.chat-copy-notice[hidden]{display:none}

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import inspect
+import json
+import math
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime
@@ -10,6 +12,43 @@ from enum import StrEnum
 from typing import Any
 
 from ai2apps.identity import RequestPrincipal
+
+
+def validate_progress_update(update):
+    """Validate the optional portable snapshot; legacy progress stays compatible."""
+    value = update.get('progress')
+    if value is not None and (type(value) not in (int, float) or not math.isfinite(value) or not 0 <= value <= 1):
+        raise ValueError('Progress must be a finite fraction from zero to one')
+    snapshot = (update.get('content') or {}).get('task_progress')
+    if snapshot is None:
+        return update
+    if not isinstance(snapshot, dict) or snapshot.get('schema') != 'ai2apps.task-progress/v1':
+        raise ValueError('Invalid AaAT progress schema')
+    if set(snapshot) - {'schema','state','stage','task_id','requires_user','wait_reason','metrics'}:
+        raise ValueError('Unknown AaAT progress field')
+    if snapshot.get('state') not in {'queued','running','waiting','completed','partial','failed','cancelled'}:
+        raise ValueError('Invalid owner progress state')
+    for key, limit in (('stage',100),('task_id',200),('wait_reason',500)):
+        if key in snapshot and (not isinstance(snapshot[key],str) or len(snapshot[key]) > limit):
+            raise ValueError('Invalid progress text field')
+    if 'requires_user' in snapshot and type(snapshot['requires_user']) is not bool:
+        raise ValueError('requires_user must be boolean')
+    if snapshot['state'] == 'waiting' and 'requires_user' not in snapshot:
+        raise ValueError('Waiting progress must distinguish user assistance')
+    metrics = snapshot.get('metrics', [])
+    if not isinstance(metrics,list) or len(metrics)>8:
+        raise ValueError('Progress has too many metrics')
+    for metric in metrics:
+        if (not isinstance(metric,dict) or set(metric)-{'label','value','total'}
+                or not isinstance(metric.get('label'),str) or not 1<=len(metric['label'])<=100
+                or 'value' not in metric):
+            raise ValueError('Invalid progress metric')
+        for key in ('value','total'):
+            if key in metric and (type(metric[key]) not in (int,float) or not math.isfinite(metric[key]) or metric[key]<0):
+                raise ValueError('Progress metric must be finite and non-negative')
+    if len(json.dumps(snapshot,ensure_ascii=False,allow_nan=False).encode())>8192:
+        raise ValueError('AaAT progress snapshot exceeds 8 KiB')
+    return update
 
 
 class ServiceRuntimeMode(StrEnum):
@@ -155,7 +194,7 @@ class ToolCallContext:
             "progress": progress,
             "content": content or {},
         }
-        value = self.progress_reporter(update)
+        value = self.progress_reporter(validate_progress_update(update))
         if inspect.isawaitable(value):
             await value
 

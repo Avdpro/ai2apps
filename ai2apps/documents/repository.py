@@ -5,6 +5,9 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import mimetypes
+import stat as statmod
+import uuid
 import os
 import tempfile
 import zipfile
@@ -117,6 +120,82 @@ class DocumentRepository:
                     os.unlink(temporary)
         return self.get(session_id, attachment_id)
 
+    def create_reference(self, session_id: str, path: Path, *, filename=None, media_type=None, source="desktop_picker", gallery_asset_id=None, owner_user_id=None) -> AttachmentRecord:
+        """Register selected bytes by identity; never copy, read or content-hash them."""
+        if not path.is_absolute():
+            raise ValueError("Selected attachment path must be absolute")
+        try:
+            resolved=path.resolve(strict=True); info=resolved.stat()
+        except (OSError,RuntimeError) as error:
+            raise ValueError("Selected attachment is unavailable; select it again") from error
+        if not statmod.S_ISREG(info.st_mode):
+            raise ValueError("Select a regular file")
+        attachment_id=new_entity_id(EntityIdKind.ATTACHMENT)
+        blob_id=new_entity_id(EntityIdKind.DOCUMENT_BLOB)
+        key="references/"+uuid.uuid4().hex+".json"
+        manifest={'path':str(path),'resolved':str(resolved),'fingerprint':self._fingerprint(info)}
+        if gallery_asset_id:manifest.update(gallery_asset_id=gallery_asset_id,owner_user_id=owner_user_id)
+        target=self.root/key;target.parent.mkdir(parents=True,exist_ok=True)
+        fd=os.open(target,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+        with os.fdopen(fd,'w') as output:json.dump(manifest,output)
+        name=Path(filename or path.name).name.strip()
+        if not name or len(name)>512:
+            target.unlink(missing_ok=True);raise ValueError('Invalid attachment name')
+        now=utc_now_text()
+        try:
+            with self.database.transaction(write=True) as db:
+                if not db.execute("SELECT 1 FROM sessions WHERE id=? AND status!='deleted'",(session_id,)).fetchone():
+                    raise ResourceNotFoundError("session",session_id)
+                # sha256 remains a unique internal blob identity, not a claimed
+                # content digest. Public reference records expose no content hash.
+                db.execute("INSERT INTO document_blobs(id,sha256,size_bytes,storage_key,parse_status,metadata_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)",
+                    (blob_id,hashlib.sha256(key.encode()).hexdigest(),info.st_size,key,'ready','{}',now,now))
+                db.execute("INSERT INTO attachments(id,session_id,blob_id,filename,media_type,metadata_json,created_at) VALUES(?,?,?,?,?,?,?)",
+                    (attachment_id,session_id,blob_id,name,media_type or mimetypes.guess_type(name)[0] or 'application/octet-stream',
+                     canonical_json({'storage':'reference','content_status':'not_loaded','source':source,**({'gallery_asset_id':gallery_asset_id} if gallery_asset_id else {})}),now))
+        except BaseException:
+            target.unlink(missing_ok=True);raise
+        return self.get(session_id,attachment_id)
+
+    @staticmethod
+    def _fingerprint(info):
+        return [info.st_dev,info.st_ino,info.st_size,info.st_mtime_ns,info.st_ctime_ns]
+
+    def source_path(self, session_id: str, attachment_id: str) -> Path:
+        with self.database.transaction() as db:row=self._row(db,session_id,attachment_id)
+        path=self.root/row['storage_key']
+        if not row['storage_key'].startswith('references/'):
+            return path
+        manifest=json.loads(path.read_text())
+        if manifest.get('gallery_asset_id'):
+            with self.database.transaction() as db:
+                asset=db.execute("SELECT status FROM gallery_assets WHERE id=? AND owner_user_id=?",(manifest['gallery_asset_id'],manifest['owner_user_id'])).fetchone()
+            if not asset or asset['status']!='active':raise ValueError('Gallery material is deleted or unavailable; choose another material')
+        try:
+            selected=Path(manifest['path']);resolved=selected.resolve(strict=True)
+            if str(resolved)!=manifest['resolved'] or self._fingerprint(resolved.stat())!=manifest['fingerprint']:
+                raise ValueError("Attachment changed or was replaced; select it again")
+            if not resolved.is_file():raise ValueError("Attachment is no longer a regular file")
+        except (OSError,RuntimeError) as error:
+            raise ValueError("Attachment moved or is unavailable; select it again") from error
+        return resolved
+
+    def reference_status(self, session_id, attachment_id):
+        item=self.get(session_id,attachment_id)
+        if item.metadata.get('storage')!='reference':return {}
+        try:self.source_path(session_id,attachment_id)
+        except ValueError as error:return {'available':False,'reason':str(error)}
+        return {'available':True,'content_status':'not_loaded'}
+
+    def _ensure_reference_parsed(self, session_id, attachment_id):
+        item=self.get(session_id,attachment_id)
+        if item.metadata.get('storage')!='reference':return
+        self.source_path(session_id,attachment_id)
+        if item.size_bytes>MAX_ATTACHMENT_BYTES or Path(item.filename).suffix.lower() not in SUPPORTED_EXTENSIONS:
+            raise ValueError("Attachment is a file reference; use a compatible App to process it without loading it into Chat")
+        with self.database.transaction() as db:row=self._row(db,session_id,attachment_id)
+        if not row['parser']:self.parse(session_id,attachment_id)
+
     @staticmethod
     def _validate_content(suffix: str, data: bytes) -> None:
         if suffix == ".pdf" and b"%PDF-" not in data[:1024]:
@@ -140,7 +219,7 @@ class DocumentRepository:
 
     def _row(self, connection, session_id: str, attachment_id: str):
         row = connection.execute(
-            """SELECT a.*, b.sha256,b.size_bytes,b.parse_status,b.error_json,b.storage_key
+            """SELECT a.*, b.sha256,b.size_bytes,b.parse_status,b.error_json,b.storage_key,b.parser
                FROM attachments a JOIN document_blobs b ON b.id=a.blob_id
                WHERE a.id=? AND a.session_id=?""",
             (attachment_id, session_id),
@@ -158,7 +237,7 @@ class DocumentRepository:
             filename=row["filename"],
             media_type=row["media_type"],
             size_bytes=row["size_bytes"],
-            sha256=row["sha256"],
+            sha256="" if row["storage_key"].startswith("references/") else row["sha256"],
             status=DocumentStatus(row["parse_status"]),
             metadata=json.loads(row["metadata_json"]),
             error=None if row["error_json"] is None else json.loads(row["error_json"]),
@@ -172,7 +251,7 @@ class DocumentRepository:
     def list(self, session_id: str) -> tuple[AttachmentRecord, ...]:
         with self.database.transaction() as connection:
             rows = connection.execute(
-                """SELECT a.*, b.sha256,b.size_bytes,b.parse_status,b.error_json,b.storage_key
+                """SELECT a.*, b.sha256,b.size_bytes,b.parse_status,b.error_json,b.storage_key,b.parser
                    FROM attachments a JOIN document_blobs b ON b.id=a.blob_id
                    WHERE a.session_id=? ORDER BY a.created_at DESC""",
                 (session_id,),
@@ -182,7 +261,7 @@ class DocumentRepository:
     def parse(self, session_id: str, attachment_id: str) -> AttachmentRecord:
         with self.database.transaction(write=True) as connection:
             row = self._row(connection, session_id, attachment_id)
-            if row["parse_status"] == "ready":
+            if row["parse_status"] == "ready" and (not row["storage_key"].startswith("references/") or row["parser"]):
                 return self._record(row)
             if row["parse_status"] == "parsing":
                 return self._record(row)
@@ -195,7 +274,12 @@ class DocumentRepository:
             filename = row["filename"]
             media_type = row["media_type"]
         try:
+            if row['storage_key'].startswith('references/'):
+                if row['size_bytes']>MAX_ATTACHMENT_BYTES or Path(filename).suffix.lower() not in SUPPORTED_EXTENSIONS:
+                    raise ValueError("Reference requires a compatible App; automatic whole-file parsing is disabled")
+                path=self.source_path(session_id,attachment_id)
             blocks = self.parser.parse(path, filename, media_type)
+            if row['storage_key'].startswith('references/'):self.source_path(session_id,attachment_id)
             if not blocks:
                 raise RuntimeError("No extractable content found")
             with self.database.transaction(write=True) as connection:
@@ -241,6 +325,7 @@ class DocumentRepository:
     def blocks(
         self, session_id: str, attachment_id: str, *, offset: int = 0, limit: int = 50
     ) -> tuple[DocumentBlock, ...]:
+        self._ensure_reference_parsed(session_id,attachment_id)
         with self.database.transaction() as connection:
             row = self._row(connection, session_id, attachment_id)
             rows = connection.execute(
@@ -252,6 +337,7 @@ class DocumentRepository:
     def search(
         self, session_id: str, attachment_id: str, query: str, *, limit: int = 20
     ) -> tuple[DocumentBlock, ...]:
+        self._ensure_reference_parsed(session_id,attachment_id)
         with self.database.transaction() as connection:
             row = self._row(connection, session_id, attachment_id)
             rows = connection.execute(

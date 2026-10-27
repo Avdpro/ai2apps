@@ -32,6 +32,7 @@ class BackgroundBiDi:
         self._pending = {}
         self._next_id = 0
         self._send_lock = asyncio.Lock()
+        self.rendering_leases = None
 
     async def connect(self):
         from websockets.asyncio.client import connect
@@ -44,6 +45,7 @@ class BackgroundBiDi:
                     raise
                 await asyncio.sleep(.25)
                 continue
+            self.host_pid = endpoint.pid
             self._attachment = attach_shell_bidi_session(endpoint, connect)
             try:
                 _session, self._upstream = await self._attachment.__aenter__()
@@ -58,6 +60,8 @@ class BackgroundBiDi:
                 if asyncio.get_running_loop().time() >= deadline:
                     raise
                 await asyncio.sleep(.25)
+        from .rendering_leases import RenderingLeases
+        self.rendering_leases = RenderingLeases(self)
         self._reader = asyncio.create_task(self._read(), name='webagent-native-bidi')
         return self
 
@@ -82,20 +86,29 @@ class BackgroundBiDi:
 
     async def command(self, method, params, timeout=30):
         if self._reader is None or self._reader.done():
-            raise BrowserTransportError('Browser transport is not connected')
+            error=BrowserTransportError('Browser transport is not connected')
+            error.command_dispatched=False
+            raise error
         self._next_id += 1
         command_id = self._next_id
         future = asyncio.get_running_loop().create_future()
         self._pending[command_id] = future
+        dispatched=False
         try:
             async with self._send_lock:
+                # Sending may partially succeed before the transport raises.
+                dispatched=True
                 await self._upstream.send(json.dumps({'id': command_id, 'method': method, 'params': params}))
             try:
                 return await asyncio.wait_for(future, timeout)
             except TimeoutError as error:
                 raise BrowserCommandTimeout(method,timeout,command_id) from error
+        except BaseException as error:
+            if method=='input.performActions':error.command_dispatched=dispatched
+            raise
         finally:
             self._pending.pop(command_id, None)
+            if not future.done():future.cancel()
 
     async def reconnect(self):
         # Detach only this SDK client, never restart the Profile or create a Tab.
@@ -103,6 +116,8 @@ class BackgroundBiDi:
         return await self.connect()
 
     async def close(self):
+        if self.rendering_leases is not None:
+            await self.rendering_leases.close()
         if self._reader is not None:
             self._reader.cancel()
             with suppress(asyncio.CancelledError):

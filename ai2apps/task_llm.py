@@ -3,6 +3,8 @@
 Execution ownership stays with the caller: a mount may cancel foreground work,
 whereas durable Tasks survive the UI disconnecting.
 """
+from ai2apps.model_worker.reasoning_capabilities import validate_reasoning_effort
+
 TIERS = ('simple', 'standard', 'complex')
 PROFILES = ('normal', 'privacy')
 
@@ -30,11 +32,13 @@ def resolve_task_model(runtime, complexity, profile='normal', *, declared='norma
             if effective == 'privacy' else manager.resolve_default_model(purpose))
 
 
-def task_payload(model_id, messages, complexity, *, max_tokens=2000):
+def task_payload(model_id, messages, complexity, *, max_tokens=2000, reasoning_effort=None):
     """Common request defaults; schemas and durable replay remain caller-owned."""
     if complexity not in TIERS:
         raise ValueError('Unknown task complexity')
     payload = {'model': model_id, 'messages': messages, 'max_tokens': max_tokens}
+    if reasoning_effort is not None:
+        payload['reasoning_effort'] = validate_reasoning_effort(reasoning_effort)
     if complexity != 'simple':
         payload['temperature'] = 0
     return payload
@@ -42,6 +46,7 @@ def task_payload(model_id, messages, complexity, *, max_tokens=2000):
 
 def prepare_task_request(runtime, request):
     """Recheck server privacy immediately before a durable model invocation."""
+    validate_reasoning_effort(request.get('reasoning_effort'))
     route = request.get('_ai2apps_task_route')
     if route is None:
         return request

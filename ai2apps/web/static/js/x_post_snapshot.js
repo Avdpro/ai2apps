@@ -37,8 +37,24 @@ function xPostSnapshot(rule = null) {
     }
     const expected=new Set([...semanticRoots].map(r=>status(permalink(r))?.[2]).filter(Boolean));
     const matched=[...expected].filter(id=>seen.has(id)).length;
-    const valid=!!rule && items.length>0 && invalid<=Math.max(1,roots.length*.2) && (!expected.size || matched/expected.size>=.8);
-    if (rule && !valid) { const fallback=xPostSnapshot(); return {...fallback,x_rule_valid:false}; }
+    const structuralValid=!!rule && items.length>0 && invalid<=Math.max(1,roots.length*.2) && (!expected.size || matched/expected.size>=.8);
+    // Compare the compiled selector against semantic extraction synchronously on
+    // this exact DOM, before a live feed can move to different posts.
+    const baseline=rule?xPostSnapshot():null;
+    let evidenceMatched=0;
+    if (baseline) {
+        const byId=new Map(items.map(item=>[item.post_id,item]));
+        for (const post of baseline.items) {
+            const other=byId.get(post.post_id);
+            const clean=text=>String(text||'').split('Visible post only; replies not included.\n').pop().trim().replace(/\s+/g,' ');
+            const text=clean(other?.text), evidence=clean(post.text);
+            const photos=new Set(post.images.map(image=>image.url));
+            if(other && text && evidence.includes(text) && other.url===post.url && other.images.every(image=>photos.has(image.url)))evidenceMatched++;
+        }
+    }
+    const compared=!!baseline?.items.length && evidenceMatched/baseline.items.length>=.8 && evidenceMatched>=Math.min(3,baseline.items.length);
+    const valid=structuralValid && compared;
+    if (rule && !valid) return {...baseline,x_rule_valid:false,x_rule_compared:false};
     const observed={card:[],link:[],text:[],author:[],photo:[]};
     if (!rule) {
         const selector=n=>{
@@ -66,5 +82,5 @@ function xPostSnapshot(rule = null) {
         if(!observed.author.length)observed.author.push({selector:'a[href]',sample:'Permalink author handle fallback',count:1});
         if(!observed.photo.length)observed.photo.push({selector:'img',sample:'No post photo on observed cards',count:0});
     }
-    return {url:location.href,items,x_rule_valid:valid,x_observed:rule?null:observed};
+    return {url:location.href,items,x_rule_valid:valid,x_rule_compared:valid,x_observed:rule?null:observed};
 }

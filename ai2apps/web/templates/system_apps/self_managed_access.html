@@ -1,0 +1,17 @@
+<section class="account-card self-managed-access" x-data="selfManagedAccess()" style="margin-top:24px;padding:24px">
+    <div class="account-card-head"><div><h2>用户自管网络访问</h2><p>通过自己的 VPN 或 HTTPS 域名隧道访问此 Desktop，无需 AI2Apps 帐号。手机扫码后需在此确认。</p></div></div>
+    <div class="self-managed-fields">
+    <label class="account-field"><span>接入方式</span><select class="account-input" x-model="mode"><option value="tunnel">自定义域名隧道</option><option value="vpn">VPN 私人网络</option></select></label>
+    <label class="account-field"><span>监听地址</span><input class="account-input" x-model="bind" placeholder="127.0.0.1 或 VPN 网卡 IP"></label>
+    <label class="account-field"><span>固定端口</span><input class="account-input" type="number" min="1024" max="65535" x-model="port"></label>
+    <label class="account-field"><span>手机访问地址</span><input class="account-input" x-model="origin" :placeholder="mode==='tunnel'?'https://desktop.example.com':'http://VPN地址:57440'"></label>
+    </div>
+    <p class="self-managed-hint" x-show="mode==='tunnel'">将隧道指向上面的本机地址和端口，保留外部域名 Host。此处不代管隧道服务。</p>
+    <p class="self-managed-hint" x-show="mode==='vpn'">填写本机 VPN 网卡的具体 IP。手机需连接同一 VPN；访问地址须与 IP、端口一致。</p>
+    <div class="account-actions"><button class="account-button primary" :disabled="busy" @click="save()">保存并启用</button><button class="account-button" :disabled="busy||!state.running" @click="pair()">生成配对二维码</button><button class="account-button" :disabled="busy||!state.running" @click="disable()">关闭访问</button></div>
+    <p role="status" x-text="state.running?'访问入口已启用':'访问入口未启动'"></p><p role="alert" x-text="error||state.error" style="color:#b42318"></p>
+    <div x-show="qr"><img :src="qr" alt="手机配对二维码" style="width:220px;max-width:100%"><p>二维码 5 分钟有效，仅可扫描一次。核对双方验证码后允许配对。</p></div>
+    <template x-for="item in state.pending||[]" :key="item.id"><div class="account-actions"><strong x-text="item.name"></strong><code x-text="item.code"></code><button class="account-button primary" :disabled="busy||item.approved" @click="approve(item.id)" x-text="item.approved?'已允许':'允许配对'"></button></div></template>
+    <h3>已配对手机</h3><template x-for="item in state.devices||[]" :key="item.id"><div class="account-actions"><span x-text="item.name"></span><button class="account-button" :disabled="busy" @click="revoke(item.id)">撤销访问</button></div></template>
+    <p class="self-managed-hint">手机会话 8 小时有效；关闭入口或重启 Desktop 后，需要重新扫码配对。模型密钥保留在 Desktop。</p>
+</section>

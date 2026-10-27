@@ -75,6 +75,20 @@ def resource_selector(arguments: dict[str, Any]) -> dict[str, Any]:
     return {} if not selected else {"arguments": selected}
 
 
+def approval_countdown_seconds(effects: tuple[str, ...]) -> int | None:
+    """Only declared routine reads / local artifacts may use timed once consent.
+
+    Unknown effects and effects requiring explicit human confirmation fail closed.
+    Network alone is not a read declaration.
+    """
+    values=set(effects)
+    safe={'read','read-host','external_read','network','artifact.create','artifact.read'}
+    meaningful=safe-{'network'}
+    if 'network' in values and ('external_read' not in values or not values<={'read','external_read','network'}):
+        return None
+    return 60 if values and values<=safe and values & meaningful else None
+
+
 def action_preview(
     tool_name: str,
     effects: tuple[str, ...],
@@ -90,6 +104,7 @@ def action_preview(
     category = operation_class(effects)
     return {
         "tool_name": tool_name,
+        "approval_countdown_seconds": approval_countdown_seconds(effects),
         "operation_class": category,
         "risk_level": risk_level(effects),
         "reversible": category not in {"destructive", "external"},

@@ -41,11 +41,19 @@ def test_invalid_package_programs_are_rejected(change):
 @pytest.fixture
 def broker(tmp_path,monkeypatch):
     db=PlatformDatabase(tmp_path/'tasks.sqlite');db.initialize()
-    runtime=SimpleNamespace(database=db,events=None)
+    runtime=SimpleNamespace(database=db,events=None,model_manager=SimpleNamespace(resolve_default_model=lambda *a, **kw: 'configured-model'))
     broker=WebAgentMiniAppBroker(runtime)
     mounted=SimpleNamespace(declaration=declaration(),mount={'app_instance_id':'app-one','effective_digest':'digest'})
     monkeypatch.setattr(broker,'mounted',lambda *a:mounted)
-    monkeypatch.setattr('ai2apps.api.agent_platform._session',lambda *a:'session')
+    # Submission now validates workload Session ownership. Persist a real
+    # owned Session rather than bypassing that guard with a literal fixture ID.
+    from dataclasses import replace
+    from ai2apps.identity import RequestPrincipal
+    from ai2apps.chat import ChatRepository
+    actor=replace(RequestPrincipal.legacy_local(),actor_user_id='owner')
+    thread,_=ChatRepository(db,principal=actor).create_thread()
+    runtime.fixture_session_id=thread.session.id
+    monkeypatch.setattr('ai2apps.api.agent_platform._session',lambda *a:thread.session.id)
     monkeypatch.setattr('ai2apps.browser.profiles.BrowserProfileRepository.require',lambda *a:SimpleNamespace(name='Default',is_default=True))
     monkeypatch.setattr('ai2apps.api.ownership.authorize_session',lambda *a:None)
     monkeypatch.setattr('ai2apps.identity.IdentityRepository.local_principal_for',lambda *a:SimpleNamespace(actor_user_id='owner'))
@@ -61,11 +69,11 @@ def test_mobile_submission_uses_same_owner_local_task_session(broker,monkeypatch
     calls=[]
     def session(runtime,actor,requested):
         calls.append((actor,requested))
-        return 'local-task-session'
+        return runtime.fixture_session_id
     monkeypatch.setattr('ai2apps.api.agent_platform._session',session)
     task=service.submit('mount',principal,capability='list',parameters={'count':3},profile='default',request_id='mobile')
     assert calls==[(local,None)]
-    assert task['session_id']=='local-task-session'
+    assert task['session_id']==service.runtime.fixture_session_id
     assert task['owner']=='owner'
 
 
@@ -229,6 +237,23 @@ def test_failure_projection_returns_diagnostic_code_without_page_text(broker):
     def transaction():yield Connection()
     service.runtime.database=SimpleNamespace(transaction=transaction)
     assert service.failure('run',SimpleNamespace())=={'code':'search_markup_unavailable'}
+
+def test_reader_failure_retains_csp_cause_and_run_error_without_dom(broker):
+    import json
+    service,_,_=broker
+    cause='TypeError: innerHTML setter blocked by CSP'
+    response={'outcome':'failed','evidence':{'operation':'read_page','reason':'article_extraction_failed','result':{'fallback_reason':cause,'url':'https://example.com/article','text':'PRIVATE BODY','html':'PRIVATE HTML'},'before':{'text':'PRIVATE BEFORE'}}}
+    class Connection:
+        def execute(self,*_):return SimpleNamespace(fetchall=lambda:[{'response_json':json.dumps(response)}])
+    from contextlib import contextmanager
+    @contextmanager
+    def transaction():yield Connection()
+    service.runtime.database=SimpleNamespace(transaction=transaction)
+    failure=service.failure('run',SimpleNamespace(error={'code':'browser_agent_step_failed','message':'Read failed'}))
+    assert failure['cause']['fallback_reason']==cause
+    assert failure['operation']=='read_page'
+    assert failure['run_error']['message']=='Read failed'
+    assert 'PRIVATE' not in json.dumps(failure)
 
 @pytest.mark.asyncio
 async def test_open_result_only_accepts_observed_url_and_task_profile(broker, monkeypatch):

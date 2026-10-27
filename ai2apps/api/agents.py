@@ -210,8 +210,9 @@ class InteractionSubmitRequest(BaseModel):
 
 
 class InteractionDecisionRequest(BaseModel):
+    resource_scope: str = Field(default="current", pattern="^(current|tool)$")
     response_id: str = Field(min_length=1)
-    scope: str = Field(default="run", pattern="^(run|session|agent|app)$")
+    scope: str = Field(default="run", pattern="^(once|run|session|agent|app)$")
 
 
 class ResumeRunRequest(BaseModel):
@@ -257,12 +258,11 @@ def _run_response(runtime: PlatformRuntime, run: AgentRunRecord) -> AgentRunResp
     if not isinstance(timeout_seconds, int) or timeout_seconds <= 0:
         timeout_seconds = definition.timeout_seconds
     timeout_seconds = min(timeout_seconds, definition.timeout_seconds)
-    configured_tokens = definition.manifest.get("max_total_model_tokens", 100_000)
-    max_model_tokens = requested_budget.get("max_model_tokens", configured_tokens)
-    if not isinstance(max_model_tokens, int) or max_model_tokens <= 0:
-        max_model_tokens = 100_000
-    if isinstance(configured_tokens, int) and configured_tokens > 0:
-        max_model_tokens = min(max_model_tokens, configured_tokens)
+    from ai2apps.agents.models import AgentExecutionContext
+    from ai2apps.agents.token_budget import token_allowance, step_allowance
+    budget_context = AgentExecutionContext(definition, run, tuple(steps), tuple(interactions))
+    _, max_model_tokens = token_allowance(budget_context)
+    _, max_steps = step_allowance(budget_context)
     model_tokens = 0
     for step in steps:
         if step.kind != "model" or not isinstance(step.output, dict):
@@ -506,6 +506,19 @@ def create_agent_router(
         except ValueError as error:
             return platform_error_response(status_code=422, code="invalid_memory_request", message=str(error))
 
+    @router.get("/sessions/{session_id}/agent-runs", response_model=AgentRunListResponse)
+    def session_runs(session_id: str, principal: RequestPrincipal = principal_dependency):
+        from ai2apps.api.ownership import authorize_session
+        runtime = _runtime_or_error(runtime_provider)
+        if isinstance(runtime, JSONResponse):
+            return runtime
+        authorize_session(runtime, principal, session_id)
+        return AgentRunListResponse(items=[_run_response(runtime, run) for run in
+            runtime.agents.list_runs(session_id=session_id, root_only=True, limit=100)
+            if AgentDefinitionResponse.from_record(
+                runtime.agents.get_definition(run.agent_definition_id)
+            ).discoverable])
+
     @router.post(
         "/sessions/{session_id}/agent-runs",
         response_model=AgentRunResponse,
@@ -632,6 +645,28 @@ def create_agent_router(
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
+    @router.get("/agent-runs/{run_id}/interactions/{interaction_id}/handoff", dependencies=[run_access])
+    def app_handoff(run_id: str, interaction_id: str):
+        from ai2apps.agents.app_interactions import require_handoff
+        runtime = _runtime_or_error(runtime_provider)
+        if isinstance(runtime, JSONResponse):
+            return runtime
+        try:
+            existing=next((i for i in runtime.agents.list_interactions(run_id) if i.id==interaction_id),None)
+            if existing and existing.request.get('control')=='parameter_form':
+                from ai2apps.agents.form_continuation import handoff_view
+                return handoff_view(runtime,run_id,interaction_id)
+            run, item, descriptor = require_handoff(runtime.agents, run_id, interaction_id)
+            with runtime.database.transaction() as db:
+                origin = db.execute("""SELECT s.id session_id, i.id instance_id, d.package_id app_id
+                    FROM sessions s JOIN app_instances i ON i.id=s.app_instance_id
+                    JOIN app_definitions d ON d.id=i.app_definition_id WHERE s.id=?""", (run.session_id,)).fetchone()
+            return {'run_id': run.id, 'interaction_id': item.id, 'status': item.status.value,
+                    'target': {'app_id': descriptor.app_id, 'mini_app_id': descriptor.mini_app_id},
+                    'origin': dict(origin), 'parameters': item.request['parameters'], 'response': item.response}
+        except RepositoryError as error:
+            return repository_error_response(error)
+
     @router.post(
         "/agent-runs/{run_id}/interactions/{interaction_id}/respond",
         response_model=AgentRunResponse,
@@ -646,6 +681,9 @@ def create_agent_router(
         if isinstance(runtime, JSONResponse):
             return runtime
         run = runtime.agents.get_run(run_id)
+        handoff = next((item for item in runtime.agents.list_interactions(run_id) if item.id == interaction_id), None)
+        if handoff and handoff.request.get('control') in {'app_handoff', 'parameter_form'} and request.response != {'status': 'cancelled', 'result': {}}:
+            return JSONResponse(status_code=409, content={'detail': 'Complete this interaction in its target App'})
         if run.input.get('parameters', {}).get('execution_owner') == 'local':
             interaction = next((item for item in runtime.agents.list_interactions(run_id) if item.id == interaction_id), None)
             if interaction and interaction.request.get('control') == 'browser_bidi_action':
@@ -674,7 +712,7 @@ def create_agent_router(
             InteractionSubmitRequest(
                 response={
                     "decision": decision,
-                    **({"scope": request.scope} if decision == "approve" else {}),
+                    **({"scope": request.scope, **({"resource_scope": request.resource_scope} if request.resource_scope != "current" else {})} if decision == "approve" else {}),
                 },
                 response_id=request.response_id,
             ),
@@ -780,5 +818,18 @@ def create_agent_router(
             return _run_response(runtime, run)
         except RepositoryError as error:
             return repository_error_response(error)
+
+    @router.get('/agent-runs/{run_id}/owners', dependencies=[run_access])
+    def owner_metadata(run_id:str, principal=principal_dependency):
+        runtime=_runtime_or_error(runtime_provider)
+        manager=runtime.extension_manager
+        apps=[{'app_key':a['app_key'],'display_name':a['display_name'],'navigation':{'icon':a.get('navigation',{}).get('icon','app-window')}}
+              for a in manager.list_apps(principal=principal)]
+        studio_ids={p.app_id for p in runtime.app_capability_router.providers.values() if p.mini_app_id}
+        minis=[]
+        for app_id in studio_ids:
+            for mini in manager.list_studio_mini_apps(app_id,principal=principal):
+                minis.append({'id':mini['id'],'app_id':app_id,'display_name':mini.get('displayName') or mini.get('name') or mini.get('title') or mini['id'],'icon':mini.get('icon','app-window')})
+        return {'apps':apps,'minis':minis}
 
     return router

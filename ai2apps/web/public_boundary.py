@@ -1,5 +1,6 @@
 """Deny internal routes on public Hosts, before endpoint authentication shortcuts."""
 import ipaddress
+import re
 from urllib.parse import urlsplit
 
 
@@ -43,6 +44,13 @@ class PublicDeviceBoundary:
         known = manager is not None and any(
             urlsplit(item.public_origin).netloc.lower() == host.lower()
             for item in manager.repository.list())
+        from ai2apps.web.mobile_agent_gateway import public_path as agent_public, application as agent_application
+        if known and scope['type']=='http' and agent_public(method,path):
+            device=next(item for item in manager.repository.list() if urlsplit(item.public_origin).netloc.lower()==host.lower())
+            runtime=getattr(manager,'platform_runtime',None)
+            if runtime is not None:
+                return await agent_application(scope,receive,send,runtime,device.device_id)
+
         async def recover_navigation():
             # Only the Shell document can recover without authorization. Never
             # redirect API/resource requests or grant access to private content.
@@ -55,7 +63,6 @@ class PublicDeviceBoundary:
                           if urlsplit(item.public_origin).netloc.lower() == host.lower())
             target = manager.owner_home.urls.get(device.device_id, '')
             parsed = urlsplit(target)
-            import re
             if not (parsed.scheme == 'https' and parsed.netloc == 'coder.ai2apps.com'
                     and re.fullmatch(r'/u/[0-9a-f-]{36}', parsed.path)
                     and parsed.query == 'entry=owner-home' and not parsed.fragment):
@@ -68,6 +75,9 @@ class PublicDeviceBoundary:
         if known and scope['type'] == 'http' and method == 'GET' and path.startswith('/mobile/space/app/'):
             from ai2apps.remote.visitor_space import app_gateway_ready
             allowed = app_gateway_ready()  # Endpoint separately validates the visitor and published resource.
+        if known and scope['type']=='http' and method in {'GET','HEAD'} and path.startswith('/mobile/space/media/'):
+            from ai2apps.remote.visitor_assets import content_gateway_ready
+            allowed=content_gateway_ready()  # Lease + revision + exact published asset checked by endpoint.
         # Existing Mobile URLs retain their own session/Origin checks. Never allow
         # internal APIs, even when a caller supplies an API key or admin cookie.
         if known and scope['type'] == 'http' and path.startswith('/mobile/static/') and method == 'GET':
@@ -117,6 +127,12 @@ class PublicDeviceBoundary:
                     scope = {**scope, 'headers': [(k, v) for k, v in scope.get('headers', [])
                              if k.lower() not in {b'authorization', b'x-api-key', b'cookie'}],
                              'state': {}}
+                from ai2apps.web.owner_agent_gateway import allowed as owner_agent_allowed, application as owner_agent_application
+                if owner_agent_allowed(method, path):
+                    return await leased_response(owner_agent_application,scope,receive,send,manager.owner_home,record)
+                if (method=='POST' and re.fullmatch(r'/v1/mobile/chat/threads/[A-Za-z0-9_-]+/(?:speech|manage)',path)) or (method in ('PATCH','DELETE') and re.fullmatch(r'/v1/mobile/chat/threads/[A-Za-z0-9_-]+',path)):
+                    from ai2apps.web.owner_home_gateway import speech_application
+                    return await leased_response(speech_application,scope,receive,send,manager.owner_home,record)
                 return await leased_response(target,scope,receive,send,manager.owner_home,record)
         if allowed:
             return await self.app(scope, receive, send)

@@ -346,7 +346,9 @@ class DeepseekV41Engine:
                     continue
                 blocks.append(part)
             message["content_blocks"] = blocks
-        if tools and prepared:
+        if tools:
+            if not prepared or prepared[0].get("role") != "system":
+                prepared.insert(0, {"role": "system", "content": ""})
             prepared[0]["tools"] = tools
         return prepared
 
@@ -560,10 +562,11 @@ class DeepseekV41Engine:
                         stopped, index, generation_limit
                     )
                     tool_calls = None
-                    if stopped and tools:
+                    if token == eos and tools:
                         from .encoding import parse_message_from_completion_text
 
-                        parsed = parse_message_from_completion_text(text, thinking_mode)
+                        raw_completion = self._tokenizer.decode(generated, skip_special_tokens=False)
+                        parsed = parse_message_from_completion_text(raw_completion, thinking_mode)
                         tool_calls = parsed.get("tool_calls")
                     # The first sampled token comes from Prefill logits. Count
                     # only completed one-token forwards in the Decode pressure

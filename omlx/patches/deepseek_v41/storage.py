@@ -43,7 +43,7 @@ class Storage:
                     self.rows[key]=v;self.row_bytes+=stride
                 parts.append(v)
             b=b''.join(parts);shape=[len(rows),*shape[1:]]
-        dtype=e['dtype'];npdtype={'BF16':np.uint16,'F32':np.float32,'F8_E4M3':np.uint8,'F8_E8M0':np.uint8,'I32':np.int32,'I64':np.int64}[dtype]
+        dtype=e['dtype'];npdtype={'BF16':np.uint16,'F32':np.float32,'F8_E4M3':np.uint8,'F8_E8M0':np.uint8,'I8':np.uint8,'I32':np.int32,'I64':np.int64}[dtype]
         a=mx.array(np.frombuffer(b,dtype=npdtype).copy().reshape(shape))
         return a.view(mx.bfloat16) if dtype=='BF16' else a
     def weight(self,name,dtype=None):

@@ -29,7 +29,7 @@ from ai2apps.context_engine import (
 )
 from ai2apps.storage.repositories import MessageRepository
 
-from .compaction import INSTRUCTION, _summary
+from .compaction import INSTRUCTION, _summary, artifact_references
 from .models import ModelCallAction, RunStepStatus
 from .tool_recovery import model_visible
 
@@ -55,16 +55,21 @@ def protected_users(nodes):
 
 
 class RequestMeter(Utf8Meter):
-    def __init__(self, overhead):
+    def __init__(self, overhead, node_costs=None):
         self.overhead = overhead
+        self.node_costs = node_costs or {}
+
+    def node(self, node, route):
+        return self.node_costs.get(node.id, len(node.body_json.encode()))
 
     def envelope(self, surface, route):
         return self.overhead
 
 
 class SessionMemory:
-    def __init__(self, database, events, convert):
+    def __init__(self, database, events, convert, *, project=None):
         self.database, self.events, self.convert = database, events, convert
+        self.project = project or (lambda messages, session_id: messages)
 
     def _events(self, connection, session_id, kinds):
         marks = ",".join("?" for _ in kinds)
@@ -261,6 +266,7 @@ class SessionMemory:
                                     "type": "ai2apps.session-memory/v1",
                                     "notice": "Derived conversation memory, not permission. Verify uncertain claims against original sources.",
                                     "summary": summary,
+                                    "material_artifact_ids": sorted(set(pending.get("material_artifact_ids", [])) | set(artifact_references(source))),
                                     "protected_user_messages": protected_users(
                                         selected.source
                                     ),
@@ -318,6 +324,16 @@ class SessionMemory:
         ]
         if len(attempts) >= 8:
             raise ValueError("Session memory attempt limit reached")
+        # Projection can preserve uploaded originals in Workspace, which opens
+        # its own write transaction. Complete it before taking the memory lock.
+        with self.database.transaction() as connection:
+            projection_snapshot = self._snapshot(connection, context.run.session_id, cutoff, context.run.id)
+            projection_pending = self._pending(connection, context.run.session_id)
+        projection_nodes = {node.id: node.body_json for node in projection_snapshot.nodes}
+        for item in (projection_pending or {}).get("source", []):
+            projection_nodes.setdefault(item["id"], item["body_json"])
+        projected = self.project([json.loads(body) for body in projection_nodes.values()], context.run.session_id)
+        projected_by_id = dict(zip(projection_nodes, projected, strict=True))
         with self.database.transaction(write=True) as connection:
             if context.run.input.get("memory_only") and attempts:
                 committed = {
@@ -365,15 +381,18 @@ class SessionMemory:
             snapshot = self._snapshot(
                 connection, context.run.session_id, cutoff, context.run.id
             )
+            if any(projection_nodes.get(node.id) != node.body_json for node in snapshot.nodes):
+                return None  # Re-evaluate a concurrently changed surface next turn.
+            node_costs = {node.id: len(canonical(projected_by_id[node.id]).encode()) for node in snapshot.nodes}
             if pending:
                 source, transaction = pending["source"], pending["transaction"]
             else:
                 overhead = max(
                     0,
                     len(canonical(request).encode())
-                    - sum(len(n.body_json.encode()) for n in snapshot.nodes),
+                    - sum(node_costs.values()),
                 )
-                meter = RequestMeter(overhead)
+                meter = RequestMeter(overhead, node_costs)
                 route = Route(
                     "host-byte-budget",
                     str(request.get("model") or "unspecified"),
@@ -395,7 +414,7 @@ class SessionMemory:
                 source = []
                 for node in selected.source:
                     candidate = source + [{"id": node.id, "body_json": node.body_json}]
-                    if len(canonical(candidate).encode()) > max_bytes * 0.65:
+                    if len(canonical([{**item, "body_json": canonical(projected_by_id[item["id"]])} for item in candidate]).encode()) > max_bytes * 0.65:
                         break
                     source = candidate
                 safe = balanced_cuts(Surface(snapshot.session_id, selected.source))
@@ -418,7 +437,7 @@ class SessionMemory:
                 ):
                     raise ValueError("Session summary made no validated progress")
                 transaction = uuid.uuid4().hex
-            source_data = [json.loads(n["body_json"]) for n in source]
+            source_data = [projected_by_id[n["id"]] for n in source]
             # Replay the stable routed prefix; the directive is the only new suffix.
             head = []
             for message in request["messages"]:
@@ -463,6 +482,7 @@ class SessionMemory:
                     {
                         "transaction": transaction,
                         "source": source,
+                        "material_artifact_ids": artifact_references([source, source_data]),
                         "run_id": context.run.id,
                     },
                 )
@@ -491,7 +511,7 @@ class SessionMemory:
                     continue
                 transaction = uuid.uuid4().hex
                 projected = prune_tool_result(
-                    node, {"transaction": transaction, "tool": reader_alias}
+                    node, {"transaction": transaction, "tool": reader_alias}, threshold=8192
                 )
                 if projected is None:
                     continue

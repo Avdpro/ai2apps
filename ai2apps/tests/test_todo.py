@@ -887,3 +887,35 @@ def test_attachment_image_preview_is_owner_scoped_and_download_unchanged(store):
         assert 'attachment' in client.get(url).headers['content-disposition']
         assert client.get('/todo/attachments/' + invalid['id'] + '?preview=true').status_code == 415
         assert client.get('/todo/attachments/' + private['id'] + '?preview=true').status_code == 404
+
+
+@pytest.mark.parametrize('status', ['not_started', 'in_progress', 'paused', 'completed'])
+def test_launch_promotes_only_not_started(tmp_path, monkeypatch, status):
+    s=service(tmp_path)
+    monkeypatch.setattr(s,'dispatch_queue',lambda:None)
+    t=task(s.store,'local',model='test',status=status,completed=status=='completed')
+    s.launch('local',t['id'],principal=RequestPrincipal.legacy_local())
+    saved=s.store.get('local',t['id'])
+    assert saved['status']==('in_progress' if status=='not_started' else status)
+    assert saved['progress']==t['progress']
+    assert saved['revision']==t['revision']+(status=='not_started')
+
+
+def test_rejected_launch_preserves_not_started(tmp_path):
+    s=service(tmp_path)
+    t=task(s.store,'local',model='')
+    with pytest.raises(ValueError):
+        s.launch('local',t['id'],principal=RequestPrincipal.legacy_local())
+    assert s.store.get('local',t['id'])==t
+
+
+def test_awaiting_acceptance_preserves_progress_and_requires_completion(store):
+    item=task(store,status='completed',completed=True,progress=100)
+    pending=store.save('alice',{**body(item),'status':'awaiting_acceptance'},item['id'],item['revision'])
+    assert pending['status']=='awaiting_acceptance' and pending['progress']==100
+    assert not pending['completed'] and pending['completed_at'] is None
+    changed=store.save('alice',{**body(pending),'progress':80},pending['id'],pending['revision'])
+    full=store.save('alice',{**body(changed),'progress':100},changed['id'],changed['revision'])
+    assert full['status']=='awaiting_acceptance' and not full['completed']
+    done=store.save('alice',{**body(full),'status':'completed'},full['id'],full['revision'])
+    assert done['completed'] and done['progress']==100

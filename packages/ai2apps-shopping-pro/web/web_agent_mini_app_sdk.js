@@ -36,7 +36,7 @@
     const request=(operation,fields={})=>{const result=queue.then(()=>sendRequest(operation,fields));queue=result.catch(()=>{});return result;};
     global.AI2AppsWebAgent=Object.freeze({
         probe:()=>request('probe'),
-        startup:()=>request('web-agent.startup'),
+        startup:options=>request('web-agent.startup',{includeDraft:options?.includeDraft===true}),
         searchConfig:config=>request('web-agent.search-config',config?{config}:{}),
         customSources:options=>request('web-agent.custom-sources',options||{}),
         profiles:()=>request('web-agent.profiles'),

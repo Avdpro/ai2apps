@@ -3,7 +3,7 @@
   "package": {
     "id": "ai2apps/web-reader",
     "type": "app",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "displayName": "Web Reader",
     "description": "WebAgent Mini-App with two capabilities."
   },
@@ -25,5 +25,59 @@
   ],
   "permissions": [],
   "dependencies": [],
-  "files": []
+  "files": [],
+  "capabilityCatalog": {
+    "schemaVersion": "ai2apps.package-capabilities.v1",
+    "entries": [
+      {
+        "kind": "mini-app",
+        "identity": "ai2apps.web-reader",
+        "provides": [
+          "web.fetch"
+        ],
+        "tasks": [
+          "Web Reader",
+          "网页阅读器"
+        ],
+        "inputTypes": [
+          "text"
+        ],
+        "outputTypes": [
+          "file"
+        ],
+        "requirements": {
+          "capabilities": []
+        },
+        "agent": {
+          "mode": "aaat",
+          "declarationVersion": "1.0.0",
+          "exports": [
+            {
+              "name": "web.fetch",
+              "interfaceVersion": "1.0.0",
+              "inputTypes": [
+                "text"
+              ],
+              "outputTypes": [
+                "file"
+              ]
+            }
+          ]
+        },
+        "scope": "Requires a Desktop host implementing these declared AaAT exports. UI bridge edits drafts only; execution uses host-owned durable tasks and shared output.",
+        "processing": "hybrid",
+        "pricing": "unknown",
+        "localizations": {
+          "en": {
+            "displayName": "Web Reader",
+            "description": "Extract links or read an article using background tasks."
+          },
+          "zh": {
+            "displayName": "网页阅读器",
+            "description": "提取网页链接或阅读文章。"
+          }
+        }
+      }
+    ]
+  }
 }

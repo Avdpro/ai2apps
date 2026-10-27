@@ -36,8 +36,10 @@ async def test_long_history_anchors_explicit_and_generated_inputs(tmp_path):
     assert isinstance(action, ModelCallAction)
     assert action.request["messages"][-1]["content"] == "message-1001"
     assert "future input" not in json.dumps(action.request)
-    assert action.request["messages"][0]["content"] == "message-0"
-    assert len(action.request["messages"]) == 1002
+    conversation = [m for m in action.request["messages"] if m["role"] != "system"]
+    assert action.request["messages"][0]["role"] == "system"
+    assert conversation[0]["content"] == "message-0"
+    assert len(conversation) == 1002
 
     generated, _ = runtime.agents.create_run(
         session_id=session,
@@ -224,7 +226,7 @@ async def test_schema_error_is_correctable_but_bounded(tmp_path, always_invalid)
             if always_invalid or len(calls) == 2:
                 assert (
                     json.loads(tool_result["content"])["error"]["code"]
-                    == "invalid_tool_input"
+                    == "invalid_tool_arguments"
                 )
         if len(calls) == 3 and not always_invalid:
             return {
@@ -271,7 +273,7 @@ async def test_schema_error_is_correctable_but_bounded(tmp_path, always_invalid)
         assert len(calls) == (4 if always_invalid else 3)
         assert tool_calls == ([] if always_invalid else [{"value": "valid"}])
         if always_invalid:
-            assert finished.error["code"] == "invalid_tool_input"
+            assert finished.error["code"] == "invalid_tool_arguments"
         failures = [
             s
             for s in runtime.agents.list_steps(run.id)

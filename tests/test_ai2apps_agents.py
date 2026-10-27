@@ -1759,10 +1759,48 @@ async def test_general_agent_applies_context_and_token_budgets_before_effects(
             input={"model": "test-model", "message_id": current.message.id},
         )
         runtime.agent_runtime.wake()
-        failed = await _wait_status(runtime, run.id, AgentRunStatus.FAILED)
-
-        assert failed.error["code"] == "model_token_budget_exceeded"
+        waiting = await _wait_status(runtime, run.id, AgentRunStatus.WAITING_INPUT)
+        assert waiting.error is None
+        item = runtime.agents.list_interactions(run.id)[0]
+        assert item.request_key == 'token-budget:1'
+        assert item.request['used_tokens'] == 1
         assert [step.kind for step in runtime.agents.list_steps(run.id)] == ["model"]
+        from ai2apps.agents.token_budget import STOP
+        runtime.agents.respond_interaction(run.id, item.id, response_id='budget-stop', response={'answer': STOP})
+        runtime.agent_runtime.wake()
+        done = await _wait_status(runtime, run.id, AgentRunStatus.COMPLETED)
+        assert done.output['budget_stopped'] is True
+        assert [step.kind for step in runtime.agents.list_steps(run.id)] == ['model']
+    finally:
+        await runtime.stop_background_tasks()
+
+
+@pytest.mark.asyncio
+async def test_general_agent_budget_continue_resumes_pending_tool_once(tmp_path):
+    from ai2apps.agents.token_budget import CONTINUE
+    runtime = _runtime(tmp_path)
+    calls = []
+    async def model(request):
+        calls.append(request)
+        if len(calls) > 1:
+            return {'choices':[{'message':{'role':'assistant','content':'done'},'finish_reason':'stop'}], 'usage':{'total_tokens':5}}
+        alias = next(t['function']['name'] for t in request['tools'] if t['function']['name'].startswith('system__echo_'))
+        return {'choices':[{'message':{'role':'assistant','content':None,'tool_calls':[{'id':'once','type':'function','function':{'name':alias,'arguments':'{"value":"once"}'}}]},'finish_reason':'tool_calls'}], 'usage':{'total_tokens':5}}
+    runtime.agent_runtime.bind_model_provider(model)
+    await runtime.start_background_tasks(retention_interval_seconds=60)
+    try:
+        run, _ = runtime.agents.create_run(session_id=_session(runtime),agent_key='ai2apps.general-agent',input={'prompt':'test budget','model':'test','tools':['system.echo']},budget={'max_model_tokens':1})
+        runtime.agent_runtime.wake()
+        await _wait_status(runtime,run.id,AgentRunStatus.WAITING_INPUT)
+        assert len(calls) == 1
+        item = runtime.agents.list_interactions(run.id)[0]
+        await runtime.agent_runtime.stop()
+        runtime.agents.respond_interaction(run.id,item.id,response_id='continue-once',response={'answer':CONTINUE})
+        await runtime.agent_runtime.start()
+        done = await _wait_status(runtime,run.id,AgentRunStatus.COMPLETED)
+        assert done.output['content'] == 'done'
+        assert len(calls) == 2
+        assert len([s for s in runtime.agents.list_steps(run.id) if s.tool_name == 'system.echo']) == 1
     finally:
         await runtime.stop_background_tasks()
 

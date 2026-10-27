@@ -9,6 +9,7 @@ import logging
 import os
 import re
 import sys
+import time
 import uuid
 from contextlib import suppress
 from dataclasses import dataclass
@@ -162,6 +163,7 @@ class PlatformRuntime:
         self.capabilities: CapabilityRepository | None = None
         self.secrets: SecretRepository | None = None
         self.cloud: AI2AppsCloudClient | None = None
+        self.self_managed_access = None
         self.offline_access: OfflineAccess | None = None
         self._browser_cloud_clients: dict[str, AI2AppsCloudClient] = {}
         self._cloud_defaults_task: asyncio.Task | None = None
@@ -174,6 +176,7 @@ class PlatformRuntime:
         self.browser_task_monitor = None
         self.background_browser_runner = None
         self.intelligence_collector = None
+        self.system_tasks = None
         self.agent_reliability: AgentReliabilityService | None = None
         self.site_agent_packages: SiteAgentPackageService | None = None
         self.workspace: WorkspaceRepository | None = None
@@ -187,6 +190,7 @@ class PlatformRuntime:
         self.document_manager: DocumentManager | None = None
         self.video_tasks: VideoTaskManager | None = None
         self.readaloud_tasks: ReadAloudTaskManager | None = None
+        self.studio_jobs = None
         self.model_invocations: ModelInvocationService | None = None
         self.worker_scheduler: WorkerJobScheduler | None = None
         self.worker_resources: WorkerResourceManager | None = None
@@ -323,8 +327,16 @@ class PlatformRuntime:
         if retention_interval_seconds <= 0:
             raise ValueError("retention_interval_seconds must be positive")
         from ai2apps.loop_diagnostics import LoopDiagnostics
+        startup_started = time.perf_counter()
+        def startup_checkpoint(stage: str) -> None:
+            logger.info("Platform background startup %s: %.3fs", stage, time.perf_counter() - startup_started)
         self._loop_diagnostics = LoopDiagnostics()
         self._loop_diagnostics.start()
+        if self.self_managed_access is not None:
+            try:
+                await self.self_managed_access.start()
+            except (ValueError, OSError) as error:
+                self.self_managed_access.error = str(error)
         if not self.offline_mode and self.cloud is not None and getattr(self, "model_manager", None) is not None:
             from ai2apps.cloud_defaults import (
                 refresh_cloud_defaults,
@@ -342,7 +354,9 @@ class PlatformRuntime:
             name="ai2apps-session-retention",
         )
         if self.package_manager is not None:
+            startup_checkpoint("before packages")
             await self.package_manager.startup()
+            startup_checkpoint("after packages")
             if self.worker_resources is not None:
                 await self.worker_resources.start(self.package_manager)
         if self.provisioning is not None:
@@ -353,15 +367,19 @@ class PlatformRuntime:
             await self.terminal.startup()
         if self.agent_runtime is not None:
             await self.agent_runtime.start()
+        startup_checkpoint("after core services")
         from ai2apps.todo.service import TodoService
         self.todo = TodoService(self)
         await self.todo.startup()
         if self.background_browser_runner is not None:
             await self.background_browser_runner.startup()
+        startup_checkpoint("after browser runner")
         if self.browser_task_monitor is not None:
             await self.browser_task_monitor.startup()
         if self.intelligence_collector is not None:
             await self.intelligence_collector.startup()
+        if self.system_tasks is not None:
+            await self.system_tasks.startup()
         if self.agent_schedule_runner is not None:
             await self.agent_schedule_runner.startup()
         if self.upstreams is not None:
@@ -376,12 +394,15 @@ class PlatformRuntime:
             await self.video_tasks.startup()
         if self.readaloud_tasks is not None:
             await self.readaloud_tasks.startup()
+        if self.studio_jobs is not None:
+            await self.studio_jobs.startup()
         if self.remote is not None and not self.offline_mode:
             await self.remote.startup()
         if self.messager_peer_v2 is not None and not self.offline_mode:
             await self.messager_peer_v2.startup()
         if not self.offline_mode:
             await self._start_model_share_provider()
+        startup_checkpoint("complete")
 
     async def _start_model_share_provider(self) -> None:
         """Compose Dashboard-managed Provider offers after Remote and Workers are ready."""
@@ -478,6 +499,8 @@ class PlatformRuntime:
     async def stop_background_tasks(self) -> None:
         """Stop maintenance loops and wait until their current batch completes."""
 
+        if self.self_managed_access is not None:
+            await self.self_managed_access.stop()
         if self._loop_diagnostics is not None:
             await self._loop_diagnostics.stop()
             self._loop_diagnostics = None
@@ -495,6 +518,8 @@ class PlatformRuntime:
             await self.peer_transport.shutdown()
         if self.provisioning is not None:
             await self.provisioning.shutdown()
+        if self.system_tasks is not None:
+            await self.system_tasks.shutdown()
         if self.todo is not None:
             await self.todo.shutdown()
         await self.codex.shutdown()
@@ -516,6 +541,8 @@ class PlatformRuntime:
             await self.knowledge_import_manager.shutdown()
         if self.knowledge_package_runtime is not None:
             await self.knowledge_package_runtime.shutdown()
+        if self.studio_jobs is not None:
+            await self.studio_jobs.shutdown()
         if self.video_tasks is not None:
             await self.video_tasks.shutdown()
         if self.readaloud_tasks is not None:
@@ -592,6 +619,8 @@ class PlatformRuntime:
     def start(self) -> PlatformDatabaseStatus:
         """Initialize the platform and release its root claim on any failure."""
 
+        startup_started = time.perf_counter()
+        logger.info("Platform runtime initialization begin")
         if self.config.paths is None:
             return self._database_status
         if self._instance_lease is not None:
@@ -600,7 +629,9 @@ class PlatformRuntime:
             self.config.paths.database_path.parent
         )
         try:
-            return self._start_claimed()
+            status = self._start_claimed()
+            logger.info("Platform runtime initialization complete: %.3fs", time.perf_counter() - startup_started)
+            return status
         except Exception:
             self._instance_lease.release()
             self._instance_lease = None
@@ -610,8 +641,10 @@ class PlatformRuntime:
         """Initialize components while ``start`` owns the canonical root."""
 
         assert self.config.paths is not None
+        claimed_started = time.perf_counter()
         database = PlatformDatabase(self.config.paths.database_path)
         state = database.initialize()
+        logger.info("Platform database initialization: %.3fs", time.perf_counter() - claimed_started)
         security_identity = LocalSecurityIdentityRepository(database).get_or_create()
         claim_local_security_identity(
             security_identity.security_instance_id,
@@ -628,8 +661,18 @@ class PlatformRuntime:
         interrupted_invocations = self.services.recover_interrupted_invocations()
         for invocation in interrupted_invocations:
             with database.transaction(write=True) as connection:
+                app_instance_id = None
+                if invocation.session_id is not None:
+                    session = connection.execute(
+                        "SELECT app_instance_id FROM sessions WHERE id = ?",
+                        (invocation.session_id,),
+                    ).fetchone()
+                    if session is None:
+                        raise ValueError("Interrupted invocation Session is missing")
+                    app_instance_id = session["app_instance_id"]
                 self.events.append_in_transaction(
                     connection,
+                    app_instance_id=app_instance_id,
                     event_type="tool.invocation.interrupted",
                     subject_id=invocation.tool_id,
                     session_id=invocation.session_id,
@@ -654,6 +697,8 @@ class PlatformRuntime:
             namespace=security_identity.security_instance_id,
         )
         self.secret_backend = secret_backend
+        from ai2apps.remote.self_managed import SelfManagedAccess
+        self.self_managed_access = SelfManagedAccess(self, database.path.parent / 'self-managed-access.json')
         self.offline_access = OfflineAccess(
             database, security_identity.security_instance_id
         )
@@ -713,6 +758,7 @@ class PlatformRuntime:
                 unavailable_reason=remote_config_error,
             ),
         )
+        self.remote.platform_runtime = self
         from ai2apps.messager.peer_service import MessagerPeerService
 
         self.messager_peer = MessagerPeerService(
@@ -833,13 +879,13 @@ class PlatformRuntime:
             source="builtin",
         )
         self.web_provider = install_web_research_service(
-            self.services, self.service_registry
+            self.services, self.service_registry, runtime_provider=lambda:self
         )
         browser_config = BrowserRuntimeConfig(
             profile_path=str(self.config.paths.browsers_path / "managed-default")
         )
         browser_backend = (
-            AceFoxBrowserBackend(browser_config)
+            AceFoxBrowserBackend(browser_config, require_profile_binding=True)
             if os.environ.get("AI2APPS_BROWSER_BACKEND") == "acefox"
             else ChromeBrowserBackend(browser_config)
         )
@@ -866,6 +912,7 @@ class PlatformRuntime:
             self.service_registry,
         )
         self.package_manager.restore_registry()
+        logger.info("Platform Service registry restored: %.3fs", time.perf_counter() - claimed_started)
         self.video_tasks = VideoTaskManager(
             runtime=self,
             database=database,
@@ -880,6 +927,8 @@ class PlatformRuntime:
             workspace=self.workspace,
             root=self.config.paths.base_path / "platform" / "readaloud-renders",
         )
+        from ai2apps.studio.background import StudioBackgroundJobs
+        self.studio_jobs = StudioBackgroundJobs(self)
         self.agents = AgentRepository(database, self.events, self.capabilities)
         self.agent_builder = AgentBuilderRepository(database)
         self.agent_runtime = AgentRuntime(
@@ -893,10 +942,20 @@ class PlatformRuntime:
         self.background_browser_runner = BackgroundBrowserRunner(self)
         from ai2apps.intelligence.collector import IntelligenceCollector
         self.intelligence_collector = IntelligenceCollector(self)
+        from ai2apps.system_tasks import SystemTaskService
+        from ai2apps.system_tasks.intelligence import register_intelligence
+        self.system_tasks = SystemTaskService(self)
+        register_intelligence(self)
         self.agent_runtime.bind_run_terminal_handler(
             self.processes.schedule_cancel_by_run
         )
+        from ai2apps.services.builtin_apps import install as install_builtin_app_adapters
+        install_builtin_app_adapters(self)
         install_diagnostic_agent(self.agents, self.agent_runtime)
+        from ai2apps.chat.turns import install as install_direct_chat
+        install_direct_chat(self)
+        from ai2apps.chat.notifications import install as install_chat_notifications
+        install_chat_notifications(self)
         install_browser_builder_agent(self.agents, self.agent_runtime)
         install_general_agent(
             self.agents,
@@ -904,16 +963,27 @@ class PlatformRuntime:
             database,
             self.events,
             self.tools,
+            workspace=self.workspace,
+            capability_router=self.app_capability_router,
         )
+        from ai2apps.app_chat.service import AppChatService
+        self.app_chat = AppChatService(self)
+        from ai2apps.todo.app_chat import install as install_todo_chat
+        install_todo_chat(self)
+        from ai2apps.studio.app_chat import install as install_studio_chat
+        install_studio_chat(self)
         from ai2apps.app_development.service import install_app_development
         install_app_development(self)
         install_research_agent(self.agents)
+        from ai2apps.research.search_workflow import install as install_search_workflow
+        install_search_workflow(self)
         self.sharing.bind_agents(self.agents, self.agent_runtime)
         install_delegation_service(
             self.agents,
             self.agent_runtime,
             self.services,
             self.service_registry,
+            capability_router=self.app_capability_router,
         )
         self.extension_manager = InteractivePackageManager(
             database,
@@ -941,6 +1011,12 @@ class PlatformRuntime:
             extension_manager=self.extension_manager,
             service_manager=self.package_manager,
         )
+        from ai2apps.packages.app_exports import AppExportBinder
+        self.package_app_exports = AppExportBinder(self)
+        self.extension_manager.package_capabilities_changed = self.package_app_exports.sync
+        self.service_registry.bindings_changed = self.package_app_exports.sync
+        self.package_app_exports.sync()
+        logger.info("Platform App exports synchronized: %.3fs", time.perf_counter() - claimed_started)
         self.provisioning = CapabilityProvisioner(
             runtime=self,
             repository=ProvisioningSessionRepository(database),
@@ -1173,6 +1249,9 @@ class PlatformRuntime:
             self.offline_access.revoke(token)
             return
         if self.database is not None:
+            principal=self.authorize_local_session(token)
+            if principal is not None and principal.is_core and self.remote is not None:
+                self.remote.mobile_agent.block_owner()
             IdentityRepository(self.database).revoke_local_session(token)
 
     async def exchange_member_handoff(
@@ -1281,11 +1360,12 @@ class PlatformRuntime:
     def stop(self) -> None:
         """Release runtime resources.
 
-        Connections are deliberately transaction-scoped in this milestone, so
-        shutdown currently has no persistent handle to close.
+        Transactions retain exclusive ownership; idle SQLite handles are pooled.
         """
         if self.knowledge_import_manager is not None:
             self.knowledge_import_manager.shutdown_sync()
+        if self.database is not None:
+            self.database.close()
         if self._instance_lease is not None:
             self._instance_lease.release()
             self._instance_lease = None

@@ -4,28 +4,35 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import re
 import secrets
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlencode
 from uuid import UUID
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from ai2apps.identity import MemberRole, RequestPrincipal
 from .security import RemoteTokenError, _decode
+from .owner_logout import LogoutOutbox
+from .owner_exchange import ExchangeRequests
+import httpx
+from .mobile_unified import BINDINGS as MOBILE_BINDINGS, PROTOCOL as MOBILE_PROTOCOL, validate_claims, ready as unified_ready, negotiated
 
 PROTOCOL = 'owner-open-home-v1'
+APP_HANDOFF_PROTOCOL = 'desktop-mobile-app-handoff-v1'
 COOKIE = '__Secure-ai2apps_owner_home'
-READY = False
+READY = True
 IDS = ('sub','actor_user_id','owner_user_id','device_id','cloud_device_id','installation_id',
        'organization_id','session_id','cloud_session_id','jti')
 EPOCHS = ('membership_epoch','access_epoch','account_session_epoch','local_session_epoch',
           'mapping_revision','capability_revision','organization_authorization_version',
           'organization_policy_version','credential_version')
-BINDINGS = tuple(key for key in IDS if key != 'jti') + EPOCHS + ('role','organization_type','scope')
+APP_BINDINGS = ('app_handoff_protocol','app_handoff_connection_id','app_handoff_agent')
+BINDINGS = tuple(key for key in IDS if key != 'jti') + EPOCHS + ('role','organization_type','scope') + APP_BINDINGS + MOBILE_BINDINGS
 
 
 def verify(token, jwks, *, audience, now):
@@ -46,9 +53,19 @@ def verify(token, jwks, *, audience, now):
         for key in IDS:
             if str(UUID(claims[key])) != claims[key]:
                 raise ValueError()
+        stage = 'unified Mobile claims'
+        validate_claims(claims)
         stage = 'epoch claims'
         for key in EPOCHS:
-            if type(claims[key]) is not int or claims[key] < 1:
+            # Device-bound paired sessions do not consult the primary mapping.
+            paired_mapping=(key=='mapping_revision' and (claims.get('app_handoff_protocol')==APP_HANDOFF_PROTOCOL or claims.get('mobile_access_protocol')==MOBILE_PROTOCOL) and claims[key]==0)
+            if type(claims[key]) is not int or (claims[key] < 1 and not paired_mapping):
+                raise ValueError()
+        stage = 'App handoff claims'
+        if any(k in claims for k in APP_BINDINGS):
+            if (claims.get('app_handoff_protocol')!=APP_HANDOFF_PROTOCOL or
+                str(UUID(claims.get('app_handoff_connection_id','')))!=claims.get('app_handoff_connection_id') or
+                type(claims.get('app_handoff_agent')) is not int or claims['app_handoff_agent'] not in (0,1)):
                 raise ValueError()
         stage = 'time claims'
         for key in ('iat','nbf','exp'):
@@ -98,6 +115,8 @@ class OwnerHome:
         self.urls = {}
         self.capabilities = {}
         self.task = None
+        self.logout_outbox = LogoutOutbox(manager)
+        self.exchange_requests = ExchangeRequests(manager)
 
     def current(self, record):
         if record.revoked:
@@ -130,9 +149,32 @@ class OwnerHome:
             role=MemberRole(c['role']), membership_epoch=c['membership_epoch'],
             authentication_type='owner_home_lease', client_scope='owner-home')
 
+    def resume_url(self, device_id):
+        """A navigation hint only, enabled by Cloud's explicit recovery contract."""
+        if self.logout_outbox.pending():
+            return None
+        if self.capabilities.get(device_id, {}).get('ownerLoginResumeProtocol') != 'owner-login-resume-v1':
+            return None
+        device = self.manager.require_device(device_id)
+        installation = self.manager.space.installation(device)
+        origin = urlsplit(device.public_origin)
+        if (origin.scheme != 'https' or origin.username or origin.password or origin.port
+                or not re.fullmatch(r'device-[0-9a-f]{32}\.ai2apps\.com', origin.netloc)
+                or origin.path or origin.query or origin.fragment):
+            return None
+        return 'https://coder.ai2apps.com/u/' + str(installation.core_user_id) + '?' + urlencode({
+            'entry': 'owner-home', 'resume': '1', 'device_origin': device.public_origin})
+
     async def declare(self, device):
+        async with self.logout_outbox.lock:
+            await self.logout_outbox.barrier()
+            await self._declare(device)
+
+    async def _declare(self, device):
         result = await self.manager._request('PUT','/v1/internal/spaces/owner-home/device',device=device,
-            json={'protocol':PROTOCOL,'enabled':bool(READY)})
+            json={'protocol':PROTOCOL,'enabled':bool(READY),
+                  'ownerLoginResumeLogoutProtocol':'owner-login-resume-logout-v1',
+                  **({'mobileAccessProtocol':MOBILE_PROTOCOL} if unified_ready() else {})})
         url = result.get('ownerAuthorizationUrl','')
         parsed = urlsplit(url)
         installation = self.manager.space.installation(device)
@@ -143,15 +185,19 @@ class OwnerHome:
             raise RemoteTokenError('Invalid Owner authorization URL')
         self.urls[device.device_id] = url
         self.capabilities[device.device_id] = result
+        logging.getLogger(__name__).info("Owner unified Mobile exchange capability confirmed=%s", negotiated(result))
+        logging.getLogger(__name__).info(
+            "Owner login resume capability confirmed=%s",
+            result.get("ownerLoginResumeProtocol") == "owner-login-resume-v1")
 
     def apply(self, result, jwks, *, previous=None, initial=None):
         now = time.time()
         c = verify(result['leaseToken'],jwks,audience='ai2apps-owner-home-lease-v1',now=now)
         if result['sessionId'] != c['session_id']:
             raise RemoteTokenError('Owner Home session mismatch')
-        if initial is not None and any(initial[k] != c[k] for k in BINDINGS):
+        if initial is not None and any(initial.get(k) != c.get(k) for k in BINDINGS):
             raise RemoteTokenError('Owner Home member/lease mismatch')
-        if previous and any(previous.claims[k] != c[k] for k in BINDINGS):
+        if previous and any(previous.claims.get(k) != c.get(k) for k in BINDINGS):
             raise RemoteTokenError('Owner Home bindings changed')
         absolute, idle = timestamp(result['absoluteExpiresAt']), timestamp(result['idleExpiresAt'])
         deadline = min(c['exp'],timestamp(result['leaseExpiresAt']),absolute,idle)
@@ -170,7 +216,12 @@ class OwnerHome:
         self.current(record)
         return record
 
-    async def exchange(self, device, handoff):
+    async def exchange(self, device, handoff, *, mobile_connection_id=None):
+        async with self.logout_outbox.lock:
+            await self.logout_outbox.barrier()
+            return await self._exchange(device, handoff, mobile_connection_id=mobile_connection_id)
+
+    async def _exchange(self, device, handoff, *, mobile_connection_id=None):
         if not READY:
             raise RemoteTokenError('Owner Home integration is not ready')
         if not re.fullmatch(r'oh1\.[0-9a-f-]{36}\.[A-Za-z0-9_-]{43}',handoff):
@@ -178,17 +229,78 @@ class OwnerHome:
         installation = self.manager.space.installation(device)
         if len(self.sessions) >= 128:
             raise RemoteTokenError('Owner Home is busy')
-        result = await self.manager._request('POST',f'/v1/internal/installations/{installation.id}/member-handoffs/exchange',
-            device=device,json={'handoff':handoff})
+        payload={'handoff':handoff}
+        if mobile_connection_id is not None:
+            if not isinstance(mobile_connection_id,str) or not re.fullmatch(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}',mobile_connection_id):
+                raise RemoteTokenError('Invalid pairing connection')
+            payload.update(mobileConnectionId=mobile_connection_id,appHandoffProtocol=APP_HANDOFF_PROTOCOL)
+        unified = False
+        if unified_ready() and mobile_connection_id is not None:
+            view = await self.manager.mobile_agent.pairing(device.device_id, mobile_connection_id)
+            if view.get('mobileAccessProtocol') == MOBILE_PROTOCOL:
+                if not negotiated(view) or view.get('status') not in ('awaiting_exchange','active'):
+                    raise RemoteTokenError('Unified Mobile exchange not prepared')
+                unified = True
+        elif mobile_connection_id is None:
+            # Account-entry handoffs use negotiated device capabilities, not browser input.
+            unified = negotiated(self.capabilities.get(device.device_id, {}))
+        if unified:
+            payload['exchangeRequestId'] = self.exchange_requests.request_id(device.device_id,mobile_connection_id,handoff)
+        for attempt in range(2 if unified else 1):
+            try:
+                result = await self.manager._request('POST',f'/v1/internal/installations/{installation.id}/member-handoffs/exchange',
+                    device=device,json=payload)
+                break
+            except httpx.TransportError:
+                if not unified or attempt:raise
+                # Same persisted ID and exact body only; never retry a business call.
+
+        if 'appHandoff' in result and mobile_connection_id is None:
+            raise RemoteTokenError('Paired App handoff requires connection binding')
         if result.get('protocol') != PROTOCOL or not re.fullmatch(r'[A-Za-z0-9_-]{43}', result.get('refreshToken','')):
             raise RemoteTokenError('Owner Home exchange protocol mismatch')
         jwks = await self.manager._request('GET','/v1/installation-auth/jwks.json')
         member = verify(result['accessToken'],jwks,audience='ai2apps-installation-member-v1',now=time.time())
+        if mobile_connection_id is None and any(k in member for k in APP_BINDINGS):
+            raise RemoteTokenError('Signed paired handoff cannot downgrade')
         record = self.apply(result,jwks,initial=member)
         if record.claims['device_id'] != device.device_id:
             raise RemoteTokenError('Owner Home receiver device mismatch')
-        if any(item.claims['session_id'] == record.claims['session_id'] for item in self.sessions.values()):
-            raise RemoteTokenError('Owner Home session replay')
+        if mobile_connection_id is not None:
+            signed={'app_handoff_protocol':APP_HANDOFF_PROTOCOL,'app_handoff_connection_id':mobile_connection_id}
+            if any(record.claims.get(k)!=v for k,v in signed.items()) or type(record.claims.get('app_handoff_agent')) is not int:
+                raise RemoteTokenError('Signed App handoff binding mismatch')
+            binding=result.get('appHandoff',{})
+            expected={'protocol':APP_HANDOFF_PROTOCOL,'connectionId':mobile_connection_id,
+                'deviceId':device.device_id,'installationId':installation.id,'actorUserId':record.claims['actor_user_id']}
+            if not isinstance(binding,dict) or any(binding.get(k)!=v for k,v in expected.items()) or type(binding.get('agent')) is not bool:
+                raise RemoteTokenError('App handoff pairing binding mismatch')
+            if record.claims['app_handoff_agent']!=int(binding['agent']):
+                raise RemoteTokenError('Signed App handoff Agent mismatch')
+            if binding['agent']:
+                agent=self.manager.mobile_agent
+                if agent.require(device.device_id)['active']!=mobile_connection_id:
+                    raise RemoteTokenError('App handoff Agent ACK is not active')
+        if member.get('mobile_access_protocol') == MOBILE_PROTOCOL:
+            if not unified or not negotiated(result):
+                raise RemoteTokenError('Unified Mobile exchange contract mismatch')
+            receipt = result.get('commitReceipt', {})
+            self.manager.mobile_agent.apply_unified_receipt(device.device_id,receipt,
+                connection=mobile_connection_id,session=record.claims['session_id'],claims=record.claims)
+        elif unified:
+            raise RemoteTokenError('Unified Mobile signed binding missing')
+        previous_records = [item for item in self.sessions.values() if item.claims['session_id'] == record.claims['session_id']]
+        if previous_records:
+            if not unified or result.get('replayed') is not True:
+                raise RemoteTokenError('Owner Home session replay')
+            # The replay was authenticated again by Cloud. Replace only the same
+            # session with identical binding and deadlines, never an expired/revoked one.
+            for previous in previous_records:
+                if (previous.revoked or any(previous.claims.get(k)!=record.claims.get(k) for k in BINDINGS)
+                        or previous.absolute!=record.absolute or previous.idle!=record.idle):
+                    raise RemoteTokenError('Unified Mobile replay binding changed')
+            for previous in previous_records:self.drop(previous)
+
         token = secrets.token_urlsafe(32)
         self.sessions[hashlib.sha256(token.encode()).hexdigest()] = record
         if self.task is None or self.task.done():
@@ -243,6 +355,7 @@ class OwnerHome:
         record.monotonic_deadline = 0
 
     def clear(self):
+        self.logout_outbox.close()
         for record in list(self.sessions.values()):
             self.drop(record)
         if self.task is not None:
@@ -250,10 +363,23 @@ class OwnerHome:
             self.task = None
 
     async def revoke(self, record):
-        self.drop(record)
-        device = self.manager.require_device(record.claims['device_id'])
-        await self.manager._request('POST',f"/v1/internal/owner-home/sessions/{record.claims['session_id']}/revoke",
-            device=device,json={'refreshToken':record.refresh_token})
+        async with self.logout_outbox.lock:
+            entries = self.logout_outbox.read()
+            entries[record.claims['session_id']] = {
+                'deviceId': record.claims['device_id'], 'refreshToken': record.refresh_token}
+            # Persist before removing the only available proof or browser cookie.
+            self.logout_outbox.write(entries)
+            for item in list(self.sessions.values()):
+                if (item.claims['device_id'] == record.claims['device_id']
+                        and item.claims['cloud_session_id'] == record.claims['cloud_session_id']):
+                    self.drop(item)
+            self.drop(record)
+            try:
+                await self.logout_outbox.drain()
+            except Exception:
+                self.logout_outbox.start()
+                return {'cloudConfirmed': False, 'revocationPending': True}
+            return {'cloudConfirmed': True, 'revocationPending': False}
 
     async def maintain(self):
         while self.sessions:

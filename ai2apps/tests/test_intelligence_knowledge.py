@@ -125,7 +125,7 @@ def test_stale_ack_does_not_lose_new_revision(env):
 def test_api_associations_and_auto_finish(env,monkeypatch):
     store,kb,p,c,b=env
     runtime=SimpleNamespace(knowledge=kb,config=SimpleNamespace(paths=SimpleNamespace(artifacts_path=store.root.parent)))
-    runtime.intelligence_collector = SimpleNamespace(store=store)
+    runtime.intelligence_collector = SimpleNamespace(store=store,execution_session=lambda owner:'knowledge-test-session')
     with store.connect() as db:
         db.execute('CREATE TABLE IF NOT EXISTS collection_schedules(owner TEXT PRIMARY KEY, session_id TEXT NOT NULL)')
     monkeypatch.setattr('ai2apps.api.agent_platform._session', lambda *args: 'knowledge-test-session')

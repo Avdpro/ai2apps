@@ -116,3 +116,19 @@ def require_agent_run_access(
         authorize_agent_run(_runtime(runtime_provider), principal, run_id)
 
     return authorize
+
+
+def authorize_workload_session(runtime, principal, session_id):
+    """Authorize trusted owner work in its persisted originating client scope.
+
+    Internal executors reconstruct a principal after authentication is gone. The
+    Session's owned canonical instance supplies its scope, never request arguments.
+    HTTP guards continue to use authorize_session with the actual caller principal.
+    """
+    from ai2apps.identity import workload_session_principal
+    try:
+        principal = workload_session_principal(runtime.database, principal, session_id)
+    except RepositoryError as error:
+        raise _not_found('session', session_id) from error
+    authorize_session(runtime,principal,session_id)
+    return principal

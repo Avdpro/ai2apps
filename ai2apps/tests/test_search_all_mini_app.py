@@ -14,7 +14,7 @@ ROOT=Path(__file__).resolve().parents[2]
 def test_search_package_uses_normal_loader_and_only_compiled_scoped_capabilities():
     package=DevelopmentPackageLoader(ROOT)._load(ROOT/'packages/ai2apps-search-all')
     entries=validate_web_agent(package.manifest['mini_apps'][0])
-    assert [e['id'] for e in entries]==['google','bing','duckduckgo','brave','wikipedia','xiaohongshu','x','weibo','youtube','bilibili','plan','fast_api','summarize','review']
+    assert [e['id'] for e in entries]==['google','bing','duckduckgo','brave','wikipedia','xiaohongshu','x','weibo','youtube','bilibili','plan','deepseek','fast_api','summarize','review']
     for entry in entries[:10]:
         ir=compile_source(entry['source']).ir
         assert all(step['mode']=='compiled' for step in ir['steps'])
@@ -33,6 +33,8 @@ def test_search_package_uses_normal_loader_and_only_compiled_scoped_capabilities
 @pytest.mark.parametrize('provider',['duckduckgo','brave'])
 async def test_new_engine_extraction_uses_shared_native_bidi_page(provider):
     page=BackgroundPage(None,'task-tab')
+    # Access handling has its own browser-access tests; these fixtures model an accessible page.
+    page.handle_access=AsyncMock(return_value={'classification':'clear'})
     page.call_json=AsyncMock(return_value={'provider':provider,'items':[],'empty':True})
     result=await page.extract_list({'arguments':{'search_provider':provider,'query':'watches','limit':3}})
     assert result['provider']==provider
@@ -77,6 +79,8 @@ def test_review_is_a_shared_ai_data_task_with_bounded_inputs():
 @pytest.mark.parametrize('provider',['youtube','bilibili'])
 async def test_video_reader_uses_shared_bidi_page(provider):
     page=BackgroundPage(None,'task-tab')
+    # Access handling has its own browser-access tests; these fixtures model an accessible page.
+    page.handle_access=AsyncMock(return_value={'classification':'clear'})
     page.call_json=AsyncMock(return_value={'provider':provider,'items':[],'empty':True})
     await page.extract_list({'arguments':{'search_provider':provider,'query':'watches','limit':3}})
     assert page.call_json.call_args.args[1]==[provider,3,'watches',True]
@@ -87,6 +91,8 @@ async def test_video_spa_retry_stops_on_results_or_assistance(monkeypatch):
     pause=AsyncMock()
     monkeypatch.setattr(module.asyncio,'sleep',pause)
     page=BackgroundPage(None,'task-tab')
+    # Access handling has its own browser-access tests; these fixtures model an accessible page.
+    page.handle_access=AsyncMock(return_value={'classification':'clear'})
     page.call_json=AsyncMock(side_effect=[{'reason':'search_page_not_loaded'},{'items':[{'title':'Video'}]}])
     result=await page.extract_list({'arguments':{'search_provider':'youtube'}})
     assert result['items'][0]['title']=='Video'
@@ -100,6 +106,8 @@ async def test_video_spa_retries_are_bounded(monkeypatch):
     import ai2apps.browser.background_page as module
     monkeypatch.setattr(module.asyncio,'sleep',AsyncMock())
     page=BackgroundPage(None,'task-tab')
+    # Access handling has its own browser-access tests; these fixtures model an accessible page.
+    page.handle_access=AsyncMock(return_value={'classification':'clear'})
     page.call_json=AsyncMock(return_value={'reason':'search_page_not_loaded'})
     assert (await page.extract_list({'arguments':{'search_provider':'youtube'}}))['reason']=='search_page_not_loaded'
     assert page.call_json.await_count==7
@@ -160,6 +168,8 @@ async def test_video_cover_keeps_native_observed_pixels(monkeypatch):
 async def test_xhs_unverified_sort_still_extracts_readable_results(monkeypatch):
     from ai2apps.browser.background_page import BackgroundPage
     page=BackgroundPage(None,'task-tab')
+    # Access handling has its own browser-access tests; these fixtures model an accessible page.
+    page.handle_access=AsyncMock(return_value={'classification':'clear'})
     page.ensure_xhs_sort=AsyncMock(side_effect=RuntimeError('xiaohongshu_sort_not_verified: likes'))
     page.call_json=AsyncMock(return_value={'items':[{'url':'https://www.xiaohongshu.com/explore/example','title':'Recipe'}]})
     page.enrich_xhs_notes=AsyncMock()

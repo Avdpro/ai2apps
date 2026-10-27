@@ -81,9 +81,15 @@ class LocalBrowserSecurityHeadersMiddleware:
                         "/admin/app-content/ai2apps.intelligence",
                         "/mobile/app-content/ai2apps.intelligence",
                     }
+                    avatar_images = scope.get("path", "").rstrip("/") in {
+                        "/admin/app-content/ai2apps.account", "/apps/ai2apps.account",
+                        "/admin/app-content/ai2apps.visitor-space", "/apps/ai2apps.visitor-space",
+                    }
                     headers.extend(
                         (name, value.replace(b"img-src 'self' data: blob:;", b"img-src 'self' data: blob: https:;")
-                         if intelligence_images and name == b"content-security-policy" else value)
+                         if intelligence_images and name == b"content-security-policy" else
+                         value.replace(b"img-src 'self' data: blob:;", b"img-src 'self' data: blob: https://coder.ai2apps.com;")
+                         if avatar_images and name == b"content-security-policy" else value)
                         for name, value in _HTML_SECURITY_HEADERS
                         if name not in existing
                     )

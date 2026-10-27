@@ -107,13 +107,14 @@ class PackageRuntimeBinder:
                 method,
                 arguments,
                 context.trace_id,
+                context,
             )
 
         return invoke
 
     @staticmethod
     def _http_json(
-        url: str, method: str, arguments: dict[str, Any], trace_id: str | None
+        url: str, method: str, arguments: dict[str, Any], trace_id: str | None, scope: ToolCallContext | None = None
     ):
         headers = {
             "Content-Type": "application/json",
@@ -121,6 +122,11 @@ class PackageRuntimeBinder:
         }
         if trace_id:
             headers["X-AI2Apps-Trace-ID"] = trace_id
+        if scope is not None:
+            # Host-owned identity only; never take scope or grants from Tool JSON.
+            for name,value in (("Actor-ID",scope.actor_user_id),("Installation-ID",scope.installation_id),
+                               ("Session-ID",scope.session_id),("Invocation-ID",scope.invocation_id)):
+                if value:headers["X-AI2Apps-"+name]=value
         request = urllib.request.Request(
             url,
             data=json.dumps(arguments).encode(),

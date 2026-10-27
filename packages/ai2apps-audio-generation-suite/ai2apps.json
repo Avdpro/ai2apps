@@ -3,7 +3,7 @@
   "package": {
     "id": "ai2apps/audio-generation-suite",
     "type": "app",
-    "version": "0.2.2",
+    "version": "0.2.3",
     "displayName": "Music and Sound Effects",
     "description": "Music, sound effects and YuE2 song creation Mini-Apps for Voice Studio. Requires the Host audio generation workflow broker.",
     "localizations": {
@@ -35,5 +35,163 @@
   "sbom": {
     "format": "spdx-json-2.3",
     "path": "META/sbom.spdx.json"
+  },
+  "capabilityCatalog": {
+    "schemaVersion": "ai2apps.package-capabilities.v1",
+    "entries": [
+      {
+        "kind": "mini-app",
+        "identity": "ai2apps.audio-generation.music",
+        "provides": [
+          "voice.generate_music"
+        ],
+        "tasks": [
+          "Music Generation",
+          "音乐生成"
+        ],
+        "inputTypes": [
+          "text"
+        ],
+        "outputTypes": [
+          "audio"
+        ],
+        "requirements": {
+          "capabilities": [
+            "audio.music_generation"
+          ]
+        },
+        "agent": {
+          "mode": "aaat",
+          "declarationVersion": "1.0.0",
+          "exports": [
+            {
+              "name": "voice.generate_music",
+              "interfaceVersion": "1.0.0",
+              "inputTypes": [
+                "text"
+              ],
+              "outputTypes": [
+                "audio"
+              ]
+            }
+          ]
+        },
+        "scope": "Requires a Desktop host implementing these declared AaAT exports. UI bridge edits drafts only; execution uses host-owned durable tasks and shared output.",
+        "processing": "local",
+        "pricing": "unknown",
+        "localizations": {
+          "en": {
+            "displayName": "Music Generation",
+            "description": "Create audio from a description. Results appear in the shared Preview & Output."
+          },
+          "zh": {
+            "displayName": "音乐生成",
+            "description": "根据文字描述生成声音，结果进入共享预览与输出。"
+          }
+        }
+      },
+      {
+        "kind": "mini-app",
+        "identity": "ai2apps.audio-generation.sfx",
+        "provides": [
+          "voice.generate_sound_effects"
+        ],
+        "tasks": [
+          "Sound Effects",
+          "音效生成"
+        ],
+        "inputTypes": [
+          "text"
+        ],
+        "outputTypes": [
+          "audio"
+        ],
+        "requirements": {
+          "capabilities": [
+            "audio.sound_effects_generation"
+          ]
+        },
+        "agent": {
+          "mode": "aaat",
+          "declarationVersion": "1.0.0",
+          "exports": [
+            {
+              "name": "voice.generate_sound_effects",
+              "interfaceVersion": "1.0.0",
+              "inputTypes": [
+                "text"
+              ],
+              "outputTypes": [
+                "audio"
+              ]
+            }
+          ]
+        },
+        "scope": "Requires a Desktop host implementing these declared AaAT exports. UI bridge edits drafts only; execution uses host-owned durable tasks and shared output.",
+        "processing": "local",
+        "pricing": "unknown",
+        "localizations": {
+          "en": {
+            "displayName": "Sound Effects",
+            "description": "Create audio from a description. Results appear in the shared Preview & Output."
+          },
+          "zh": {
+            "displayName": "音效生成",
+            "description": "根据文字描述生成声音，结果进入共享预览与输出。"
+          }
+        }
+      },
+      {
+        "kind": "mini-app",
+        "identity": "ai2apps.audio-generation.song",
+        "provides": [
+          "voice.generate_song"
+        ],
+        "tasks": [
+          "Song Creation",
+          "歌曲创作"
+        ],
+        "inputTypes": [
+          "text"
+        ],
+        "outputTypes": [
+          "audio"
+        ],
+        "requirements": {
+          "capabilities": [
+            "audio.song_generation"
+          ]
+        },
+        "agent": {
+          "mode": "aaat",
+          "declarationVersion": "1.0.0",
+          "exports": [
+            {
+              "name": "voice.generate_song",
+              "interfaceVersion": "1.0.0",
+              "inputTypes": [
+                "text"
+              ],
+              "outputTypes": [
+                "audio"
+              ]
+            }
+          ]
+        },
+        "scope": "Requires a Desktop host implementing these declared AaAT exports. UI bridge edits drafts only; execution uses host-owned durable tasks and shared output.",
+        "processing": "local",
+        "pricing": "unknown",
+        "localizations": {
+          "en": {
+            "displayName": "Song Creation",
+            "description": "Compose songs with lyrics, musical planning and an optional ABC score."
+          },
+          "zh": {
+            "displayName": "歌曲创作",
+            "description": "编辑歌词、规划旋律与和声，或导入乐谱生成歌曲。"
+          }
+        }
+      }
+    ]
   }
 }

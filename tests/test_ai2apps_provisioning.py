@@ -731,7 +731,12 @@ def test_general_chat_audio_registry_includes_all_shipped_voice_models() -> None
     assert asr is not None
     assert tts is not None
     asr_models = {
-        profile["stack"]["checkpoint"]["model_id"] for profile in asr["profiles"]
+        component["model_id"]
+        for profile in asr["profiles"]
+        for component in profile["stack"].get("components", [
+            {"kind": "checkpoint", **profile["stack"].get("checkpoint", {})}
+        ])
+        if component["kind"] == "checkpoint"
     }
     tts_models = {
         profile["stack"]["checkpoint"]["model_id"] for profile in tts["profiles"]
@@ -739,6 +744,7 @@ def test_general_chat_audio_registry_includes_all_shipped_voice_models() -> None
     assert asr_models == {
         "ai2apps.model.qwen3-asr-0.6b/4bit",
         "ai2apps.model.sensevoice-small/default",
+        "ai2apps.model.punctuation-restorer/default",
     }
     assert {
         "ai2apps.model.qwen3-tts-1.7b/custom-voice-8bit",

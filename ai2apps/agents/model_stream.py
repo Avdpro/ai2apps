@@ -42,6 +42,8 @@ class ChatCompletionStreamAccumulator:
                 self._root[key] = chunk[key]
         if isinstance(chunk.get("usage"), dict):
             self._root["usage"] = deepcopy(chunk["usage"])
+        if isinstance(chunk.get('ai2apps_metrics'), dict):
+            self._root['ai2apps_metrics'] = deepcopy(chunk['ai2apps_metrics'])
 
         choices = chunk.get("choices")
         if not isinstance(choices, list):
@@ -150,7 +152,7 @@ class ChatCompletionStreamAccumulator:
             "choices": choices,
             **{
                 key: deepcopy(self._root[key])
-                for key in ("system_fingerprint", "service_tier", "usage")
+                for key in ("system_fingerprint", "service_tier", "usage", "ai2apps_metrics")
                 if key in self._root
             },
             **(
@@ -159,3 +161,13 @@ class ChatCompletionStreamAccumulator:
                 else {}
             ),
         }
+
+    def preview(self, limit: int = 65536) -> dict[str, str]:
+        """Bounded observer projection; never includes Tool arguments."""
+        message = self._choices.get(0, {}).get('message', {})
+        return {key: str(message.get(key) or '')[-limit:]
+                for key in ('content', 'reasoning_content')}
+
+    @property
+    def metrics(self) -> dict[str, Any] | None:
+        return deepcopy(self._root.get('ai2apps_metrics'))

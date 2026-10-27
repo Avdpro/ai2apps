@@ -184,3 +184,55 @@ async def test_durable_dispatch_uses_private_route_without_leaking_metadata():
         '_ai2apps_task_route': {'complexity': 'standard', 'profile': 'normal'}},
         model_name='normal', step_sequence=1, context=None)
     assert seen == [{'model': 'private-model', 'messages': []}]
+
+
+@pytest.mark.parametrize('control,requires_user', [('browser_bidi_action', False),
+    ('browser_user_assistance', True), ('agent_confirmation', True)])
+def test_shared_task_presentation_distinguishes_human_assistance(control, requires_user):
+    from ai2apps.browser.task_presentation import browser_task_wait_presentation
+    task = browser_task_wait_presentation([SimpleNamespace(status='pending',
+        request={'control': control}, prompt='Continue')])
+    assert task['requires_user'] is requires_user
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('host',['workspace.fixture.test','catalog.fixture.test'])
+async def test_preparation_planning_repairs_out_of_contract_navigation_before_dispatch(host):
+    import json
+    from ai2apps.browser.background_planner import BackgroundPlanner
+    calls=[]
+    decisions=iter([
+        {'decision':'act','step':{'operation':'open','arguments':{'url':f'https://{host}/guessed'}}},
+        {'decision':'act','step':{'operation':'click','target':{'ref':'e1'},'arguments':{}}},
+    ])
+    async def invoke(payload,context):
+        calls.append(payload)
+        return {'choices':[{'message':{'content':json.dumps(next(decisions))}}]}
+    service=SimpleNamespace(context_for_actor=lambda *a,**kw:'actor',invoke_agent_cloud_json=invoke)
+    run=SimpleNamespace(session_id='session',input={'parameters':{'owner_user_id':'owner',
+        'model_profile':'normal','ai_model_routes':{'standard':'cloud/trusted/model'}}})
+    step={'operation':'inspect','description':'Set the current category only','arguments':{'preparation_only':True}}
+    observed={'context':'owned','url':f'https://{host}/form','items':[{'ref':'e1','tag':'button','text':'Category'}]}
+    result=await BackgroundPlanner(SimpleNamespace(model_invocations=service)).next(run=run,step=step,observation=observed,attempts=[],scopes=[f'https://{host}/**'])
+    assert result['compiled_step']['operation']=='click'
+    assert result['compiled_step']['browser_context']=='owned'
+    assert len(calls)==2
+    assert 'Allowed primitives for THIS step' in calls[0]['messages'][1]['content']
+    assert 'Operation is outside this step' in json.dumps(calls[1])
+
+@pytest.mark.asyncio
+async def test_truncated_planner_repairs_actual_content_with_bounded_output_budget():
+    import json
+    from ai2apps.browser.background_planner import BackgroundPlanner
+    calls=[]
+    outputs=iter([
+        {'choices':[{'finish_reason':'length','message':{'content':'','reasoning_content':'bounded reasoning'}}]},
+        {'choices':[{'finish_reason':'stop','message':{'content':json.dumps({'decision':'needs_user','assistance_kind':'missing_information'})}}]},
+    ])
+    async def invoke(payload,context):calls.append(payload);return next(outputs)
+    service=SimpleNamespace(context_for_actor=lambda *a,**kw:'actor',invoke_agent_cloud_json=invoke)
+    run=SimpleNamespace(session_id='session',input={'parameters':{'owner_user_id':'owner','ai_model_routes':{'standard':'cloud/arbitrary/model'}}})
+    result=await BackgroundPlanner(SimpleNamespace(model_invocations=service)).next(run=run,step={},observation={},attempts=[],scopes=[])
+    assert result['decision']=='needs_user' and len(calls)==2
+    assert calls[0]['max_tokens']==2400 and calls[1]['max_tokens']==4800
+    assert calls[1]['messages'][-2]=={'role':'assistant','content':''}
+    assert 'reasoning_content' not in calls[1]['messages'][-2]['content']

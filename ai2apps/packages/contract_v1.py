@@ -370,7 +370,7 @@ def validate_manifest(value: Any) -> dict[str, Any]:
     _exact_keys(
         value,
         {"schemaVersion", "package", "compatibility", "entrypoints", "permissions", "dependencies", "files"},
-        {"sbom", "discovery", "modelProfile", "modelInstall", "miniApps"},
+        {"sbom", "discovery", "modelProfile", "modelInstall", "miniApps", "capabilityCatalog"},
     )
     if value["schemaVersion"] != "ai2apps.package-manifest.v1":
         raise PackageContractError("manifest_schema_unsupported", "Unsupported package manifest schema")
@@ -579,6 +579,12 @@ def validate_manifest(value: Any) -> dict[str, Any]:
         _exact_keys(sbom, {"format", "path"})
         if sbom["format"] not in {"spdx-json-2.3", "cyclonedx-json-1.6"} or _safe_archive_path(sbom["path"]) not in file_paths:
             raise PackageContractError("manifest_invalid", "SBOM is invalid")
+    if "capabilityCatalog" in value:
+        from .capability_catalog import validate_declarations
+        try:
+            validate_declarations(value)
+        except Exception as error:
+            raise PackageContractError("capability_catalog_invalid", str(error)) from error
     return value
 
 
@@ -695,6 +701,25 @@ def inspect_package(path: str | Path, *, max_bytes: int | None = None) -> Inspec
         expected = indexed[name]
         if expected["sha256"] != actual.sha256 or expected["size"] != actual.size:
             raise PackageContractError("file_digest_mismatch", f"File hash/size mismatch: {name}")
+    if "capabilityCatalog" in manifest and manifest.get("miniApps"):
+        import yaml
+        path="app.yaml"
+        if path not in files or files[path].size > MAX_MANIFEST_BYTES:
+            raise PackageContractError("capability_catalog_invalid", "Mini-App capabilities require a bounded verified app.yaml")
+        with zipfile.ZipFile(source) as archive:
+            app=yaml.safe_load(archive.read(path).decode("utf-8"))
+        if manifest["miniApps"] != mini_app_catalog_from_app_manifest(app):
+            raise PackageContractError("capability_catalog_invalid", "Capability identities differ from the verified App definition")
+    if manifest['package']['type']=='app' and 'app.yaml' in files:
+        import yaml
+        from .app_exports import declarations
+        if files['app.yaml'].size > MAX_MANIFEST_BYTES:
+            raise PackageContractError('app_definition_invalid','App definition exceeds 1 MiB')
+        with zipfile.ZipFile(source) as archive:
+            app_definition=yaml.safe_load(archive.read('app.yaml').decode('utf-8'))
+        try:declarations(app_definition,manifest.get('capabilityCatalog'),manifest['dependencies'])
+        except (ValueError,KeyError,TypeError) as error:
+            raise PackageContractError('app_aaat_invalid',str(error)) from error
     kind = manifest["package"]["type"]
     extension, media_type = PACKAGE_TYPES[kind]
     if source.suffix.lower() != extension:

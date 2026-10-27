@@ -312,3 +312,12 @@ async def generate_avatar(
         if isinstance(error, VideoGenerationError):
             raise _error(error.code, str(error), error.status_code) from error
         raise
+
+
+def reconcile_task_outputs(runtime, task_id):
+    """Publish completed avatar results even when every Studio page is closed."""
+    repository = StudioRepository(runtime.database)
+    with runtime.database.transaction() as db:
+        rows = db.execute("SELECT DISTINCT actor_id,installation_id,app_instance_id,studio_id FROM studio_runs WHERE json_extract(input_json,'$.videoTaskId')=?", (task_id,)).fetchall()
+    for row in rows:
+        reconcile_outputs(runtime, repository, dict(row))

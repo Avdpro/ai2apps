@@ -87,6 +87,7 @@ class PublisherKeyProofRequest(BaseModel):
 class RegistryInstallRequest(BaseModel):
     version: str | None = None
     approve_review: bool = False
+    installation_target: dict[str, str] | None = Field(default=None, alias="installationTarget")
 
 
 class RegistryModelInstallRequest(BaseModel):
@@ -336,6 +337,7 @@ def create_package_router(
                 name,
                 install_request.version,
                 approve_review=install_request.approve_review,
+                **({"expected_target":install_request.installation_target} if install_request.installation_target else {}),
                 progress=lambda values: update_install_operation(operation_id, values),
             )
             update_install_operation(
@@ -346,7 +348,8 @@ def create_package_router(
                     "stage": "completed",
                     "bytesCompleted": None,
                     "bytesTotal": None,
-                    "result": _registry_install_result(item, namespace, name),
+                    "result": {**_registry_install_result(item, namespace, name),
+                        **({"capabilityDiscovery":installed_capabilities(principal,install_request.installation_target)} if install_request.installation_target else {})},
                 },
             )
             if continuation is not None:
@@ -365,6 +368,7 @@ def create_package_router(
                         version=install_request.version,
                         approve_review=install_request.approve_review,
                         dependency=error.details.get("dependency", {}),
+                        **({"installation_target":install_request.installation_target} if install_request.installation_target else {}),
                     )
                 else:
                     continuation.delete(
@@ -579,6 +583,34 @@ def create_package_router(
             return JSONResponse(await manager.discovery_capabilities(), headers={"Cache-Control": "no-store"})
         except RegistryError as error:
             return _registry_error(error)
+
+    def installed_capabilities(principal,target):
+        from ai2apps.packages.installed_capabilities import inspect
+        return inspect(runtime_provider(),principal,target)
+
+    @router.post("/packages/installed-capabilities")
+    def inspect_installed_capabilities(target:dict,principal:RequestPrincipal=principal_dependency):
+        try:return installed_capabilities(principal,target)
+        except ValueError as error:raise HTTPException(422,str(error)) from error
+
+    @router.get("/packages/catalog/capabilities-content")
+    async def capability_content(request:Request):
+        from ai2apps.packages.capability_catalog import content
+        manager=registry_or_error()
+        if isinstance(manager,JSONResponse):return manager
+        allowed={'q','task','content','type','mini_app_category','studio','publisher','limit','cursor',
+            'capability','input_type','output_type','platform','architecture','os_version','ai2apps_version',
+            'runtime_id','runtime_version','memory_bytes','storage_bytes','package_id','version'}
+        params=dict(request.query_params)
+        if set(params)-allowed:raise HTTPException(422,'Unsupported capability catalog filter')
+        for key in ('limit','memory_bytes','storage_bytes'):
+            if key in params:
+                try:params[key]=int(params[key])
+                except ValueError:raise HTTPException(422,'Invalid numeric catalog filter')
+        if not 1<=params.get('limit',24)<=100:raise HTTPException(422,'Invalid page size')
+        try:return JSONResponse(await content(manager,local_device=True,**params),headers={'Cache-Control':'no-store'})
+        except RegistryError as error:return _registry_error(error)
+        except ValueError as error:raise HTTPException(422,str(error)) from error
 
     @router.get("/packages/catalog/content")
     async def registry_content_catalog(
@@ -1161,6 +1193,7 @@ def create_package_router(
                 name,
                 request.version,
                 approve_review=request.approve_review,
+                **({"expected_target":request.installation_target} if request.installation_target else {}),
             )
             return _registry_install_result(item, namespace, name)
         except RegistryError as error:

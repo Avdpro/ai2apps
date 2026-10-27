@@ -82,6 +82,8 @@ def test_all_current_studios_embed_capability_driven_chat_mini_entry():
     assert "read_mini_app_help" in shared
     assert "request('help'" in shared
     assert "loadBuiltinHelp" in shared
+    assert "/admin/static/help/mini_apps/" in shared
+    assert "fetch(`/static/help/mini_apps/" not in shared
     assert "contract.help.content" not in shared
     assert "startChatEntry" in chat_entry
     assert 'class="chat-mini-model"' in chat_template

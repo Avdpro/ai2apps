@@ -41,7 +41,7 @@ class NamespacedSecretBackend:
     """
 
     _NAMESPACE = re.compile(r"^[A-Za-z0-9._~-]{1,200}$")
-    _AMBIGUOUS_LEGACY_PREFIXES = ("ai2apps-cloud-session-",)
+    _AMBIGUOUS_LEGACY_PREFIXES = ("ai2apps-cloud-session-", "owner-home-logout-")
 
     def __init__(self, backend: SecretBackend, namespace: str) -> None:
         if not self._NAMESPACE.fullmatch(namespace):

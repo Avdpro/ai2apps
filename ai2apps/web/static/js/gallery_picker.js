@@ -70,6 +70,7 @@
                 hideTooltip();
                 grid.replaceChildren(); status.textContent = data.items?.length ? '' : tr('empty');
                 for (const asset of data.items || []) {
+                    if (options.kind && asset.kind !== options.kind) continue;
                     const button = document.createElement('button'); button.type='button'; button.className='gallery-picker-asset'; button.setAttribute('aria-pressed',String(selected.has(asset.id)));
                     const contentUrl = '/v1/platform/gallery/assets/'+encodeURIComponent(asset.id)+'/content';
                     if (asset.kind === 'image' || asset.kind === 'video') {

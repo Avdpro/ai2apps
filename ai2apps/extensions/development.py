@@ -102,6 +102,14 @@ class DevelopmentPackageLoader:
         try:
             outer = json.loads((root / "ai2apps.json").read_text(encoding="utf-8"))
             validation_copy = json.loads(json.dumps(outer))
+            if (root / 'app.yaml').is_file():
+                # Match the standard builder's derived component projection;
+                # source manifests must not maintain a second Mini-App index.
+                from ai2apps.packages.contract_v1 import mini_app_catalog_from_app_manifest
+                components = mini_app_catalog_from_app_manifest(yaml.safe_load((root / 'app.yaml').read_text(encoding='utf-8')))
+                if 'miniApps' in validation_copy and validation_copy['miniApps'] != components:
+                    raise PackageContractError('mini_app_catalog_mismatch','miniApps must match app.yaml')
+                if components:validation_copy['miniApps'] = components
             validation_copy["files"] = [
                 {
                     "path": name,
@@ -111,7 +119,7 @@ class DevelopmentPackageLoader:
                 for name in sorted(files - {"ai2apps.json"})
             ]
             outer = validate_manifest(validation_copy)
-        except (OSError, json.JSONDecodeError, PackageContractError) as error:
+        except (OSError, json.JSONDecodeError, yaml.YAMLError, PackageContractError) as error:
             raise ExtensionError(
                 "development_package_invalid",
                 f"Invalid development Package metadata in {candidate.name}: {error}",

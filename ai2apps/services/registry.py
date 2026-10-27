@@ -60,6 +60,17 @@ class ServiceRegistry:
         self.repository = repository
         self._handlers: dict[str, BoundTool] = {}
         self._lifecycles: dict[str, ServiceLifecycle] = {}
+        self._agent_visibility: dict[str, frozenset[str]] = {}
+
+    def set_agent_visibility(self, qualified_name: str, executor_keys) -> None:
+        """Trusted owner registration for model-tool discovery, never an execution grant."""
+        self.repository.get_tool(qualified_name)
+        if not all(isinstance(key,str) and key for key in executor_keys):raise ValueError('Invalid executor keys')
+        self._agent_visibility[qualified_name]=frozenset(executor_keys)
+
+    def visible_to_agent(self, qualified_name: str, executor_key: str) -> bool:
+        allowed=self._agent_visibility.get(qualified_name)
+        return allowed is None or executor_key in allowed
 
     def bind_tool(
         self,
@@ -76,6 +87,8 @@ class ServiceRegistry:
                 f"Provider {provider_key} does not own {qualified_name}",
             )
         self._handlers[qualified_name] = BoundTool(provider_key, handler)
+        changed=getattr(self,"bindings_changed",None)
+        if changed:changed()
 
     def bind_lifecycle(
         self,
@@ -122,11 +135,11 @@ class ServiceRegistry:
                     last_error=str(exc),
                 )
                 raise
-            return self.repository.set_service_status(
-                service.id,
-                expected_revision=expected_revision,
-                status=ServiceStatus.ENABLED,
-            )
+            result = self.repository.set_service_status(
+                service.id, expected_revision=expected_revision, status=ServiceStatus.ENABLED)
+            changed=getattr(self,'bindings_changed',None)
+            if changed:changed()
+            return result
         self.repository.set_instance_status(instance.id, ServiceInstanceStatus.STOPPING)
         try:
             if lifecycle.stop is not None:
@@ -141,11 +154,11 @@ class ServiceRegistry:
                 last_error=str(exc),
             )
             raise
-        return self.repository.set_service_status(
-            service.id,
-            expected_revision=expected_revision,
-            status=ServiceStatus.DISABLED,
-        )
+        result = self.repository.set_service_status(
+            service.id, expected_revision=expected_revision, status=ServiceStatus.DISABLED)
+        changed=getattr(self,'bindings_changed',None)
+        if changed:changed()
+        return result
 
     async def restart(self, service_key: str) -> None:
         service = self.repository.get_service(service_key)
@@ -193,6 +206,7 @@ class ToolGateway:
         self.repository = repository
         self.registry = registry
         self._secret_resolver: SecretResolver | None = None
+        self.execution_scope = None # Trusted host policy; never populated from Tool arguments.
 
     def bind_secret_resolver(self, resolver: SecretResolver | None) -> None:
         """Resolve secret:// references only after validation and authorization."""
@@ -264,6 +278,8 @@ class ToolGateway:
         visible = []
         services, instances = {}, {}
         for tool in self.repository.list_tools():
+            if self.execution_scope and not self.execution_scope.visible(context, tool.qualified_name):
+                continue
             if tool_filter is not None and not tool_filter(tool):
                 continue
             if tool.service_id not in services:
@@ -372,6 +388,7 @@ class ToolGateway:
             tool = self.repository.get_tool(qualified_name)
         except ResourceNotFoundError as exc:
             raise ToolGatewayError("tool_not_found", str(exc)) from exc
+        scoped_grant = self.execution_scope.authorize(context, qualified_name, arguments) if self.execution_scope else False
         service = self.repository.get_service(tool.service_id)
         instance = self.repository.get_instance_for_service(tool.service_id)
         binding = self.registry.bound_tool(tool.qualified_name)
@@ -400,7 +417,7 @@ class ToolGateway:
                 f"Bound provider does not own {qualified_name}",
             )
         missing = sorted(
-            self.required_capabilities(tool, arguments) - context.granted_capabilities
+            self.required_capabilities(tool, arguments) - (self.required_capabilities(tool, arguments) if scoped_grant else context.granted_capabilities)
         )
         if missing:
             raise ToolGatewayError(
@@ -471,6 +488,8 @@ class ToolGateway:
         )
 
         async def report_progress(update: dict[str, Any]) -> None:
+            from .models import validate_progress_update
+            validate_progress_update(update)
             safe_update = redact(update)
             self.repository.update_invocation_progress(invocation.id, safe_update)
             duration = int((time.monotonic() - started) * 1_000)
@@ -501,6 +520,7 @@ class ToolGateway:
             if attempt > 1:
                 self.repository.set_invocation_attempt(invocation.id, attempt)
             error_code = None
+            error_details = {}
             error_message = None
             retryable = False
             caught: Exception | None = None
@@ -541,9 +561,10 @@ class ToolGateway:
                 error_message = redact(exc.message)
             except ToolProviderError as exc:
                 caught = exc
-                error_code = "provider_error"
+                error_code = getattr(exc, "code", "provider_error")
                 error_message = redact(str(exc))
-                retryable = True
+                error_details = redact(getattr(exc, "details", {}))
+                retryable = getattr(exc, "retryable", True)
             except Exception as exc:
                 caught = exc
                 error_code = "provider_error"
@@ -572,6 +593,7 @@ class ToolGateway:
                     "code": error_code,
                     "message": error_message,
                     "retryable": retryable,
+                    "details": error_details,
                 },
             )
             self._audit(
@@ -587,6 +609,7 @@ class ToolGateway:
                 error_code or "provider_error",
                 error_message or "Tool provider failed",
                 retryable=retryable,
+                details=error_details,
             ) from caught
 
         assert output is not None

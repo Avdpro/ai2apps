@@ -804,7 +804,19 @@ def test_video_composer_api_registers_source_and_materializes_artifact(tmp_path)
     )
     app = FastAPI()
     app.include_router(create_video_studio_router(lambda: runtime, lambda: principal))
+    from ai2apps.studio.background import StudioBackgroundJobs
+    import asyncio
+    runtime.studio_jobs = StudioBackgroundJobs(runtime)
     client = TestClient(app)
+    original_post = client.post
+    def submit_and_drain(*args, **kwargs):
+        response = original_post(*args, **kwargs)
+        with database.transaction() as db:
+            rows = db.execute("SELECT * FROM studio_background_jobs WHERE status='queued'").fetchall()
+        for row in rows:
+            asyncio.run(runtime.studio_jobs._run(dict(row)))
+        return response
+    client.post = submit_and_drain
     headers = {"X-AI2Apps-App-Instance": app_instance_id}
 
     mask_models = client.get("/video-studio/composer/mask-models", headers=headers)

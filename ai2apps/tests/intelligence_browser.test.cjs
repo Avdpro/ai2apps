@@ -33,13 +33,13 @@ test('collection observes shared SSE without frontend scheduling or browser exec
 
 test('section navigation filters articles with search and unread status and escapes names',()=>{
  const nodes={'#section-filters':{},'#intel-content':{},'#search-articles':{value:''},'#article-filter':{value:'all'},'#article-type-filter':{value:'all'}};
- for(const node of Object.values(nodes))node.classList={toggle(){}};
+ for(const node of Object.values(nodes)){node.classList={toggle(){},remove(){},contains(){return false;}};node.closest=()=>null;node.querySelectorAll=()=>[];node.dataset={};}
  const sections=[{id:'new',name:'新品 <发布>',description:'New releases'},{id:'review',name:'上手体验',description:'Reviews'}];
  const articles=[{id:'a',section_id:'new',title:'New watch',summary:'Summary',body:'Body',read:false,updated_at:'2026-10-07',sources:[]},
  {id:'b',section_id:'review',title:'Review',summary:'Summary',body:'Body',read:true,updated_at:'2026-10-07',sources:[]},
  {id:'c',title:'Legacy',summary:'Summary',body:'Body',read:false,updated_at:'2026-10-07',sources:[]}];
  const env={setHTML:(root,html)=>{root.innerHTML=html;},renderedMarkup:new WeakMap(),URL,window:{},document:{addEventListener(){}},channel:()=>({sections}),inChannel:t=>t==='articles'?articles:[],sectionId:'new',selectedId:null,tab:'articles',busy:false,
- readerMode:'chat',failedCovers:new Set(),
+ readerMode:'chat',failedCovers:new Set(),state:{progressive:false},channelId:'channel',
  $:s=>nodes[s] ||= {},when:s=>s,esc:s=>String(s??'').replaceAll('<','&lt;').replaceAll('>','&gt;')};
  Object.assign(env,require('./intelligence_test_env.cjs'));vm.createContext(env);
  vm.runInContext(fs.readFileSync(__dirname+'/../web/static/js/intelligence_cards.js','utf8'),env);
@@ -93,9 +93,11 @@ test('active run shows live counters and escapes source and page data',()=>{
 test('snapshot polling coalesces requests and skips unchanged views while honoring local navigation',async()=>{
  let resolve,requests=0,renders=0;
  const env={state:{channels:[],sources:[],articles:[],runs:[]},channelId:null,selectedId:null,tab:'articles',sectionId:'',busy:false,readerMode:'chat',mobilePage:'channels',previewDraft:null,
+  window:{},mobileQuery:{matches:false},mobileMount:new URLSearchParams(),channelDrag:null,channelOrderSaving:false,unavailableNotificationChannel:false,setChannelLoadState(){},lt:s=>s,
   channel:()=>null,JSON,api:()=>{requests++;return new Promise(r=>resolve=r);},render:()=>{renders++;vm.runInContext('lastPresentation=presentationKey()',env);}};
  vm.createContext(env);
- vm.runInContext(script.slice(script.indexOf('let refreshInFlight='),script.indexOf('\nfunction render(){'))+'\nthis.poll=refresh;',env);
+ vm.runInContext(script.slice(script.indexOf('let refreshInFlight='),script.indexOf('\nfunction syncChannelRefreshStatus'))+'\nthis.poll=refresh;',env);
+ vm.runInContext('setChannelLoadState=()=>{};',env);
  const one=env.poll(),two=env.poll();assert.equal(requests,1);resolve(env.state);await Promise.all([one,two]);assert.equal(renders,1);
  const same=env.poll();resolve(env.state);await same;assert.equal(renders,1);
  env.tab='runs';const navigation=env.poll();resolve(env.state);await navigation;assert.equal(renders,2);

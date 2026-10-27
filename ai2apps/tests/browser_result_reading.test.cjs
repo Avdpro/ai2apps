@@ -11,10 +11,10 @@ function consentReader({names=['Deny'], dismisses=true, unrelated=false}={}) {
     const rect={left:100,right:240,top:100,bottom:140,width:140,height:40};
     const nodes=names.map(name=>({getBoundingClientRect:()=>rect,getAttribute:()=>null,
         innerText:name,textContent:name,title:'',contains:()=>true}));
-    const panel={innerText:'This website uses cookies',getBoundingClientRect:()=>rect,querySelectorAll:()=>nodes};
-    const context={innerWidth:1152,innerHeight:890,
+    const panel={innerText:'This website uses cookies',matches:()=>true,getBoundingClientRect:()=>rect,querySelectorAll:()=>nodes};
+    const context={innerWidth:1152,innerHeight:890,location:{pathname:'/article'},
         getComputedStyle:()=>({display:'block',visibility:'visible',opacity:1}),
-        document:{querySelectorAll:()=>open&&!unrelated?[panel]:[],elementFromPoint:()=>nodes[0],body:{innerText:'Article'}}};
+        document:{querySelectorAll:selector=>selector==='iframe'?[]:open&&!unrelated?[panel]:[],elementFromPoint:()=>nodes[0],body:{innerText:'Article'}}};
     vm.runInNewContext('globalThis.Reader=class{'+s.slice(s.indexOf('        async handlePageAccess('),s.indexOf('        async pickElement('))+'}',context);
     const client=new context.Reader();client.callJSON=async code=>vm.runInNewContext(visibility+';('+code+')()',context);
     client.naturalPointer=async candidate=>{clicks.push(candidate);if(dismisses)open=false;};
@@ -69,6 +69,20 @@ test('Google external headings and opaque goto results survive, navigation links
  const anchor=(url,h)=>({href:url,getAttribute:()=>null,querySelector:selector=>selector==='h1,h2,h3,h4'&&h?heading:null,closest:()=>null,getBoundingClientRect:()=>({width:120,height:40}),textContent:'BiDi reference',innerText:'BiDi reference'});
  const context={URL,getComputedStyle:()=>({display:'block',visibility:'visible'}),location:{hostname:'www.google.com',pathname:'/search',origin:'https://www.google.com',href:'https://www.google.com/search?q=bidi'},document:{title:'Search',querySelector:()=>({querySelectorAll:selector=>selector==='h1,h2,h3,h4'?[]:[anchor('https://developer.mozilla.org/en-US/docs/Web/WebDriver',true),anchor('https://www.google.com/goto?url=opaque',true),anchor('https://www.google.com/search?q=other',true)]}),querySelectorAll:()=>[anchor('https://developer.mozilla.org/en-US/docs/Web/WebDriver',true),anchor('https://www.google.com/goto?url=opaque',true),anchor('https://www.google.com/search?q=other',true)]}};
  vm.runInNewContext('globalThis.Reader=class{'+s.slice(s.indexOf('        async extractArticleList('),s.indexOf('        async handlePageAccess('))+'}',context);
- const client=new context.Reader();client.callJSON=async code=>vm.runInNewContext(visibility+';('+code+')()',context);
+ const client=new context.Reader();client.handlePageAccess=async()=>({classification:'none'});client.callJSON=async code=>vm.runInNewContext(visibility+';('+code+')()',context);
  const result=await client.extractArticleList(5);assert.equal(result.items.length,2);
+});
+
+test('cross-origin consent verifies ancestor hit and uses child-local native coordinates',async()=>{
+ const {client,clicks}=consentReader();let dismissed=false;const targets=[];
+ client.callJSON=async(code,args,timeout,contextId)=>{
+  targets.push(contextId);
+  if(args?.length===3)return true;
+  if(contextId==='child')return {classification:'safe_dismiss',reason:'cookie_consent',name:'Reject Non-Essential Cookies',rect:{x:20,y:40,width:200,height:60}};
+  return dismissed?{classification:'none'}:{classification:'needs_user',reason:'cookie_consent',frame:true,frame_index:0,frame_viewport:{x:100,y:200,scale_x:.5,scale_y:.5}};
+ };
+ client.contextId='root';client.connection={command:async()=>({result:{type:'window',value:{context:'child'}}})};
+ client.naturalPointer=async candidate=>{clicks.push(candidate);dismissed=true};
+ const result=await client.handlePageAccess();assert.equal(result.classification,'none');assert.equal(result.dismissed,true);
+ assert.deepEqual({...clicks[0].rect},{x:119,y:69,width:2,height:2});assert.ok(targets.includes('child'));
 });

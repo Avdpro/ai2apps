@@ -166,6 +166,7 @@ def install(manager):
             effects=original.effects,
             required_capabilities=original.required_capabilities,
         )
+        runtime.service_registry.set_agent_visibility(qualified,('builtin:coding-child',))
 
         async def child_handler(args, context, name=name):
             binding = coordinator.binding(context.trace_id)
@@ -415,6 +416,7 @@ def install(manager):
             effects=("write",) if name == "merge" else (),
             required_capabilities=("appdev.draft.write",) if name == "merge" else (),
         )
+        runtime.service_registry.set_agent_visibility(qualified,('builtin:coding-parent',))
         if name == "merge":
             runtime.capabilities.upsert_policy(
                 policy_key="builtin.appdev.subagent_merge",

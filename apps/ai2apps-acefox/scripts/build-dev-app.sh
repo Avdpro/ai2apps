@@ -13,6 +13,9 @@ PRODUCT_IDENTIFIER=${PRODUCT_IDENTIFIER:-com.ai2apps.desktop.dev}
 INSTANCE_ID=${INSTANCE_ID:-dev}
 DEVELOPMENT_SOURCE_ROOT=${DEVELOPMENT_SOURCE_ROOT:-${REPO_ROOT}}
 
+source "${SCRIPT_DIR}/development-source-contract.sh"
+validate_fixed_development_source "${REPO_ROOT}" "${DEVELOPMENT_SOURCE_ROOT}" "${PRODUCT_IDENTIFIER}" "${INSTANCE_ID}"
+
 if [[ -z ${ACEFOX_APP} || ! -d ${ACEFOX_APP} ]]; then
   print -u2 "Set ACEFOX_APP to a built Acefox.app"
   exit 64
