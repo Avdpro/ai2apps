@@ -1442,4 +1442,6 @@
   reportHostHeight();
   probeCapabilities();
   loadCharacters();
+window.ai2appsSaveDraft=()=>draftStorage.setItem(storageKey,JSON.stringify(collect()));
+ window.ai2appsCurrentUI=()=>({miniAppId:config.id,materials:Object.entries(state.files).map(([slot,f])=>({slot,name:f.name,size:f.size,type:f.type,referenceAvailable:false})),options:collect().options,roles:state.roles.slice(0,20).map(r=>({id:r.id,name:r.name})),busy:!!state.running});
 })();

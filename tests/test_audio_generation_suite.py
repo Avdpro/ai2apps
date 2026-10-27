@@ -78,7 +78,7 @@ def fixture(monkeypatch,*,fail=False,song=False,english=True):
     def save(*args,**kw):
         saved.append((args,kw));return '/v1/platform/sessions/test/artifacts/audio/download'
     runtime=SimpleNamespace(extension_manager=extensions,model_invocations=SimpleNamespace(invoke_background_to_file=invoke),readaloud_tasks=SimpleNamespace(save_studio_output=save))
-    app=FastAPI();app.include_router(create_studio_mini_app_router(lambda:runtime,lambda:RequestPrincipal.legacy_local()))
+    app=FastAPI();app.state.runtime=runtime;app.include_router(create_studio_mini_app_router(lambda:runtime,lambda:RequestPrincipal.legacy_local()))
     return app,saved,invoked
 
 @pytest.mark.asyncio
@@ -219,7 +219,7 @@ async def test_simple_task_missing_configuration_is_explicit():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize('status', [200, 502])
-async def test_simple_task_real_asgi_gateway_contract(status):
+async def test_simple_task_legacy_asgi_gateway_contract(status):
     from fastapi import Request
     from fastapi.responses import JSONResponse
     seen=[]
@@ -230,7 +230,7 @@ async def test_simple_task_real_asgi_gateway_contract(status):
         if status == 502:
             return JSONResponse({'detail':{'code':'AI_PROVIDER_ERROR','message':'private upstream diagnostic'}},status_code=502)
         return {'choices':[{'message':{'content':'{"prompt":"Enthusiastic applause"}'}}]}
-    broker=StudioCapabilityBroker(SimpleNamespace(extension_manager=Extensions(),model_manager=SimpleNamespace(resolve_default_model=lambda p:'cloud/openai/gpt-5.6-luna')))
+    broker=StudioCapabilityBroker(SimpleNamespace(extension_manager=Extensions(),model_manager=SimpleNamespace(resolve_default_model=lambda p:'fixture-local-text')))
     request=SimpleNamespace(app=app,headers={})
     if status == 502:
         with pytest.raises(StudioCapabilityError) as error:
@@ -240,7 +240,7 @@ async def test_simple_task_real_asgi_gateway_contract(status):
     else:
         result=await broker._task_completion('雷鸣般的掌声',system='Translate',principal=None,mounted=None,request=request,purpose='work_simple')
         assert json.loads(result)['prompt']=='Enthusiastic applause'
-    assert seen[0]['model']=='cloud/openai/gpt-5.6-luna'
+    assert seen[0]['model']=='fixture-local-text'
     assert 'temperature' not in seen[0]
 
 @pytest.mark.asyncio
@@ -322,3 +322,49 @@ async def test_builtin_llm_scoped_to_instance_and_declaration(monkeypatch):
         assert seen[0]['purpose']=='work_standard' and seen[0]['profile']=='privacy'
         denied=await c.post(url.replace('ai2apps.audio.audiobook','ai2apps.audio.quick-read'),json=body,headers={'X-AI2Apps-App-Instance':'owned'})
         assert denied.status_code==403
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('variant', ['music', 'sfx', 'song'])
+async def test_durable_audio_survives_mount_close_and_publishes_once(tmp_path, monkeypatch, variant):
+    from ai2apps.storage import PlatformDatabase
+    from ai2apps.studio.background import StudioBackgroundJobs
+    app, saved, invoked = fixture(monkeypatch, song=variant == 'song')
+    runtime = app.state.runtime
+    capability = {'music': CAP, 'sfx': 'audio.sound_effects_generation', 'song': 'audio.song_generation'}[variant]
+    runtime.extension_manager.variant = variant
+    runtime.extension_manager.capability = capability
+    if variant == 'sfx':
+        generation.list_package_models(runtime)[0].metadata['audio_generation']['task'] = 'sound_effects'
+    runtime.extension_manager.require_instance_access = lambda instance, principal: None
+    runtime.database = PlatformDatabase(tmp_path / 'jobs.sqlite3'); runtime.database.initialize()
+    runtime.config = SimpleNamespace(paths=SimpleNamespace(base_path=tmp_path))
+    jobs = runtime.studio_jobs = StudioBackgroundJobs(runtime)
+    inputs = SONG if variant == 'song' else {'capability': capability, 'model': 'model/music', 'prompt': 'Rain', 'duration': 1}
+    headers = {'Prefer': 'respond-async', 'Idempotency-Key': 'audio-background-test'}
+    base = f'/studios/{STUDIO_ID}/mini-app-mounts/{MOUNT_ID}/audio-generation'
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test') as client:
+        response = await client.post(base, json=inputs, headers=headers)
+        assert response.status_code == 202, response.text
+        job = response.json()
+        assert not invoked and not saved
+        assert (await client.post(base, json=inputs, headers=headers)).json()['id'] == job['id']
+        assert (await client.post(base, json={**inputs, 'prompt': 'Other'}, headers=headers)).status_code == 409
+        assert (await client.post(base, json=inputs, headers={'Prefer': 'respond-async'})).status_code == 422
+    # Both the HTTP connection and original Mini-App are now gone.
+    def gone(*args, **kwargs): raise AssertionError('Worker must not access expired mount')
+    runtime.extension_manager.mount_entry = gone
+    await jobs.startup()
+    try:
+        for _ in range(200):
+            result = jobs.get(job['id'], RequestPrincipal.legacy_local())
+            if result['status'] in ('succeeded', 'failed', 'publish_failed'): break
+            await asyncio.sleep(.01)
+        assert result['status'] == 'succeeded', result
+        assert len(saved) == len(invoked) == 1
+        assert saved[0][1]['mini_app_id'] == 'ai2apps.audio-generation.' + variant
+        assert saved[0][1]['output_key'] == job['id']
+        assert result['result']['downloadUrl'].endswith('/download')
+        assert result['result']['filename'] == {'music':'music.wav','song':'song.wav','sfx':'sound-effect.wav'}[variant]
+    finally:
+        await jobs.shutdown()

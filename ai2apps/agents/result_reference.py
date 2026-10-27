@@ -12,7 +12,7 @@ from .compaction import CHECKPOINT_READER, is_checkpoint
 from .models import RunStepStatus
 
 RESULT_READER = "agent.read_tool_result"
-PREVIEW_THRESHOLD_BYTES = 32_768
+PREVIEW_THRESHOLD_BYTES = 8192
 HEAD_CHARS = 2048
 TAIL_CHARS = 1024
 
@@ -21,29 +21,45 @@ def result_text(output: object) -> str:
     return json.dumps(output, ensure_ascii=False, sort_keys=True)
 
 
-def result_preview(step, *, reader_alias: str | None) -> str:
+def result_preview(step, *, reader_alias: str | None, app_preview=None) -> str:
     text = result_text(step.output)
     encoded = text.encode("utf-8")
     if reader_alias is None or len(encoded) <= PREVIEW_THRESHOLD_BYTES:
         return text
-    return result_text(
-        {
+    head = text[:min(HEAD_CHARS, len(text)//3)]
+    tail = text[-min(TAIL_CHARS, len(text)//6):]
+    preview = {
             "type": "ai2apps.tool-result-reference/v1",
             "step_id": step.id,
             "source_tool": step.tool_name,
             "sha256": hashlib.sha256(encoded).hexdigest(),
             "total_characters": len(text),
             "total_bytes": len(encoded),
-            "omitted_characters": len(text) - HEAD_CHARS - TAIL_CHARS,
-            "head": text[:HEAD_CHARS],
-            "tail": text[-TAIL_CHARS:],
+            "omitted_characters": len(text) - len(head) - len(tail),
+            "head": head,
+            "tail": tail,
             "read_with": {
                 "tool": reader_alias,
-                "arguments": {"step_id": step.id, "offset": HEAD_CHARS, "limit": 4096},
+                "arguments": {"step_id": step.id, "offset": len(head), "limit": 4096},
             },
             "notice": "Partial JSON text preview. Read omitted data before relying on it. Offsets are Unicode characters, not bytes.",
         }
-    )
+    # Preserve the structured result contract even when bodies need paging.
+    if isinstance(step.output,dict):
+        context=step.output.get('aaat_context')
+        if isinstance(context,dict) and len(result_text(context).encode('utf-8')) <= 16384:
+            preview['aaat_context']=context
+        for key in ('status','capability','provider','provider_version'):
+            if key in step.output:preview[key]=step.output[key]
+        if step.tool_name in {'app.interact','app.collect_parameters'}:
+            result=step.output.get('result')
+            if isinstance(result,dict):
+                metadata={key:result[key] for key in ('aaat_context','capability','provider','configure_only','executed_in_app') if key in result}
+                if len(result_text(metadata).encode('utf-8'))<=16384:preview['result']=metadata
+    # App-owned projections are bounded data, never promoted to instructions.
+    if app_preview and len(result_text(app_preview).encode('utf-8')) <= 16384:
+        preview['app_context'] = app_preview
+    return result_text(preview)
 
 
 def install_result_reader(agents, services, registry, *, service_id, provider_key):

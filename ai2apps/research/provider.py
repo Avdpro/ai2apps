@@ -36,6 +36,7 @@ class HttpResponse:
     content_type: str
     body: bytes
     truncated: bool
+    redirects: tuple[str, ...] = ()
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -93,10 +94,18 @@ class SafeHttpClient:
             (parts.scheme, parts.netloc, parts.path or "/", parts.query, "")
         )
 
-    def get(self, url: str) -> HttpResponse:
+    def resolve_redirects(self, url: str) -> HttpResponse:
+        """Resolve public redirects without downloading or extracting a body."""
+        return self.get(url, metadata_only=True)
+
+    def get(self, url: str, *, metadata_only: bool = False) -> HttpResponse:
         current = url
+        chain = []
         for redirect_count in range(self.max_redirects + 1):
             current = self._validate_url(current)
+            if current in chain:
+                raise WebProviderError('Web redirect loop detected')
+            chain.append(current)
             request = urllib.request.Request(
                 current,
                 headers={
@@ -117,6 +126,7 @@ class SafeHttpClient:
                     if not location or redirect_count >= self.max_redirects:
                         raise WebProviderError("Web redirect limit exceeded") from exc
                     current = urllib.parse.urljoin(current, location)
+                    exc.close()
                     continue
                 raise WebProviderError(f"Web request failed with HTTP {exc.code}") from exc
             except (urllib.error.URLError, TimeoutError, OSError) as exc:
@@ -125,7 +135,11 @@ class SafeHttpClient:
                 final_url = response.geturl() or current
                 # urllib handlers may still supply a final redirected URL.
                 self._validate_url(final_url)
+                if final_url != current:
+                    chain.append(final_url)
                 content_type = response.headers.get_content_type().lower()
+                if metadata_only:
+                    return HttpResponse(final_url, content_type, b'', False, tuple(chain))
                 if content_type not in self.ALLOWED_TYPES:
                     raise WebProviderError(f"Unsupported web content type: {content_type}")
                 declared = response.headers.get("Content-Length")
@@ -138,6 +152,7 @@ class SafeHttpClient:
                     content_type=content_type,
                     body=body[: self.max_bytes],
                     truncated=truncated,
+                    redirects=tuple(chain),
                 )
         raise WebProviderError("Web redirect limit exceeded")
 

@@ -5,7 +5,8 @@ function setup(api){
  const $=selector=>{if(!elements.has(selector))elements.set(selector,{value:'',dataset:{},classList:{toggle(){}},focus(){}});return elements.get(selector);};
  const env={$,channelId:'a',selectedId:null,readerMode:'chat',mobilePanel:false,previewDraft:null,state:{articles:[]},
   channel:()=>({id:env.channelId}),conversationState:id=>{if(!chats.has(id))chats.set(id,{turns:[],draft:'',loaded:true});return chats.get(id);},
-  syncMobile(){},api,esc:s=>String(s).replace(/</g,'&lt;'),empty:()=>'',icons(){},crypto:{randomUUID:()=> 'unique-request'},renderReader(){}};
+  channelSurface:{renderTurns(turns){env.renderedTurns=turns;}},showArticleDetails(){},window:{},syncMobile(){},api,esc:s=>String(s).replace(/</g,'&lt;'),empty:()=>'',icons(){},crypto:{randomUUID:()=> 'unique-request'},renderReader(){}};
+ env.window.IntelligenceI18n={format:key=>key};
  Object.assign(env,require('./intelligence_test_env.cjs'));vm.createContext(env);vm.runInContext(source.slice(source.indexOf('async function loadConversation('),source.indexOf('async function readArticle(')),env);
  return {env,$,chats,submit:()=>$('#channel-chat-form').onsubmit({preventDefault(){}})};
 }
@@ -26,10 +27,10 @@ test('retry reuses request and selected article; editing a question starts a new
  $('#channel-chat-question').value='new question';$('#channel-chat-question').oninput();await submit();
  assert.equal(calls[2].article_id,'article-b');
 });
-test('history and citation titles are escaped in the transcript',()=>{
+test('channel history is delegated to the shared Chat transcript surface',()=>{
  const {env,$}=setup(async()=>({turns:[]}));
  env.conversationState('a').turns=[{question:'<script>',answer:'<img>',references:[{number:1,article_id:'a',title:'<bad>'}]}];
  env.renderChannelChat();
- const html=$('#channel-chat-messages').innerHTML;
- assert(!html.includes('<script>'));assert(!html.includes('<img>'));assert(html.includes('&lt;bad>'));
+ assert.equal(env.renderedTurns[0].question,'<script>');
+ assert.equal(env.renderedTurns[0].references[0].title,'<bad>');
 });

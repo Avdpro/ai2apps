@@ -35,11 +35,25 @@
     // Host channels intentionally admit one operation at a time.
     let queue=Promise.resolve();
     const request=(operation,fields={})=>{const result=queue.then(()=>sendRequest(operation,fields));queue=result.catch(()=>{});return result;};
+    global.AI2AppsNotifications=Object.freeze({
+        send:notification=>request('notifications.send',{notification}),
+        onRoute:handler=>{
+            const params=new URLSearchParams(location.hash.slice(1)),id=params.get('notification-id');
+            if(!id || !params.get('notification-route'))return;
+            Promise.resolve().then(()=>handler({route:params.get('notification-route'),id:params.get('notification-resource')})).then(()=>report('opened'),()=>report('failed'));
+            function report(status){global.parent.postMessage({type:'ai2apps.notification.result',id,status,mountToken:params.get('ai2apps-mount')},'*');}
+        },
+    });
     global.AI2AppsWebAgent=Object.freeze({
         get isMobile(){return mobile;},
         probe:()=>request('probe'),
         startup:()=>request('web-agent.startup'),
         searchConfig:config=>request('web-agent.search-config',config?{config}:{}),
+        cloudSearchRequest:(taskId,action='read')=>request('web-agent.cloud-search-request',{taskId,action}),
+        prepareSearch:body=>request('web-agent.search-preparation',{body}),
+        searchPreparation:preparationId=>request('web-agent.search-preparation',{preparationId}),
+        startSearch:body=>request('web-agent.search-workflow',{body}),
+        searchWorkflow:preparationId=>request('web-agent.search-workflow',{preparationId}),
         customSources:options=>request('web-agent.custom-sources',options||{}),
         profiles:()=>request('web-agent.profiles'),
         productImages:taskIds=>request('web-agent.product-images',{taskIds}),

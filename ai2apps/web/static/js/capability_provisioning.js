@@ -254,7 +254,7 @@
         });
     }
 
-    async function confirmLicenseChallenges(challenges) {
+    async function confirmLicenseChallenges(challenges, root = null) {
         const consents = [];
         for (const challenge of challenges || []) {
             const license = challenge.license || {};
@@ -268,7 +268,8 @@
                 '<label class="acpf-license-confirm"><input type="checkbox"> <span></span></label>' +
                 '<div class="acpf-actions"><button type="button" data-license-action="cancel" class="acpf-secondary">' + tr("取消") + '</button>' +
                 '<button type="button" data-license-action="accept" class="acpf-primary" disabled>' + tr("确认许可并继续下载") + '</button></div></section>';
-            (document.querySelector('dialog[open]') || document.body).appendChild(overlay);
+            if (root) { overlay.classList.add('acpf-inline'); overlay.querySelector('section').removeAttribute('aria-modal'); }
+        (root || document.querySelector('dialog[open]') || document.body).appendChild(overlay);
             overlay.querySelector('#acpf-license-title').textContent = license.name || tr('模型许可确认');
             overlay.querySelector('.acpf-license-usage').textContent = tr('用途限制：{0}', license.usagePolicy || tr('以许可条款为准'));
             const terms = overlay.querySelector('.acpf-license-terms');
@@ -395,7 +396,7 @@
         });
     }
 
-    function sheet(session) {
+    function sheet(session, root = null) {
         const overlay = document.createElement('div');
         overlay.className = 'acpf-overlay';
         overlay.innerHTML = '<section class="acpf-sheet acpf-run-sheet" role="dialog" aria-modal="true" aria-labelledby="acpf-title">' +
@@ -408,7 +409,8 @@
             '<button type="button" data-action="restart" class="acpf-primary" hidden>' + tr("重启本地服务") + '</button>' +
             '<button type="button" data-action="retry" class="acpf-primary" hidden>' + tr("重试") + '</button>' +
             '<button type="button" data-action="done" class="acpf-primary" hidden>' + tr('完成') + '</button></div></footer></section>';
-        (document.querySelector('dialog[open]') || document.body).appendChild(overlay);
+        if (root) { overlay.classList.add('acpf-inline'); overlay.querySelector('section').removeAttribute('aria-modal'); }
+        (root || document.querySelector('dialog[open]') || document.body).appendChild(overlay);
         render(overlay, session);
         return overlay;
     }
@@ -437,6 +439,14 @@
             const name = document.createElement('strong'); name.textContent = selected.map(option => tr(option.label)).join('、');
             selection.append(label, name);
         }
+        if (overlay.classList.contains('acpf-inline') && session.status === 'awaiting_confirmation' && options.length > 1 && !overlay.querySelector('.acpf-chat-profiles')) {
+            const group=document.createElement('div');group.className='acpf-chat-profiles';
+            const select=document.createElement('select');select.setAttribute('aria-label',tr('选择配置档位'));
+            for(const option of options){const item=document.createElement('option');item.value=option.profileId;item.textContent=tr(option.label);item.disabled=!option.compatible;item.selected=option.profileId===plan.profileId;select.append(item);}
+            const button=document.createElement('button');button.type='button';button.dataset.action='select-profile';button.textContent=tr('选择配置档位');
+            group.append(select,button);overlay.querySelector('.acpf-run-header').append(group);
+        }
+        const profiles=overlay.querySelector('.acpf-chat-profiles');if(profiles)profiles.hidden=session.status!=='awaiting_confirmation';
         const list = overlay.querySelector('.acpf-steps');
         // Polling rebuilds these rows. Read the live state before replacing them
         // so both mouse and keyboard toggles survive the next progress update.
@@ -537,31 +547,38 @@
         window.lucide?.createIcons();
     }
 
-    async function runSession(initial, appId) {
+    async function runSession(initial, appId, options = {}) {
+        const send = options.request || request;
         const sessionId = initial?.id;
         if (!sessionId) throw new Error('Provisioning session id is required');
-        savePending({ sessionId, appId, resumeToken: initial.intent?.resumeToken });
-        const active = activeRuns.get(sessionId);
+        if(!options.root)savePending({ sessionId, appId, resumeToken: initial.intent?.resumeToken });
+        const runnerKey = options.root || sessionId;
+        const active = activeRuns.get(runnerKey);
         if (active) return active;
         let session = initial;
-        const overlay = sheet(session);
+        const overlay = sheet(session, options.root);
+        if (options.readOnly) overlay.querySelectorAll("button").forEach(button => button.hidden = true);
         let sharedRun;
         const run = new Promise((resolve, reject) => {
             let stopped = false;
+            let acting = false;
+            const observer=options.root ? new MutationObserver(()=>{if(!options.root.isConnected)finish(Object.assign(new Error('Configuration view detached'),{code:'view_detached'}));}) : null;
+            observer?.observe(document.body,{childList:true,subtree:true});
             const finish = (error, value) => {
-                if (stopped) return; stopped = true; overlay.remove();
+                if (stopped) return; stopped = true; observer?.disconnect(); overlay.remove();
                 if (error) reject(error); else resolve(value);
             };
             overlay.addEventListener('click', async event => {
                 const action = event.target.closest('[data-action]')?.dataset.action;
-                if (!action) return;
+                if (!action || acting || options.readOnly) return;
+                acting = true;
                 try {
                     if (session.status === 'ready') {
                         if (action === 'done') finish(null, configuredResult(session));
                         return;
                     }
                     if (action === 'cancel') {
-                        if (!terminal.has(session.status)) await request(`/provisioning/sessions/${session.id}/cancel`, { method: 'POST' });
+                        if (!terminal.has(session.status)) await send(`/provisioning/sessions/${session.id}/cancel`, { method: 'POST' });
                         clearPending(appId); finish(Object.assign(new Error(tr('已取消能力配置')), { code: 'provisioning_cancelled' })); return;
                     }
                     if (action === 'confirm' || action === 'retry') {
@@ -569,12 +586,17 @@
                             ? session.error?.challenges || []
                             : [];
                         const licenseConsents = challenges.length
-                            ? await confirmLicenseChallenges(challenges)
+                            ? await confirmLicenseChallenges(challenges, options.root ? overlay : null)
                             : [];
-                        session = await request(`/provisioning/sessions/${session.id}/${action}`, {
+                        session = await send(`/provisioning/sessions/${session.id}/${action}`, {
                             method: 'POST',
                             body: JSON.stringify({ licenseConsents }),
                         });
+                    } else if (action === 'select-profile') {
+                        const selected = await send(`/provisioning/sessions/${session.id}/select-profile`, {method:'POST', body:JSON.stringify({profileId:overlay.querySelector('.acpf-chat-profiles select').value})});
+                        if(selected.status==='ready'&&!selected.id){finish(null,selected);return;}
+                        session=selected;
+                        overlay.querySelector('.acpf-chat-profiles')?.remove();
                     } else if (action === 'restart') {
                         overlay.querySelector('[data-action="restart"]').disabled = true;
                         await request('/client/restart-local', { method: 'POST' }).catch(error => {
@@ -584,12 +606,13 @@
                     render(overlay, session);
                 } catch (error) {
                     const node = overlay.querySelector('.acpf-error'); node.hidden = false; node.textContent = error.message;
-                }
+                } finally { acting = false; }
             });
             (async function poll() {
                 while (!stopped) {
+                    if (options.root && !options.root.isConnected) { finish(Object.assign(new Error('Configuration view detached'), {code:'view_detached'})); return; }
                     if (session.status === 'ready') {
-                        render(overlay, session); return;
+                        render(overlay, session); if(options.readOnly){overlay.querySelectorAll("button").forEach(button => button.hidden=true);finish(null,configuredResult(session));} return;
                     }
                     if (session.status === 'cancelled' || session.status === 'unsupported') {
                         clearPending(appId); finish(new Error(labels[session.status] || session.status)); return;
@@ -598,21 +621,22 @@
                     if (stopped) return;
                     try {
                         const polledSessionId = session.id;
-                        const polled = await request(`/provisioning/sessions/${polledSessionId}`);
+                        const polled = await send(`/provisioning/sessions/${polledSessionId}`);
                         if (stopped) return;
                         if (session.id !== polledSessionId) continue;
                         session = polled;
-                        savePending({ sessionId: session.id, appId, resumeToken: session.intent?.resumeToken }); render(overlay, session);
-                    } catch (_) {
+                        if(!options.root)savePending({ sessionId: session.id, appId, resumeToken: session.intent?.resumeToken }); render(overlay, session); if(options.readOnly) overlay.querySelectorAll("button").forEach(button => button.hidden=true);
+                    } catch (error) {
+                        if(options.root && error.status>=400 && error.status<500){finish(error);return;}
                         overlay.querySelector('.acpf-status').textContent = tr('本地服务正在重启，等待重新连接…');
                     }
                 }
             })();
         });
         sharedRun = run.finally(() => {
-            if (activeRuns.get(sessionId) === sharedRun) activeRuns.delete(sessionId);
+            if (activeRuns.get(runnerKey) === sharedRun) activeRuns.delete(runnerKey);
         });
-        activeRuns.set(sessionId, sharedRun);
+        activeRuns.set(runnerKey, sharedRun);
         return sharedRun;
     }
 
@@ -790,5 +814,27 @@
         });
     }
 
+    // A generic owner-declared setup handoff. It configures prerequisites only;
+    // returning never submits the pending Tool or accepts a licence automatically.
+    const setupViews=new Map();
+    window.addEventListener('ai2apps:host-context',async event=>{
+        const context=event.detail, intent=context?.appInteraction;
+        if(intent?.kind!=='capability_setup'||intent.returning||window.AI2APPS_MOBILE_SURFACE)return;
+        const key=intent.runId+':'+intent.interactionId;
+        if(setupViews.has(key))return;
+        setupViews.set(key,true);
+        const panel=document.createElement('section');panel.className='aaat-setup-return';panel.style.cssText='position:relative;z-index:20;padding:14px;margin:12px;border:1px solid #ccd3df;border-radius:12px;background:var(--bg-primary,#fff)';
+        const status=document.createElement('p');status.textContent=document.documentElement.lang.startsWith('zh')?'正在准备模型配置，原对话参数已保留。':'Preparing model setup; conversation parameters are preserved.';
+        const back=document.createElement('button');back.type='button';back.textContent=document.documentElement.lang.startsWith('zh')?'返回对话，重新检查':'Return to conversation and recheck';
+        back.onclick=()=>window.ai2appsShell.openSetup(intent.runId,intent.interactionId,true).catch(error=>{status.textContent=error.message;});
+        panel.append(status,back);document.body.prepend(panel);
+        try{
+            const setup=await request('/agent-runs/'+encodeURIComponent(intent.runId)+'/interactions/'+encodeURIComponent(intent.interactionId)+'/parameters/setup');
+            if(setup.target.app_id!==context.appId||setup.install.appId!==context.appId)throw Error('Configuration owner changed');
+            const result=await ensure({...setup.install,appInstanceId:context.instanceId});
+            if(result.status==='ready'&&result.session?.id)await acknowledge(result.session.id,{appId:context.appId});
+            status.textContent=result.status==='ready'?(document.documentElement.lang.startsWith('zh')?'配置已完成。返回对话选择模型并确认继续。':'Setup ready. Return to select the model and confirm.'):String(result.status);
+        }catch(error){status.textContent=error.message;setupViews.delete(key);}
+    });
     window.AI2AppsCapabilities = { createPrivateMiniAppProject, openMiniAppCustomization, miniAppPackageComponents, openMiniAppPackages, ensure, resume, probe, acknowledge, appInstanceId, chooseProfile, runSession, createTransferMeter, formatDownloadProgress };
 })();

@@ -30,31 +30,27 @@ test('host context lifecycle is bound to the registered frame and channel',async
  await send('end');assert.equal(snapshot,null);assert.equal(replies.length,2);
 });
 
-function todoChatHarness(){
- const source=fs.readFileSync('web/static/js/todo.js','utf8');
- let controller,write;
- const tasks=[{id:'selected',directory_id:'dir',title:'Selected',highlight:'',schedule:{frequency:'off'},revision:2},{id:'green',directory_id:'dir',title:'Green',highlight:'lime',schedule:{frequency:'off'},revision:3},{id:'other',directory_id:'elsewhere',title:'Other',highlight:'lime',schedule:{}}];
- const sandbox={window:{AI2AppsMiniAppChat:{SCHEMA:'test',createStudioController:c=>{controller=c;return {url:()=>'',bind(){}};}}},$:()=>({}),state:{tasks,directories:[{id:'dir'}],runs:[]},directoryId:'dir',selectedId:'selected',aggregateId:null,chatScope:null,zh:true,tr:x=>x,dirty:false,isActiveTask:()=>true,descendants:id=>new Set([id]),matchesAggregate:()=>true,TextEncoder,refresh:async()=>{},taskBody:t=>({...t}),api:async(path,method,body)=>{write={path,method,body};return body;},projectStatuses:['not_started'],priorities:['U','S','A','B','C','D']};
- vm.runInNewContext(source.slice(source.indexOf('function setupChat()'),source.indexOf('\nlocalize();icons();'))+'\nsetupChat();',sandbox);
- return {controller,sandbox,getWrite:()=>write};
+async function todoChatHarness(){
+ const source=fs.readFileSync('web/static/js/todo.js','utf8');let options;
+ const elements={'#search':{value:''},'#filter':{value:'all',options:[{value:'all'},{value:'open'}]},'#todo-chat':{}};
+ const sandbox={window:{AI2AppsAppChat:{create:async c=>{options=c;return {url:()=>'/chat',bind(){}};}}},$:s=>elements[s]||{},
+ state:{tasks:[{id:'selected',directory_id:'dir',title:'Selected',revision:2},{id:'other',directory_id:'elsewhere'}]},
+ directoryId:'dir',selectedId:'selected',aggregateId:null,chatController:null,zh:true,tr:x=>x,dirty:false,
+ isActiveTask:()=>true,current:()=>sandbox.state.tasks.find(t=>t.id===sandbox.selectedId),refresh:async()=>{},notice:()=>{},setColumn(){},renderTree(){},renderDirectory(){},renderDetail(){},collapsed:new Set(),lastTaskFilter:'all'};
+ vm.runInNewContext(source.slice(source.indexOf('async function setupChat()'),source.indexOf('\nlocalize();icons();'))+'\nwindow.ready=setupChat();',sandbox);
+ await sandbox.window.ready;return {options,sandbox,elements};
 }
-test('Mini-Chat exposes persistent highlight and directory lookup without expanding default scope',async()=>{
- const {controller}=todoChatHarness();const d=controller.describe();
- assert.equal(d.context.projects.length,1);
- const update=d.tools.find(t=>t.name==='update_project');assert.ok(update.inputSchema.properties.highlight.enum.includes(''));
- const list=await controller.invoke('list_projects',{scope:'directory'});
- assert.equal(list.projects.length,2);assert.equal(list.projects.find(t=>t.id==='green').highlight,'lime');
+test('Todo uses durable owner transport and fixes directory scope',async()=>{
+ const {options,sandbox}=await todoChatHarness();assert.equal(options.registration,'ai2apps.todo.chat');assert.equal(options.scope().directory_id,'dir');
+ sandbox.directoryId='elsewhere';assert.equal(options.scope().directory_id,'dir');
+ await assert.rejects(options.applyUI({action:'select_project',task_id:'other'}),/changed/);
 });
-test('directory highlight update preserves task data and does not persist scope',async()=>{
- const {controller,getWrite}=todoChatHarness();
- await assert.rejects(controller.invoke('update_project',{id:'green',highlight:''}),/outside/);
- await controller.invoke('update_project',{id:'green',scope:'directory',highlight:''});
- const write=getWrite();assert.equal(write.body.highlight,'');assert.equal(write.body.title,'Green');assert.equal(write.body.revision,3);assert.equal(write.body.schedule.frequency,'off');assert.equal('scope' in write.body,false);
- await assert.rejects(controller.invoke('update_project',{id:'other',scope:'directory',highlight:''}),/outside/);
-});
-test('aggregate view cannot expand to a hidden directory',async()=>{
- const {controller,sandbox}=todoChatHarness();sandbox.aggregateId='urgent';
- await assert.rejects(controller.invoke('list_projects',{scope:'directory'}),/source directory/);
+test('Todo UI actions preserve business data and reject dirty or foreign context',async()=>{
+ const {options,sandbox,elements}=await todoChatHarness();
+ await options.applyUI({action:'set_search',query:'Requested'});assert.equal(elements['#search'].value,'Requested');
+ await assert.rejects(options.applyUI({action:'select_project',task_id:'other'}),/outside/);
+ sandbox.dirty=true;await assert.rejects(options.applyUI({action:'set_search',query:'overwrite'}),/unsaved/);
+ assert.equal(elements['#search'].value,'Requested');
 });
 
 test('new host channel changes document URL, not only fragment',()=>{

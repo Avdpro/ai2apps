@@ -773,7 +773,7 @@ class ChatRepository:
         with self.database.transaction() as connection:
             rows = connection.execute(
                 """
-                SELECT m.role, m.metadata_json, p.kind, p.content_json
+                SELECT m.id, m.role, m.metadata_json, p.kind, p.content_json
                 FROM messages m
                 JOIN message_parts p ON p.message_id = m.id
                 WHERE m.session_id = ? AND p.position = 0
@@ -793,7 +793,7 @@ class ChatRepository:
                 LegacyChatMessageInput(
                     role=MessageRole(row["role"]),
                     content=content,
-                    metadata=json.loads(row["metadata_json"]),
+                    metadata={"id": row["id"], **json.loads(row["metadata_json"])},
                 )
             )
         return ChatContentRecord(
@@ -824,6 +824,11 @@ class ChatRepository:
                 raise RevisionConflictError(
                     session_id, expected_revision, int(current["revision"])
                 )
+            # A browser owns only its UI snapshot, never an in-flight reply.
+            if connection.execute("SELECT 1 FROM agent_runs r JOIN agent_definitions d ON d.id=r.agent_definition_id WHERE r.session_id=? AND d.executor_key='builtin:direct-chat' AND r.status NOT IN ('completed','failed','cancelled','interrupted')", (session_id,)).fetchone():
+                raise ResourceConflictError('A Chat reply is still running; reload its state')
+            protected = {row['id']: dict(row) for row in connection.execute(
+                "SELECT m.id,m.idempotency_key,m.metadata_json,p.content_json FROM messages m JOIN message_parts p ON p.message_id=m.id AND p.position=0 WHERE m.session_id=? AND m.idempotency_key LIKE 'chat-turn:%:assistant'", (session_id,))}
             connection.execute(
                 """
                 DELETE FROM message_parts WHERE message_id IN (
@@ -834,14 +839,15 @@ class ChatRepository:
             )
             connection.execute("DELETE FROM messages WHERE session_id = ?", (session_id,))
             for sequence, message in enumerate(messages, start=1):
-                message_id = new_entity_id(EntityIdKind.MESSAGE)
+                saved = protected.get(message.metadata.get('id'))
+                message_id = saved['id'] if saved else new_entity_id(EntityIdKind.MESSAGE)
                 part_id = new_entity_id(EntityIdKind.MESSAGE_PART)
                 connection.execute(
                     """
                     INSERT INTO messages(
-                        id, session_id, sequence, role, status, metadata_json,
+                        id, session_id, sequence, role, status, metadata_json, idempotency_key,
                         created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, 'completed', ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, 'completed', ?, ?, ?, ?)
                     """,
                     (
                         message_id,
@@ -849,6 +855,7 @@ class ChatRepository:
                         sequence,
                         message.role.value,
                         canonical_json(message.metadata),
+                        saved['idempotency_key'] if saved else None,
                         now,
                         now,
                     ),

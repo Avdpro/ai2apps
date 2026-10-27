@@ -395,6 +395,7 @@ def create_cloud_router(
     runtime_provider: PlatformRuntimeProvider,
     principal_provider: PrincipalProvider = resolve_request_principal,
 ) -> APIRouter:
+    logger.info("Cloud account routes loaded from %s", __file__)
     async def select_browser_cloud(
         request: Request,
     ):
@@ -861,6 +862,48 @@ def create_cloud_router(
     @router.get("/profile", dependencies=core_account_only)
     async def get_profile():
         return await call("GET", "/v1/profile")
+
+    @router.api_route("/profile/avatar", methods=["PUT", "DELETE"], dependencies=core_account_only)
+    async def profile_avatar(request: Request):
+        revision = request.headers.get("if-match", "")
+        if not re.fullmatch(r'"avatar-[0-9]+"', revision):
+            raise HTTPException(428, detail={"code": "AVATAR_REVISION_REQUIRED", "message": "Read the current profile before changing its avatar"})
+        if request.query_params:
+            raise HTTPException(400, detail={"code": "INVALID_REQUEST", "message": "Avatar query fields are not allowed"})
+        headers = {"If-Match": revision}
+        if request.method == "DELETE":
+            async for chunk in request.stream():
+                if chunk:
+                    raise HTTPException(400, "Avatar removal must have no body")
+            return await call("DELETE", "/v1/profile/avatar", headers=headers)
+        if not request.headers.get("content-type", "").lower().startswith("multipart/form-data;"):
+            raise HTTPException(415, detail={"code": "AVATAR_UNSUPPORTED_FORMAT", "message": "Avatar upload requires multipart data"})
+        # Bound even chunked requests before multipart parsing/spooling.
+        data = bytearray()
+        async for chunk in request.stream():
+            data.extend(chunk)
+            if len(data) > 5 * 1024 * 1024 + 65536:
+                raise HTTPException(413, detail={"code": "AVATAR_TOO_LARGE", "message": "Avatar exceeds 5 MiB"})
+        async def stream():
+            yield bytes(data)
+        from starlette.formparsers import MultiPartParser, MultiPartException
+        from starlette.datastructures import UploadFile as StarletteUploadFile
+        try:
+            form = await MultiPartParser(request.headers, stream(), max_files=1, max_fields=0).parse()
+        except MultiPartException:
+            raise HTTPException(400, detail={"code": "AVATAR_INVALID_IMAGE", "message": "One avatar file is required"}) from None
+        try:
+            items = list(form.multi_items())
+            if len(items) != 1 or items[0][0] != "file" or not isinstance(items[0][1], StarletteUploadFile):
+                raise HTTPException(400, "One avatar file is required")
+            file = items[0][1]
+            content = await file.read(5 * 1024 * 1024 + 1)
+            if len(content) > 5 * 1024 * 1024:
+                raise HTTPException(413, detail={"code": "AVATAR_TOO_LARGE", "message": "Avatar exceeds 5 MiB"})
+            return await call("PUT", "/v1/profile/avatar", headers=headers,
+                              files={"file": ("avatar.png", content, file.content_type or "application/octet-stream")})
+        finally:
+            await form.close()
 
     @router.patch("/profile", dependencies=core_account_only)
     async def update_profile(request: UserProfilePatchRequest):

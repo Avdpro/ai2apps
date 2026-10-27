@@ -731,7 +731,12 @@ def test_general_chat_audio_registry_includes_all_shipped_voice_models() -> None
     assert asr is not None
     assert tts is not None
     asr_models = {
-        profile["stack"]["checkpoint"]["model_id"] for profile in asr["profiles"]
+        component["model_id"]
+        for profile in asr["profiles"]
+        for component in profile["stack"].get("components", [
+            {"kind": "checkpoint", **profile["stack"].get("checkpoint", {})}
+        ])
+        if component["kind"] == "checkpoint"
     }
     tts_models = {
         profile["stack"]["checkpoint"]["model_id"] for profile in tts["profiles"]
@@ -739,6 +744,7 @@ def test_general_chat_audio_registry_includes_all_shipped_voice_models() -> None
     assert asr_models == {
         "ai2apps.model.qwen3-asr-0.6b/4bit",
         "ai2apps.model.sensevoice-small/default",
+        "ai2apps.model.punctuation-restorer/default",
     }
     assert {
         "ai2apps.model.qwen3-tts-1.7b/custom-voice-8bit",
@@ -1545,9 +1551,9 @@ def test_shared_client_stores_only_opaque_resume_metadata_and_defers_ack() -> No
     assert "profileOptions" in script
     assert "function chooseProfile(plan)" in script
     assert "const activeRuns = window.__AI2AppsCapabilityActiveRuns || new Map()" in script
-    assert "const active = activeRuns.get(sessionId)" in script
-    assert "activeRuns.set(sessionId, sharedRun)" in script
-    assert "activeRuns.delete(sessionId)" in script
+    assert "const active = activeRuns.get(runnerKey)" in script
+    assert "activeRuns.set(runnerKey, sharedRun)" in script
+    assert "activeRuns.delete(runnerKey)" in script
     assert "AI2APPS CAPABILITY CHOICE" in script
     assert "data-choice-profile-id" in script
     assert "acpf-download-detail" in script
@@ -1575,7 +1581,8 @@ def test_shared_client_stores_only_opaque_resume_metadata_and_defers_ack() -> No
     assert ".acpf-choice-sheet>.acpf-tiers" in stylesheet
     assert "overflow-y:auto" in stylesheet
     assert ".acpf-choice-actions{flex:0 0 auto" in stylesheet
-    assert "/select-profile" not in script
+    assert "/select-profile" in script
+    assert "profileId:overlay.querySelector('.acpf-chat-profiles select').value" in script
     assert "acpf-selected-tier" in script
     assert (
         "window.AI2AppsCapabilities = { createPrivateMiniAppProject, openMiniAppCustomization, miniAppPackageComponents, openMiniAppPackages, ensure, resume, probe, acknowledge, appInstanceId, chooseProfile, runSession, createTransferMeter, formatDownloadProgress }"

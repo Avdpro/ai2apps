@@ -799,6 +799,9 @@ class InteractivePackageManager:
                     (definition_id, version, _json(state), now, instance["id"]),
                 )
 
+        changed=getattr(self,'package_capabilities_changed',None)
+        if changed:changed()
+
     def _active_app_definition(self, key):
         with self.database.transaction() as c:
             return c.execute(
@@ -2199,6 +2202,9 @@ class InteractivePackageManager:
             if cursor.rowcount == 0:
                 raise ResourceNotFoundError(f"{kind.value}_definition", key)
 
+        changed=getattr(self,'package_capabilities_changed',None)
+        if changed:changed()
+
     def rollback(self, kind: UnitKind, key: str):
         active = self.repository.active_package(kind, key)
         if active is None:
@@ -2216,7 +2222,10 @@ class InteractivePackageManager:
             self._activate_agent(target, effective)
         else:
             self._rollback_app(target, effective)
-        return self.repository.activate_package(target)
+        result=self.repository.activate_package(target)
+        changed=getattr(self,"package_capabilities_changed",None)
+        if changed:changed()
+        return result
 
     def activate_version(self, kind: UnitKind, key: str, digest: str):
         """Explicitly activate one already installed immutable Package version."""
@@ -2234,7 +2243,10 @@ class InteractivePackageManager:
             self._activate_agent(target, effective)
         else:
             self._rollback_app(target, effective)
-        return self.repository.activate_package(target)
+        result=self.repository.activate_package(target)
+        changed=getattr(self,"package_capabilities_changed",None)
+        if changed:changed()
+        return result
 
     def _rollback_app(self, target, effective) -> None:
         target_definition = None

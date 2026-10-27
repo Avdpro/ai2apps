@@ -22,6 +22,7 @@ from ai2apps.services import (
     ToolProviderError,
 )
 from ai2apps.workspace import WorkspaceRepository
+from ai2apps.images.parameters import base_schema
 
 _DATA_URL = re.compile(r"^data:(image/(?:png|jpeg|webp));base64,(.+)$", re.DOTALL)
 
@@ -68,47 +69,49 @@ def install_image_service(
         display_name="Generate image",
         description=(
             "Generate one image from a text prompt using the user's default image "
-            "generation model, and return a durable Session artifact."
+            "generation model, and return a durable Session artifact. Use capability.describe to inspect Provider/model constraints; app.collect_parameters can collect missing inputs."
         ),
-        input_schema={
-            "type": "object",
-            "properties": {
-                "prompt": {"type": "string", "minLength": 1, "maxLength": 32000},
-                "size": {
-                    "type": "string",
-                    "enum": ["1024x1024", "1536x1024", "1024x1536"],
-                    "default": "1024x1024",
-                },
-                "quality": {
-                    "type": "string",
-                    "enum": ["low", "medium", "high", "auto"],
-                    "default": "auto",
-                },
-                "format": {
-                    "type": "string",
-                    "enum": ["png", "jpeg", "webp"],
-                    "default": "png",
-                },
-            },
-            "required": ["prompt"],
-            "additionalProperties": False,
-        },
+        input_schema={**base_schema(),
+            'properties':{**base_schema()['properties'],
+                'provider':{'type':'string'},'parameters':{'type':'object'}}},
         output_schema={"type": "object"},
         effects=("network", "billing", "workspace.write", "artifact.create"),
         required_capabilities=("image.generate", "workspace.write", "artifact.create"),
         timeout_ms=300_000,
     )
 
+    from ai2apps.services.capability_routing import CapabilityRouter, CapabilityProvider, ProviderUnavailable
+    from ai2apps.images.agent_providers import mini_app_handler, principal_for
+    runtime = runtime_provider() if runtime_provider else None
+    router = CapabilityRouter(repository.database)
+    if runtime is not None:
+        runtime.app_capability_router = router
+
+    # The public Tool is the capability facade, not a fixed implementation.
+    original = repository.get_tool("image.generate")
+    edit_schema = {**original.input_schema, "properties": {
+        **original.input_schema["properties"],
+        "artifact_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    }, "required": ["prompt", "artifact_id"]}
+    repository.ensure_tool(service_id=service.id, qualified_name="image.edit", display_name="Edit image",
+        description="Edit an existing image artifact from this Session using Imagine Studio's image-edit Mini-App. Requires the original artifact_id. Never use image.generate as a substitute for editing.",
+        input_schema=edit_schema, output_schema={"type":"object"},
+        effects=("network","billing","workspace.write","artifact.create"),
+        required_capabilities=("image.edit","workspace.write","artifact.create"), timeout_ms=300_000)
+
     async def generate(arguments: dict[str, Any], context: ToolCallContext):
         if context.session_id is None:
             raise ToolProviderError("Image generation requires a Session")
         runtime = runtime_provider() if runtime_provider is not None else None
+        if runtime_provider is not None:
+            # The compatibility Provider shares the same Studio execution owner.
+            return await mini_app_handler(runtime_provider, workspace, _default_image_model)(arguments, context)
         model_manager = (
             getattr(runtime, "model_manager", None)
             if runtime is not None
             else None
         ) or ModelManagerStore(base_path)
-        model = _default_image_model(model_manager)
+        model = arguments.get('model') or _default_image_model(model_manager)
         request_fingerprint = hashlib.sha256(
             json.dumps(arguments, sort_keys=True, separators=(",", ":")).encode("utf-8")
         ).hexdigest()[:16]
@@ -130,6 +133,8 @@ def install_image_service(
         )
         package_model = None if invocations is None else invocations.model(model)
         if package_model is not None:
+            if not package_model.checkpoint_ready or "image_generation" not in package_model.capabilities:
+                raise ProviderUnavailable("Default local image generation model is not ready")
             scheduling_context = (
                 invocations.context_for_actor(
                     context.actor_user_id,
@@ -177,6 +182,7 @@ def install_image_service(
                 edit=False,
                 base_path=base_path,
                 cloud_client=cloud_client,
+                cloud_headers=runtime.cloud_ai_authorization_headers(principal_for(runtime, context)) if runtime is not None else None,
                 model_manager=model_manager,
             )
         image = result.get("image") if isinstance(result, dict) else None
@@ -246,6 +252,64 @@ def install_image_service(
             },
         }
 
-    registry.bind_tool(
-        "image.generate", provider_key=instance.provider_key, handler=generate
-    )
+    from ai2apps.images.parameters import describe, prepare
+    def parameter_callbacks(edit):
+        async def descriptor(principal, model=None):
+            return await describe(runtime_provider(), principal, edit, model)
+        async def preflight(arguments, context):
+            active = runtime_provider()
+            return await prepare(active, principal_for(active,context), arguments, edit)
+        return descriptor, preflight
+    descriptor, preflight = parameter_callbacks(False)
+    from .mini_parameters import agent_context
+    router.register(CapabilityProvider("ai2apps.images.generate", "image.generate", "ai2apps.imagine-studio" if runtime_provider else "ai2apps.images", generate, mini_app_id="ai2apps.imagine.text-to-image" if runtime_provider else None, priority=50 if runtime_provider else 100, describe=descriptor if runtime_provider else None, prepare=preflight if runtime_provider else None,
+        agent_context=agent_context(),
+        display_name={'zh': '内置图像服务', 'en': 'Built-in image service'},
+        summary={'zh': '通过 Imagine Studio 任务生成图片，并返回当前会话。', 'en': 'Generate through an Imagine Studio job and return the image to this session.'}))
+    if runtime_provider is not None:
+        from ai2apps.images.capabilities import MINI_APP_CAPABILITIES
+        from ai2apps.images import mini_parameters
+        def workflow_callbacks(mini):
+            async def descriptor(principal,model=None):
+                return await mini_parameters.describe(runtime_provider(),principal,mini,model)
+            async def preflight(arguments,context):
+                active=runtime_provider()
+                return await mini_parameters.prepare(active,principal_for(active,context),mini,arguments)
+            return descriptor,preflight
+        for mini_id, capability in MINI_APP_CAPABILITIES.items():
+            workflow=mini_id in mini_parameters.WORKFLOWS
+            descriptor,preflight=workflow_callbacks(mini_id) if workflow else parameter_callbacks(capability=='image.edit')
+            from .app_continuation import KEY as continuation_key, switch_values
+            router.register(CapabilityProvider(
+                mini_id, capability, "ai2apps.imagine-studio",
+                mini_app_handler(runtime_provider, workspace, _default_image_model,
+                                 edit=capability == "image.edit",mini_id=mini_id),
+                mini_app_id=mini_id, priority=100, version="1.0.0",
+                describe=descriptor,prepare=preflight,
+                related_capabilities=('image.reference_creation',) if capability=='image.group_photo' else ('image.group_photo',) if capability=='image.reference_creation' else (),
+                switch_values=switch_values,continuation=continuation_key,display_name=mini_parameters.FORM_NAMES.get(mini_id),summary=mini_parameters.FORM_SUMMARIES.get(mini_id),agent_context=mini_parameters.agent_context(mini_id)))
+            if workflow:
+                input_schema=mini_parameters.schema(mini_id)
+                input_schema['properties']['provider']={'type':'string'}
+                repository.ensure_tool(service_id=service.id,qualified_name=capability,display_name=mini_id.rsplit('.',1)[-1],
+                    description=mini_parameters.WORKFLOW_DESCRIPTIONS[mini_id]+' Run the Imagine Studio '+mini_id+' Mini-App. Reference IDs must be real image artifacts in this Session; never invent IDs. Returns a durable image artifact.',
+                    input_schema=input_schema,output_schema={'type':'object'},effects=('network','billing','workspace.write','artifact.create'),
+                    required_capabilities=('image.edit','workspace.write','artifact.create'),timeout_ms=300000)
+                async def route(arguments,context,cap=capability):return await router.invoke(cap,arguments,context)
+                registry.bind_tool(capability,provider_key=instance.provider_key,handler=route)
+    repository.ensure_tool(service_id=service.id, qualified_name='capability.describe',
+        display_name='Describe Provider parameters',
+        description='Inspect Provider-owned parameters and model-specific constraints before image.generate/image.edit. Optional model selects the effective schema. Use app.collect_parameters with the functional capability and optional provider ID to ask the user for model and parameters. Never silently reduce explicit size or switch an explicitly selected model.',
+        input_schema={'type':'object','properties':{'provider':{'type':'string'},'model':{'type':'string'}},'required':['provider'],'additionalProperties':False},
+        output_schema={'type':'object'}, effects=(), timeout_ms=30000)
+    async def describe_provider(arguments,context):
+        provider=router.providers.get(arguments['provider'])
+        if provider is None or provider.describe is None: raise ToolProviderError('Provider has no parameter descriptor')
+        return await provider.describe(principal_for(runtime_provider(),context),arguments.get('model'))
+    registry.bind_tool('capability.describe',provider_key=instance.provider_key,handler=describe_provider)
+    async def route_generate(arguments, context):
+        return await router.invoke("image.generate", arguments, context)
+    async def route_edit(arguments, context):
+        return await router.invoke("image.edit", arguments, context)
+    registry.bind_tool("image.generate", provider_key=instance.provider_key, handler=route_generate)
+    registry.bind_tool("image.edit", provider_key=instance.provider_key, handler=route_edit)

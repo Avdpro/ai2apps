@@ -1,0 +1,189 @@
+{
+  "run_id": "c6dc20d5b4754e6ea27c4237fa3f97d7",
+  "channel": "AI进展",
+  "status": "completed",
+  "timezone": "Asia/Shanghai",
+  "start": "2026-10-21 02:29:58.308",
+  "finish": "2026-10-21 02:33:05.942",
+  "read": 9,
+  "changed_pages": 5,
+  "articles": 8,
+  "total_tokens": 48368,
+  "stages": {
+    "x_rule": {
+      "calls": 1,
+      "input": 2976,
+      "output": 206,
+      "reasoning_in_output": 184
+    },
+    "post_filter": {
+      "calls": 1,
+      "input": 3337,
+      "output": 1223,
+      "reasoning_in_output": 884
+    },
+    "event_plan": {
+      "calls": 1,
+      "input": 9038,
+      "output": 4897,
+      "reasoning_in_output": 4503
+    },
+    "article": {
+      "calls": 8,
+      "input": 14524,
+      "output": 12167,
+      "reasoning_in_output": 8786
+    }
+  },
+  "calls": [
+    {
+      "at": "2026-10-21 02:31:12,801",
+      "stage": "x_rule",
+      "model": "cloud/deepseek/deepseek-flash",
+      "attempt": 0,
+      "max_tokens": 1024,
+      "finish": "stop",
+      "input": 2976,
+      "output": 206,
+      "reasoning_in_output": 184,
+      "effort": "low",
+      "context_chars": 10041
+    },
+    {
+      "at": "2026-10-21 02:31:37,996",
+      "stage": "post_filter",
+      "model": "cloud/deepseek/deepseek-flash",
+      "attempt": 0,
+      "max_tokens": 2048,
+      "finish": "stop",
+      "input": 3337,
+      "output": 1223,
+      "reasoning_in_output": 884,
+      "effort": "low",
+      "context_chars": 10660
+    },
+    {
+      "at": "2026-10-21 02:32:01,727",
+      "stage": "event_plan",
+      "model": "cloud/deepseek/deepseek-flash",
+      "attempt": 0,
+      "max_tokens": 20000,
+      "finish": "stop",
+      "input": 9038,
+      "output": 4897,
+      "reasoning_in_output": 4503,
+      "effort": "default",
+      "context_chars": 21470
+    },
+    {
+      "at": "2026-10-21 02:32:08,997",
+      "stage": "article",
+      "model": "cloud/deepseek/deepseek-flash",
+      "attempt": 0,
+      "max_tokens": 20000,
+      "finish": "stop",
+      "input": 1636,
+      "output": 1451,
+      "reasoning_in_output": 1059,
+      "effort": "default",
+      "context_chars": 2351
+    },
+    {
+      "at": "2026-10-21 02:32:17,153",
+      "stage": "article",
+      "model": "cloud/deepseek/deepseek-flash",
+      "attempt": 0,
+      "max_tokens": 20000,
+      "finish": "stop",
+      "input": 2079,
+      "output": 1499,
+      "reasoning_in_output": 975,
+      "effort": "default",
+      "context_chars": 3633
+    },
+    {
+      "at": "2026-10-21 02:32:24,142",
+      "stage": "article",
+      "model": "cloud/deepseek/deepseek-flash",
+      "attempt": 0,
+      "max_tokens": 20000,
+      "finish": "stop",
+      "input": 1927,
+      "output": 1406,
+      "reasoning_in_output": 1035,
+      "effort": "default",
+      "context_chars": 3319
+    },
+    {
+      "at": "2026-10-21 02:32:31,532",
+      "stage": "article",
+      "model": "cloud/deepseek/deepseek-flash",
+      "attempt": 0,
+      "max_tokens": 20000,
+      "finish": "stop",
+      "input": 1921,
+      "output": 1396,
+      "reasoning_in_output": 1018,
+      "effort": "default",
+      "context_chars": 3328
+    },
+    {
+      "at": "2026-10-21 02:32:37,504",
+      "stage": "article",
+      "model": "cloud/deepseek/deepseek-flash",
+      "attempt": 0,
+      "max_tokens": 20000,
+      "finish": "stop",
+      "input": 1920,
+      "output": 1163,
+      "reasoning_in_output": 854,
+      "effort": "default",
+      "context_chars": 3324
+    },
+    {
+      "at": "2026-10-21 02:32:43,467",
+      "stage": "article",
+      "model": "cloud/deepseek/deepseek-flash",
+      "attempt": 0,
+      "max_tokens": 20000,
+      "finish": "stop",
+      "input": 1563,
+      "output": 1107,
+      "reasoning_in_output": 686,
+      "effort": "default",
+      "context_chars": 2032
+    },
+    {
+      "at": "2026-10-21 02:32:57,359",
+      "stage": "article",
+      "model": "cloud/deepseek/deepseek-flash",
+      "attempt": 0,
+      "max_tokens": 20000,
+      "finish": "stop",
+      "input": 1990,
+      "output": 2602,
+      "reasoning_in_output": 1979,
+      "effort": "default",
+      "context_chars": 4136
+    },
+    {
+      "at": "2026-10-21 02:33:05,887",
+      "stage": "article",
+      "model": "cloud/deepseek/deepseek-flash",
+      "attempt": 0,
+      "max_tokens": 20000,
+      "finish": "stop",
+      "input": 1488,
+      "output": 1543,
+      "reasoning_in_output": 1180,
+      "effort": "default",
+      "context_chars": 1867
+    }
+  ],
+  "baseline_receipt": "intelligence-token-measurement-20261021.json",
+  "baseline_articles": 3,
+  "baseline_total_tokens": 44791,
+  "average_pipeline_tokens_per_article": 6046.0,
+  "per_article_change_percent": 59.50525775267352,
+  "scope": "Intelligence stage logs for exact channel/window. Output includes reasoning once. Different source evidence and article counts: observational comparison, not same-input benchmark or billed cost."
+}

@@ -30,6 +30,9 @@ ACEFOX_SHELL_SOURCE=${ACEFOX_SHELL_SOURCE:-}
 ACEFOX_SHELL_TRANSFORM=${ACEFOX_SHELL_TRANSFORM:-}
 SHELL_TITLE_PREFIX=${SHELL_TITLE_PREFIX:-AI2Apps}
 
+source "${SCRIPT_DIR}/development-source-contract.sh"
+validate_fixed_development_source "${REPO_ROOT}" "${DEVELOPMENT_SOURCE_ROOT}" "${PRODUCT_IDENTIFIER}" "${INSTANCE_ID}"
+
 fail() {
   print -u2 "build-release-app: $*"
   exit 64
@@ -340,6 +343,9 @@ find "${RUNTIME_ROOT}/Python" -type d -name __pycache__ -empty -delete
 rsync -a \
   --exclude='__pycache__' --exclude='*.pyc' --exclude='tests' --exclude='.git' \
   --exclude='.build' --exclude='.pytest_cache' --exclude='.ruff_cache' \
+  --exclude='/research/deepseek-v41-1017/' \
+  --exclude='/research/dmoe-cleanup-audit-20261018/' \
+  --exclude='/research/ssd-cleanup-20261017/' \
   --exclude='custom_kernels/*/csrc' \
   "${REPO_ROOT}/ai2apps/" "${RUNTIME_ROOT}/app/ai2apps/"
 OMLX_PROFILE_EXCLUDES=()

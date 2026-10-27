@@ -284,6 +284,24 @@
         };
     }
 
+    function normalizeCapabilityCard(card) {
+        const release=card.release,target=card.installationTarget;
+        if(!target||!release||['packageId','version','manifestSha256','artifactSha256'].some(k=>target[k]!==release[k]))throw new Error('Capability release binding mismatch');
+        const language=String(document.documentElement.lang||'en').startsWith('zh')?'zh':'en';
+        const localized=card.localizations?.[language]||card.localizations?.en||{};
+        const item=normalize({packageId:release.packageId,version:release.version,packageType:'app',
+            displayName:localized.displayName||card.displayName,description:localized.description||card.description,
+            publisher:card.publisher,permissions:card.permissions,compatibility:card.compatibility});
+        return {...item,cardId:card.cardKey,installationTarget:{...target},
+            componentId:card.contentKind==='mini-app'?card.identity:undefined,componentVersion:card.componentVersion,
+            discoveryKind:card.contentKind==='mini-app'?'mini-app':undefined,
+            miniApp:card.contentKind==='mini-app'?{componentId:card.identity,placements:card.placements==='unknown'?[]:card.placements,categories:[]}:undefined,
+            agentSupport:card.agent_support,matchStatus:card.match.status,
+            matchReasons:[...card.match.reasons,...card.match.exclusions,...card.match.unknown],
+            processing:card.processing,pricing:card.pricing,license:card.license,downloadBytes:card.downloadBytes,
+            installability:{installable:card.match.status!=='excluded',blockers:card.match.exclusions}};
+    }
+
     function catalogPage(value) {
         if (Array.isArray(value)) return { items: value, nextCursor: '' };
         const pagination = value?.pagination || {};
@@ -342,6 +360,7 @@
 
     window.discoverApp = function () {
         return {
+            packageHandoff:null,packageHandoffBusy:false,capabilityCounts:null,capabilityOutcome:'',lastCapabilityDiscovery:null,capabilityContent:false,showExcluded:false,
             tab: 'discover', type: '', modelCategory: '', modelTask: '', miniAppCategory: '', query: '', busy: false, loadingMore: false, working: '',
             nativeContent: false, catalogSnapshot: '',
             items: [], installed: [], nextCursor: '', localRemainder: [], deferredCursor: '', catalogCache: {}, selected: null, message: '', messageTone: 'error',
@@ -393,7 +412,7 @@
             get visibleItems() {
                 const source = this.tab === 'installed' ? this.installed : this.items;
                 // Native content queries already filter/search before paginating, including host/category text.
-                if (this.tab === 'discover' && this.nativeContent) return source;
+                if (this.tab === 'discover' && this.nativeContent) return source.filter(item=>this.showExcluded||item.matchStatus!=='excluded');
                 const query = this.query.trim().toLowerCase();
                 return source.filter(item => this.matchesType(item) && this.matchesModelCategory(item) && this.matchesModelTask(item) && this.matchesMiniAppCategory(item) &&
                     (!query || (item.displayName + ' ' + item.packageId + ' ' + (item.componentId || '') + ' ' + item.description + ' ' + item.publisherName).toLowerCase().includes(query)));
@@ -427,10 +446,40 @@
                 return Math.min(99, Math.max(0, ((step - 1 + withinStep) / total) * 100));
             },
             async init() {
+                this.packageHandoffListener=event=>{const intent=event.detail?.appInteraction;if(intent&&!intent.returning&&intent.kind!=='capability_setup')this.openPackageHandoff(intent).catch(error=>this.showError(error));};
+                window.addEventListener('ai2apps:host-context',this.packageHandoffListener);
                 try { this.testCandidatesEnabled = (await request('/test-candidates')).enabled === true; } catch (_) {}
                 await this.reload();
                 await this.resumeInstallContinuation();
                 await this.resumeModelInstall();
+            },
+            async openPackageHandoff(intent) {
+                const base='/v1/platform/agent-runs/'+encodeURIComponent(intent.runId)+'/interactions/'+encodeURIComponent(intent.interactionId);
+                const response=await fetch(base+'/handoff',{credentials:'same-origin'});if(!response.ok)throw Error('Installation continuation unavailable');
+                const handoff=await response.json();
+                if(handoff.target.app_id!=='ai2apps.discover'||handoff.status!=='pending'||!handoff.parameters?.installation_target)return;
+                this.packageHandoff={...handoff,base};
+                const target=handoff.parameters.installation_target;
+                const data=await request('/catalog/capabilities-content?package_id='+encodeURIComponent(target.packageId)+'&version='+encodeURIComponent(target.version)+'&limit=64');
+                const card=data.items.find(c=>JSON.stringify(c.installationTarget)===JSON.stringify(target)||Object.entries(target).every(([key,value])=>c.installationTarget?.[key]===value));
+                if(!card)throw Error('Selected release is no longer available; original task is preserved');
+                this.selected=normalizeCapabilityCard(card);redraw();
+            },
+            async returnPackageTask(complete) {
+                if(!this.packageHandoff||this.packageHandoffBusy)return;
+                const handoff=this.packageHandoff;this.packageHandoffBusy=true;
+                try {
+                    if(complete){const response=await fetch(handoff.base+'/parameters/handoff/complete',{method:'POST',credentials:'same-origin'});const result=await response.json();if(!response.ok)throw Error(typeof result.detail==='string'?result.detail:'Installation is not ready');}
+                    await window.ai2appsShell.openHandoff(handoff.run_id,handoff.interaction_id,true);
+                    this.packageHandoff=null;
+                } catch(error){this.showError(error);} finally{this.packageHandoffBusy=false;}
+            },
+            async cancelPackageTask() {
+                const handoff=this.packageHandoff;if(!handoff)return;
+                if(this.working)throw Error('Wait for the submitted installation to finish before cancelling the conversation handoff');
+                const response=await fetch(handoff.base+'/respond',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({response_id:'discover-cancel:'+handoff.interaction_id,response:{status:'cancelled',result:{}}})});
+                if(!response.ok)throw Error('Unable to cancel original continuation');
+                await this.returnPackageTask(false);
             },
             clearMessage() { this.message = ''; this.messageTone = 'error'; },
             testCandidatesEnabled: false, candidatePath: '', candidateReview: null, candidateBusy: false,
@@ -498,8 +547,13 @@
                     try { capabilities = await request('/catalog/capabilities'); }
                     catch (error) { if (error.status !== 404) throw error; capabilities = {}; }
                     if (key !== this.catalogKey()) return;
+                    this.capabilityCounts=null;this.capabilityOutcome='';
                     const capability = capabilities?.contentCatalog;
-                    this.nativeContent = capability?.schemaVersion === 'ai2apps.content-catalog.v1'
+                    const declared=capabilities?.capabilityCatalog;
+                    this.capabilityContent=declared?.schemaVersion==='ai2apps.capability-content.v1'
+                        && declared.endpoint==='/v1/registry/content' && declared.query==='discovery' && declared.value==='capabilities-v1'
+                        && !['model','service'].includes(this.type);
+                    this.nativeContent = this.capabilityContent || capability?.schemaVersion === 'ai2apps.content-catalog.v1'
                         && capability?.endpoint === '/v1/registry/content'
                         && !['model', 'service'].includes(this.type);
                 }
@@ -572,20 +626,22 @@
                     content: ['app', 'mini-app'].includes(this.type) ? this.type : 'all',
                     sort: this.query.trim() ? 'relevance' : 'recommended'});
                 if (this.type === 'agent') params.set('type', 'agent');
+                if(this.capabilityContent)params.delete('sort');
                 if (this.query.trim()) params.set('q', this.query.trim());
                 if (this.miniAppCategory) params.set('mini_app_category', this.miniAppCategory);
                 if (append && this.nextCursor) params.set('cursor', this.nextCursor);
                 try {
-                    const page = await request('/catalog/content?' + params.toString());
+                    const page = await request((this.capabilityContent?'/catalog/capabilities-content?':'/catalog/content?') + params.toString());
                     if (key !== this.catalogKey()) return;
-                    if (page.schemaVersion !== 'ai2apps.content-catalog.v1' || !Array.isArray(page.items) || !page.catalogSnapshot) {
+                    if (page.schemaVersion !== (this.capabilityContent?'ai2apps.capability-content.v1':'ai2apps.content-catalog.v1') || !Array.isArray(page.items) || !page.catalogSnapshot) {
                         throw new Error('Invalid content catalog response');
                     }
                     if (append && this.catalogSnapshot && this.catalogSnapshot !== page.catalogSnapshot) {
                         this.items = []; this.nextCursor = ''; this.catalogSnapshot = '';
                         return this.loadContentPage(false, key);
                     }
-                    const cards = page.items.map(normalizeContentCard);
+                    const cards = page.items.map(this.capabilityContent?normalizeCapabilityCard:normalizeContentCard);
+                    this.capabilityOutcome=page.outcome||'';this.capabilityCounts=page.counts||null;
                     this.items = append ? mergeCards(this.items, cards) : cards;
                     this.nextCursor = page.nextCursor || '';
                     this.catalogSnapshot = page.catalogSnapshot;
@@ -716,9 +772,9 @@
             translate(key, values) { return tr(key, values); },
             installedItem(id) { return this.installed.find(item => item.packageId === id) || null; },
             pendingRestart(item) { return Boolean(this.installedItem(item?.packageId)?.restartRequired); },
-            catalogItem(id) { return this.items.find(item => item.packageId === id) || null; },
+            catalogItem(id) { return this.items.filter(item => item.packageId === id).sort((a,b)=>compareVersions(b.version,a.version))[0] || null; },
             localVersion(item) { return this.installedItem(item?.packageId)?.version || ''; },
-            cloudVersion(item) { return this.catalogItem(item?.packageId)?.version || (this.tab === 'discover' ? item?.version : '') || ''; },
+            cloudVersion(item) { if(item?.installationTarget)return item.version;return this.catalogItem(item?.packageId)?.version || (this.tab === 'discover' ? item?.version : '') || ''; },
             hasUpgrade(item) {
                 const local = this.localVersion(item);
                 const cloud = this.cloudVersion(item);
@@ -728,7 +784,7 @@
                 return this.hasUpgrade(item) && (this.tab === 'installed' || !this.isModel(item));
             },
             async upgrade(item) {
-                const target = this.catalogItem(item?.packageId);
+                const target = item?.installationTarget ? item : this.catalogItem(item?.packageId);
                 if (!target || !this.hasUpgrade(item)) return;
                 // Upgrade the Package itself; existing checkpoints remain in place.
                 // Not every model Package declares the optional model-install plan.
@@ -766,7 +822,7 @@
             async openDetails(item) {
                 this.selected = item; this.clearMessage(); redraw();
                 const id = this.split(item.packageId);
-                if (!id.namespace || !id.name) return;
+                if (!id.namespace || !id.name || item.installationTarget) return;
                 try {
                     const detail = await request('/catalog/' + encodeURIComponent(id.namespace) + '/' + encodeURIComponent(id.name));
                     const detailed = expandPackages([detail]);
@@ -793,7 +849,7 @@
                 redraw();
                 try {
                     const operation = await request('/' + encodeURIComponent(id.namespace) + '/' + encodeURIComponent(id.name) + '/install-operations', {
-                        method: 'POST', body: { version: item.version || null, approve_review: Boolean(approved) },
+                        method: 'POST', body: { version: item.version || null, approve_review: Boolean(approved), ...(item.installationTarget?{installationTarget:item.installationTarget}:{}) },
                     });
                     this.installDialog = { ...this.installDialog, ...operation, item: item };
                     const transferMeter = window.AI2AppsCapabilities.createTransferMeter();
@@ -816,6 +872,7 @@
                         throw error;
                     }
                     const installed = current.result;
+                    this.lastCapabilityDiscovery=installed?.capabilityDiscovery||null;
                     this.success(tr(upgrading ? 'discover.success.upgraded' : 'discover.success.installed', { package: item.displayName }));
                     await this.loadCatalog();
                 } catch (error) {
@@ -887,17 +944,18 @@
                     const pending = result?.continuation;
                     if (!pending?.packageId || this.working) return;
                     const installed = this.installedItem(pending.packageId);
-                    if (installed && pending.version && compareVersions(installed.version, pending.version) >= 0) {
+                    if (installed && pending.version && (pending.installationTarget ? installed.version===pending.version && installed.sha256===pending.installationTarget.artifactSha256 && installed.manifestSha256===pending.installationTarget.manifestSha256 : compareVersions(installed.version, pending.version) >= 0)) {
                         await request('/install-continuation', { method: 'DELETE' });
                         return;
                     }
-                    const item = this.catalogItem(pending.packageId) || normalize({
+                    let item = this.catalogItem(pending.packageId) || normalize({
                         packageId: pending.packageId,
                         version: pending.version || '',
                         displayName: pending.packageId,
                         packageType: 'service',
                         description: '',
                     });
+                    if(pending.installationTarget)item={...normalize({packageId:pending.packageId,version:pending.version,packageType:'app',displayName:pending.packageId}),installationTarget:pending.installationTarget};
                     // One-shot handoff: ACPF persists its own session after selection.
                     // Cancelling selection must not replay this intent on every refresh.
                     await request('/install-continuation', { method: 'DELETE' });
@@ -1174,8 +1232,44 @@
                 const benchmark = this.modelProfile(item)?.benchmark;
                 return [benchmark?.label, benchmark?.device].filter(Boolean).join(' · ');
             },
+            capabilityDiscoveryLabel() {
+                const zh=String(document.documentElement.lang||'en').startsWith('zh');
+                const names={ready:['已核验注册接口，返回原任务后仍须审阅声明和业务确认','Runtime interface registered; return to review its declaration and business confirmation'],adapter_required:['已安装，仍需 Agent 执行适配器','Installed; Agent execution adapter required'],no_aaat_declaration:['已安装，未声明 Agent 调用能力','Installed; no Agent invocation declaration'],registered_adapters_require_interface_verification:['已找到注册能力，调用接口仍需核验','Registered capabilities found; invocation interface verification required'],not_installed:['未找到所选安装版本','Selected release is not installed'],installed_release_differs:['安装版本已变化，请重新审核','Installed release changed; review again'],inactive_or_replaced:['所选版本未激活或已被替换','Selected release is inactive or replaced'],unavailable:['当前无法访问此能力','Capability unavailable']};
+                return names[this.lastCapabilityDiscovery?.status]?.[zh?0:1]||'';
+            },
+            capabilityReason(code) {
+                const zh=String(document.documentElement.lang||'en').startsWith('zh');
+                const known={TASK_KEYWORD_MATCH:['任务关键词匹配','Task keyword matches'],TASK_KEYWORD_MISMATCH:['任务关键词不匹配','Task keyword mismatch'],DECLARATION_MATCH:['声明条件匹配','Declaration matches'],DECLARATION_MISMATCH:['声明条件不匹配','Declaration mismatch'],DECLARATION_UNKNOWN:['声明条件尚未核验','Declaration condition unknown'],DECLARATION_REQUIRED:['筛选需要能力声明','Capability declaration required'],CAPABILITY_DECLARATION_MISSING:['缺少签名能力声明','Signed capability declaration missing']};
+                if(known[code])return known[code][zh?0:1];
+                const device=String(code).match(/^(PLATFORM|ARCHITECTURE|OS_VERSION|AI2APPS_VERSION|MEMORY|STORAGE|RUNTIME)_(MATCH|MISMATCH|UNKNOWN)$/);
+                const fields={PLATFORM:'平台',ARCHITECTURE:'架构',OS_VERSION:'系统版本',AI2APPS_VERSION:'客户端版本',MEMORY:'内存',STORAGE:'存储',RUNTIME:'运行环境'};
+                return device?(zh?fields[device[1]]+{MATCH:'匹配',MISMATCH:'不匹配',UNKNOWN:'尚未核验'}[device[2]]:device[1].toLowerCase().replaceAll('_',' ')+' '+device[2].toLowerCase()):(zh?'存在尚未核验的条件':'A condition could not be verified');
+            },
+            capabilitySummary() {
+                if(!this.capabilityCounts)return '';
+                const c=this.capabilityCounts,zh=String(document.documentElement.lang||'en').startsWith('zh');
+                const names={matches:['找到匹配能力','Matching capabilities'],unverified_candidates:['候选尚未核验','Unverified candidates'],no_match:['没有符合检索条件的版本','No matching release'],no_compatible_release:['没有兼容版本','No compatible release'],no_candidates:['没有候选','No candidates']};
+                const outcome=names[this.capabilityOutcome]?.[zh?0:1]||this.capabilityOutcome;
+                return zh?`目录结果：${outcome} · 匹配 ${c.match} · 未核验 ${c.unverified} · 排除 ${c.excluded}`:`Catalog: ${outcome} · match ${c.match} · unverified ${c.unverified} · excluded ${c.excluded}`;
+            },
+            capabilityMetadata(item) {
+                const zh=String(document.documentElement.lang||'en').startsWith('zh');
+                const unknown=zh?'未声明':'unknown';
+                const processing=zh?{local:'本地处理',cloud:'云端处理',hybrid:'本地与云端处理',unknown:'处理位置未声明'}[item.processing]:item.processing;
+                const pricing=zh?{free:'免费',paid:'付费', 'usage-based':'按量收费',unknown:'收费未声明'}[item.pricing]:item.pricing;
+                return item.agentSupport?[item.version,this.formatBytes(item.downloadBytes),processing,pricing,typeof item.license==='object'?item.license?.name||unknown:unknown,zh?'不含依赖及模型下载':'excludes dependencies and checkpoints'].join(' · '):'';
+            },
+            capabilityLabel(item) {
+                if(!item.agentSupport)return '';
+                const zh=String(document.documentElement.lang||'en').startsWith('zh');
+                const labels=zh?{declared:'发布者声明支持 Agent（未验证运行接口）',ui_only:'仅界面操作',unverified:'Agent 支持未核验'}:{declared:'Publisher-declared Agent support (runtime interface unverified)',ui_only:'UI only',unverified:'Agent support unverified'};
+                const status=zh?{match:'匹配',unverified:'待核验',excluded:'不匹配'}:{match:'Match',unverified:'Unverified',excluded:'Excluded'};
+                return [labels[item.agentSupport],status[item.matchStatus],...(item.matchReasons||[]).map(v=>this.capabilityReason(v.code))].filter(Boolean).join(' · ');
+            },
+            unavailableLabel(item) {return item?.matchStatus==='excluded'?(String(document.documentElement.lang||'en').startsWith('zh')?'不符合检索条件':'Does not match'):tr('discover.action.incompatible');},
             canInstall(item) { return item?.installability?.installable !== false; },
             compatibilityMessage(item) {
+                if(item?.matchStatus==='excluded')return (item.matchReasons||[]).filter(v=>v.code.endsWith('MISMATCH')||v.code.includes('REQUIRED')).map(v=>this.capabilityReason(v.code)).join(' · ');
                 const blocker = item?.installability?.blockers?.[0];
                 if (!blocker) return '';
                 if (blocker.code === 'os_version_too_old') {

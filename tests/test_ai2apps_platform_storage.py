@@ -61,7 +61,12 @@ def test_database_bootstrap_creates_current_platform_schema(tmp_path):
 
     assert tables == {
         "task_nodes",
+        "system_tasks",
+        "system_task_attempts",
+        "system_task_schedules",
         "custom_search_sources",
+        "notification_producer_outbox",
+        "studio_background_jobs",
         "app_definitions",
         "app_instances",
         "chat_collections",
@@ -304,6 +309,10 @@ def test_database_bootstrap_creates_current_platform_schema(tmp_path):
         (89, "webagent_execution_tree"),
         (90, "pause_waiting_browser_runs"),
         (91, "owner_custom_search_sources"),
+        (92, "notification_producer_outbox"),
+        (93, "studio_background_jobs"),
+        (94, "system_task_service"),
+        (95, "system_task_trigger_compatibility"),
     ]
     assert all(row[2].endswith("Z") for row in ledger)
 
@@ -929,6 +938,8 @@ def test_fastapi_lifespan_starts_and_stops_platform_runtime(tmp_path):
             assert response.json()["database"]["status"] == "ready"
             assert {item["service_key"] for item in services.json()["items"]} == {
                 "ai2apps.diagnostics",
+                "ai2apps.package-app-adapters",
+                "ai2apps.builtin-app-adapters",
                 "ai2apps.documents",
                 "ai2apps.images",
                 "ai2apps.knowledge-service",

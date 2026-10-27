@@ -7,6 +7,7 @@ import os
 import sqlite3
 import tempfile
 import time
+from collections import deque
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -69,6 +70,11 @@ class PlatformDatabase:
         self.busy_timeout_ms = busy_timeout_ms
         self._commit_hooks: dict[int, list[Callable[[], None]]] = {}
         self._commit_hooks_lock = Lock()
+        self._idle_connections: deque[sqlite3.Connection] = deque()
+        self._pool_lock = Lock()
+        self._pool_closed = False
+        self._pool_pid = os.getpid()
+        self._max_idle_connections = 8
 
     def after_commit(
         self,
@@ -91,16 +97,49 @@ class PlatformDatabase:
             self.path,
             timeout=self.busy_timeout_ms / 1_000,
             isolation_level=None,
+            check_same_thread=False,
         )
         connection.execute("PRAGMA foreign_keys = ON")
         connection.execute(f"PRAGMA busy_timeout = {self.busy_timeout_ms}")
         return connection
 
+    def _checkout(self):
+        # Each transaction exclusively owns its connection; nested transactions
+        # receive separate handles. Never wait for a pool slot on the event loop.
+        with self._pool_lock:
+            if self._pool_pid == os.getpid() and not self._pool_closed and self._idle_connections:
+                return self._idle_connections.pop()
+        return self.connect()
+
+    def _checkin(self, connection):
+        try:
+            if connection.in_transaction:
+                connection.rollback()
+            connection.row_factory = None
+            connection.execute('PRAGMA foreign_keys = ON')
+        except sqlite3.Error:
+            connection.close()
+            return
+        with self._pool_lock:
+            if (self._pool_pid == os.getpid() and not self._pool_closed
+                    and len(self._idle_connections) < self._max_idle_connections):
+                self._idle_connections.append(connection)
+                return
+        connection.close()
+
+    def close(self):
+        """Discard idle handles; checked-out transactions close on return."""
+        with self._pool_lock:
+            self._pool_closed = True
+            idle, self._idle_connections = self._idle_connections, deque()
+        for connection in idle:
+            connection.close()
+
     @contextmanager
     def transaction(self, *, write: bool = False) -> Iterator[sqlite3.Connection]:
-        """Open one explicit short transaction and always close its connection."""
+        """Own one short transaction, then return its clean connection to the pool."""
 
-        connection = self.connect()
+        connection = self._checkout()
         connection.row_factory = sqlite3.Row
         try:
             connection.execute("BEGIN IMMEDIATE" if write else "BEGIN")
@@ -111,12 +150,12 @@ class PlatformDatabase:
                     callback()
                 except Exception:
                     logger.exception("AI2Apps post-commit notification failed")
-        except Exception:
+        except BaseException:
             connection.rollback()
             self._take_commit_hooks(connection)
             raise
         finally:
-            connection.close()
+            self._checkin(connection)
 
     def _enable_wal(self, connection: sqlite3.Connection) -> str:
         """Enable WAL with bounded retry for SQLite's journal-mode lock gap."""
@@ -143,7 +182,17 @@ class PlatformDatabase:
         try:
             journal_mode = self._enable_wal(connection)
             connection.execute("PRAGMA synchronous = NORMAL")
-            quick_check = connection.execute("PRAGMA quick_check").fetchone()
+            # A full quick_check scans every data page. Large event histories can
+            # turn an ordinary restart into seconds of I/O. Keep the full scan
+            # before a migration, when schema and data will be rewritten; on
+            # an unchanged schema verify SQLite metadata synchronously instead.
+            current_version = int(connection.execute("PRAGMA user_version").fetchone()[0])
+            check_target = (
+                "PRAGMA quick_check"
+                if current_version != PLATFORM_DATABASE_SCHEMA_VERSION
+                else "PRAGMA quick_check('sqlite_schema')"
+            )
+            quick_check = connection.execute(check_target).fetchone()
             if quick_check is None or str(quick_check[0]).lower() != "ok":
                 detail = "unknown" if quick_check is None else str(quick_check[0])
                 raise DatabaseCorruptionError(
@@ -169,6 +218,8 @@ class PlatformDatabase:
             raise RuntimeError(
                 "Migration target does not match PLATFORM_DATABASE_SCHEMA_VERSION"
             )
+        logger.info('Platform SQLite transaction connection reuse enabled (max_idle=%s); source=%s',
+                    self._max_idle_connections, __file__)
         return DatabaseState(
             path=self.path,
             schema_version=schema_version,

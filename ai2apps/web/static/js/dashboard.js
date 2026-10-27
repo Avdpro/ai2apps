@@ -62,7 +62,7 @@
         'qwen3_5_mtp',
     ]);
     const DASHBOARD_MAIN_TABS = new Set(['status', 'settings', 'models', 'logs', 'bench']);
-    const DASHBOARD_SETTINGS_TABS = new Set(['global', 'integrations', 'models']);
+    const DASHBOARD_SETTINGS_TABS = new Set(['global', 'integrations', 'models', 'capabilities']);
     const DASHBOARD_MODELS_TABS = new Set(['defaults', 'manager']);
     const DASHBOARD_BENCH_TABS = new Set(['throughput', 'accuracy', 'context']);
 
@@ -369,6 +369,8 @@
                 await this.loadModelManager();
             },
             defaultModels: {
+                work_chat: '',
+                work_agent: '',
                 work_simple: '',
                 work_standard: '',
                 work_complex: '',
@@ -478,6 +480,7 @@
                     || DIFFUSION_CONFIG_MODEL_TYPES.has(model.config_model_type || '')
                     || String(model.config_model_type || '').toLowerCase().includes('diffusion')
                     || hasCapability(model, 'image_generation');
+                if (purpose === 'work_agent') return AI2AppsConversationModelPolicy.agentOptions(models);
                 if (purpose.startsWith('work_')) {
                     return models.filter(model =>
                         ['llm', 'vlm'].includes(model.model_type)
@@ -517,6 +520,20 @@
                     );
                 }
                 return [];
+            },
+
+            agentModelLabel(model) {
+                const status = AI2AppsConversationModelPolicy.agentDeclaration(model);
+                return this.defaultModelLabel(model) + ' · ' + window.t('models.defaults.agent.' + status);
+            },
+
+            agentModelNotice() {
+                const options = this.defaultModelOptions('work_agent');
+                if (!options.length) return window.t('models.defaults.agent.no_models');
+                const selected = options.find(model => model.id === this.defaultModels.work_agent);
+                if (selected && !AI2AppsConversationModelPolicy.agentEligible(selected)) return window.t('models.defaults.agent.manual_notice');
+                if (!options.some(AI2AppsConversationModelPolicy.agentEligible)) return window.t('models.defaults.agent.no_qualified');
+                return '';
             },
 
             defaultModelLabel(model) {
@@ -1452,7 +1469,7 @@
                 this.defaultModelsStatus = '';
                 this.defaultModelsError = '';
                 try {
-                    const response = await fetch(this.modelRoutingProfile === 'privacy' ? '/v1/platform/model-profiles/privacy' : '/admin/api/model-manager/defaults', {
+                    const response = await fetch(`/v1/platform/model-profiles/${this.modelRoutingProfile}`, {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ routes: this.defaultModels }),

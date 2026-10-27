@@ -448,6 +448,34 @@ async def test_ai2apps_account_image_uses_managed_image_api(tmp_path):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("edit", [False, True])
+async def test_managed_image_edit_fields_are_route_specific(tmp_path, edit):
+    image = "data:image/png;base64,aW1hZ2U="
+    payload = {"model": "cloud/ai2apps/openai/gpt-image-2.5-flare",
+               "prompt": "a koi", "size": "1024x1024", "quality": "auto",
+               "outputFormat": "png", "imageDataUrls": [image] if edit else [],
+               "maskDataUrl": image if edit else "", "idempotencyKey": "route-check"}
+    def handler(request):
+        body = json.loads(request.content)
+        assert request.url.path.endswith("/edits" if edit else "/generations")
+        assert request.headers["idempotency-key"] == "route-check"
+        assert body["model"] == "openai/gpt-image-2.5-flare"
+        if edit:
+            assert body["imageDataUrls"] == [image]
+            assert body["maskDataUrl"] == image
+        else:
+            # Model the strict Cloud generations schema, including empty defaults.
+            assert set(body) == {"model", "prompt", "size", "quality", "outputFormat"}
+        return httpx.Response(200, json={"image": {"dataUrl": image}})
+    cloud = _ai2apps_client(handler)
+    try:
+        await request_cloud_image(payload, edit=edit, base_path=tmp_path, cloud_client=cloud)
+        assert "imageDataUrls" in payload, "do not mutate persisted retry input"
+    finally:
+        await cloud.close()
+
+
+@pytest.mark.asyncio
 async def test_local_openai_image_model_returns_normalized_data_url(tmp_path):
     store = ModelManagerStore(tmp_path)
     store.put_cloud(

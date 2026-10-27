@@ -22,7 +22,7 @@ async def test_translation_uses_local_boundary_and_preserves_authentication():
 
     broker = StudioCapabilityBroker(SimpleNamespace(
         extension_manager=None,
-        model_manager=SimpleNamespace(resolve_default_model=lambda _: 'cloud/openai/test-model'),
+        model_manager=SimpleNamespace(resolve_default_model=lambda _: 'byok/test-model'),
     ))
     async def connected():
         return False
@@ -34,7 +34,7 @@ async def test_translation_uses_local_boundary_and_preserves_authentication():
         'Hello', system='Translate', principal=None, mounted=mounted, request=request,
     )
     assert result == '翻译成功'
-    assert seen[0]['model'] == 'cloud/openai/test-model'
+    assert seen[0]['model'] == 'byok/test-model'
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://ai2apps.internal') as client:
         response = await client.post('/v1/chat/completions')
     assert response.status_code == 403

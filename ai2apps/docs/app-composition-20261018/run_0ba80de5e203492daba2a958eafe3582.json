@@ -1,0 +1,40 @@
+{
+  "id": "run_0ba80de5e203492daba2a958eafe3582",
+  "status": "completed",
+  "session_id": "ses_d1648811cc564d1ba051b55764087231",
+  "created_at": "2026-10-17T19:23:48.154698Z",
+  "finished_at": "2026-10-17T19:24:19.391080Z",
+  "tools": [
+    {
+      "tool_name": "image.generate",
+      "status": "completed",
+      "output": {
+        "artifact": {
+          "download_url": "/v1/platform/sessions/ses_d1648811cc564d1ba051b55764087231/artifacts/art_09e453fb26704746b0689734aaabc84a/download",
+          "id": "art_09e453fb26704746b0689734aaabc84a",
+          "media_type": "image/png",
+          "name": "stjob_45a6a16e5e784453b7151c3abd6e8c83.png",
+          "size_bytes": 795642,
+          "uri": "artifact://art_09e453fb26704746b0689734aaabc84a"
+        },
+        "capability": "image.generate",
+        "mini_app_id": "ai2apps.imagine.text-to-image",
+        "model": "cloud/ai2apps/openai/gpt-image-2",
+        "provider": "ai2apps.imagine.text-to-image",
+        "provider_attempts": [
+          {
+            "provider": "ai2apps.images.generate",
+            "reason": "AaAT acceptance: injected pre-submission App provider outage; no image request sent",
+            "status": "unavailable"
+          },
+          {
+            "provider": "ai2apps.imagine.text-to-image",
+            "status": "succeeded"
+          }
+        ],
+        "studio_job_id": "stjob_45a6a16e5e784453b7151c3abd6e8c83",
+        "studio_run_id": "strun_c807ee490ddc437f9732062de0d32323"
+      }
+    }
+  ]
+}

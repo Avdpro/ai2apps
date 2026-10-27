@@ -90,3 +90,20 @@ def test_deleted_channel_cannot_be_resurrected(env):
     store.delete('channels',owner,c['id'])
     with pytest.raises(KeyError):
         store.save_conversation(owner,c['id'],{'id':'test','question':'x','answer':'y'})
+
+
+def test_channel_reset_preserves_other_channels_and_rejects_active_answer(env,monkeypatch):
+    client,store,owner,c=env
+    other=store.save_channel(owner,ChannelInput(name='Other',interests='News').model_dump())
+    foreign=store.save_channel('foreign',ChannelInput(name='Private',interests='Private').model_dump())
+    for channel in (c,other):store.save_conversation(owner,channel['id'],{'id':'old','question':'Old','answer':'Old answer','references':[]})
+    path='/intelligence/channels/'+c['id']+'/conversation'
+    assert client.post('/intelligence/channels/'+foreign['id']+'/conversation/reset',json={}).status_code==404
+    assert client.post(path+'/reset',json={}).json()=={'turns':[]}
+    assert store.conversation(owner,c['id'])==[] and len(store.conversation(owner,other['id']))==1
+    async def answer(*args):
+        assert client.post(path+'/reset',json={}).status_code==409
+        return {'answer':'New answer','references':[]}
+    monkeypatch.setattr(service,'converse',answer)
+    assert client.post(path,json={'question':'New question','request_id':'request-reset-123'}).status_code==200
+    assert len(store.conversation(owner,c['id']))==1

@@ -238,11 +238,13 @@ async def test_provider_failure_is_bounded_and_write_is_not_replayed(
         finished = await _wait_status(
             runtime, run.id, AgentRunStatus.FAILED, timeout=20
         )
-        assert finished.error["code"] == "provider_error"
+        assert finished.error["code"] == ("uncertain_execution" if effectful else "provider_error")
         assert len(executions) == (1 if effectful else 4)
-        assert len(model_calls) == len(executions)
+        assert len(model_calls) == 4
         failures = runtime.agents.list_steps(run.id)
-        assert sum(model_visible(s.error) for s in failures) == (0 if effectful else 3)
+        assert sum(model_visible(s.error) for s in failures) == 3
+        if effectful:
+            assert any((s.error or {}).get("outcome_uncertain") for s in failures)
     finally:
         await runtime.stop_background_tasks()
         runtime.stop()

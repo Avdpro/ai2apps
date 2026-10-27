@@ -85,6 +85,7 @@ console.log('Portrait modes, references, drafts and model compatibility: passed'
         readAsDataURL(file) { this.result = 'data:image/png;base64,' + file.name; this.onload(); }
     };
     ctx.window.confirm = () => true;
+    app.refreshRuns = async () => {};
     app.saveDraft = async () => {};
     app.createRun = async () => ({id:'portrait-test',status:'queued'});
     app.selectRun = () => {};

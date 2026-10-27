@@ -1,0 +1,59 @@
+{
+  "date": "2026-10-17",
+  "scope": "isolated real production Runtime and Tool execution; deterministic acceptance Agent executors, not LLM planning",
+  "completed": [
+    "knowledge.add_text",
+    "knowledge.search",
+    "knowledge.get",
+    "agent.delegate",
+    "workspace.write",
+    "artifact.create"
+  ],
+  "verification": {
+    "parent_run": "run_76e69f58b6534a3792dcc7d70320a1ae",
+    "child_run": "run_6118451c49c94fcc8dedb47f0dca9d88",
+    "both_completed": true,
+    "artifact_sha256": "sha256:0e8ccf9174369096dd6e0f40c0d0e0abcbc3a2b136bbc38dca0f0859d347c625",
+    "artifact_bytes": 373,
+    "citation_matches_saved_knowledge": true,
+    "registered_builtin_tools": 88
+  },
+  "blockers": [
+    {
+      "area": "live_agentic_chat",
+      "finding": "Mac locked; standard unauthenticated App-Dev APIs returned 401. No cookies copied, no authentication disabled. Live model planning not executed."
+    },
+    {
+      "area": "app_tool_coverage",
+      "finding": "Isolated built-in Runtime exposes knowledge/document/workspace/browser/image tools, but no gallery/voice/video Tool namespace. Installed packages on live App-Dev were not inventoried."
+    },
+    {
+      "area": "gallery_handoff",
+      "finding": "Artifact import exists at authenticated Gallery HTTP endpoint but is not registered as a Harness Tool."
+    },
+    {
+      "area": "studio_mount_context",
+      "finding": "StudioCapabilityBroker expects mounted Mini-App/version/principal context. Media Voice suite mini-app chat tools are empty; no generic headless App capability executor found."
+    },
+    {
+      "area": "agent_app_identity",
+      "finding": "agent.delegate creates child in parent Session. Target App instance/mount and its separate ownership context are not part of delegation arguments."
+    },
+    {
+      "area": "provisioning_resume",
+      "finding": "App/model capability readiness and ACPF install continuation exist, but generic App Tool waiting-for-capability and resume linkage not verified."
+    }
+  ],
+  "fixture_notes": [
+    "First attempt rejected invalid policy source acceptance; corrected to local in isolated DB only.",
+    "Legacy ownerless Chat Session failed Knowledge authentication as expected. Added independent acceptance identity via IdentityRepository and created owned Session.",
+    "Exact temporary capability policies for acceptance Agents allow only knowledge.add_text/workspace.write/artifact.create; real user approval UX remains untested."
+  ],
+  "next_steps": [
+    "Create one App capability descriptor mapping App ID to existing Service Tools/Agent definitions and readiness, not a duplicate tool runtime.",
+    "Add Gallery Artifact import Tool reusing existing ownership and import logic.",
+    "Expose one voice synthesis capability through host-owned Preview & Output with headless caller context, bounded task status and Artifact result.",
+    "After unlock run a new Agentic Chat session with real model choosing tools and verify permission prompts, ACPF waiting/restart, output Gallery visibility."
+  ],
+  "production_changes": false
+}

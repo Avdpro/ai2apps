@@ -1,7 +1,6 @@
 (() => {
     'use strict';
     const APP_ID = 'ai2apps.imagine-studio';
-    const IMAGE_API = '/v1/images';
     const GALLERY_API = '/v1/platform/gallery';
     const CLOUD_MODELS_API = '/v1/platform/cloud/ai/models';
     const LOCAL_MODELS_API = '/v1/platform/imagine-studio/models';
@@ -16,7 +15,7 @@
     const GALLERY_MINI_FALLBACK_URL = (window.AI2APPS_MOBILE_SURFACE ? '/mobile' : '/admin') + '/app-content/ai2apps.gallery?surface=mini';
     const DEFAULT_CLOUD_MODEL = 'cloud/ai2apps/openai/gpt-image-2';
     const STYLE_TRANSFER_INSTRUCTION = 'Restyle the source image in the selected visual style. Preserve the main subject, identity, pose, composition, geometry, and important content unless the additional instructions explicitly request a change. Change the visual rendering, materials, lighting, color treatment, and texture to match the target style.';
-    const GROUP_PHOTO_INSTRUCTION = 'Create one natural, coherent group photograph containing every person from the person reference images exactly once. Preserve each person\'s recognizable identity, facial features, apparent age, skin tone, hairstyle, and body characteristics. Keep the people distinct: do not merge identities, duplicate anyone, omit anyone, or introduce extra people. Use the final reference image only as the background when a background image is supplied. Make lighting, scale, perspective, shadows, eye lines, anatomy, and contact between people physically consistent.';
+    const GROUP_PHOTO_INSTRUCTION = 'Create one natural, coherent group photograph containing every subject (people, animals or characters) from the subject reference images exactly once. Preserve each person\'s recognizable identity, facial features, apparent age, skin tone, hairstyle, and body characteristics. Keep the subjects distinct: do not merge identities, duplicate anyone, omit anyone, or introduce extra people. Use the final reference image only as the background when a background image is supplied. Make lighting, scale, perspective, shadows, eye lines, anatomy, and contact between people physically consistent.';
     const GOOGLE_FLASH_MODEL = 'google/gemini-3.1-flash-image';
     const GOOGLE_SIZE_LABELS = {
         '1024x1024': { size: '1024×1024', ratio: '1:1' },
@@ -464,7 +463,7 @@
     Object.assign(TRANSLATIONS.zh, {frozenPreview:'交互预览'});
     Object.assign(TRANSLATIONS.en, {frozenPreview:'Interactive preview'});
     window.imagineStudioApp = function () { return {
-        locale: normalizedLocale(document.documentElement.lang), miniApps: localizedMiniApps(document.documentElement.lang), miniAppId: 'ai2apps.imagine.text-to-image', leftView: 'mini-apps', prompt: '',
+        locale: normalizedLocale(document.documentElement.lang), miniApps: localizedMiniApps(document.documentElement.lang), miniAppId: (window.AI2APPS_MOBILE_SURFACE || window.innerWidth <= 760) ? '' : 'ai2apps.imagine.text-to-image', leftView: 'mini-apps', prompt: '',
         groupBackgroundDescription: '', groupAtmosphere: '', groupPose: '',
         productScene: 'white', productLight: 'soft', productComposition: 'center', productSceneDescription: '', productUseStyle: false,
         get isProductPhotoMode() { return this.currentMiniApp.mode === 'product-photo'; },
@@ -598,25 +597,41 @@
             { id: 'sad', icon: '🥺', labelKey: 'stickerPleading', instruction: 'An adorable pleading expression with teary eyes.' },
         ]; },
         stickerLabel(item) { return this.tr(item.labelKey); },
-        stickerPrompt() {
-            const emotion = this.stickerEmotions.find(item => item.id === this.stickerEmotion) || this.stickerEmotions[0];
+        stickerPrompt(emotionId = this.stickerEmotion) {
+            const emotion = this.stickerEmotions.find(item => item.id === emotionId) || this.stickerEmotions[0];
             return ['Create ONE expressive die-cut chat sticker of the main person or pet in the reference image. Preserve recognizable identity, hairstyle or fur markings and distinctive accessories. Only one subject, not a grid or collage. Cute clean illustration, bold contours, white sticker border, plain pure white background, generous margins, entire subject within the canvas. No letters, words, watermark or captions.', emotion.instruction, this.selectedStyle?.prompt || '', this.prompt.trim()].filter(Boolean).join('\n\n');
+        },
+        get activeStickerBatch() { return this.runs.find(run => run.miniAppId==='ai2apps.imagine.sticker-workshop' && run.input?.stickerBatch && this.isActiveRun(run)); },
+        async stopStickerBatch() {
+            const run=this.activeStickerBatch;if(!run)return;
+            try {
+                const job=await responsePayload(await fetch('/v1/platform/studio-jobs/by-run/'+encodeURIComponent(run.id),{credentials:'same-origin'}));
+                await responsePayload(await fetch('/v1/platform/studio-jobs/'+encodeURIComponent(job.id)+'/cancel?after_current=true',{method:'POST',credentials:'same-origin'}));
+                this.stickerBatchStop=true;
+            } catch(error){this.fail(error);}
         },
         async generateStickerSet() {
             if (!this.isStickerMode || !this.canGenerate || this.generating || this.stickerBatchBusy) return;
-            const message = this.tr('stickerSetConfirm');
-            if (!window.confirm(message)) return;
-            this.stickerBatchBusy = true; this.stickerBatchStop = false; this.stickerBatchDone = 0;
+            const model=this.selectedModel;
+            if (model.source!=='local' && !window.confirm(this.tr('stickerSetConfirm'))) return;
+            const reference=this.referenceFiles[0];
+            const prompts=this.stickerEmotions.map(emotion=>this.stickerPrompt(emotion.id));
+            const payload={model:model.id,source:model.source,prompt:prompts[0],prompts,size:this.requestedSize,
+                quality:this.quality,outputFormat:this.format,...this.zImageParameters(),...this.localEditParameters(model,true)};
+            const input={...this.draftPayload(),stickerBatch:true,submittedPrompts:prompts};
+            this.stickerBatchBusy=true;this.stickerBatchStop=false;let run=null,accepted=false;
             try {
-                for (const emotion of this.stickerEmotions) {
-                    if (this.stickerBatchStop) break;
-                    this.stickerEmotion = emotion.id;
-                    const result = await this.generate(null, { stickerBatch: true });
-                    if (!result || result.status !== 'succeeded') break;
-                    this.stickerBatchDone += 1;
-                }
-            } catch (error) { this.fail(error); }
-            finally { this.stickerBatchBusy = false; this.scheduleDraftSave(); }
+                await this.saveDraft();
+                run=await this.createRun(input);this.runs=[run,...this.runs];this.selectRun(run);
+                payload.imageDataUrls=[await readDataUrl(reference)];
+                await responsePayload(await fetch('/v1/platform/studio-jobs',{method:'POST',credentials:'same-origin',
+                    headers:{...this.historyHeaders(),'Content-Type':'application/json','Idempotency-Key':`imagine-${run.id}`},
+                    body:JSON.stringify({kind:'sticker-batch',run_id:run.id,payload})}));
+                accepted=true;await this.refreshRuns();return run;
+            } catch(error){
+                if(run&&!accepted)await this.updateRun(run.id,'failed',100,this.tr('failed'),{code:'batch_submit_failed',message:error.message}).catch(()=>{});
+                this.fail(error);
+            } finally {this.stickerBatchBusy=false;this.icons();}
         },
         modelId: DEFAULT_CLOUD_MODEL, models: [], size: '1024x1024', customWidth: 2048, customHeight: 1152,
         sizeCapability: structuredClone(LEGACY_SIZE_CAPABILITY), flexibleSizes: false, pricingVersion: '',
@@ -624,16 +639,18 @@
         adjustState: window.ImagineAdjustEngine?.state?.() || { values: {}, rotation: 0, flipX: false, flipY: false, cropRatio: 'original' }, adjustHistory: [], adjustHistoryIndex: -1, adjustBitmap: null, adjustRenderFrame: 0, adjustmentExporting: false,
         adjustmentLocked: false, adjustmentPresets: [], selectedAdjustmentPresetId: '', adjustmentPresetName: '', adjustmentPresetDialogOpen: false,
         adjustmentBatchOpen: false, adjustmentBatchSource: 'files', adjustmentBatchFiles: [], adjustmentBatchOutputMode: 'save-as', adjustmentBatchOutputDirectory: '', adjustmentBatchBusy: false, adjustmentBatchDone: 0, adjustmentBatchTotal: 0,
-        referenceFiles: [], referencePreviews: [], referenceDimensions: [], referenceAssets: [], runs: [], selectedRunId: '', selectedArtifactId: '', generating: false, refreshing: false, configuringLocal: false, currentRunController: null,
+        parameterHandoff: null, parameterHandoffDraftId: '', parameterHandoffReady: false, pendingParameterIntent: null, parameterHandoffLoading: false,
+        referenceFiles: [], referencePreviews: [], referenceDimensions: [], referenceAssets: [], runs: [], selectedRunId: '', selectedArtifactId: '', generating: false, refreshing: false, configuringLocal: false, currentRunController: null, outputPollTimer: null, outputRefreshing: false, outputRecoveryDone: false,
         packageCatalogLoading: false, packageCatalogError: '',
         notice: '', noticeTone: 'error', noticeTimer: null, clientEnvironment: 'browser', galleryMiniUrl: '', galleryMiniMountId: '', galleryMiniLoading: false, galleryMiniError: '', galleryMessageHandler: null, hostContextHandler: null,
         chatController: null, chatMiniUrl: '', packageChatBridge: null,
         galleryActiveCollectionId: 'recent', galleryActiveCollectionName: 'Recent', galleryDragActive: false, gallerySlotTarget: null,
-        favoriteMiniApps: [], recentMiniApps: [], leftCollapsed: false, rightCollapsed: false, mobileSurface: 'library', mobileReturnSurface: 'library', mobileViewport: window.innerWidth <= 760, draftTimer: null,
+        favoriteMiniApps: [], recentMiniApps: [], leftCollapsed: false, rightCollapsed: false, mobileSurface: 'library', mobileReturnSurface: 'library', mobileViewport: !!window.AI2APPS_MOBILE_SURFACE || window.innerWidth <= 760, draftTimer: null,
         packageMiniAppId: '', packageMiniAppUrl: '', packageMiniAppMountId: '', packageMiniAppLoading: false, packageMiniAppError: '', packageMiniAppReadiness: {}, packageMiniAppSetupBusy: false,
 
-        get currentMiniApp() { return this.miniApps.find(item => item.id === this.miniAppId) || this.miniApps[0]; },
-        get currentMiniAppReady() { return this.currentMiniApp?.source !== 'package' || this.packageMiniAppReadiness[this.currentMiniApp.id] === true; },
+        get hasActiveMiniApp() { return Boolean(this.miniAppId && this.miniApps.some(item => item.id === this.miniAppId)); },
+        get currentMiniApp() { return this.miniApps.find(item => item.id === this.miniAppId) || (this.mobileViewport ? {id:'',name:'',mode:'',status:'inactive',maxImages:0,needsImages:false,requiresImage:false} : this.miniApps[0]); },
+        get currentMiniAppReady() { return this.hasActiveMiniApp && (this.currentMiniApp?.source !== 'package' || this.packageMiniAppReadiness[this.currentMiniApp.id] === true); },
         get miniAppChatEnabled() { return !window.AI2APPS_MOBILE_SURFACE && Boolean(window.AI2AppsMiniAppChat && this.currentMiniApp && (this.currentMiniApp.source !== 'package' || this.currentMiniApp.chat?.enabled === true)); },
         get isAdjustMode() { return this.currentMiniApp.mode === 'adjust'; },
         get isStyleTransferMode() { return this.currentMiniApp.mode === 'style-transfer'; },
@@ -652,7 +669,7 @@
             if (!this.prefersOpenAIModel) return models;
             return [...models].sort((left, right) => Number(!this.isOpenAIModel(left)) - Number(!this.isOpenAIModel(right)));
         },
-        get selectedModel() { return this.models.find(model => model.id === this.modelId) || this.compatibleModels[0] || null; },
+        get selectedModel() { const selected=this.compatibleModels.find(model => model.id === this.modelId);return selected || ((this.parameterHandoff || this.parameterHandoffDraftId) ? null : this.compatibleModels[0]) || null; },
         get hasLocalModels() { return this.compatibleModels.some(model => model.source === 'local'); },
         get usingLocalModel() { return this.selectedModel?.source === 'local'; },
         zImageSteps: 8, zImageRedraw: 75,
@@ -718,17 +735,29 @@
         get promptFieldLabel() { return this.tr((this.isStyleTransferMode || this.isGroupPhotoMode || this.isProductPhotoMode || this.isPortraitMode || this.isExtractMode || this.isTryOnMode) ? 'additionalInstructions' : 'prompt'); },
         get styleSelectionHint() { return this.selectedStyle ? this.localizedName(this.selectedStyle) : this.tr(this.isStyleTransferMode ? 'styleRequired' : 'noStyleHint'); },
 
+        async initializeMiniAppFrames() {
+            // Mobile opens on the library. Hidden frame navigation must not add
+            // back-stack entries before the user has opened any Mini-App.
+            if (this.mobileViewport) return;
+            await this.ensureSelectedMiniAppFrame();
+            this.setupMiniAppChat();
+        },
+        async ensureSelectedMiniAppFrame() {
+            const item = this.currentMiniApp;
+            if (item?.source === 'package' && (!this.packageMiniAppUrl || this.packageMiniAppId !== item.id)) {
+                await this.mountPackageMiniApp(item);
+            }
+        },
         async init() {
             this.clientEnvironment = this.$root?.dataset?.clientEnvironment || 'browser';
             await this.refreshPackageMiniApps();
             this.restorePreferences();
             if (this.mobileViewport) this.leftView = 'mini-apps';
             const pendingPackageMiniAppId = window.AI2AppsStudioMiniApps?.pendingSetup(APP_ID)?.miniAppId;
-            if (this.miniApps.some(item => item.source === 'package' && item.id === pendingPackageMiniAppId)) this.miniAppId = pendingPackageMiniAppId;
-            if (this.currentMiniApp?.source === 'package') await this.mountPackageMiniApp(this.currentMiniApp);
-            this.setupMiniAppChat();
+            if (!this.mobileViewport && this.miniApps.some(item => item.source === 'package' && item.id === pendingPackageMiniAppId)) this.miniAppId = pendingPackageMiniAppId;
+            await this.initializeMiniAppFrames();
             this.galleryMessageHandler = event => this.handleGalleryMessage(event);
-            this.hostContextHandler = event => this.setLocale(event.detail?.locale);
+            this.hostContextHandler = event => { this.setLocale(event.detail?.locale); const intent=event.detail?.appInteraction;if(intent&&!intent.returning){this.pendingParameterIntent=intent;if(this.parameterHandoffReady)this.openParameterHandoff(intent).catch(error=>this.fail(error));} };
             window.addEventListener('message', this.galleryMessageHandler);
             window.addEventListener('ai2apps:host-context', this.hostContextHandler);
             window.addEventListener('ai2apps:studio-output', async event => {
@@ -740,16 +769,17 @@
             window.addEventListener('beforeunload', () => this.cleanup(), { once: true });
             this.$watch('modelId', () => this.applySelectedModelCapability());
             await this.refresh();
-            const draft = this.packageMiniAppId ? {} : await this.loadDraft(this.miniAppId);
+            const draft = !this.hasActiveMiniApp || this.currentMiniApp?.source === 'package' ? {} : await this.loadDraft(this.miniAppId);
             if (this.prefersOpenAIModel && !draft?.modelId) { this.preferOpenAIEditingModel(); this.applySelectedModelCapability(); }
             if (this.selectedAdjustmentPresetId) this.selectAdjustmentPreset();
-            this.monitorActiveRun();
+            if(this.outputPollTimer)clearInterval(this.outputPollTimer);
+            this.outputPollTimer=setInterval(()=>this.refreshRuns().catch(()=>{}),3000);
             try {
                 const packageMiniApps = this.miniApps.filter(item => item.source === 'package');
                 const resumed = await window.AI2AppsStudioMiniApps?.resumeSetup(APP_ID, packageMiniApps);
                 if (resumed?.status === 'ready') {
                     const item = packageMiniApps.find(value => value.id === (resumed.miniAppId || this.packageMiniAppId));
-                    if (item && item.id !== this.packageMiniAppId) { this.miniAppId = item.id; await this.mountPackageMiniApp(item); }
+                    if (item && item.id !== this.packageMiniAppId) { if (!this.mobileViewport || this.mobileSurface !== 'library') { this.miniAppId = item.id; await this.mountPackageMiniApp(item); } }
                     else if (item) await this.refreshPackageMiniAppReadiness(item);
                     await this.refreshAllPackageMiniAppReadiness();
                     await this.refresh(); this.success(this.tr('dependenciesReady'));
@@ -758,8 +788,12 @@
             await this.resumeLocalProvisioning();
             if (this.leftView === 'assets') this.mountGalleryMini();
             if (this.leftView === 'chat') this.mountMiniAppChat();
+            await this.openShellMiniApp?.();
+            this.parameterHandoffReady=true;
+            if(this.pendingParameterIntent)await this.openParameterHandoff(this.pendingParameterIntent).catch(error=>this.fail(error));
+            window.ai2appsShell?.ready?.();
         },
-        cleanup() { if (this.draftTimer) clearTimeout(this.draftTimer); if (this.noticeTimer) clearTimeout(this.noticeTimer); if (this.adjustRenderFrame) cancelAnimationFrame(this.adjustRenderFrame); this.chatController?.dispose(); this.packageChatBridge?.dispose(); disposeRenderableImage(this.adjustBitmap); if (this.galleryMessageHandler) window.removeEventListener('message', this.galleryMessageHandler); if (this.hostContextHandler) window.removeEventListener('ai2apps:host-context', this.hostContextHandler); this.referencePreviews.forEach(url => { if (url) URL.revokeObjectURL(url); }); },
+        cleanup() { if(this.outputPollTimer)clearInterval(this.outputPollTimer); if (this.draftTimer) clearTimeout(this.draftTimer); if (this.noticeTimer) clearTimeout(this.noticeTimer); if (this.adjustRenderFrame) cancelAnimationFrame(this.adjustRenderFrame); this.chatController?.dispose(); this.packageChatBridge?.dispose(); disposeRenderableImage(this.adjustBitmap); if (this.galleryMessageHandler) window.removeEventListener('message', this.galleryMessageHandler); if (this.hostContextHandler) window.removeEventListener('ai2apps:host-context', this.hostContextHandler); this.referencePreviews.forEach(url => { if (url) URL.revokeObjectURL(url); }); },
         tr(key, values) {
             const byokKey = { cloudGenerate: 'byokGenerate', cloudGenerating: 'byokGenerating', cloudDisclosure: 'byokDisclosure', cloudSubmitHint: 'byokSubmitHint', uploadConfirm: 'byokUploadConfirm' }[key];
             return translate(this.locale, byokKey && this.selectedModel?.source === 'byok' ? byokKey : key, values);
@@ -856,31 +890,24 @@
         async runAdjustmentBatch() {
             if (this.adjustmentBatchBusy) return;
             if (this.adjustmentBatchSource !== 'gallery' && !this.adjustmentBatchFiles.length) { this.fail(new Error(this.tr('batchChooseInput'))); return; }
-            if (this.adjustmentBatchSource !== 'gallery' && this.adjustmentBatchOutputMode === 'save-as' && !this.adjustmentBatchOutputDirectory) { this.fail(new Error(this.tr('batchChooseOutput'))); return; }
-            if (this.adjustmentBatchOutputMode === 'overwrite' && !window.confirm(this.tr('batchOverwriteConfirm'))) return;
+            if (this.clientEnvironment === 'desktop' && this.adjustmentBatchSource !== 'gallery' && this.adjustmentBatchOutputMode === 'save-as' && !this.adjustmentBatchOutputDirectory) { this.fail(new Error(this.tr('batchChooseOutput'))); return; }
+            if ((this.clientEnvironment === 'desktop'||this.adjustmentBatchSource === 'gallery') && this.adjustmentBatchOutputMode === 'overwrite' && !window.confirm(this.tr('batchOverwriteConfirm'))) return;
             this.adjustmentBatchBusy = true; this.adjustmentBatchDone = 0; this.dismissNotice();
             try {
                 const items = this.adjustmentBatchSource === 'gallery' ? await this.galleryBatchFiles() : this.adjustmentBatchFiles.map(file => ({ file, asset: null }));
                 this.adjustmentBatchTotal = items.length;
                 if (!items.length) throw new Error(this.tr('batchNoImages'));
-                for (const item of items) {
-                    const bitmap = await loadRenderableImage(item.file);
-                    try {
-                        const canvas = document.createElement('canvas'); window.ImagineAdjustEngine.render(bitmap, canvas, this.adjustState, 0);
-                        const sourceType = ['image/jpeg', 'image/webp'].includes(item.file.type) ? item.file.type : 'image/png';
-                        const output = await canvasFile(canvas, item.file.name, sourceType);
-                        if (this.adjustmentBatchSource === 'gallery') {
-                            await this.uploadBatchOutput(output, { kind: 'gallery', overwrite: this.adjustmentBatchOutputMode === 'overwrite', assetId: item.asset.id, collectionId: this.galleryActiveCollectionId === 'recent' ? null : this.galleryActiveCollectionId, name: item.file.name, mediaType: output.type });
-                        } else {
-                            const sourcePath = nativeFilePath(item.file);
-                            if (!sourcePath) throw new Error(this.tr('batchNativePathUnavailable', { name: item.file.name }));
-                            const relative = this.adjustmentBatchSource === 'folder' ? String(item.file.webkitRelativePath || item.file.name) : item.file.name;
-                            await this.uploadBatchOutput(output, { kind: 'local', overwrite: this.adjustmentBatchOutputMode === 'overwrite', sourcePath, outputRoot: this.adjustmentBatchOutputDirectory || null, relativePath: relative, name: item.file.name, mediaType: output.type });
-                        }
-                    } finally { disposeRenderableImage(bitmap); }
-                    this.adjustmentBatchDone += 1;
-                }
-                this.success(this.tr('batchCompleted', { count: this.adjustmentBatchDone })); this.adjustmentBatchOpen = false;
+                const settings = window.ImagineAdjustEngine.clone(this.adjustState);
+                const records = items.map(item => {
+                    const mediaType=['image/jpeg','image/webp'].includes(item.file.type)?item.file.type:'image/png';
+                    const target=this.adjustmentBatchSource==='gallery'
+                        ? {kind:'gallery',overwrite:this.adjustmentBatchOutputMode==='overwrite',assetId:item.asset.id,collectionId:this.galleryActiveCollectionId==='recent'?null:this.galleryActiveCollectionId,name:item.file.name,mediaType}
+                        : this.clientEnvironment==='desktop' ? {kind:'local',overwrite:this.adjustmentBatchOutputMode==='overwrite',sourcePath:nativeFilePath(item.file),outputRoot:this.adjustmentBatchOutputDirectory||null,relativePath:this.adjustmentBatchSource==='folder'?String(item.file.webkitRelativePath||item.file.name):item.file.name,name:item.file.name,mediaType} : null;
+                    if(target?.kind==='local'&&!target.sourcePath)throw new Error(this.tr('batchNativePathUnavailable',{name:item.file.name}));
+                    return {file:item.file,name:item.file.name,mediaType,target};
+                });
+                await this.submitAdjustment(records,settings);
+                this.adjustmentBatchOpen=false;
                 this.$refs.galleryMini?.contentWindow?.postMessage({ type: 'ai2apps.gallery.refresh' }, window.location.origin);
             } catch (error) { this.fail(error); }
             finally { this.adjustmentBatchBusy = false; this.icons(); }
@@ -906,28 +933,24 @@
         redoAdjustment() { if (!this.canRedoAdjustment) return; this.adjustHistoryIndex += 1; this.adjustState = window.ImagineAdjustEngine.clone(this.adjustHistory[this.adjustHistoryIndex]); this.scheduleAdjustmentRender(); this.scheduleDraftSave(); this.icons(); },
         scheduleAdjustmentRender() { if (this.adjustRenderFrame) cancelAnimationFrame(this.adjustRenderFrame); this.adjustRenderFrame = requestAnimationFrame(() => { this.adjustRenderFrame = 0; this.renderAdjustment(); }); },
         renderAdjustment() { if (!this.adjustBitmap || !this.$refs.adjustCanvas) return; window.ImagineAdjustEngine.render(this.adjustBitmap, this.$refs.adjustCanvas, this.adjustState, 1400); },
-        async exportAdjustment(retryOf = null) {
-            if (!this.canExportAdjustment) { this.fail(new Error(this.tr('adjustmentMissingImage'))); return; }
-            this.adjustmentExporting = true; this.dismissNotice(); let run = null; let stage = this.tr('preparingAdjustment');
-            const id = globalThis.crypto?.randomUUID?.() || `adjust-${Date.now()}`;
-            const input = { ...this.draftPayload(), prompt: '', sourceName: this.referenceFiles[0]?.name || '', adjustmentState: window.ImagineAdjustEngine.clone(this.adjustState) };
+        async submitAdjustment(items,state,retryOf=null) {
+            await this.saveDraft();
+            const run=await this.createRun({...this.draftPayload(),adjustmentState:state,count:items.length},retryOf);
+            this.runs=[run,...this.runs];this.selectRun(run);
             try {
-                await this.saveDraft(); run = await this.createRun(input, retryOf); this.runs = [run, ...this.runs]; this.selectRun(run);
-                run = await this.updateRun(run.id, 'running', 20, this.tr('localAdjustments')); this.runs = this.runs.map(item => item.id === run.id ? run : item);
-                await new Promise(resolve => requestAnimationFrame(resolve));
-                stage = this.tr('renderingFullImage');
-                const canvas = document.createElement('canvas'); const rendered = window.ImagineAdjustEngine.render(this.adjustBitmap, canvas, this.adjustState, 0);
-                const filename = `imagine-adjust-${id.slice(-8)}.png`;
-                stage = this.tr('encodingPng');
-                const imageFile = await canvasFile(canvas, filename);
-                stage = this.tr('savingArtifact');
-                await this.persistResult({ runId: run.id, miniAppId: this.miniAppId, pipelineId: 'adjust-image', title: this.currentMiniApp.name, prompt: '', size: `${rendered.naturalWidth}x${rendered.naturalHeight}`, modelId: 'local/image-adjustments', modelLabel: this.tr('localAdjustments'), quality: 'lossless', format: 'png', imageFile, filename });
-                await this.updateRun(run.id, 'succeeded', 100, this.tr('completed')); await this.refreshRuns(); this.selectRun(this.runs.find(item => item.id === run.id)); this.openMobileOutput(); this.success(this.tr('completed'));
-            } catch (error) {
-                const failure = new Error(`${stage}: ${error?.message || String(error)}`);
-                if (run) { try { await this.updateRun(run.id, 'failed', 100, this.tr('failed'), { code: 'image_adjustment_failed', message: failure.message }); } catch (_) {} }
-                this.fail(failure); await this.refreshRuns().catch(() => {});
-            } finally { this.adjustmentExporting = false; this.icons(); }
+                const form=new FormData();items.forEach(item=>form.append('files',item.file,item.file.name));
+                form.append('spec',JSON.stringify({state,items:items.map(({file,...item})=>item)}));
+                await responsePayload(await fetch(`${STUDIO_API}/runs/${encodeURIComponent(run.id)}/adjust`,{method:'POST',credentials:'same-origin',headers:this.historyHeaders(),body:form}));
+                await this.refreshRuns();this.openMobileOutput();
+            } catch(error) {
+                await this.updateRun(run.id,'failed',0,this.tr('failed'),{code:'adjustment_submission_failed',message:error.message}).catch(()=>{});throw error;
+            }
+        },
+        async exportAdjustment(retryOf=null) {
+            if(!this.canExportAdjustment)return;
+            this.adjustmentExporting=true;this.dismissNotice();
+            try {await this.submitAdjustment([{file:this.referenceFiles[0],name:'adjusted.png',mediaType:'image/png'}],window.ImagineAdjustEngine.clone(this.adjustState),retryOf);}
+            catch(error){this.fail(error);}finally{this.adjustmentExporting=false;this.icons();}
         },
         setLocale(value) { const locale = normalizedLocale(value); if (locale === this.locale) return; const installed = this.miniApps.filter(item => item.source === 'package').map(item => packageMiniApp(item, locale)); this.locale = locale; this.miniApps = [...localizedMiniApps(locale), ...installed]; document.documentElement.lang = locale; document.title = 'Imagine Studio - AI2Apps'; this.icons(); },
         icons() { this.$nextTick(() => window.lucide?.createIcons()); },
@@ -940,14 +963,14 @@
         },
         fail(error) { const message = error?.message || String(error); const cancelled = /cancelled|canceled|已取消|取消能力配置/i.test(message); this.showNotice(message, cancelled ? 'neutral' : 'error', cancelled ? 4000 : 8000); },
         success(message) { this.showNotice(message, 'success', 4500); },
-        setupMiniAppChat() {
-            if (!window.AI2AppsMiniAppChat) return;
-            this.chatController = window.AI2AppsMiniAppChat.createStudioController({ describe: () => this.describeMiniAppChat(), invoke: (name, args) => this.invokeMiniAppChatTool(name, args), help: () => this.readMiniAppHelp() });
-            this.chatMiniUrl = this.chatController.url();
-        },
-        mountMiniAppChat() {
-            if (!this.chatController) this.setupMiniAppChat();
-            return new Promise(resolve => this.$nextTick(() => { this.chatController?.bind(this.$refs.miniAppChat); resolve(); }));
+        setupMiniAppChat() { /* Execution starts only when the scoped Chat is mounted. */ },
+        async mountMiniAppChat() {
+            if(this.currentMiniApp?.source==='package'&&(!this.packageChatBridge||this.packageChatMiniId!==this.currentMiniApp.id)){
+                this.packageChatBridge?.dispose();
+                this.packageChatBridge=window.AI2AppsMiniAppChat.createPackageBridge(()=>this.$refs.packageMiniApp,this.currentMiniApp.chat);
+                this.packageChatMiniId=this.currentMiniApp.id;
+            }
+            return window.AI2AppsStudioChat.mount(this,{appId:APP_ID,materials:o=>(o.referenceAssets||[]).filter(Boolean).map(x=>({assetId:x.assetId,workspaceArtifactId:x.workspaceArtifactId,workspaceSessionId:x.workspaceSessionId})),outputs:o=>(o.runs||[]).flatMap(r=>(r.artifacts||[]).map(a=>({...a,title:r.title}))),selectOutput:async(o,id)=>{o.selectedArtifactId=id;o.rightCollapsed=false;o.icons();},refresh:async o=>{await o.refresh?.();}});
         },
         async describeMiniAppChat() {
             const miniApp = this.currentMiniApp;
@@ -1025,7 +1048,7 @@
                 const discovery = JSON.parse(localStorage.getItem(DISCOVERY_KEY) || '{}');
                 this.leftView = ['assets', 'chat'].includes(layout.leftView) ? layout.leftView : 'mini-apps';
                 this.leftCollapsed = Boolean(layout.leftCollapsed); this.rightCollapsed = Boolean(layout.rightCollapsed);
-                if (this.miniApps.some(item => item.id === layout.miniAppId && item.status === 'ready')) this.miniAppId = layout.miniAppId;
+                if (!this.mobileViewport && this.miniApps.some(item => item.id === layout.miniAppId && item.status === 'ready')) this.miniAppId = layout.miniAppId;
                 this.favoriteMiniApps = Array.isArray(discovery.favorites) ? discovery.favorites : [];
                 this.recentMiniApps = Array.isArray(discovery.recent) ? discovery.recent.slice(0, 8) : [];
                 const savedStyle = localStorage.getItem(STYLE_KEY);
@@ -1071,8 +1094,8 @@
         },
         selectRun(run) { this.selectedRunId = run?.id || ''; this.selectedArtifactId = run?.artifacts?.[0]?.id || ''; this.icons(); },
         selectArtifact(artifact) { this.selectedArtifactId = artifact?.id || ''; this.icons(); },
-        draftPayload() { return { upscaleSeed: this.upscaleSeed, upscalePrompt: this.upscalePrompt, ...this.tryOnDraft(), extractTarget: this.extractTarget, extractCustom: this.extractCustom, promptOverride: this.promptIsEdited ? this.promptOverride : null, ...this.portraitDraft(), productScene: this.productScene, productLight: this.productLight, productComposition: this.productComposition, productSceneDescription: this.productSceneDescription, productUseStyle: this.productUseStyle, stickerEmotion: this.stickerEmotion, zImageBaseSteps: this.zImageBaseSteps, zImageBaseGuidance: this.zImageBaseGuidance, zImageBaseNegativePrompt: this.zImageBaseNegativePrompt, zImageSteps: this.zImageSteps, zImageRedraw: this.zImageRedraw, prompt: this.prompt, groupBackgroundDescription: this.groupBackgroundDescription, groupAtmosphere: this.groupAtmosphere, groupPose: this.groupPose, modelId: this.modelId, size: this.size, customWidth: this.customWidth, customHeight: this.customHeight, quality: this.quality, format: this.format, style: this.style, adjustmentState: window.ImagineAdjustEngine?.clone?.(this.adjustState), adjustmentLocked: this.adjustmentLocked, adjustmentPresets: this.adjustmentPresets, selectedAdjustmentPresetId: this.selectedAdjustmentPresetId, assetReferences: this.referenceAssets.slice(0, this.currentMiniApp.maxImages) }; },
-        applyDraft(draft, restoreStyle = false) { if (!draft || typeof draft !== 'object') return; this.promptOverride = draft.promptOverride && typeof draft.promptOverride.key === 'string' && typeof draft.promptOverride.text === 'string' ? { key: draft.promptOverride.key, text: draft.promptOverride.text.slice(0, 32000) } : null; this.upscaleSeed = Number(draft.upscaleSeed) || 0; this.upscalePrompt = String(draft.upscalePrompt || "").slice(0,2048); this.restoreTryOnDraft(draft); this.restoreExtractDraft(draft); this.restoreProductDraft(draft); this.restorePortraitDraft(draft); this.stickerEmotion = this.stickerEmotions.some(item => item.id === draft.stickerEmotion) ? draft.stickerEmotion : 'happy'; this.zImageBaseSteps = Number(draft.zImageBaseSteps) || 30; this.zImageBaseGuidance = Number(draft.zImageBaseGuidance) || 4; this.zImageBaseNegativePrompt = String(draft.zImageBaseNegativePrompt || '').slice(0, 8192); this.zImageSteps = Number(draft.zImageSteps) || 8; this.zImageRedraw = Number(draft.zImageRedraw) || 75; this.prompt = String(draft.prompt || ''); this.groupBackgroundDescription = String(draft.groupBackgroundDescription || ''); this.groupAtmosphere = String(draft.groupAtmosphere || ''); this.groupPose = String(draft.groupPose || ''); const savedModelId = String(draft.modelId || this.modelId); const managedModelId = managedCloudModelId(savedModelId); this.modelId = this.models.some(model => model.source === 'cloud' && model.id === managedModelId) ? managedModelId : savedModelId; this.size = String(draft.size || this.size); this.customWidth = Number(draft.customWidth || this.customWidth); this.customHeight = Number(draft.customHeight || this.customHeight); this.quality = String(draft.quality || 'auto'); this.format = String(draft.format || 'png'); if (restoreStyle || !this.stylePreferenceLoaded) { const savedStyle = String(draft.style || ''); this.style = LEGACY_STYLE_IDS[savedStyle] || savedStyle; this.persistStylePreference(); } if (draft.adjustmentState && window.ImagineAdjustEngine) { this.adjustState = window.ImagineAdjustEngine.clone(draft.adjustmentState); this.adjustHistory = [window.ImagineAdjustEngine.clone(this.adjustState)]; this.adjustHistoryIndex = 0; } if (Array.isArray(draft.adjustmentPresets)) this.adjustmentPresets = draft.adjustmentPresets.filter(item => item?.id && item?.name && item?.state); if (typeof draft.adjustmentLocked === 'boolean') this.adjustmentLocked = draft.adjustmentLocked; if (typeof draft.selectedAdjustmentPresetId === 'string') this.selectedAdjustmentPresetId = this.adjustmentPresets.some(item => item.id === draft.selectedAdjustmentPresetId) ? draft.selectedAdjustmentPresetId : ''; this.referenceAssets = Array.isArray(draft.assetReferences) ? draft.assetReferences : []; this.reconcileSelectedModel(); },
+        draftPayload() { return { parameterHandoffInteractionId: this.parameterHandoffDraftId, upscaleSeed: this.upscaleSeed, upscalePrompt: this.upscalePrompt, ...this.tryOnDraft(), extractTarget: this.extractTarget, extractCustom: this.extractCustom, promptOverride: this.promptIsEdited ? this.promptOverride : null, ...this.portraitDraft(), productScene: this.productScene, productLight: this.productLight, productComposition: this.productComposition, productSceneDescription: this.productSceneDescription, productUseStyle: this.productUseStyle, stickerEmotion: this.stickerEmotion, zImageBaseSteps: this.zImageBaseSteps, zImageBaseGuidance: this.zImageBaseGuidance, zImageBaseNegativePrompt: this.zImageBaseNegativePrompt, zImageSteps: this.zImageSteps, zImageRedraw: this.zImageRedraw, prompt: this.prompt, groupBackgroundDescription: this.groupBackgroundDescription, groupAtmosphere: this.groupAtmosphere, groupPose: this.groupPose, modelId: this.modelId, size: this.size, customWidth: this.customWidth, customHeight: this.customHeight, quality: this.quality, format: this.format, style: this.style, adjustmentState: window.ImagineAdjustEngine?.clone?.(this.adjustState), adjustmentLocked: this.adjustmentLocked, adjustmentPresets: this.adjustmentPresets, selectedAdjustmentPresetId: this.selectedAdjustmentPresetId, assetReferences: this.referenceAssets.slice(0, this.currentMiniApp.maxImages) }; },
+        applyDraft(draft, restoreStyle = false) { if (!draft || typeof draft !== 'object') return; this.parameterHandoffDraftId=draft.parameterHandoffInteractionId||''; this.promptOverride = draft.promptOverride && typeof draft.promptOverride.key === 'string' && typeof draft.promptOverride.text === 'string' ? { key: draft.promptOverride.key, text: draft.promptOverride.text.slice(0, 32000) } : null; this.upscaleSeed = Number(draft.upscaleSeed) || 0; this.upscalePrompt = String(draft.upscalePrompt || "").slice(0,2048); this.restoreTryOnDraft(draft); this.restoreExtractDraft(draft); this.restoreProductDraft(draft); this.restorePortraitDraft(draft); this.stickerEmotion = this.stickerEmotions.some(item => item.id === draft.stickerEmotion) ? draft.stickerEmotion : 'happy'; this.zImageBaseSteps = Number(draft.zImageBaseSteps) || 30; this.zImageBaseGuidance = Number(draft.zImageBaseGuidance) || 4; this.zImageBaseNegativePrompt = String(draft.zImageBaseNegativePrompt || '').slice(0, 8192); this.zImageSteps = Number(draft.zImageSteps) || 8; this.zImageRedraw = Number(draft.zImageRedraw) || 75; this.prompt = String(draft.prompt || ''); this.groupBackgroundDescription = String(draft.groupBackgroundDescription || ''); this.groupAtmosphere = String(draft.groupAtmosphere || ''); this.groupPose = String(draft.groupPose || ''); const savedModelId = String(draft.modelId || this.modelId); const managedModelId = managedCloudModelId(savedModelId); this.modelId = this.models.some(model => model.source === 'cloud' && model.id === managedModelId) ? managedModelId : savedModelId; this.size = String(draft.size || this.size); this.customWidth = Number(draft.customWidth || this.customWidth); this.customHeight = Number(draft.customHeight || this.customHeight); this.quality = String(draft.quality || 'auto'); this.format = String(draft.format || 'png'); if (restoreStyle || !this.stylePreferenceLoaded) { const savedStyle = String(draft.style || ''); this.style = LEGACY_STYLE_IDS[savedStyle] || savedStyle; this.persistStylePreference(); } if (draft.adjustmentState && window.ImagineAdjustEngine) { this.adjustState = window.ImagineAdjustEngine.clone(draft.adjustmentState); this.adjustHistory = [window.ImagineAdjustEngine.clone(this.adjustState)]; this.adjustHistoryIndex = 0; } if (Array.isArray(draft.adjustmentPresets)) this.adjustmentPresets = draft.adjustmentPresets.filter(item => item?.id && item?.name && item?.state); if (typeof draft.adjustmentLocked === 'boolean') this.adjustmentLocked = draft.adjustmentLocked; if (typeof draft.selectedAdjustmentPresetId === 'string') this.selectedAdjustmentPresetId = this.adjustmentPresets.some(item => item.id === draft.selectedAdjustmentPresetId) ? draft.selectedAdjustmentPresetId : ''; this.referenceAssets = Array.isArray(draft.assetReferences) ? draft.assetReferences : []; this.reconcileSelectedModel(); },
         scheduleDraftSave() { if (this.draftTimer) clearTimeout(this.draftTimer); this.draftTimer = setTimeout(() => this.saveDraft().catch(error => this.fail(error)), 500); },
         async saveDraft() { if (!this.appInstanceId() || this.currentMiniApp.status !== 'ready') return; await responsePayload(await fetch(`${STUDIO_API}/drafts/${encodeURIComponent(this.miniAppId)}`, { method: 'PUT', credentials: 'same-origin', headers: { ...this.historyHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify({ draft: this.draftPayload() }) })); },
         async loadDraft(miniAppId) {
@@ -1085,6 +1108,11 @@
             } finally { this.restoringPrompt = false; this.syncSubmissionPrompt(); }
         },
         async materializeAssetReference(assetReference, index, preserveAdjustments = false) {
+            if(assetReference?.workspaceArtifactId&&assetReference?.workspaceSessionId){
+                const response=await fetch('/v1/platform/sessions/'+encodeURIComponent(assetReference.workspaceSessionId)+'/artifacts/'+encodeURIComponent(assetReference.workspaceArtifactId)+'/download',{credentials:'same-origin'});
+                if(!response.ok)throw Error('Reference image is unavailable');
+                const blob=await response.blob();await this.setReference(index,new File([blob],assetReference.name||'reference.png',{type:blob.type}),assetReference,preserveAdjustments);return;
+            }
             const assetId = String(assetReference?.assetId || ''); if (!assetId) return;
             const refreshed = await responsePayload(await fetch(`${GALLERY_API}/assets/${encodeURIComponent(assetId)}/resource-handles`, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ consumerAppId: APP_ID, appInstanceId: this.appInstanceId() }) }));
             const handleId = String(refreshed.resourceHandle || '').replace(/^resource:\/\//, '');
@@ -1093,36 +1121,83 @@
             const blob = await response.blob(); const file = new File([blob], refreshed.name || `gallery-${assetId}`, { type: refreshed.mediaType || blob.type });
             await this.setReference(index, file, refreshed, preserveAdjustments);
         },
-        async restoreAssetReferences() { const values = [...this.referenceAssets]; for (let index = 0; index < values.length; index += 1) { if (!values[index]?.assetId) continue; try { await this.materializeAssetReference(values[index], index, true); } catch (_) { const stale = [...this.referenceAssets]; stale[index] = null; this.referenceAssets = stale; } } },
-        async refreshRuns() { if (!this.appInstanceId()) return; const payload = await responsePayload(await fetch(`${STUDIO_API}/runs?limit=50`, { credentials: 'same-origin', headers: this.historyHeaders(), cache: 'no-store' })); this.runs = payload.items || []; if (!this.runs.some(item => item.id === this.selectedRunId)) this.selectRun(this.runs[0] || null); },
+        async restoreAssetReferences() { const values = [...this.referenceAssets]; for (let index = 0; index < values.length; index += 1) { if (!values[index]?.assetId&&!values[index]?.workspaceArtifactId) continue; try { await this.materializeAssetReference(values[index], index, true); } catch (_) { const stale = [...this.referenceAssets]; stale[index] = null; this.referenceAssets = stale; } } },
+        async refreshRuns(selectLatest = false) {
+            if(!this.appInstanceId()||this.outputRefreshing)return;this.outputRefreshing=true;
+            try {
+                if(!this.outputRecoveryDone){
+                    const recovery=await fetch(`${STUDIO_API}/runs/recover-session-results`,{method:'POST',credentials:'same-origin',headers:this.historyHeaders()});
+                    // Older gateways may not export this optional legacy import yet.
+                    // Do not hide existing outputs when that operation is unavailable.
+                    if(![404,405].includes(recovery.status))await responsePayload(recovery);
+                    this.outputRecoveryDone=true;
+                }
+                const payload=await responsePayload(await fetch(`${STUDIO_API}/runs?limit=50`,{credentials:'same-origin',headers:this.historyHeaders(),cache:'no-store'}));
+                const followingLatest=this.selectedRunId===this.runs[0]?.id;const previousLatest=this.runs[0]?.id;
+                this.runs=payload.items||[];
+                if(selectLatest===true||(followingLatest&&previousLatest!==this.runs[0]?.id)||!this.runs.some(item=>item.id===this.selectedRunId))this.selectRun(this.runs[0]||null);
+            } finally {this.outputRefreshing=false;}
+        },
         async waitForRun(runId) {
             while (true) {
                 await new Promise(resolve => setTimeout(resolve, 1000));
                 await this.refreshRuns();
-                const run = this.runs.find(item => item.id === runId);
-                if (!run || this.isActiveRun(run)) continue;
-                this.selectRun(run);
-                if (run.status === 'succeeded') { this.openMobileOutput(); return run; }
-                if (run.status === 'cancelled') return run;
-                throw new Error(run.error?.message || this.tr('failed'));
+                const run=this.runs.find(item=>item.id===runId);
+                if(!run||this.isActiveRun(run))continue;
+                if(run.status==='succeeded'||run.status==='cancelled')return run;
+                throw new Error(run.error?.message||this.tr('failed'));
             }
         },
-        async monitorActiveRun() {
-            const run = this.runs.find(item => this.isActiveRun(item));
-            if (!run || this.generating) return;
-            this.generating = true; this.selectRun(run); this.icons();
-            try { await this.waitForRun(run.id); }
-            catch (error) { this.fail(error); }
-            finally { this.generating = false; this.icons(); }
+        async monitorActiveRun() { await this.refreshRuns(); },
+        async openParameterHandoff(intent) {
+            if(this.parameterHandoffLoading||this.parameterHandoff?.interaction_id===intent.interactionId)return;
+            this.parameterHandoffLoading=true;
+            try{
+                const base='/v1/platform/agent-runs/'+encodeURIComponent(intent.runId)+'/interactions/'+encodeURIComponent(intent.interactionId);
+                const handoff=await responsePayload(await fetch(base+'/handoff',{credentials:'same-origin'}));
+                if(handoff.target.app_id!==APP_ID||!handoff.parameters?.values||handoff.status!=='pending')return;
+                const mini=this.miniApps.find(m=>m.id===handoff.target.mini_app_id);
+                if(!mini||mini.status!=='ready')throw Error('The requested Mini-App is not ready');
+                await this.selectMiniApp(mini.id);
+                this.parameterHandoff={...handoff,url:base+'/parameters/handoff'};
+                if(this.parameterHandoffDraftId===handoff.interaction_id)return;
+                const values=handoff.parameters.values;
+                this.referenceFiles=[];this.referencePreviews.forEach(url=>{if(url)URL.revokeObjectURL(url);});this.referencePreviews=[];this.referenceAssets=[];this.referenceDimensions=[];
+                for(const ref of handoff.parameters.references||[])await this.materializeAssetReference({workspaceArtifactId:ref.artifact_id,workspaceSessionId:ref.session_id,name:ref.name},ref.slot,true);
+                this.prompt=values.prompt||'';this.groupBackgroundDescription=values.background||'';
+                this.groupAtmosphere=values.atmosphere||this.groupAtmosphere;this.groupPose=values.pose||this.groupPose;
+                if(values.model){const requested=this.compatibleModels.find(model=>model.id===values.model||model.id===managedCloudModelId(values.model));this.modelId=requested?.id||'';if(!requested)this.fail(Error('Transferred model is unavailable; choose a compatible model in this App.'));}
+                await this.$nextTick();
+                this.applySelectedModelCapability();
+                if(values.size)this.size=values.size;if(values.quality)this.quality=values.quality;if(values.format)this.format=values.format;
+                if(values.style)this.style=values.style;
+                this.parameterHandoffDraftId=handoff.interaction_id;this.mobileSurface='create';await this.$nextTick();await this.saveDraft();this.syncSubmissionPrompt();
+            }finally{this.parameterHandoffLoading=false;}
         },
-        async createRun(input, retryOf = null) { return responsePayload(await fetch(`${STUDIO_API}/runs`, { method: 'POST', credentials: 'same-origin', headers: { ...this.historyHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify({ miniAppId: this.miniAppId, title: this.isStickerMode ? this.currentMiniApp.name + ' · ' + this.stickerLabel(this.stickerEmotions.find(item => item.id === this.stickerEmotion) || this.stickerEmotions[0]) : this.usingLocalModel && !this.isAdjustMode && !this.isUpscaleMode ? this.tr(this.currentMiniApp.mode === 'generate' ? 'localGenerateRun' : 'localEditRun') : this.currentMiniApp.runLabel, input, retryOf }) })); },
+        async finishParameterHandoff() {
+            const handoff=this.parameterHandoff;if(!handoff)return;
+            try{await responsePayload(await fetch(handoff.url+'/complete',{method:'POST',credentials:'same-origin'}));await window.ai2appsShell.openHandoff(handoff.run_id,handoff.interaction_id,true);this.parameterHandoff=null;}
+            catch(error){this.fail(error);}
+        },
+        async returnToParameterAgent(){const handoff=this.parameterHandoff;if(handoff)await window.ai2appsShell.openHandoff(handoff.run_id,handoff.interaction_id,true);},
+        async createRun(input, retryOf = null) { const created=await responsePayload(await fetch(`${STUDIO_API}/runs`, { method: 'POST', credentials: 'same-origin', headers: { ...this.historyHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify({ miniAppId: this.miniAppId, title: this.isStickerMode ? this.currentMiniApp.name + ' · ' + this.stickerLabel(this.stickerEmotions.find(item => item.id === this.stickerEmotion) || this.stickerEmotions[0]) : this.usingLocalModel && !this.isAdjustMode && !this.isUpscaleMode ? this.tr(this.currentMiniApp.mode === 'generate' ? 'localGenerateRun' : 'localEditRun') : this.currentMiniApp.runLabel, input, retryOf }) })); if(this.parameterHandoff&&this.miniAppId===this.parameterHandoff.target.mini_app_id){await responsePayload(await fetch(this.parameterHandoff.url+'/link',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({studio_run_id:created.id,app_instance_id:this.appInstanceId()})}));this.parameterHandoff.studio_run_id=created.id;}return created; },
         async updateRun(runId, status, progress, detail = '', error = null) { return responsePayload(await fetch(`${STUDIO_API}/runs/${encodeURIComponent(runId)}`, { method: 'PATCH', credentials: 'same-origin', headers: { ...this.historyHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify({ status, progress, detail, error }) })); },
         async executeCloudRun(runId, request) { return responsePayload(await fetch(`${STUDIO_API}/runs/${encodeURIComponent(runId)}/execute`, { method: 'POST', credentials: 'same-origin', headers: { ...this.historyHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify(request) })); },
         async cancelRun(run) { if (!this.isActiveRun(run)) return; if (run.id === this.selectedRunId) this.currentRunController?.abort(); try { await this.updateRun(run.id, 'cancelled', run.progress, this.tr('cancelled')); await this.refreshRuns(); } catch (error) { this.fail(error); } },
-        async retryRun(run) { if (this.generating || this.stickerBatchBusy) return; this.miniAppId = run.miniAppId; this.applyDraft(run.input, true); this.mobileSurface = 'create'; if (this.isAdjustMode) await this.exportAdjustment(run.id); else await this.generate(run.id); },
+        async retryRun(run) { if (this.generating || this.stickerBatchBusy) return;
+            try {
+                const response=await fetch('/v1/platform/studio-jobs/by-run/'+encodeURIComponent(run.id),{credentials:'same-origin'});
+                if(response.ok){
+                    const job=await response.json();
+                    await responsePayload(await fetch('/v1/platform/studio-jobs/'+job.id+'/retry',{method:'POST',credentials:'same-origin'}));
+                    await this.refreshRuns();await this.monitorActiveRun();return;
+                }
+                if(response.status!==404)await responsePayload(response);
+            } catch(error){this.fail(error);return;}
+            this.miniAppId = run.miniAppId; this.applyDraft(run.input, true); this.mobileSurface = 'create'; if (this.isAdjustMode) await this.exportAdjustment(run.id); else await this.generate(run.id); },
         async refresh() {
             this.refreshing = true;
-            try { await Promise.all([this.loadModelCatalog(), this.refreshRuns()]); this.icons(); }
+            try { await Promise.all([this.loadModelCatalog(), this.refreshRuns(true)]); this.icons(); }
             catch (error) { this.fail(error); }
             finally { this.refreshing = false; }
         },
@@ -1193,7 +1268,7 @@
             this.applySelectedModelCapability();
         },
         reconcileSelectedModel() {
-            if (!this.compatibleModels.some(model => model.id === this.modelId)) this.modelId = this.compatibleModels[0]?.id || '';
+            if (!this.compatibleModels.some(model => model.id === this.modelId)) this.modelId = this.parameterHandoffDraftId ? '' : (this.compatibleModels[0]?.id || '');
             this.applySelectedModelCapability();
         },
         isOpenAIModel(model) { return /(^|\/)openai\//.test(String(model?.id || '')); },
@@ -1305,7 +1380,7 @@
             return index < 2 ? this.tr('required') : this.tr('optional');
         },
         showLeftView(view) { this.leftView = view === 'assets' ? 'assets' : (view === 'chat' && this.miniAppChatEnabled ? 'chat' : 'mini-apps'); if (this.leftView === 'assets' && !this.galleryMiniUrl) this.mountGalleryMini(); if (this.leftView === 'chat') this.mountMiniAppChat(); this.persistPreferences(); this.icons(); },
-        async selectMiniApp(id) { if (this.mobileViewport && id === this.miniAppId) { this.mobileSurface = 'create'; this.icons(); return; } if (this.generating || this.stickerBatchBusy) return; const selected = this.miniApps.find(item => item.id === id); if (!selected || selected.status !== 'ready') return; if (!this.packageMiniAppId) await this.saveDraft().catch(() => {}); disposeRenderableImage(this.adjustBitmap); this.adjustBitmap = null; this.miniAppId = id; if (this.leftView !== 'chat') this.leftView = 'mini-apps'; this.recentMiniApps = [id, ...this.recentMiniApps.filter(value => value !== id)].slice(0, 8); if (selected.source === 'package') { await this.mountPackageMiniApp(selected); if (!this.miniAppChatEnabled && this.leftView === 'chat') this.leftView = 'mini-apps'; this.persistPreferences(); this.mobileSurface = 'create'; return; } this.packageChatBridge?.dispose(); this.packageChatBridge = null; this.packageMiniAppId = ''; this.packageMiniAppUrl = ''; this.packageMiniAppError = ''; this.referenceFiles = []; this.referencePreviews.forEach(url => { if (url) URL.revokeObjectURL(url); }); this.referencePreviews = []; this.referenceDimensions = []; this.referenceAssets = []; const draft = await this.loadDraft(id); this.trimReferences(); this.reconcileSelectedModel(); if (this.prefersOpenAIModel && !draft?.modelId) { this.preferOpenAIEditingModel(); this.applySelectedModelCapability(); } if (['edit', 'style-transfer', 'group-photo'].includes(this.currentMiniApp.mode) && this.referenceDimensions[0]) this.matchEditAspect(this.referenceDimensions[0]); this.chatController?.changed(); this.persistPreferences(); this.mobileSurface = 'create'; this.icons(); },
+        async selectMiniApp(id) { if (this.mobileViewport && id && id === this.miniAppId) { await this.ensureSelectedMiniAppFrame(); this.mobileSurface = 'create'; this.icons(); return; } if (this.generating || this.stickerBatchBusy) return; const selected = this.miniApps.find(item => item.id === id); if (!selected || selected.status !== 'ready') return; if (!this.packageMiniAppId) await this.saveDraft().catch(() => {}); disposeRenderableImage(this.adjustBitmap); this.adjustBitmap = null; this.miniAppId = id; if (this.leftView !== 'chat') this.leftView = 'mini-apps'; this.recentMiniApps = [id, ...this.recentMiniApps.filter(value => value !== id)].slice(0, 8); if (selected.source === 'package') { await this.mountPackageMiniApp(selected); if (!this.miniAppChatEnabled && this.leftView === 'chat') this.leftView = 'mini-apps'; this.persistPreferences(); this.mobileSurface = 'create'; return; } this.packageChatBridge?.dispose(); this.packageChatBridge = null; this.packageMiniAppId = ''; this.packageMiniAppUrl = ''; this.packageMiniAppError = ''; this.referenceFiles = []; this.referencePreviews.forEach(url => { if (url) URL.revokeObjectURL(url); }); this.referencePreviews = []; this.referenceDimensions = []; this.referenceAssets = []; const draft = await this.loadDraft(id); this.trimReferences(); this.reconcileSelectedModel(); if (this.prefersOpenAIModel && !draft?.modelId) { this.preferOpenAIEditingModel(); this.applySelectedModelCapability(); } if (['edit', 'style-transfer', 'group-photo'].includes(this.currentMiniApp.mode) && this.referenceDimensions[0]) this.matchEditAspect(this.referenceDimensions[0]); if(this.leftView==='chat')void this.mountMiniAppChat();else this.chatController?.changed(); this.persistPreferences(); this.mobileSurface = 'create'; this.icons(); },
         async refreshPackageMiniApps() {
             if (this.packageCatalogLoading) return;
             this.packageCatalogLoading = true;
@@ -1373,7 +1448,7 @@
                     resolve();
                 }));
             } catch (error) { this.packageMiniAppError = error?.message || String(error); }
-            finally { this.packageMiniAppLoading = false; this.chatController?.changed(); this.icons(); }
+            finally { this.packageMiniAppLoading = false; if(this.leftView==='chat')void this.mountMiniAppChat();else this.chatController?.changed(); this.icons(); }
         },
         async installMiniApps() { try { const result=await window.AI2AppsCapabilities.openMiniAppPackages({placement:APP_ID}); if(result.installed){await this.refreshPackageMiniApps(); this.icons();} } catch(error){this.fail(error);} },
         async openCoder() { try { await window.AI2AppsCapabilities.openMiniAppCustomization({placement:APP_ID}); } catch(error){this.fail(error);} },
@@ -1384,7 +1459,7 @@
         },
         matchEditAspect(dimensions) {
             const sourceWidth = Number(dimensions?.width), sourceHeight = Number(dimensions?.height);
-            if (!sourceWidth || !sourceHeight || !['edit', 'style-transfer', 'group-photo'].includes(this.currentMiniApp.mode)) return;
+            if (this.parameterHandoff || this.parameterHandoffDraftId || !sourceWidth || !sourceHeight || !['edit', 'style-transfer', 'group-photo'].includes(this.currentMiniApp.mode)) return;
             const sourceRatio = sourceWidth / sourceHeight;
             if (!this.flexibleSizes) {
                 const preset = [...(this.sizeCapability.presets || [])].sort((left, right) => {
@@ -1473,7 +1548,7 @@
                 : `Background: ${this.groupBackgroundDescription.trim()}.`;
             return [
                 GROUP_PHOTO_INSTRUCTION,
-                `The first ${personCount} input images are distinct person references, one person per image.`,
+                `The first ${personCount} input images are distinct subject references, one person, animal or character per image. Preserve each subject in its own species and recognizable form.`,
                 background,
                 `Atmosphere: ${this.groupAtmosphere.trim() || 'natural, cohesive, warm, and believable'}.`,
                 `Poses and interaction: ${this.groupPose.trim() || 'natural, anatomically plausible group-photo poses with comfortable spacing and interaction'}.`,
@@ -1495,7 +1570,7 @@
                 const form=new FormData();form.append('image',file,file.name);form.append('model_id',model.id);form.append('seed',String(this.upscaleSeed));
                 if(this.upscaleCustomPrompt)form.append('prompt',this.upscalePrompt);
                 await responsePayload(await fetch(STUDIO_API+'/runs/'+encodeURIComponent(run.id)+'/upscale',{method:'POST',credentials:'same-origin',headers:this.historyHeaders(),body:form}));
-                serverManaged=true; return await this.waitForRun(run.id);
+                serverManaged=true; await this.refreshRuns(); return this.runs.find(item=>item.id===run.id)||run;
             } catch(error) {
                 if(run&&!serverManaged) await this.updateRun(run.id,'failed',100,this.tr('failed'),{code:'image_upscaling_failed',message:error.message}).catch(()=>{});
                 this.fail(error);
@@ -1515,9 +1590,9 @@
             }
             if (editing && ['cloud', 'byok'].includes(selectedModel.source) && !(options.stickerBatch && this.stickerBatchBusy) && !window.confirm(this.tr('uploadConfirm', { count: references.length }))) return;
             this.generating = true; this.dismissNotice();
-            const id = globalThis.crypto?.randomUUID?.() || `image-${Date.now()}`;
             const requestedSize = this.requestedSize;
             const submittedPrompt = this.submissionPrompt;
+            const parameters={model:selectedModel.id,prompt:submittedPrompt,size:requestedSize,quality:this.quality,outputFormat:this.format,n:1,...this.zImageParameters(),...this.localEditParameters(selectedModel, editing)};
             const input = { ...this.draftPayload(), submittedPrompt, prompt: this.prompt.trim(), size: requestedSize, modelLabel: selectedModel.label, assetReferences: this.referenceAssets.slice(0, this.currentMiniApp.maxImages) };
             let run = null;
             let serverManaged = false;
@@ -1527,27 +1602,19 @@
                 this.runs = [run, ...this.runs]; this.selectRun(run);
                 const imageDataUrls = editing ? await Promise.all(references.map(readDataUrl)) : [];
                 if (['cloud', 'byok'].includes(selectedModel.source)) {
-                    await this.executeCloudRun(run.id, { model: selectedModel.id, prompt: submittedPrompt, size: requestedSize, quality: this.quality, outputFormat: this.format, ...(editing ? { imageDataUrls } : {}) });
+                    await this.executeCloudRun(run.id, { ...parameters, ...(editing ? { imageDataUrls } : {}) });
                     serverManaged = true;
-                    const completedRun = await this.waitForRun(run.id);
+                    await this.refreshRuns();
+                    const completedRun = this.runs.find(item=>item.id===run.id)||run;
                     try { window.ai2appsShell?.accountChanged?.(); } catch (_) {}
                     return completedRun;
                 }
-                run = await this.updateRun(run.id, 'running', 10, this.tr('running'));
-                this.runs = this.runs.map(item => item.id === run.id ? run : item);
-                this.currentRunController = new AbortController();
-                const result = await responsePayload(await fetch(`${IMAGE_API}/${editing ? 'edits' : 'generations'}`, {
-                    method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'Idempotency-Key': `imagine-${id}` },
-                    body: JSON.stringify({ model: selectedModel.id, prompt: submittedPrompt, size: requestedSize, quality: this.quality, outputFormat: this.format, n: 1, ...this.zImageParameters(), ...this.localEditParameters(selectedModel, editing), ...(editing ? { imageDataUrls } : {}) }),
-                    signal: this.currentRunController.signal,
-                }));
-                const image = result?.image;
-                if (!String(image?.dataUrl || '').startsWith('data:image/')) throw new Error(this.tr('noCloudImage'));
-                const saved = await this.persistResult({ runId: run.id, miniAppId: this.miniAppId, pipelineId: this.currentMiniApp.legacyId, title: this.currentMiniApp.name, prompt: this.prompt.trim(), size: image.size || requestedSize, modelId: selectedModel.id, modelLabel: selectedModel.label.replace(/^AI2Apps (Cloud|Local) · /, ''), imageUrl: image.dataUrl, filename: this.resultFilename(id) });
-                await this.updateRun(run.id, 'succeeded', 100, this.tr('completed'));
-                await this.refreshRuns(); this.selectRun(this.runs.find(item => item.id === run.id)); this.openMobileOutput();
-                try { window.ai2appsShell?.accountChanged?.(); } catch (_) {}
-                return this.runs.find(item => item.id === run.id);
+                const submitted=await fetch('/v1/platform/studio-jobs',{method:'POST',credentials:'same-origin',
+                    headers:{...this.historyHeaders(),'Content-Type':'application/json','Idempotency-Key':`imagine-${run.id}`},
+                    body:JSON.stringify({kind:editing?'local-image-edit':'local-image',run_id:run.id,
+                        payload:{...parameters,...(editing?{imageDataUrls}:{})}})});
+                await responsePayload(submitted);serverManaged=true;
+                await this.refreshRuns();return this.runs.find(item=>item.id===run.id)||run;
             } catch (error) {
                 if (run && !serverManaged && error?.name !== 'AbortError') {
                     try { await this.updateRun(run.id, 'failed', 100, this.tr('failed'), { code: 'image_generation_failed', message: error?.message || String(error) }); } catch (_) {}
@@ -1653,7 +1720,9 @@
             const artifact = this.runs.flatMap(run => run.artifacts || []).find(item => item.id === ref.artifactId);
             if (!artifact) throw new Error(this.tr('invalidHistoryUrl'));
             const url = new URL(artifact.previewUrl, window.location.origin);
-            if (url.origin !== window.location.origin || !/^\/v1\/platform\/imagine-studio\/results\/isr_[0-9a-f]{32}\/content$/.test(url.pathname) || url.searchParams.get('appInstanceId') !== this.appInstanceId()) throw new Error(this.tr('invalidHistoryUrl'));
+            const legacy=/^\/v1\/platform\/imagine-studio\/results\/isr_[0-9a-f]{32}\/content$/.test(url.pathname)&&url.searchParams.get('appInstanceId')===this.appInstanceId();
+            const workspace=/^\/v1\/platform\/sessions\/ses_[0-9a-f]{32}\/artifacts\/art_[0-9a-f]{32}\/download$/.test(url.pathname);
+            if(url.origin!==window.location.origin||(!legacy&&!workspace))throw new Error(this.tr('invalidHistoryUrl'));
             const response = await fetch(url.href, {credentials: 'same-origin'});
             if (!response.ok) throw new Error(this.tr('readGalleryFailed', {status: response.status}));
             const blob = await response.blob();
@@ -1661,12 +1730,14 @@
             return new File([blob], artifact.name || 'output.png', {type: blob.type});
         },
         handleWorkspaceDrag(event) {
+            if (this.mobileViewport && !this.hasActiveMiniApp) return;
             event.preventDefault(); this.galleryDragActive = true;
         },
         handleDragLeave(event) { if (!event.currentTarget.contains(event.relatedTarget)) { this.galleryDragActive = false; this.gallerySlotTarget = null; } },
         enterGallerySlot(index) { this.galleryDragActive = false; this.gallerySlotTarget = index; },
         leaveGallerySlot(event, index) { if (this.gallerySlotTarget === index && !event.currentTarget.contains(event.relatedTarget)) this.gallerySlotTarget = null; },
         async handleGalleryDrop(event, imageSlot = null) {
+            if (this.mobileViewport && !this.hasActiveMiniApp) return;
             this.galleryDragActive = false; this.gallerySlotTarget = null;
             if (this.generating || this.stickerBatchBusy || this.adjustmentExporting) return;
             try {

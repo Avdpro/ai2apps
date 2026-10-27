@@ -1,0 +1,1 @@
+window.addEventListener("load",()=>{window.ai2appsPackageChat=window.AI2AppsPackageChat.install({...{"miniAppId": "ai2apps.media-voice.source-separation", "fields": {"profile": {"type": "string", "maxLength": 8000}}},readExtra:()=>window.ai2appsCurrentUI?.()||{},afterPatch:()=>window.ai2appsSaveDraft?.()});});

@@ -188,6 +188,7 @@
             inviteEmail: '', inviteRole: 'member', invitation: null, invitationCreating: false,
             policy: null, policyEtag: '', policyOwnerPassword: '',
             policyDraft: { allowedAppIds: '', allowedModelIds: '', defaultMonthlyPointLimit: '', defaultConcurrencyLimit: 1, offlineGraceSeconds: 0 },
+            notifications: { items: [] }, notificationBusy: false, notificationRequestId: null,
             mobileApps: [], mobileAppsLoading: false, mobileAppSaving: null,
             remote: { devices: [], connector: {}, usage: {} }, remoteName: tr('account.remote.this_mac'), pairingUrl: '', pairingQr: '', pairingExpiresAt: '', remotePolling: false, remotePollTimer: null,
             registrationNotice: '',
@@ -614,7 +615,21 @@
                     this.promotionSubmitting = false;
                 }
             },
+            avatarFailed: false,
+            avatarUrl() {
+                try { const u = new URL(this.profile?.avatarUrl || '');
+                    return u.origin === 'https://coder.ai2apps.com' && /^\/v1\/public\/avatars\/[\da-f-]+\.png$/.test(u.pathname) && !u.search && !u.hash ? u.href : '';
+                } catch (_) { return ''; }
+            },
+            editAvatar() {
+                return window.AI2AppsAccountAvatar.open({readProfile: () => cloud('/profile'), updateAvatar: profile => {
+                    this.profile = {...this.profile, avatarUrl: profile.avatarUrl, avatarRevision: profile.avatarRevision};
+                    this.profileDraft.avatarUrl = profile.avatarUrl || '';
+                    this.avatarFailed = false;
+                }});
+            },
             applyProfile(profile) {
+                this.avatarFailed = false;
                 this.profile = profile || null;
                 const value = profile || {};
                 this.profileDraft = {
@@ -653,7 +668,6 @@
                 const desired = {
                     publicHandle: this.nullableProfileText(draft.publicHandle),
                     displayName: String(draft.displayName || '').trim(),
-                    avatarUrl: this.nullableProfileText(draft.avatarUrl),
                     bio: this.nullableProfileText(draft.bio),
                     gender: this.nullableProfileText(draft.gender),
                     visibility: draft.visibility === 'public' ? 'public' : 'private',
@@ -1132,7 +1146,38 @@
                 catch(error){this.fail(error);}
                 finally{this.mobileAppSaving=null;}
             },
+            notificationLabel(state) {
+                const labels = {queued:'等待发送', retry:'等待重试', submitted:'Cloud 已接收',
+                    authorization_required:'等待手机授权', credentials_required:'需要恢复设备登录',
+                    expired:'已过期', cancelled:'身份已变化，已取消', failed:'发送失败', conflict:'事件冲突，已停止'};
+                return labels[state] || state;
+            },
+            async loadNotifications() {
+                try { this.notifications = await remoteRequest('/notifications'); }
+                catch(error) { this.notifications = {items:[], error:error.message}; }
+            },
+            async sendTestNotification() {
+                this.notificationBusy = true;
+                this.notificationRequestId ||= crypto.randomUUID();
+                try {
+                    this.notifications = await remoteRequest('/notifications/test', {method:'POST',body:{event_id:this.notificationRequestId}});
+                    this.notificationRequestId = null;
+                    this.success('测试通知已加入队列；Cloud 接收不代表手机已收到。');
+                } catch(error) { this.fail(error); }
+                finally { this.notificationBusy = false; }
+            },
+            async resumeNotifications() {
+                this.notificationBusy = true;
+                try { this.notifications = await remoteRequest('/notifications/resume', {method:'POST'}); }
+                catch(error) { this.fail(error); }
+                finally { this.notificationBusy = false; }
+            },
+            async copyNotificationInstallation() {
+                try { await navigator.clipboard.writeText(this.notifications.installation_id); this.success('Desktop 授权编号已复制'); }
+                catch(error) { this.fail(error); }
+            },
             async loadRemote() {
+                await this.loadNotifications();
                 await this.loadMobileApps();
                 try {
                     const status = await remoteRequest('/status');

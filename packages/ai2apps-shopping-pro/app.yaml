@@ -2,7 +2,7 @@
   "schema": "ai2apps.app/v1",
   "id": "ai2apps.shopping-pro",
   "name": "Shopping Pro",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": {
     "id": "ai2apps"
   },
@@ -22,7 +22,7 @@
       "schema": "ai2apps.mini-app/v1",
       "id": "ai2apps.shopping-pro",
       "name": "Shopping Pro",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "kind": "project",
       "icon": "shopping-cart",
       "description": "Replenishment and gift recommendations.",
@@ -476,6 +476,10 @@
                   }
                 }
               ]
+            },
+            "minimum_execution_policy": {
+              "visual_review": "always",
+              "readback": true
             }
           },
           {
@@ -1213,7 +1217,78 @@
                 }
               ]
             },
-            "model_profile": "normal"
+            "model_profile": "normal",
+            "minimum_execution_policy": {
+              "visual_review": "always",
+              "readback": true
+            }
+          }
+        ]
+      },
+      "chat": {
+        "schema": "ai2apps.mini-app-chat/v1",
+        "enabled": true,
+        "system_prompt": "Read and edit only declared current UI fields. Execute functions through the registered owner AaAT, never through a UI run button. Preserve task, model, material and shared output ownership.",
+        "context": {
+          "transport": "studio-bridge",
+          "maxBytes": 40000
+        },
+        "help": {
+          "resource": "help/mini-chat/help.md",
+          "max_bytes": 32768
+        },
+        "tools": [
+          {
+            "name": "update_current_draft",
+            "description": "Update declared UI draft fields without submitting work.",
+            "input_schema": {
+              "type": "object",
+              "properties": {
+                "gift-recipient": {
+                  "type": "string",
+                  "maxLength": 500
+                },
+                "gift-occasion": {
+                  "type": "string",
+                  "maxLength": 500
+                },
+                "gift-budget": {
+                  "type": "number",
+                  "minimum": 1.0,
+                  "maximum": 100000.0
+                },
+                "gift-profile": {
+                  "type": "string",
+                  "maxLength": 8000
+                },
+                "gift-preferences": {
+                  "type": "string",
+                  "maxLength": 1500
+                },
+                "gift-message": {
+                  "type": "string",
+                  "maxLength": 2000
+                },
+                "profile": {
+                  "type": "string",
+                  "maxLength": 8000
+                },
+                "history-pages": {
+                  "type": "string",
+                  "maxLength": 8000
+                },
+                "message": {
+                  "type": "string",
+                  "maxLength": 2000
+                },
+                "product-query": {
+                  "type": "string",
+                  "maxLength": 500
+                }
+              },
+              "additionalProperties": false
+            },
+            "confirmation": "never"
           }
         ]
       }

@@ -2,7 +2,7 @@ schema: ai2apps.app/v1
 id: ai2apps.media-voice-studio-suite
 name: Media Voice Studio Suite
 description: Local-first transcription, separation, voice replacement, dubbing, and subtitle tools.
-version: 0.2.2
+version: 0.2.3
 publisher:
   id: ai2apps
 instances:
@@ -22,271 +22,466 @@ localizations:
     description: 本地优先的转写、音轨分离、角色换声、视频配音和字幕工具。
     navigation:
       category: 创作
-
 mini_apps:
-  - schema: ai2apps.mini-app/v1
-    id: ai2apps.media-voice.source-separation
-    name: Voice and Background Separation
-    version: 0.2.2
-    kind: clip
-    icon: split
-    description: Separate vocals or dialogue from music and background audio.
-    localizations:
-      zh-CN:
-        name: 人声与背景音分离
-        description: 从音乐和背景音中分离人声或对白，并保持原始时间线。
-    catalog:
-      categories: [audio, video]
-    entry:
-      kind: sandbox
-      resource: web/separation.html
-      placements: [inline, sidebar]
+- schema: ai2apps.mini-app/v1
+  id: ai2apps.media-voice.source-separation
+  name: Voice and Background Separation
+  version: 0.2.3
+  kind: clip
+  icon: split
+  description: Separate vocals or dialogue from music and background audio.
+  localizations:
+    zh-CN:
+      name: 人声与背景音分离
+      description: 从音乐和背景音中分离人声或对白，并保持原始时间线。
+  catalog:
+    categories:
+    - audio
+    - video
+  entry:
+    kind: sandbox
+    resource: web/separation.html
     placements:
-      - studio: ai2apps.readaloud
-        category: audio-tools
-        order: 20
-      - studio: ai2apps.video-studio
-        category: audio
-        order: 20
-    inputs:
-      - {id: source_audio, kind: audio, required: true}
-    outputs:
-      - {id: vocals, kind: audio, final: true}
-      - {id: background, kind: audio, final: true}
-    executor:
-      operation: source_separation
-    requirements:
-      capabilities:
-        - audio.source_separation
-    chat:
-      schema: ai2apps.mini-app-chat/v1
-      enabled: true
-      system_prompt: Help the user separate voices from music and background audio.
-      context: {transport: studio-bridge}
-      help: {resource: help/separation/help.md, max_bytes: 32768}
-      tools: []
-
-  - schema: ai2apps.mini-app/v1
-    id: ai2apps.media-voice.transcription
-    name: Detailed Transcription
-    version: 0.2.2
-    kind: project
-    icon: captions
-    description: Create timestamped transcripts, detect speakers, and let the user assign names.
-    localizations:
-      zh-CN:
-        name: 详细转写
-        description: 生成带时间戳的文本记录、识别说话人，并允许用户为角色命名。
-    catalog:
-      categories: [audio, video]
-    entry:
-      kind: sandbox
-      resource: web/transcription.html
-      placements: [inline, sidebar]
+    - inline
+    - sidebar
+  placements:
+  - studio: ai2apps.readaloud
+    category: audio-tools
+    order: 20
+  - studio: ai2apps.video-studio
+    category: audio
+    order: 20
+  inputs:
+  - id: source_audio
+    kind: audio
+    required: true
+  outputs:
+  - id: vocals
+    kind: audio
+    final: true
+  - id: background
+    kind: audio
+    final: true
+  executor:
+    operation: source_separation
+  requirements:
+    capabilities:
+    - audio.source_separation
+  chat:
+    schema: ai2apps.mini-app-chat/v1
+    enabled: true
+    system_prompt: Read and edit only declared current UI fields. Execute functions through the registered owner
+      AaAT, never through a UI run button. Preserve task, model, material and shared output ownership.
+    context:
+      transport: studio-bridge
+      maxBytes: 40000
+    help:
+      resource: help/separation/help.md
+      max_bytes: 32768
+    tools:
+    - name: update_current_draft
+      description: Update declared UI draft fields without submitting work.
+      input_schema:
+        type: object
+        properties:
+          profile:
+            type: string
+            maxLength: 8000
+        additionalProperties: false
+      confirmation: never
+- schema: ai2apps.mini-app/v1
+  id: ai2apps.media-voice.transcription
+  name: Detailed Transcription
+  version: 0.2.3
+  kind: project
+  icon: captions
+  description: Create timestamped transcripts, detect speakers, and let the user assign names.
+  localizations:
+    zh-CN:
+      name: 详细转写
+      description: 生成带时间戳的文本记录、识别说话人，并允许用户为角色命名。
+  catalog:
+    categories:
+    - audio
+    - video
+  entry:
+    kind: sandbox
+    resource: web/transcription.html
     placements:
-      - studio: ai2apps.readaloud
-        category: transcription
-        order: 30
-      - studio: ai2apps.video-studio
-        category: audio
-        order: 30
-    inputs:
-      - {id: source_audio, kind: audio, required: true}
-    outputs:
-      - {id: transcript, kind: transcript, final: true}
-      - {id: subtitles, kind: subtitle, optional: true}
-    executor:
-      operation: detailed_transcription
-    requirements:
-      capabilities:
-        - audio.detailed_transcription
-        - audio.speaker_diarization
-    chat:
-      schema: ai2apps.mini-app-chat/v1
-      enabled: true
-      system_prompt: Help the user prepare a detailed transcription and name detected speakers.
-      context: {transport: studio-bridge}
-      help: {resource: help/transcription/help.md, max_bytes: 32768}
-      tools: []
-
-  - schema: ai2apps.mini-app/v1
-    id: ai2apps.media-voice.audio-speaker-replacement
-    name: Audio Speaker Voice Replacement
-    version: 0.2.2
-    kind: project
-    icon: audio-lines
-    description: Replace one selected speaker in an audio recording with an authorized target voice.
-    localizations:
-      zh-CN:
-        name: 录音角色换声
-        description: 使用已获授权的目标声音替换录音中选定角色的声音。
-    catalog:
-      categories: [audio]
-    entry:
-      kind: sandbox
-      resource: web/audio-voice-replacement.html
-      placements: [inline, sidebar]
+    - inline
+    - sidebar
+  placements:
+  - studio: ai2apps.readaloud
+    category: transcription
+    order: 30
+  - studio: ai2apps.video-studio
+    category: audio
+    order: 30
+  inputs:
+  - id: source_audio
+    kind: audio
+    required: true
+  outputs:
+  - id: transcript
+    kind: transcript
+    final: true
+  - id: subtitles
+    kind: subtitle
+    optional: true
+  executor:
+    operation: detailed_transcription
+  requirements:
+    capabilities:
+    - audio.detailed_transcription
+    - audio.speaker_diarization
+  chat:
+    schema: ai2apps.mini-app-chat/v1
+    enabled: true
+    system_prompt: Read and edit only declared current UI fields. Execute functions through the registered owner
+      AaAT, never through a UI run button. Preserve task, model, material and shared output ownership.
+    context:
+      transport: studio-bridge
+      maxBytes: 40000
+    help:
+      resource: help/transcription/help.md
+      max_bytes: 32768
+    tools:
+    - name: update_current_draft
+      description: Update declared UI draft fields without submitting work.
+      input_schema:
+        type: object
+        properties:
+          profile:
+            type: string
+            maxLength: 8000
+          language:
+            type: string
+            maxLength: 8000
+          output:
+            type: string
+            maxLength: 8000
+          wordTimestamps:
+            type: boolean
+        additionalProperties: false
+      confirmation: never
+- schema: ai2apps.mini-app/v1
+  id: ai2apps.media-voice.audio-speaker-replacement
+  name: Audio Speaker Voice Replacement
+  version: 0.2.3
+  kind: project
+  icon: audio-lines
+  description: Replace one selected speaker in an audio recording with an authorized target voice.
+  localizations:
+    zh-CN:
+      name: 录音角色换声
+      description: 使用已获授权的目标声音替换录音中选定角色的声音。
+  catalog:
+    categories:
+    - audio
+  entry:
+    kind: sandbox
+    resource: web/audio-voice-replacement.html
     placements:
-      - studio: ai2apps.readaloud
-        category: voice-tools
-        order: 40
-    inputs:
-      - {id: source_audio, kind: audio, required: true}
-      - {id: target_voice, kind: voice-profile, required: true}
-    outputs:
-      - {id: replaced_audio, kind: audio, final: true}
-    executor:
-      operation: speaker_voice_replacement
-    requirements:
-      capabilities:
-        - audio.speaker_voice_replacement
-        - audio.detailed_transcription
-        - audio.speaker_diarization
-        - audio.source_separation
-        - audio.voice_conversion
-    chat:
-      schema: ai2apps.mini-app-chat/v1
-      enabled: true
-      system_prompt: Help the user replace one consenting speaker's voice in an audio recording.
-      context: {transport: studio-bridge}
-      help: {resource: help/audio-voice-replacement/help.md, max_bytes: 32768}
-      tools: []
-
-  - schema: ai2apps.mini-app/v1
-    id: ai2apps.media-voice.video-subtitles
-    name: Video Subtitles and Translation
-    version: 0.2.2
-    kind: project
-    icon: subtitles
-    description: Generate, translate, export, or burn subtitles into a video.
-    localizations:
-      zh-CN:
-        name: 视频字幕与翻译
-        description: 生成和翻译字幕，可导出字幕文件或将字幕直接添加到视频。
-    catalog:
-      categories: [video]
-    entry:
-      kind: sandbox
-      resource: web/video-subtitles.html
-      placements: [inline, sidebar]
+    - inline
+    - sidebar
+  placements:
+  - studio: ai2apps.readaloud
+    category: voice-tools
+    order: 40
+  inputs:
+  - id: source_audio
+    kind: audio
+    required: true
+  - id: target_voice
+    kind: voice-profile
+    required: true
+  outputs:
+  - id: replaced_audio
+    kind: audio
+    final: true
+  executor:
+    operation: speaker_voice_replacement
+  requirements:
+    capabilities:
+    - audio.speaker_voice_replacement
+    - audio.detailed_transcription
+    - audio.speaker_diarization
+    - audio.source_separation
+    - audio.voice_conversion
+  chat:
+    schema: ai2apps.mini-app-chat/v1
+    enabled: true
+    system_prompt: Read and edit only declared current UI fields. Execute functions through the registered owner
+      AaAT, never through a UI run button. Preserve task, model, material and shared output ownership.
+    context:
+      transport: studio-bridge
+      maxBytes: 40000
+    help:
+      resource: help/audio-voice-replacement/help.md
+      max_bytes: 32768
+    tools:
+    - name: update_current_draft
+      description: Update declared UI draft fields without submitting work.
+      input_schema:
+        type: object
+        properties:
+          targetSpeaker:
+            type: string
+            maxLength: 8000
+          voiceName:
+            type: string
+            maxLength: 8000
+          conversionProfile:
+            type: string
+            maxLength: 8000
+        additionalProperties: false
+      confirmation: never
+- schema: ai2apps.mini-app/v1
+  id: ai2apps.media-voice.video-subtitles
+  name: Video Subtitles and Translation
+  version: 0.2.3
+  kind: project
+  icon: subtitles
+  description: Generate, translate, export, or burn subtitles into a video.
+  localizations:
+    zh-CN:
+      name: 视频字幕与翻译
+      description: 生成和翻译字幕，可导出字幕文件或将字幕直接添加到视频。
+  catalog:
+    categories:
+    - video
+  entry:
+    kind: sandbox
+    resource: web/video-subtitles.html
     placements:
-      - studio: ai2apps.video-studio
-        category: localization
-        order: 40
-    inputs:
-      - {id: source_video, kind: video, required: true}
-    outputs:
-      - {id: subtitle_file, kind: subtitle, optional: true}
-      - {id: subtitled_video, kind: video, optional: true}
-    executor:
-      operation: video_subtitles
-    requirements:
-      capabilities:
-        - media.video_subtitles
-        - audio.detailed_transcription
-        - {capability: llm.text, optional: true}
-        - media.subtitle.export
-        - media.video.subtitle_burn_in
-    chat:
-      schema: ai2apps.mini-app-chat/v1
-      enabled: true
-      system_prompt: Help the user generate, translate, export, or burn subtitles into a video.
-      context: {transport: studio-bridge}
-      help: {resource: help/video-subtitles/help.md, max_bytes: 32768}
-      tools: []
-
-  - schema: ai2apps.mini-app/v1
-    id: ai2apps.media-voice.video-audio-translation
-    name: Video Audio Translation
-    version: 0.2.2
-    kind: project
-    icon: languages
-    description: Translate a single narrator and dub with a Voice Studio Character or a temporary clone of the original voice.
-    localizations:
-      zh-CN:
-        name: 视频音轨翻译
-        description: 翻译单人旁白，并使用语音工坊角色或原始音色的临时克隆重新配音。
-    catalog:
-      categories: [audio, video, localization]
-    entry:
-      kind: sandbox
-      resource: web/video-audio-translation.html
-      placements: [inline, sidebar]
+    - inline
+    - sidebar
+  placements:
+  - studio: ai2apps.video-studio
+    category: localization
+    order: 40
+  inputs:
+  - id: source_video
+    kind: video
+    required: true
+  outputs:
+  - id: subtitle_file
+    kind: subtitle
+    optional: true
+  - id: subtitled_video
+    kind: video
+    optional: true
+  executor:
+    operation: video_subtitles
+  requirements:
+    capabilities:
+    - media.video_subtitles
+    - audio.detailed_transcription
+    - capability: llm.text
+      optional: true
+    - media.subtitle.export
+    - media.video.subtitle_burn_in
+  chat:
+    schema: ai2apps.mini-app-chat/v1
+    enabled: true
+    system_prompt: Read and edit only declared current UI fields. Execute functions through the registered owner
+      AaAT, never through a UI run button. Preserve task, model, material and shared output ownership.
+    context:
+      transport: studio-bridge
+      maxBytes: 40000
+    help:
+      resource: help/video-subtitles/help.md
+      max_bytes: 32768
+    tools:
+    - name: update_current_draft
+      description: Update declared UI draft fields without submitting work.
+      input_schema:
+        type: object
+        properties:
+          sourceLanguage:
+            type: string
+            maxLength: 8000
+          targetLanguage:
+            type: string
+            maxLength: 8000
+          subtitleFormat:
+            type: string
+            maxLength: 8000
+          subtitleFontSize:
+            type: string
+            maxLength: 8000
+          subtitleBackground:
+            type: string
+            maxLength: 8000
+          bilingual:
+            type: boolean
+          speakerLabels:
+            type: boolean
+        additionalProperties: false
+      confirmation: never
+- schema: ai2apps.mini-app/v1
+  id: ai2apps.media-voice.video-audio-translation
+  name: Video Audio Translation
+  version: 0.2.3
+  kind: project
+  icon: languages
+  description: Translate a single narrator and dub with a Voice Studio Character or a temporary clone of the original
+    voice.
+  localizations:
+    zh-CN:
+      name: 视频音轨翻译
+      description: 翻译单人旁白，并使用语音工坊角色或原始音色的临时克隆重新配音。
+  catalog:
+    categories:
+    - audio
+    - video
+    - localization
+  entry:
+    kind: sandbox
+    resource: web/video-audio-translation.html
     placements:
-      - studio: ai2apps.video-studio
-        category: localization
-        order: 50
-    inputs:
-      - {id: source_video, kind: video, required: true}
-      - {id: target_voice, kind: voice-profile, required: true}
-    outputs:
-      - {id: translated_video, kind: video, final: true}
-    executor:
-      operation: video_audio_translation
-    requirements:
-      capabilities:
-        - media.video_audio_translation
-        - audio.detailed_transcription
-        - llm.text
-        - audio.source_separation
-        - audio.speech_generation
-        - {capability: audio.voice_clone, optional: true}
-        - media.audio.extract
-        - media.video.audio_mux
-    chat:
-      schema: ai2apps.mini-app-chat/v1
-      enabled: true
-      system_prompt: Help the user translate a single-narrator video and dub it with an authorized Voice Studio Character or a request-scoped clone of the original voice.
-      context: {transport: studio-bridge}
-      help: {resource: help/video-audio-translation/help.md, max_bytes: 32768}
-      tools: []
-
-  - schema: ai2apps.mini-app/v1
-    id: ai2apps.media-voice.video-speaker-replacement
-    name: Video Speaker Voice Replacement
-    version: 0.2.2
-    kind: project
-    icon: refresh-cw
-    description: Replace one selected speaker in a video while preserving its picture and ambience.
-    localizations:
-      zh-CN:
-        name: 视频角色换声
-        description: 替换视频中选定角色的声音，同时保留原始画面和环境声。
-    catalog:
-      categories: [audio, video]
-    entry:
-      kind: sandbox
-      resource: web/video-voice-replacement.html
-      placements: [inline, sidebar]
+    - inline
+    - sidebar
+  placements:
+  - studio: ai2apps.video-studio
+    category: localization
+    order: 50
+  inputs:
+  - id: source_video
+    kind: video
+    required: true
+  - id: target_voice
+    kind: voice-profile
+    required: true
+  outputs:
+  - id: translated_video
+    kind: video
+    final: true
+  executor:
+    operation: video_audio_translation
+  requirements:
+    capabilities:
+    - media.video_audio_translation
+    - audio.detailed_transcription
+    - llm.text
+    - audio.source_separation
+    - audio.speech_generation
+    - capability: audio.voice_clone
+      optional: true
+    - media.audio.extract
+    - media.video.audio_mux
+  chat:
+    schema: ai2apps.mini-app-chat/v1
+    enabled: true
+    system_prompt: Read and edit only declared current UI fields. Execute functions through the registered owner
+      AaAT, never through a UI run button. Preserve task, model, material and shared output ownership.
+    context:
+      transport: studio-bridge
+      maxBytes: 40000
+    help:
+      resource: help/video-audio-translation/help.md
+      max_bytes: 32768
+    tools:
+    - name: update_current_draft
+      description: Update declared UI draft fields without submitting work.
+      input_schema:
+        type: object
+        properties:
+          sourceLanguage:
+            type: string
+            maxLength: 8000
+          targetLanguage:
+            type: string
+            maxLength: 8000
+          voiceProfileId:
+            type: string
+            maxLength: 8000
+          voiceCloneModelId:
+            type: string
+            maxLength: 8000
+          asrVerification:
+            type: boolean
+        additionalProperties: false
+      confirmation: never
+- schema: ai2apps.mini-app/v1
+  id: ai2apps.media-voice.video-speaker-replacement
+  name: Video Speaker Voice Replacement
+  version: 0.2.3
+  kind: project
+  icon: refresh-cw
+  description: Replace one selected speaker in a video while preserving its picture and ambience.
+  localizations:
+    zh-CN:
+      name: 视频角色换声
+      description: 替换视频中选定角色的声音，同时保留原始画面和环境声。
+  catalog:
+    categories:
+    - audio
+    - video
+  entry:
+    kind: sandbox
+    resource: web/video-voice-replacement.html
     placements:
-      - studio: ai2apps.video-studio
-        category: localization
-        order: 60
-      - studio: ai2apps.readaloud
-        category: video-voice
-        order: 60
-    inputs:
-      - {id: source_video, kind: video, required: true}
-      - {id: target_voice, kind: voice-profile, required: true}
-    outputs:
-      - {id: replaced_video, kind: video, final: true}
-      - {id: replaced_audio, kind: audio, optional: true}
-    executor:
-      operation: video_speaker_voice_replacement
-    requirements:
-      capabilities:
-        - media.video_speaker_voice_replacement
-        - audio.speaker_voice_replacement
-        - media.audio.extract
-        - audio.detailed_transcription
-        - audio.speaker_diarization
-        - audio.source_separation
-        - audio.voice_conversion
-        - media.video.audio_mux
-    chat:
-      schema: ai2apps.mini-app-chat/v1
-      enabled: true
-      system_prompt: Help the user replace one consenting speaker's voice while preserving the video.
-      context: {transport: studio-bridge}
-      help: {resource: help/video-voice-replacement/help.md, max_bytes: 32768}
-      tools: []
+    - inline
+    - sidebar
+  placements:
+  - studio: ai2apps.video-studio
+    category: localization
+    order: 60
+  - studio: ai2apps.readaloud
+    category: video-voice
+    order: 60
+  inputs:
+  - id: source_video
+    kind: video
+    required: true
+  - id: target_voice
+    kind: voice-profile
+    required: true
+  outputs:
+  - id: replaced_video
+    kind: video
+    final: true
+  - id: replaced_audio
+    kind: audio
+    optional: true
+  executor:
+    operation: video_speaker_voice_replacement
+  requirements:
+    capabilities:
+    - media.video_speaker_voice_replacement
+    - audio.speaker_voice_replacement
+    - media.audio.extract
+    - audio.detailed_transcription
+    - audio.speaker_diarization
+    - audio.source_separation
+    - audio.voice_conversion
+    - media.video.audio_mux
+  chat:
+    schema: ai2apps.mini-app-chat/v1
+    enabled: true
+    system_prompt: Read and edit only declared current UI fields. Execute functions through the registered owner
+      AaAT, never through a UI run button. Preserve task, model, material and shared output ownership.
+    context:
+      transport: studio-bridge
+      maxBytes: 40000
+    help:
+      resource: help/video-voice-replacement/help.md
+      max_bytes: 32768
+    tools:
+    - name: update_current_draft
+      description: Update declared UI draft fields without submitting work.
+      input_schema:
+        type: object
+        properties:
+          targetSpeaker:
+            type: string
+            maxLength: 8000
+          voiceName:
+            type: string
+            maxLength: 8000
+          conversionProfile:
+            type: string
+            maxLength: 8000
+        additionalProperties: false
+      confirmation: never

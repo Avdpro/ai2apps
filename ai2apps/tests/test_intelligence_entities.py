@@ -212,3 +212,25 @@ async def test_existing_dossier_review_preserves_evidence(monkeypatch,tmp_path):
     assert result.entities[0].name==e['name']
     assert result.entities[0].facts[0].quote==e['facts'][0]['quote']
     assert result.entities[0].coverage=='mention'
+
+
+def test_extraction_signature_ignores_timestamp_and_transport_metadata():
+    from ai2apps.intelligence.entities import extraction_signature
+    article={'title':'Model A','summary':'facts','body':'Model A has 12 GB','updated_at':'old','sources':[{'url':'https://example.com','retrieved_at':'old'}]}
+    changed={**article,'updated_at':'new','sources':[{'url':'https://example.com','retrieved_at':'new'}],'read':True,'favorite':True}
+    assert extraction_signature(article)==extraction_signature(changed)
+    assert extraction_signature(article)!=extraction_signature({**changed,'body':'Model A has 24 GB'})
+    assert extraction_signature(article)!=extraction_signature({**changed,'images':[{'url':'https://example.com/a.jpg','alt':'Model A'}]})
+
+
+def test_legacy_validated_extraction_cache_migrates_without_model_or_fact_changes(tmp_path):
+    store=IntelligenceStore(tmp_path);repo=entities.Repository(store)
+    c=store.save_channel('a',{'name':'Models','interests':'Models','interval_hours':0})['id']
+    article=seed(store,'a',c);repo.ingest('a',article,plan())
+    facts=repo.snapshot('a')['entities'][0]['facts']
+    legacy=entities.signature(['entity-attributes-v2',entities.article_signature(article),entities.image_candidates(article)])
+    with store.connect() as db:db.execute('UPDATE entity_articles SET signature=?',(legacy,))
+    assert repo.pending('a',[article])==[]
+    assert repo.pending('a',[{**article,'updated_at':'new timestamp'}])==[]
+    assert repo.snapshot('a')['entities'][0]['facts']==facts
+    assert len(repo.pending('a',[{**article,'body':'Model A costs 200.'}]))==1

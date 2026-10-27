@@ -2,6 +2,17 @@
 (function(g){'use strict';
  const dictionaries={
  "zh-TW": {
+  "Clear recommendations?": "清除推薦清單？",
+  "Only the recommendation list will be cleared. Your purchase history will not be deleted. You can generate suggestions again later.": "只清除推薦清單，不會刪除購買記錄。之後可以重新產生建議。",
+
+  "Clear recommendations": "清除推薦清單",
+  "Purchase & recommendation details": "購買與推薦詳情",
+  "Configure a Privacy model before reading orders or generating suggestions.": "請先設定隱私模型，再讀取歷史訂單或產生補貨建議。",
+  "Reading order list": "正在讀取訂單列表",
+  "Reading order details": "正在讀取訂單詳情",
+  "Current page": "目前頁面",
+  "Orders read. Generating replenishment suggestions\u2026": "訂單讀取完成，正在產生補貨建議…",
+  "Orders saved. Configure a Privacy model, then refresh suggestions without reading orders again.": "訂單已儲存。設定隱私模型後，點擊「重新產生建議」繼續，無需重新讀取。",
   "Shopping Pro": "購物達人",
   "Choose how to shop, find what you need, then review and place your own order.": "選擇購物功能，尋找所需商品，最後由你確認並下單。",
   "Privacy model profile": "使用隱私模型設定",
@@ -94,6 +105,17 @@
   "Delete permanently": "永久刪除"
  },
  "ja": {
+  "Clear recommendations?": "おすすめリストをクリアしますか？",
+  "Only the recommendation list will be cleared. Your purchase history will not be deleted. You can generate suggestions again later.": "おすすめリストのみを消去します。購入履歴は削除されません。後で再びおすすめを生成できます。",
+
+  "Clear recommendations": "おすすめリストをクリア",
+  "Purchase & recommendation details": "購入履歴とおすすめの詳細",
+  "Configure a Privacy model before reading orders or generating suggestions.": "注文の取得や提案の生成前に、プライバシーモデルを設定してください。",
+  "Reading order list": "注文一覧を取得中",
+  "Reading order details": "注文詳細を取得中",
+  "Current page": "現在のページ",
+  "Orders read. Generating replenishment suggestions\u2026": "注文の取得が完了しました。補充提案を生成中…",
+  "Orders saved. Configure a Privacy model, then refresh suggestions without reading orders again.": "注文は保存済みです。プライバシーモデルを設定して提案を再生成してください。注文の再取得は不要です。",
   "Shopping Pro": "ショッピングアシスタント",
   "Choose how to shop, find what you need, then review and place your own order.": "機能を選び、必要な商品を探して、ご自身で確認して注文します。",
   "Privacy model profile": "プライバシーモデル設定",
@@ -186,6 +208,17 @@
   "Delete permanently": "完全削除"
  },
  "ko": {
+  "Clear recommendations?": "추천 목록을 지울까요?",
+  "Only the recommendation list will be cleared. Your purchase history will not be deleted. You can generate suggestions again later.": "추천 목록만 지워집니다. 구매 기록은 삭제되지 않으며 나중에 추천을 다시 생성할 수 있습니다.",
+
+  "Clear recommendations": "추천 목록 지우기",
+  "Purchase & recommendation details": "구매 및 추천 상세",
+  "Configure a Privacy model before reading orders or generating suggestions.": "주문을 읽거나 추천을 생성하기 전에 개인정보 보호 모델을 설정하세요.",
+  "Reading order list": "주문 목록 읽는 중",
+  "Reading order details": "주문 상세 정보 읽는 중",
+  "Current page": "현재 페이지",
+  "Orders read. Generating replenishment suggestions\u2026": "주문 읽기 완료. 보충 추천 생성 중…",
+  "Orders saved. Configure a Privacy model, then refresh suggestions without reading orders again.": "주문이 저장되었습니다. 개인정보 보호 모델을 설정한 후 추천을 다시 생성하세요. 주문을 다시 읽을 필요가 없습니다.",
   "Shopping Pro": "쇼핑 도우미",
   "Choose how to shop, find what you need, then review and place your own order.": "쇼핑 기능을 선택하고 필요한 상품을 찾은 뒤 직접 확인하고 주문하세요.",
   "Privacy model profile": "개인정보 모델 설정",
@@ -278,6 +311,17 @@
   "Delete permanently": "영구 삭제"
  },
  "fr": {
+  "Clear recommendations?": "Effacer les recommandations ?",
+  "Only the recommendation list will be cleared. Your purchase history will not be deleted. You can generate suggestions again later.": "Seule la liste des recommandations sera effacée. Votre historique d’achats sera conservé. Vous pourrez générer de nouvelles suggestions plus tard.",
+
+  "Clear recommendations": "Effacer les recommandations",
+  "Purchase & recommendation details": "Détails des achats et recommandations",
+  "Configure a Privacy model before reading orders or generating suggestions.": "Configurez un modèle privé avant de lire les commandes ou de générer des suggestions.",
+  "Reading order list": "Lecture de la liste des commandes",
+  "Reading order details": "Lecture des détails des commandes",
+  "Current page": "Page actuelle",
+  "Orders read. Generating replenishment suggestions\u2026": "Commandes lues. Génération des suggestions de réapprovisionnement…",
+  "Orders saved. Configure a Privacy model, then refresh suggestions without reading orders again.": "Commandes enregistrées. Configurez un modèle privé, puis régénérez les suggestions sans relire les commandes.",
   "Shopping Pro": "Assistant shopping",
   "Choose how to shop, find what you need, then review and place your own order.": "Choisissez une fonction et trouvez vos produits, puis vérifiez et commandez vous-même.",
   "Privacy model profile": "Profil de modèles privés",
@@ -370,6 +414,17 @@
   "Delete permanently": "Supprimer définitivement"
  },
  "es": {
+  "Clear recommendations?": "¿Borrar las recomendaciones?",
+  "Only the recommendation list will be cleared. Your purchase history will not be deleted. You can generate suggestions again later.": "Solo se borrará la lista de recomendaciones. Tu historial de compras se conservará. Podrás generar sugerencias de nuevo más adelante.",
+
+  "Clear recommendations": "Borrar recomendaciones",
+  "Purchase & recommendation details": "Detalles de compra y recomendación",
+  "Configure a Privacy model before reading orders or generating suggestions.": "Configura un modelo privado antes de leer pedidos o generar sugerencias.",
+  "Reading order list": "Leyendo la lista de pedidos",
+  "Reading order details": "Leyendo los detalles de pedidos",
+  "Current page": "Página actual",
+  "Orders read. Generating replenishment suggestions\u2026": "Pedidos leídos. Generando sugerencias de reposición…",
+  "Orders saved. Configure a Privacy model, then refresh suggestions without reading orders again.": "Pedidos guardados. Configura un modelo privado y vuelve a generar sugerencias sin leer los pedidos otra vez.",
   "Shopping Pro": "Asistente de compras",
   "Choose how to shop, find what you need, then review and place your own order.": "Elige una función, encuentra productos y luego revisa y compra tú.",
   "Privacy model profile": "Perfil de modelos privados",
@@ -462,6 +517,17 @@
   "Delete permanently": "Eliminar permanentemente"
  },
  "pt-BR": {
+  "Clear recommendations?": "Limpar recomendações?",
+  "Only the recommendation list will be cleared. Your purchase history will not be deleted. You can generate suggestions again later.": "Somente a lista de recomendações será limpa. Seu histórico de compras será mantido. Você poderá gerar sugestões novamente depois.",
+
+  "Clear recommendations": "Limpar recomendações",
+  "Purchase & recommendation details": "Detalhes de compra e recomendação",
+  "Configure a Privacy model before reading orders or generating suggestions.": "Configure um modelo privado antes de ler pedidos ou gerar sugestões.",
+  "Reading order list": "Lendo a lista de pedidos",
+  "Reading order details": "Lendo os detalhes dos pedidos",
+  "Current page": "Página atual",
+  "Orders read. Generating replenishment suggestions\u2026": "Pedidos lidos. Gerando sugestões de reposição…",
+  "Orders saved. Configure a Privacy model, then refresh suggestions without reading orders again.": "Pedidos salvos. Configure um modelo privado e gere novamente as sugestões sem reler os pedidos.",
   "Shopping Pro": "Assistente de compras",
   "Choose how to shop, find what you need, then review and place your own order.": "Escolha uma função, encontre produtos e revise antes de fazer seu pedido.",
   "Privacy model profile": "Perfil de modelos privados",
@@ -554,6 +620,17 @@
   "Delete permanently": "Excluir permanentemente"
  },
  "ru": {
+  "Clear recommendations?": "Очистить рекомендации?",
+  "Only the recommendation list will be cleared. Your purchase history will not be deleted. You can generate suggestions again later.": "Будет очищен только список рекомендаций. История покупок сохранится. Позже можно снова создать рекомендации.",
+
+  "Clear recommendations": "Очистить рекомендации",
+  "Purchase & recommendation details": "Покупки и рекомендации: подробнее",
+  "Configure a Privacy model before reading orders or generating suggestions.": "Настройте приватную модель перед чтением заказов или созданием рекомендаций.",
+  "Reading order list": "Чтение списка заказов",
+  "Reading order details": "Чтение деталей заказов",
+  "Current page": "Текущая страница",
+  "Orders read. Generating replenishment suggestions\u2026": "Заказы прочитаны. Создание рекомендаций по пополнению…",
+  "Orders saved. Configure a Privacy model, then refresh suggestions without reading orders again.": "Заказы сохранены. Настройте приватную модель и обновите рекомендации без повторного чтения заказов.",
   "Shopping Pro": "Помощник покупок",
   "Choose how to shop, find what you need, then review and place your own order.": "Выберите функцию, найдите товары, затем проверьте и оформите заказ сами.",
   "Privacy model profile": "Профиль приватных моделей",

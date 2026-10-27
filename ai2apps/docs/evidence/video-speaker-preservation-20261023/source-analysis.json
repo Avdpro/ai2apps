@@ -1,0 +1,74 @@
+{
+  "text": "Hello. I am the first test speaker. Please change only my voice and keep the picture and the music. I am the second test speaker. My voice should remain unchanged, and the background music should continue. Hello. I am the first test speaker. Please change only my voice and keep the picture and the music.",
+  "language": "none",
+  "duration": 24.32,
+  "segments": [
+    {
+      "start": 1.8900000000000001,
+      "end": 7.65,
+      "text": "Hello. I am the first test speaker. Please change only my voice and keep the picture and the music.",
+      "words": [],
+      "speaker": "speaker_0",
+      "score": null
+    },
+    {
+      "start": 8.49,
+      "end": 15.72,
+      "text": "I am the second test speaker. My voice should remain unchanged, and the background music should continue.",
+      "words": [],
+      "speaker": "speaker_1",
+      "score": null
+    },
+    {
+      "start": 16.470000000000002,
+      "end": 22.259999999999998,
+      "text": "Hello. I am the first test speaker. Please change only my voice and keep the picture and the music.",
+      "words": [],
+      "speaker": "speaker_0",
+      "score": null
+    }
+  ],
+  "features": {
+    "transcription": {
+      "status": "native",
+      "provider": "mlx_audio_qwen3_asr",
+      "revision": "78a389c776a5483b2d0d4ea5494e11012e0d6159"
+    },
+    "vad": {
+      "status": "pipeline",
+      "provider": "meeting_energy_baseline"
+    },
+    "alignment": {
+      "status": "ignored",
+      "provider": null,
+      "method": null
+    },
+    "diarization": {
+      "status": "pipeline",
+      "provider": "mlx_audio_sortformer",
+      "speaker_identity": "global_streaming",
+      "threshold": 0.2,
+      "speaker_bridge_gap_seconds": 0.12,
+      "streaming_chunk_seconds": 5.0,
+      "revision": "e23e6404bd9859e93edbf94a740eb1c7fc58f12e"
+    },
+    "forced_alignment": {
+      "status": "rejected",
+      "reason": "independent_aligner_not_configured"
+    },
+    "emotion": {
+      "status": "ignored",
+      "requested": false
+    },
+    "speaker_recognition": {
+      "status": "ignored",
+      "requested": false
+    },
+    "speech_rate": {
+      "status": "ignored",
+      "requested": false
+    }
+  },
+  "schema": "ai2apps.detailed-transcription-result/v1",
+  "profile": "quality"
+}

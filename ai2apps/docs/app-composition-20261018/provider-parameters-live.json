@@ -1,0 +1,13 @@
+{
+  "id": "run_619073920d374bde998c1c979f3322d7",
+  "status": "completed",
+  "created_at": "2026-10-17T20:26:40.875224Z",
+  "finished_at": "2026-10-17T20:27:48.171396Z",
+  "tools": [
+    {
+      "tool_name": "app.collect_parameters",
+      "status": "completed",
+      "output_json": "{\"result\":{\"arguments\":{\"format\":\"png\",\"model\":\"ai2apps.model.flux2-klein-mlx/4b\",\"prompt\":\"白底蓝色陶瓷杯\",\"provider\":\"ai2apps.imagine.text-to-image\",\"quality\":\"auto\",\"size\":\"1024x1024\"},\"capability\":\"image.generate\",\"configure_only\":true,\"provider\":\"ai2apps.imagine.text-to-image\"},\"status\":\"completed\"}"
+    }
+  ]
+}

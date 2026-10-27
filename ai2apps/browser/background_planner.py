@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import uuid
 from types import SimpleNamespace
@@ -9,6 +10,10 @@ from types import SimpleNamespace
 from ai2apps.agent_builder.compiler import compile_source
 from ai2apps.agent_builder.exploration_prompt import _exploration_prompt
 from ai2apps.agents.json_output import JsonRepairBudget, parse_model_json, repair_json_request
+
+
+class PlannerDecisionUnavailable(ValueError):
+    """Bounded model decision repair exhausted before dispatching a next action."""
 
 
 def validate_completion(step, attempts):
@@ -94,6 +99,9 @@ class BackgroundPlanner:
                 '\nComplete only this Agent step: ' + str(step.get('description', step.get('id', ''))) +
                 '\nResolved arguments: ' + json.dumps(step.get('arguments', {}), ensure_ascii=False) +
                 '\nPrior failed actions may have partially succeeded. Never repeat a completed send, publish, delete or upload. Do not perform later Agent steps.')
+        from .step_policy import allowed_primitives
+        permitted=allowed_primitives(step)
+        goal += '\nAllowed primitives for THIS step (a hard owner constraint): '+json.dumps(permitted)+'. Do not propose any other operation.'
         prompt = _exploration_prompt(SimpleNamespace(goal=goal, observation=observation, attempts=attempts))
         prompt += ('\nUse browser primitives only for this step. Do not delegate to another Agent. '
                    'No executable scripts, selectors, or caller-supplied IR. Existing agent.call steps are executed separately by the durable runtime.')
@@ -104,6 +112,7 @@ class BackgroundPlanner:
         payload = task_payload(model_id, payload['messages'], tier, max_tokens=payload['max_tokens'])
         budget = JsonRepairBudget()
         while True:
+            parsed_output=None
             if cloud_model:
                 response = await invocations.invoke_agent_cloud_json(payload, context=context)
                 raw = SimpleNamespace(status_code=200, body=json.dumps(response).encode())
@@ -113,11 +122,14 @@ class BackgroundPlanner:
             if raw.status_code >= 400:
                 raise RuntimeError('Task model invocation failed')
             try:
-                decision = parse_model_json(json.loads(bytes(raw.body)))
+                validation_stage='parse'
+                parsed_output=json.loads(bytes(raw.body))
+                decision = parse_model_json(parsed_output)
                 if not isinstance(decision, dict):
                     raise ValueError('Planner must return an object')
                 kind = decision.get('decision')
                 if kind == 'complete':
+                    validation_stage='completion'
                     validate_completion(step, attempts)
                     return decision
                 if kind == 'needs_user':
@@ -127,24 +139,42 @@ class BackgroundPlanner:
                 if kind != 'act' or not isinstance(decision.get('step'), dict):
                     raise ValueError('Planner must return act with one step, complete, or needs_user')
                 action = decision['step']
-                if action.get('operation') not in ('open', 'page_access', 'inspect', 'extract_list', 'click', 'input', 'hover', 'scroll'):
-                    raise ValueError('Unsupported browser primitive')
+                validation_stage='action_policy'
+                if action.get('operation') not in permitted:
+                    raise ValueError('Operation is outside this step. Allowed primitives: '+', '.join(permitted))
                 source = {'agent_type': 'web', 'site_scope': scopes, 'steps': [{**action,
                     'name': action.get('name') or 'action', 'execution': {'mode': 'compiled'},
                     'on': {'success': 'done', 'failed': 'failed'}}]}
-                compiled = compile_source(source)
+                selected_context = decision.get('browser_context') or observation['context']
+                selected_probe = next((item for item in observation.get('windows', []) if item.get('context') == selected_context), observation)
+                validation_stage='compile'
+                compiled = compile_source(source, probe=selected_probe)
                 if not compiled.valid or len(compiled.ir.get('steps', [])) != 1:
+                    logging.getLogger(__name__).warning('Browser planner preflight rejected error_codes=%s',
+                        [str(item.get('code','unknown')) for item in compiled.report.get('errors',[]) if isinstance(item,dict)])
                     raise ValueError('Browser action failed compilation preflight: ' + str(compiled.report))
                 action = compiled.ir['steps'][0]
                 action['mode'] = 'compiled'
                 selected = decision.get('browser_context') or observation['context']
-                permitted = {observation['context'], *(item['context'] for item in observation.get('windows', []))}
-                if selected not in permitted:
+                permitted_contexts = {observation['context'], *(item['context'] for item in observation.get('windows', []))}
+                if selected not in permitted_contexts:
                     raise ValueError('Planner selected an unrelated browser context')
                 action['browser_context'] = selected
                 decision['compiled_step'] = action
                 return decision
             except (ValueError, TypeError, KeyError) as error:
+                choices=parsed_output.get('choices') if isinstance(parsed_output,dict) else None
+                choice=choices[0] if isinstance(choices,list) and choices else {}
+                if not isinstance(choice,dict):choice={}
+                message=choice.get('message') or {}
+                if not isinstance(message,dict):message={}
+                logging.getLogger(__name__).warning('Browser planner decision invalid model=%s phase=%s finish=%s content_length=%s reasoning_length=%s',
+                    model_id,validation_stage,choice.get('finish_reason'),len(str(message.get('content') or '')),len(str(message.get('reasoning_content') or '')))
                 if not budget.consume(error, model=model_id, stage='parse'):
-                    raise
-                payload = repair_json_request(payload, bytes(raw.body).decode(), error)
+                    raise PlannerDecisionUnavailable('Model decision remained invalid after bounded JSON repair; no next action dispatched') from error
+                payload = repair_json_request(payload, parsed_output if parsed_output is not None else bytes(raw.body).decode(), error)
+                # A reasoning-capable model can exhaust a small output cap
+                # before emitting its JSON. Expand only on explicit truncation,
+                # under the same model, frozen observation and repair-call cap.
+                if choice.get('finish_reason')=='length':
+                    payload['max_tokens']=min(8192,max(4096,payload['max_tokens']*2))

@@ -1,11 +1,11 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs'),vm=require('node:vm');
-function fixture(mobile=true, imagine=false, overrides={}, appId=null){
+function fixture(mobile=true, imagine=false, overrides={}, appId=null, shell=false){
  class Element {constructor(){this.dataset={};this.children=[];this.classList={add(){},remove(){},toggle(){}};this.hidden=false;this.isConnected=true;} append(...x){this.children.push(...x);} prepend(x){this.children.unshift(x);} querySelectorAll(){return [];} querySelector(s){return this.selectors?.[s]||null;} addEventListener(k,f){(this.events??={})[k]=f;} setAttribute(){} showModal(){} close(){} remove(){this.isConnected=false;} }
  const header=new Element(),list=new Element(),editor=new Element(),output=new Element(),root=new Element();root.dataset.appId=appId||(imagine?'ai2apps.imagine-studio':'ai2apps.video-studio');root.selectors={'.studio-header':header,'.vs-studio-sidebar,.ra-studio-sidebar':list,'.is-mini-app-workspace,.vs-mini-app-workspace,.ra-pipeline-workspace':editor,'.vs-render-workspace,.ra-render-workspace':output};
  const media={matches:mobile,addEventListener(k,f){this.change=f;}};
- const messages={};const context={setTimeout:()=>1,clearTimeout(){},window:{location:{origin:'http://localhost'},matchMedia:()=>media,addEventListener(k,f){messages[k]=f;}},document:{documentElement:{lang:'zh'},elementFromPoint:()=>null,createElement:()=>new Element()},console};vm.createContext(context);vm.runInContext(fs.readFileSync(__dirname+'/../web/static/js/studio_mobile.js','utf8'),context);
+ const messages={};const context={URLSearchParams,location:{hash:'#ai2apps-mount=t&ai2apps-instance=i'},setTimeout:()=>1,clearTimeout(){},window:{parent:{ai2appsMobileStudioNavigation:()=>shell},location:{origin:'http://localhost'},matchMedia:()=>media,addEventListener(k,f){messages[k]=f;}},document:{documentElement:{lang:'zh'},elementFromPoint:()=>null,createElement:()=>new Element()},console};vm.createContext(context);vm.runInContext(fs.readFileSync(__dirname+'/../web/static/js/studio_mobile.js','utf8'),context);
  let calls=0;const app={currentMiniApp:{id:'a'},leftView:'assets',prompt:'keep',selectedOutput:{id:'out'},async selectMiniApp(id){calls++;this.currentMiniApp={id};}};
  Object.assign(app,overrides);
  context.window.AI2AppsMobileStudio.mount(root,app);
@@ -99,4 +99,30 @@ test('Gallery picker previews use safe actor-scoped content and readable names',
  context.window.AI2AppsMobileStudio.assetPreview(button,{id:'v',name:'视频',media_type:'video/mp4'});
  const video=button.children[0].children[0];assert.equal(video.muted,true);assert.equal(video.playsInline,true);assert.equal(video.preload,'metadata');
  context.window.AI2AppsMobileStudio.assetPreview(button,{id:'a',name:'录音',media_type:'audio/wav'});assert.equal(button.children[0].children[0].textContent,'♫');assert.equal(button.children[2].textContent,'音频');
+});
+
+test('Imagine Gallery drag cannot expose a workspace before a Mini-App is active',async()=>{
+ const f=fixture(true,true,{hasActiveMiniApp:false});const frame={contentWindow:{},getBoundingClientRect:()=>({left:0,top:0})};f.root.selectors['iframe[x-ref="galleryMini"]']=frame;
+ const data={type:'ai2apps.gallery.studio-drag',phase:'start',touch:false,asset:{id:'asset',name:'image.png',kind:'image'},x:10,y:10};
+ await f.messages.message({origin:'http://localhost',source:frame.contentWindow,data});assert.equal(f.root.dataset.smPage,'library');
+ f.app.hasActiveMiniApp=true;await f.messages.message({origin:'http://localhost',source:frame.contentWindow,data});assert.equal(f.root.dataset.smPage,'create');
+});
+
+for(const appId of ['ai2apps.video-studio','ai2apps.readaloud']){
+ test(appId+' ignores Gallery drag while no Mini-App is active',async()=>{
+  const f=fixture(true,false,{hasActiveMiniApp:false,currentMiniApp:{id:''}},appId);
+  const frame={contentWindow:{},getBoundingClientRect(){throw Error('inactive drag must not open workspace')}};
+  f.root.selectors['iframe[x-ref="galleryMini"]']=frame;
+  await f.messages.message({origin:'http://localhost',source:frame.contentWindow,data:{type:'ai2apps.gallery.studio-drag',phase:'start',touch:false,asset:{id:'asset',name:'a.png',kind:'image'},x:1,y:1}});
+  assert.equal(f.root.dataset.smPage,'library');assert.equal(f.calls,0);
+ });
+}
+
+
+test('Voice Shell click defers retained workspace activation until Gallery opens',async()=>{
+ const f=fixture(true,false,{async showLeftView(view){this.leftView=view;}},'ai2apps.readaloud',true);
+ await f.app.selectMiniApp('b');assert.equal(f.calls,0);assert.equal(f.app.mobileWorkspaceReady,false);
+ await f.app.showLeftView('assets');assert.equal(f.calls,1);assert.equal(f.app.leftView,'assets');
+ assert.equal(f.root.dataset.smPage,'library');
+ await f.app.showLeftView('assets');assert.equal(f.calls,1);
 });

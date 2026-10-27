@@ -1092,11 +1092,9 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate, NSMenuDeleg
                 configuration.createsNewApplicationInstance = true
                 configuration.arguments = ["--remote-debugging-port", String(automation.port),
                     "--remote-allow-hosts", "localhost,127.0.0.1"]
-                configuration.environment = ProcessInfo.processInfo.environment.merging([
-                    "AI2APPS_APP_SHELL": "1", "AI2APPS_DISABLE_REMOTE_SERVER": "1",
-                    "AI2APPS_REMOTE_AGENT_TOKEN": automation.token,
-                    "AI2APPS_BROWSER_ROLE": "shell", "AI2APPS_BACKGROUND_HOST": "1",
-                ]) { _, required in required }
+                configuration.environment = ProcessInfo.processInfo.environment.merging(
+                    ShellHostEnvironment.required(token: automation.token)
+                ) { _, required in required }
                 let application = try await openBrowserApplication(at: shellBundle, configuration: configuration)
                 // The packaged Shell uses acefox-bin directly, as does Launcher.
                 // Publish the same private descriptors so the Gateway attaches to

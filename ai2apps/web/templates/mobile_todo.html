@@ -1,12 +1,12 @@
 {% extends "mobile_base.html" %}
 {% block title %}Todo · AI2Apps{% endblock %}
-{% block head %}<link rel="stylesheet" href="{{ mobile_static('css/mobile_todo.css') }}">{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ mobile_static('css/system_tasks.css') }}"><link rel="stylesheet" href="{{ mobile_static('css/mobile_todo.css') }}">{% endblock %}
 {% set todo_zh = (current_lang|default('zh', true)).lower().startswith('zh') %}
 {% block content %}
 <main id="mobile-todo">
 <header><div><small>AI2APPS</small><h1>Todo</h1></div><button id="refresh" type="button">{{ '刷新' if todo_zh else 'Refresh' }}</button></header>
 <p id="notice" role="status" aria-live="polite"></p>
-<section id="list-view">
+<section id="list-view"><button id="system-tasks-entry" type="button">{{ '系统任务' if todo_zh else 'System tasks' }}</button>
 <label>{{ '目录' if todo_zh else 'Directory' }}<select id="directory" aria-label="{{ '目录' if todo_zh else 'Directory' }}"></select></label>
 <div class="list-actions"><button id="add-directory" type="button">{{ '新建目录' if todo_zh else 'New folder' }}</button><button id="new-task" type="button">{{ '新建项目' if todo_zh else 'New project' }}</button><button id="search-tasks" type="button">{{ '搜索项目' if todo_zh else 'Search projects' }}</button></div>
 <div id="search-summary" hidden><span id="search-query"></span><button id="clear-search" type="button">{{ '清除' if todo_zh else 'Clear' }}</button></div>
@@ -24,7 +24,7 @@
 <div class="highlight-field"><p>{{ '高亮颜色' if todo_zh else 'Highlight color' }}</p><div id="highlight-colors" role="group" aria-label="{{ '高亮颜色' if todo_zh else 'Highlight color' }}"></div></div>
 <label>{{ '描述' if todo_zh else 'Description' }}<textarea id="description" rows="7" maxlength="100000"></textarea></label>
 <div class="tools"><label>{{ '优先级' if todo_zh else 'Priority' }}<select id="priority"><option>U</option><option>S</option><option>A</option><option>B</option><option selected>C</option><option>D</option></select></label>
-<label>{{ '状态' if todo_zh else 'Status' }}<select id="task-status"><option value="not_started">{{ '未开始' if todo_zh else 'Not started' }}</option><option value="in_progress">{{ '进行中' if todo_zh else 'In progress' }}</option><option value="completed">{{ '已完成' if todo_zh else 'Completed' }}</option><option value="paused">{{ '已暂停' if todo_zh else 'Paused' }}</option></select></label></div>
+<label>{{ '状态' if todo_zh else 'Status' }}<select id="task-status"><option value="not_started">{{ '未开始' if todo_zh else 'Not started' }}</option><option value="in_progress">{{ '进行中' if todo_zh else 'In progress' }}</option><option value="awaiting_acceptance">{{ '待验收' if todo_zh else 'Awaiting acceptance' }}</option><option value="completed">{{ '已完成' if todo_zh else 'Completed' }}</option><option value="paused">{{ '已暂停' if todo_zh else 'Paused' }}</option></select></label></div>
 <label>{{ '进度 (%)' if todo_zh else 'Progress (%)' }}<input id="task-progress" type="number" min="0" max="100" step="1" required value="0" inputmode="numeric"></label>
 <input id="task-progress-slider" type="range" min="0" max="100" step="5" value="0" aria-label="{{ '调整进度，每步 5%' if todo_zh else 'Adjust progress in steps of 5%' }}" hidden>
 <div class="tools"><button id="save" type="submit" class="primary">{{ '保存' if todo_zh else 'Save' }}</button><button id="complete" type="button">{{ '标记完成' if todo_zh else 'Mark complete' }}</button></div>
@@ -40,4 +40,4 @@
 </form>
 </dialog>
 {% endblock %}
-{% block scripts %}<script src="{{ mobile_static('js/mobile_todo.js') }}?v=native-back-20261010-3"></script>{% endblock %}
+{% block scripts %}<script src="{{ mobile_static('js/system_tasks.js') }}"></script><script src="{{ mobile_static('js/mobile_todo.js') }}?v=native-back-20261010-3"></script>{% endblock %}

@@ -1,0 +1,190 @@
+{
+  "watch": {
+    "fields": {
+      "case_diameter": {
+        "label": "case_diameter",
+        "aliases": []
+      },
+      "case_width": {
+        "label": "case_width",
+        "aliases": []
+      },
+      "case_thickness": {
+        "label": "case_thickness",
+        "aliases": []
+      },
+      "dial_diameter": {
+        "label": "dial_diameter",
+        "aliases": []
+      },
+      "dial_width": {
+        "label": "dial_width",
+        "aliases": []
+      },
+      "strap_width": {
+        "label": "strap_width",
+        "aliases": []
+      },
+      "lug_width": {
+        "label": "lug_width",
+        "aliases": []
+      },
+      "lug_to_lug": {
+        "label": "lug_to_lug",
+        "aliases": []
+      },
+      "movement": {
+        "label": "movement",
+        "aliases": []
+      },
+      "power_reserve": {
+        "label": "power_reserve",
+        "aliases": []
+      },
+      "accuracy": {
+        "label": "accuracy",
+        "aliases": []
+      },
+      "water_resistance": {
+        "label": "water_resistance",
+        "aliases": []
+      },
+      "case_material": {
+        "label": "case_material",
+        "aliases": []
+      }
+    }
+  },
+  "ai_model": {
+    "fields": {
+      "parameters_total": {
+        "label": "parameters_total",
+        "aliases": []
+      },
+      "parameters_active": {
+        "label": "parameters_active",
+        "aliases": []
+      },
+      "architecture": {
+        "label": "architecture",
+        "aliases": []
+      },
+      "context_window": {
+        "label": "context_window",
+        "aliases": []
+      },
+      "memory_required": {
+        "label": "memory_required",
+        "aliases": []
+      },
+      "memory_recommended": {
+        "label": "memory_recommended",
+        "aliases": []
+      },
+      "vram_required": {
+        "label": "vram_required",
+        "aliases": []
+      },
+      "quantization": {
+        "label": "quantization",
+        "aliases": []
+      },
+      "disk_size": {
+        "label": "disk_size",
+        "aliases": []
+      },
+      "license": {
+        "label": "license",
+        "aliases": []
+      }
+    }
+  },
+  "automotive": {
+    "fields": {
+      "length": {
+        "label": "Vehicle length",
+        "aliases": [],
+        "labels": {
+          "zh": "车长",
+          "en": "Vehicle length"
+        }
+      },
+      "width": {
+        "label": "Vehicle width",
+        "aliases": [],
+        "labels": {
+          "zh": "车宽",
+          "en": "Vehicle width"
+        }
+      },
+      "height": {
+        "label": "Vehicle height",
+        "aliases": [],
+        "labels": {
+          "zh": "车高",
+          "en": "Vehicle height"
+        }
+      },
+      "wheelbase": {
+        "label": "Wheelbase",
+        "aliases": [
+          "wheel_base"
+        ],
+        "labels": {
+          "zh": "轴距",
+          "en": "Wheelbase"
+        }
+      },
+      "power": {
+        "label": "Power output",
+        "aliases": [],
+        "labels": {
+          "zh": "动力功率",
+          "en": "Power output"
+        }
+      },
+      "torque": {
+        "label": "Torque",
+        "aliases": [],
+        "labels": {
+          "zh": "扭矩",
+          "en": "Torque"
+        }
+      },
+      "battery_capacity": {
+        "label": "Battery capacity",
+        "aliases": [],
+        "labels": {
+          "zh": "电池容量",
+          "en": "Battery capacity"
+        }
+      },
+      "range": {
+        "label": "Driving range",
+        "aliases": [
+          "driving_range"
+        ],
+        "labels": {
+          "zh": "续航里程",
+          "en": "Driving range"
+        }
+      },
+      "energy_consumption": {
+        "label": "Energy consumption",
+        "aliases": [],
+        "labels": {
+          "zh": "能耗",
+          "en": "Energy consumption"
+        }
+      },
+      "curb_weight": {
+        "label": "Curb weight",
+        "aliases": [],
+        "labels": {
+          "zh": "整备质量",
+          "en": "Curb weight"
+        }
+      }
+    }
+  }
+}

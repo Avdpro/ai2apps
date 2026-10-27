@@ -6,7 +6,7 @@ from ai2apps.tests.test_intelligence_api import client, channel_and_source, lega
 
 @pytest.mark.asyncio
 async def test_review_requires_complete_decisions_and_context(monkeypatch):
-    async def fake(runtime,request,principal,id,instruction,data,validate):
+    async def fake(runtime,request,principal,id,instruction,data,validate,**kwargs):
         assert data['stage']=='list' and data['preferences'][0]['feedback']=='less'
         assert 'image' in instruction and 'likes' in instruction
         with pytest.raises(ValueError):

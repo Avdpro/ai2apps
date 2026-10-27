@@ -181,11 +181,11 @@ def split_subtitle_segments(
     return result
 
 
-def validate_video_media(video: bytes) -> None:
+def validate_video_media(video: bytes | Path) -> None:
     """Reject non-video containers before a composite media workflow starts."""
 
     try:
-        with av.open(io.BytesIO(video), mode="r") as container:
+        with av.open(str(video) if isinstance(video, Path) else io.BytesIO(video), mode="r") as container:
             if not container.streams.video:
                 raise StudioMediaError(
                     "video_track_not_found", "Input has no video track"
@@ -484,7 +484,7 @@ def _draw_caption(
 
 
 def burn_subtitles(
-    video: bytes,
+    video: bytes | Path,
     segments: list[dict[str, Any]],
     *,
     translations: list[str] | None = None,
@@ -505,7 +505,7 @@ def burn_subtitles(
             "subtitle_style_invalid", "Unsupported subtitle background style"
         )
 
-    source = io.BytesIO(video)
+    source = str(video) if isinstance(video, Path) else io.BytesIO(video)
     destination = io.BytesIO()
     try:
         input_container = av.open(source, mode="r")
@@ -515,7 +515,7 @@ def burn_subtitles(
         rate = input_video.average_rate or input_video.guessed_rate or Fraction(25, 1)
         width = int(input_video.codec_context.width)
         height = int(input_video.codec_context.height)
-        audio_container = av.open(io.BytesIO(video), mode="r")
+        audio_container = av.open(str(video) if isinstance(video, Path) else io.BytesIO(video), mode="r")
         input_audio = (
             audio_container.streams.audio[0] if audio_container.streams.audio else None
         )
@@ -797,11 +797,16 @@ def mix_replaced_speaker(
     background = length_of(background)
     converted = length_of(converted)
     mask = _speaker_mask(frames, rate, segments, target_speaker)[:, None]
-    mixed = background + dialogue * (1 - mask) + converted * mask
-    peak = float(np.max(np.abs(mixed), initial=0))
-    if peak > 1:
-        mixed /= peak
-    return _wav(mixed, rate)
+    base = background + dialogue * (1 - mask)
+    replacement = converted * mask
+    # Bound only the new voice. Global normalization would also lower every
+    # untouched speaker and the background outside the selected windows.
+    active = np.abs(replacement) > 1e-8
+    gain = 1.0
+    if np.any(active):
+        headroom = np.where(replacement > 0, 1 - base, 1 + base)
+        gain = min(1.0, float(np.min(np.maximum(headroom[active], 0) / np.abs(replacement[active]))))
+    return _wav(base + replacement * gain, rate)
 
 
 def mix_dubbed_segments(
@@ -936,12 +941,12 @@ def select_voice_clone_reference(
     )
 
 
-def replace_video_audio(video: bytes, audio_wav: bytes) -> bytes:
+def replace_video_audio(video: bytes | Path, audio_wav: bytes) -> bytes:
     """Copy the original video stream and replace its audio with a WAV artifact."""
 
     destination = io.BytesIO()
     try:
-        video_input = av.open(io.BytesIO(video), mode="r")
+        video_input = av.open(str(video) if isinstance(video, Path) else io.BytesIO(video), mode="r")
         if not video_input.streams.video:
             raise StudioMediaError("video_track_not_found", "Input has no video track")
         audio_input = av.open(io.BytesIO(audio_wav), mode="r")

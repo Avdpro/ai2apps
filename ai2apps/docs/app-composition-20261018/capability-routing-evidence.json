@@ -1,0 +1,43 @@
+{
+  "status": "completed",
+  "scope": "Shell startup recovery and real image Mini-App AaAT routing acceptance",
+  "tests": {
+    "python_combined_suite": "32 passed",
+    "shell_bootstrap_deadline": "2 passed"
+  },
+  "live": {
+    "instance": "app-dev",
+    "session": "ses_d1648811cc564d1ba051b55764087231",
+    "real_edit": "run_dd1c02b11c454f28aa4e00fdea4d3654",
+    "real_fallback": "run_0ba80de5e203492daba2a958eafe3582",
+    "real_success_preference": "run_8d4a5aa2bdbb4f5b8b8a54a117aad35a",
+    "fallback_fault": "Controlled pre-submission ProviderUnavailable injection for exact App-Dev acceptance Session; real Cloud inference via Mini-App; injection removed from live and embedded source",
+    "preference_preconditions": {
+      "legacy_cooldown_ended_unix": 1792265341.694838,
+      "request_created_at": "2026-10-17T19:29:10.752094Z",
+      "clean_rebuild_and_restart": true,
+      "attempts": [
+        {
+          "provider": "ai2apps.imagine.text-to-image",
+          "status": "succeeded"
+        }
+      ]
+    },
+    "activation": {
+      "port": 63287,
+      "local_pid": 33303,
+      "app_and_helper_source_root": "/Users/avdpropang/sdk/omlx-moe-cache",
+      "runtime_profile": "cloud",
+      "development": true,
+      "verify_release_app": "passed",
+      "codesign_deep_strict": "passed",
+      "served_chat_mini_sha256": "b87eefe93f3c93fb3e26c856e0cb224bfa10c885b979c3e530baacb13f71a20d",
+      "live_import_paths": "startup logs identify current checkout storage/database.py and model_invocation.py",
+      "native_title": "AI2Apps-App-Dev: App-Dev 127.0.0.1:63287",
+      "home_loaded": true
+    },
+    "visual_verification": "Blue edit, green fallback and yellow preference images inspected; original Chat shows completed outputs"
+  },
+  "shell_fix": "Bound each bootstrap readJSON request to 5 seconds; cancellation prevents a hung request defeating outer deadline. Exact original connecting-page cause was not conclusively captured; lock-screen automation was also unavailable. Clean native startup reached Home.",
+  "remaining": []
+}

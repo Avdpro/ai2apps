@@ -1,0 +1,23 @@
+{
+  "windows": [
+    {
+      "speaker": "A",
+      "start": 2.0,
+      "end": 7.638645833333333
+    },
+    {
+      "speaker": "B",
+      "start": 8.638645833333333,
+      "end": 15.596625
+    },
+    {
+      "speaker": "A",
+      "start": 16.596625,
+      "end": 22.235270833333335
+    }
+  ],
+  "duration": 24.3,
+  "frames": 243,
+  "source": "/tmp/speaker-preservation-test.mp4",
+  "reference": "/tmp/speaker-preservation-ref.aiff"
+}

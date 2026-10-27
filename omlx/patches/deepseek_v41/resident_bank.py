@@ -88,12 +88,13 @@ class MetalBank:
         self.loads += 1
         self.bytes += count
 
-    def _load(self, ids, slots):
+    def _load(self, ids, slots, on_read_ready=None):
         if not ids:
             return
         if len(set(slots)) != len(slots):
             raise ValueError("duplicate native destinations")
         self._fence()
+        if on_read_ready is not None:on_read_ready(slots)
         self._read_ready(ids, slots)
 
     def _copy_ready(self, sources, slots):
@@ -167,7 +168,9 @@ class LRUMetalBank(MetalBank):
         self.dynamic_roles = False
         self.last_eviction_promotions = []
 
-    def prepare(self, ids, promotion_scores=None, slot_swap=False):
+    def prepare(self, ids, promotion_scores=None, slot_swap=False, on_read_ready=None):
+        if on_read_ready is not None and promotion_scores is not None:
+            raise ValueError('overlapped reads cannot change Main slot roles')
         ids = list(dict.fromkeys(ids))
         if any(expert not in self.records for expert in ids):
             raise KeyError("unknown expert")
@@ -241,7 +244,8 @@ class LRUMetalBank(MetalBank):
             del self.hot[expert]
             slots.append(slot)
             self.evictions += 1
-        self._load(missing, slots)
+        if on_read_ready is None:self._load(missing, slots)
+        else:self._load(missing, slots,on_read_ready=on_read_ready)
         self.hot.update(zip(missing, slots))
         for expert in ids:
             if expert in self.hot:

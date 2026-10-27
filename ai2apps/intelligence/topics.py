@@ -77,3 +77,62 @@ async def summarize(runtime, request, principal, channel, articles):
             'title':t.title.strip(),'summary':t.summary,'article_ids':ids,
             'updated_at':max(allowed[id]['updated_at'] for id in ids)})
     return sorted(topics,key=lambda t:(len(t['article_ids']),t['updated_at']),reverse=True)
+
+
+AUTOMATIC_INTERVAL = 24 * 60 * 60
+
+
+def initialize_attempts(store):
+    with store.connect() as db:
+        db.execute('CREATE TABLE IF NOT EXISTS topic_attempts(owner TEXT NOT NULL,channel TEXT NOT NULL,last_attempt REAL NOT NULL,lease_until REAL NOT NULL,token TEXT NOT NULL,PRIMARY KEY(owner,channel))')
+
+
+def automatic_due(store, owner, channel, now=None):
+    """One automatic attempt per rolling day, including failures and restarts."""
+    import time
+    if not channel.get('auto_topics',False):return False
+    now=time.time() if now is None else now
+    initialize_attempts(store)
+    generated=(channel.get('hot_topics') or {}).get('generated_at')
+    if generated and now-datetime.fromisoformat(generated).timestamp()<AUTOMATIC_INTERVAL:return False
+    with store.connect() as db:
+        row=db.execute('SELECT last_attempt,lease_until FROM topic_attempts WHERE owner=? AND channel=?',(owner,channel['id'])).fetchone()
+    return not row or (row['lease_until']<=now and now-row['last_attempt']>=AUTOMATIC_INTERVAL)
+
+
+async def refresh(runtime, request, principal, store, channel_id, *, automatic=False):
+    """UI and background share an owner-bound, persistent claim and strict validator."""
+    import time
+    import uuid
+    from fastapi import HTTPException
+    owner=principal.actor_user_id
+    channel=store.get('channels',owner,channel_id)
+    if automatic and not automatic_due(store,owner,channel):return {'skipped':True,'reason':'disabled_or_daily_limit'}
+    initialize_attempts(store)
+    token=uuid.uuid4().hex
+    with store.connect() as db:
+        # Recheck configuration and daily budget inside the same write transaction
+        # that reserves execution; concurrent UI/worker claims cannot both win.
+        channel=store.unpack(db.execute('SELECT * FROM channels WHERE owner=? AND id=?',(owner,channel_id)).fetchone())
+        now=time.time()
+        row=db.execute('SELECT * FROM topic_attempts WHERE owner=? AND channel=?',(owner,channel_id)).fetchone()
+        if row and row['lease_until']>now:
+            if automatic:return {'skipped':True,'reason':'busy'}
+            raise HTTPException(409,'此频道正在整理热点，请稍后刷新')
+        generated=(channel.get('hot_topics') or {}).get('generated_at')
+        if automatic and (not channel.get('auto_topics',False) or
+                (row and now-row['last_attempt']<AUTOMATIC_INTERVAL) or
+                (generated and now-datetime.fromisoformat(generated).timestamp()<AUTOMATIC_INTERVAL)):
+            return {'skipped':True,'reason':'disabled_or_daily_limit'}
+        saved=[store.unpack(r) for r in db.execute('SELECT * FROM articles WHERE owner=? AND channel=?',(owner,channel_id))]
+        selected=recent(saved);digest=signature(selected)
+        cached=channel.get('hot_topics') or {}
+        if cached.get('signature')==digest:return cached
+        db.execute('INSERT INTO topic_attempts VALUES(?,?,?,?,?) ON CONFLICT(owner,channel) DO UPDATE SET last_attempt=excluded.last_attempt,lease_until=excluded.lease_until,token=excluded.token',
+            (owner,channel_id,now,now+600,token))
+    try:
+        result=await summarize(runtime,request,principal,channel,selected)
+        return store.save_topics(owner,channel_id,digest,result)
+    finally:
+        with store.connect() as db:
+            db.execute('UPDATE topic_attempts SET lease_until=0 WHERE owner=? AND channel=? AND token=?',(owner,channel_id,token))

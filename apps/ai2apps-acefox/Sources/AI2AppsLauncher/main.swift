@@ -365,12 +365,9 @@ private func launchAceFox(configuration: LauncherConfiguration) throws {
         "--remote-debugging-port", String(automation.port),
         "--remote-allow-hosts", "localhost,127.0.0.1",
     ]
-    workspaceConfiguration.environment = ProcessInfo.processInfo.environment.merging([
-        "AI2APPS_APP_SHELL": "1",
-        "AI2APPS_DISABLE_REMOTE_SERVER": "1",
-        "AI2APPS_REMOTE_AGENT_TOKEN": automation.token,
-        "AI2APPS_BROWSER_ROLE": "shell",
-    ]) { _, required in required }
+    workspaceConfiguration.environment = ProcessInfo.processInfo.environment.merging(
+        ShellHostEnvironment.required(token: automation.token, showShell: true)
+    ) { _, required in required }
     workspaceConfiguration.createsNewApplicationInstance = true
     let application = try openApplication(
         at: shellBundle,

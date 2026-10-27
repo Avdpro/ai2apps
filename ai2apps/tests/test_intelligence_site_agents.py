@@ -10,7 +10,7 @@ from ai2apps.intelligence.store import IntelligenceStore
 async def test_observed_rule_compiles_and_repair_versions_same_draft(tmp_path,monkeypatch):
     db=PlatformDatabase(tmp_path/'platform.sqlite3');db.initialize()
     runtime=SimpleNamespace(database=db);principal=SimpleNamespace(actor_user_id='alice')
-    async def model(runtime,request,principal,id,instruction,data,validator):
+    async def model(runtime,request,principal,id,instruction,data,validator,**kwargs):
         with pytest.raises(ValueError):validator({'index':39})
         return validator({'index':0})
     monkeypatch.setattr(site_agents,'model_json',model)
@@ -56,7 +56,7 @@ def test_site_agent_api_validates_activation_and_reuses_across_channels(tmp_path
     async def category_plan(*args):
         return {'categories':[{'id':'products','name':'Products','description':'Products'}], 'default_id':'products', 'assignments':{}, 'signatures':{}}
     monkeypatch.setattr(entity_categories, 'plan', category_plan)
-    async def model(runtime,request,principal,id,instruction,data,validator):return validator({'index':0})
+    async def model(runtime,request,principal,id,instruction,data,validator,**kwargs):return validator({'index':0})
     monkeypatch.setattr(service,'plan_sections',plan);monkeypatch.setattr(site_agents,'model_json',model)
     app=FastAPI();app.include_router(create_intelligence_router(lambda:runtime,RequestPrincipal.legacy_local));client=TestClient(app)
     def source(url):
@@ -83,7 +83,7 @@ def test_site_agent_api_validates_activation_and_reuses_across_channels(tmp_path
 @pytest.mark.asyncio
 async def test_list_generation_can_cover_multiple_observed_regions(tmp_path,monkeypatch):
     db=PlatformDatabase(tmp_path/'platform.sqlite3');db.initialize()
-    async def model(runtime,request,principal,id,instruction,data,validate):
+    async def model(runtime,request,principal,id,instruction,data,validate,**kwargs):
         with pytest.raises(ValueError):validate({'indices':[0,0]})
         with pytest.raises(ValueError):validate({'indices':[-1]})
         return validate({'indices':[0,1]})
@@ -104,7 +104,7 @@ async def test_x_observed_rule_compiles_and_repairs_same_owned_draft(tmp_path,mo
     runtime=SimpleNamespace(database=db);principal=SimpleNamespace(actor_user_id='alice')
     observed={field:[{'selector':selector,'sample':'Observed','count':2}] for field,selector in
         [('card','article[role="article"]'),('link','a[href]'),('text','p[lang="en"]'),('author','div[role="heading"]'),('photo','img')]}
-    async def model(*args):
+    async def model(*args,**kwargs):
         validate=args[-1]
         with pytest.raises(ValueError):validate(dict.fromkeys(x_agents.FIELDS,19))
         return validate(dict.fromkeys(x_agents.FIELDS,0))
@@ -132,3 +132,14 @@ def test_x_activation_rejects_wrong_identity_body_images_and_drift():
                     {'images':[{'url':'https://pbs.twimg.com/media/wrong.jpg'}]}):
         assert not matches(baseline,{'items':[{**post,**changed}],'x_rule_valid':True},'feed')
     assert not matches(baseline,{**valid,'x_rule_valid':False},'feed')
+
+
+def test_reasoning_effort_declaration_is_model_scoped(tmp_path,monkeypatch):
+    from ai2apps.model_manager import ModelManagerStore
+    manager=ModelManagerStore(tmp_path)
+    monkeypatch.setattr(manager,'_cloud_data',lambda:{'deepseek':{'models':['deepseek-flash','unknown-model']},'arbitrary':{'models':['deepseek-flash']}})
+    monkeypatch.setattr(manager,'_load_provider_key',lambda *a:None)
+    catalog={p['id']:{m['id']:m for m in p['models']} for p in manager.list_cloud()}
+    assert catalog['deepseek']['deepseek-flash']['capabilities']['reasoningEfforts']==['low','high','max']
+    assert not catalog['deepseek']['unknown-model'].get('capabilities',{}).get('reasoningEfforts')
+    assert not catalog['arbitrary']['deepseek-flash'].get('capabilities',{}).get('reasoningEfforts')

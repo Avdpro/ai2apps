@@ -560,3 +560,26 @@ def test_project_asr_settings_persist_and_invalidate_line_cache(tmp_path):
     after = manager._segment_request(row, 'example.tts/default')
     assert after['asrVerification'] is True and after['asrModelId'] == 'chosen/asr'
     assert before != after
+
+
+def test_audio_generation_shared_output_idempotent_publish(tmp_path):
+    from ai2apps.config import PlatformConfig
+    from ai2apps.platform_runtime import PlatformRuntime
+    runtime = PlatformRuntime(PlatformConfig.from_base_path(tmp_path / 'runtime'))
+    runtime.start()
+    try:
+        manager = runtime.readaloud_tasks
+        urls = []
+        for variant in ('music', 'sfx', 'song'):
+            args = dict(mini_app_id='ai2apps.audio-generation.' + variant, filename=variant + '.wav',
+                        media_type='audio/wav', output_key='stjob_' + variant)
+            url = manager.save_studio_output('owner', b'audio', **args)
+            assert manager.save_studio_output('owner', b'audio', **args) == url
+            urls.append(url)
+        items = manager.output_history('owner')
+        assert len(items) == 3
+        assert {item['miniAppId'] for item in items} == {'ai2apps.audio-generation.' + x for x in ('music', 'sfx', 'song')}
+        assert len(set(urls)) == 3
+        assert manager.output_history('other') == []
+    finally:
+        runtime.stop()

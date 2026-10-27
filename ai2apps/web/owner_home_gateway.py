@@ -22,6 +22,14 @@ def configure(runtime_provider, models_handler, completion_handler):
 
 
 def public_allowed(method, path):
+    if method=='POST' and re.fullmatch(r'/v1/mobile/chat/threads/[A-Za-z0-9_-]+/manage',path):return True
+    if method in ('PATCH','DELETE') and re.fullmatch(r'/v1/mobile/chat/threads/[A-Za-z0-9_-]+',path):return True
+    if method=='POST' and re.fullmatch(r'/v1/mobile/chat/threads/[A-Za-z0-9_-]+/speech',path):return True
+    if re.fullmatch(r'/v1/mobile/chat/threads/[A-Za-z0-9_-]+/turns(?:/[A-Za-z0-9_-]+(?:/cancel)?)?', path):
+        return (method == 'GET' and not path.endswith('/cancel')) or (method == 'POST' and (path.endswith('/turns') or path.endswith('/cancel')))
+    from ai2apps.web.owner_agent_gateway import allowed as agent_allowed
+    if agent_allowed(method, path):
+        return True
     from ai2apps.web.owner_studio_gateway import STUDIO_APPS, allowed
     if method == 'POST' and re.fullmatch(r'/v1/mobile/apps/[A-Za-z0-9._-]+/open', path):
         return True
@@ -41,9 +49,25 @@ def public_allowed(method, path):
         return True
     if method == 'POST' and (path in ('/v1/mobile/apps/ai2apps.knowledge/open','/v1/mobile/apps/ai2apps.gallery/open') or re.fullmatch(r'/v1/mobile/knowledge/items/[A-Za-z0-9_-]+/collect',path)):
         return True
+    if method == 'GET' and re.fullmatch(r'/v1/mobile/todo/tasks/[A-Za-z0-9_-]+/(?:execution|detail)', path):
+        return True
+    if method == 'GET' and path in ('/v1/mobile/todo/executors', '/v1/mobile/todo/codex/projects', '/v1/mobile/todo/codex/threads'):
+        return True
+    if method == 'PUT' and re.fullmatch(r'/v1/mobile/todo/tasks/[A-Za-z0-9_-]+/(?:execution|codex/desktop)', path):
+        return True
+    if method == 'POST' and re.fullmatch(r'/v1/mobile/todo/tasks/[A-Za-z0-9_-]+/run', path):
+        return True
+    if method == 'POST' and re.fullmatch(r'/v1/mobile/todo/(?:tasks/[A-Za-z0-9_-]+/attachments|runs/[A-Za-z0-9_-]+/review)', path):
+        return True
     if method == 'GET' and re.fullmatch(r'/v1/mobile/todo/attachments/[A-Za-z0-9_-]+', path):
         return True
     if method == 'GET' and path in ('/mobile/todo', '/v1/mobile/todo'):
+        return True
+    if method == 'GET' and re.fullmatch(r'/v1/mobile/todo/system-tasks(?:/stask_[a-f0-9]+)?',path):
+        return True
+    if method == 'POST' and re.fullmatch(r'/v1/mobile/todo/system-tasks/stask_[a-f0-9]+/(?:start|cancel)',path):
+        return True
+    if method == 'POST' and re.fullmatch(r'/v1/mobile/todo/system-schedules/[A-Za-z0-9:._-]+/start',path):
         return True
     if method == 'POST' and path in ('/v1/mobile/apps/ai2apps.todo/open', '/v1/mobile/todo/tasks', '/v1/mobile/todo/directories', '/v1/mobile/todo/navigation-trace', '/v1/mobile/todo/emoji/suggest'):
         return True
@@ -59,7 +83,7 @@ def authority(request):
         return None
     runtime = _runtime() if _runtime else None
     manager = getattr(runtime, 'remote', None)
-    if manager is None or value[0] is not manager.owner_home:
+    if value[0] is not getattr(runtime, 'self_managed_access', None) and (manager is None or value[0] is not manager.owner_home):
         raise RemoteTokenError('Owner gateway authority mismatch')
     value[0].valid(value[1])
     return value
@@ -79,17 +103,45 @@ async def chat_proxy(request, method, path, payload=None):
     allowed = ((method == 'GET' and path in ('/chat', '/chat/threads'))
         or (method == 'POST' and path == '/chat/threads')
         or (method in ('GET','PUT') and re.fullmatch(r'/chat/threads/[A-Za-z0-9_-]+/content',path)))
+    if method=='POST' and re.fullmatch(r'/chat/threads/[A-Za-z0-9_-]+/speech',path):allowed=True
+    if method=='POST' and re.fullmatch(r'/chat/threads/[A-Za-z0-9_-]+/manage',path):allowed=True
+    if method in ('PATCH','DELETE') and re.fullmatch(r'/chat/threads/[A-Za-z0-9_-]+',path):allowed=True
+    if re.fullmatch(r'/chat/threads/[A-Za-z0-9_-]+/turns(?:/[A-Za-z0-9_-]+(?:/cancel)?)?', path):
+        allowed = (method == 'GET' and not path.endswith('/cancel')) or (method == 'POST' and (path.endswith('/turns') or path.endswith('/cancel')))
     if grant is None or not allowed:
         raise HTTPException(403, 'Owner Chat route denied')
     def principal():
         return grant[0].principal(grant[1])
     isolated = FastAPI(openapi_url=None, docs_url=None, redoc_url=None)
     isolated.include_router(create_chat_router(_runtime, principal_provider=principal))
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=isolated), base_url='http://chat.internal') as client:
-        response = await client.request(method,path,json=payload)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=isolated), base_url='http://chat.internal',timeout=120) as client:
+        params={'expected_revision':request.query_params.get('expected_revision','')} if method=='DELETE' else None
+        response = await client.request(method,path,json=payload,params=params)
     grant[0].valid(grant[1])
     return Response(response.content,status_code=response.status_code,
         media_type=response.headers.get('content-type','application/json'),headers={'Cache-Control':'no-store'})
+
+
+async def speech_application(scope,receive,send):
+    from fastapi import Request,HTTPException
+    from starlette.responses import JSONResponse
+    request=Request(scope,receive=receive)
+    try:
+        grant=authority(request)
+        if grant is None:raise HTTPException(401,'Owner authorization required')
+        from ai2apps.remote.mobile_apps import app_enabled
+        if not app_enabled(_runtime(),grant[0].principal(grant[1]),CHAT_APP):raise HTTPException(403,'Chat is disabled for Mobile')
+        chunks=[];size=0
+        async for chunk in request.stream():
+            size+=len(chunk)
+            if size>8192:raise HTTPException(413)
+            chunks.append(chunk)
+        body=b''.join(chunks)
+        import json
+        response=await chat_proxy(request,request.method,scope['path'].removeprefix('/v1/mobile'),json.loads(body) if body else None)
+    except (ValueError,UnicodeError):response=JSONResponse({'detail':'Invalid Chat request'},status_code=422)
+    except HTTPException as error:response=JSONResponse({'detail':error.detail},status_code=error.status_code)
+    await response(scope,receive,send)
 
 
 async def models(request):

@@ -180,6 +180,20 @@ def create_frozen_router(runtime_provider, principal_dependency, studio, scoped_
             cached['status'] = 'rendering'
         requested_seed = seed
         seed = SystemRandom().randrange(4294967296) if seed == -1 else seed
+        if getattr(runtime,'studio_jobs',None):
+            from ai2apps.studio.extended_jobs import submit
+            from dataclasses import asdict
+            files={'input.png':data}
+            prepared=None
+            if soundtrack_data is not None:files['soundtrack.audio']=soundtrack_data
+            if cached is not None:
+                for name in ('model-input.png','reference.mp4'):files[name]=(cached['directory']/name).read_bytes()
+                w,h,plan=cached['prepared'];prepared=[w,h,[asdict(frame) for frame in plan]]
+            submit(runtime,principal,app_instance_id,'ai2apps.imagine-studio',MINI_APP_ID,'frozen-time',
+                {'operation':'generate','settings':dict(depth=depth,output=output,long_edge=long_edge,reference_speedup=reference_speedup,trajectory=trajectory,seed=seed),
+                 'prepared':prepared,'metadata':{'depthModel':DEPTH_MODELS[depth],'modelId':MERIDIAN,'output':output,'seed':seed,'requestedSeed':requested_seed}},files=files,run_id=run_id)
+            if cached is not None:previews.discard(preview_id)
+            return repo.get_run(run_id,**scope)
         repo.update_run(run_id, status="running", progress=0, detail=f"Preparing Frozen Time · Seed {seed}", **scope)
         active.add(run_id)
         context = ModelInvocationContext.from_principal(principal, session_id=f"imagine:{run_id}", app_instance_id=app_instance_id, consumer_app_id="ai2apps.imagine-studio")
@@ -265,6 +279,13 @@ def create_frozen_router(runtime_provider, principal_dependency, studio, scoped_
             placement='ai2apps.imagine-studio',title='Convert Frozen Time / 静止时间转存',
             input_data={'sourceRunId':source_id,'output':output},**scope)
         run_id=result['id']
+        if getattr(runtime,'studio_jobs',None):
+            from ai2apps.studio.extended_jobs import submit
+            files={name:(source_dir/name).read_bytes() for name in set(CACHE_FILES+tuple(FILES)) if (source_dir/name).is_file()}
+            if soundtrack_data is not None:files['soundtrack.audio']=soundtrack_data
+            submit(runtime,principal,app_instance_id,'ai2apps.imagine-studio',MINI_APP_ID,'frozen-time',
+                {'operation':'convert','output':output,'original_output':original_output,'metadata':{'sourceRunId':source_id,'output':output}},files=files,run_id=run_id)
+            return repo.get_run(run_id,**scope)
         repo.update_run(run_id,status='running',progress=5,detail='Converting locally / 本地转存',**scope)
         active.add(run_id)
         async def work():

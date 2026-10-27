@@ -108,38 +108,46 @@ def _pcm_to_wav(
 
 
 def decode_audio_to_wav(
-    content: bytes,
+    content: bytes | Path,
     *,
     input_format: str | None = None,
     sample_rate: int = 16_000,
     max_duration_seconds: float = 7_200,
+    channels: int = 1,
 ) -> bytes:
-    """Decode one supported upload to mono signed-16-bit PCM WAV."""
+    """Decode to bounded PCM WAV; mono by default, stereo when requested."""
+
+    if type(channels) is not int or channels not in (1, 2):
+        raise AudioCodecError("output channels must be 1 or 2")
 
     normalized = (input_format or "").lower().lstrip(".")
     if normalized and normalized not in INPUT_FORMATS:
         raise AudioCodecError(f"unsupported input audio format: {normalized}")
     if normalized == "pcm":
-        return _pcm_to_wav(
+        if isinstance(content,Path):raise AudioCodecError("Raw PCM references require an explicit container")
+        wav = _pcm_to_wav(
             content,
             sample_rate=sample_rate,
             max_duration_seconds=max_duration_seconds,
         )
+        return wav if channels == 1 else decode_audio_to_wav(
+            wav, input_format="wav", sample_rate=sample_rate,
+            max_duration_seconds=max_duration_seconds, channels=channels)
     try:
         import av
 
-        source = av.open(io.BytesIO(content), mode="r")
+        source = av.open(str(content) if isinstance(content,Path) else io.BytesIO(content), mode="r")
         stream = next((item for item in source.streams if item.type == "audio"), None)
         if stream is None:
             raise AudioCodecError("uploaded file contains no audio stream")
         resampler = av.AudioResampler(
             format="s16",
-            layout="mono",
+            layout="mono" if channels == 1 else "stereo",
             rate=sample_rate,
         )
         output = io.BytesIO()
         with wave.open(output, "wb") as target:
-            target.setnchannels(1)
+            target.setnchannels(channels)
             target.setsampwidth(2)
             target.setframerate(sample_rate)
             decoded_samples = 0
@@ -159,10 +167,10 @@ def decode_audio_to_wav(
                 # Retain the media timeline when an isolated damaged packet is lost.
                 while gap:
                     count = min(gap, sample_rate)
-                    target.writeframesraw(b"\x00" * (count * 2))
+                    target.writeframesraw(b"\x00" * (count * 2 * channels))
                     decoded_samples += count
                     gap -= count
-                target.writeframesraw(bytes(converted.planes[0])[: converted.samples * 2])
+                target.writeframesraw(bytes(converted.planes[0])[: converted.samples * 2 * channels])
                 decoded_samples += converted.samples
 
             consecutive_errors = 0

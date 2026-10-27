@@ -659,7 +659,6 @@ def test_exploration_normalizes_common_model_shorthand(tmp_path):
 def test_agent_presentation_routes_enabled_cloud_standard_model(tmp_path):
     runtime, client = _client(tmp_path)
 
-    @client.app.post("/v1/chat/completions")
     async def fake_chat_completion(payload: dict):
         assert payload["model"] == "cloud/deepseek/deepseek-v4-flash"
         return {
@@ -688,7 +687,10 @@ def test_agent_presentation_routes_enabled_cloud_standard_model(tmp_path):
             else None
         )
     )
-    runtime.model_invocations = SimpleNamespace(model=lambda _model_id: None)
+    async def cloud_completion(payload, *, context):
+        assert context.consumer_app_id == 'ai2apps.agents'
+        return await fake_chat_completion(payload)
+    runtime.model_invocations = SimpleNamespace(model=lambda _model_id: None, invoke_agent_cloud_json=cloud_completion)
 
     response = client.post(
         "/v1/platform/agent-draft-runs/"
@@ -1019,7 +1021,8 @@ def test_p2_exports_contract_package_and_provisions_installed_site_source(tmp_pa
     )
     runtime.extension_repository.activate_package(upgrade_record)
     runtime.registry_packages = SimpleNamespace(
-        install=AsyncMock(return_value=upgrade_record)
+        install=AsyncMock(return_value=upgrade_record),
+        _load_state=lambda: {"installed": {}},
     )
     rejected_upgrade = client.post(
         "/v1/platform/site-agent-registry/example/packaged-reader/install",

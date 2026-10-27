@@ -41,6 +41,7 @@ def test_unexported_routes_stay_denied(method,path):
     ('GET','/v1/platform/imagine-studio/frozen-time/previews/key/video'),
     ('POST','/v1/platform/imagine-studio/frozen-time/mounts/mnt_test/runs'),
     ('POST','/v1/platform/imagine-studio/runs/run/frozen-time'),
+    ('POST','/v1/platform/imagine-studio/runs/recover-session-results'),
     ('GET','/v1/platform/imagine-studio/runs/run/frozen-content/output.mp4'),
     ('POST','/v1/platform/imagine-studio/frozen-time/mounts/mnt_test/runs/run/convert'),
 ])
@@ -134,6 +135,8 @@ def test_real_mobile_templates_and_static_dependencies(env,key):
     assert response.status_code==200
     assert ('data-mobile-open-app' if key=='ai2apps.ai-browser' else 'studio_mobile.js') in response.text
     assert '/admin/static/' not in response.text
+    assert '/mobile/static/js/app_chat.js' not in response.text
+    assert '/mobile/static/js/studio_app_chat.js' not in response.text
     for asset in re.findall(r'(?:src|href)="/mobile/static/([^"?]+)',response.text):
         assert asset in routes.MOBILE_STATIC_FILES, asset
     assert 'frame-ancestors' in response.headers['content-security-policy']
@@ -276,3 +279,27 @@ def test_ai_browser_mobile_gateway_entry_assets_and_authoring_boundary(env,monke
     app=FastAPI()
     app.include_router(create_ai_browser_mobile_router(lambda: None,lambda: actor),prefix='/v1/platform')
     assert 'get' in app.openapi()['paths']['/v1/platform/studios/{studio_id}/mini-app-mounts/{mount_id}/capabilities']
+
+
+@pytest.mark.parametrize('method,path', [
+    ('POST','/v1/platform/studio-jobs'), ('GET','/v1/platform/studio-jobs'),
+    ('GET','/v1/platform/studio-jobs/by-run/run'), ('GET','/v1/platform/studio-jobs/job'),
+    ('POST','/v1/platform/studio-jobs/job/retry'), ('POST','/v1/platform/studio-jobs/job/cancel'),
+])
+def test_background_job_exact_mobile_exports_still_require_owner(method,path):
+    assert studio.allowed(method,path)
+    with TestClient(studio.create_app(lambda:None)) as client:
+        assert client.request(method,path).status_code == 401
+    assert not studio.allowed('DELETE','/v1/platform/studio-jobs/job')
+    assert not studio.allowed('POST','/v1/platform/studio-jobs/job/publish')
+
+
+def test_notification_routes_are_explicit_owner_exports():
+    for path in ['/v1/platform/notifications/resolve-target',
+                 '/v1/platform/studios/ai2apps.ai-browser/mini-app-mounts/mount/notifications']:
+        assert studio.allowed('POST',path)
+        assert owner.public_allowed('POST',path)
+        with TestClient(studio.create_app(lambda:None)) as client:
+            assert client.post(path,json={'target':{'app_id':'ai2apps.intelligence'}}).status_code==401
+    assert not studio.allowed('POST','/v1/platform/notifications/send')
+    assert not studio.allowed('POST','/v1/platform/studios/unknown.app/mini-app-mounts/mount/notifications')

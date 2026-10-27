@@ -3,7 +3,9 @@
 {% block title %}{{ t('account.page_title') }}{% endblock %}
 
 {% block head %}
-<link rel="stylesheet" href="{{ static('css/account.css') }}?v=mobile-access-20261009-1">
+<link rel="stylesheet" href="{{ static('css/account_avatar.css') }}">
+<link rel="stylesheet" href="{{ static('css/gallery_picker.css') }}">
+<link rel="stylesheet" href="{{ static('css/account.css') }}?v=avatar-20261015-1">
 {% endblock %}
 
 {% block content %}
@@ -30,6 +32,7 @@
             <article class="offline-feature"><span class="offline-feature-icon" aria-hidden="true"><i data-lucide="cpu"></i></span><h2>{{ t('account.offline.local_title') }}</h2><p>{{ t('account.offline.local_description') }}</p></article>
             <article class="offline-feature"><span class="offline-feature-icon" aria-hidden="true"><i data-lucide="hard-drive"></i></span><h2>{{ t('account.offline.data_title') }}</h2><p>{{ t('account.offline.data_description') }}</p></article>
         </section>
+        <template x-if="offlineMode">{% include 'system_apps/self_managed_access.html' %}</template>
         <aside class="offline-account-note">
             <i data-lucide="cloud-off" aria-hidden="true"></i>
             <div><h2>{{ t('account.offline.limits_title') }}</h2><p>{{ t('account.offline.limits_description') }}</p></div>
@@ -136,7 +139,7 @@
             <section x-show="activeSection==='overview'" x-cloak class="account-card">
                 <div class="account-card-head"><div><h2>{{ t('account.profile.title') }}</h2><p>{{ t('account.profile.subtitle') }}</p></div><button class="account-button danger ml-auto" :disabled="busy" @click="logout()">{{ t('account.action.sign_out') }}</button></div>
                 <div class="account-card-body">
-                    <div class="account-identity"><span class="account-avatar" x-text="initials()"></span><div><div class="account-name" x-text="user?.displayName || tr('account.profile.default_user')"></div><div class="account-email" x-text="user?.email"></div></div></div>
+                    <div class="account-identity"><button type="button" class="account-avatar" @click="editAvatar()" :aria-label="document.documentElement.lang.startsWith('zh') ? '设置头像' : 'Edit avatar'"><span x-text="initials()"></span><img x-show="avatarUrl() &amp;&amp; !avatarFailed" :src="avatarUrl() || null" @error="avatarFailed=true" alt=""></button><div><div class="account-name" x-text="user?.displayName || tr('account.profile.default_user')"></div><div class="account-email" x-text="user?.email"></div></div></div>
                     <div class="account-meta"><span class="account-pill" x-text="user?.level?.displayName || tr('account.profile.no_level')"></span><span class="account-pill" x-text="user?.systemRole || tr('account.common.user')"></span><span class="account-pill" x-text="user?.emailVerified ? tr('account.profile.email_verified') : tr('account.profile.email_unverified')"></span><span class="account-pill" :class="installationAccess==='manager'&&user?.id===installation?.coreUserId&&'member-active'" x-text="installationAccessLabel"></span></div>
                 </div>
             </section>
@@ -160,7 +163,7 @@
                 <form class="account-card-body profile-form" @submit.prevent="saveProfile()">
                     <label class="account-field"><span>{{ t('account.public_profile.handle') }}</span><input class="account-input" autocomplete="off" autocapitalize="none" spellcheck="false" minlength="3" maxlength="32" pattern="[a-z0-9][a-z0-9-]{2,31}" x-model.trim="profileDraft.publicHandle" placeholder="alice-lab"></label>
                     <label class="account-field"><span>{{ t('account.field.display_name') }}</span><input class="account-input" autocomplete="name" maxlength="120" required x-model.trim="profileDraft.displayName"></label>
-                    <label class="account-field profile-span-two"><span>{{ t('account.public_profile.avatar_url') }}</span><input class="account-input" type="url" inputmode="url" autocomplete="url" maxlength="2048" x-model.trim="profileDraft.avatarUrl" placeholder="https://example.com/avatar.png"></label>
+                    <div class="account-field profile-span-two"><button type="button" class="account-button" @click="editAvatar()" :disabled="busy" x-text="document.documentElement.lang.startsWith('zh') ? '设置头像 · 本地图片 / Gallery' : 'Edit avatar · Local image / Gallery'"></button></div>
                     <label class="account-field profile-span-two"><span>{{ t('account.public_profile.bio') }}</span><textarea class="account-input profile-textarea" maxlength="1000" x-model="profileDraft.bio"></textarea></label>
                     <label class="account-field"><span>{{ t('account.public_profile.gender') }}</span><input class="account-input" maxlength="80" x-model.trim="profileDraft.gender"></label>
                     <label class="account-field"><span>{{ t('account.public_profile.visibility') }}</span><select class="account-input" x-model="profileDraft.visibility" @change="if(profileDraft.visibility==='private') profileDraft.discoverableByEmail=false"><option value="private">{{ t('account.public_profile.private') }}</option><option value="public">{{ t('account.public_profile.public') }}</option></select></label>
@@ -195,6 +198,7 @@
                     <p class="account-email capacity-note">{{ t('account.capacity.note') }}</p>
                 </div>
             </section>
+            <div class="account-wide"><template x-if="!offlineMode && installationAccess==='manager' && activeSection==='devices'">{% include 'system_apps/self_managed_access.html' %}</template></div>
             <section x-show="installationAccess==='manager' && activeSection==='devices'" x-cloak class="account-card account-wide">
                 <div class="account-card-head"><div><h2>{{ t('account.devices.this_device') }}</h2><p x-show="currentCoreDevice" x-text="(currentCoreDevice?.platform || tr('account.common.unknown')) + ' · ' + (currentCoreDevice?.clientVersion || tr('account.devices.unknown_version'))"></p></div><div x-show="currentCoreDevice" class="account-meta ml-auto"><span class="account-pill" :class="currentCoreDevice?.status==='active'&&'member-active'" x-text="currentCoreDevice?.status"></span><span class="account-pill" :class="currentCoreDevice?.proxyConnected&&'member-active'" x-text="currentCoreDevice?.proxyConnected?tr('account.common.online'):(currentCoreDevice?.online?tr('account.devices.connector_seen'):tr('account.common.offline'))"></span></div></div>
                 <div x-show="currentCoreDevice" x-cloak class="account-card-body this-device-settings">
@@ -313,7 +317,28 @@
                         </div>
                         <div>
                             <div class="remote-device"><strong>{{ t('account.remote.relay_usage') }}</strong><div class="account-meta"><span class="account-pill" x-text="remote.usage.totalBytes?formatBytes(remote.usage.totalBytes):tr('account.remote.not_loaded')"></span><span class="account-pill" x-text="remote.usage.quotaBytes?tr('account.remote.of_quota',{value:formatBytes(remote.usage.quotaBytes)}):tr('account.remote.cloud_quota')"></span></div><small class="account-email" x-text="remote.connector.lastError||tr('account.remote.keychain_note')"></small></div>
+
                             <div x-show="pairingUrl" class="remote-pair"><strong>{{ t('account.remote.scan_phone') }}</strong><img x-show="pairingQr" class="remote-qr" :src="pairingQr" alt="{{ t('account.remote.pairing_qr_alt') }}"><span class="remote-expiry" x-text="pairingExpiresAt?tr('account.common.expires_at',{time:formatTime(pairingExpiresAt)}):tr('account.remote.expires_five_minutes')"></span><code x-text="pairingUrl"></code><div class="account-actions"><button class="account-button" @click="copyPairing()">{{ t('account.action.copy_link') }}</button><button class="account-button" @click="sharePairing()">{{ t('account.action.share') }}</button></div></div>
+                        </div>
+                    </div>
+                    <div class="account-mobile-apps" aria-label="手机通知">
+                        <h3>手机通知</h3>
+                        <p class="account-email">登录同一 AI2Apps 账户的手机会自动接收此 Desktop 的通知，无需输入编号或单独授权。</p>
+                        <p x-show="notifications.error" class="account-note" x-text="notifications.error" role="status"></p>
+                        <div x-show="notifications.installation_id">
+                            <p x-show="notifications.producer_policy?.enabled===false" class="account-note">此设备的通知发送已关闭或账户状态需要恢复；自动连接不会覆盖关闭设置。</p>
+                            <label x-show="!notifications.producer_policy?.automatic_owner_publish" class="account-field"><span>Desktop 授权编号（旧版服务）</span><input class="account-input" readonly :value="notifications.installation_id" aria-label="Desktop 授权编号"></label>
+                            <div class="account-actions">
+                                <button x-show="!notifications.producer_policy?.automatic_owner_publish" type="button" class="account-button" @click="copyNotificationInstallation()">复制编号</button>
+                                <button type="button" class="account-button primary" :disabled="notificationBusy||!notifications.ready" @click="sendTestNotification()">发送测试通知</button>
+                                <button x-show="!notifications.producer_policy?.automatic_owner_publish" type="button" class="account-button" :disabled="notificationBusy||!notifications.ready" @click="resumeNotifications()">已授权，继续发送</button>
+                                <button type="button" class="account-button" :disabled="notificationBusy" @click="loadNotifications()">刷新状态</button>
+                            </div>
+                            <p class="account-email">测试发送通用系统提示，不包含聊天正文。Cloud 已接收仅表示入队，是否送达请在手机锁屏和通知箱确认。</p>
+                            <template x-for="item in notifications.items" :key="item.event_id">
+                                <div class="account-mobile-app-row"><div><strong x-text="notificationLabel(item.state)"></strong><small x-text="new Date(item.created_at*1000).toLocaleString() + ' · 尝试 ' + item.attempts + ' 次'"></small><small x-show="item.notification_id" x-text="item.notification_id"></small><small x-show="item.error_code" x-text="item.error_code"></small></div></div>
+                            </template>
+                            <p x-show="!notifications.items.length" class="account-email">还没有发送记录。</p>
                         </div>
                     </div>
                     <div class="account-mobile-apps">
@@ -363,5 +388,8 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ static('js/account.js') }}?v=mobile-access-20261009-1"></script>
+<script src="{{ static('js/self_managed_access.js') }}"></script>
+<script src="{{ static('js/gallery_picker.js') }}"></script>
+<script src="{{ static('js/account_avatar.js') }}"></script>
+<script src="{{ static('js/account.js') }}?v=avatar-20261015-1"></script>
 {% endblock %}

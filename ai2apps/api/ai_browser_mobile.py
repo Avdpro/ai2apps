@@ -18,8 +18,11 @@ def create_ai_browser_mobile_router(runtime_provider, principal_provider):
         allowed = {(row['method'], row['path']) for row in rows if row['module'] == name}
         if name == 'studio_mini_apps':
             allowed = {pair for pair in allowed if '/web-agent/' in pair[1] or '/draft' in pair[1]
-                       or pair[1].endswith(('/mini-apps', '/mini-app-mounts'))
-                       or pair == ('GET', '/v1/platform/studios/{studio_id}/mini-app-mounts/{mount_id}/capabilities')}
+                       or pair[1].endswith(('/mini-apps', '/mini-app-mounts', '/notifications'))
+                       or pair == ('GET', '/v1/platform/studios/{studio_id}/mini-app-mounts/{mount_id}/capabilities')
+                       or pair == ('GET', '/v1/platform/studios/ai2apps.ai-browser/shopping/tasks/{task_id}/products/{product_id}/image')}
+        if name == 'studio_mini_apps':
+            allowed.add(('GET','/v1/platform/studios/ai2apps.ai-browser/shopping/tasks/{task_id}/products/{product_id}/image'))
         restrict_router(child, allowed)
         router.include_router(child)
     return router

@@ -219,7 +219,9 @@ class RegistryPackageManager:
             "GET", "/v1/registry/content",
             params={key: value for key, value in params.items() if value is not None and value != ""},
         )
-        return self._decorate_catalog_compatibility(value)
+        # New capability cards have a closed schema; do not decorate arbitrary
+        # nested metadata or infer model identity from this response.
+        return value if params.get("discovery") else self._decorate_catalog_compatibility(value)
 
     async def recommendations(self, **params) -> Any:
         value = await self._json(
@@ -262,6 +264,8 @@ class RegistryPackageManager:
             json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
         )
         os.replace(temporary, self.state_path)
+        changed=getattr(self.extension_manager,"package_capabilities_changed",None)
+        if changed:changed()
 
     @staticmethod
     def _read_json_file(path: Path) -> dict[str, Any] | None:
@@ -2134,8 +2138,14 @@ class RegistryPackageManager:
         version: str | None = None,
         *,
         approve_review: bool = False,
+        expected_target: dict[str, Any] | None = None,
         progress: Callable[[dict[str, Any]], None] | None = None,
     ):
+        if expected_target is not None:
+            from .capability_catalog import validate_target
+            try:expected_target=validate_target(expected_target,f"{namespace}/{name}",version)
+            except ValueError as error:raise RegistryError("installation_target_changed",str(error)) from error
+            if version is None:raise RegistryError("installation_target_changed","A reviewed target requires an exact version")
         self._report_install_progress(
             progress,
             currentStep=1,
@@ -2155,6 +2165,15 @@ class RegistryPackageManager:
                 progress_step=1,
                 dependency=False,
             )
+        if expected_target is not None:
+            inspected=downloaded[0]
+            if inspected.sha256!=expected_target['artifactSha256'] or inspected.manifest_sha256!=expected_target['manifestSha256']:
+                raise RegistryError("installation_target_changed","Package digests changed; review the release again")
+            # Re-check published status against freshly verified repository
+            # metadata before any dependency installation or parent activation.
+            current=self._release(await self.trusted_snapshot(),f"{namespace}/{name}",version)
+            if current.get('artifact',{}).get('sha256')!=expected_target['artifactSha256']:
+                raise RegistryError("installation_target_changed","Release changed; review again")
         await self._preflight_restart_dependencies(
             downloaded[0], stack=(), progress=progress
         )
@@ -2313,6 +2332,8 @@ class RegistryPackageManager:
             "localizations": inspected.manifest["package"].get("localizations", {}),
             "version": inspected.manifest["package"]["version"],
             "sha256": inspected.sha256,
+            "manifestSha256": hashlib.sha256(jcs_bytes(inspected.manifest)).hexdigest(),
+            **({"capabilityCatalog":inspected.manifest["capabilityCatalog"]} if "capabilityCatalog" in inspected.manifest else {}),
             "runtimeKey": runtime_key,
             "activationStatus": (
                 "pending_restart"
@@ -2363,6 +2384,13 @@ class RegistryPackageManager:
         mini_apps = inspected.manifest.get("miniApps")
         if isinstance(mini_apps, list) and mini_apps:
             installed[inspected.manifest["package"]["id"]]["miniApps"] = mini_apps
+        if kind == 'app' and any(f.path=='app.yaml' for f in getattr(inspected,'files',())):
+            import zipfile, yaml
+            from .app_exports import declarations
+            with zipfile.ZipFile(inspected.archive_path) as archive:
+                definition=yaml.safe_load(archive.read('app.yaml').decode('utf-8'))
+            installed[package_id]['aaatRuntime']=declarations(definition,inspected.manifest.get('capabilityCatalog'),inspected.manifest['dependencies'])
+            installed[package_id]['aaatDependencies']=inspected.manifest['dependencies']
         self._save_state(state)
         self._report_install_progress(
             progress,

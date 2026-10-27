@@ -20,7 +20,7 @@ a.editSubmissionPrompt('manual');a.tryOnBackground='white';a.syncSubmissionPromp
 a.setLocale('zh');assert.equal(a.currentMiniApp.name,'试穿试用');assert.equal(a.referenceSlotLabel(1),'物品参考图');
 (async()=>{
  ctx.FileReader=class{readAsDataURL(file){this.result='data:image/png;base64,'+file.name;this.onload();}};
- let payload;a.saveDraft=async()=>{};a.createRun=async()=>({id:'try',status:'queued'});a.selectRun=()=>{};a.dismissNotice=()=>{};
+ let payload;a.refreshRuns=async()=>{};a.saveDraft=async()=>{};a.createRun=async()=>({id:'try',status:'queued'});a.selectRun=()=>{};a.dismissNotice=()=>{};
  a.executeCloudRun=async(_,p)=>{payload=p;};a.waitForRun=async()=>({id:'try',status:'succeeded'});a.fail=e=>{throw e;};
  await a.generate();assert.deepEqual(Array.from(payload.imageDataUrls),['data:image/png;base64,person','data:image/png;base64,item']);
  assert.equal(payload.prompt,a.submissionPrompt);

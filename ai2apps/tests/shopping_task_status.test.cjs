@@ -1,0 +1,23 @@
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const vm=require('node:vm');
+const source=fs.readFileSync(__dirname+'/../../packages/ai2apps-shopping-pro/web/shopping.js','utf8');
+const receive=source.slice(source.indexOf('function progressText(progress)'),source.indexOf('api.onTask(receive)'));
+for(const surface of ['Desktop','Mobile'])test(surface+' distinguishes browser work, assistance, and resumed work',()=>{
+ const status={textContent:''};
+ const context={waiters:new Map(),terminal:new Set(['completed','failed']),$:()=>status,w:{busy:'Running',help:'Needs help'},zh:false,lt:s=>s};
+ vm.createContext(context);vm.runInContext(receive,context);
+ context.receive({id:'task',status:'waiting_input',requires_user:false,message:'Working'});
+ assert.equal(status.textContent,'Running');
+ context.receive({id:'task',status:'waiting_input',requires_user:true,message:'Sign in'});
+ assert.equal(status.textContent,'Needs help Sign in');
+ context.receive({id:'task',status:'running'});
+ assert.equal(status.textContent,'Running');
+ context.receive({id:'task',status:'waiting_input',status_label:'等待浏览器响应'});
+ assert.equal(status.textContent,'Running');
+ context.receive({id:'task',status:'waiting_input',requires_user:false,progress:{phase:'order_details',page:2,current:3,total:10}});
+ assert.equal(status.textContent,'Reading order details · Current page 2 · 3/10');
+ context.receive({id:'task',status:'waiting_input',requires_user:true,message:'Sign in',progress:{phase:'order_details',page:2,current:3,total:10}});
+ assert.equal(status.textContent,'Needs help Sign in');
+});

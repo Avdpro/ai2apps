@@ -29,6 +29,35 @@ class ReviseDraft(BaseModel):
     _guidance = field_validator('guidance')(CreateDraft.nonempty.__func__)
 
 
+class EditDraft(BaseModel):
+    request_id: str = Field(pattern=r'^[a-zA-Z0-9_-]{8,80}$')
+    revision: int = Field(ge=1)
+    title: str = Field(min_length=1, max_length=160)
+    content: str = Field(min_length=1, max_length=24000)
+
+    @field_validator('title', 'content')
+    @classmethod
+    def nonempty(cls, value):
+        if not value.strip():raise ValueError('标题和正文不能为空')
+        return value
+
+
+def apply_manual_text(draft, title, content):
+    old_parts=re.split(r'\n\s*\n',draft['current']['content'])
+    parts=re.split(r'\n\s*\n',content)
+    images=[]
+    for image in draft.get('images',[]):
+        image=dict(image);before=image.get('before','')
+        if before and before not in parts:
+            index=old_parts.index(before) if before in old_parts else len(parts)
+            image['before']=parts[index] if index<len(parts) else ''
+        images.append(image)
+    allowed={e['evidence_id'] for e in draft['evidence']}
+    refs=list(dict.fromkeys(int(n) for n in re.findall(r'\[(\d+)\]',content) if int(n) in allowed))
+    return {**draft, 'title':title, 'images':images,
+            'current':{**draft['current'],'title':title,'content':content,'evidence_ids':refs}}
+
+
 class Manuscript(BaseModel):
     title: str = Field(min_length=1, max_length=160)
     content: str = Field(min_length=1, max_length=24000)

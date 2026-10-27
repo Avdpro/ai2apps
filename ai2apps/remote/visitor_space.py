@@ -38,37 +38,82 @@ def validate_document(value):
     cards = value.get('cards', [])
     if not isinstance(cards, list) or len(cards) > 30:
         raise ValueError('最多添加 30 张卡片')
-    result['cards'] = []
-    for card in cards:
-        if not isinstance(card, dict) or set(card) - {'kind', 'title', 'text', 'url', 'appKey', 'hidden'}:
-            raise ValueError('卡片格式不正确')
-        kind = card.get('kind')
-        if kind not in {'text', 'link', 'app'}:
-            raise ValueError('未知卡片类型')
-        hidden = card.get('hidden', False)
-        if type(hidden) is not bool:
-            raise ValueError('卡片显示设置不正确')
-        cleaned = {'kind': kind, 'hidden': hidden}
-        for key, limit in [('title', 100), ('text', 2000)]:
-            v = card.get(key, '')
-            if not isinstance(v, str) or len(v) > limit:
-                raise ValueError('卡片文字过长')
-            cleaned[key] = v
-        if kind == 'link':
-            url = card.get('url', '')
-            if not isinstance(url, str) or len(url) > 2048:
-                raise ValueError('链接格式不正确')
-            parsed = urlsplit(url)
-            if parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.password:
-                raise ValueError('链接必须是无凭据的 HTTPS 地址')
-            cleaned['url'] = url
-        if kind == 'app':
-            key = card.get('appKey')
-            if not isinstance(key, str) or not key or len(key) > 200:
-                raise ValueError('请选择开放应用')
-            cleaned['appKey'] = key
-        result['cards'].append(cleaned)
+    result['cards'] = [validate_card(card) for card in cards]
     return result
+
+
+CARD_FIELDS = {
+    'text': set(), 'link': {'url', 'coverId'}, 'app': {'appKey'},
+    'image': {'assetId', 'fit'}, 'video': {'assetId', 'coverId'},
+    'html': {'assetId', 'height', 'coverId', 'autoload'}, 'article': {'body', 'coverId'},
+    'carousel': {'cards', 'autoplay', 'interval'},
+}
+
+def validate_card(card, nested=False):
+    import re
+    if not isinstance(card, dict) or card.get('kind') not in CARD_FIELDS:
+        raise ValueError('未知卡片类型')
+    kind = card['kind']
+    if set(card) - ({'kind', 'title', 'text', 'hidden'} | CARD_FIELDS[kind]):
+        raise ValueError('卡片格式不正确')
+    out = {'kind': kind, 'hidden': card.get('hidden', False)}
+    if type(out['hidden']) is not bool:
+        raise ValueError('卡片显示设置不正确')
+    for key, limit in [('title',100), ('text',2000)]:
+        value = card.get(key, '')
+        if not isinstance(value,str) or len(value)>limit:
+            raise ValueError('卡片文字过长')
+        out[key] = value
+    for key in ('assetId', 'coverId'):
+        if key in CARD_FIELDS[kind]:
+            value = card.get(key, '')
+            if not isinstance(value,str) or (value and not re.fullmatch(r'[a-f0-9]{64}',value)):
+                raise ValueError('素材标识不正确')
+            out[key] = value
+    if kind == 'link':
+        url = card.get('url','')
+        if not isinstance(url,str) or len(url)>2048:
+            raise ValueError('链接格式不正确')
+        parsed=urlsplit(url)
+        if parsed.scheme!='https' or not parsed.hostname or parsed.username or parsed.password:
+            raise ValueError('链接必须是无凭据的 HTTPS 地址')
+        out['url']=url
+    if kind == 'app':
+        key=card.get('appKey')
+        if not isinstance(key,str) or not key or len(key)>200:
+            raise ValueError('请选择开放应用')
+        out['appKey']=key
+    if kind == 'image':
+        out['fit']=card.get('fit','contain')
+        if out['fit'] not in {'contain','cover'}:
+            raise ValueError('图片显示方式不正确')
+    if kind == 'html':
+        out['autoload']=card.get('autoload',False)
+        if type(out['autoload']) is not bool: raise ValueError('自动加载设置不正确')
+        out['height']=card.get('height',360)
+        if type(out['height']) is not int or not 160<=out['height']<=800:
+            raise ValueError('HTML 高度须为 160–800 像素')
+    if kind == 'article':
+        body=card.get('body','')
+        if not isinstance(body,str) or len(body.encode('utf-8'))>1024*1024:
+            raise ValueError('稿件不能超过 1 MB')
+        out['body']=body
+    if kind == 'carousel':
+        children=card.get('cards',[])
+        if nested or not isinstance(children,list) or len(children)>8:
+            raise ValueError('轮播最多 8 张卡片，不能嵌套轮播')
+        out['cards']=[validate_card(c,True) for c in children]
+        out['autoplay']=card.get('autoplay',False)
+        out['interval']=card.get('interval',5)
+        if type(out['autoplay']) is not bool or type(out['interval']) is not int or not 3<=out['interval']<=30:
+            raise ValueError('轮播间隔须为 3–30 秒')
+    return out
+
+def walk_cards(cards):
+    for card in cards:
+        yield card
+        if card['kind']=='carousel':
+            yield from walk_cards(card.get('cards',[]))
 
 
 class VisitorSpaceStore:
@@ -138,11 +183,23 @@ def eligible_apps(manager, principal):
     return result
 
 
-def build_snapshot(document, apps):
+def build_snapshot(document, apps, assets=None):
     result = validate_document(document)
     result['cards'] = [card for card in result['cards'] if not card['hidden']]
     by_key = {app['appKey']: app for app in apps}
     for card in result['cards']:
+        if card['kind']=='carousel':
+            card['cards']=[c for c in card['cards'] if not c['hidden']]
+            if not card['cards']: raise ValueError('轮播至少需要一张可见卡片')
+    for card in walk_cards(result['cards']):
+        if card['kind'] in {'image','video','html'} and not card.get('assetId'):
+            raise ValueError('请先选择卡片素材')
+        for key in ('assetId','coverId'):
+            if card.get(key):
+                if assets is None: raise ValueError('素材服务不可用')
+                metadata, _ = assets.get(card[key])
+                expected = 'image' if key=='coverId' else card['kind']
+                if metadata['kind'] != expected: raise ValueError('素材类型与卡片不一致')
         if card['kind'] == 'app':
             app = by_key.get(card['appKey'])
             if app is None:

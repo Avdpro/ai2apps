@@ -39,7 +39,7 @@ from .models import (
 )
 from .repository import AgentRepository
 from .session_memory import SESSION_KEY
-from .tool_recovery import error_result, model_visible, recoverable
+from .tool_recovery import error_result, model_visible, recoverable, has_mutating_effects, recovery_count
 
 logger = logging.getLogger(__name__)
 
@@ -364,19 +364,6 @@ class AgentRuntime:
             await asyncio.wait_for(event.wait(), timeout=timeout)
         return await asyncio.to_thread(self.repository.get_run, run_id)
 
-    @staticmethod
-    def _step_budget(run, definition) -> int:
-        configured = run.input.get("run_budget", {}).get("max_steps")
-        limit = (
-            min(definition.max_steps, configured)
-            if isinstance(configured, int) and configured > 0
-            else definition.max_steps
-        )
-        delegated = run.delegation.get("budget", {}).get("max_steps")
-        if isinstance(delegated, int) and delegated > 0:
-            return min(limit, delegated)
-        return limit
-
     async def wait_for_idle(self, timeout: float = 5.0) -> None:
         async def idle() -> None:
             while True:
@@ -483,6 +470,13 @@ class AgentRuntime:
             )
             async with asyncio.timeout(remaining):
                 action = await _await_action(executor(context))
+            # Ask at the next spend boundary; terminal results and existing
+            # waits remain consumable without another model/tool invocation.
+            if isinstance(action, (ToolErrorAction, ToolCallAction, ModelCallAction)):
+                from .token_budget import execution_budget_decision
+                renewal = execution_budget_decision(context)
+                if renewal is not None:
+                    action = renewal
             if isinstance(action, CompleteAction):
                 await asyncio.to_thread(
                     self.repository.transition,
@@ -530,11 +524,6 @@ class AgentRuntime:
                 await asyncio.to_thread(self.cooperation.register_wait, context, action)
                 self.wake()
             elif isinstance(action, ToolErrorAction):
-                if run.current_step >= self._step_budget(run, definition):
-                    await self._fail(
-                        run_id, "max_steps_exceeded", "Agent step budget exhausted"
-                    )
-                    return
                 step, created = await asyncio.to_thread(
                     self.repository.create_step,
                     run_id,
@@ -559,7 +548,7 @@ class AgentRuntime:
                     effects=(),
                     enabled=True,
                     preflight=True,
-                    prior_errors=sum(model_visible(prior.error) for prior in steps),
+                    prior_errors=recovery_count(steps),
                 )
                 failure = (
                     error_result(action.code, action.message, preflight=True)
@@ -579,13 +568,6 @@ class AgentRuntime:
                     await self._fail(run_id, action.code, action.message)
                 return
             elif isinstance(action, ToolCallAction):
-                if run.current_step >= self._step_budget(run, definition):
-                    await self._fail(
-                        run_id,
-                        "max_steps_exceeded",
-                        "Agent step budget exhausted",
-                    )
-                    return
                 await asyncio.to_thread(
                     self.repository.update_status_line,
                     run_id,
@@ -603,6 +585,21 @@ class AgentRuntime:
                 tool = await asyncio.to_thread(
                     self.tools.repository.get_tool, action.tool_name
                 )
+                if action.resolved_interaction_id:
+                    item=next((i for i in self.repository.list_interactions(run_id) if i.id==action.resolved_interaction_id),None)
+                    result=(item.response or {}).get('result',{}) if item else {}
+                    if not item or item.status.value!='submitted' or item.request.get('control')!='parameter_form' or not result.get('executed_in_app') or result.get('capability')!=action.tool_name:
+                        await self._fail(run_id,'invalid_app_result','No matching trusted App completion is available')
+                        return
+                    step,created=await asyncio.to_thread(self.repository.create_step,run_id,action_key=action.call_id,kind='tool',tool_name=action.tool_name,input=action.arguments)
+                    if created:
+                        await asyncio.to_thread(self.repository.settle_step,step.id,status=RunStepStatus.COMPLETED,output=result)
+                    await self._requeue(run_id,'App task completed; continuing with its result')
+                    return
+                if has_mutating_effects(tool.effects) and any((prior.error or {}).get("outcome_uncertain") for prior in steps):
+                    await self._fail(run_id, "uncertain_execution",
+                        "Previous operation outcome is unknown; effectful execution is blocked pending external confirmation.")
+                    return
                 # GrantLease/policy is authoritative once M4 is configured.
                 # The Run JSON field remains a response compatibility cache only.
                 effective_capabilities = (
@@ -612,6 +609,10 @@ class AgentRuntime:
                 required_capabilities = self.tools.required_capabilities(
                     tool, action.arguments
                 )
+                scoped_grant = False
+                if getattr(self.tools,'execution_scope',None):
+                    scope_context = self.tools.context_for_session(caller_id='agent-scope', session_id=run.session_id, trace_id=run.id)
+                    scoped_grant = self.tools.execution_scope.authorize(scope_context, action.tool_name, action.arguments)
                 missing = tuple(sorted(required_capabilities - effective_capabilities))
                 decision = None
                 if missing and self.capability_policy is not None:
@@ -650,6 +651,9 @@ class AgentRuntime:
                         f"Capability policy denied {action.tool_name}",
                     )
                     return
+                if scoped_grant:
+                    effective_capabilities.update(required_capabilities)
+                    missing = ()
                 if missing:
                     preview = action_preview(
                         action.tool_name, tool.effects, action.arguments
@@ -667,6 +671,7 @@ class AgentRuntime:
                                     "type": "string",
                                     "enum": ["approve", "deny"],
                                 },
+                                "resource_scope": {"type": "string", "enum": ["current", "tool"]},
                                 "scope": {
                                     "type": "string",
                                     "enum": [
@@ -679,6 +684,8 @@ class AgentRuntime:
                         },
                         ui_hints={
                             "control": "approval",
+                            "prompt_labels": {"zh": f"允许调用工具 {action.tool_name}？", "en": f"Allow tool {action.tool_name}?"},
+                            "auto_approve_seconds": preview["approval_countdown_seconds"],
                             "default_scope": "once",
                             "scopes": ["once", "run", "session", "agent", "app"],
                             "operation_class": preview["operation_class"],
@@ -711,7 +718,7 @@ class AgentRuntime:
                     tool_name=action.tool_name,
                 )
                 active_tool_step = step
-                active_tool_effects = tool.effects
+                active_tool_effects = tool.effects if has_mutating_effects(tool.effects) else ()
                 if not created:
                     if step.status is RunStepStatus.COMPLETED:
                         await self._requeue(run_id, f"Completed {action.tool_name}")
@@ -739,7 +746,14 @@ class AgentRuntime:
                         presentation="indeterminate",
                     )
 
+                    provider_identity = {}
+
                     async def report_tool_progress(update: dict) -> None:
+                        content = dict(update.get("content") or {})
+                        if "provider" in content:
+                            provider_identity.clear()
+                            provider_identity.update({key: content.get(key) for key in ("provider", "app_id", "mini_app_id")})
+                        content = {**provider_identity, **content}
                         await asyncio.to_thread(
                             self.repository.update_status_line,
                             run_id,
@@ -754,7 +768,7 @@ class AgentRuntime:
                                 else "pulse"
                             ),
                             progress=update.get("progress"),
-                            content=update.get("content") or {},
+                            content=content,
                         )
 
                     result = await self.tools.execute(
@@ -770,20 +784,26 @@ class AgentRuntime:
                         timeout_ms=action.timeout_ms,
                     )
                 except ToolGatewayError as error:
+                    preflight = error.details.get("phase") == "prepare" and error.code in {"provider_incompatible", "provider_unavailable", "invalid_tool_arguments"}
+                    outcome_uncertain = has_mutating_effects(tool.effects) and not preflight
                     may_continue = recoverable(
                         error.code,
-                        effects=tool.effects,
-                        prior_errors=sum(model_visible(prior.error) for prior in steps),
+                        effects=tool.effects if has_mutating_effects(tool.effects) else (),
+                        preflight=preflight,
+                        diagnose_effectful=action.recover_tool_errors,
+                        prior_errors=recovery_count(steps),
                         enabled=(
                             action.recover_tool_errors
                             or (action.recover_input_errors and error.code == "invalid_tool_input")
                         ),
                     )
                     failure = (
-                        error_result(error.code, str(error), retryable=error.retryable)
+                        error_result(error.code, str(error), retryable=error.retryable, preflight=preflight, outcome_uncertain=outcome_uncertain)
                         if may_continue
                         else {"code": error.code, "message": str(error)}
                     )
+                    if error.details:
+                        failure["details"] = error.details
                     await asyncio.to_thread(
                         self.repository.settle_step,
                         step.id,
@@ -809,13 +829,6 @@ class AgentRuntime:
                 active_tool_step = None
                 await self._requeue(run_id, f"Completed {action.tool_name}")
             elif isinstance(action, ModelCallAction):
-                if run.current_step >= self._step_budget(run, definition):
-                    await self._fail(
-                        run_id,
-                        "max_steps_exceeded",
-                        "Agent step budget exhausted",
-                    )
-                    return
                 step, created = await asyncio.to_thread(
                     self.repository.create_step,
                     run_id,
@@ -1065,12 +1078,23 @@ class AgentRuntime:
             AgentRunStatus.CANCELLED,
         }:
             return
+        causes=[]
+        if code=="max_steps_exceeded":
+            steps=await asyncio.to_thread(self.repository.list_steps,run_id)
+            for step in reversed(steps):
+                if step.kind=="tool" and step.error:
+                    causes.append({"tool":step.tool_name,"error":{key:str(step.error[key])[:600] for key in ("code","message") if key in step.error}})
+                    if len(causes)==3:break
+            if causes:
+                cause=causes[0]
+                detail=str(cause["error"].get("message") or cause["error"].get("code") or "Tool failed")[:600]
+                message+="; last Tool failure (not proof of the final outcome): "+str(cause["tool"])+": "+detail
         await asyncio.to_thread(
             self.repository.transition,
             run_id,
             expected={current.status},
             status=AgentRunStatus.FAILED,
-            error={"code": code, "message": message, "retryable": retryable},
+            error={"code": code, "message": message, "retryable": retryable, **({"tool_failures":causes} if causes else {})},
             status_text=message or "Failed",
             presentation="error",
         )

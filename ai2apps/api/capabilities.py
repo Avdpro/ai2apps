@@ -89,6 +89,10 @@ class RevokeRequest(BaseModel):
     reason: str = Field(min_length=1, max_length=500)
 
 
+class ProviderEnabledRequest(BaseModel):
+    enabled: bool
+
+
 def create_capability_router(
     runtime_provider: PlatformRuntimeProvider,
     principal_provider: PrincipalProvider = resolve_request_principal,
@@ -109,6 +113,32 @@ def create_capability_router(
                 retryable=True,
             )
         return runtime.capabilities
+
+    @router.get("/capability-catalog")
+    def inspect_catalog(principal=Depends(principal_provider)):
+        runtime = runtime_provider()
+        if runtime is None:
+            return platform_error_response(status_code=503, code="runtime_not_ready", message="Runtime not ready")
+        from ai2apps.services.capability_catalog import capability_catalog
+        return capability_catalog(runtime, principal)
+
+    @router.put('/capability-providers/{provider_id}/enabled')
+    def provider_enabled(provider_id: str, body: ProviderEnabledRequest, principal=Depends(principal_provider)):
+        registry=getattr(runtime_provider(),'app_capability_router',None)
+        if registry is None or provider_id not in registry.providers:
+            return platform_error_response(status_code=404,code='provider_not_found',message='Provider unavailable')
+        return registry.set_enabled(principal.actor_user_id,principal.installation_id,provider_id,body.enabled)
+
+    @router.get('/capability-providers/{provider_id}/parameters')
+    async def provider_parameters(provider_id: str, model: str | None = None, principal=Depends(principal_provider)):
+        runtime=runtime_provider()
+        registry=getattr(runtime,'app_capability_router',None)
+        provider=registry.providers.get(provider_id) if registry else None
+        if provider is None or provider.describe is None:
+            return platform_error_response(status_code=404,code='provider_not_found',message='Provider parameter descriptor unavailable')
+        try:return await provider.describe(principal,model)
+        except ValueError as error:
+            return platform_error_response(status_code=422,code='invalid_model',message=str(error))
 
     @router.get("/capability-policies", response_model=PolicyListResponse)
     def list_policies():

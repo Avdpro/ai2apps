@@ -50,28 +50,8 @@ def model_options(broker, studio_id, mount_id, principal, capability):
 async def generate(broker, studio_id, mount_id, *, principal, request, capability, payload, progress=None):
     from .capability_broker import StudioCapabilityError
     mounted = authorize(broker, studio_id, mount_id, principal, capability)
-    model = next((m for m in generation_models(broker.runtime, capability) if m.id == payload.get('model')), None)
-    if model is None or not model.checkpoint_ready:
-        raise StudioCapabilityError('model_not_ready', 'Select and prepare an audio generation model', status_code=409)
-    try:
-        body = validate_audio_generation({**payload, 'task': CAPABILITIES[capability]})
-    except ModelWorkerError as error:
-        raise StudioCapabilityError(error.code, str(error), status_code=422) from error
-    contract = model.metadata['audio_generation']
+    model, body = validate_request(broker.runtime, capability, payload)
     song = capability == 'audio.song_generation'
-    if song:
-        g = body.get('generation', {})
-        maximum = min(3000, int(contract['maximum_duration'] * 25), contract.get('max_semantic_tokens', 3000))
-        if (body.get('schema') != 'ai2apps.audio-generation/v2'
-            or body.get('duration_mode') != 'auto'
-            or g.get('planning_mode', 'full') not in contract.get('planning_modes', [])
-            or type(g.get('max_semantic_tokens')) is not int
-            or not 1 <= g['max_semantic_tokens'] <= maximum):
-            raise StudioCapabilityError('invalid_audio_generation', 'Unsupported song workflow or token limit', status_code=422)
-    elif body.get('schema', 'ai2apps.audio-generation/v1') != 'ai2apps.audio-generation/v1':
-        raise StudioCapabilityError('invalid_audio_generation', 'This model requires fixed-duration generation', status_code=422)
-    if (not song and not contract['minimum_duration'] <= body['duration'] <= contract['maximum_duration']) or (body['lyrics'] and not contract['lyrics']):
-        raise StudioCapabilityError('invalid_audio_generation', 'Duration or lyrics are unsupported by the selected model', status_code=422)
     request_id = 'studio-audio-' + uuid.uuid4().hex
     context = ModelInvocationContext.from_principal(principal, session_id=f'studio-mini-app:{mount_id}:{request_id}',
         app_instance_id=mounted.mount['app_instance_id'], consumer_app_id=mounted.declaration['id'])
@@ -119,3 +99,56 @@ async def generate(broker, studio_id, mount_id, *, principal, request, capabilit
         watcher.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await watcher
+
+
+def validate_request(runtime, capability, payload):
+    from .capability_broker import StudioCapabilityError
+    model = next((m for m in generation_models(runtime, capability) if m.id == payload.get('model')), None)
+    if model is None or not model.checkpoint_ready:
+        raise StudioCapabilityError('model_not_ready', 'Select and prepare an audio generation model', status_code=409)
+    try:
+        body = validate_audio_generation({**payload, 'task': CAPABILITIES[capability]})
+    except ModelWorkerError as error:
+        raise StudioCapabilityError(error.code, str(error), status_code=422) from error
+    contract = model.metadata['audio_generation']
+    song = capability == 'audio.song_generation'
+    if song:
+        g = body.get('generation', {})
+        maximum = min(3000, int(contract['maximum_duration'] * 25), contract.get('max_semantic_tokens', 3000))
+        if (body.get('schema') != 'ai2apps.audio-generation/v2'
+            or body.get('duration_mode') != 'auto'
+            or g.get('planning_mode', 'full') not in contract.get('planning_modes', [])
+            or type(g.get('max_semantic_tokens')) is not int
+            or not 1 <= g['max_semantic_tokens'] <= maximum):
+            raise StudioCapabilityError('invalid_audio_generation', 'Unsupported song workflow or token limit', status_code=422)
+    elif body.get('schema', 'ai2apps.audio-generation/v1') != 'ai2apps.audio-generation/v1':
+        raise StudioCapabilityError('invalid_audio_generation', 'This model requires fixed-duration generation', status_code=422)
+    if (not song and not contract['minimum_duration'] <= body['duration'] <= contract['maximum_duration']) or (body['lyrics'] and not contract['lyrics']):
+        raise StudioCapabilityError('invalid_audio_generation', 'Duration or lyrics are unsupported by the selected model', status_code=422)
+    return model, body
+
+
+async def render_background(runtime, principal, job, payload, progress=None):
+    """Execute an accepted owner-bound job without retaining its mount or HTTP request."""
+    model, body = validate_request(runtime, payload['capability'], payload['input'])
+    context = ModelInvocationContext.from_principal(principal, session_id=job['id'],
+        app_instance_id=job['app_instance_id'], consumer_app_id=job['mini_app_id'])
+    try:
+        with tempfile.TemporaryDirectory(prefix='ai2apps-studio-audio-') as directory:
+            target = Path(directory) / 'generated.wav'
+            await runtime.model_invocations.invoke_background_to_file(model.id, 'audio_generate', body, target,
+                request_id=job['id'], context=context, progress=progress)
+            if target.stat().st_size > 128 * 1024 * 1024:
+                raise ValueError('Generated audio exceeds output limit')
+            with wave.open(str(target), 'rb') as audio:
+                duration = audio.getnframes() / audio.getframerate()
+                if audio.getnchannels() != 2 or audio.getsampwidth() != 2 or audio.getframerate() not in (44100, 48000) or not 0 < duration <= 121:
+                    raise ValueError('Invalid generated WAV')
+            song = payload['capability'] == 'audio.song_generation'
+            filename = ('song' if song else 'music' if payload['capability'] == 'audio.music_generation' else 'sound-effect') + '.wav'
+            return target.read_bytes(), {'filename': filename, 'durationSeconds': duration,
+                'preparedPrompt': body['prompt'],
+                'reachedLimit': bool(song and duration >= body['generation']['max_semantic_tokens'] / 25 - .05)}
+    except asyncio.CancelledError:
+        await runtime.model_invocations.cancel_request(model.id, job['id'])
+        raise

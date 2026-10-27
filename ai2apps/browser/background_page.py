@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import ipaddress
 import json
+import logging
 import math
 import random
 import re
@@ -18,10 +19,20 @@ from pathlib import Path
 from urllib.parse import urlsplit, parse_qs
 
 from .processing_pool import serialized_input
+from .rendering_leases import native_rendered
+from contextlib import asynccontextmanager
 from .dom_visibility import page_function
 
 _ROOT = Path(__file__).resolve().parents[1]
 _HELPERS = json.loads(Path(__file__).with_name('dom_helpers.json').read_text())
+logging.getLogger(__name__).info('Browser access preflight loaded from %s', __file__)
+logging.getLogger(__name__).info('WebAgent native input policy=visible-directed-dispatch-v2 loaded from %s', __file__)
+logging.getLogger(__name__).info('Browser read-scoped CAPTCHA policy loaded from %s', __file__)
+
+
+class NativeInputNotDispatched(RuntimeError):
+    """Window preparation failed before any content input was dispatched."""
+    input_dispatched=False
 
 
 class BackgroundPage:
@@ -33,12 +44,86 @@ class BackgroundPage:
         self.created_contexts = {}
         self.interaction_mode = interaction_mode or (lambda url: 'natural')
         self.pointer = (0, 0)
+        self.reset_input_diagnostics()
 
-    async def call_json(self, source, args=(), timeout=30):
+    @asynccontextmanager
+    async def rendering_lease(self, purpose):
+        leases = getattr(self.connection, 'rendering_leases', None)
+        if leases is None:
+            yield
+        else:
+            entered = False
+            try:
+                async with leases.hold(self, purpose):
+                    entered = True
+                    yield
+            except Exception as error:
+                if not entered and purpose == 'input' and not self.input_diagnostics.attempted:
+                    raise NativeInputNotDispatched('Native rendering preparation failed before input') from error
+                raise
+
+    async def capture_screenshot(self, params, *, timeout=15):
+        from .rendering_leases import capture_screenshot
+        return await capture_screenshot(self, params, timeout=timeout)
+
+    def reset_input_diagnostics(self):
+        from .input_dispatch import InputDiagnostics
+        self.input_diagnostics=InputDiagnostics()
+
+    @serialized_input
+    @native_rendered("input")
+    async def dispatch_input(self, actions, *, context_id=None, timeout=30):
+        """One native command, never retried; aggregate partial operation state."""
+        trace=self.input_diagnostics
+        kinds=sorted({item.get('type','unknown') for item in actions})
+        entry=trace.begin('+'.join(kinds),context_id or self.context_id)
+        try:
+            result=await self.connection.command('input.performActions',{
+                'context':context_id or self.context_id,'actions':actions},**({'timeout':timeout} if timeout!=30 else {}))
+        except BaseException as error:
+            not_sent=getattr(error,'command_dispatched',None) is False
+            trace.finish(entry,not_sent=not_sent)
+            if not_sent and not trace.attempted and isinstance(error,Exception):
+                raise NativeInputNotDispatched('Native input transport unavailable before dispatch') from error
+            raise
+        trace.finish(entry,acknowledged=True)
+        return result
+
+    @serialized_input
+    @native_rendered("input")
+    async def dispatch_editor(self, name, *args):
+        # Bulk insertion is an existing SDK edit, not a native key command.
+        # Its partial effects must still prevent replay of the whole input.
+        entry=self.input_diagnostics.begin('editor',self.context_id)
+        try:
+            result=await self.helper(name,*args)
+        except BaseException:
+            self.input_diagnostics.finish(entry)
+            raise
+        self.input_diagnostics.finish(entry,acknowledged=True)
+        return result
+
+    async def prepare_native_input(self):
+        try:
+            await self.activate_for_input()
+        except Exception as error:
+            if self.input_diagnostics.attempted:
+                raise  # Earlier commands may already have affected this action.
+            # Only runtime conditions are retried, before any content input.
+            # Re-observe the same bound page and retain the owner's budget.
+            from .execution_budget import recovery_scope
+            try:
+                async with recovery_scope(self):
+                    await self.activate_for_input()
+                return
+            except Exception as recovery_error:
+                raise NativeInputNotDispatched('Native window unavailable: not visible/ready; no input dispatched') from recovery_error
+
+    async def call_json(self, source, args=(), timeout=30, *, context_id=None):
         arguments = json.dumps(args, ensure_ascii=False).replace('<', '\\u003c')
         result = await self.connection.command('script.callFunction', {
             'functionDeclaration': page_function(source, arguments),
-            'target': {'context': self.context_id}, 'awaitPromise': True,
+            'target': {'context': context_id or self.context_id}, 'awaitPromise': True,
         }, timeout=timeout)
         if result.get('type') == 'exception':
             raise RuntimeError(result.get('exceptionDetails', {}).get('text', 'Page script failed'))
@@ -53,9 +138,9 @@ class BackgroundPage:
     async def helper(self, name, *args):
         return await self.call_json(_HELPERS[name], args)
 
-    async def snapshot(self, max_text=20000):
+    async def snapshot(self, max_text=20000, *, max_items=150):
         source = (_ROOT / 'web/static/js/browser_snapshot.js').read_text()
-        result = await self.call_json(source, [{'maxItems': 150, 'maxText': max_text,
+        result = await self.call_json(source, [{'maxItems': min(600,max_items), 'maxText': max_text,
                                               'maxHtml': 60000, 'htmlMode': 'visible'}])
         result.update(text_length=len(result['text']), text_sample=result['text'])
         result['fingerprint'] = '|'.join(map(str, [result['url'], len(result['items']), len(result['text']), len(result['html'])]))
@@ -81,7 +166,7 @@ class BackgroundPage:
             await asyncio.sleep(.5)
         return {'stable': False, 'page': await self.snapshot()}
 
-    async def navigate(self, url, delay_ms=3000):
+    async def navigate(self, url, delay_ms=3000, *, wait_ready=True):
         from .background_bidi import BrowserTransportError
         recovered=False
         for attempt in range(2):
@@ -115,8 +200,20 @@ class BackgroundPage:
                 # Opening a URL is an explicit GET navigation. Retry once only
                 # after observing that it did not reach the requested location.
         await asyncio.sleep(min(30000, max(0, float(delay_ms))) / 1000)
+        if not wait_ready:
+            self.prefetched_url = url
+            return {'url':url,'preloaded':True,'navigation_attempts':attempt+1}
         readiness = await self.wait_stable(require_content=True)
         return {'url': url, 'delay_ms': delay_ms, 'stable': readiness['stable'], 'navigation_recovered':recovered, 'navigation_attempts':attempt+1}
+
+    @serialized_input
+    async def preload(self, url):
+        # Pace tab openings under the shared Profile input lock, but release it
+        # before waiting for page load. Other admitted readers can load too.
+        self.public_url(url)
+        if self.interaction_mode(url) == 'natural':
+            await asyncio.sleep(random.uniform(.45, .85))
+        return await self.navigate(url, delay_ms=0, wait_ready=False)
 
     async def mode(self):
         return self.interaction_mode((await self.snapshot())['url'])
@@ -175,47 +272,95 @@ class BackgroundPage:
 
     async def find_target(self, intent, operation=''):
         best = None
+        refs = set(re.findall(r'\b(e\d+)\b', str(intent)))
+        if len(refs) > 1:
+            return None
+        requested_ref = next(iter(refs), None)
         query = re.sub('页面上的|按钮|输入框|the|button|field', '', str(intent).lower()).strip()
-        for item in (await self.snapshot())['items']:
+        for item in (await self.snapshot(max_items=600 if requested_ref else 150))['items']:
             if item.get('disabled') or (operation == 'input' and not item.get('editable') and item.get('role') != 'textbox'):
+                continue
+            if requested_ref and item.get('ref') != requested_ref:
                 continue
             name = item.get('text', '')
             low = name.lower()
-            score = (120 if item.get('ref') == intent else 100 if query and low == query else
-                     70 if query and query in low else 50 if query and low in query and len(low) > 1 else 0)
-            if re.search('搜索|search', query) and (re.search('search|搜索', low) or item.get('type') == 'search'):
+            score = (120 if item.get('ref') == (requested_ref or intent) else 100 if query and low == query else
+                     70 if query and query in low else 0)
+            if re.fullmatch('搜索|search', query) and (re.search('search|搜索', low) or item.get('type') == 'search'):
                 score += 45
             if score and (best is None or score > best['score']):
                 x, y, width, height = item['rect']
                 best = {**item, 'name': name, 'score': score,
                         'sensitive': item.get('sensitive') or bool(re.search('password|one.?time|otp|验证码', name, re.I)),
                         'rect': dict(x=x, y=y, width=width, height=height)}
+            elif score and best is not None and score==best['score'] and item.get('ref')!=best.get('ref'):
+                best['ambiguous']=True
         return best
 
+    async def activate_for_input(self):
+        """Render the owned tab before native input; hidden CSS animations freeze.
+
+        Read-only loading stays in background. This runs under the Profile input
+        lock and never adopts another tab or changes page styles/visibility rules.
+        Native hosts can hide a Profile window independently of tab selection;
+        restore that window explicitly rather than relying on OS focus events.
+        """
+        async def observed():
+            value=await self.call_json("function(){return {visible:document.visibilityState === 'visible',document_focus:document.hasFocus()};}")
+            return value if isinstance(value,dict) else {'visible':value is True,'document_focus':None}
+        state=await observed()
+        self.input_diagnostics.focus.update(visible_before=state['visible'],document_focus_before=state['document_focus'])
+        if state['visible']:
+            return
+        if not state['visible']:
+            self.input_diagnostics.focus['unhide_requests']+=1
+            await self.connection.command('browsingContext.unhideBrowserWindow', {'context': self.context_id})
+        self.input_diagnostics.focus['activate_requests']+=1
+        await self.connection.command('browsingContext.activate', {'context': self.context_id})
+        for _ in range(20):
+            state=await observed()
+            if state['visible']:
+                self.input_diagnostics.focus.update(visible_after=True,document_focus_after=state['document_focus'])
+                return
+            await asyncio.sleep(.1)
+        raise RuntimeError('The bound browser page is not visible for native input')
+
     @serialized_input
+    @native_rendered("input")
     async def pointer_to(self, target, *, click=True, hover_ms=0, seed=7):
+        await self.prepare_native_input()
         mode = await self.mode()
         await self.pause(mode)
+        input_context = target.get('input_context') or self.context_id
+        prior = self.pointer if input_context == self.context_id else (0, 0)
         rect = target['rect']
-        x = round(rect['x'] + rect['width'] * (.5 + ((seed * 17) % 21 - 10) / 100))
-        y = round(rect['y'] + rect['height'] * (.5 + ((seed * 29) % 21 - 10) / 100))
+        x = round(rect['x'] + rect['width'] * (.5 if target.get('_visual') else .5 + ((seed * 17) % 21 - 10) / 100))
+        y = round(rect['y'] + rect['height'] * (.5 if target.get('_visual') else .5 + ((seed * 29) % 21 - 10) / 100))
         count = 1 if mode == 'fast' else 12
         actions = []
         for i in range(1, count + 1):
             t = i / count
             eased = t if mode == 'fast' else t * t * (3 - 2 * t)
-            actions.append(dict(type='pointerMove', x=round(self.pointer[0] + (x-self.pointer[0])*eased),
-                                y=round(self.pointer[1] + (y-self.pointer[1])*eased), duration=0 if mode == 'fast' else 35, origin='viewport'))
+            actions.append(dict(type='pointerMove', x=round(prior[0] + (x-prior[0])*eased),
+                                y=round(prior[1] + (y-prior[1])*eased), duration=0 if mode == 'fast' else 35, origin='viewport'))
         actions.append({'type': 'pause', 'duration': max(0 if mode == 'fast' else 100, hover_ms)})
         if click:
             actions.extend([dict(type='pointerDown', button=0), dict(type='pause', duration=0 if mode == 'fast' else 70), dict(type='pointerUp', button=0)])
-        await self.connection.command('input.performActions', {'context': self.context_id,
-            'actions': [{'type': 'pointer', 'id': 'webagent-pointer', 'parameters': {'pointerType': 'mouse'}, 'actions': actions}]})
-        self.pointer = x, y
+        if target.get('_visual') or target.get('_dom_binding'):
+            from .visual_recovery import VALIDATE_TARGET, VisualRecoveryUnavailable
+            expected=(target.get('_dom_binding') or target['_visual']['binding'])['viewport']
+            checked=await self.call_json(VALIDATE_TARGET,[target['ref'],rect,expected['document_token']])
+            if not checked or checked.get('valid') is not True:
+                raise VisualRecoveryUnavailable('Reviewed target changed or is covered before native input')
+        await self.dispatch_input([{'type': 'pointer', 'id': 'webagent-pointer', 'parameters': {'pointerType': 'mouse'}, 'actions': actions}],context_id=input_context)
+        if input_context == self.context_id:
+            self.pointer = x, y
         return {'x': x, 'y': y, 'profile': mode}
 
     @serialized_input
+    @native_rendered("input")
     async def type_text(self, value, *, replace=False, submit=False):
+        await self.prepare_native_input()
         value = str(value)
         mode = await self.mode()
         await self.pause(mode)
@@ -235,8 +380,7 @@ class BackgroundPage:
             if enter:
                 actions.extend([dict(type='keyDown', value='\uE007'), dict(type='keyUp', value='\uE007')])
             if actions:
-                await self.connection.command('input.performActions', {'context': self.context_id,
-                    'actions': [{'type': 'key', 'id': 'webagent-keyboard', 'actions': actions}]}, timeout=30)
+                await self.dispatch_input([{'type': 'key', 'id': 'webagent-keyboard', 'actions': actions}])
 
         if len(value) <= 500:
             for offset in range(0, max(1, len(value)), 150):
@@ -251,7 +395,7 @@ class BackgroundPage:
             offset, typed = prefix, prefix+suffix
             while offset < len(value)-suffix:
                 end = min(offset+8192, len(value)-suffix)
-                await self.helper('insertTextChunk:0', token, value[offset:end])
+                await self.dispatch_editor('insertTextChunk:0', token, value[offset:end])
                 offset = end
                 if mode != 'fast':
                     await asyncio.sleep(random.uniform(.12, .3))
@@ -267,13 +411,30 @@ class BackgroundPage:
             await self.helper('typeText:2', token)
 
     @serialized_input
+    @native_rendered("input")
     async def scroll(self, delta_y=620):
+        await self.prepare_native_input()
         mode = await self.mode()
         await self.pause(mode)
         point = await self.call_json('function(){return {x:Math.floor(innerWidth/2),y:Math.floor(innerHeight/2)};}')
-        await self.connection.command('input.performActions', {'context': self.context_id, 'actions': [
+        # Firefox/APZ may acknowledge a timed wheel before its queued layout
+        # updates reach scripts in a background context. Send one native wheel,
+        # then observe its actual scroll state rather than stacking stale deltas.
+        state_script='''() => {let n=document.elementFromPoint(innerWidth/2,innerHeight/2),s=[[scrollX,scrollY]];while(n){if(n.scrollHeight>n.clientHeight||n.scrollWidth>n.clientWidth)s.push([n.scrollLeft,n.scrollTop]);n=n.parentElement||n.getRootNode()?.host;}return s;}'''
+        before=await self.call_json(state_script)
+        await self.dispatch_input([
             {'type': 'wheel', 'id': 'webagent-wheel', 'actions': [dict(type='scroll', x=point['x'], y=point['y'],
-                deltaX=0, deltaY=delta_y, duration=0 if mode == 'fast' else 360, origin='viewport')]}]})
+                deltaX=0, deltaY=delta_y, duration=0, origin='viewport')]}])
+        previous=before;changed=False;stable=0
+        for _ in range(20):
+            await asyncio.sleep(.1)
+            current=await self.call_json(state_script)
+            self.input_diagnostics.readback='observed'
+            changed=changed or current!=before
+            stable=stable+1 if current==previous else 0
+            if changed and stable>=2:return {'settled':True,'changed':True}
+            previous=current
+        return {'settled':stable>=2,'changed':changed}
 
     async def ensure_xhs_sort(self, order):
         """Apply observed sort controls using native input; require selected-state evidence."""
@@ -312,6 +473,11 @@ class BackgroundPage:
 
     async def extract_list(self, step):
         args = step.get('arguments') or {}
+        if args.get('news_scan'):
+            return await self.extract_news_list(step)
+        access = await self.visual_access(await self.handle_access(read_only=True))
+        if access['classification'] in ('needs_user', 'restricted'):
+            return {**access, 'items': [], 'page_url': (await self.snapshot())['url']}
         sort_warning = None
         if args.get('xiaohongshu_sort'):
             try:
@@ -329,8 +495,6 @@ class BackgroundPage:
                             raise
         if args.get('x_sort'):
             await self.ensure_x_search_sort((await self.snapshot())['url'], args['x_sort'])
-        if args.get('news_scan'):
-            return await self.extract_news_list(step)
         if args.get('search_provider') in ('google', 'bing', 'duckduckgo', 'brave'):
             from .search import SEARCH_RESULTS_SCRIPT
             result = await self.call_json(SEARCH_RESULTS_SCRIPT, [args['search_provider'],
@@ -462,9 +626,9 @@ class BackgroundPage:
                 detail = await self.call_json(XHS_NOTE_DETAIL_SCRIPT, [item['url']])
                 if detail.get('ready'):
                     break
-                access = await self.helper('handlePageAccess:0')
-                if access.get('classification') == 'needs_user':
-                    result.update(classification='needs_user', reason=access.get('reason'),
+                access = await self.handle_access(read_only=True)
+                if access.get('classification') in ('needs_user', 'restricted'):
+                    result.update(classification=access['classification'], reason=access.get('reason'),
                                   assistance_kind=access.get('assistance_kind', 'authentication'))
                     return
             if detail.get('ready'):
@@ -520,7 +684,7 @@ class BackgroundPage:
             if not (all(math.isfinite(value) for value in box.values()) and 0 <= box['x'] and 0 <= box['y'] and
                     0 < box['width'] <= 1200 and 0 < box['height'] <= 1200):
                 return None
-            captured = await self.connection.command('browsingContext.captureScreenshot', {
+            captured = await self.capture_screenshot({
                 'context': self.context_id, 'origin': 'viewport',
                 'clip': {'type': 'box', **box},
                 'format': {'type': 'image/jpeg', 'quality': .75},
@@ -556,6 +720,8 @@ class BackgroundPage:
             for scroll_round in range(8):
                 before_count = len(seen)
                 result = await self.extract_list({**step, 'arguments': {**args, 'limit': limit}})
+                if result.get('classification') in ('needs_user', 'restricted'):
+                    return {**result, 'items': list(seen.values()), 'discovery': {'rounds': rounds, 'stop_reason': 'page_blocked'}}
                 for item in result.get('items', []):
                     seen.setdefault(item.get('url') or item.get('href'), item)
                 if not regions and result.get('observed_regions'):
@@ -633,30 +799,105 @@ class BackgroundPage:
                     'rounds': rounds, 'load_more_clicks': load_clicks, 'stop_reason': stop_reason,
                     'unique_links': len(items), 'candidate_links': len(seen)}}
 
-    async def handle_access(self):
+    async def inspect_access(self, *, read_only=False):
+        context_id = self.context_id
+        candidate = await self.helper('handlePageAccess:0', *([False, True] if read_only else []))
+        transforms = []
+        for _ in range(3):
+            if not (candidate.get('frame') and candidate.get('reason') == 'cookie_consent'
+                    and isinstance(candidate.get('frame_index'), int)):
+                break
+            frame = candidate
+            remote = await self.connection.command('script.callFunction', {
+                'functionDeclaration': 'function(i){return document.querySelectorAll("iframe")[i]?.contentWindow;}',
+                'arguments': [{'type': 'number', 'value': frame['frame_index']}],
+                'target': {'context': context_id}, 'awaitPromise': False})
+            value = remote.get('result', {})
+            child = value.get('value', {}).get('context') if value.get('type') == 'window' else None
+            if not child:
+                return frame
+            transforms.append({**frame['frame_viewport'], 'context': context_id, 'index': frame['frame_index'], 'blocker': frame})
+            context_id = child
+            candidate = await self.call_json(_HELPERS['handlePageAccess:0'], ([True, True] if read_only else [True]), context_id=context_id)
+            if candidate['classification'] == 'none':
+                return {**frame, 'frame_unresolved': True}
+        if candidate['classification'] == 'safe_dismiss' and transforms:
+            native_rect = dict(candidate['rect'])
+            rect = dict(native_rect)
+            for t in reversed(transforms):
+                rect = {'x': t['x'] + rect['x'] * t['scale_x'],
+                        'y': t['y'] + rect['y'] * t['scale_y'],
+                        'width': rect['width'] * t['scale_x'], 'height': rect['height'] * t['scale_y']}
+                hit = await self.call_json('function(i,x,y){const f=document.querySelectorAll("iframe")[i];return !!f&&document.elementFromPoint(x,y)===f;}',
+                    [t['index'], rect['x']+rect['width']/2, rect['y']+rect['height']/2], context_id=t['context'])
+                if not hit:
+                    return {**t['blocker'], 'frame_obscured': True}
+            # Keep the actual native click at the point just hit-tested in every ancestor.
+            native_rect = {**native_rect, 'x': native_rect['x']+native_rect['width']/2-1, 'y': native_rect['y']+native_rect['height']/2-1, 'width': 2, 'height': 2}
+            candidate = {**candidate, 'rect': native_rect, 'input_context': context_id, 'frame': True}
+        return candidate
+
+    async def handle_access(self, *, read_only=False):
         dismissed = False
         for attempt in range(3):
-            candidate = await self.helper('handlePageAccess:0')
+            candidate = await self.inspect_access(**({'read_only':True} if read_only else {}))
             if candidate['classification'] != 'safe_dismiss':
                 return {**candidate, 'dismissed': dismissed}
             await self.pointer_to(candidate, seed=41+attempt)
             dismissed = True
             await self.wait_stable(timeout=5)
-        remaining = await self.helper('handlePageAccess:0')
-        return {'classification': 'needs_user', 'reason': 'cookie_consent', 'dismissed': False} if remaining['classification'] == 'safe_dismiss' else {**remaining, 'dismissed': dismissed}
+        remaining = await self.inspect_access(**({'read_only':True} if read_only else {}))
+        return {**remaining, 'classification': 'needs_user', 'reason': remaining.get('reason', 'blocking_prompt'), 'dismissed': False} if remaining['classification'] == 'safe_dismiss' else {**remaining, 'dismissed': dismissed}
 
     async def rendered_page(self, max_chars=20000):
         maximum = min(100000, max(100, int(max_chars or 20000)))
+        current = urlsplit((await self.snapshot(100))['url'])
+        if current.hostname in ('www.bilibili.com', 'm.bilibili.com') and re.match(r'^/video/(BV\w+|av\d+)', current.path, re.I):
+            source = Path(__file__).with_name('bilibili_content.js').read_text()
+            result = await self.call_json(source, [maximum])
+            if result is not None:
+                if result.get('content_kind') not in ('subtitles','transcript'):
+                    # Use native input on the page's own subtitle menu; the page
+                    # performs its normal authenticated loading. No API/cookie
+                    # discovery or alternate browser transport is involved.
+                    controls = r'''function(stage){
+const selectors=stage==='hover'?'.bpx-player-video-wrap, .bpx-player-container':stage==='open'?'.bpx-player-ctrl-subtitle':'.bpx-player-ctrl-subtitle-language-item, .bpx-player-ctrl-subtitle-language [data-lan], .bpx-player-ctrl-subtitle-item';
+for(const node of document.querySelectorAll(selectors)){
+ if(!ai2appsDOMVisible(node))continue;
+ const name=(node.innerText||node.getAttribute('aria-label')||'').trim();
+ if(stage==='language'&&!/^(?:中文|简体|AI中字|Chinese)/i.test(name))continue;
+ if(/登录|会员|开通/.test(name))continue;
+ const r=node.getBoundingClientRect();if(r.width&&r.height&&r.top>=0&&r.bottom<=innerHeight)return {name,rect:{x:r.x,y:r.y,width:r.width,height:r.height}};
+}return null;}'''
+                    try:
+                        target = await self.call_json(controls, ['open'])
+                        if not target or not isinstance(target.get('rect'),dict):
+                            hover = await self.call_json(controls, ['hover'])
+                            if hover and isinstance(hover.get('rect'),dict):
+                                await self.pointer_to(hover, click=False)
+                                target = await self.call_json(controls, ['open'])
+                        if target and isinstance(target.get('rect'),dict):
+                            await self.pointer_to(target, click=True)
+                            target = await self.call_json(controls, ['language'])
+                            if target and isinstance(target.get('rect'),dict):
+                                await self.pointer_to(target, click=True)
+                                await self.wait_stable(timeout=3)
+                                result = await self.call_json(source, [maximum])
+                    except Exception as error:
+                        result.setdefault('content_warnings',[]).append('subtitle_menu: '+str(error)[:160])
+                return result
         source = (_ROOT / 'web/static/js/readability.js').read_text()
         warning = None
         try:
-            result = await self.call_json('function(){' + source + '''
+            result = await self.call_json('function(maxChars){' + source + '''
 setReadablility(); const clone=document.cloneNode(true);
 for(const node of clone.querySelectorAll('script,style,input,textarea,[hidden],[aria-hidden="true"]'))node.remove();
 const article=new globalThis.__ai2appsReadability(clone).parse();
-return article?{title:article.title,text:article.textContent,url:location.href}:null;}''')
+return article?{title:article.title,text:article.textContent,source_blocks:ai2appsArticleDocument(article,maxChars),url:location.href}:null;}''',[maximum])
             if result and len(result.get('text', '').strip()) >= 100:
-                return {**result, 'text': result['text'].strip()[:maximum], 'extraction_method': 'readability'}
+                return {**result, 'text': result['text'].strip()[:maximum], 'extraction_method': 'readability',
+                        'extracted_chars':len(result['text'].strip()), 'returned_chars':min(len(result['text'].strip()),maximum),
+                        'truncated':len(result['text'].strip())>maximum, 'extraction_limit':maximum}
         except Exception as error:
             warning = str(error)[:160]
         snapshot = await self.snapshot(maximum)
@@ -720,6 +961,7 @@ return article?{title:article.title,text:article.textContent,url:location.href}:
         items = {}
         observed = None
         rule_valid = bool(options.get('x_extraction'))
+        rule_compared = rule_valid
         wanted = re.search(r'/status/(\d+)', options['url'])
         stale = 0
         attempts = 20 if options['x'] == 'feed' else 3
@@ -729,13 +971,17 @@ return article?{title:article.title,text:article.textContent,url:location.href}:
                 return dict(outcome=access['classification'], reason=access.get('reason'))
             snapshot = await self.call_json(script, [options.get('x_extraction')])
             observed = snapshot.get('x_observed') or observed
-            rule_valid = rule_valid and snapshot.get('x_rule_valid', False)
+            # An empty/loading snapshot contributes no article evidence. Any
+            # nonempty invalid snapshot still invalidates the accumulated result.
+            if snapshot.get('items'):
+                rule_valid = rule_valid and snapshot.get('x_rule_valid', False)
+                rule_compared = rule_compared and snapshot.get('x_rule_compared', False)
             before = len(items)
             for item in snapshot['items']:items[item['post_id']] = item
             if options['x'] == 'detail':
                 post = items.get(wanted.group(1)) if wanted else None
                 if post:
-                    return {**post, 'x_observed':observed, 'x_rule_valid':rule_valid, 'platform':'x', 'content_type':'post', 'cover_image':{'url':post['images'][0]['url'] if post['images'] else ''},
+                    return {**post, 'x_observed':observed, 'x_rule_valid':rule_valid, 'x_rule_compared':rule_compared, 'platform':'x', 'content_type':'post', 'cover_image':{'url':post['images'][0]['url'] if post['images'] else ''},
                         'text':'Author: '+post['author']+'\nPublished: '+post['published_at']+'\nVisible post only; replies not included.\n'+post['text']}
             stale = stale + 1 if len(items) == before else 0
             if attempt == attempts - 1 or (options['x'] == 'feed' and (stale >= 3 or len(items) >= 200)):break
@@ -743,7 +989,7 @@ return article?{title:article.title,text:article.textContent,url:location.href}:
             await asyncio.sleep(random.uniform(1.2, 2.0))
         if options['x'] == 'detail':return {'outcome':'failed','reason':'x_post_body_not_visible','url':options['url']}
         if not items:return {'outcome':'failed','reason':'x_feed_empty_or_not_loaded','url':options['url']}
-        return {'url':options['url'], 'items':list(items.values())[:200], 'x_observed':observed, 'x_rule_valid':rule_valid, 'text':'\n'.join(item['title'] for item in items.values())[:10000], 'extraction_method':'x-visible-posts-v1'}
+        return {'url':options['url'], 'items':list(items.values())[:200], 'x_observed':observed, 'x_rule_valid':rule_valid, 'x_rule_compared':rule_compared, 'text':'\n'.join(item['title'] for item in items.values())[:10000], 'extraction_method':'x-visible-posts-v1'}
 
     async def weibo_page(self, options):
         from urllib.parse import parse_qs
@@ -810,7 +1056,7 @@ return article?{title:article.title,text:article.textContent,url:location.href}:
         await asyncio.sleep(1.8)
         access = await self.handle_access()
         if access['classification'] in ('needs_user', 'restricted'):
-            return dict(outcome=access['classification'], reason=access.get('reason'), context=self.context_id)
+            return dict(outcome=access['classification'], reason=access.get('reason'), assistance_kind=access.get('assistance_kind'), access=access, context=self.context_id)
         result = await self.helper('extractWeiboDetail:0', wanted)
         if self.context_id != original:
             await self.connection.command('browsingContext.close', {'context': self.context_id})
@@ -820,6 +1066,70 @@ return article?{title:article.title,text:article.textContent,url:location.href}:
         return result
 
     async def read_page(self, options):
+        # Plain article reading must never turn into an unbounded interaction.
+        # Specialised media workflows retain their own declared budgets.
+        if any(options.get(k) for k in ('x', 'weibo', 'youtube')) or options.get('phase'):
+            return await self._read_page(options)
+        try:
+            async with asyncio.timeout(10):
+                return await self._read_page(options)
+        except TimeoutError:
+            return {'outcome': 'failed', 'reason': 'article_read_timeout', 'timeout_seconds': 10}
+
+    async def article_access(self, options):
+        try:
+            async with asyncio.timeout(2):
+                access = await self.handle_access(read_only=True)
+        except TimeoutError:
+            # A native dismissal may already have happened. Read-only fallback
+            # is safe; do not dispatch another click on an uncertain outcome.
+            access = {'classification': 'needs_user', 'reason': 'access_check_timeout', 'input_uncertain': True}
+        if access['classification'] not in ('needs_user', 'restricted'):
+            return access, None
+        if access['classification']=='restricted' or access.get('reason') in {'authentication','login_required','login','captcha','paywall','rate_limited'}:
+            return access, None
+        # This only reads loaded, rendered article paragraphs; it neither
+        # removes gates nor uses hidden scripts/metadata or a new HTTP request.
+        from .article_access import VISIBLE_ARTICLE, classify
+        observed = await self.call_json(VISIBLE_ARTICLE)
+        gate=classify(observed.get('access_hint','')) or classify(observed.get('notice',''))
+        if gate in {'login_required','paywall','access_verification_pending'}:
+            reason='authentication' if gate=='login_required' else 'captcha' if gate=='access_verification_pending' else 'paywall'
+            return {'classification':'restricted' if reason=='paywall' else 'needs_user','reason':reason,'assistance_kind':reason},None
+        if not classify(observed.get('access_hint','')) and not classify(observed.get('notice','')):
+            paragraphs = [v.strip() for v in observed.get('paragraphs',[]) if len(v.strip()) >= 35]
+            body = '\n\n'.join(paragraphs)
+            if len(body) >= 160:
+                return access, {'outcome':'success', 'url':observed['url'], 'title':observed.get('title',''),
+                    'text':body[:min(100000,int(options.get('max_chars') or 20000))],
+                    'extraction_method':'loaded-dom-under-overlay', 'content_warnings':['optional_overlay_retained']}
+        return await self.visual_access(access), None
+
+    async def visual_access(self, access):
+        recovery = getattr(self, 'visual_recovery', None)
+        if (access.get('classification')=='needs_user' and access.get('reason') in {'blocking_prompt','dismissible_prompt'} and not access.get('input_uncertain')
+                and recovery and recovery.policy['visual_locating']):
+            from .visual_recovery import VisualRecoveryUnavailable, VisualActionUncertain
+            try:
+                recovery_seconds=recovery.policy.get('recovery_timeout_seconds')
+                async with asyncio.timeout(4 if recovery_seconds is None else recovery_seconds):
+                    await self.snapshot(max_items=600)
+                    refs = await self.call_json("function(){return [...document.querySelectorAll('[role=dialog],[aria-modal=true],dialog[open],[class*=newsletter i]')].filter(n=>ai2appsDOMVisible(n,{viewport:true})).flatMap(n=>[...n.querySelectorAll('button,[role=button]')]).filter(n=>ai2appsDOMVisible(n,{viewport:true})&&!n.disabled&&n.type!=='submit'&&!n.closest('form')&&/^(?:|close|dismiss|cancel|not now|×|✕|关闭|取消)$/i.test((n.getAttribute('aria-label')||n.innerText||'').trim())).map(n=>n.getAttribute('data-ai2apps-ref')).filter(Boolean);} ")
+                    if refs:
+                        async def dismissed():
+                            value=await self.inspect_access()
+                            return {**value,'verified':value['classification']=='none'}
+                        result=await recovery.click(self, 'Close only the optional promotional overlay. Never follow, subscribe, accept consent, sign in, submit or navigate.',
+                            allowed_refs=refs, readback=dismissed)
+                        if not result.get('state_verified'):return access
+                        access = await self.inspect_access()
+                        if access['classification'] not in ('needs_user','restricted'):
+                            return access
+            except (TimeoutError, VisualRecoveryUnavailable, VisualActionUncertain):
+                pass  # No second visual action; the read deadline still applies.
+        return access
+
+    async def _read_page(self, options):
         original = self.context_id
         opened = options.get('opened', {})
         temporary = None
@@ -841,7 +1151,10 @@ return article?{title:article.title,text:article.textContent,url:location.href}:
                     self.context_id = temporary
                     self.created_contexts[temporary] = original
                 destination=options.get('social_source_url') or options['url']
-                if not options.get('x') or (await self.snapshot())['url'] != destination:
+                if getattr(self,'prefetched_url',None) == destination and not temporary:
+                    await self.wait_stable(require_content=True)
+                    self.prefetched_url = None
+                elif not options.get('x') or (await self.snapshot())['url'] != destination:
                     await self.navigate(destination, options.get('delay_ms', 0))
             self.public_url((await self.snapshot())['url'])
             if phase == 'open':
@@ -850,12 +1163,27 @@ return article?{title:article.title,text:article.textContent,url:location.href}:
                             temporary=bool(temporary), url=(await self.snapshot())['url'])
             if phase == 'close':
                 return dict(outcome='success', tab_closed=bool(temporary))
-            access = await self.handle_access()
+            from .article_access import VISIBLE_ARTICLE, classify, preview, LABELS
+            observed = await self.call_json(VISIBLE_ARTICLE) if options.get('allow_preview') else {}
+            access, loaded = ((await self.handle_access(), None) if any(options.get(k) for k in ('x','weibo','youtube'))
+                              else await self.article_access(options))
+            if loaded is not None:
+                return {**loaded, 'read_context':self.context_id}
+            access_reason = classify(observed.get('access_hint', '')) or classify(observed.get('notice', ''), access.get('reason', ''))
+            if access_reason:
+                partial = preview(observed, access_reason) if options.get('allow_preview') else None
+                if partial:
+                    return {**partial, 'outcome': 'success'}
+                return dict(outcome='failed', reason=LABELS[access_reason], access_reason=access_reason)
             if access['classification'] in ('needs_user', 'restricted'):
+                if access.get('reason') not in {'authentication','login_required','login','captcha','cookie_consent','legal_consent','paywall'}:
+                    return dict(outcome='failed',reason='article_blocker_unresolved',access=access)
                 retained = bool(temporary and access['classification'] == 'needs_user')
-                return dict(outcome=access['classification'], reason=access.get('reason'), context=self.context_id)
-            rule = options.get('site_extraction')
-            result = await self.helper('executeExtractionStep:0', rule) if rule else None
+                return dict(outcome=access['classification'], reason=access.get('reason'), assistance_kind=access.get('assistance_kind'), access=access, context=self.context_id)
+            observed_url = urlsplit((await self.snapshot(100))['url'])
+            bilibili_video = observed_url.hostname in ('www.bilibili.com', 'm.bilibili.com') and re.match(r'^/video/(BV\w+|av\d+)', observed_url.path, re.I)
+            rule = None if bilibili_video else options.get('site_extraction')
+            result = await self.helper('executeExtractionStep:0', rule, options.get('max_chars')) if rule else None
             extraction_fallback = bool(rule and (not isinstance(result, dict) or
                 not isinstance(result.get('text'), str) or len(result['text']) < 300))
             if extraction_fallback:
@@ -952,7 +1280,7 @@ return article?{title:article.title,text:article.textContent,url:location.href}:
         return windows
 
     async def observation(self):
-        page = await self.snapshot()
+        page = await self.snapshot(max_items=600)
         controls = [{**item, 'name': item.get('text', '')} for item in page['items']]
         return {**page, 'controls': controls, 'context': self.context_id,
                 'control_count': len(controls), 'html_truncated': bool(page.get('htmlTruncated')),

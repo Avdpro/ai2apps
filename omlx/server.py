@@ -872,11 +872,14 @@ async def lifespan(app: FastAPI):
                         accumulator.has_tool_calls
                         and now - last_reported_at >= 0.75
                     )
+                    should_report = should_report or (isinstance(chunk.get('ai2apps_metrics'), dict) and now - last_reported_at >= 0.75)
                     if not should_report:
                         continue
                     last_reported_fragments = fragments
                     last_reported_at = now
                     characters = accumulator.output_characters
+                    # A bounded read-only preview of the same stream allows any
+                    # authorized observer to reconnect without owning generation.
                     detail = (
                         "Receiving a Tool call"
                         if accumulator.has_tool_calls
@@ -899,6 +902,8 @@ async def lifespan(app: FastAPI):
                                 "output_characters": characters,
                                 "fragments": fragments,
                                 "has_tool_calls": accumulator.has_tool_calls,
+                                "completion_preview": accumulator.preview(),
+                                "metrics": accumulator.metrics,
                             },
                         }
                     )
@@ -909,10 +914,24 @@ async def lifespan(app: FastAPI):
         ai2apps_runtime.agent_runtime.bind_model_provider(_invoke_agent_model)
         ai2apps_runtime.agent_runtime.bind_context_provider(_measure_agent_context)
 
-    # Start recovery and dispatch only after every built-in Service/provider is
-    # bound. Otherwise a queued Run restored at boot could be claimed during
-    # this startup window and fail spuriously with provider_unavailable.
-    await ai2apps_runtime.start_background_tasks()
+    # The core API can serve while independent Service Packages start. Keep
+    # recovery and dispatch inside start_background_tasks: it starts the Agent
+    # runtime only after Package providers have registered, so queued Runs are
+    # never claimed in that window.
+    platform_startup_task = asyncio.create_task(
+        ai2apps_runtime.start_background_tasks(),
+        name="ai2apps-platform-background-startup",
+    )
+
+    def report_platform_startup(task: asyncio.Task) -> None:
+        if task.cancelled():
+            return
+        try:
+            task.result()
+        except Exception:
+            logger.exception("AI2Apps platform background startup failed")
+
+    platform_startup_task.add_done_callback(report_platform_startup)
 
     yield
 
@@ -953,6 +972,13 @@ async def lifespan(app: FastAPI):
         await lan_access.stop()
     if gateway_discovery is not None:
         await gateway_discovery.close()
+    if not platform_startup_task.done():
+        # Do not tear down providers while their startup coroutine still owns
+        # them. The Helper's existing bounded stop remains the outer limit.
+        try:
+            await platform_startup_task
+        except Exception:
+            pass  # The done callback logged the failure; cleanup still runs.
     await ai2apps_runtime.stop_background_tasks()
     stop_ai2apps_platform()
 

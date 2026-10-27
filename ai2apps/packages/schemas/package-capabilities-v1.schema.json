@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.ai2apps.com/package-capabilities/v1",
+  "title": "Publisher signed Package capability declarations",
+  "type": "object", "additionalProperties": false,
+  "required": ["schemaVersion", "entries"],
+  "properties": {
+    "schemaVersion": {"const": "ai2apps.package-capabilities.v1"},
+    "entries": {"type": "array", "minItems": 1, "maxItems": 64, "items": {"$ref": "#/$defs/entry"}}
+  },
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$", "maxLength": 120},
+    "tokens": {"type": "array", "maxItems": 64, "uniqueItems": true, "items": {"$ref": "#/$defs/id"}},
+    "materials": {"type": "array", "maxItems": 32, "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z][a-z0-9.+-]*(?:/[a-z0-9.+*-]+)?$", "maxLength": 100}},
+    "version": {"type": "string", "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$", "maxLength": 40},
+    "entry": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "identity", "provides", "tasks", "inputTypes", "outputTypes", "requirements", "agent", "processing", "pricing", "localizations"],
+      "properties": {
+        "kind": {"enum": ["app", "mini-app"]},
+        "identity": {"$ref": "#/$defs/id"},
+        "provides": {"$ref": "#/$defs/tokens"},
+        "tasks": {"type": "array", "maxItems": 32, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 160}},
+        "inputTypes": {"$ref": "#/$defs/materials"}, "outputTypes": {"$ref": "#/$defs/materials"},
+        "scope": {"type": "string", "minLength": 1, "maxLength": 500},
+        "requirements": {
+          "type": "object", "additionalProperties": false, "required": ["capabilities"],
+          "properties": {
+            "capabilities": {"$ref": "#/$defs/tokens"},
+            "minimumMemoryBytes": {"type": "integer", "minimum": 0, "maximum": 9007199254740991},
+            "minimumStorageBytes": {"type": "integer", "minimum": 0, "maximum": 9007199254740991},
+            "runtime": {"type": "object", "additionalProperties": false, "required": ["id", "minimumVersion"], "properties": {"id": {"$ref": "#/$defs/id"}, "minimumVersion": {"$ref": "#/$defs/version"}}}
+          }
+        },
+        "agent": {
+          "type": "object", "additionalProperties": false, "required": ["mode", "exports"],
+          "properties": {
+            "mode": {"enum": ["aaat", "ui-only", "unknown"]},
+            "declarationVersion": {"$ref": "#/$defs/version"},
+            "exports": {"type": "array", "maxItems": 64, "items": {"type": "object", "additionalProperties": false, "required": ["name", "interfaceVersion", "inputTypes", "outputTypes"], "properties": {"name": {"$ref": "#/$defs/id"}, "interfaceVersion": {"$ref": "#/$defs/version"}, "inputTypes": {"$ref": "#/$defs/materials"}, "outputTypes": {"$ref": "#/$defs/materials"}}}}
+          }
+        },
+        "processing": {"enum": ["local", "cloud", "hybrid", "unknown"]},
+        "pricing": {"enum": ["free", "paid", "usage-based", "unknown"]},
+        "localizations": {"type": "object", "additionalProperties": false, "minProperties": 1, "properties": {"zh": {"$ref": "#/$defs/localization"}, "en": {"$ref": "#/$defs/localization"}}}
+      }
+    },
+    "localization": {"type": "object", "additionalProperties": false, "required": ["displayName", "description"], "properties": {"displayName": {"type": "string", "minLength": 1, "maxLength": 160}, "description": {"type": "string", "maxLength": 2000}}}
+  }
+}

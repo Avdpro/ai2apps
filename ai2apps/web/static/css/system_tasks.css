@@ -1,0 +1,33 @@
+#system-tasks-entry{display:flex;align-items:center;gap:8px;width:100%;padding:12px 16px;border:1px solid var(--border,#e2e5eb);border-radius:12px;background:transparent;color:inherit;text-align:left;font:inherit;cursor:pointer;margin:8px 0}#system-tasks-entry.active{background:#eef0f5;font-weight:650}
+#system-task-panel[hidden]{display:none!important}#system-task-panel{padding:20px;max-width:1200px;margin:auto;width:100%;box-sizing:border-box}.system-task-heading,.system-task-card-head,.system-task-actions{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.system-task-heading h2{flex:1;font-size:21px;margin:0}.system-task-heading button,.system-task-tabs button,.system-task-card button{border:1px solid #dce0e8;background:transparent;color:inherit;border-radius:10px;padding:9px 12px;font:inherit;cursor:pointer;min-height:44px}.system-task-tabs{display:flex;gap:8px;overflow-x:auto;margin:20px 0 12px}.system-task-tabs button{white-space:nowrap}.system-task-tabs [aria-pressed=true]{background:#151b29;color:white}.system-task-help,.system-task-card small{color:#697386;font-size:13px;line-height:1.7}.system-task-card{border:1px solid #e0e4ec;border-radius:14px;padding:18px;margin-bottom:14px;overflow-wrap:anywhere}.system-task-card h3{font-size:16px;margin:0 0 8px;flex:1}.system-task-card-head>span{font-size:13px}.system-task-card p{line-height:1.6;font-size:14px}.system-task-actions button{font-size:13px}.system-task-children{font-size:13px;line-height:1.8}.system-task-children ul{padding-left:20px}.system-task-card button:disabled{opacity:.5}.system-tasks-mode.todo-workspace .todo-main>*:not(#system-task-panel){display:none!important}.system-tasks-mode.todo-workspace .todo-detail,.system-tasks-mode.todo-workspace [data-side=right]{display:none!important}.system-tasks-mode.todo-workspace .todo-main{grid-column:2/-1}.system-tasks-mode#mobile-todo>#list-view,.system-tasks-mode#mobile-todo>#detail-view{display:none!important}@media(max-width:700px){#system-task-panel{padding:12px 0}.system-task-heading h2{font-size:19px}.system-task-card{padding:14px}.system-task-actions{gap:8px}}
+.system-tasks-mode.todo-workspace.left-collapsed .todo-main{grid-column:1/-1}.system-tasks-mode.todo-workspace .todo-resizer-right{display:none!important}@media(max-width:960px){.system-tasks-mode.todo-workspace .todo-main{grid-column:1/-1}}
+.system-tasks-mode.todo-workspace .todo-column-resizer:last-child{display:none!important}
+#system-task-panel .system-task-tabs button[aria-pressed=true],
+#system-task-panel .system-task-tabs button[aria-pressed=true]:hover{background:#151b29;color:white}
+/* Compact history with clear status and secondary actions. */
+#system-task-panel{max-width:1080px;padding:28px;color:var(--td-text,#202532)}
+#system-task-panel .system-task-heading{padding-bottom:18px;border-bottom:1px solid var(--td-line,#e5e7eb)}
+#system-task-panel .system-task-heading h2{font-weight:700;letter-spacing:-.02em}
+#system-task-panel .system-task-tabs{padding:4px;background:var(--td-tint,#f3f4f6);border-radius:12px;display:inline-flex;max-width:100%;box-sizing:border-box}
+#system-task-panel .system-task-tabs button{border:0;min-height:38px;padding:8px 16px}
+#system-task-panel .system-task-help{margin:2px 0 18px;font-size:12px}
+#system-task-notice:empty{display:none}
+#system-task-panel .system-task-card{padding:18px 20px;margin:0 0 12px;background:var(--td-bg,#fff);border:1px solid var(--td-line,#e5e7eb);box-shadow:0 2px 6px #16213a04}
+#system-task-panel .system-task-card h3{margin:0;font-size:16px;font-weight:650}
+#system-task-panel .system-task-card small{display:block;margin:8px 0;font-size:12px}
+#system-task-panel .system-task-card p{margin:6px 0;line-height:1.65}
+#system-task-panel .system-task-status{padding:4px 9px;border-radius:6px;font-size:12px;white-space:nowrap;background:#eef1f5;color:#526071}
+#system-task-panel [data-status=completed]{background:#e9f6ef;color:#28754b}
+#system-task-panel [data-status=failed]{background:#fff0ee;color:#b64237}
+#system-task-panel [data-status=partial],#system-task-panel [data-status=interrupted]{background:#fff5df;color:#916818}
+#system-task-panel [data-status=running]{background:#eaf1ff;color:#3666ad}
+#system-task-panel .system-task-actions{border-top:1px solid var(--td-line,#edf0f4);margin-top:14px;padding-top:10px;gap:8px}
+#system-task-panel .system-task-actions button{min-height:34px;font-size:12px;padding:6px 10px;background:var(--td-tint,#f6f7f9)}
+#system-task-panel .system-task-children:not([hidden]){margin-top:12px;padding:10px;background:var(--td-tint,#f6f7f9);border-radius:8px}
+.system-task-pagination{display:flex;align-items:center;justify-content:center;gap:16px;padding:16px;color:#697386;font-size:13px}
+#system-task-panel .system-task-pagination button{border:1px solid var(--td-line,#ddd);padding:10px 20px;border-radius:10px;background:var(--td-bg,#fff);color:inherit;cursor:pointer}
+@media(max-width:700px){#system-task-panel{padding:16px 0}#system-task-panel .system-task-card{padding:14px}#system-task-panel .system-task-tabs button{padding:8px 12px}.system-task-card-head{align-items:flex-start}}
+
+#system-task-panel .system-task-app{display:inline-flex;align-items:center;gap:7px;vertical-align:middle;color:var(--td-text,#354052);font-weight:550}
+#system-task-panel .system-task-app-icon{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:8px;background:var(--td-tint,#f0f2f6);flex-shrink:0}
+#system-task-panel .system-task-app-icon svg{width:18px;height:18px;stroke-width:1.7}

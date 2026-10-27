@@ -13,6 +13,7 @@ import zipfile
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from difflib import SequenceMatcher
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -494,9 +495,17 @@ class StudioCapabilityBroker:
 
         if studio_id == "ai2apps.ai-browser":
             from ai2apps.browser.mini_apps import capability_catalog
+            items=capability_catalog(declaration)
+            if 'device.location' in _declared_capabilities(declaration):
+                items.append({'capability':'device.location','implemented':True,'ready':True,
+                              'required':'device.location' not in _optional_capabilities(declaration),
+                              'providers':[{'name':'User-authorized client device location'}]})
+            if 'notifications.send' in _declared_capabilities(declaration):
+                producer=getattr(getattr(self.runtime,'remote',None),'notifications',None)
+                items.append({'capability':'notifications.send','implemented':True,'ready':bool(producer and producer.supports_custom('https_url')),'required':'notifications.send' not in _optional_capabilities(declaration),'providers':[{'name':'AI2Apps Host Notifications'}]})
             return {"schema": "ai2apps.studio-capability-probe/v1", "studioId": studio_id,
                     "miniAppId": declaration["id"], "mountId": mount_id,
-                    "items": capability_catalog(declaration)}
+                    "items": items}
         capabilities = _declared_capabilities(declaration)
         # Probe only model families used by this declaration. In particular,
         # opening an audio generator must not scan every speech pipeline.
@@ -514,6 +523,10 @@ class StudioCapabilityBroker:
         optional_capabilities = _optional_capabilities(declaration)
         items = []
         for capability in sorted(capabilities):
+            if capability == 'notifications.send':
+                producer=getattr(getattr(self.runtime,'remote',None),'notifications',None)
+                items.append({'capability':capability,'implemented':True,'ready':bool(producer and producer.supports_custom('https_url')),'required':capability not in optional_capabilities,'providers':[{'name':'AI2Apps Host Notifications'}]})
+                continue
             if capability in {
                 DETAILED_TRANSCRIPTION_CAPABILITY,
                 DIARIZATION_CAPABILITY,
@@ -689,6 +702,11 @@ class StudioCapabilityBroker:
                 "The mounted Mini-App cannot access Voice Studio Characters",
                 status_code=403,
             )
+        return self.character_catalog(principal=principal)
+
+    def character_catalog(self, *, principal: RequestPrincipal) -> dict[str, Any]:
+        """Owner-internal catalog shared by mounted UI and trusted AaAT descriptor."""
+        from ai2apps.readaloud.repository import ReadAloudRepository
         database = getattr(self.runtime, "database", None)
         if database is None:
             raise StudioCapabilityError(
@@ -736,6 +754,11 @@ class StudioCapabilityBroker:
                 "The mounted Mini-App cannot use temporary voice cloning",
                 status_code=403,
             )
+        return self.clone_model_catalog()
+
+    def clone_model_catalog(self) -> dict[str, Any]:
+        """Declared executable models; no filesystem or private voice material."""
+        from ai2apps.readaloud.training import requirements
         items = []
         for model in self._voice_clone_models(self.runtime):
             spec = requirements(model)
@@ -1140,7 +1163,13 @@ class StudioCapabilityBroker:
         request_id = f"mini-task-{uuid.uuid4().hex}"
         invocations = getattr(self.runtime, "model_invocations", None)
         package_model = None if invocations is None else invocations.model(model_id)
-        if package_model is not None and "chat_completions" in package_model.endpoints:
+        if str(model_id).startswith('cloud/'):
+            from ai2apps.model_invocation import invoke_app_cloud_chat
+            response = await invoke_app_cloud_chat(self.runtime, payload, principal=principal,
+                session_id=f"studio-mini-app:{mounted.mount['id']}:{request_id}",
+                app_instance_id=mounted.mount['app_instance_id'], consumer_app_id=mounted.declaration['id'])
+            content = bytes(response.body)
+        elif package_model is not None and "chat_completions" in package_model.endpoints:
             context = ModelInvocationContext.from_principal(
                 principal,
                 session_id=f"studio-mini-app:{mounted.mount['id']}:{request_id}",
@@ -1728,7 +1757,7 @@ class StudioCapabilityBroker:
         *,
         principal: RequestPrincipal,
         request: Request,
-        content: bytes,
+        content: bytes | Path,
         filename: str,
         media_type: str | None,
         source_language: str | None,
@@ -2186,8 +2215,8 @@ class StudioCapabilityBroker:
             conversion_source = speaker_conversion_source(
                 dialogue, segments, target_speaker=target_speaker
             )
-            reference_wav = decode_audio_to_wav(
-                reference,
+            reference_wav = await asyncio.to_thread(
+                decode_audio_to_wav, reference,
                 input_format=infer_audio_format(
                     reference_filename, reference_media_type
                 ),
@@ -2254,12 +2283,12 @@ class StudioCapabilityBroker:
         mount_id: str,
         *,
         principal: RequestPrincipal,
-        content: bytes,
+        content: bytes | Path,
         filename: str,
         media_type: str | None,
         action: str,
         target_speaker: str | None,
-        reference: bytes | None,
+        reference: bytes | Path | None,
         reference_filename: str | None,
         reference_media_type: str | None,
         conversion_profile: str,
@@ -2282,11 +2311,12 @@ class StudioCapabilityBroker:
                 details={"missing": sorted(missing)},
             )
         try:
-            validate_video_media(content)
-            audio = decode_audio_to_wav(
+            await asyncio.to_thread(validate_video_media, content)
+            audio = await asyncio.to_thread(decode_audio_to_wav,
                 content,
                 input_format=infer_audio_format(filename, media_type),
                 sample_rate=48_000,
+                channels=2,
                 max_duration_seconds=3_600,
             )
         except (AudioCodecError, StudioMediaError) as error:
@@ -2310,7 +2340,7 @@ class StudioCapabilityBroker:
         if action == "analyze":
             return audio_response
         try:
-            result = replace_video_audio(
+            result = await asyncio.to_thread(replace_video_audio,
                 content,
                 self._artifact_bytes(
                     audio_response, operation="Speaker voice replacement"
@@ -2371,10 +2401,11 @@ class StudioCapabilityBroker:
                 status_code=503,
             )
         try:
-            wav = decode_audio_to_wav(
-                content,
+            wav = await asyncio.to_thread(
+                decode_audio_to_wav, content,
                 input_format=infer_audio_format(filename, media_type),
                 sample_rate=48_000,
+                channels=2,
                 max_duration_seconds=3_600,
             )
         except AudioCodecError as error:

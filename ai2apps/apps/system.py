@@ -23,14 +23,14 @@ _SYSTEM_APP_MANIFESTS_BASE: tuple[dict[str, Any], ...] = (
         "instances": {"mode": "singleton", "scope": "user"},
         "access": {"capabilities": ["app.system.manage"]},
         "entry": {"kind": "host", "resource": "ai2apps:system/visitor-space"},
-        "navigation": {"category": "System", "icon": "globe", "order": 17, "pinned_default": False},
+        "navigation": {"category": "System", "icon": "contact-round", "order": 17, "pinned_default": False},
         "state": {"version": 1, "defaults": {}},
     },
     {
         "schema": "ai2apps.app/v1", "id": "ai2apps.intelligence", "name": "Intel Center",
         "mobile": {"ready": True, "gateway": {
             "template": "system_apps/intelligence.html",
-            "assets": ["css/dashboard.css", "css/intelligence.css", "js/intelligence_i18n.js", "js/browser_bidi_client.js", "js/intelligence_site_agents.js", "js/intelligence_social.js", "js/intelligence_cards.js", "js/intelligence_entities.js", "js/intelligence.js", "js/mobile_app_gateway.js"],
+            "assets": ["css/dashboard.css", "css/intelligence.css", "js/intelligence_i18n.js", "js/browser_bidi_client.js", "js/intelligence_site_agents.js", "js/intelligence_social.js", "js/intelligence_cards.js", "js/intelligence_entities.js", "js/intelligence_article_chat.js", "js/mini_app_chat.js", "js/purify.min.js", "js/marked.umd.js", "css/chat_mini.css", "css/chat_message_stream.css", "js/intelligence.js", "js/mobile_app_gateway.js"],
             "api": {"module": "intelligence", "factory": "create_intelligence_router", "prefix": "/v1/platform/intelligence"},
         }},
         "description": "Follow interests, monitor sources and read evidence-backed briefings",

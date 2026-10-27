@@ -14,14 +14,19 @@ class WebAgentInvocation:
 
     def submit(self, *, owner, session_id, profile='default', name, key,
                caller_app_id, agent_id='', capability='', generation_id='',
-               parameters=None, source=None, retain_pages_reason='', parent_task_id='', reuse_page=False, model_profile=None, parallel_limit=1):
-        from ai2apps.api.ownership import authorize_session
+               parameters=None, source=None, retain_pages_reason='', parent_task_id='', reuse_page=False, model_profile=None, parallel_limit=1, execution_policy=None):
+        from ai2apps.api.ownership import authorize_workload_session
         from ai2apps.identity import IdentityRepository
         principal = IdentityRepository(self.runtime.database).local_principal_for(owner)
-        authorize_session(self.runtime, principal, session_id)
+        authorize_workload_session(self.runtime, principal, session_id)
         program = None
         declared_model_profile = "normal"
         if source is not None:
+            if execution_policy is not None:
+                from copy import deepcopy
+                from ai2apps.agent_builder.execution_policy import resolve_policy
+                source = deepcopy(source)
+                source["execution_policy"] = resolve_policy({**(source.get("execution_policy") or {}),**execution_policy}, source.get("minimum_execution_policy"))
             compiled = compile_source(source)
             if not compiled.valid:
                 import json
@@ -49,12 +54,24 @@ class WebAgentInvocation:
                 if len(exports) > 1:
                     raise ValueError('Select an explicit WebAgent capability')
                 capability = exports[0]['name'] if exports else f'agent.{agent_id}.run'
+        if execution_policy is not None:
+            from copy import deepcopy
+            from ai2apps.agent_builder.execution_policy import resolve_policy
+            if program is None:
+                program = deepcopy(capability_ir(generation.ir, capability or None))
+            program["execution_policy"] = resolve_policy({**(program.get("execution_policy") or {}),**execution_policy}, program.get("minimum_execution_policy"))
         from ai2apps.task_llm import effective_profile
         model_profile = effective_profile(self.runtime, model_profile or declared_model_profile, declared_model_profile)
         if parent_task_id.startswith("btask_"):
             parent = self.tasks.get(owner, parent_task_id)
             if parent.get('browser_context', {}).get('model_profile') == 'privacy':
                 model_profile = 'privacy'
-        return self.tasks.enqueue(owner, profile, agent_id, capability, generation_id,
+        from ai2apps.agent_builder.execution_policy import resolve_policy
+        policy=resolve_policy((program or {}).get('execution_policy'))
+        task=self.tasks.enqueue(owner, profile, agent_id, capability, generation_id,
             name, parameters or {}, session_id=session_id, idempotency_key=key,
-            program=program, caller_app_id=caller_app_id, retain_pages_reason=retain_pages_reason, parent_task_id=parent_task_id, reuse_page=reuse_page, model_profile=model_profile, parallel_limit=parallel_limit)
+            program=program, caller_app_id=caller_app_id, retain_pages_reason=retain_pages_reason, parent_task_id=parent_task_id, reuse_page=reuse_page, model_profile=model_profile, parallel_limit=parallel_limit, timeout_seconds=policy['timeout_seconds'])
+        persisted,_=self.tasks.program(owner,task['id'])
+        if resolve_policy((persisted or {}).get('execution_policy'))!=policy:
+            raise ValueError('Request ID was already used for a different execution policy')
+        return task

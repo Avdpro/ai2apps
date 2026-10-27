@@ -12,13 +12,93 @@ from ai2apps.browser.background_page import BackgroundPage
 from ai2apps.browser.background_executor import BackgroundExecutor, scope_allows
 
 
+@pytest.mark.parametrize('description',[
+    'Choose workspace category. Do not submit.', 'Set priority; never press Enter.',
+    '选择分类，不要提交；不要按回车。',
+])
+def test_preparation_negated_submission_is_not_an_enter_instruction(description):
+    from ai2apps.browser.background_executor import requests_submission
+    assert not requests_submission({'description':description})
+
+
+@pytest.mark.parametrize('description',[
+    'Press Enter to search', 'Submit the search', '搜索后按回车',
+    'Do not submit the form; press Enter to search',
+])
+def test_preparation_actual_submission_remains_detected(description):
+    from ai2apps.browser.background_executor import requests_submission
+    assert requests_submission({'description':description})
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('context', ['provider-alpha-tab', 'provider-beta-tab'])
+async def test_native_input_activation_waits_for_owned_page_visibility(context, monkeypatch):
+    commands=[]
+    class Connection:
+        async def command(self, method, parameters):
+            commands.append((method, parameters))
+    page=BackgroundPage(Connection(),context)
+    visibility=iter([False,False,True])
+    async def read(source):
+        assert 'document.visibilityState' in source
+        return next(visibility)
+    async def no_sleep(_):pass
+    page.call_json=read
+    monkeypatch.setattr(asyncio,'sleep',no_sleep)
+    await page.activate_for_input()
+    assert commands==[('browsingContext.unhideBrowserWindow',{'context':context}),
+                      ('browsingContext.activate',{'context':context})]
+
+
+@pytest.mark.asyncio
+async def test_hidden_page_never_receives_native_input(monkeypatch):
+    commands=[]
+    class Connection:
+        async def command(self, method, parameters):commands.append(method)
+    page=BackgroundPage(Connection(),'owned-tab')
+    async def hidden(_):return False
+    async def no_sleep(_):pass
+    page.call_json=hidden
+    monkeypatch.setattr(asyncio,'sleep',no_sleep)
+    with pytest.raises(RuntimeError,match='not visible'):
+        await page.pointer_to({'rect':{'x':0,'y':0,'width':20,'height':20}})
+    assert commands==['browsingContext.unhideBrowserWindow','browsingContext.activate']*2
+
+
+@pytest.mark.asyncio
+async def test_visible_page_activation_does_not_unhide_other_windows():
+    commands=[]
+    class Connection:
+        async def command(self, method, parameters):commands.append((method,parameters))
+    page=BackgroundPage(Connection(),'owned-visible-tab')
+    async def visible(_):return True
+    page.call_json=visible
+    await page.activate_for_input()
+    assert commands==[]
+
+
+@pytest.mark.asyncio
+async def test_failed_window_restore_never_dispatches_input():
+    commands=[]
+    class Connection:
+        async def command(self, method, parameters):
+            commands.append(method)
+            raise RuntimeError('Native window unavailable')
+    page=BackgroundPage(Connection(),'owned-hidden-tab')
+    async def hidden(_):return False
+    page.call_json=hidden
+    with pytest.raises(RuntimeError,match='Native window unavailable'):
+        await page.pointer_to({'rect':{'x':0,'y':0,'width':20,'height':20}})
+    assert commands==['browsingContext.unhideBrowserWindow']*2
+
+
 class JournalDatabase:
     def __init__(self, path):
         self.path = path
         with self.transaction(write=True) as c:
             c.executescript('''CREATE TABLE agent_runs(id TEXT PRIMARY KEY,input_json TEXT,status TEXT);
 CREATE TABLE agent_interactions(id TEXT PRIMARY KEY,run_id TEXT,status TEXT,request_json TEXT);
-CREATE TABLE browser_action_executions(interaction_id TEXT PRIMARY KEY,run_id TEXT,owner TEXT,context_id TEXT,request_hash TEXT,state TEXT,response_json TEXT,started_at REAL,finished_at REAL);''')
+CREATE TABLE browser_action_executions(interaction_id TEXT PRIMARY KEY,run_id TEXT,owner TEXT,context_id TEXT NOT NULL,request_hash TEXT,state TEXT,response_json TEXT,started_at REAL,finished_at REAL);''')
             c.execute('INSERT INTO agent_runs VALUES(?,?,?)', ('run', json.dumps({'parameters': {'owner_user_id': 'alice'}}), 'waiting_input'))
             c.execute('INSERT INTO agent_interactions VALUES(?,?,?,?)', ('interaction','run','pending','{"step": "click"}'))
 
@@ -100,6 +180,8 @@ async def test_200k_input_is_bounded_chunks_and_native_keys(monkeypatch):
             self.commands.append((method, params))
             return {}
     connection=Connection();page=BackgroundPage(connection, 'tab')
+    from unittest.mock import AsyncMock
+    page.activate_for_input=AsyncMock()
     calls=[]
     async def helper(name,*args): calls.append((name,args));return True
     async def mode():return 'natural'
@@ -241,7 +323,7 @@ async def test_cold_transport_retries_only_before_actions(monkeypatch):
             try:raise ConnectionRefusedError('listener starting')
             except OSError as error:raise RuntimeError('session could not be created') from error
         yield {},Upstream()
-    monkeypatch.setattr(transport.ShellBiDiEndpoint,'load',lambda _:None)
+    monkeypatch.setattr(transport.ShellBiDiEndpoint,'load',lambda _:type('Endpoint',(),{'pid':123})())
     monkeypatch.setattr(transport,'shell_bidi_descriptor_path',lambda:None)
     monkeypatch.setattr(transport,'attach_shell_bidi_session',attachment)
     connection=await transport.BackgroundBiDi().connect()
@@ -567,3 +649,225 @@ async def test_http3_navigation_rejection_retries_same_get_once(monkeypatch):
     assert calls[0].args==calls[1].args
     assert calls[0].args[0]=='browsingContext.navigate'
     assert calls[0].args[1]['context']=='original-tab'
+
+
+def test_pending_browser_actions_require_readmission_after_human_pause(tmp_path):
+    from types import SimpleNamespace
+    from ai2apps.browser.background_runner import BackgroundBrowserRunner
+    database=JournalDatabase(tmp_path/'admission.sqlite')
+    with database.transaction(write=True) as c:
+        c.execute('ALTER TABLE agent_interactions ADD COLUMN created_at REAL DEFAULT 0')
+        c.execute('CREATE TABLE browser_tasks(run_id TEXT,status TEXT,browser_context_json TEXT)')
+        c.execute('UPDATE agent_runs SET input_json=?', (json.dumps({'parameters':{'execution_owner':'local'}}),))
+        c.execute('UPDATE agent_interactions SET request_json=?', (json.dumps({'control':'browser_bidi_action'}),))
+        c.execute('INSERT INTO browser_tasks VALUES(?,?,?)', ('run','waiting_input',json.dumps({'admission_paused':True})))
+    runner=BackgroundBrowserRunner(SimpleNamespace(database=database,events=None))
+    assert runner.pending()==[]
+    with database.transaction(write=True) as c:c.execute("UPDATE browser_tasks SET status='queued'")
+    assert runner.pending()==[]
+    with database.transaction(write=True) as c:c.execute("UPDATE browser_tasks SET status='running',browser_context_json='{}'")
+    assert runner.pending()==[{'id':'interaction','run_id':'run'}]
+
+
+def test_browser_result_repairs_utf16_before_persistence_and_delivery(tmp_path):
+    journal = BrowserActionJournal(JournalDatabase(tmp_path/'unicode.sqlite'))
+    claim = dict(run_id='run', interaction_id='interaction', owner='alice', context_id='tab', request={'step':'click'})
+    journal.claim(**claim)
+    original = {'outcome':'success', 'evidence':{'items':[{'title':'中文 🧵 𝒜', 'snippet':'cut\ud835', 'pair':'\ud835\udc9c', 'low':'\udc9c'}]}}
+    expected = {'outcome':'success', 'evidence':{'items':[{'title':'中文 🧵 𝒜', 'snippet':'cut�', 'pair':'𝒜', 'low':'�'}]}}
+    delivered = journal.complete('interaction', original)
+    assert delivered == expected
+    # The exact value delivered to the Agent must also be valid UTF-8 JSON.
+    assert json.loads(json.dumps(delivered, ensure_ascii=False).encode('utf-8')) == expected
+    assert original['evidence']['items'][0]['snippet'] == 'cut\ud835'
+    assert journal.complete('interaction', original) == expected
+    recovered, admitted = journal.claim(**claim)
+    assert not admitted and json.loads(recovered['response_json']) == expected
+
+
+@pytest.mark.asyncio
+async def test_runner_delivers_repaired_response_without_replaying_browser(tmp_path):
+    from types import SimpleNamespace as NS
+    from ai2apps.browser.background_runner import BackgroundBrowserRunner
+    database = JournalDatabase(tmp_path/'runner-unicode.sqlite')
+    request = {'step':{'operation':'search.api'}}
+    with database.transaction(write=True) as c:
+        c.execute('UPDATE agent_interactions SET request_json=? WHERE id=?', (json.dumps(request),'interaction'))
+    run = NS(id='run', input={'parameters':{'owner_user_id':'alice'}})
+    delivered, executed = [], []
+    def respond(*args, **kw):
+        # Simulate the Agent repository's real SQLite UTF-8 serialization.
+        json.dumps(kw['response'], ensure_ascii=False).encode('utf-8')
+        delivered.append(kw['response'])
+    runtime = NS(database=database, events=None, agents=NS(get_run=lambda _:run,
+        list_interactions=lambda _:[NS(id='interaction', request=request)], respond_interaction=respond),
+        agent_runtime=NS(wake=lambda:None))
+    runner = BackgroundBrowserRunner(runtime)
+    async def execute(*args):
+        executed.append(1)
+        return {'outcome':'success', 'evidence':{'text':'cut\ud835'}}
+    runner.executor = NS(execute=execute)
+    await runner.execute_interaction({'run_id':'run','id':'interaction'})
+    await runner.execute_interaction({'run_id':'run','id':'interaction'})
+    assert executed == [1]
+    assert delivered == [{'outcome':'success','evidence':{'text':'cut�'}}] * 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('bad_evidence',[False,True])
+async def test_x_rule_loading_snapshot_does_not_poison_later_valid_evidence(monkeypatch,bad_evidence):
+    from ai2apps.browser.background_page import BackgroundPage
+    class Page(BackgroundPage):
+        def __init__(self):self.calls=0
+        async def handle_access(self):return {'classification':'open'}
+        async def call_json(self,*args):
+            self.calls+=1
+            if self.calls==1:
+                return {'items':[{'post_id':'other','text':'fallback evidence'}] if bad_evidence else [],'x_rule_valid':False,'x_rule_compared':False}
+            return {'items':[{'post_id':'1','author':'Author','published_at':'','images':[],'text':'Actual post'}],'x_rule_valid':True,'x_rule_compared':True}
+    async def no_sleep(*args):pass
+    monkeypatch.setattr('ai2apps.browser.background_page.asyncio.sleep',no_sleep)
+    result=await Page().x_page({'x':'detail','url':'https://x.com/Author/status/1','x_extraction':{'card':'article'}})
+    assert result['text'].endswith('Actual post')
+    assert result['x_rule_valid'] is (not bad_evidence)
+    assert result['x_rule_compared'] is (not bad_evidence)
+
+@pytest.mark.parametrize('owner_message', ['Open the Acme inventory page; check item X before continuing.', None])
+def test_assistance_uses_owner_message_not_internal_reason(owner_message):
+    from types import SimpleNamespace as NS
+    from ai2apps.agent_builder.compiler import compile_source
+    from ai2apps.agents.browser_builder import browser_builder_executor
+    from ai2apps.agents.models import InteractionStatus
+    ir=compile_source({'site_scope':['https://arbitrary.test/**'],'steps':[{'name':'inspect','operation':'inspect','on':{'success':'done','failed':'failed'}}]}).ir
+    run=NS(input={'parameters':{'ir':ir}})
+    interactions=[]
+    context=NS(run=run,definition=NS(max_steps=100),interactions=interactions,interaction=lambda key: next((i for i in interactions if i.request_key==key),None))
+    first=browser_builder_executor(context)
+    evidence={'reason':'opaque_owner_code'}
+    if owner_message:evidence['assistance_message']=owner_message
+    interactions.append(NS(id='action-1',request=first.request,request_key=first.request_key,status=InteractionStatus.SUBMITTED,response={'outcome':'needs_user','evidence':evidence}))
+    action=browser_builder_executor(context)
+    assert action.request['reason']=='opaque_owner_code'
+    assert 'opaque_owner_code' not in action.prompt
+    assert action.prompt==(owner_message or '任务未能继续。请打开任务页面检查当前状态，反馈具体情况或取消；不要重复执行尚未核实的操作。')
+
+
+@pytest.mark.asyncio
+async def test_annotated_refs_resolve_only_current_observed_control():
+    from unittest.mock import AsyncMock
+    page = BackgroundPage(None, 'context')
+    page.snapshot = AsyncMock(return_value={'items':[
+        {'ref':'e1','text':'Same label','rect':[0,0,10,10]},
+        {'ref':'e2','text':'Same label with details','rect':[10,0,10,10]}]})
+    assert (await page.find_target('Same label (ref e2)'))['ref'] == 'e2'
+    assert (await page.find_target('Same label (e2)'))['ref'] == 'e2'
+    assert await page.find_target('Same label (ref e999)') is None
+    assert (await page.find_target('gridcell e2 (full date label)'))['ref']=='e2'
+    assert await page.find_target('e1 or e2') is None
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('provider',['arbitrary-provider-a','independent-provider-b'])
+async def test_uncertain_action_uses_trusted_read_only_observation_without_readmission(tmp_path,provider):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock,Mock
+    from ai2apps.browser.background_runner import BackgroundBrowserRunner
+    db=JournalDatabase(tmp_path/'recover.sqlite')
+    request={'step':{'operation':'search.api','arguments':{'provider':provider}}}
+    with db.transaction(write=True) as c:c.execute('UPDATE agent_interactions SET request_json=?',(json.dumps(request),))
+    journal=BrowserActionJournal(db)
+    journal.claim(run_id='run',interaction_id='interaction',owner='alice',context_id=None,request=request)
+    journal.recover()
+    run=SimpleNamespace(id='run',input={'parameters':{'owner_user_id':'alice'}})
+    interaction=SimpleNamespace(id='interaction',request=request)
+    expected={'outcome':'success','evidence':{'result':{'items':[],'provider':provider}}}
+    runner=object.__new__(BackgroundBrowserRunner);runner.journal=journal
+    runner.runtime=SimpleNamespace(agents=SimpleNamespace(get_run=lambda _:run,list_interactions=lambda _:[interaction],respond_interaction=Mock()),agent_runtime=SimpleNamespace(wake=Mock()))
+    runner.executor=SimpleNamespace(recover_observation=AsyncMock(return_value=expected),execute=AsyncMock(side_effect=AssertionError('Never execute again')))
+    runner.page_for=AsyncMock(side_effect=AssertionError('No page for API'))
+    await runner.execute_interaction({'run_id':'run','id':'interaction'})
+    assert json.loads(journal.lookup('interaction')['response_json'])==expected
+    runner.executor.execute.assert_not_called();runner.page_for.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('label,goal',[('出发地','MAIN form: visible 单程 option above 出发地'),('Workspace','Search document only inside Workspace toolbar')])
+async def test_narrative_target_does_not_match_an_incidental_short_label(label,goal):
+    from unittest.mock import AsyncMock
+    page=BackgroundPage(None,'context')
+    page.snapshot=AsyncMock(return_value={'items':[{'ref':'e1','text':label,'rect':[0,0,10,10]},{'ref':'e2','text':'Search','rect':[20,0,10,10]}]})
+    assert await page.find_target(goal,'click') is None
+    assert (await page.find_target(label,'click'))['ref']=='e1'
+    assert (await page.find_target('e1','click'))['ref']=='e1'
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('host',['workspace.fixture.test','catalog.fixture.test'])
+async def test_inspection_can_finish_from_actual_initial_read_without_invented_click(host):
+    from types import SimpleNamespace as NS
+    from unittest.mock import AsyncMock
+    from ai2apps.browser.background_planner import validate_completion
+    observation={'context':'owned','url':f'https://{host}/form','items':[],'text':'Category already set'}
+    async def plan(**kwargs):
+        validate_completion(kwargs['step'],kwargs['attempts'])
+        assert kwargs['attempts'][0]['evidence']['result']['url']==observation['url']
+        return {'decision':'complete'}
+    page=NS(context_id='owned',observation=AsyncMock(return_value=observation),related_windows=AsyncMock(return_value=[]))
+    executor=BackgroundExecutor(None);executor.planner=NS(next=plan)
+    executor.compiled=AsyncMock(side_effect=AssertionError('no invented input'))
+    result=await executor.adaptive(page,{'step':{'operation':'inspect','arguments':{'preparation_only':True}},'site_scope':[f'https://{host}/**']},None)
+    assert result['outcome']=='success'
+    executor.compiled.assert_not_called();page.observation.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('operation,url',[('click','https://workspace.fixture.test/form'),('inspect','https://different.fixture.test/form')])
+async def test_initial_observation_cannot_prove_effectful_or_out_of_scope_completion(operation,url):
+    from types import SimpleNamespace as NS
+    from unittest.mock import AsyncMock
+    from ai2apps.browser.background_planner import validate_completion
+    async def plan(**kwargs):
+        validate_completion(kwargs['step'],kwargs['attempts'])
+        return {'decision':'complete'}
+    page=NS(context_id='owned',observation=AsyncMock(return_value={'url':url}),related_windows=AsyncMock(return_value=[]))
+    executor=BackgroundExecutor(None);executor.planner=NS(next=plan)
+    with pytest.raises(ValueError,match='successful evidence'):
+        await executor.adaptive(page,{'step':{'operation':operation},'site_scope':['https://workspace.fixture.test/**']},None)
+
+
+@pytest.mark.asyncio
+async def test_planning_and_explicit_ref_resolution_use_the_same_bounded_probe():
+    from unittest.mock import AsyncMock
+    page = BackgroundPage(None, 'owned')
+    row = {'ref':'e987','tag':'button','text':'Late calendar option','rect':[0,0,30,30]}
+    async def snapshot(*args, **kwargs):
+        assert kwargs['max_items'] == 600
+        return {'url':'https://fixture.test/','items':[row],'text':'option'}
+    page.snapshot = AsyncMock(side_effect=snapshot)
+    assert (await page.observation())['controls'][0]['ref'] == 'e987'
+    assert (await page.find_target('Late option (ref e987)'))['ref'] == 'e987'
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('allow_intervention',[True,False])
+@pytest.mark.parametrize('policy_source',['request','run_ir'])
+async def test_pre_dispatch_failure_is_durable_and_never_reexecuted(tmp_path,allow_intervention,policy_source):
+    from types import SimpleNamespace as NS
+    from ai2apps.browser.background_runner import BackgroundBrowserRunner
+    from ai2apps.browser.background_page import NativeInputNotDispatched
+    from ai2apps.browser.input_dispatch import InputDiagnostics
+    database=JournalDatabase(tmp_path/'journal.sqlite');delivered=[];executed=[]
+    request={'step':{'operation':'scroll'},**({'execution_policy':{'allow_user_intervention':allow_intervention}} if policy_source=='request' else {})}
+    with database.transaction(write=True) as c:c.execute('UPDATE agent_interactions SET request_json=? WHERE id=?',(json.dumps(request),'interaction'))
+    run=NS(id='run',status=NS(value='waiting_input'),input={'parameters':{'owner_user_id':'alice','browser_context':{'bidi_context':'tab'},'ir':{'execution_policy':{'allow_user_intervention':allow_intervention}}}})
+    async def execute(*a):executed.append(1);raise NativeInputNotDispatched('not sent')
+    runtime=NS(database=database,events=None,agents=NS(get_run=lambda _:run,list_interactions=lambda _:[NS(id='interaction',request=request)],respond_interaction=lambda *a,**kw:delivered.append(kw['response'])),agent_runtime=NS(wake=lambda:None))
+    runner=BackgroundBrowserRunner(runtime);runner.executor=NS(execute=execute)
+    async def command(*a,**kw):return {'contexts':[]}
+    page=NS(context_id='tab',connection=NS(command=command),created_contexts={},input_diagnostics=InputDiagnostics())
+    async def page_for(_):return page
+    runner.page_for=page_for;runner.save_page_state=lambda *a:None
+    await runner.execute_interaction({'run_id':'run','id':'interaction'})
+    await runner.execute_interaction({'run_id':'run','id':'interaction'})
+    assert executed==[1] and delivered[0]==delivered[1]
+    assert delivered[0]['outcome']==('needs_user' if allow_intervention else 'failed')
+    assert delivered[0]['evidence']['input_dispatched'] is False
+    assert delivered[0]['evidence']['action_outcome_unknown'] is False
+    assert runner.journal.lookup('interaction')['state']=='completed'

@@ -83,7 +83,7 @@ async def test_new_conversation_persisted_and_released(setup, monkeypatch):
     await finished(s)
     item=s.store.get('local',t['id'])
     assert item['codex']['thread_id']=='new-thread'
-    assert item['status']=='not_started'
+    assert item['status']=='in_progress'
     run=s.store.snapshot('local')['runs'][0]
     assert run['status']=='ended' and run['output']=='Finished'
     calls=[m for m,_ in FakeClient.instances[-1].calls]

@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
+import logging
 
 from fastapi import APIRouter, Depends, Header, Query
 from fastapi.responses import JSONResponse
@@ -17,6 +18,13 @@ from ai2apps.chat import ChatContentRecord, ChatRepository, LegacyChatMessageInp
 from ai2apps.core import MessageRole, RepositoryError, SessionStatus
 from ai2apps.identity import RequestPrincipal
 from ai2apps.storage import BuiltinChatRecord, ChatCollectionRecord, ChatThreadRecord
+
+logging.getLogger(__name__).info('Chat Desktop TTS routes loaded from %s', __file__)
+
+
+class ChatSpeechRequest(BaseModel):
+    model_config = {'extra':'forbid'}
+    text: str = Field(min_length=1,max_length=600)
 
 
 class ChatAppResponse(BaseModel):
@@ -126,6 +134,21 @@ class ExpectedRevisionRequest(BaseModel):
     expected_revision: int = Field(ge=1)
 
 
+class ChatThreadManageRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+    action: Literal['rename', 'delete']
+    expected_revision: int = Field(ge=1)
+    title: str | None = Field(default=None, min_length=1, max_length=160)
+
+    @model_validator(mode='after')
+    def validate_action(self):
+        if self.action == 'rename' and (self.title is None or not self.title.strip()):
+            raise ValueError('Rename requires a nonblank title')
+        if self.action == 'delete' and self.title is not None:
+            raise ValueError('Delete does not accept a title')
+        return self
+
+
 class ChatContentRequest(BaseModel):
     expected_revision: int = Field(ge=1)
     title: str | None = None
@@ -154,6 +177,14 @@ class ChatContentResponse(BaseModel):
         )
 
 
+class ChatTurnRequest(BaseModel):
+    request_id: str = Field(min_length=1, max_length=128)
+    expected_revision: int = Field(ge=1)
+    request: dict[str, Any]
+    anchor_message_id: str | None = Field(default=None, max_length=256)
+    presentation: dict[str, Any] = Field(default_factory=dict)
+
+
 def create_chat_router(
     runtime_provider: PlatformRuntimeProvider,
     principal_provider: PrincipalProvider = resolve_request_principal,
@@ -170,6 +201,22 @@ def create_chat_router(
             runtime.events,
             principal=principal,
         )
+
+    @router.post('/threads/{thread_id}/speech')
+    async def speech(thread_id: str, body: ChatSpeechRequest, principal: RequestPrincipal = principal_dependency):
+        repository=repository_or_error(principal)
+        if isinstance(repository,JSONResponse):return repository
+        try:
+            thread=repository.get_thread(thread_id)
+            if thread.session.status is not SessionStatus.ACTIVE:
+                from fastapi import HTTPException
+                raise HTTPException(409,'Chat conversation is not active')
+            if not body.text.strip():
+                from fastapi import HTTPException
+                raise HTTPException(422,'Speech text is empty')
+            from ai2apps.chat.speech import synthesize
+            return await synthesize(runtime_provider(),principal,thread,body.text)
+        except RepositoryError as error:return repository_error_response(error)
 
     @router.get("", response_model=ChatAppResponse)
     def get_chat_app(
@@ -406,6 +453,67 @@ def create_chat_router(
                 trace_id=x_trace_id,
             )
             return ChatThreadResponse.from_record(record)
+        except RepositoryError as error:
+            return repository_error_response(error)
+
+    @router.post('/threads/{thread_id}/manage', response_model=ChatThreadResponse)
+    def manage_thread(thread_id: str, request: ChatThreadManageRequest,
+                      principal: RequestPrincipal = principal_dependency,
+                      x_trace_id: str | None = Header(default=None)):
+        # POST compatibility for existing signed Mobile clients; same mutations,
+        # ownership and optimistic revision checks as the canonical endpoints.
+        if request.action == 'rename':
+            return patch_thread(thread_id, ChatThreadPatchRequest(
+                expected_revision=request.expected_revision, title=request.title.strip()), principal, x_trace_id)
+        return delete_thread(thread_id, request.expected_revision, principal, x_trace_id)
+
+    @router.post('/threads/{thread_id}/turns', status_code=202)
+    def create_turn(thread_id: str, request: ChatTurnRequest, principal: RequestPrincipal = principal_dependency):
+        repository = repository_or_error(principal)
+        if isinstance(repository, JSONResponse):
+            return repository
+        from ai2apps.chat import turns
+        try:
+            runtime = runtime_provider()
+            run = turns.submit(runtime, repository, thread_id, **request.model_dump())
+            return turns.snapshot(runtime, run)
+        except RepositoryError as error:
+            return repository_error_response(error)
+        except ValueError as error:
+            return JSONResponse(status_code=422, content={'error': {'message': str(error)}})
+
+    @router.get('/threads/{thread_id}/turns')
+    def list_turns(thread_id: str, principal: RequestPrincipal = principal_dependency):
+        repository = repository_or_error(principal)
+        if isinstance(repository, JSONResponse):
+            return repository
+        from ai2apps.chat import turns
+        try:
+            repository.get_thread(thread_id)
+            runtime = runtime_provider()
+            return {'items': [turns.snapshot(runtime, r) for r in turns.runs(runtime, thread_id)]}
+        except RepositoryError as error:
+            return repository_error_response(error)
+
+    @router.get('/threads/{thread_id}/turns/{turn_id}')
+    def get_turn(thread_id: str, turn_id: str, principal: RequestPrincipal = principal_dependency):
+        return turn_action(thread_id, turn_id, principal, False)
+
+    @router.post('/threads/{thread_id}/turns/{turn_id}/cancel')
+    def cancel_turn(thread_id: str, turn_id: str, principal: RequestPrincipal = principal_dependency):
+        return turn_action(thread_id, turn_id, principal, True)
+
+    def turn_action(thread_id, turn_id, principal, cancel):
+        repository = repository_or_error(principal)
+        if isinstance(repository, JSONResponse):
+            return repository
+        from ai2apps.chat import turns
+        try:
+            runtime = runtime_provider()
+            run = turns.get(runtime, repository, thread_id, turn_id)
+            if cancel and run.status.value not in turns.TERMINAL:
+                run = runtime.agent_runtime.cancel(run.id)
+            return turns.snapshot(runtime, run)
         except RepositoryError as error:
             return repository_error_response(error)
 

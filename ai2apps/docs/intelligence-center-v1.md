@@ -331,3 +331,288 @@ Profile 的原生点击、输入、滚动和上传通过共用输入锁串行；
 
 ### 界面多语言补齐（2026-10-13）
 情报中心跟随当前系统中英文显示语言；补齐采集进度、稿件、图片、实体功能的新增文案，并为后台阶段、完成统计、来源统计与冷却提示提供目录模板。来源名称、文章标题及正文不进入 UI 翻译；未知技术错误保持原诊断。Desktop/Mobile 共用解析器，区域语言代码先规范化再选择新频道 AI 输出语言。频道已保存的输出语言优先，不重写历史文章。其他 UI 语言仍使用宿主英文回退，AI 输出语言独立支持十种选择。
+
+### 信息源列表并行修正（2026-10-15）
+普通网站列表、规则验证与文章读取统一使用 root/Profile 子任务上限 3；每次频道更新仍有 2 个信息源 worker，每个普通源 3 篇文章 worker，同一个 Profile 合计最多 3 个浏览器执行。单源列表/验证由业务 await 保持顺序，复用 scope 绑定 source Task，不影响另一源执行；社交来源仍上限 1。修正原列表复用优化将列表 cap 设为 1、导致共享根/Profile 所有源串行的配置问题。根任务在 AI Browser 中仍只显示一个，子执行可查看详情。
+
+### 拟人文章预加载（2026-10-15）
+普通来源的自动文章读取在原 Browser 子任务内先执行编译 open(preload)，再调用原编译文章能力或通用 read_page；最多三个已准入任务分别加载自己的页面，读取等待就绪但不重复导航。同一个根任务/Profile 的配额、页面归属、失败隔离与清理不变；拟人模式的页面打开由共享 Profile 输入锁以 450–850ms 间隔排队，加载等待在锁外。显式用户选择的自定义 Agent 与社交来源保持原流程。没有使用批量无界 Tab，也没有扩大并发上限。
+
+### X 事件与原帖分离（2026-10-15）
+X 默认按具体事件生成情报，重复报道/反应作为 supporting_evidence_ids；重大原始声明可以 important_post 独立成条，但要求单一 X 证据和具体 importance_reason。事件规划携带平台、作者、发布时间及 URL，要求区分已确认事实、观点与未经核实的说法。事件详情保留 post_evidence 原文及主/补证据角色。成功采集的帖子全部进入已有 pages 证据库；没有值得独立报道的帖子也不强制生成卡片。Desktop 列表工具栏与 Mobile 更多菜单提供“逐帖查看”，owner/channel scoped 分页原帖 API 展示关联情报；可手动提升为原文情报，幂等 import_identity 防重复并同步原有知识库队列。逐帖档案只包含已成功采集的帖子，不声称平台上的所有帖子均已抓取。
+
+已有 X 情报可以通过 `/channels/{id}/posts/regroup` 显式重新整理已保存的证据：使用原 collection 根任务和编辑检查点，但不提交任何网页读取任务、不访问 X。已有情报 ID 必须逐一保留，正文更新沿用版本记录和知识库同步；手动提升的原帖不被自动重写。该入口用于旧版本升级后的事件/证据角色补齐，正常更新仍只处理新事实。
+
+### X 帖子有界并发（2026-10-15）
+X 详情读取使用 3 个 worker，同一频道刷新根 Task/Profile 下的浏览器子任务并发上限为 3。每篇详情及规则验证使用独立受控页面，搜索/帐号/列表 feed 继续在信息源作用域复用页面。Profile 的原生点击、键盘及滚动仍通过共享 InputLock 排队，默认拟人模式与每篇原有等待保留。任务成功/失败均沿用受控页面清理，根任务等待子任务和清理结束；单篇失败继续、结果保留候选顺序。其它社交平台仍串行。
+
+### 内容列表分批展示（2026-10-15）
+文章、实体、稿件、热点、机会线索、信息源及更新记录默认展示最新 20 条，底部按需“加载更多”，每次增加最多 20 条。频道、分类、筛选或搜索范围改变后重置分页；同范围后台快照更新保留已展开的数量。文章/实体等仍使用共享快照保证跨频道引用、统计及筛选完整；分页限制卡片展示，不将共享快照声称为网络分页。稿件列表接口支持非负 offset，每次最多返回 20 份完整稿件与 next_offset，前端不再一次请求全部稿件正文；X 原帖接口亦改为 20 条一批。Desktop 和 Mobile 共用分页逻辑。
+
+### 实体身份与重复合并（2026-10-15）
+提取增加原文中明确出现的品牌和参考编号，编号可以作为同一表款的别名，不为编号或普通配色/材质描述重复创建档案。名称匹配使用 Unicode NFKC、大小写与标点归一化；已合并入口解析为同一目标后去重，防止后续采集再生成第三个入口。品牌、型号冲突拒绝自动匹配。
+实体工具栏提供“合并重复实体”：先以别名、品牌前缀和名称相似度提出候选，再由既有 owner-bound AI 调用核对双方当前版本引用。每批至多 20 对；必须高置信度、双方各一条精确引用，拒绝系列/型号、机芯/表款、不同编号、材质、颜色、代际或版次的合并。没有正面身份证据时保留独立档案。用户手动编辑/锁定、已忽略或关注规则冲突的档案不自动合并。
+合并在事务内核对版本，保留原事实 ID、历史事实、图片排除/封面、关注与规则；旧档案保留为 redirect 并记录合并原因/时间，机会线索及频道分类迁移到目标。不删除原文章或原档案。并发变化或此前合并导致版本变化的候选留待下一轮核对。
+
+Dev 腕表验证：通过真实 AI 核对，将“UltraHex 钛金属版本”合并到“UTD-8080”（双方引用同一“常规 UTD-8080”表壳/处理描述），目标保留 12 条事实，源档案保留原 5 条事实及 redirect；UTD-8080-ST 保持独立。模型漏答候选保持独立，不导致整批失败；输出截断沿用既有 model_json 有界重试。
+
+### 实体属性与引用证据（2026-10-15）
+新实体提取及已有实体复审增加 watch/ai_model 属性域。腕表区分表壳直径/宽度/厚度、表盘尺寸、表带与表耳宽度、lug-to-lug、机芯、动储、精度、防水及材质；AI 区分总/激活参数、架构、上下文、RAM/VRAM/推荐内存、量化精度、磁盘及许可证。每项值必须显式出现在精确原文引用中；条件须有引用，不计算未知值。
+每条属性保留所属文章 ID、版本、引文、上下文、时间、标称/实测/估计与观点/传闻标记。相同值及条件聚合多篇引用，同条件同口径的不同当前值标为冲突，不覆盖其它值。旧文章版本仍保留且明确标为历史，不用于当前冲突判定。
+实体详情新增“属性与证据”及“提取 / 更新属性”，按需升级历史档案；每次读取至多 8 篇已关联文章，无网页访问。使用原 owner-bound model_json，事务核对文章/实体版本并保存检查点。实体归并保留属性断言并重新检查检查点。
+
+### 文章详情实体参数（2026-10-15）
+Desktop/Mobile 文章详情底部列出当前文章版本关联的实体及已提取的当前参数。标明每项参数由本文还是其它已关联文章支持，可展开精确引用并跳转证据文章；保留条件、标称/实测/估计及冲突标记，不推断缺失参数。读取使用 owner-scoped `/articles/{id}/entities`，不会发起 AI 或网页采集。异步结果只更新底部区域，合并重复请求并拒绝过期响应，避免刷新正文或图片。重新打开文章可刷新参数缓存。
+
+### 旧实体参数补齐与类型显示（2026-10-15）
+实体工具栏提供“补齐实体参数”，按频道依次升级旧产品/型号档案，每次请求一个实体（至多八篇关联文章），沿用精确引文验证、版本锁与文章检查点；失败项跳过并报告，可再次重试。已完成文章不重复调用 AI。仅使用已收录证据，无浏览器访问。品牌、人物、组织等不显示空参数提示。model 的显示根据 attribute_domain 区分腕表型号/AI 模型，未知领域只称型号；新提取要求腕表及机芯用 product 类型。
+
+Dev 实测补齐（2026-10-15）：TorQ Mechanical、Chapter 4 的 Standard 模型请求均在 150 秒完整响应超时，未写入未经验证的属性；本轮旧档案补齐尚未完成。批量调用改用 owner-bound 后台模型通道；模型超时返回 retry_later，前端明确暂停、保留检查点，避免遍历所有档案重复空等。普通单实体校验失败继续其它项。
+
+### 通用实体属性机制 v2（2026-10-15）
+实体 kind（品牌、型号、人物等）与 attribute_domain 分离，model 在所有领域都显示为通用“型号”，不再等同 AI。领域是受长度及 snake_case 格式约束的开放标识，不限制为 watch/ai_model。新提取、复审、已有档案补齐统一使用同一属性协议。
+属性包含稳定 key、显示 label、原文 value、可选 unit、conditions、basis、status、article_id 和 quote/context_quote。未知领域及新字段无需增添 Python 枚举，扩展字段必须有描述性 label；所有值仍须在精确引文中出现，单位必须包含在原文值里，条件必须有引文，不计算、补造或转换。
+`intelligence/entity_attribute_schemas.json` 是可扩展的预设目录，保留腕表、AI 模型字段并提供汽车示例（尺寸、轴距、功率、扭矩、电池、续航、能耗、质量）。目录提供稳定键、显式别名及可选本地化标签；预设不限制新字段。新增预设/别名只需修改目录，打包包含该 JSON。已登记字段的领域语义仍受校验；未登记字段不能无标签混入。未知同义字段不做猜测合并，需登记别名后统一。
+聚合以 (domain, canonical_key) 分组，同名跨领域字段不会混并；不同配置/测试标准、标称/实测及争议结果分别保留。参数断言保留原单位与多篇文章证据、版本历史。汽车 WLTP/CLTC 续航不会作为同口径冲突混算。Schema revision 升至 2，旧检查点在显式补齐时重新检查；不会在查看文章时自动调用 AI。补齐不再按产品/型号白名单过滤，已实质讨论的其它类型实体也可提取有证据的适用属性；没有属性的品牌/人物仍不显示空提示。
+
+### 整理失败后的网页证据恢复（2026-10-15）
+手动及定时刷新统一检查本频道 24 小时内最新结束记录。若在 digest/planning/writing/saving 阶段失败或部分完成且 AI 整理仍有待处理内容，先复用来源 Task 保存的正文及来源结果；来源配置必须一致，单源重试可使用原范围子集，已成功完成整理的最新记录阻断过旧失败任务的重复恢复。不会因默认模型切换丢弃网页证据。
+首次规划前即持久化冻结后的证据；若频道编辑设置与来源范围未变，沿用事件计划、文章检查点及原始文章 ID 命名空间，只继续未完成部分。频道编辑设置变更保留可用网页，但重新规划；来源配置变更或缓存超过 24 小时走正常采集。整理完成即记 editorial_complete，即使部分来源失败也不会下次永远复用这一批正文。模型超时显示明确诊断，原始内容保持未处理状态。
+
+Dev 恢复实测：按用户要求将普通模式工作默认设为 OpenAI 三档：work_simple=GPT-6 Luna、work_standard=GPT-6.1 Sol、work_complex=GPT-6 Astra，均通过模型设置页保存；其它用途配置保留。恢复 run `9bc67496563e4b42a24e3d40161e8a48` 使用 Sol，复用 20 篇正文、浏览器子任务 0，生成/更新 9 篇情报，editorial_complete=true。整体 partial 沿用原 Hodinkee 验证与 Time+Watches 编译失败，不代表本次 AI 整理失败。
+
+### 旧正文 Agent 与预加载入口兼容修正（2026-10-15）
+普通网站正文组合预加载流程前，从 owner-scoped 的实际不可变 generation 解析 capability：单入口导出使用真实导出名；没有导出的旧版 IR 使用共享执行器既有的 `agent.<draft_id>.run` 名称。显式入口必须匹配真实导出，多入口不得猜测。校验 owner、draft、active 状态与 compiler version，不信任缓存中复制的 IR，也不改写已有缓存。解析完成后再构造 agent.call，避免先编译、后补入口的顺序错误。未改变编译器的必填检查，也未修改网站选择器、并发或 Profile 状态。
+
+### 无有效进展保护（2026-10-15）
+后台 WebAgent 按已完成步骤及其结果检测进展；租约续期、状态轮询、重复日志与完全相同的步骤结果不重置计时。连续 300 秒无有效进展时请求取消，待 AgentRun 确认结束后把浏览器任务标为失败，沿用现有 owned-context 页面清理及任务树收尾。单个子任务失败沿用单篇/单源隔离逻辑，其它正在前进的任务继续。明确等待登录或用户确认时暂停计时，恢复后重新获得完整窗口；未获得执行名额的排队任务不启用叶任务计时。
+频道采集协调器另按完成步骤、读取/提取/保存/来源完成计数及编辑检查点变化检测停滞。没有活跃浏览器子任务时限为 300 秒；存在活跃子任务时给叶任务额外 30 秒取消/清理宽限，再取消整个停滞采集，记录最后阶段/信息源及 no_progress_timeout。已提交文章、来源结果及编辑检查点保留，后续重试使用已有恢复机制；尚未持久化的局部内容不作保留承诺。已提交最终文章结果后的独立实体等投影沿用原模型调用期限，不纳入采集协调器的停滞判定。Local 重启或任务恢复重新计时，避免把离线时间误判为卡死。
+排队等待修正（2026-10-15）：频道根任务按 owner/root 汇总浏览器子任务，并按 actor/App/session 汇总本地模型队列；只有所有待执行工作均在排队或明确等待人工时，暂停无进展判定。任一浏览器或模型调用仍在执行，则继续判定进展，避免排队中的兄弟任务掩盖真正的卡死。浏览器命令等待响应不属于人工暂停。叶任务同时识别 BrowserTask 队列、AgentRun 队列及重新 admission 等待；恢复执行后重获完整 300 秒窗口。队列自己的准入超时、模型调用期限和浏览器命令超时保持独立，不通过续租或轮询伪造进展。
+
+### 补齐缓存后仍采集最新内容（2026-10-15）
+普通手动/定时更新在同一根 Task 内先补齐待整理缓存，再执行本轮信息源采集与新内容整理。缓存阶段提交正文指纹、增量保存文章，但不结束 Run，也不把本轮来源 Task 标成已采集；阶段完成归档缓存检查点，清空旧证据编号后再建立本轮整理状态。重启后由 recovery_complete 避免重复补缓存。显式“重新整理已保存 X 帖子”仍只使用缓存、不访问网站。
+旧版本 partial 记录若有最终 article_count 且计划的每篇文章均已保存，视为整理已完成，不因来源单篇失败恢复旧缓存。普通刷新卡片增加缓存正文、缓存生成情报、本轮新读正文的独立统计，Desktop/Mobile 共用。最终生成/更新数量包含缓存补齐与本轮结果；来源结果与新读数量只统计本轮，避免把旧 42 篇当作新抓取。
+
+### 系统 Task 接入（2026-10-15）
+
+频道刷新根任务及间隔计划接入 Local 系统 Task 服务，参见 [系统 Task 接入合同](system-task-management-v1.md)。手动与定时刷新复用频道去重键；系统队列只接纳根任务，获得名额后再运行原来源/文章并发与编辑检查点流程。刷新页面不负责驱动系统队列，Browser/Profile 和模型资源限制仍独立生效。
+
+Todo Desktop/Mobile 的“系统任务”入口可以查看队列、未来计划和历史，展开原 collection TaskTree；中断操作等待 owned 页面清理后结束。对已有 collection_jobs 补注册系统任务，原网页缓存保留。未接入的其它业务不受这套系统并发上限约束。
+
+### 编辑结果修正边界（2026-10-20）
+
+情报业务的 `intelligence/service.py` 负责结构和证据校验；不修改共享 General Agent、AaAT 声明或路由。模型 JSON 调用最多三次（首次加两次修正），每次保留原始证据/schema，仅附最近失败响应和具体校验错误，要求复核全体结果。重试不执行浏览器操作或重放业务提交；HTTP/授权错误及取消不走此修正循环。每次仍受 150 秒调用超时限制。
+
+分类容错仅允许将两侧空格去除后精确匹配现有 ID；没有分类时归一为 null。未知分类交模型修正，不自动映射到其它分类。证据越界、事件间证据关系、正文引用和网页覆盖校验保持严格，不静默丢弃不合格证据。三次仍失败，进度保存最后校验原因；沿用 collection_jobs 的冻结证据、已验证计划和逐篇检查点，保留采集缓存及已保存文章，后续恢复不重写成功文章。计划未经验证不保存为可执行检查点。
+
+### 派生整理独立任务（2026-10-20）
+
+频道采集提交文章后，仅完成来源任务树和页面清理，不等待知识库、实体、热点或监控线索的模型调用。情报 App 所有的 `intelligence/projections.py` 管理持久派生请求，通过现有系统 Task 队列注册 `intelligence.derive.entities/categories/topics/opportunities/knowledge` 五类任务；Todo 系统任务目录可查看、启动失败任务和中断。优先级低于交互刷新，无独立进程内 fire-and-forget 模型任务，不修改通用 Agent 或系统调度决策。
+
+- 文章提交后记录持久请求；提交队列失败保留待派发记录，由 collector 循环重试派发。重复相同内容请求去重；重启后处理未派发请求。队列和业务数据库之间没有跨库事务，极端崩溃可能重建重复任务；实际执行根据持久签名跳过已完成模型工作。
+- 任务执行时读取该 owner/channel 的最新内容，支持把已过时的排队任务合并为最新状态。实体按现有 extraction signature 只处理待提取文章，逐篇 ingest 是恢复检查点，某篇错误保留失败清单并继续其它文章；每次 ingest 仍检查文章版本和全部证据约束。实体完成后才排实体分类/监控线索请求；这些请求用实体事实快照签名，避免重试补齐实体后漏更新分类。
+- 分类沿用已分类实体签名；热点按最近窗口内容签名跳过未变内容，保存时拒绝过期结果；监控仅处理本频道被关注且事实/规则签名变化的实体；知识库沿用原有导出签名及幂等保存。
+- 同频道的实体提取/分类/线索使用 App 侧串行锁避免同类快照竞争；热点和知识库可独立执行。取消继续走系统 Task 的协程取消，失败任务手动重试时重新读取最新签名，跳过成功项。没有自动放宽引用/事实/参数/正文证据校验，也不把辅助任务失败改成文章更新失败。
+- 未知 App 权限、失效身份、owner/channel 访问仍由既有 Task 适配器校验；任务名和模型响应不授予权限。此改动为专用情报工作流，不新增共享 AS 业务特例。
+
+### 文章对话与有限研究（2026-10-20）
+
+文章收藏旁新增独立对话入口，owner/article 隔离保存当前 thread、初始分析、可选话题和最近 50 轮对话。打开时 AI 只分析本文并提议话题，不执行搜索，不把推测的兴趣当成事实。追问基于本文与最近对话生成问题；用户可选择填入输入框，也可自行提问。重置更换 thread、清空当前对话/动作记录并请求取消当前任务，旧 thread 的延迟结果不能写回。
+
+UI 经同一 owner/App dependency 使用专用 articles/{id}/chat API，耗时模型工作是 `intelligence.article_chat` 系统任务，提交后通过轻量状态 GET 轮询，避免 Mobile 的同步长请求。单次执行总预算 240 秒，联网部分最多 180 秒。请求 ID 校验问题与 thread，已成功结果不重复调用模型；取消/权限失败不得改用其它 Provider 重试。
+
+默认资料为本文、最多 4 篇相关文章的有限正文片段，以及当前文章来源在本机已有的最多 3 份原文缓存。回答按实际证据编号校验唯一引用，模型不能生成 URL。文章回答模型获得受限 `web_search` function Tool（逻辑能力为 `web.search`），由 AI 判断本机证据是否足够。需要补充时生成短搜索词并准备现有确认表单，不再展示独立的追问/快速搜索按钮；打开文章和生成话题仍不搜索。确认后调用 `web.search`，服务端仅允许 `mode=fast`、共享策略确定的单一快速来源、最多 3 条结果；不调用 LLM 优化搜索词。提交动作与后台执行/恢复时均校验冻结回执，旧 custom/preferred 回执必须重新准备。DeepSeek Cloud 继续要求明确费用确认，无自动付费回退。调用现有 CapabilityRouter 的指定 Search-All Provider、确认回执、共享搜索/正文工作流与 BiDi Browser Task 队列，不建立第二套浏览器执行器，不绕过现有来源/Profile/Package digest/actor/Session/Installation 守卫，也没有 HTTP 自动回退。仅成功读取的正文可加入回答证据，搜索摘要不冒充正文；结果引用 URL 来自实际资料。
+
+业务语义与预算属于 intelligence/article_chat.py，API 只适配所属服务；system_tasks/intelligence.py 只注册该 Task。未修改 General Agent、AaAT 通用声明加载、交互/确认策略或共享搜索工作流。不是开放式自主 Agent：没有发布、写入外部系统、任意 Tool、无限搜索或自行扩大授权的能力。
+
+验收补充：App-Dev 已真实完成文章分析、话题、正文/缓存引用回答、追问，以及确认后的 Search-All 联网回答。样本只成功读取一份外部正文，明确保留官方资料不足的限制；不以此宣称搜索覆盖完整。Desktop/Mobile WebKit 页面流程、异步旧回包与重置隔离测试通过；iPhone 真机与所有来源组合未验收。全局 AaAT 检查另有 Cloud/OpenAI 适配器依赖分类错误（130 通过、1 失败），本功能没有绕过该门禁。
+
+文章对话展示位置（2026-10-20）：对话使用右侧阅读栏中的独立页签，不使用模态对话框。
+文章详情、文章对话与原有频道对话可切换；切换保留当前文章的输入、对话及搜索确认表单，
+后台回答继续观察，不因切页重新分析。返回详情恢复阅读滚动位置。切换到另一文章时按文章
+隔离草稿并读取对应持久线程；取消、重置、确认式联网及引用验证沿用原合同。
+
+Chat Mini-Entry 共享 UI（2026-10-20）：文章与频道对话使用 Chat 所有的
+`AI2AppsMiniAppChat.createConversationSurface`，消息、输入与发送区不再由情报中心
+单独构造。浏览器 Chat Mini-Entry 的普通/控制 Mini-App 两条路径使用同一
+`bindConversationSurface` 及消息追加实现。采用同页嵌入组件而不是 iframe，避免为
+证据问答重建一套父子消息协议或向通用 Chat 模型通道传递未经所属校验的最终答案。
+
+组件只拥有 DOM、文本安全显示、滚动与输入布局，以及 Ctrl/Cmd+Enter 单次提交，
+不发模型请求、不按业务身份分派、不接管会话权限、证据与确认。情报中心所属适配器
+仍使用原 owner/channel/article/thread API、模型任务、重置与引用验证；有限联网先确认。
+共享样式限定在 .chat-mini 内，嵌入输入框按 border-box 限制到所属栏宽，消息区独立滚动。
+
+2026-10-20 补充：普通 Chat 与 Chat Mini-Entry 的用户气泡引用同一
+chat_message_stream.css，不再维护黑底独立样式；靠右、按内容宽度、浅色背景与 24px 圆角。
+首次发送问题即收起初始分析/话题区域；打开已有历史线程默认不显示初始推荐。
+显式追问成功后才再次显示建议，下一次发送再收起；重置新线程恢复初始分析。
+
+文章对话现已接入 统一 Mini-Chat 的会话与按钮扩展契约：关闭、追问、重置、联网准备/确认均为注册动作 hook，消息和表单由 Entry 管理。所属适配器仍承担持久线程、Task 观察、证据与引用校验。原 IntelligenceArticleChat.init/open 外观 API 保持；频道旧共享 surface 继续兼容。见 [Mini-Chat 扩展接口](app-chat-mini-entry-v1.md)。
+
+### Token usage policy (2026-10-21)
+
+- Editorial model calls receive only channel authoring settings (name, interests,
+  exclusions, sections, output language and post-filter guidance). Derived entity
+  taxonomies, assignment signatures, hot topics and UI state are excluded.
+- Event planning still compares candidate previous article summaries. Once a plan
+  exists, writing receives only its selected update target, or no previous articles
+  for a new event. Original evidence IDs, merge target and citation validation remain
+  mandatory; this does not permit silent source/claim removal.
+- Entity/attribute extraction is user initiated through the existing entity controls.
+  Collection does not enqueue entities, categories or opportunities. Legacy queued
+  automatic entity jobs are skipped, and undispatched legacy outbox rows are retired.
+  Existing dossiers are retained. Extraction cache signatures depend on article text
+  and image/caption evidence, not updated_at, read/favorite state or retrieval metadata.
+  Exact legacy cache hits migrate without a model call; evidence-history signatures
+  are kept separate and unchanged.
+- `ChannelInput.auto_topics` defaults to false, including existing channels without
+  this field. The shared Desktop/Mobile channel settings expose it. Enabled channels
+  request topic analysis after collection, at most once per rolling 24 hours. Failed
+  attempts consume that automatic interval too, preventing repeated paid retries.
+  This is not a separate timer: it follows the next channel update when eligible.
+- Opening the topic tab reads cached results only. The existing Update Topics button
+  explicitly requests analysis even when automatic topics are off or daily-limited.
+  Unchanged article signatures reuse saved results. UI and background use one durable,
+  owner/channel-bound execution claim; concurrent requests cannot both call the model.
+  Claims expire after 10 minutes for crash recovery; internal model generation remains
+  limited to three attempts with 150 seconds per call and strict evidence checks.
+- Article collection and derived Tasks have independent outcomes. Once editorial
+  articles/evidence fingerprints are committed, projection dispatch/analysis failure
+  cannot change collection success or cause those pages to be collected again.
+  Genuine source failures and article-generation failures still retain partial/failed
+  collection status and existing bounded checkpoint recovery.
+
+### Planning and extraction budget refinement (2026-10-21)
+
+All planning candidates are retained. Previous-source context contains unique URLs
+only, excluding old source titles, image URLs, retrieval timestamps and display
+metadata. New evidence coverage flags and all ID/coverage/citation validators stay
+unchanged. JSON request serialization uses compact separators.
+
+Rule learning is logged as x_rule/site_rule and post filtering as post_filter.
+Selectors begin at1024 output tokens; post filtering scales from2048 to8192 with
+batch size. Truncation restarts from the identical evidence/schema and doubles the
+budget within the existing three-attempt bound. Complex authoring/planning retains
+its original limit. Low reasoning effort is requested only when the model catalog
+explicitly declares support. Provider protocol declarations live in Model Manager;
+Intelligence consumes them without a provider-name branch. Source of the DeepSeek
+level declaration: https://api-docs.deepseek.com/guides/thinking_mode/ . No Cloud-side
+code or deployed Cloud contract is changed.
+
+X compiled extraction is checked against independent semantic extraction in the
+same synchronous DOM snapshot, with the existing minimum matching identities/body
+and photo-source checks. This avoids comparing different live-feed contents across
+learning/validation navigation. Empty loading snapshots contribute no evidence;
+nonempty invalid snapshots still invalidate the accumulated rule result. Existing
+compiled rules are reused only while validation succeeds; drift still falls back
+and permits at most one model repair per source/template/update. Output traces add
+channel, effective reasoning effort and context character count, never source text
+or credentials.
+
+### Source-to-new-article cardinality (2026-10-22)
+
+One source article/URL can support at most one newly created channel article in a
+collection plan; it may simultaneously update multiple genuine pre-existing
+articles. Roundups, podcasts and multi-product reporting must consolidate their new
+material into a single new article rather than creating one per mentioned product.
+Multiple reports can still merge into that article. Canonical public URLs count as
+the same source even through duplicate evidence IDs, fragments or tracking tags.
+
+The App owns this rule: planning prompt and validator, legacy unplanned generation
+validator, and transactional article persistence all enforce it. Incremental saves
+and restart replays reserve the source against IDs created by the same collection,
+including later source changes on such IDs. Genuine old-article updates do not consume
+new slots. Validation errors enter the existing bounded model repair path with the
+original evidence; do not fabricate update targets, silently drop valid sources or
+weaken citation/coverage checks to pass. Invalid cached plans stop before further
+writing/saving, preserving any existing checkpoint rather than deleting past output.
+
+Historical split articles are retained; this change does not merge/delete user
+articles, favorites or conversations automatically. Local read-only investigation
+confirmed the Weekly #243 watch roundup updated two existing articles and created
+four additional articles in Run32a8dce21989496d9f2a9a2204f96134.
+
+### Mobile article discussion layout (2026-10-23)
+
+Mobile keeps the reader's back/title bar and article subtitle; the embedded Chat
+entry hides its duplicate title and close-action row. Desktop retains that header.
+During article discussion the owner requests `ai2apps.shell.set-dock-visible`
+with a boolean `visible`, plus its existing mount token and instance ID. Mobile
+Shell accepts this layout request only from the active trusted mount and stores
+the preference per mount; switching Apps/Home restores the active surface's own
+default. Sandbox, background and invalid-identity messages cannot hide navigation.
+This is a generic Shell layout protocol, with no Agentic execution or authority
+changes. Leaving the article discussion requests the dock again. The hidden dock
+releases the main viewport space while retaining the bottom safe area.
+
+Mobile article discussion also requests `ai2apps.shell.set-topbar-visible` using the same mount-bound boolean contract. Shell owns the App identity row and frees its 58px while retaining the top safe area. The reader back bar stays visible; leaving discussion or switching mounts restores the appropriate row.
+
+### Article explanation and deeper research (2026-10-24)
+
+The default article Mini-Chat suggests short requests to explain abbreviations,
+people, organizations, technologies, products and objects explicitly mentioned in
+the article. Its opening text is empty or a short invitation; it does not generate
+an unsolicited analysis. Followups stay focused on unaddressed terms. Simple
+answers are concise and article-specific; the existing supplied-evidence validation,
+uncertainty rules and confirmed Search-All boundary remain unchanged.
+
+The separate “Explore in depth” entry retains the previous analysis/comparison/
+evidence-gap suggestions. Desktop exposes it beside article Chat; Mobile exposes
+it in the article's More menu to avoid crowding the compact toolbar. Both use the
+same Mini-Chat and share no additional generic execution logic.
+
+GET `/articles/{id}/chat` defaults to `purpose=explain`; `?purpose=research` opens
+an independent persistent thread. Existing article conversation history stays in
+place. Research uses a separate owner/article table; action, reset and Search-All
+requests resolve the purpose from the owned thread rather than caller-controlled
+mode flags. Reset only deletes that thread's action records. Existing topic caches
+without a matching `topic_style` are regenerated on opening and not flashed while
+waiting. Existing history, citation checks, finite budgets, cancellation, task
+idempotency and explicit web confirmation are preserved.
+
+### Deep research continues in Chat App (2026-10-24)
+
+The telescope action now sits between Favorite and article Chat on both surfaces.
+It opens a dismissible waiting dialog and generates research topics via the existing
+bounded owner task. Closing the dialog prevents later automatic navigation. Ready
+article data (bounded article text, original source references, the last four saved
+explanation turns, topic analysis and suggested topics) is frozen into a data-only
+Chat seed. No model-selected instructions or generated URLs gain authority.
+
+`POST /articles/{id}/chat/research-handoff` requires the owned research thread and
+ready topics. It exports data, not a Chat session owned by the source client, and
+does not create an Agent Run. The recipient Desktop or authorized Mobile Chat uses
+its own existing create-thread API and principal/client scope. A stable seed key
+makes retries reuse the original Chat snapshot. User-selected starter topics fill
+the ordinary Chat input; execution begins only when the user sends through the
+existing Agent workflow. The simple article Mini-Chat remains unchanged.
+
+The generic Shell protocol `ai2apps.shell.open-chat-context` is accepted only from
+the normal authenticated mount. Chat owns the shared data-only normalizer: bounded
+user/assistant text, title, stable import identity and up to five starter suggestions.
+System/tool roles, system prompts, arbitrary model/Agent settings and unknown seed
+fields are rejected or removed before import. The recipient remains responsible
+for access and Agent authorization. Generic Chat/Shell code does not recognize
+Intelligence or article semantics. Mobile requires its independently authorized
+Agent connection; App access does not grant Agent execution.
+
+The recipient scopes the stable import key with its authenticated Chat App instance ID before creating the thread. This preserves idempotency within a client and prevents global legacy-import-key collisions when the same seed is opened by a different client; it does not permit cross-client thread access.
+
+
+### Mini-Chat 与文章 Tool 更新（2026-10-24）
+
+文章与频道 UI 复用统一 Mini-Chat surface。文章顶部模型列表来自按当前 principal 过滤的系统模型发现，选择 ID 在提交和后台执行前再次校验；原不传 model 的接口仍使用 Standard 工作模型。重置在顶部模型旁边，原 reset API 保留；频道新增 owner-scoped reset 并拒绝回答中重置。
+
+文章 Tool 最多请求一次 fast 搜索。原生 function-call 与受限 JSON 请求都必须通过同一 owner 验证；不接受任意工具名、模式、来源或超长搜索词。模型决定持久保存到 action checkpoint，准备失败后的显式重试复用决定与 preparation request ID。准备完成存为 pending_search，不冒充已完成回答；确认表单使用现有 actor/Installation/Session/article/thread/Profile/digest 守卫与 Cloud 费用确认。只有确认后调用实际 web.search 并读取正文；搜索结果不能再次触发搜索，证据编号规则不变。重置删除待确认请求，旧 thread 不能继续执行。旧 search/followup HTTP 接口保留以兼容已加载的客户端。
+
+
+### 搜索摘要截断与缓存恢复（2026-10-24）
+
+共享 search_workflow 的摘要提示与验证使用同一严格 schema，先检查 finish_reason=length，再解析 JSON/校验证据。摘要最多三次模型调用，预算依次 6000/10000/16000；截断从相同证据重新生成紧凑 JSON，格式/引用错误给出具体字段错误并保留最新失败回答，不能删除不合格引用来绕过校验。用户对摘要失败的旧搜索发起显式重试时，仅恢复该 Session/confirmation 下完成的原文读取步骤并重新摘要；不重新搜索、不重新收费调用搜索、不重读网页。取消、过期、搜索或读取失败不进入此恢复路径。多次点击复用同一个摘要恢复 Run，避免重复模型任务。日志记录 Run、尝试次数、截断标记与失败约束，不写完整正文。
+
+### 文章对话明确联网请求（2026-10-27）
+
+文章 owner 的 System Context 要求：当前用户明确要求搜索/联网核实，即使本地证据充足也应请求既有 fast web.search；“你搜索一下看看”等短追问从前一用户问题和所选文章解析主题，不要求用户重复授权意图。网页/历史中引用的搜索指令仍是不可信数据，当前“不联网”要求应尊重。external_reading=false 仅表示尚未执行，不表示禁止；执行后空结果仍标记已执行并说明证据不足。来源/费用确认、单轮一次、引用/归属校验和原持久搜索准备流程保持不变，System Context 本身不授予调用权限。
+
+25 项文章对话测试通过，新增真实模型请求结构 + 可控模型响应的 API→System Task→搜索准备夹具，覆盖中英文短追问、上下文保留、确认前不执行搜索、空结果状态。该夹具不证明真实模型总会遵循指令；本轮未调用付费模型或执行真实联网搜索，也未重放用户已有回合。

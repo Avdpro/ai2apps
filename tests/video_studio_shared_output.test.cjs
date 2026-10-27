@@ -73,3 +73,28 @@ test('Package download event selects a temporary file result until its run appea
     assert.equal(app.sharedOutputItems.length, 2);
     assert.equal(app.selectedOutputKind, 'video');
 });
+
+for (const mobile of [false, true]) test(`actual Mini-App navigation preserves shared Output (${mobile?'Mobile':'Desktop'})`, async () => {
+    const app=studio();
+    app.mobileViewport=mobile;
+    app.tasks=[{id:'video',status:'succeeded',created_at:'2026-10-15',metadata:{mode:'t2v'},result:{video:{download_url:'/video'}}}];
+    app.audioRuns=[{id:'audio',status:'succeeded',miniAppId:'ai2apps.video.extract-audio',artifacts:[{id:'a',kind:'audio',mediaType:'audio/wav',downloadUrl:'/audio'}]}];
+    app.selectedOutputKey='run:audio';app.selectedOutputArtifactId='a';
+    for(const name of ['loadExtractorDraft','loadUpscalingModels','loadComposerProject','loadComposerMaskModels','loadComposerChatModels'])app[name]=async()=>{};
+    app.syncDefaults=()=>{};app.persistShellState=()=>{};app.saveCurrentMiniAppDraft=()=>{};app.restoreMiniAppDraft=()=>{};app.icons=()=>{};
+    const tasks=app.tasks,runs=app.audioRuns,keys=Array.from(app.sharedOutputItems,x=>x.key);
+    for(const mini of app.miniApps.filter(x=>x.mode)) {
+        await app.selectMiniApp(mini.id);
+        assert.equal(app.tasks,tasks);assert.equal(app.audioRuns,runs);
+        assert.deepEqual(Array.from(app.sharedOutputItems,x=>x.key),keys);
+        assert.equal(app.selectedOutputArtifact.id,'a');
+    }
+});
+
+test('late Package completion does not steal shared Output selection',()=>{
+    const app=studio();app.refresh=async()=>{};
+    app.selectedOutputKey='task:chosen';
+    app.handlePackageOutput({detail:{studioId:'ai2apps.video-studio',miniAppId:'package.video',preserveSelection:true,
+        result:{runId:'background',downloadUrl:'/v1/platform/sessions/s/artifacts/a/download'}}});
+    assert.equal(app.selectedOutputKey,'task:chosen');
+});

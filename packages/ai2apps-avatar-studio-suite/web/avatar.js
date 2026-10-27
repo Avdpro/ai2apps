@@ -3,7 +3,7 @@
   const {t, setLocale, presetLabel} = window.AvatarI18n;
   const INSTALL_MODEL = '__install_model__';
   let previousModel = '';
-  const inputs = {portrait:null, speech:null}, previewUrls = {};
+  const inputs = {portrait:null, speech:null}, previewUrls = {}, materialIds = {};
   let importing = false, recording = false, recordTimer = null, recordStarted = 0, recordedSeconds = null;
   let audioDuration = null, durationContext = null;
   const capability = 'video.avatar_generation';
@@ -101,6 +101,8 @@
     };
     (async () => {
       await refreshModels();
+      const draft=JSON.parse(await call('draft.get')||'null');
+      if(draft&&models.some(m=>m.id===draft.model)){$('model').value=draft.model;previousModel=draft.model;modelChanged();for(const key of ['preset','resolution'])if([...$(key).options].some(o=>o.value===draft[key]))$(key).value=draft[key];}
       setStatus(models.some(model=>model.ready) ? 'start' : 'configureAvatar');
       await poll(); setInterval(poll, 2000);
     })().catch(error => { statusKey = null; $('status').textContent = error.message; state(); });
@@ -176,7 +178,7 @@
     }
     if (id === 'portrait') { $(id+'-preview').removeAttribute('src'); $(id+'-preview').hidden = true; }
     if (previewUrls[id]) URL.revokeObjectURL(previewUrls[id]);
-    delete previewUrls[id]; inputs[id] = null; $(id).value = '';
+    delete previewUrls[id]; delete materialIds[id]; inputs[id] = null; $(id).value = '';
     $(id+'-clear').hidden = true; $(id+'-slot').classList.remove('has-file');
     $(id+'-name').textContent = id === 'portrait' ? t('portraitSources') : t('speechSources');
     $(id+'-pick').querySelector('strong').textContent = id === 'portrait' ? t('dropPortrait') : t('dropSpeech');
@@ -210,6 +212,7 @@
           await waitForPoll();
           const result = await call('avatar.input.read', {kind:id === 'portrait' ? 'image' : 'audio',reference});
           selectInput(id, new File([result.body], result.name, {type:result.body.type}));
+          if (galleryId) materialIds[id] = galleryId;
         }
         setStatus('ready');
       } catch (error) { statusKey = null; $('status').textContent = error.message; }
@@ -291,4 +294,6 @@
   });
   window.addEventListener('pagehide', () => { clearInterval(recordTimer); if (recording && port) port.postMessage({id:++nextId,operation:'avatar.record.cancel'}); $('speech-preview').pause(); durationContext?.close().catch(() => {}); Object.values(previewUrls).forEach(url => URL.revokeObjectURL(url)); });
   new ResizeObserver(() => window.parent.postMessage({type:'ai2apps:mini-app-resize',version:1,height:document.documentElement.scrollHeight}, '*')).observe(document.body);
+window.ai2appsSaveDraft=()=>call('draft.set',{value:JSON.stringify({model:$('model').value,preset:$('preset').value,resolution:$('resolution').value})});
+window.ai2appsCurrentUI=()=>({models:models.map(m=>({id:m.id,label:m.label,ready:m.ready})),materials:Object.entries(inputs).filter(([,f])=>f).map(([slot,f])=>({slot,name:f.name,size:f.size,type:f.type,referenceAvailable:!!materialIds[slot],...(materialIds[slot]?{id:materialIds[slot]}:{})})),currentJob:currentJob?.id||null,busy:submitting||!!activeJob()});
 })();

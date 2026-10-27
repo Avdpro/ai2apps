@@ -25,18 +25,19 @@ def test_required_reasoning_model_disables_off_and_forces_request_on():
 
 def test_first_send_creates_session_with_selected_model_not_default():
     html = CHAT_TEMPLATE.read_text()
-    start = html.split('    async startNewChat({ initialModel = null } = {}) {', 1)[1].split(
+    signature = '{ initialModel = null, initialModelExplicit = true, initialAgentMode = !this.terminalAssistantMode, initialAgentKey = null } = {}'
+    start = html.split('    async startNewChat(' + signature + ') {', 1)[1].split(
         '    async loadChat(', 1)[0].strip().removesuffix(',')
     send = html.split('    async sendMessage() {', 1)[1].split(
         '        const sourceSystemPrompt', 1)[0]
-    program = 'const startNewChat = async function({ initialModel = null } = {}) {' + start + ';\n'
+    program = 'const CHAT_PRINCIPAL_IS_CORE = true; const startNewChat = async function(' + signature + ') {' + start + ';\n'
     program += 'const sendMessage = async function() {' + send + 'return sourceModel;};\n'
     program += r'''
 const assert = require('node:assert/strict');
 let chatAudioPipeline = null;
 global.window = {innerWidth: 1200};
 function state() {
- return {currentModel:'local-choice', currentChatId:null, preferredChatModel:'cloud-default',
+ return {currentModel:'local-choice', currentChatId:null, preferredChatModel:'cloud-default', preferredAgentModel:'cloud-default', agentMode:false,
  inputMessage:'hello', uploadImages:[], uploadDocuments:[], chatSessions:{}, promptProfiles:[],
  backendChatReady:false, $refs:{},
  startNewChat, hasPendingUploads:()=>false, isCurrentChatStreaming:()=>false,
@@ -139,7 +140,8 @@ def test_chat_has_only_one_settings_modal_entry():
     assert 'data-inference-attribution' in html
     assert "{{ t('chat.inference_attribution') }}" in html
     for path in (ROOT / "ai2apps/web/i18n").glob("*.json"):
-        assert "oMLX" in json.loads(path.read_text())["chat.inference_attribution"]
+        from omlx.admin.routes import _load_locale
+        assert "oMLX" in _load_locale(path.stem)["chat.inference_attribution"]
 
 
 def test_composer_mode_surface_is_distinct_and_focuses_message_input():
@@ -256,7 +258,7 @@ assert.equal(state.availableModels.length, 2);
 '''
     subprocess.run(["node", "-e", script], check=True, capture_output=True, text=True)
     assert html.index("this.registerCloudDefaultModel(cloudDefaultsData.policy?.apiDefault, nextModels)") < html.index(
-        "this.reconcileCurrentModelAfterLoad(this.preferredChatModel)"
+        "this.reconcileCurrentModelAfterLoad(this.agentMode ? this.preferredAgentModel : this.preferredChatModel)"
     )
     load = html.split('async loadModels() {', 1)[1].split('localConversationModels()', 1)[0]
     assert load.count('this.availableModels =') == 1
@@ -272,7 +274,8 @@ def test_chat_defaults_follow_standard_work_then_cloud_api_default():
     methods = html.split("            resolvePreferredDefaultModel(defaultModel) {", 1)[1].split(
         "            /** Keep messages", 1
     )[0].strip().removesuffix(",")
-    script = "const methods = {resolvePreferredDefaultModel(defaultModel) {" + methods + "};\n"
+    script = (ROOT / "ai2apps/web/static/js/conversation_model_policy.js").read_text() + "\nconst AI2AppsConversationModelPolicy = globalThis.AI2AppsConversationModelPolicy;\n"
+    script += "const methods = {resolvePreferredDefaultModel(defaultModel) {" + methods + "};\n"
     script += "function preferred(defaultsData, cloudDefaultsData) {const apiDefaultId =" + assignment
     script += "return this.preferredChatModel;}\n" + r'''
 const assert = require('node:assert/strict');
@@ -295,9 +298,9 @@ state.reconcileCurrentModelAfterLoad('standard');
 assert.equal(state.currentModel, null);
 '''
     subprocess.run(["node", "-e", script], check=True, capture_output=True, text=True)
-    new_chat = html.split("async startNewChat({ initialModel = null } = {}) {", 1)[1].split("const session =", 1)[0]
+    new_chat = html.split("async startNewChat({ initialModel = null,", 1)[1].split("const session =", 1)[0]
     assert "await this.loadModels();" in new_chat
-    assert ": this.resolvePreferredDefaultModel(this.preferredChatModel);" in new_chat
+    assert ": this.resolvePreferredDefaultModel(this.agentMode ? this.preferredAgentModel : this.preferredChatModel);" in new_chat
     assert "fetch('/admin/api/model-manager'," in html
     assert "fetch('/v1/platform/cloud/ai/defaults'," in html
 
@@ -603,7 +606,8 @@ def test_chat_navigation_preserves_the_previous_chat_timestamp():
 
 def test_new_chat_strings_exist_in_every_locale():
     for locale_path in I18N_DIR.glob("*.json"):
-        translations = json.loads(locale_path.read_text())
+        from omlx.admin.routes import _load_locale
+        translations = _load_locale(locale_path.stem)
         missing = NEW_I18N_KEYS - translations.keys()
         assert not missing, f"{locale_path.name} is missing {sorted(missing)}"
         assert "{max}" in translations["chat.error.image_too_large"]
@@ -631,7 +635,11 @@ def test_agent_status_renderer_is_extensible_but_rich_html_fails_to_text():
     assert "safe-html-v1" in registry
     assert "sandbox-html-v1" in registry
     assert "Rich status content is disabled" in html
-    assert "x-html" not in card
+    import re
+    assert set(re.findall(r'x-html="([^"]+)"', card)) == {
+        "agentCallIcon(owner.icon)", "renderMarkdown(child.output.markdown)"
+    }
+    assert 'x-html="agentStatusView(run)' not in card
     assert "agentStatusView(run).tone" in card
     assert "agentStatusView(run).effect" in card
     assert "prefers-reduced-motion: reduce" in html
@@ -658,7 +666,7 @@ def test_chat_turn_supports_direct_model_and_general_agent_modes():
     send = _section(html, "async sendMessage()", "async streamResponse(")
     agent_start = _section(html, "async startAgentRun(", "async finalizeAgentRun(")
 
-    assert "const useAgent = CHAT_PRINCIPAL_IS_CORE && this.agentMode" in send
+    assert "const useAgent = CHAT_PRINCIPAL_IS_CORE && selectedMode" in send
     assert "execution_mode: useAgent ? 'agent' : 'chat'" in send
     assert "await this.streamResponse" in send
     assert "_directModelOnly: true" in send
@@ -683,7 +691,7 @@ def test_agent_mode_is_session_scoped_and_exposes_run_controls():
     assert "agentMode: source.agentMode ?? chat?.agentMode ?? false" in metadata
     assert "agentKey: source.agentKey ?? chat?.agentKey ?? 'ai2apps.general-agent'" in metadata
     assert "await this.loadAgents()" in html
-    assert "setConversationAgent($event.target.value)" in html
+    assert "setConversationAgent(agentKey)" in html
     assert "execution_agent: sourceAgentKey" in html
     assert "agentRunName(run)" in html
 
@@ -747,9 +755,9 @@ def test_agent_interactions_are_schema_driven_and_file_waits_for_resource_handle
 
     assert "agentMenuOptions(interaction)" in card
     assert "submitAgentText(run, interaction)" in card
-    assert "decideAgentInteraction(run, interaction, 'approve', 'run')" in card
-    assert "decideAgentInteraction(run, interaction, 'approve', 'session')" in card
-    assert "decideAgentInteraction(run, interaction, 'approve', 'agent')" in card
+    assert "decideAgentInteraction(run, interaction, 'approve', 'once')" in card
+    assert "decideAgentInteraction(run, interaction, 'approve', 'app')" in card
+    assert "interaction.response_schema?.properties?.resource_scope" in card
     assert "Allow once" in card
     assert "decideAgentInteraction(run, interaction, 'deny')" in card
     assert "submitAgentFile(run, interaction, $event)" in card

@@ -172,28 +172,32 @@ async def test_upscaling_background_run_publishes_only_host_artifact(tmp_path, m
         _fake_upscale(files["video"][1], target)
 
     def import_artifact(session_id, path, name, **kwargs):
-        assert path.is_file() and name == "upscaled.mp4"
+        assert path.is_file() and name.startswith("upscaled-stjob_") and name.endswith(".mp4")
         with av.open(str(path)) as output:
             assert len(list(output.decode(output.streams.video[0]))) == frames
             assert len(output.streams.audio) == (1 if frames > 12 else 0)
-        return SimpleNamespace(id="artifact", name=name)
+        return SimpleNamespace(id="artifact", name=name, media_type="video/mp4")
 
     runtime = SimpleNamespace(database=database,
-                              config=SimpleNamespace(paths=SimpleNamespace(artifacts_path=tmp_path)),
+                              config=SimpleNamespace(paths=SimpleNamespace(artifacts_path=tmp_path, base_path=tmp_path)),
                               model_invocations=SimpleNamespace(invoke_background_to_file=invoke),
                               video_tasks=SimpleNamespace(artifact_session=lambda: "session"),
                               workspace=SimpleNamespace(import_artifact=import_artifact))
     monkeypatch.setattr(upscaling, "_model_ready", lambda *a: True)
-    principal = SimpleNamespace(actor_user_id="actor", installation_id="installation",
-                                organization_id="org", billing_account_id="bill", membership_epoch=1,
-                                authentication_type="local")
+    from dataclasses import replace
+    from ai2apps.identity import RequestPrincipal
+    from ai2apps.studio.background import StudioBackgroundJobs
+    principal = replace(RequestPrincipal.legacy_local(), actor_user_id="actor", installation_id="installation")
+    runtime.studio_jobs = StudioBackgroundJobs(runtime)
     scope = dict(actor_id="actor", installation_id="installation", app_instance_id="instance",
                  studio_id=upscaling.STUDIO_ID)
     job = await upscaling.start_builtin_job(runtime, scope, principal,
                                             content=source.read_bytes(), filename="source.mp4",
                                             media_type="video/mp4", model_id=model.id, seed=0, prompt="")
     manager = runtime._video_upscaling_jobs
-    await manager.active[job["id"]].task
+    with database.transaction() as db:
+        record = dict(db.execute("SELECT * FROM studio_background_jobs WHERE run_id=?", (job['id'],)).fetchone())
+    await runtime.studio_jobs._run(record)
     run = manager.repository.get_run(job["id"], **scope)
     if not segmented:
         assert run["status"] == "failed" and calls == []

@@ -11,10 +11,18 @@ def _exploration_prompt(request) -> str:
         if key in observation
     }
     # Rendered labels are untrusted page data, never planner instructions.
+    def control_summary(control):
+        result = {key: str(control.get(key) or "")[:160]
+                  for key in ("ref", "tag", "role", "type", "name", "text", "value")}
+        if control.get("sensitive") or control.get("type") == "password":
+            result["value"] = ""
+        return result
+    from .probe_contract import coverage
+    safe_observation['control_coverage']=coverage(observation)
     safe_observation["text_sample"] = str(observation.get("text_sample") or "")[:20000]
     safe_observation["controls"] = [
-        {key: str(control.get(key) or "")[:160] for key in ("ref", "tag", "role", "type", "name")}
-        for control in (observation.get("controls") or [])[:150]
+        control_summary(control)
+        for control in (observation.get("controls") or observation.get("items") or [])[:600]
         if isinstance(control, dict)
     ]
     safe_observation["file_inputs"] = [
@@ -29,8 +37,8 @@ def _exploration_prompt(request) -> str:
         {"file_inputs": (window.get("file_inputs") or [])[:20]} |
         {"text_sample": str(window.get("text_sample") or "")[:12000],
          "html": str(window.get("html") or "")[:30000],
-         "controls": [{key: str(control.get(key) or "")[:160] for key in ("ref", "tag", "role", "type", "name")}
-                      for control in (window.get("controls") or [])[:100] if isinstance(control, dict)]}
+         "controls": [control_summary(control)
+                      for control in (window.get("controls") or window.get("items") or [])[:600] if isinstance(control, dict)]}
         for window in (observation.get("windows") or [])[:4] if isinstance(window, dict)
     ]
     def structural_summary(value: Any, depth: int = 0) -> Any:
@@ -125,6 +133,8 @@ def _exploration_prompt(request) -> str:
         "files without asking the user to select them again. Hidden file inputs are valid upload "
         "targets. If no file input exists, click the visible image/upload entry, then re-observe. "
         "Do not repeatedly inspect an unchanged page: use an observed control ref. "
+        "Control value is the currently observed form value, independent of its accessible name. "
+        "Preserve already correct values instead of typing them again. "
         "Ordinary compose input and attachment preparation do not require approval. "
         "A user-requested ordinary post/send is already authorized; do not ask for approval "
         "again or ask the user to verify an image preview. Verify upload completion yourself "
@@ -133,6 +143,12 @@ def _exploration_prompt(request) -> str:
         "legal_consent, missing_information, unsupported_interaction. Use it only for an actual "
         "blocker with concrete observed evidence and a specific user action. Approval, preview "
         "review, ordinary typing/upload and model uncertainty are not assistance kinds. "
+        "Probe controls include native elements and custom DIV/SPAN controls; tag name is not clickability. "
+        "Cover the intended observed interactive control regardless of tag. Prefer its exact Probe ref. "
+        "Do not invent a button selector when the observed control is a DIV or SPAN. "
+        "If Probe is truncated or the target is offscreen, re-observe/scroll before acting. "
+        "A refreshed rule may replace only the target binding for the same operation and arguments. "
+        "Unknown action outcomes require readback, never another click or submission. "
         "Use natural-language target hints or observed element refs, never CSS/XPath or "
         "JavaScript. For extract_list, request all required fields explicitly; supported fields "
         "include title, url, author, published_at, summary, and image_url. Set success and failed "

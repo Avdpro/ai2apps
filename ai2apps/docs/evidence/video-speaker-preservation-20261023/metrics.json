@@ -1,0 +1,58 @@
+{
+  "job_id": "stjob_a8c824fc57504055bbe20c895c8ef0d3",
+  "studio_run_id": "strun_02520eaf85a742d9835121db71327eb0",
+  "output_artifact_id": "art_2bf38951b0ab46e2872f9c49c5ce5773",
+  "output_size": 516496,
+  "video_frames": 243,
+  "frame_and_timestamp_parity": true,
+  "source_audio_seconds": 24.32,
+  "output_audio_seconds": 24.32,
+  "source_reference": true,
+  "reference_reference": true,
+  "source_staged": false,
+  "reference_staged": false,
+  "target_A_first": {
+    "samples": 480000,
+    "correlation": 0.03135676456140737,
+    "snr_db": -7.03751544559939,
+    "rms_difference": 0.17591982535215728,
+    "gain_db": -23.85798250989451
+  },
+  "target_A_last": {
+    "samples": 470400,
+    "correlation": 0.018185034091955692,
+    "snr_db": -9.577015618589074,
+    "rms_difference": 0.2352149443567207,
+    "gain_db": -25.681934215737723
+  },
+  "non_target_B": {
+    "samples": 595200,
+    "correlation": 0.9987682787945824,
+    "snr_db": 26.057654153030757,
+    "rms_difference": 0.002487931814714904,
+    "gain_db": -0.057128720169488494
+  },
+  "background_intro": {
+    "samples": 115200,
+    "correlation": 0.9998659928524639,
+    "snr_db": 35.69737368448956,
+    "rms_difference": 0.0002909697531376687,
+    "gain_db": -0.01231411376906022
+  },
+  "background_tail": {
+    "samples": 115200,
+    "correlation": 0.9999971906319167,
+    "snr_db": 52.467043815733795,
+    "rms_difference": 4.2844705915644575e-05,
+    "gain_db": -0.0019420345136177259
+  },
+  "continuous_stereo_background": {
+    "samples": 1167360,
+    "correlation": 0.9588098637379858,
+    "snr_db": 10.666021921985166,
+    "rms_difference": 0.0036889376397457024,
+    "gain_db": -0.1067946879158946
+  },
+  "output_transcription_job": "stjob_ae53e0884c634994b26237b9e9593303",
+  "transcript_text_parity": true
+}

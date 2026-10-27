@@ -9,15 +9,59 @@
             || '';
     }
 
+    // Device data stays on the client running this host (including Mobile).
+    // A live mount and an explicit host-owned prompt are required each time.
+    async function requestDeviceLocation({signal, active=()=>true}={}) {
+        if(!navigator.geolocation || !window.isSecureContext) throw new Error('Location unavailable; enter a city manually / 无法定位，请手动输入城市');
+        const zh=/^zh/i.test(document.documentElement.lang||'');
+        const allowed=await new Promise(resolve=>{
+            const dialog=document.createElement('dialog');
+            dialog.style.cssText='max-width:420px;width:calc(100vw - 40px);box-sizing:border-box;padding:24px;border:1px solid #ddd;border-radius:18px';
+            const title=document.createElement('h2');title.textContent=zh?'使用此设备的位置？':'Use this device’s location?';
+            const text=document.createElement('p');text.textContent=zh?'将本设备的大致经纬度提供给当前 Mini-App；只有继续整理需求时才会发送给所选模型。也可以取消并手动输入城市。':'Share approximate coordinates with this Mini-App. They are sent to your selected model only if you continue preparing your request. You can cancel and enter a city manually.';
+            text.style.lineHeight='1.6';
+            const cancel=document.createElement('button'),accept=document.createElement('button');
+            cancel.textContent=zh?'取消':'Cancel';accept.textContent=zh?'使用当前位置':'Use current location';
+            for(const button of [cancel,accept])button.style.cssText='font:inherit;padding:12px 16px;margin:8px 8px 0 0;border:1px solid #ddd;border-radius:10px';
+            let finished=false;
+            const done=value=>{if(finished)return;finished=true;clearTimeout(timer);signal?.removeEventListener('abort',aborted);dialog.remove();resolve(value);};
+            const aborted=()=>done(false),timer=setTimeout(()=>done(false),60000);
+            cancel.onclick=()=>done(false);accept.onclick=()=>done(true);
+            dialog.addEventListener('cancel',event=>{event.preventDefault();done(false);});
+            signal?.addEventListener('abort',aborted,{once:true});
+            dialog.append(title,text,cancel,accept);document.body.append(dialog);dialog.showModal();
+            if(signal?.aborted||!active())done(false);
+        });
+        if(!allowed||!active()||signal?.aborted)throw new Error('Location cancelled / 已取消定位');
+        return new Promise((resolve,reject)=>navigator.geolocation.getCurrentPosition(position=>{
+            if(!active()||signal?.aborted){reject(new Error('Mini-App closed'));return;}
+            const {latitude,longitude,accuracy}=position.coords;
+            if(!Number.isFinite(latitude)||!Number.isFinite(longitude)||Math.abs(latitude)>90||Math.abs(longitude)>180){reject(new Error('Invalid location'));return;}
+            resolve({latitude:Number(latitude.toFixed(2)),longitude:Number(longitude.toFixed(2)),accuracy_m:Math.max(1500,Number(accuracy)||1500)});
+        },()=>reject(new Error('Location denied or unavailable; enter a city manually / 定位失败，请手动输入城市')),
+        {enableHighAccuracy:false,timeout:15000,maximumAge:60000}));
+    }
+
     function mobileResultURL(task, raw) {
         const url = new URL(raw);
         if(url.protocol!=='https:' || url.username || url.password) throw new Error('Invalid result URL');
-        const items=[...(task.result?.items||[]),...(task.result?.articles||[])];
+        const items=[...(task.result?.items||[]),...(task.result?.articles||[]),...(task.result?.links||[])];
         if(!items.some(item=>item.url===url.href)) throw new Error('Result URL was not observed by this Task');
         return url;
     }
 
-    function showMobileResult(url) {
+    function mobileCartURLs(task) {
+        if(task.status!=='completed'||!['prepare_cart','gift_prepare_cart'].includes(task.capability)||task.result?.recognized!==true) throw new Error('Cart preparation is not complete');
+        const stores=task.result.stores?.length?task.result.stores:[{page_url:task.result.page_url,channel:'amazon'}];
+        return stores.map(store=>{
+            const url=new URL(store.page_url);
+            const path=decodeURIComponent(url.pathname);
+            if(url.origin!=='https://www.amazon.com'||url.username||url.password||url.hash||!/(?:^|\/)cart(?:\/|$)/i.test(path)||/checkout|buy|purchase/i.test(path))throw new Error('Invalid prepared Amazon cart');
+            return {url,channel:store.channel};
+        });
+    }
+
+    function showMobileResult(url, options={}) {
         const locale=(document.documentElement.lang||'en').split('-')[0];
         const labels={
             zh:['打开搜索结果','在小红书 App 打开','网页打开（新标签页）','关闭','请确认系统的 App 打开提示；未安装 App 时可选择网页入口。'],
@@ -29,7 +73,9 @@
             pt:['Abrir resultado','Abrir no Xiaohongshu','Abrir em nova aba','Fechar','Confirme a abertura do app. Se indisponível, use o link da página.'],
             ru:['Открыть результат','Открыть в Xiaohongshu','Открыть в новой вкладке','Закрыть','Подтвердите открытие приложения. Если оно недоступно, используйте веб-ссылку.']
         };
-        const [heading,appText,webText,closeText,hintText]=labels[locale]||labels.en;
+        let [heading,appText,webText,closeText,hintText]=labels[locale]||labels.en;
+        const cartLabels={zh:['查看亚马逊购物车','在手机打开购物车','请使用与准备购物车时相同的亚马逊账号。是否打开 App 由手机系统决定；也可以在网页中查看。'],en:['View Amazon cart','Open cart on this phone','Use the same Amazon account used to prepare the cart. Your phone may open the App or the website.'],ja:['Amazonカートを確認','この端末でカートを開く','準備時と同じAmazonアカウントを使用してください。端末によりアプリまたはウェブで開きます。'],ko:['Amazon 장바구니 보기','이 휴대폰에서 장바구니 열기','준비할 때와 동일한 Amazon 계정을 사용하세요. 앱 또는 웹사이트가 열릴 수 있습니다.'],fr:['Voir le panier Amazon','Ouvrir le panier sur ce téléphone','Utilisez le même compte Amazon. Le téléphone peut ouvrir l’application ou le site.'],es:['Ver carrito de Amazon','Abrir carrito en este teléfono','Usa la misma cuenta de Amazon. El teléfono puede abrir la app o el sitio.'],pt:['Ver carrinho Amazon','Abrir carrinho neste telefone','Use a mesma conta Amazon. O telefone pode abrir o app ou o site.'],ru:['Корзина Amazon','Открыть корзину на телефоне','Используйте тот же аккаунт Amazon. Телефон может открыть приложение или сайт.']};
+        if(options.cart)[heading,webText,hintText]=cartLabels[locale]||cartLabels.en;
         const targets=mobileResultTargets(url);
         const dialog=document.createElement('dialog');
         dialog.style.cssText='box-sizing:border-box;width:calc(100vw - 40px);max-width:460px;max-height:calc(100dvh - 48px);overflow:auto;border:1px solid #ddd;border-radius:20px;padding:24px;color:#292524;background:#fff';
@@ -44,11 +90,16 @@
             return link;
         };
         dialog.append(title,site);
+        if(options.cart){
+            const hint=document.createElement('p');hint.textContent=hintText;hint.style.cssText='font-size:14px;line-height:1.5;margin:0 0 18px';dialog.append(hint);
+        }
         if(targets.app){
             actions.append(makeLink(appText,targets.app,true));
             const hint=document.createElement('p');hint.textContent=hintText;hint.style.cssText='font-size:13px;line-height:1.5;color:#78716c;margin:0 0 18px';dialog.append(hint);
         }
-        actions.append(makeLink(webText,targets.web,!targets.app));
+        if(options.cart){
+            for(const store of options.stores){const name=({fresh:'Amazon Fresh',whole_foods:'Whole Foods',amazon:'Amazon',unknown:'Amazon'})[store.channel]||'Amazon';actions.append(makeLink(name+' · '+webText,store.url.href,true));}
+        } else actions.append(makeLink(webText,targets.web,!targets.app));
         const button=document.createElement('button');button.textContent=closeText;button.onclick=()=>dialog.close();button.style.cssText='font:inherit;min-height:44px;border:0;background:transparent;color:#78716c;padding:12px;margin-top:6px';actions.append(button);
         dialog.addEventListener('close',()=>dialog.remove(),{once:true});
         dialog.append(actions);document.body.append(dialog);dialog.showModal();
@@ -247,6 +298,7 @@
         const mobileDialogs = new Set();
         const progressSources = new Set();
         let audioRecorder = null;
+        let audioGenerationJob = null, audioGenerationCancelRequested = false;
         let audioGenerationAbort = null, llmAbort = null;
         let webPollTimer = null;
         const abort = new AbortController();
@@ -287,7 +339,7 @@
                         credentials:'same-origin',cache:'no-store',signal:abort.signal,
                     }));
                     const version = JSON.stringify([task.status,task.message,task.result,task.failure,
-                        task.status_label,task.assistance_kind,task.browser_context?.cleanup]);
+                        task.progress,task.status_label,task.requires_user,task.paused,task.assistance_kind,task.browser_context?.cleanup]);
                     if(active() && webTaskVersions.get(taskId)!==version) {
                         webTaskVersions.set(taskId,version);
                         channel.port1.postMessage({type:'ai2apps:web-agent-task',task});
@@ -333,11 +385,17 @@
             if (request.operation === 'llm.cancel') { llmAbort?.abort(); reply({value:{cancelled:!!llmAbort}}); return; }
             if (request.operation === 'audio-generation.cancel') {
                 // A private channel may cancel only its own in-flight generation.
+                audioGenerationCancelRequested = true;
+                if (audioGenerationJob) {
+                    try { await payload(await fetch(`/v1/platform/studio-jobs/${encodeURIComponent(audioGenerationJob)}/cancel`,
+                        {method:'POST', credentials:'same-origin'})); }
+                    catch (error) { reply({error:error.message}); return; }
+                }
                 audioGenerationAbort?.abort(); reply({value: {cancelled: !!audioGenerationAbort}}); return;
             }
             if (busy) { reply({error: 'A Mini-App operation is already running'}); return; }
             busy = true;
-            if (request.operation === 'audio-generation.generate') audioGenerationAbort = new AbortController();
+            if (request.operation === 'audio-generation.generate') { audioGenerationAbort = new AbortController(); audioGenerationJob = null; audioGenerationCancelRequested = false; }
             if (request.operation === 'llm.complete') llmAbort = new AbortController();
             try {
                 // Revalidate actor, live mount and signed declaration for every operation,
@@ -346,12 +404,20 @@
                     credentials: 'same-origin', cache: 'no-store', signal: abort.signal,
                 }));
                 if (!active()) return;
-                if (request.operation === 'llm.complete') {
+                if (request.operation === 'device.location') {
+                    if(!probe.items?.some(item=>item.capability==='device.location'&&item.ready)) throw new Error('device.location is not declared');
+                    reply({value:await requestDeviceLocation({signal:abort.signal,active})});
+                }
+                else if (request.operation === 'llm.complete') {
                     if (!probe.items?.some(item => item.capability === 'llm.text')) throw new Error('llm.text is required');
                     reply({value: await payload(await fetch(`${base}/llm`, {
                         method:'POST', credentials:'same-origin', signal:llmAbort.signal,
                         headers:{'Content-Type':'application/json'}, body:JSON.stringify(request.payload || {})
                     }))});
+                }
+                else if (request.operation === 'notifications.send') {
+                    const response=await fetch(`/v1/platform/studios/${encodeURIComponent(binding.studioId)}/mini-app-mounts/${encodeURIComponent(binding.mountId)}/notifications`,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(request.notification)});
+                    reply({value:await payload(response)});
                 }
                 else if (request.operation === 'asset.pick') {
                     if (!['image/png,image/jpeg,image/webp','image/*','audio/*','video/*'].includes(request.accept)) throw new Error('Invalid asset types');
@@ -362,15 +428,16 @@
                     if(binding.studioId !== 'ai2apps.ai-browser') throw new Error('Not a Web-Agent Mini-App');
                     // Independent, read-only startup data share one mount probe.
                     // Custom sources also enforce their actor/mount scope at the API.
-                    const [profiles, sources] = await Promise.all([
-                        payload(await fetch('/v1/platform/client/browser-profiles', {
-                            credentials:'same-origin',cache:'no-store',signal:abort.signal,
-                        })),
-                        payload(await fetch(`${base}/web-agent/custom-sources`, {
-                            credentials:'same-origin',cache:'no-store',signal:abort.signal,
-                        })),
+                    const read = path => fetch(path, {
+                        credentials:'same-origin',cache:'no-store',signal:abort.signal,
+                    }).then(payload);
+                    const [profiles, sources, saved] = await Promise.all([
+                        read('/v1/platform/client/browser-profiles'),
+                        request.includeDraft ? Promise.resolve(null) : read(`${base}/web-agent/custom-sources`),
+                        request.includeDraft ? read(`${base}/draft`) : Promise.resolve(null),
                     ]);
-                    reply({value:{profiles:profiles.map(({key,name,is_default})=>({key,name,is_default})),sources:sources.sources}});
+                    reply({value:{profiles:profiles.map(({key,name,is_default})=>({key,name,is_default})),
+                        ...(sources?{sources:sources.sources}:{}),...(request.includeDraft?{draft:saved.value}:{})}});
                 }
                 else if (request.operation === 'web-agent.profiles') {
                     if(binding.studioId !== 'ai2apps.ai-browser') throw new Error('Not a Web-Agent Mini-App');
@@ -382,6 +449,35 @@
                 else if(request.operation==='web-agent.search-config') {
                     if(binding.studioId !== 'ai2apps.ai-browser')throw new Error('Not a Web-Agent Mini-App');
                     reply({value:await payload(await fetch(`${base}/web-agent/search-config`,{method:request.config?'PUT':'GET',credentials:'same-origin',signal:abort.signal,headers:{'Content-Type':'application/json'},...(request.config?{body:JSON.stringify(request.config)}:{})}))});
+                }
+                else if(request.operation==='web-agent.cloud-search-request') {
+                    if(binding.studioId!=='ai2apps.ai-browser'||binding.miniAppId!=='ai2apps.search-all')throw new Error('Search All required');
+                    const method={read:'GET',cancel:'POST',delete:'DELETE'}[request.action||'read'];
+                    if(!method||typeof request.taskId!=='string')throw new Error('Invalid search request action');
+                    reply({value:await payload(await fetch(`${base}/web-agent/cloud-search-requests/${encodeURIComponent(request.taskId)}`,{
+                        method,credentials:'same-origin',cache:'no-store',signal:abort.signal}))});
+                }
+                else if(request.operation==='web-agent.search-preparation'||request.operation==='web-agent.search-workflow') {
+                    if(binding.studioId!=='ai2apps.ai-browser'||binding.miniAppId!=='ai2apps.search-all')throw new Error('Search All required');
+                    const kind=request.operation==='web-agent.search-preparation'?'search-preparations':'search-workflows';
+                    const suffix=request.preparationId?'/'+encodeURIComponent(request.preparationId):'';
+                    reply({value:await payload(await fetch(`${base}/web-agent/${kind}${suffix}`,{
+                        method:request.body?'POST':'GET',credentials:'same-origin',cache:'no-store',signal:abort.signal,
+                        headers:{'Content-Type':'application/json'},...(request.body?{body:JSON.stringify(request.body)}:{})}))});
+                }
+                else if(['web-agent.search-summary','web-agent.search-chat'].includes(request.operation)) {
+                    if(binding.studioId!=='ai2apps.ai-browser'||binding.miniAppId!=='ai2apps.search-all')throw new Error('Search All required');
+                    const chat=request.operation==='web-agent.search-chat';
+                    const result=await payload(await fetch(`${base}/web-agent/search-workflows/${encodeURIComponent(request.preparationId)}/${chat?'chat':'summary'}`,{
+                        method:request.start||chat?'POST':'GET',credentials:'same-origin',cache:'no-store',signal:abort.signal,
+                        headers:{'Content-Type':'application/json'},...(chat?{body:JSON.stringify({request_id:request.requestId})}:{})}));
+                    reply({value:result});
+                    if(chat){
+                        // Reload the destination Shell so its existing Chat startup
+                        // reads the newly selected, owner-scoped conversation.
+                        const mobile=!!window.AI2APPS_MOBILE_SURFACE||!!frame.closest('.sm-mobile,.aib-mobile');
+                        window.top.location.assign(mobile?(window.top.location.pathname.startsWith('/mobile/home')?'/mobile/home':'/mobile')+'#app=ai2apps.general-chat':'/apps/ai2apps.general-chat');
+                    }
                 }
                 else if(request.operation==='web-agent.custom-sources') {
                     if(binding.studioId !== 'ai2apps.ai-browser')throw new Error('Not a Web-Agent Mini-App');
@@ -417,6 +513,16 @@
                         reply({value:await payload(await fetch(`${base}/web-agent/tasks/${encodeURIComponent(request.taskId)}/open-result`,{method:'POST',credentials:'same-origin',signal:abort.signal,headers:{'Content-Type':'application/json'},body:JSON.stringify({url:request.url})}))});
                     } else if(request.operation==='web-agent.pages') {
                         if(!['list','focus','close'].includes(request.action))throw new Error('Invalid page action');
+                        if(request.action==='focus'&&(window.AI2APPS_MOBILE_SURFACE||frame.closest('.sm-mobile,.aib-mobile'))&&binding.miniAppId==='ai2apps.shopping-pro') {
+                            const task=await payload(await fetch(`${base}/web-agent/tasks/${encodeURIComponent(request.taskId)}`,{credentials:'same-origin',cache:'no-store',signal:abort.signal}));
+                            if(['prepare_cart','gift_prepare_cart'].includes(task.capability)){
+                                const stores=mobileCartURLs(task);
+                                const dialog=showMobileResult(stores[0].url,{cart:true,stores});mobileDialogs.add(dialog);
+                                dialog.addEventListener('close',()=>mobileDialogs.delete(dialog),{once:true});
+                                reply({value:{opened_on:'mobile',urls:stores.map(store=>store.url.href)}});return;
+                            }
+                        }
+
                         reply({value:await payload(await fetch(`${base}/web-agent/tasks/${encodeURIComponent(request.taskId)}/pages/${request.action}`,{method:'POST',credentials:'same-origin',signal:abort.signal}))});
                     } else if(request.operation==='web-agent.submit') {
                         const task = await payload(await fetch(`${base}/web-agent/tasks`, {
@@ -465,9 +571,30 @@
                                     } catch (_) {}
                                 });
                             }
-                            const result = await payload(await fetch(`${base}/audio-generation`, {method:'POST', credentials:'same-origin',
-                                signal:audioGenerationAbort.signal, headers:{'Content-Type':'application/json',...(invocationId?{'X-AI2Apps-Invocation-ID':invocationId}:{})},
+                            let result = await payload(await fetch(`${base}/audio-generation`, {method:'POST', credentials:'same-origin',
+                                headers:{'Content-Type':'application/json','Prefer':'respond-async','Idempotency-Key':`audio-${Date.now()}-${Math.random().toString(36).slice(2)}`,...(invocationId?{'X-AI2Apps-Invocation-ID':invocationId}:{})},
                                 body:JSON.stringify({...request.payload, capability:request.capability})}));
+                            if (result.id && result.status) {
+                                audioGenerationJob = result.id;
+                                if (audioGenerationCancelRequested) {
+                                    await payload(await fetch(`/v1/platform/studio-jobs/${encodeURIComponent(result.id)}/cancel`,
+                                        {method:'POST', credentials:'same-origin'}));
+                                }
+                                if (progressSource) { progressSource.close(); progressSources.delete(progressSource); }
+                                const phases = {plan:0,abc:0,semantic:1,synthesis:2,synthesize:2,decode:3,vae:3,saving:4,complete:4};
+                                // Unmount aborts observation only. The accepted job belongs to Local.
+                                while (!['succeeded','failed','cancelled','interrupted','publish_failed'].includes(result.status)) {
+                                    if (audioGenerationAbort.signal.aborted) throw new Error('Observation stopped');
+                                    await new Promise(resolve => setTimeout(resolve, 1000));
+                                    result = await payload(await fetch(`/v1/platform/studio-jobs/${encodeURIComponent(audioGenerationJob)}`,
+                                        {credentials:'same-origin', cache:'no-store', signal:audioGenerationAbort.signal}));
+                                    const phase = result.result?.progress;
+                                    if (active() && invocationId && phases[phase] !== undefined) channel.port1.postMessage({type:'ai2apps:studio-progress',
+                                        progress:{invocationId,phaseIndex:phases[phase],status:'running',percent:0,detail:phase}});
+                                }
+                                if (result.status !== 'succeeded') throw new Error(result.error?.message || result.status);
+                                result = result.result;
+                            }
                             const url = new URL(result.downloadUrl, location.origin);
                             if (url.origin !== location.origin || !/^\/v1\/platform\/sessions\/[^/]+\/artifacts\/[^/]+\/download$/.test(url.pathname)) throw new Error('Invalid output URL');
                             window.dispatchEvent(new CustomEvent('ai2apps:studio-output', {detail:{studioId:binding.studioId,miniAppId:binding.miniAppId,result}}));
@@ -475,6 +602,7 @@
                         } finally {
                             if (progressSource) { progressSource.close(); progressSources.delete(progressSource); }
                             audioGenerationAbort = null;
+                            audioGenerationJob = null;
                             window.dispatchEvent(new CustomEvent('ai2apps:studio-output-state', {detail:{studioId:binding.studioId,running:false}}));
                         }
                     }
@@ -525,7 +653,7 @@
                             if (request.output!=='mp4'||!(request.audio instanceof Blob)||!request.audio.size||request.audio.size>100*1024*1024||!request.audio.type.startsWith('audio/'))throw new Error('Invalid MP4 soundtrack');
                             body.append('audio',request.audio,request.audio.name||'soundtrack');
                         }
-                        const result=await payload(await fetch(`${root}/frozen-time/mounts/${encodeURIComponent(binding.mountId)}/runs/${encodeURIComponent(request.runId)}/convert`,{method:'POST',credentials:'same-origin',headers,body,signal:abort.signal}));
+                        const result=await payload(await fetch(`${root}/frozen-time/mounts/${encodeURIComponent(binding.mountId)}/runs/${encodeURIComponent(request.runId)}/convert`,{method:'POST',credentials:'same-origin',headers,body}));
                         window.dispatchEvent(new CustomEvent('ai2apps:studio-output',{detail:{studioId:binding.studioId,miniAppId:binding.miniAppId,runId:result.id}}));
                         reply({value:result});
                     }
@@ -540,7 +668,7 @@
                             if (request.options?.output!=='mp4'||!(request.audio instanceof Blob)||!request.audio.size||request.audio.size>100*1024*1024||!request.audio.type.startsWith('audio/'))throw new Error('Invalid MP4 soundtrack');
                             body.append('audio',request.audio,request.audio.name||'soundtrack');
                         }
-                        const result = await payload(await fetch(`${root}/runs/${encodeURIComponent(run.id)}/frozen-time`, {method:'POST', credentials:'same-origin', headers, body, signal:abort.signal}));
+                        const result = await payload(await fetch(`${root}/runs/${encodeURIComponent(run.id)}/frozen-time`, {method:'POST', credentials:'same-origin', headers, body}));
                         window.dispatchEvent(new CustomEvent('ai2apps:studio-output', {detail:{studioId:binding.studioId, miniAppId:binding.miniAppId, runId:result.id}}));
                         reply({value:result});
                     } else if (request.operation === 'frozen.status' || request.operation === 'frozen.cancel') {
@@ -720,12 +848,39 @@
                         });
                     }
                     window.dispatchEvent(new CustomEvent('ai2apps:studio-output-state', {detail: {studioId: binding.studioId, running: true}}));
-                    const response = await fetch(`${base}/capabilities/${encodeURIComponent(request.capability)}/invoke`, {
+                    const durableVideo = (binding.studioId === 'ai2apps.video-studio' &&
+                        ['audio.source_separation','audio.detailed_transcription','media.video_subtitles','media.video_audio_translation','media.video_speaker_voice_replacement'].includes(request.capability)) ||
+                        (binding.studioId === 'ai2apps.readaloud' && ['audio.source_separation','audio.detailed_transcription','audio.speaker_voice_replacement'].includes(request.capability) &&
+                        (request.capability !== 'audio.speaker_voice_replacement' || request.fields.some(([key,value])=>key==='action' && value==='replace')));
+                    let response = await fetch(`${base}/capabilities/${encodeURIComponent(request.capability)}/invoke`, {
                         method: 'POST', credentials: 'same-origin', body,
-                        signal: abort.signal,
-                        headers: {Accept: 'application/json', ...(invocationId ? {'X-AI2Apps-Invocation-ID': invocationId} : {})},
+                        ...(durableVideo ? {} : {signal: abort.signal}),
+                        headers: {Accept: 'application/json', ...(durableVideo ? {Prefer:'respond-async','Idempotency-Key':`video-${Date.now()}-${Math.random().toString(36).slice(2)}`} : {}), ...(invocationId ? {'X-AI2Apps-Invocation-ID': invocationId} : {})},
                     });
-                    let responseBody = await response.blob();
+                    let durableRunId = '';
+                    let durableOutputUrl = '';
+                    let durableResult = null;
+                    if (durableVideo && response.status === 202) {
+                        let job = await payload(response);
+                        durableRunId = job.run_id;
+                        window.dispatchEvent(new CustomEvent('ai2apps:studio-output', {detail:{studioId:binding.studioId,miniAppId:binding.miniAppId,runId:durableRunId}}));
+                        if (progressSource) { progressSource.close(); progressSources.delete(progressSource); }
+                        // Unmount stops only observation; accepted work remains owned by Local.
+                        while (!['succeeded','failed','cancelled','interrupted','publish_failed'].includes(job.status)) {
+                            if (abort.signal.aborted) throw new Error('Observation stopped');
+                            if (active() && job.result?.progress) channel.port1.postMessage({type:'ai2apps:studio-progress',progress:{...job.result.progress,invocationId}});
+                            await new Promise(resolve => setTimeout(resolve,1000));
+                            job = await payload(await fetch(`/v1/platform/studio-jobs/${encodeURIComponent(job.id)}`,{credentials:'same-origin',signal:abort.signal}));
+                        }
+                        if (job.status !== 'succeeded') throw new Error(job.error?.message || 'Video task stopped');
+                        durableResult = job.result;
+                        durableOutputUrl = job.result.downloadUrl;
+                        const output = new URL(job.result.responseUrl || durableOutputUrl, location.origin);
+                        if(output.origin !== location.origin || !/^\/v1\/platform\/sessions\/[^/]+\/artifacts\/[^/]+\/download$/.test(output.pathname)) throw new Error('Invalid output URL');
+                        response = await fetch(output.href,{credentials:'same-origin',signal:abort.signal});
+                    }
+                    const separationResult = durableResult && binding.studioId === 'ai2apps.readaloud' && request.capability === 'audio.source_separation';
+                    let responseBody = separationResult ? new Blob([JSON.stringify(durableResult)], {type:'application/json'}) : await response.blob();
                     if (!response.ok) {
                         const failure = await responseBody.text();
                         let value;
@@ -743,16 +898,16 @@
                         downloads.add(result.downloadUrl);
                         window.dispatchEvent(new CustomEvent('ai2apps:studio-output', {detail: {studioId: binding.studioId, miniAppId: binding.miniAppId, result}}));
                     }
-                    const outputUrl = response.headers.get('X-AI2Apps-Download-URL');
-                    const outputRunId = response.headers.get('X-AI2Apps-Studio-Run-ID') || '';
+                    const outputUrl = durableOutputUrl || response.headers.get('X-AI2Apps-Download-URL');
+                    const outputRunId = durableRunId || response.headers.get('X-AI2Apps-Studio-Run-ID') || '';
                     if (response.ok && outputUrl) {
                         const url = new URL(outputUrl, location.origin);
                         if (url.origin !== location.origin || !/^\/v1\/platform\/sessions\/[^/]+\/artifacts\/[^/]+\/download$/.test(url.pathname)) throw new Error('Invalid output URL');
                         downloads.add(outputUrl);
-                        window.dispatchEvent(new CustomEvent('ai2apps:studio-output', {detail: {studioId: binding.studioId, miniAppId: binding.miniAppId, result: {downloadUrl: outputUrl, runId: outputRunId}}}));
+                        window.dispatchEvent(new CustomEvent('ai2apps:studio-output', {detail: {studioId: binding.studioId, miniAppId: binding.miniAppId, result: {downloadUrl: outputUrl, runId: outputRunId}, preserveSelection: !!durableRunId}}));
                     }
                     reply({value: {status: response.status, body: responseBody,
-                        headers: {'x-ai2apps-download-url': outputUrl || '', 'content-type': response.headers.get('content-type') || '',
+                        headers: {'x-ai2apps-download-url': outputUrl || '', 'content-type': separationResult ? 'application/json' : response.headers.get('content-type') || '',
                             'content-disposition': response.headers.get('content-disposition') || ''}}});
                 } else throw new Error('Unknown Mini-App operation');
             } catch (error) { reply({error: error?.message || 'Mini-App operation failed'}); }

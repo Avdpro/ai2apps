@@ -479,3 +479,19 @@ def test_legacy_source_analysis_endpoint_removed(setup):
     s=setup
     project=s.repository.create_project('local',title='Test',purpose='private',source_rights='user_owned',source_text='')
     assert s.client.post('/readaloud/projects/'+project['id']+'/source/analyze',json={'text':'Hello'}).status_code==404
+
+@pytest.mark.parametrize('operation',['design','clone'])
+def test_previews_submit_background_snapshot_without_foreground_inference(design_setup,monkeypatch,operation):
+    s=design_setup;submitted=[]
+    s.runtime.studio_jobs=object()
+    s.runtime.extension_manager=SimpleNamespace(require_instance_access=lambda *a:None,instance_entry=lambda *a,**kw:{'app_key':'ai2apps.readaloud'})
+    def submit(*args,**kw):submitted.append((args,kw));return {'id':'stjob_test','status':'queued'}
+    monkeypatch.setattr('ai2apps.studio.extended_jobs.submit',submit)
+    path='/readaloud/design/preview' if operation=='design' else '/readaloud/training/preview'
+    body=s.design_request if operation=='design' else {**s.request,'preview_text':'Testing'}
+    response=s.client.post(path,json=body,headers={'Prefer':'respond-async','Idempotency-Key':'preview-test','X-AI2Apps-App-Instance':'host'})
+    assert response.status_code==202,response.text
+    assert not s.calls
+    args,kw=submitted[0]
+    assert args[5]=='voice-preview' and args[6]['operation']==operation
+    if operation=='clone':assert kw['files']['reference'].startswith(b'RIFF')

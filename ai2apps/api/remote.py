@@ -23,6 +23,10 @@ from ai2apps.remote import RemoteAccessError
 from ai2apps.localization import normalize_locale
 
 
+class TestNotificationRequest(BaseModel):
+    event_id: str = Field(pattern=r"^[-a-zA-Z0-9_.:]{1,160}$")
+
+
 class MobileAppAccessRequest(BaseModel):
     enabled: bool
 
@@ -60,6 +64,9 @@ def create_remote_router(
             Depends(require_app_capability(principal_provider, APP_SYSTEM_MANAGE))
         ],
     )
+
+    from ai2apps.api.mobile_agent_desktop import create_desktop_agent_router
+    router.include_router(create_desktop_agent_router(runtime_provider, principal_provider))
 
     def manager():
         runtime = runtime_provider()
@@ -127,12 +134,92 @@ def create_remote_router(
         mobile_owner(principal)
         return VisitorSpaceStore(runtime_provider().database)
 
+    def visitor_assets(principal):
+        from ai2apps.remote.visitor_assets import VisitorAssets
+        mobile_owner(principal)
+        return VisitorAssets(runtime_provider().database, principal.installation_id)
+
+    @router.post('/visitor-space/html-ai')
+    async def visitor_html_ai(body: dict, request: Request, principal=Depends(principal_provider)):
+        import json
+        import asyncio
+        from ai2apps.remote.visitor_html_ai import messages, extract_document
+        from starlette.concurrency import run_in_threadpool
+        store=visitor_assets(principal)
+        current=''
+        try:
+            if body.get('assetId'):
+                meta,path=store.get(body['assetId'])
+                if meta['kind']!='html': raise ValueError('请选择 HTML 素材')
+                if meta['size']>128*1024: raise ValueError('现有 HTML 超过 AI 编辑上限 128 KB；手动导入仍支持 10 MB')
+                current=path.read_text(encoding='utf-8')
+            context=messages(body,current)
+        except ValueError as error: raise HTTPException(422,str(error)) from None
+        runtime=runtime_provider()
+        model=runtime.model_manager.resolve_default_model('work_standard')
+        if not model: raise HTTPException(409,'请先在模型设置中配置标准任务默认模型或 API Default 模型')
+        headers={k:v for k,v in request.headers.items() if k.lower() in {'authorization','cookie','x-api-key','x-ai2apps-app-id','x-ai2apps-installation-id'}}
+        try:
+            async with asyncio.timeout(180):
+                payload={'model':model,'messages':context,'stream':False,'max_tokens':12000}
+                if str(model).startswith('cloud/'):
+                    import uuid
+                    from ai2apps.model_invocation import invoke_app_cloud_chat
+                    response=await invoke_app_cloud_chat(runtime,payload,principal=principal,
+                        session_id='visitor-html-'+uuid.uuid4().hex,consumer_app_id='ai2apps.remote')
+                else:
+                    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=request.app),base_url=str(request.base_url),timeout=180) as client:
+                        response=await client.post('/v1/chat/completions',headers=headers,json=payload)
+            if response.status_code>=400: raise HTTPException(502,f'AI 生成失败（HTTP {response.status_code}），原作品已保留')
+            html=extract_document(json.loads(response.body) if hasattr(response,'body') else response.json())
+            asset=await run_in_threadpool(store.put,'html',html.encode('utf-8'))
+            return {'asset':asset,'model':model}
+        except (ValueError, json.JSONDecodeError) as error: raise HTTPException(422,str(error)) from None
+        except (httpx.HTTPError, TimeoutError): raise HTTPException(502,'模型连接失败或超时，原作品已保留') from None
+
+    @router.post('/visitor-space/assets/{kind}')
+    async def visitor_upload(kind: str, request: Request, principal=Depends(principal_provider)):
+        from ai2apps.remote.visitor_assets import LIMITS
+        from starlette.concurrency import run_in_threadpool
+        store=visitor_assets(principal)
+        if kind not in LIMITS: raise HTTPException(422,'未知素材类型')
+        data=bytearray()
+        async for chunk in request.stream():
+            data.extend(chunk)
+            if len(data)>LIMITS[kind]: raise HTTPException(413,'素材超过大小限制')
+        try: return await run_in_threadpool(store.put,kind,bytes(data))
+        except ValueError as error: raise HTTPException(422,str(error)) from None
+
+    @router.post('/visitor-space/gallery')
+    async def visitor_gallery(body: dict, principal=Depends(principal_provider)):
+        from ai2apps.gallery import GalleryRepository
+        from ai2apps.remote.visitor_assets import LIMITS
+        from starlette.concurrency import run_in_threadpool
+        store=visitor_assets(principal);runtime=runtime_provider()
+        def copy_asset():
+            _,path=GalleryRepository(runtime.database,runtime.config.paths.artifacts_path/'gallery',runtime.events).asset_path(principal.actor_user_id,body.get('assetId',''))
+            kind=body.get('kind')
+            if kind not in {'image','video'} or path.stat().st_size>LIMITS[kind]: raise ValueError('素材类型或大小不符合限制')
+            return store.put(kind,path.read_bytes())
+        try: return await run_in_threadpool(copy_asset)
+        except ValueError as error: raise HTTPException(422,str(error)) from None
+
+    @router.get('/visitor-space/assets/{asset_id}')
+    async def visitor_asset(asset_id: str, principal=Depends(principal_provider)):
+        from fastapi.responses import FileResponse
+        from ai2apps.remote.visitor_assets import HTML_CSP
+        try: meta,path=visitor_assets(principal).get(asset_id)
+        except ValueError: raise HTTPException(404,'素材不存在') from None
+        return FileResponse(path,media_type=meta['mime'],headers={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Content-Security-Policy':HTML_CSP,'Referrer-Policy':'no-referrer'})
+
     @router.get("/visitor-space")
     async def visitor_settings(principal=Depends(principal_provider)):
         from ai2apps.remote.visitor_space import eligible_apps, app_gateway_ready
         state = visitor_state(principal).get(principal.installation_id)
         state['apps'] = eligible_apps(runtime_provider().extension_manager, principal)
         state['appGatewayReady'] = app_gateway_ready()
+        from ai2apps.remote.visitor_assets import content_gateway_ready
+        state['contentGatewayReady'] = content_gateway_ready()
         import uuid
         try:
             user_id = str(uuid.UUID(principal.actor_user_id))
@@ -155,7 +242,10 @@ def create_remote_router(
         store = visitor_state(principal)
         try:
             state = store.get(principal.installation_id)
-            published = build_snapshot(state['draft'], eligible_apps(runtime_provider().extension_manager, principal))
+            published = build_snapshot(state['draft'], eligible_apps(runtime_provider().extension_manager, principal), visitor_assets(principal))
+            from ai2apps.remote.visitor_assets import published_asset_ids, content_gateway_ready
+            if published_asset_ids(published) and not content_gateway_ready():
+                raise ValueError('素材草稿可预览；公开素材通道需 Cloud 部署后启用，暂不能发布含素材的内容')
             result = store.update(principal.installation_id, body.get('version'), published=published)
         except ValueError as error:
             raise HTTPException(409, str(error)) from None
@@ -211,6 +301,39 @@ def create_remote_router(
                 raise HTTPException(409, "Custom App remote transport is pending activation")
         MobileAppPolicy(runtime.database).set_enabled(principal.installation_id, app_key, body.enabled)
         return {"app_key": app_key, "enabled": body.enabled}
+
+    def notification_owner(principal):
+        mobile_owner(principal)
+        installation = manager().identity_repository.get_installation()
+        if (not installation or principal.actor_user_id != installation.core_user_id
+                or principal.installation_id != installation.id):
+            raise HTTPException(403, "Only this Desktop Owner can manage notifications")
+        return manager().notifications
+
+    @router.get("/notifications")
+    async def notification_status(principal=Depends(principal_provider)):
+        producer = notification_owner(principal)
+        await producer.refresh_policy(force=True)
+        return producer.status()
+
+    @router.post("/notifications/test", status_code=202)
+    async def notification_test(body: TestNotificationRequest, principal=Depends(principal_provider)):
+        producer = notification_owner(principal)
+        try:
+            producer.enqueue(event_id=body.event_id, kind="system.notice",
+                             target_id=body.event_id, app_id="ai2apps/desktop")
+        except ValueError as error:
+            raise HTTPException(409, str(error)) from None
+        return producer.status()
+
+    @router.post("/notifications/resume")
+    async def notification_resume(principal=Depends(principal_provider)):
+        producer = notification_owner(principal)
+        try:
+            producer.resume()
+        except ValueError as error:
+            raise HTTPException(409, str(error)) from None
+        return producer.status()
 
     @router.get("/status")
     async def status():

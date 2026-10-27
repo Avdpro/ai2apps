@@ -5,10 +5,12 @@ from __future__ import annotations
 import asyncio
 import base64
 import binascii
+from pathlib import Path
+import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, UploadFile, File, Request, HTTPException
+from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel, Field
 
 from ai2apps.api.errors import platform_error_response, repository_error_response
@@ -26,6 +28,12 @@ class AttachmentUploadRequest(BaseModel):
     )
     data: str = Field(min_length=1)
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class AttachmentReferenceRequest(BaseModel):
+    source_path: str = Field(min_length=1,max_length=4096)
+    filename: str | None = Field(default=None,max_length=512)
+    media_type: str | None = Field(default=None,max_length=255)
 
 
 def _attachment(item) -> dict[str, Any]:
@@ -51,6 +59,21 @@ def _decode(value: str) -> bytes:
         return base64.b64decode(payload, validate=True)
     except (ValueError, binascii.Error) as exc:
         raise ValueError("Attachment data must be valid base64") from exc
+
+
+async def store_uploaded_reference(runtime, session_id, file):
+    name=Path(file.filename or 'attachment').name.strip()
+    if name in {'','.','..'}:name='attachment'
+    target=runtime.documents.root/'uploads'/uuid.uuid4().hex/name
+    target.parent.mkdir(parents=True,exist_ok=True)
+    try:
+        with target.open('xb') as output:
+            target.chmod(0o600)
+            while chunk:=await file.read(1024*1024):
+                await asyncio.to_thread(output.write,chunk)
+        return runtime.documents.create_reference(session_id,target,filename=file.filename,media_type=file.content_type,source='uploaded_file')
+    except BaseException:
+        target.unlink(missing_ok=True);raise
 
 
 def create_document_router(
@@ -90,6 +113,36 @@ def create_document_router(
                 status_code=400, code="invalid_attachment", message=str(exc)
             )
 
+    @router.post('/reference',status_code=201)
+    def reference(session_id: str, body: AttachmentReferenceRequest, request: Request, principal=Depends(principal_provider)):
+        # Native paths are accepted only from the core Desktop's authenticated
+        # loopback surface, never from a Mobile/remote owner lease or a model Tool.
+        if not principal.is_core or principal.client_scope!='desktop' or not request.client or request.client.host not in {'127.0.0.1','::1','testclient'}:
+            raise HTTPException(403,'Choose local files on Desktop; remote clients must upload files')
+        runtime=runtime_or_error()
+        if isinstance(runtime,JSONResponse):return runtime
+        try:return _attachment(runtime.documents.create_reference(session_id,Path(body.source_path),filename=body.filename,media_type=body.media_type))
+        except RepositoryError as error:return repository_error_response(error)
+        except ValueError as error:raise HTTPException(422,str(error)) from error
+
+    @router.post('/upload',status_code=201)
+    async def stream_upload(session_id: str, file: UploadFile=File(...)):
+        runtime=runtime_or_error()
+        if isinstance(runtime,JSONResponse):return runtime
+        try:return _attachment(await store_uploaded_reference(runtime,session_id,file))
+        finally:await file.close()
+
+    @router.get('/{attachment_id}/content')
+    def content(session_id: str, attachment_id: str):
+        runtime=runtime_or_error()
+        if isinstance(runtime,JSONResponse):return runtime
+        try:
+            item=runtime.documents.get(session_id,attachment_id)
+            path=runtime.documents.source_path(session_id,attachment_id)
+            return FileResponse(path,filename=item.filename,media_type=item.media_type)
+        except RepositoryError as error:return repository_error_response(error)
+        except ValueError as error:raise HTTPException(409,str(error)) from error
+
     @router.get("")
     def list_attachments(session_id: str):
         runtime = runtime_or_error()
@@ -105,9 +158,12 @@ def create_document_router(
         if isinstance(runtime, JSONResponse):
             return runtime
         try:
-            return _attachment(runtime.documents.get(session_id, attachment_id))
+            item=runtime.documents.get(session_id, attachment_id)
+            return {**_attachment(item),**runtime.documents.reference_status(session_id,attachment_id)}
         except RepositoryError as exc:
             return repository_error_response(exc)
+        except ValueError as error:
+            raise HTTPException(422,str(error)) from error
 
     @router.get("/{attachment_id}/blocks")
     def read_blocks(
@@ -143,5 +199,9 @@ def create_document_router(
             }
         except RepositoryError as exc:
             return repository_error_response(exc)
+        except ValueError as error:
+            raise HTTPException(422,str(error)) from error
 
+    from ai2apps.api.attachment_uploads import install
+    install(router, runtime_provider, principal_provider)
     return router

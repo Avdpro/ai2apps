@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 import ipaddress
 import json
+import logging
 import os
 from collections.abc import Callable, Mapping
 from contextlib import ExitStack, suppress
@@ -165,11 +166,35 @@ def _worker_url(model: PackageModel, path: str) -> str:
     return endpoint.rstrip("/") + "/" + path.lstrip("/")
 
 
+async def invoke_app_cloud_chat(runtime, payload, *, principal, session_id, consumer_app_id,
+                                app_instance_id=None):
+    """Non-streaming host App/Mini-App Cloud call, independent of ASGI mounts.
+
+    Callers must have authorized their business operation first. Identity comes
+    only from the authenticated principal, never forwarded cookies or payload IDs.
+    """
+    from fastapi import HTTPException
+    from fastapi.responses import JSONResponse
+    if not str(payload.get('model') or '').startswith('cloud/'):
+        raise ValueError('Expected a Cloud model')
+    invocations = getattr(runtime, 'model_invocations', None)
+    if invocations is None:
+        raise HTTPException(503, 'Model invocation service unavailable')
+    context = ModelInvocationContext.from_principal(principal, session_id=session_id,
+        app_instance_id=app_instance_id, consumer_app_id=consumer_app_id)
+    try:
+        output = await invocations.invoke_agent_cloud_json({**payload, 'stream': False}, context=context)
+    except ModelInvocationError as error:
+        raise HTTPException(502, {'code': error.code, 'message': str(error)}) from error
+    return JSONResponse(output)
+
+
 class ModelInvocationService:
     """Hide Worker endpoints, leases, resource estimates, and startup from Apps."""
 
     def __init__(self, runtime: Any) -> None:
         self.runtime = runtime
+        logging.getLogger(__name__).info('Shared App Cloud invocation loaded from %s', __file__)
 
     _QUEUE_TIMEOUT_SECONDS = {
         WorkloadClass.LOCAL_INTERACTIVE: 30.0,

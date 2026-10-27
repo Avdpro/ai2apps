@@ -8,6 +8,8 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from .models import public_url
+from .source_history import other_sources
+from . import article_content
 
 
 def stamp():
@@ -36,6 +38,7 @@ class IntelligenceStore:
                 CREATE TABLE IF NOT EXISTS preferences(owner TEXT NOT NULL, channel TEXT NOT NULL, article TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(owner,article));
                 CREATE TABLE IF NOT EXISTS conversations(owner TEXT NOT NULL, channel TEXT NOT NULL, id TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(owner,channel,id));
                 CREATE TABLE IF NOT EXISTS site_recipes(owner TEXT NOT NULL, key TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(owner,key));
+                CREATE TABLE IF NOT EXISTS channel_order(owner TEXT PRIMARY KEY, data TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS channels(id TEXT PRIMARY KEY, owner TEXT NOT NULL, data TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS sources(id TEXT PRIMARY KEY, owner TEXT NOT NULL, channel TEXT NOT NULL, data TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS articles(id TEXT PRIMARY KEY, owner TEXT NOT NULL, channel TEXT NOT NULL, data TEXT NOT NULL);
@@ -82,21 +85,142 @@ class IntelligenceStore:
             result = {table: [self.unpack(row) for row in db.execute(
                 f'SELECT * FROM {table} WHERE owner=? ORDER BY rowid DESC' + (' LIMIT 100' if table == 'runs' else ''), (owner,))]
                     for table in ('channels', 'sources', 'articles', 'runs')}
+            order = db.execute('SELECT data FROM channel_order WHERE owner=?', (owner,)).fetchone()
+            if order:
+                ranks = {id: index for index, id in enumerate(json.loads(order['data']))}
+                result['channels'].sort(key=lambda c: ranks.get(c['id'], len(ranks)))
             for channel in result['channels']:
                 jobs = db.execute('SELECT status,error FROM knowledge_exports WHERE owner=? AND channel=?', (owner,channel['id'])).fetchall()
                 channel['knowledge_sync'] = {status: sum(j['status']==status for j in jobs) for status in ('pending','synced','failed')}
                 channel['knowledge_sync']['errors'] = list(dict.fromkeys(j['error'] for j in jobs if j['error']))[:3]
             return result
 
-    def save_channel(self, owner, data, id=None):
+    def mobile_overview(self, owner):
+        """Small channel directory; counts include articles never sent to the client."""
+        self.expire(owner)
+        with self.connect() as db:
+            channels = [self.unpack(r) for r in db.execute("SELECT id,json_remove(data,'$.entity_taxonomy','$.hot_topics') AS data FROM channels WHERE owner=? ORDER BY rowid DESC", (owner,))]
+            order = db.execute('SELECT data FROM channel_order WHERE owner=?', (owner,)).fetchone()
+            if order:
+                ranks = {id: i for i, id in enumerate(json.loads(order['data']))}
+                channels.sort(key=lambda c: ranks.get(c['id'], len(ranks)))
+            runs = []
+            for channel in channels:
+                id = channel['id']
+                # Project only metadata in SQLite: no article body, evidence or image gallery.
+                rows = db.execute("SELECT id,json_extract(data,'$.updated_at') AS updated,json_extract(data,'$.read') AS read,json_extract(data,'$.favorite') AS favorite,json_extract(data,'$.section_id') AS section,json_extract(data,'$.feedback') AS feedback FROM articles WHERE owner=? AND channel=? ORDER BY id", (owner,id)).fetchall()
+                sections = {}
+                for row in rows:
+                    section = row['section'] or ''
+                    sections[section] = sections.get(section, 0) + 1
+                revision = hashlib.sha256(json.dumps([tuple(r) for r in rows]).encode()).hexdigest()
+                channel['article_stats'] = {'total':len(rows), 'unread':sum(not r['read'] for r in rows), 'favorite':sum(bool(r['favorite']) for r in rows), 'sections':sections, 'revision':revision}
+                channel['source_count'] = db.execute('SELECT count(*) FROM sources WHERE owner=? AND channel=?', (owner,id)).fetchone()[0]
+                channel.pop('hot_topics', None)
+                row = db.execute('SELECT id,channel,status,json_extract(data,\'$.started_at\') AS started_at,json_extract(data,\'$.finished_at\') AS finished_at FROM runs WHERE owner=? AND channel=? ORDER BY updated DESC,id DESC LIMIT 1', (owner,id)).fetchone()
+                if row:
+                    runs.append({'id':row['id'],'channel_id':id,'status':row['status'],'started_at':row['started_at'],'finished_at':row['finished_at']})
+            return {'channels':channels,'sources':[],'articles':[],'runs':runs,'progressive':True}
+
+    def mobile_channel(self, owner, channel, *, history=False):
+        with self.connect() as db:
+            current = self.unpack(db.execute("SELECT id,json_remove(data,'$.entity_taxonomy') AS data FROM channels WHERE owner=? AND id=?", (owner,channel)).fetchone())
+            sources = [self.unpack(r) for r in db.execute('SELECT * FROM sources WHERE owner=? AND channel=?', (owner,channel))]
+            runs = [self.unpack(r) for r in db.execute('SELECT * FROM runs WHERE owner=? AND channel=? ORDER BY updated DESC,id DESC LIMIT ?', (owner,channel,100 if history else 1))]
+            return {'channel':current,'sources':sources,'runs':runs}
+
+    def article_cards(self, owner, channel, *, cursor='', section='', query='', status='all', format='all'):
+        import base64
+        from urllib.parse import urlsplit
+        def formats_match(sources, fallback, target):
+            refs = json.loads(sources or '[]')
+            kinds = []
+            for ref in refs:
+                kind = ref.get('content_type')
+                if kind not in ('webpage','post','video','audio','image','document'):
+                    platform = str(ref.get('platform','')).lower()
+                    try:
+                        url = urlsplit(ref.get('url',''))
+                        host, path = (url.hostname or '').lower(), url.path.lower()
+                    except ValueError:
+                        host, path = '', ''
+                    def domain(*names):
+                        return any(host==name or host.endswith('.'+name) for name in names)
+                    if platform in ('youtube','bilibili','vimeo'): kind='video'
+                    elif platform in ('weibo','x','twitter','reddit','forum'): kind='post'
+                    elif path.endswith(('.pdf','.doc','.docx','.ppt','.pptx','.xls','.xlsx','.epub')): kind='document'
+                    elif path.endswith(('.mp3','.m4a','.wav','.ogg','.flac')): kind='audio'
+                    elif path.endswith(('.png','.jpg','.jpeg','.webp','.gif','.avif')): kind='image'
+                    elif path.endswith(('.mp4','.webm','.mov')): kind='video'
+                    elif domain('youtube.com','youtu.be','vimeo.com','bilibili.com'): kind='video'
+                    elif domain('weibo.com','x.com','twitter.com','reddit.com') or any('/'+p+'/' in path for p in ('threads','topic','topics','discussion')): kind='post'
+                    elif host=='podcasts.apple.com': kind='audio'
+                    else: kind='webpage'
+                kinds.append(kind)
+            return target in (kinds or [fallback or 'webpage'])
+        with self.connect() as db:
+            current = self.unpack(db.execute('SELECT * FROM channels WHERE owner=? AND id=?', (owner,channel)).fetchone())
+            where, params = ['owner=?','channel=?'], [owner,channel]
+            if section == '$favorites': where.append("coalesce(json_extract(data,'$.favorite'),0)=1")
+            elif section == 'unassigned':
+                ids = [s['id'] for s in current.get('sections',[])]
+                if ids:
+                    where.append("coalesce(json_extract(data,'$.section_id'),'') NOT IN ("+','.join('?' for _ in ids)+')');params.extend(ids)
+            elif section: where.append("json_extract(data,'$.section_id')=?");params.append(section)
+            if status == 'unread': where.append("coalesce(json_extract(data,'$.read'),0)=0")
+            elif status == 'more': where.append("json_extract(data,'$.feedback')='more'")
+            if query:
+                db.create_function('article_search', 4, lambda a,b,c,q: q.casefold() in (' '.join((a or '',b or '',c or ''))).casefold())
+                where.append("article_search(json_extract(data,'$.title'),json_extract(data,'$.summary'),json_extract(data,'$.body'),?)");params.append(query)
+            if format != 'all':
+                db.create_function('article_format',3,formats_match)
+                where.append("article_format(json_extract(data,'$.sources'),json_extract(data,'$.content_type'),?)");params.append(format)
+            total = db.execute('SELECT count(*) FROM articles WHERE '+' AND '.join(where), params).fetchone()[0]
+            if cursor:
+                try:
+                    value = json.loads(base64.urlsafe_b64decode(cursor.encode()))
+                    if not isinstance(value,list) or len(value)!=2: raise ValueError()
+                    updated, id = value
+                    if not isinstance(updated,str) or not isinstance(id,str): raise ValueError()
+                except Exception as error: raise ValueError('Invalid article cursor') from error
+                where.append("(coalesce(json_extract(data,'$.updated_at'),'') < ? OR (coalesce(json_extract(data,'$.updated_at'),'') = ? AND id < ?))")
+                params.extend([updated,updated,id])
+            rows = db.execute("SELECT * FROM articles WHERE "+' AND '.join(where)+" ORDER BY coalesce(json_extract(data,'$.updated_at'),'') DESC,id DESC LIMIT 21",params).fetchall()
+            items = []
+            for row in rows[:20]:
+                a = self.unpack(row)
+                card = {k:a[k] for k in ('id','channel_id','title','summary','section_id','updated_at','created_at','read','favorite','feedback','content_type','cover_image','primary_source_url') if k in a}
+                if not card.get('cover_image'):
+                    card['cover_image'] = next(iter(a.get('images') or []),None)
+                card['sources'] = [{k:s[k] for k in ('url','platform','content_type') if k in s} for s in a.get('sources',[])]
+                card['_summary'] = True
+                items.append(card)
+            next_cursor = base64.urlsafe_b64encode(json.dumps([items[-1].get('updated_at',''),items[-1]['id']]).encode()).decode() if len(rows)>20 else None
+            return {'items':items,'next_cursor':next_cursor,'total':total}
+
+    def reorder_channels(self, owner, ids):
+        with self.connect() as db:
+            actual = {row['id'] for row in db.execute('SELECT id FROM channels WHERE owner=?', (owner,))}
+            if len(ids) != len(set(ids)) or set(ids) != actual:
+                raise ValueError('频道列表已变化，请刷新后重试')
+            db.execute('INSERT INTO channel_order VALUES(?,?) ON CONFLICT(owner) DO UPDATE SET data=excluded.data',
+                       (owner, json.dumps(ids)))
+        return {'ids': ids}
+
+    def save_channel(self, owner, data, id=None, *, creation_key=None):
         data = dict(data)
         if data.get('output_language') is None:
             data.pop('output_language', None)
         expected = data.pop('expected_sections', None)
         sections = data.pop('sections', None)
         with self.connect() as db:
+            if creation_key:
+                creation_id = hashlib.sha256((owner + ':' + creation_key).encode()).hexdigest()[:32]
+                existing = db.execute('SELECT * FROM channels WHERE owner=? AND id=?', (owner, creation_id)).fetchone()
+                if existing:
+                    return self.unpack(existing)
             previous = self.unpack(db.execute('SELECT * FROM channels WHERE owner=? AND id=?', (owner, id)).fetchone()) if id else {}
-            id = id or key()
+            id = id or (creation_id if creation_key else key())
             if sections is not None:
                 if expected is not None and expected != previous.get('sections', []):
                     raise ValueError('栏目已被修改，请重新打开频道设置后再保存')
@@ -119,19 +243,34 @@ class IntelligenceStore:
             self._queue_channel(db, owner, {**data, 'id': id})
         return self.get('channels', owner, id)
 
+    def manual_import_result(self, owner, channel, url):
+        """Read the committed result only; never launch or retry an import."""
+        self.get('channels', owner, channel)
+        with self.connect() as db:
+            row=db.execute("SELECT * FROM articles WHERE owner=? AND channel=? AND json_extract(data,'$.manual_import')=1 AND (json_extract(data,'$.import_identity')=? OR json_extract(data,'$.import_requested_url')=?) ORDER BY rowid DESC LIMIT 1",(owner,channel,url,url)).fetchone()
+            return self.unpack(row) if row else None
+
     def import_article(self, owner, channel, article, identity):
+        article_content.validate_content(article)
         with self.connect() as db:
             current = self.unpack(db.execute('SELECT * FROM channels WHERE owner=? AND id=?', (owner, channel)).fetchone())
             for row in db.execute('SELECT * FROM articles WHERE owner=? AND channel=?', (owner, channel)):
                 existing = self.unpack(row)
-                if existing.get('import_identity') == identity or any(s.get('url') == identity for s in existing.get('sources', [])):
+                if existing.get('manual_import') and existing.get('import_identity') == identity:
+                    if article.get('manual_backbone') and not existing.get('manual_backbone'):
+                        existing.update({k:article[k] for k in ('title','summary','body','section_id','sources','images','cover_image','content_schema','content_blocks','editorial_sections','editorial_basis','source_focus','merge_audit','manual_backbone','original_content','ai_translation','translation_language','import_requested_url') if k in article})
+                        existing['updated_at']=stamp()
+                        db.execute('UPDATE articles SET data=? WHERE owner=? AND id=?',(json.dumps(existing),owner,existing['id']))
+                        self._queue_channel(db,owner,current)
                     if article.get('ai_translation') and existing.get('manual_import') and not existing.get('ai_translation'):
                         existing.update({k: article[k] for k in ('title','summary','body','section_id','original_content','ai_translation','translation_language') if k in article})
+                        existing.pop('content_blocks',None);existing.pop('content_schema',None)
                         existing['updated_at'] = stamp()
                         db.execute('UPDATE articles SET data=? WHERE owner=? AND id=?', (json.dumps(existing), owner, existing['id']))
                         self._queue_channel(db, owner, current)
                     if article.get('image_ai_summary') and not existing.get('image_ai_summary'):
                         existing.update({k: article[k] for k in ('title', 'summary', 'body', 'section_id', 'image_ai_summary') if k in article})
+                        existing.pop('content_blocks',None);existing.pop('content_schema',None)
                         existing['updated_at'] = stamp()
                         db.execute('UPDATE articles SET data=? WHERE owner=? AND id=?', (json.dumps(existing), owner, existing['id']))
                         self._queue_channel(db, owner, current)
@@ -222,10 +361,17 @@ class IntelligenceStore:
         with self.connect() as db:
             db.execute("UPDATE runs SET status='interrupted' WHERE owner=? AND status='running' AND COALESCE(json_extract(data,'$.execution_owner'),'') != 'local' AND updated < ?", (owner, datetime.now(timezone.utc).timestamp() - 600))
 
-    def claim(self, owner, channel, scheduled=False, *, background_session=None, source_id=None):
+    def claim(self, owner, channel, scheduled=False, *, background_session=None, source_id=None, request_key=None):
         self.expire(owner)
         now = datetime.now(timezone.utc).timestamp()
         with self.connect() as db:
+            if request_key:
+                old = db.execute("SELECT * FROM runs WHERE owner=? AND json_extract(data,'$.request_key')=?", (owner,request_key)).fetchone()
+                if old:
+                    previous=self.unpack(old)
+                    if old['channel']!=channel or previous.get('source_id')!=source_id:
+                        raise ValueError('Refresh request parameters changed')
+                    return previous
             current = self.unpack(db.execute('SELECT * FROM channels WHERE owner=? AND id=?', (owner, channel)).fetchone())
             if db.execute("SELECT 1 FROM runs WHERE owner=? AND channel=? AND status='running'", (owner, channel)).fetchone():
                 raise ValueError('此频道已在更新中')
@@ -242,6 +388,7 @@ class IntelligenceStore:
                 raise ValueError('尚未到更新时间')
             id = key()
             data = {'started_at': stamp(), 'message': '准备采集', 'logs': [], 'scheduled': scheduled}
+            if request_key:data['request_key']=request_key
             if source_id:data['source_id'] = source_id
             if background_session:data['execution_owner'] = 'local'
             db.execute('INSERT INTO runs VALUES(?,?,?,?,?,?)', (id, owner, channel, 'running', now, json.dumps(data)))
@@ -290,6 +437,15 @@ class IntelligenceStore:
                 seen.add(url)
         return {'candidates': pending, 'skipped': len(candidates) - len(pending)}
 
+    def cached_pages(self, owner, channel, urls):
+        self.get('channels',owner,channel)
+        result={}
+        with self.connect() as db:
+            for url in dict.fromkeys(urls):
+                row=db.execute('SELECT data FROM pages WHERE owner=? AND channel=? AND url=?',(owner,channel,url)).fetchone()
+                if row:result[url]=json.loads(row['data'])
+        return result
+
     def new_pages(self, owner, channel, pages):
         self.get('channels', owner, channel)
         result = []
@@ -305,17 +461,33 @@ class IntelligenceStore:
                     seen.add(page['url'])
         return result
 
-    def finish(self, owner, run_id, pages, articles, logs, *, final=True):
+    def finish(self, owner, run_id, pages, articles, logs, *, final=True, defer_completion=False):
         with self.connect() as db:
             run = self.unpack(db.execute('SELECT * FROM runs WHERE owner=? AND id=?', (owner, run_id)).fetchone())
             if run['status'] != 'running':
                 raise ValueError('本轮更新已结束')
             channel = run['channel_id']
+            new_article_ids = set(run.get('new_article_ids', []))
             for page in pages:
                 db.execute('INSERT INTO pages VALUES(?,?,?,?,?) ON CONFLICT(owner,channel,url) DO UPDATE SET hash=excluded.hash,data=excluded.data', (owner, channel, page['url'], fingerprint(page), json.dumps(page)))
+            new_source_articles={}
+            from .webpage_policy import source_identity
+            for existing_id in new_article_ids:
+                saved=db.execute('SELECT * FROM articles WHERE owner=? AND channel=? AND id=?',(owner,channel,existing_id)).fetchone()
+                if saved:
+                    saved_article=self.unpack(saved)
+                    for ref in [*saved_article.get('sources',[]),*saved_article.get('related_sources',[])]:
+                        identity=source_identity(ref)
+                        if identity:new_source_articles.setdefault(identity,set()).add(existing_id)
             for article in articles:
+                article_content.validate_content(article)
                 id = article.pop('update_article_id', None) or key()
                 old = db.execute('SELECT * FROM articles WHERE owner=? AND channel=? AND id=?', (owner, channel, id)).fetchone()
+                if not old or id in new_article_ids:
+                    identities={source_identity(ref) for ref in article.get('sources',[])}-{''}
+                    if any(new_source_articles.get(identity,set())-{id} for identity in identities):
+                        raise ValueError('一篇信息源文章最多新建一篇频道文章；可以更新多篇已有文章')
+                    for identity in identities:new_source_articles.setdefault(identity,set()).add(id)
                 if old:
                     previous = self.unpack(old)
                     if previous.get('run_id')==run_id and previous.get('body')==article.get('body') and previous.get('title')==article.get('title'):continue
@@ -325,25 +497,62 @@ class IntelligenceStore:
                         article['images'] = previous['images']
                     article['created_at'] = previous['created_at']
                     article['read'] = False
+                    article['favorite'] = previous.get('favorite', False)
+                    for field in ('manual_import','manual_backbone','import_identity','import_requested_url','original_content','ai_translation','translation_language','source_blocks','translation_paragraphs','source_paragraph_map'):
+                        if field in previous and field not in article:article[field]=previous[field]
                     article['feedback'] = previous.get('feedback', '')
                     for field in ('feedback_reasons', 'feedback_at'):
                         if field in previous:
                             article[field] = previous[field]
-                    article['versions'] = (previous.get('versions', []) + [{'updated_at': previous['updated_at'], 'title': previous['title'], 'body': previous['body'], 'sources': previous['sources']}])[-5:]
+                    article['related_sources'] = other_sources(article, previous)
+                    article['versions'] = (previous.get('versions', []) + [{'updated_at': previous['updated_at'], 'title': previous['title'], 'body': previous['body'], 'sources': previous['sources'], **{k:previous[k] for k in ('content_schema','content_blocks','images','editorial_sections','editorial_basis','source_focus','merge_audit','cover_image') if k in previous}}])[-5:]
                 else:
                     article.update(created_at=stamp(), read=False, feedback='')
+                    new_article_ids.add(id)
                 article.update(updated_at=stamp(), run_id=run_id)
                 db.execute('INSERT INTO articles VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data', (id, owner, channel, json.dumps(article)))
             current_channel = self.unpack(db.execute('SELECT * FROM channels WHERE owner=? AND id=?', (owner, channel)).fetchone())
             self._queue_channel(db, owner, current_channel)
-            if not final:return
+            # Persist the notification intent with the articles, including
+            # incremental editorial checkpoints. Replays must not count twice.
+            run['new_article_ids'] = sorted(new_article_ids)
+            if not final:
+                db.execute('UPDATE runs SET data=? WHERE owner=? AND id=?', (json.dumps(run), owner, run_id))
+                return
             status = 'partial' if any(log['status'] != 'success' for log in logs) else 'completed'
             if not pages and logs and all(log['status'] not in ('success','deferred') for log in logs):
                 status = 'failed'
+            cached_articles=int(run.get('progress',{}).get('cache_articles_saved',0))
+            if status=='failed' and cached_articles:status='partial'
             skipped = sum(log.get('skipped', 0) for log in logs)
             prefix = f'跳过已采集 / 重复 {skipped} 条，' if skipped else ''
-            run.update(message=prefix + f'读取 {sum(x.get("pages", 0) for x in logs)} 篇，发现 {len(pages)} 篇变化，生成 / 更新 {len(articles)} 篇情报', logs=logs, finished_at=stamp(), article_count=len(articles))
+            run.update(message=prefix + f'读取 {sum(x.get("pages", 0) for x in logs)} 篇，发现 {len(pages)} 篇变化，生成 / 更新 {len(articles)+cached_articles} 篇情报', logs=logs, finished_at=stamp(), article_count=len(articles)+cached_articles)
+            if defer_completion:
+                run.update(pending_status=status, result_message=run['message'], articles_saved_at=run.pop('finished_at'))
+                run['message'] = '文章已保存，正在收尾'
+                run['progress'] = {**run.get('progress', {}), 'phase':'finalizing', 'articles_saved':run['article_count'], 'active_pages':[]}
+                status = 'running'
             db.execute('UPDATE runs SET status=?,data=?,updated=? WHERE owner=? AND id=?', (status, json.dumps(run), datetime.now(timezone.utc).timestamp(), owner, run_id))
+
+    def complete_pending(self, owner, run_id):
+        """Publish the final result only after the collection tree has settled."""
+        with self.connect() as db:
+            run = self.unpack(db.execute('SELECT * FROM runs WHERE owner=? AND id=?', (owner,run_id)).fetchone())
+            if run['status'] != 'running' or not run.get('pending_status'):
+                return run
+            status = run.pop('pending_status')
+            run.update(message=run.pop('result_message'), finished_at=stamp())
+            db.execute('UPDATE runs SET status=?,data=?,updated=? WHERE owner=? AND id=?', (status,json.dumps(run),datetime.now(timezone.utc).timestamp(),owner,run_id))
+        return self.get('runs',owner,run_id)
+
+    def fail_finalization(self, owner, run_id, message):
+        """End a proven stalled finalizer without discarding saved articles."""
+        with self.connect() as db:
+            run = self.unpack(db.execute('SELECT * FROM runs WHERE owner=? AND id=?',(owner,run_id)).fetchone())
+            status = 'partial' if run.get('article_count') or run.get('progress',{}).get('articles_saved') else 'failed'
+            run.pop('pending_status',None)
+            run.update(message=message,finished_at=stamp(),progress={**run.get('progress',{}),'stalled':True,'timeout_seconds':300,'active_pages':[]})
+            db.execute('UPDATE runs SET status=?,data=?,updated=? WHERE owner=? AND id=?',(status,json.dumps(run),datetime.now(timezone.utc).timestamp(),owner,run_id))
 
     def _queue_channel(self, db, owner, channel):
         from .knowledge_sync import document
@@ -376,7 +585,7 @@ class IntelligenceStore:
                 ('failed' if error else ('synced' if digest==job['hash'] else 'pending'), item_id, error,
                  datetime.now(timezone.utc).timestamp(), owner,job['article'],job['bucket'],job['hash']))
 
-    def feedback(self, owner, id, feedback=None, read=None, reasons=None, reason_signature=None):
+    def feedback(self, owner, id, feedback=None, read=None, reasons=None, reason_signature=None, favorite=None):
         with self.connect() as db:
             article = self.unpack(db.execute('SELECT * FROM articles WHERE owner=? AND id=?', (owner, id)).fetchone())
             if feedback is not None:
@@ -405,6 +614,8 @@ class IntelligenceStore:
                     db.execute('DELETE FROM preferences WHERE owner=? AND article=?', (owner,id))
             if read is not None:
                 article['read'] = read
+            if favorite is not None:
+                article['favorite'] = favorite
             db.execute('UPDATE articles SET data=? WHERE owner=? AND id=?', (json.dumps(article), owner, id))
         return article
 
@@ -426,6 +637,26 @@ class IntelligenceStore:
             db.execute('INSERT INTO conversations VALUES(?,?,?,?) ON CONFLICT(owner,channel,id) DO NOTHING',
                        (owner,channel,turn['id'],json.dumps(turn)))
         return self.conversation_turn(owner,channel,turn['id'])
+
+    def save_source_layout(self, owner, id, expected_signature, source_blocks, paragraph_map, *, source_url=None, manual_only=False):
+        """Repair only presentation using observed source positions; canonical text is immutable."""
+        from . import manual_layout
+        from .models import SourceBlock
+        validated=[SourceBlock.model_validate(b).model_dump() for b in source_blocks]
+        if len(validated)>256:raise ValueError('Too many source blocks')
+        with self.connect() as db:
+            old=self.unpack(db.execute('SELECT * FROM articles WHERE owner=? AND id=?',(owner,id)).fetchone())
+            if manual_only and not old.get('manual_import'):raise ValueError('Source layout repair requires a manual article')
+            if manual_layout.signature(old)!=expected_signature:raise ValueError('Article changed; reload before repairing layout')
+            article=manual_layout.attach({**old,'source_blocks':validated},paragraph_map,source_url=source_url)
+            if manual_layout.signature(article)==manual_layout.signature(old):return old
+            article['versions']=[*old.get('versions',[]),{k:old[k] for k in ('title','summary','body','sources','images','content_schema','content_blocks','editorial_sections','cover_image','updated_at') if k in old}][-10:]
+            article['updated_at']=stamp()
+            db.execute('UPDATE articles SET data=? WHERE owner=? AND id=?',(json.dumps(article),owner,id))
+        return article
+
+    def save_manual_layout(self, owner, id, expected_signature, source_blocks, paragraph_map):
+        return self.save_source_layout(owner,id,expected_signature,source_blocks,paragraph_map,manual_only=True)
 
     def save_cover(self, owner, id, source_url, image_url):
         with self.connect() as db:
@@ -478,7 +709,9 @@ class IntelligenceStore:
                 raise ValueError('此网页未找到可用图片，保留已有图片')
             seen = set()
             result = []
-            for item in [{**i,'source_url':source_url} for i in incoming] + article.get('images',[]):
+            inline_ids = {b.get('image_id') for b in article.get('content_blocks',[]) if b.get('type')=='image'}
+            retained = [i for i in article.get('images',[]) if i.get('id') in inline_ids]
+            for item in retained + [{**i,'source_url':source_url} for i in incoming] + article.get('images',[]):
                 if item['url'] not in seen:
                     seen.add(item['url']);result.append(item)
             article['images'] = result[:48]
@@ -493,6 +726,13 @@ class IntelligenceStore:
             rows=db.execute('SELECT data FROM drafts WHERE owner=? AND channel=?',(owner,channel)).fetchall()
         items=[json.loads(r['data']) for r in rows]
         return sorted([{k:d[k] for k in ('id','channel_id','title','kind','scope','scope_label','updated_at','revision')} for d in items], key=lambda d:d['updated_at'],reverse=True)
+
+    def draft_page(self, owner, channel, offset=0):
+        self.get('channels', owner, channel)
+        with self.connect() as db:
+            rows = db.execute("SELECT data FROM drafts WHERE owner=? AND channel=? ORDER BY json_extract(data,'$.updated_at') DESC,id DESC LIMIT 21 OFFSET ?", (owner, channel, offset)).fetchall()
+        return {'items': [json.loads(r['data']) for r in rows[:20]],
+                'next_offset': offset + 20 if len(rows) > 20 else None}
 
     def draft(self, owner, id):
         with self.connect() as db:

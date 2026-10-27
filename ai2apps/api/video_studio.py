@@ -16,7 +16,6 @@ from typing import Annotated, Any, Literal
 
 from fastapi import (
     APIRouter,
-    BackgroundTasks,
     Depends,
     File,
     Form,
@@ -48,13 +47,10 @@ from ai2apps.video import (
     VideoStudioDraftError,
     VideoStudioDraftRepository,
 )
-from ai2apps.video.audio_extraction import extract_audio_to_wav
 from ai2apps.video.composer import (
     ComposerError,
     ComposerProject,
     ComposerSourceStore,
-    render_clip_output,
-    render_composition,
 )
 from ai2apps.video_policy import (
     effective_video_capabilities,
@@ -104,6 +100,11 @@ class StudioRunCreateRequest(BaseModel):
     title: str = Field(min_length=1, max_length=160)
     input: dict[str, Any] = Field(default_factory=dict)
     retry_of: str | None = Field(default=None, alias="retryOf", max_length=80)
+
+
+class JoinVideoRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    task_ids: list[str] = Field(min_length=2, max_length=50)
 
 
 class ExtractAudioRequest(BaseModel):
@@ -940,7 +941,6 @@ def create_video_studio_router(
     async def output_composer_clip(
         run_id: str,
         request: ComposerClipOutputRequest,
-        background_tasks: BackgroundTasks,
         app_instance_id: str = Header(alias="X-AI2Apps-App-Instance"),
         principal: RequestPrincipal = principal_dependency,
     ):
@@ -995,85 +995,17 @@ def create_video_studio_router(
             for character in requested_stem
         ).strip(" .") or "clip"
         output_name = f"{safe_stem}{suffix}"
-        work_root = paths.artifacts_path / "video-composer-work" / run_id
-        destination = work_root / output_name
-        repository.update_run(
-            run_id, status="running", progress=5, detail="Preparing Clip output", **run_scope
-        )
-
-        async def output_clip_in_background() -> None:
-            stage = "render_clip"
-            try:
-                def report_progress(completed: float, total: float) -> None:
-                    ratio = min(1.0, max(0.0, completed / total)) if total > 0 else 1.0
-                    with suppress(StudioRepositoryError):
-                        repository.update_run(
-                            run_id, status="running", progress=round(10 + ratio * 78),
-                            detail=f"composer.clip_output:{completed:.3f}:{total:.3f}",
-                            **run_scope,
-                        )
-
-                descriptor = await render_clip_output(
-                    request.project, request.clip_id, resolved, destination, report_progress
-                )
-                current = repository.get_run(run_id, **run_scope)
-                if current["status"] == "cancelled":
-                    return
-                stage = "workspace_artifact"
-                repository.update_run(
-                    run_id, status="running", progress=92,
-                    detail="Saving Clip Artifact", **run_scope,
-                )
-                session_id = video_tasks.artifact_session()
-                metadata = {
-                    "generator": COMPOSER_ID,
-                    "outputType": "clip",
-                    "clipId": clip.id,
-                    "clipName": clip.name,
-                    "sourceId": clip.source_id,
-                    "duration": clip.duration,
-                    "speed": clip.speed,
-                }
-                artifact = workspace.import_artifact(
-                    session_id, destination, output_name,
-                    media_type=descriptor.get("mediaType") or media_type,
-                    metadata=metadata,
-                )
-                content_url = f"/v1/platform/sessions/{session_id}/artifacts/{artifact.id}/download"
-                repository.create_artifact(
-                    run_id, kind=descriptor.get("kind") or kind, name=artifact.name,
-                    media_type=artifact.media_type, preview_url=content_url,
-                    download_url=content_url, source_id=artifact.id,
-                    metadata={
-                        "workspaceSessionId": session_id,
-                        "workspaceArtifactId": artifact.id,
-                        **metadata,
-                    },
-                    **run_scope,
-                )
-                repository.update_run(
-                    run_id, status="succeeded", progress=100,
-                    detail="Clip output ready", **run_scope,
-                )
-            except Exception as error:  # task boundary
-                code = getattr(error, "code", "clip_output_failed")
-                with suppress(StudioRepositoryError):
-                    repository.update_run(
-                        run_id, status="failed", progress=100, detail="Clip output failed",
-                        error={"code": code, "message": f"{stage}: {error}"[:1200]}, **run_scope,
-                    )
-            finally:
-                shutil.rmtree(work_root, ignore_errors=True)
-                prune_history(repository, run_scope)
-
-        background_tasks.add_task(output_clip_in_background)
+        from ai2apps.studio.video_jobs import submit_media
+        if getattr(runtime, 'studio_jobs', None) is None:
+            raise HTTPException(503, 'Studio task service is not ready')
+        submit_media(runtime, principal, run_scope, run, operation='clip',
+            payload={'filename': output_name, 'project': request.project.model_dump(), 'clip_id': request.clip_id, 'kind': kind, 'media_type': media_type}, sources=resolved)
         return repository.get_run(run_id, **run_scope)
 
     @router.post("/runs/{run_id}/compose", status_code=202)
     async def execute_composition(
         run_id: str,
         request: ComposerRenderRequest,
-        background_tasks: BackgroundTasks,
         app_instance_id: str = Header(alias="X-AI2Apps-App-Instance"),
         principal: RequestPrincipal = principal_dependency,
     ):
@@ -1142,96 +1074,17 @@ def create_video_studio_router(
             for character in safe_stem
         ).strip(" .") or "composition"
         output_name = f"{safe_stem}.mp4"
-        work_root = paths.artifacts_path / "video-composer-work" / run_id
-        destination = work_root / output_name
-        repository.update_run(
-            run_id, status="running", progress=5, detail="Preparing composition", **run_scope
-        )
-
-        async def compose_in_background() -> None:
-            stage = "render"
-            try:
-                total_seconds = request.project.duration
-                repository.update_run(
-                    run_id, status="running", progress=15,
-                    detail=f"composer.rendering:0:{total_seconds:.3f}", **run_scope,
-                )
-
-                def report_render_progress(completed: float, total: float) -> None:
-                    ratio = min(1.0, max(0.0, completed / total)) if total > 0 else 1.0
-                    with suppress(StudioRepositoryError):
-                        repository.update_run(
-                            run_id,
-                            status="running",
-                            progress=round(15 + ratio * 73),
-                            detail=f"composer.rendering:{completed:.3f}:{total:.3f}",
-                            **run_scope,
-                        )
-
-                await render_composition(
-                    request.project, resolved, destination, report_render_progress
-                )
-                stage = "workspace_artifact"
-                current = repository.get_run(run_id, **run_scope)
-                if current["status"] == "cancelled":
-                    return
-                repository.update_run(
-                    run_id, status="running", progress=90,
-                    detail="Saving composition Artifact", **run_scope,
-                )
-                session_id = video_tasks.artifact_session()
-                metadata = {
-                    "generator": COMPOSER_ID,
-                    "schema": request.project.schema_name,
-                    "duration": request.project.duration,
-                    "trackCount": len(request.project.tracks),
-                    "clipCount": len(request.project.clips),
-                    "width": request.project.settings.width,
-                    "height": request.project.settings.height,
-                    "fps": request.project.settings.fps,
-                }
-                artifact = workspace.import_artifact(
-                    session_id, destination, output_name,
-                    media_type="video/mp4", metadata=metadata,
-                )
-                stage = "studio_artifact"
-                content_url = (
-                    f"/v1/platform/sessions/{session_id}/artifacts/{artifact.id}/download"
-                )
-                repository.create_artifact(
-                    run_id, kind="video", name=artifact.name,
-                    media_type=artifact.media_type, preview_url=content_url,
-                    download_url=content_url, source_id=artifact.id,
-                    metadata={
-                        "workspaceSessionId": session_id,
-                        "workspaceArtifactId": artifact.id,
-                        **metadata,
-                    },
-                    **run_scope,
-                )
-                repository.update_run(
-                    run_id, status="succeeded", progress=100,
-                    detail="Composition rendered", **run_scope,
-                )
-            except Exception as error:  # task boundary
-                code = getattr(error, "code", "composition_failed")
-                with suppress(StudioRepositoryError):
-                    repository.update_run(
-                        run_id, status="failed", progress=100, detail="Composition failed",
-                        error={"code": code, "message": f"{stage}: {error}"[:1200]}, **run_scope,
-                    )
-            finally:
-                shutil.rmtree(work_root, ignore_errors=True)
-                prune_history(repository, run_scope)
-
-        background_tasks.add_task(compose_in_background)
+        from ai2apps.studio.video_jobs import submit_media
+        if getattr(runtime, 'studio_jobs', None) is None:
+            raise HTTPException(503, 'Studio task service is not ready')
+        submit_media(runtime, principal, run_scope, run, operation='compose',
+            payload={'filename': output_name, 'project': request.project.model_dump(), 'kind': 'video', 'media_type': 'video/mp4'}, sources=resolved)
         return repository.get_run(run_id, **run_scope)
 
     @router.post("/runs/{run_id}/extract-audio", status_code=202)
     async def execute_audio_extraction(
         run_id: str,
         request: ExtractAudioRequest,
-        background_tasks: BackgroundTasks,
         app_instance_id: str = Header(alias="X-AI2Apps-App-Instance"),
         principal: RequestPrincipal = principal_dependency,
     ):
@@ -1303,75 +1156,41 @@ def create_video_studio_router(
             for character in safe_stem
         ).strip(" .") or "extracted-audio"
         output_name = f"{safe_stem}.wav"
-        work_root = paths.artifacts_path / "video-studio-audio-work" / run_id
-        destination = work_root / output_name
-        repository.update_run(
-            run_id, status="running", progress=10, detail="Decoding audio track", **run_scope
-        )
-
-        async def extract_in_background() -> None:
-            try:
-                metadata = await asyncio.to_thread(
-                    extract_audio_to_wav, source, destination
-                )
-                current = repository.get_run(run_id, **run_scope)
-                if current["status"] == "cancelled":
-                    return
-                repository.update_run(
-                    run_id, status="running", progress=85,
-                    detail="Saving audio Artifact", **run_scope,
-                )
-                session_id = video_tasks.artifact_session()
-                artifact = workspace.import_artifact(
-                    session_id,
-                    destination,
-                    output_name,
-                    media_type="audio/wav",
-                    metadata={
-                        "generator": EXTRACT_AUDIO_ID,
-                        "sourceKind": source_kind,
-                        **({"sourceAssetId": source_asset_id} if source_asset_id else {}),
-                        "sourceMediaType": source_media_type,
-                        **metadata,
-                    },
-                )
-                content_url = (
-                    f"/v1/platform/sessions/{session_id}/artifacts/{artifact.id}/download"
-                )
-                repository.create_artifact(
-                    run_id,
-                    kind="audio",
-                    name=artifact.name,
-                    media_type=artifact.media_type,
-                    preview_url=content_url,
-                    download_url=content_url,
-                    source_id=artifact.id,
-                    metadata={
-                        "workspaceSessionId": session_id,
-                        "workspaceArtifactId": artifact.id,
-                        "sourceKind": source_kind,
-                        **({"sourceAssetId": source_asset_id} if source_asset_id else {}),
-                        **metadata,
-                    },
-                    **run_scope,
-                )
-                repository.update_run(
-                    run_id, status="succeeded", progress=100,
-                    detail="Audio track extracted", **run_scope,
-                )
-            except Exception as error:  # task boundary
-                code = getattr(error, "code", "audio_extraction_failed")
-                with suppress(StudioRepositoryError):
-                    repository.update_run(
-                        run_id, status="failed", progress=100, detail="Extraction failed",
-                        error={"code": code, "message": str(error)[:1000]}, **run_scope,
-                    )
-            finally:
-                shutil.rmtree(work_root, ignore_errors=True)
-                prune_history(repository, run_scope)
-
-        background_tasks.add_task(extract_in_background)
+        from ai2apps.studio.video_jobs import submit_media
+        if getattr(runtime, 'studio_jobs', None) is None:
+            raise HTTPException(503, 'Studio task service is not ready')
+        submit_media(runtime, principal, run_scope, run, operation='extract',
+            payload={'filename': output_name, 'kind': 'audio', 'media_type': 'audio/wav', 'metadata': {'sourceKind': source_kind, 'sourceAssetId': source_asset_id}}, sources={'source': ({'name': source_name}, source)})
         return repository.get_run(run_id, **run_scope)
+
+    @router.post('/runs/{run_id}/join', status_code=202)
+    async def join_video_outputs(run_id: str, request: JoinVideoRequest,
+            app_instance_id: str = Header(alias='X-AI2Apps-App-Instance'),
+            principal: RequestPrincipal = principal_dependency):
+        runtime = runtime_provider()
+        repository = studio(principal, app_instance_id)
+        run_scope = scope(principal, app_instance_id)
+        try:
+            run = repository.get_run(run_id, **run_scope)
+            if run['miniAppId'] != COMPOSER_ID or run['status'] != 'queued':
+                raise HTTPException(409, 'Join Run is not queued')
+            if len(set(request.task_ids)) != len(request.task_ids):
+                raise HTTPException(422, 'Select distinct completed tasks')
+            sources = {}
+            for index, task_id in enumerate(request.task_ids):
+                task = runtime.video_tasks.get(task_id, actor_id=principal.actor_user_id)
+                if task['status'] != 'succeeded': raise HTTPException(409, 'Video is not complete')
+                video = task['result']['video']
+                artifact = runtime.workspace.get_artifact(runtime.video_tasks.artifact_session(), video['artifact_id'])
+                sources[str(index)] = ({}, runtime.workspace.artifact_path(artifact))
+            from ai2apps.studio.video_jobs import submit_media
+            submit_media(runtime, principal, run_scope, run, operation='join',
+                payload={'filename':'joined.mp4','kind':'video','media_type':'video/mp4'}, sources=sources)
+            return repository.get_run(run_id, **run_scope)
+        except StudioRepositoryError as error:
+            return studio_error(error)
+        except VideoGenerationError as error:
+            raise HTTPException(error.status_code, str(error)) from error
 
     @router.post("/runs/{run_id}/cancel")
     async def cancel_run(
@@ -1385,6 +1204,11 @@ def create_video_studio_router(
             run = repository.get_run(run_id, **run_scope)
             if run["status"] in {"succeeded", "failed", "cancelled", "expired"}:
                 return run
+            jobs = getattr(runtime_provider(), 'studio_jobs', None)
+            job = jobs.for_run(run_id, principal) if jobs else None
+            if job:
+                jobs.cancel(job['id'], principal)
+                return repository.get_run(run_id, **run_scope)
             if run["input"].get("avatarOperation") == "portrait_animation":
                 from ai2apps.studio.avatar import reconcile_outputs
                 await runtime_provider().video_tasks.cancel(run["input"]["videoTaskId"], actor_id=principal.actor_user_id)

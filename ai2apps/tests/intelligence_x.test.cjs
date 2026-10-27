@@ -36,3 +36,15 @@ test('changed body attributes trigger semantic fallback with fresh selector obse
  assert.ok(r.x_observed.text.some(o=>o.selector.includes('newBody')));
  ctx.rule={...rule,text:'[data-testid="newBody"]'};assert.equal(vm.runInContext('xPostSnapshot(rule)',ctx).x_rule_valid,true);
 });
+
+test('same-DOM evidence comparison rejects valid-looking selectors with wrong body or photos',()=>{
+ const c=card('1','Real fact',['https://pbs.twimg.com/media/real.jpg']);
+ const original=c.root.querySelectorAll;
+ c.root.querySelectorAll=s=>s==='div.wrong'?[node('div','Unrelated navigation')]:s==='img.wrong'?[Object.assign(node('img'),{src:'https://pbs.twimg.com/media/wrong.jpg'})]:original(s);
+ const ctx=context([c]);ctx.rule={...rule,text:'div.wrong'};
+ assert.equal(vm.runInContext('xPostSnapshot(rule)',ctx).x_rule_valid,false);
+ ctx.rule={...rule,photo:'img.wrong'};
+ assert.equal(vm.runInContext('xPostSnapshot(rule)',ctx).x_rule_valid,false);
+ ctx.rule=rule;
+ assert.equal(vm.runInContext('xPostSnapshot(rule)',ctx).x_rule_compared,true);
+});

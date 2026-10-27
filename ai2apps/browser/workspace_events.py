@@ -30,7 +30,7 @@ async def stream_workspace(runtime, owner: str, after: int | None = None, *, hea
     tasks = BrowserTaskRepository(runtime.database, runtime.events)
     def decorate(task):
         if task['status'] == 'waiting_input' and task.get('run_id'):
-            task.update(browser_task_wait_presentation(runtime.agents.list_interactions(task['run_id'])))
+            task.update(browser_task_wait_presentation(runtime.agents.list_interactions(task['run_id']), task.get('browser_context')))
         return task
 
     if after is None:

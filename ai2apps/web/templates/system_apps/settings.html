@@ -3,3 +3,13 @@
 {% block system_app_content %}
 {% include "dashboard/_settings.html" %}
 {% endblock %}
+
+{% block head %}
+{{ super() }}
+<link rel="stylesheet" href="{{ static('css/capability_tree.css') }}">
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ static('js/capability_tree.js') }}"></script>
+{{ super() }}
+{% endblock %}

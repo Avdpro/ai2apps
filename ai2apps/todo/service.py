@@ -168,6 +168,10 @@ class TodoService:
                 (task_id,),
             ).fetchone():
                 raise ValueError("This project already has an active run")
+            if latest.get("status") == "not_started":
+                latest.update(status="in_progress", updated_at=now_text(), update_time_estimated=False)
+                db.execute("UPDATE tasks SET data=?,revision=revision+1 WHERE id=? AND owner=?", (json.dumps(latest), task_id, owner))
+                task = {**task, "status": "in_progress", "revision": latest["revision"] + 1}
             attachments = [
                 dict(r)
                 for r in db.execute(

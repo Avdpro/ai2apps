@@ -35,6 +35,27 @@ before dynamic cache replacement work begins.
   Release builds remain named `AI2Apps.app`.
 - When using Computer Use, identify AI2Apps by its exact bundle ID or executable path, not only by display name.
 
+## Fixed development source contract
+
+- Fixed `dev` and `app-dev` MUST load `ai2apps/` and source Packages directly
+  from the live checkout owning their build scripts. Never point
+  `AI2AppsDevelopmentSourceRoot`/`DEVELOPMENT_SOURCE_ROOT` at a release export,
+  Build snapshot, source-baseline, or selectively copied overlay.
+- Never activate changes by copying files into an old source snapshot. Snapshot
+  acceptance belongs in isolated Test, not fixed Dev/App-Dev or their data.
+- Builders must reject different/missing roots and exports without their Git
+  checkout before staging/replacing an App. Do not bypass or weaken
+  `development-source-contract.sh`.
+- After activation, verify BOTH App/Helper source-root metadata AND running
+  Local imported module paths and served changed assets against this checkout.
+  A healthy endpoint, Build number, or plist alone does not prove activation.
+- Repair obsolete source bindings through the corresponding standard builder;
+  never patch signed plists or obsolete snapshots. Preserve instance isolation
+  and wait for active tasks before restarting.
+- Refresh HTML/CSS/JS, restart Local for Python, rebuild for embedded Runtime,
+  Swift or AceFox changes. Never silently fall back to bundled stale source
+  when the development checkout is unavailable; report the error.
+
 ## AI2Apps App-Shell development environment
 
 - App-Shell Apps such as Chat, Terminal, Coder, Knowledge, and other Local

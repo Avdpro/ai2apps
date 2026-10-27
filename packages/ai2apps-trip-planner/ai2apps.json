@@ -1,0 +1,116 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/trip-planner",
+    "type": "app",
+    "version": "0.1.1",
+    "displayName": "Trip Planner",
+    "description": "Plan a trip and compare observed flight, hotel and sightseeing options."
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": [
+      "darwin"
+    ],
+    "architectures": [
+      "arm64"
+    ]
+  },
+  "entrypoints": [
+    {
+      "name": "main",
+      "kind": "app",
+      "path": "web/index.html"
+    }
+  ],
+  "permissions": [],
+  "dependencies": [],
+  "files": [],
+  "capabilityCatalog": {
+    "schemaVersion": "ai2apps.package-capabilities.v1",
+    "entries": [
+      {
+        "kind": "mini-app",
+        "identity": "ai2apps.trip-planner",
+        "provides": [
+          "travel.flights",
+          "travel.hotels",
+          "travel.guide",
+          "travel.refine"
+        ],
+        "tasks": [
+          "Trip Planner",
+          "行程安排"
+        ],
+        "inputTypes": [
+          "text"
+        ],
+        "outputTypes": [
+          "file"
+        ],
+        "requirements": {
+          "capabilities": []
+        },
+        "agent": {
+          "mode": "aaat",
+          "declarationVersion": "1.0.0",
+          "exports": [
+            {
+              "name": "travel.flights",
+              "interfaceVersion": "1.0.0",
+              "inputTypes": [
+                "text"
+              ],
+              "outputTypes": [
+                "file"
+              ]
+            },
+            {
+              "name": "travel.hotels",
+              "interfaceVersion": "1.0.0",
+              "inputTypes": [
+                "text"
+              ],
+              "outputTypes": [
+                "file"
+              ]
+            },
+            {
+              "name": "travel.guide",
+              "interfaceVersion": "1.0.0",
+              "inputTypes": [
+                "text"
+              ],
+              "outputTypes": [
+                "file"
+              ]
+            },
+            {
+              "name": "travel.refine",
+              "interfaceVersion": "1.0.0",
+              "inputTypes": [
+                "text"
+              ],
+              "outputTypes": [
+                "file"
+              ]
+            }
+          ]
+        },
+        "scope": "Requires a Desktop host implementing these declared AaAT exports. UI bridge edits drafts only; execution uses host-owned durable tasks and shared output.",
+        "processing": "hybrid",
+        "pricing": "unknown",
+        "localizations": {
+          "en": {
+            "displayName": "Trip Planner",
+            "description": "Arrange flights, hotels and things to do for your trip."
+          },
+          "zh": {
+            "displayName": "行程安排",
+            "description": "按出行需求查询机票、酒店，安排沿途体验。"
+          }
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "instance": "app-dev",
+  "runs": [
+    {
+      "id": "run_b8e5f704447f476bbbed4c4d213dd625",
+      "status": "completed",
+      "session_id": "ses_e84d90c43d7941b398bf73a55a69f468"
+    },
+    {
+      "id": "run_d3049bef26854196b1bef1fc61fc90bc",
+      "status": "waiting_input",
+      "session_id": "ses_e84d90c43d7941b398bf73a55a69f468"
+    }
+  ],
+  "verification": {
+    "real_mini_app_file_transcription": "passed; Qwen3 ASR returned text to original General Agent",
+    "real_app_recording": "passed; WebM saved and draft survived Local restart",
+    "gallery_drag": "handler tests passed; live Gallery sidebar opens and test WAV imports; two native drags did not change form asset ID",
+    "runtime_restart_continuation": "existing ACPF suite 52 tests passed; no actual Runtime upgrade in live run"
+  },
+  "installation": [
+    {
+      "id": "prv_1e1860db97694e03b9fbb1d5a9773f2b",
+      "status": "failed",
+      "action_id": "parameter-form:int_b78e371354424884a00b842d00e2d7bf",
+      "error": {
+        "code": "provisioning_failed",
+        "message": "Capability Service did not become ready after activation",
+        "retryable": true
+      }
+    },
+    {
+      "id": "prv_4b7cd0a51a53446395862a8c324eef3b",
+      "status": "failed",
+      "action_id": "parameter-form:int_5f399488deab4337bd4894ccec134591",
+      "error": {
+        "code": "provisioning_failed",
+        "message": "Capability Service did not become ready after activation",
+        "retryable": true
+      }
+    }
+  ]
+}

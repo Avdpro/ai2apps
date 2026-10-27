@@ -17,6 +17,8 @@ from fastapi import HTTPException, Response
 from fastapi.responses import StreamingResponse
 
 from .model_manager import ModelManagerStore
+from .model_worker.reasoning_capabilities import adapt_reasoning_effort, ReasoningEffortError, validate_reasoning_effort
+from .fusion.provider_errors import redacted_provider_error as _redacted_error
 
 _OPENAI_CHAT_FIELDS = {
     "model",
@@ -33,6 +35,7 @@ _OPENAI_CHAT_FIELDS = {
     "tool_choice",
     "response_format",
     "seed",
+    "reasoning_effort",
 }
 
 AI2APPS_CLOUD_PROVIDER_ID = "ai2apps"
@@ -41,6 +44,7 @@ _IMAGE_DATA_URL = re.compile(
     r"^data:(image/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=\s]+)$"
 )
 _MODERN_TOKEN_PARAMETER_MODELS: set[tuple[str, str]] = set()
+_RESPONSES_TOOL_MODELS: set[tuple[str, str]] = set()
 
 
 def _chat_url(provider: dict[str, Any]) -> str:
@@ -48,24 +52,6 @@ def _chat_url(provider: dict[str, Any]) -> str:
     if provider["protocol"] == "anthropic" and not root.endswith("/v1"):
         root = f"{root}/v1"
     return f"{root}/chat/completions"
-
-
-def _redacted_error(response: httpx.Response, secret: str) -> str:
-    """Return a bounded upstream error without ever reflecting credentials."""
-
-    try:
-        payload = response.json()
-        if isinstance(payload, dict):
-            error = payload.get("error")
-            if isinstance(error, dict):
-                message = error.get("message")
-            else:
-                message = payload.get("detail") or error
-            if isinstance(message, str) and message:
-                return message.replace(secret, "[redacted]")[:1000]
-    except (ValueError, TypeError):
-        pass
-    return f"Cloud provider returned HTTP {response.status_code}"
 
 
 def _needs_max_completion_tokens(status: int, detail: str, body: dict[str, Any]) -> bool:
@@ -159,6 +145,12 @@ async def request_cloud_image(
                 }
             }
             cloud_body["model"] = managed_model
+            # Generation schemas reject edit-only fields even when model_dump
+            # supplied an empty default. Both Studio and Mini-Chat use this
+            # adapter; keep image/mask inputs exclusively on the edits route.
+            if not edit:
+                cloud_body.pop("imageDataUrls", None)
+                cloud_body.pop("maskDataUrl", None)
             request_headers = dict(cloud_headers or {})
             request_headers["Idempotency-Key"] = str(
                 payload.get("idempotencyKey") or f"local-image-{uuid.uuid4()}"
@@ -313,6 +305,14 @@ def _content_parts(content: Any) -> list[dict[str, str]]:
 
 
 def _ai2apps_request_body(request: Any) -> dict[str, Any]:
+    # The managed Cloud contract does not yet declare a reasoning control field.
+    # Never silently discard caller intent or pretend that its default is low.
+    try:
+        effort = validate_reasoning_effort(getattr(request, "reasoning_effort", None))
+    except ReasoningEffortError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    if effort is not None:
+        raise HTTPException(status_code=400, detail="Managed Cloud API does not yet declare reasoning_effort support")
     system: list[str] = []
     messages: list[dict[str, Any]] = []
     for message in request.messages:
@@ -648,9 +648,24 @@ async def proxy_cloud_chat_completion(
     serialized = request.model_dump(mode="json", exclude_none=True, by_alias=True)
     body = {key: value for key, value in serialized.items() if key in _OPENAI_CHAT_FIELDS}
     body["model"] = provider["model_id"]
+    reasoning_control = (provider.get('capabilities') or {}).get('reasoningControl')
+    try:
+        body = adapt_reasoning_effort(body, reasoning_control)
+    except ReasoningEffortError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    if reasoning_control and reasoning_control.get('format') == 'responses':
+        # The existing Responses adapter owns endpoint and message conversion.
+        # Give it the already-mapped native effort through its Chat input contract.
+        if body.get('reasoning') is not None:
+            body['reasoning_effort'] = body.pop('reasoning')['effort']
+        from .fusion.openai_responses import proxy_responses
+        return await proxy_responses(body, provider=provider, transport=transport)
     modern_parameter_key = (provider["base_url"], provider["model_id"])
     if modern_parameter_key in _MODERN_TOKEN_PARAMETER_MODELS:
         body = _modern_openai_chat_body(body)
+    if body.get("tools") and modern_parameter_key in _RESPONSES_TOOL_MODELS:
+        from .fusion.openai_responses import proxy_responses
+        return await proxy_responses(body, provider=provider, transport=transport)
     headers = {
         "Authorization": f"Bearer {provider['api_key']}",
         "Accept": "text/event-stream" if request.stream else "application/json",
@@ -670,42 +685,42 @@ async def proxy_cloud_chat_completion(
         await client.aclose()
         raise HTTPException(status_code=502, detail="Cloud provider is unavailable") from exc
 
+    # Validation failures have not executed a Tool. Adapt only an explicit
+    # endpoint incompatibility, never retry an ambiguous upstream execution.
     if upstream.status_code >= 400:
         await upstream.aread()
         detail = _redacted_error(upstream, provider["api_key"])
-        status = upstream.status_code
-        if _needs_max_completion_tokens(status, detail, body):
+        if _needs_max_completion_tokens(upstream.status_code, detail, body):
             await upstream.aclose()
-            modern_body = _modern_openai_chat_body(body)
+            body = _modern_openai_chat_body(body)
             if len(_MODERN_TOKEN_PARAMETER_MODELS) >= 512:
                 _MODERN_TOKEN_PARAMETER_MODELS.clear()
             _MODERN_TOKEN_PARAMETER_MODELS.add(modern_parameter_key)
             try:
-                upstream = await client.send(
-                    client.build_request(
-                        "POST",
-                        _chat_url(provider),
-                        headers=headers,
-                        json=modern_body,
-                    ),
-                    stream=bool(request.stream),
-                )
-            except httpx.TimeoutException as exc:
-                await client.aclose()
-                raise HTTPException(status_code=504, detail="Cloud provider timed out") from exc
+                upstream = await client.send(client.build_request(
+                    "POST", _chat_url(provider), headers=headers, json=body), stream=bool(request.stream))
             except httpx.HTTPError as exc:
                 await client.aclose()
-                raise HTTPException(status_code=502, detail="Cloud provider is unavailable") from exc
-            if upstream.status_code >= 400:
-                await upstream.aread()
-                detail = _redacted_error(upstream, provider["api_key"])
-                status = upstream.status_code
-                await upstream.aclose()
-                await client.aclose()
-                raise HTTPException(status_code=status, detail=detail)
-        else:
+                raise HTTPException(504 if isinstance(exc, httpx.TimeoutException) else 502,
+                                    "Cloud provider is unavailable") from exc
+        if upstream.status_code >= 400:
+            await upstream.aread()
+            detail = _redacted_error(upstream, provider["api_key"])
+            status = upstream.status_code
             await upstream.aclose()
             await client.aclose()
+            # Require the official endpoint and its explicit validation response;
+            # do not reinterpret third-party providers or authentication errors.
+            if (status == 400 and body.get("tools")
+                    and provider["base_url"].rstrip("/") == "https://api.openai.com/v1"
+                    and "responses" in detail.lower()
+                    and ("function" in detail.lower() or "tools" in detail.lower())):
+                from .fusion.openai_responses import proxy_responses
+                response = await proxy_responses(body, provider=provider, transport=transport)
+                if len(_RESPONSES_TOOL_MODELS) >= 512:
+                    _RESPONSES_TOOL_MODELS.clear()
+                _RESPONSES_TOOL_MODELS.add(modern_parameter_key)
+                return response
             raise HTTPException(status_code=status, detail=detail)
 
     content_type = upstream.headers.get(

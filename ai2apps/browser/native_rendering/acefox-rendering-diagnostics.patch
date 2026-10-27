@@ -1,0 +1,11 @@
+--- a/remote/webdriver-bidi/modules/root/browsingContext.sys.mjs
++++ b/remote/webdriver-bidi/modules/root/browsingContext.sys.mjs
+@@ -2023,6 +2023,8 @@
+   async getRenderingLeaseState({ context }) {
+     const window = this.#renderingWindow(context);
+     return { scope: "window", windowRefCount: window.windowUtils.ai2AppsRenderingLeaseCount,
++      nativeOccluded: window.windowUtils.isWindowFullyOccluded,
++      chromeCompositorPaused: window.windowUtils.isCompositorPaused,
+       contextLeaseCount: [...this.#renderingLeases.values()].filter(e => e.context === context).length };
+   }
+ 

@@ -685,6 +685,11 @@ class VideoTaskManager:
                 completed_at=utc_now_text(),
             )
         finally:
+            from ai2apps.studio.avatar import reconcile_task_outputs
+            # The existing durable video executor owns inference; shared Output
+            # projection also runs here, independently of a Studio GET/poll.
+            with suppress(Exception):
+                reconcile_task_outputs(self.runtime, task_id)
             self.prune_history(row["actor_id"])
 
     async def _invoke(

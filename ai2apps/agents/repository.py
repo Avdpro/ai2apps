@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from contextlib import nullcontext
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -375,6 +376,7 @@ class AgentRepository:
     def list_runs(
         self,
         *,
+        session_id: str | None = None,
         agent_definition_id: str | None = None,
         status: AgentRunStatus | None = None,
         root_only: bool = False,
@@ -387,6 +389,9 @@ class AgentRepository:
             raise ValueError("AgentRun offset must be non-negative")
         clauses: list[str] = []
         parameters: list[Any] = []
+        if session_id is not None:
+            clauses.append("session_id = ?")
+            parameters.append(session_id)
         if agent_definition_id is not None:
             clauses.append("agent_definition_id = ?")
             parameters.append(agent_definition_id)
@@ -442,6 +447,7 @@ class AgentRepository:
         parent_run_id: str | None = None,
         delegation: dict[str, Any] | None = None,
         budget: dict[str, int] | None = None,
+        connection: sqlite3.Connection | None = None,
     ) -> tuple[AgentRunRecord, bool]:
         definition = self.get_definition(agent_key)
         if definition.status is not AgentDefinitionStatus.ENABLED:
@@ -492,7 +498,7 @@ class AgentRepository:
         )
         deadline = format_utc(now_dt + timedelta(seconds=timeout_seconds))
         try:
-            with self.database.transaction(write=True) as connection:
+            with (self.database.transaction(write=True) if connection is None else nullcontext(connection)) as connection:
                 session = connection.execute(
                     "SELECT app_instance_id FROM sessions WHERE id = ? AND status = 'active'",
                     (session_id,),
@@ -931,6 +937,10 @@ class AgentRepository:
             ).fetchone()
             if run is None:
                 raise ResourceNotFoundError("agent_run", run_id)
+            if run['status'] in ('completed','failed','cancelled'):
+                return self._status(connection.execute(
+                    "SELECT * FROM agent_status_lines WHERE run_id=? AND status_key='primary'", (run_id,)
+                ).fetchone())
             return self._status_line_in_transaction(
                 connection,
                 run,
@@ -951,9 +961,10 @@ class AgentRepository:
         error: dict[str, Any] | None = None,
         status_text: str | None = None,
         presentation: str | None = None,
+        connection: sqlite3.Connection | None = None,
     ) -> AgentRunRecord:
         now = utc_now_text()
-        with self.database.transaction(write=True) as connection:
+        with (self.database.transaction(write=True) if connection is None else nullcontext(connection)) as connection:
             row = connection.execute(
                 "SELECT * FROM agent_runs WHERE id = ?", (run_id,)
             ).fetchone()
@@ -961,6 +972,8 @@ class AgentRepository:
                 raise ResourceNotFoundError("agent_run", run_id)
             current = AgentRunStatus(row["status"])
             if current not in expected:
+                if current is status and status is AgentRunStatus.COMPLETED and output is not None and row['output_json'] == _json(output) and error is None:
+                    return self._run(row)
                 raise ResourceConflictError(
                     f"AgentRun {run_id} is {current.value}, expected "
                     + ", ".join(sorted(item.value for item in expected))
@@ -1392,6 +1405,7 @@ class AgentRepository:
         *,
         response: dict[str, Any],
         response_id: str,
+        app_interaction_capability: str | None = None,
     ) -> InteractionRecord:
         now_dt = datetime.now(UTC)
         now = format_utc(now_dt)
@@ -1405,12 +1419,20 @@ class AgentRepository:
             ).fetchone()
             if row is None:
                 raise ResourceNotFoundError("agent_interaction", interaction_id)
+            interaction_request = json.loads(row["request_json"])
+            if (interaction_request.get("control") in {"app_handoff", "parameter_form"}
+                    and response != {"status": "cancelled", "result": {}}
+                    and app_interaction_capability != interaction_request.get("capability")):
+                raise ResourceConflictError("App interaction must be completed by its registered target adapter")
             if row["status"] != "pending":
                 if row["response_id"] == response_id and row["response_json"] == _json(
                     response
                 ):
                     return self._interaction(row)
                 raise ResourceConflictError("Interaction has already been resolved")
+            origin = connection.execute("SELECT status FROM agent_runs WHERE id=?", (run_id,)).fetchone()
+            if json.loads(row["request_json"]).get("control") in {"app_handoff", "parameter_form"} and (origin is None or origin["status"] != "waiting_input"):
+                raise ResourceConflictError("Run is no longer waiting for this interaction")
             if row["deadline_at"] <= now:
                 raise ResourceConflictError("Interaction deadline has expired")
             try:
@@ -1537,6 +1559,8 @@ class AgentRepository:
                         "requested_scope": requested_scope,
                         "single_use": single_use,
                     }
+                    resource_scope = response.get("resource_scope", "current")
+                    evidence["resource_scope"] = resource_scope
                     tool_name = approval_request.get("tool_name", "*")
                     tool_row = connection.execute(
                         """SELECT s.active_package_digest FROM tool_descriptors t
@@ -1563,7 +1587,7 @@ class AgentRepository:
                             _json(sorted(set(approved))),
                             tool_name,
                             tool_service_digest,
-                            _json(approval_request.get("resource_selector", {})),
+                            _json({} if resource_scope == "tool" else approval_request.get("resource_selector", {})),
                             _json(evidence),
                             expires_at,
                             now,

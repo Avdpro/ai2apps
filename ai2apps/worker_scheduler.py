@@ -383,6 +383,21 @@ class WorkerJobScheduler:
                 self._completed += 1
             self._dispatch_locked()
 
+    async def scoped_activity(self, *, actor_id: str, app_id: str, session_id: str) -> dict:
+        """Internal admission state for an exact model-call scope.
+
+        Queue expiry retains its own deadline; unrelated work cannot pause a
+        coordinator's execution watchdog.
+        """
+        async with self._lock:
+            self._expire_locked(self._clock())
+            def matches(ticket):
+                return (ticket.actor_id, ticket.app_id, ticket.session_id) == (actor_id, app_id, session_id)
+            return {
+                'blocked': sum(matches(ticket) for ticket in self._queued.values()),
+                'running': sum(matches(ticket) for ticket in self._active.values()),
+            }
+
     async def snapshot(self) -> dict:
         async with self._lock:
             now = self._clock()

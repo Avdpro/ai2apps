@@ -1,0 +1,2 @@
+# Unified patches contain required single-space context lines. Preserve them.
+ai2apps/browser/native_rendering/*.patch -whitespace

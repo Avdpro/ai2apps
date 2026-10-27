@@ -78,3 +78,11 @@ html:not([lang^="zh"]) .list-actions>button{font-size:12px;white-space:normal;li
 .mobile-todo-image-dialog::backdrop{background:#0009}
 .mobile-todo-image-dialog>button{display:block;margin:0 0 12px auto}
 .mobile-todo-image-dialog>img{display:block;width:100%;max-height:75dvh;object-fit:contain}
+.mobile-run-review{display:flex;flex-wrap:wrap;gap:10px;margin:12px 0}
+#todo-execution{margin:20px 0}
+.mobile-execution-fields{display:flex;flex-direction:column;gap:12px}
+.mobile-execution-fields label{display:flex;flex-direction:column;gap:8px}
+.mobile-execution-fields label[hidden]{display:none}
+.mobile-execution-fields input,.mobile-execution-fields select{width:100%;box-sizing:border-box;min-width:0}
+.mobile-chatgpt-link{display:inline-block;margin:12px 12px 12px 0;padding:12px 16px;border:1px solid #d4d4d4;border-radius:14px;color:inherit;text-decoration:none;background:#fff}
+#todo-execution>small{display:block;color:#777;line-height:1.5}

@@ -296,6 +296,7 @@ class GalleryRepository:
         source_ref: str | None = None,
         metadata: dict[str, Any] | None = None,
         max_bytes: int | None = None,
+        _adopt_path: Path | None = None,
     ) -> tuple[dict[str, Any], bool]:
         safe_name = self._safe_name(name)
         effective_media_type = (
@@ -304,13 +305,16 @@ class GalleryRepository:
             or "application/octet-stream"
         )
         self.blob_root.mkdir(parents=True, exist_ok=True)
-        descriptor, temporary_name = tempfile.mkstemp(
-            prefix=".gallery-import-", dir=self.blob_root
-        )
+        if _adopt_path is not None:
+            descriptor, temporary_name = None, str(_adopt_path)
+        else:
+            descriptor, temporary_name = tempfile.mkstemp(
+                prefix=".gallery-import-", dir=self.blob_root
+            )
         digest = hashlib.sha256()
         size = 0
         try:
-            with os.fdopen(descriptor, "wb") as output:
+            with (open(os.devnull, "wb") if _adopt_path else os.fdopen(descriptor, "wb")) as output:
                 while True:
                     chunk = stream.read(1024 * 1024)
                     if not chunk:
@@ -324,7 +328,8 @@ class GalleryRepository:
                     digest.update(chunk)
                     output.write(chunk)
                 output.flush()
-                os.fsync(output.fileno())
+                if not _adopt_path:
+                    os.fsync(output.fileno())
             hex_digest = digest.hexdigest()
             content_hash = f"sha256:{hex_digest}"
             storage_key = f"sha256/{hex_digest[:2]}/{hex_digest}"

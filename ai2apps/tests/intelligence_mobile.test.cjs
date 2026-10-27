@@ -11,19 +11,23 @@ test('mobile stack, channel chat, menus, swipe and desktop layout',async()=>{
  html=html.replace(/\{\{ t\('([^']+)'\) \}\}/g,(_,key)=>zh[key]||key);
  const article={id:'a',channel_id:'c',title:'测试文章标题',summary:'摘要内容。'.repeat(40),body:'文章正文。'.repeat(200),updated_at:'2026-10-10',sources:[],images:[],cover_image:{url:'https://images.test/cover.png'},original_content:{title:'Original',body:'Original content'},section_id:'s',content_type:'webpage'};
  const state={channels:[{id:'c',name:'体育',interests:'赛车新闻',sections:[{id:'s',name:'赛车'}]}],articles:Array.from({length:8},(_,i)=>({...article,id:'a'+i})),sources:[{id:'src',channel_id:'c',enabled:true}],runs:[]};
- const requests=[];
+ const requests=[];let releaseConversation;
  await page.route('https://intel.test/**',route=>route.fulfill({contentType:'text/html',body:'<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0}</style>'+html}));
  await page.route('https://images.test/**',route=>route.fulfill({contentType:'image/png',body:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aM6sAAAAASUVORK5CYII=','base64')}));
  await page.goto('https://intel.test');
  await page.addStyleTag({path:path.join(base,'web/static/css/intelligence.css')});
- await page.exposeFunction('mockApi',(url,options)=>{
+ await page.exposeFunction('mockApi',async(url,options)=>{
   requests.push({url,options});if(url.includes('browser-profiles'))return [{key:'default',name:'Default'}];
-  if(url.endsWith('/conversation'))return options.method==='POST'?{id:'t',question:'问题',answer:'回答',references:[]}:{turns:[]};
+  if(url.endsWith('/conversation')){if(options.method==='POST'){await new Promise(resolve=>releaseConversation=resolve);return {id:'t',question:'问题',answer:'回答',references:[]};}return {turns:[]};}
+  if(/\/articles\/a\d+$/.test(url))return state.articles.find(a=>url.endsWith('/'+a.id));
   if(url.endsWith('/drafts'))return {items:[]};return state;
  });
  await page.evaluate(()=>{window.AI2APPS_MOBILE_SURFACE=true;const interval=window.setInterval;window.setInterval=(fn,ms)=>{if(ms===5000){window.testPoll=fn;return 99999;}return interval(fn,ms);};window.fetch=async(url,options={})=>({ok:true,json:()=>window.mockApi(url,options)});window.EventSource=class{addEventListener(){} close(){}};window.IntelligenceEntities={init(){}};});
  await page.addScriptTag({path:path.join(base,'web/static/js/lucide.min.js')});
  await page.addScriptTag({path:path.join(base,'web/static/js/intelligence_cards.js')});
+ await page.addScriptTag({path:path.join(base,'web/static/js/mini_app_chat.js')});
+ await page.evaluate(catalog=>{document.documentElement.lang='zh';window._t=catalog;},zh);
+ await page.addScriptTag({path:path.join(base,'web/static/js/intelligence_i18n.js')});
  await page.addScriptTag({path:path.join(base,'web/static/js/intelligence.js')});
  await page.waitForSelector('[data-channel="c"]');
  assert.equal(await page.locator('#intel-app').getAttribute('data-mobile-page'),'channels');
@@ -71,7 +75,13 @@ test('mobile stack, channel chat, menus, swipe and desktop layout',async()=>{
  await page.click('#mobile-chat');await page.waitForTimeout(280);
  assert.equal(await page.locator('#channel-chat-context').textContent(),'向频道提问');
  await page.fill('#channel-chat-question','问题');await page.click('#send-channel-chat');
- await page.waitForTimeout(30);
+ await page.locator('#channel-chat-messages .chat-mini-message.user').waitFor();
+ assert.equal(await page.locator('#channel-chat-messages .chat-mini-message.user').innerText(),'问题');
+ assert.equal(await page.locator('#channel-chat-question').inputValue(),'');
+ assert.equal(await page.locator('#channel-chat-messages .chat-mini-pending').innerText(),'正在阅读频道资料并回答…');
+ assert.equal(await page.locator('#channel-chat-status').isVisible(),false);
+ releaseConversation();await page.getByText('回答',{exact:true}).waitFor();
+ assert.equal(await page.locator('#channel-chat-messages .chat-mini-message.user').count(),1);
  const sent=requests.find(r=>r.url.endsWith('/conversation')&&r.options.method==='POST');assert.equal(JSON.parse(sent.options.body).article_id,null);
  await page.locator('.intel-layout').evaluate(e=>{
   const touch=(x,y)=>new Touch({identifier:1,target:e,clientX:x,clientY:y});

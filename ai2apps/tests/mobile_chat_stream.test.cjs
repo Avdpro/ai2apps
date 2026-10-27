@@ -24,10 +24,12 @@ test('structured content matches desktop text rendering',async()=>{
  const result=await context.readChatReply(stream(['data: '+JSON.stringify({choices:[{delta:{content:[{type:'text',text:'Hi! '},{type:'output_text',text:'How can I help?'}]}}]})+'\n']),()=>{});
  assert.equal(result,'Hi! How can I help?');
 });
-test('Mobile leaves temperature to provider just like desktop defaults',async()=>{
+test('Mobile submits a durable turn with provider-default temperature; answer is not client-persisted',async()=>{
  let submitted;
- const direct=source.slice(source.indexOf('    async function directChat('),source.indexOf('    async function readChatReply('));
- const ctx=vm.createContext({content:{messages:[]},current:{title:'test'},model:{value:'cloud'},working(){},persist:async()=>{},addMessage:()=>({copy:{},node:{remove(){}}}),fetch:async(url,options)=>{submitted=JSON.parse(options.body);return {ok:true};},readChatReply:async()=> 'ok'});
+ const direct=source.slice(source.indexOf('    async function directChat('),source.indexOf('    async function restoreDirectTurn('));
+ let writes=0, observed=0;
+ const ctx=vm.createContext({crypto:require('node:crypto').webcrypto,content:{thread:{revision:3},messages:[]},current:{id:'s',title:'test'},model:{value:'cloud'},working(){},persist:async()=>{writes++;},request:async(url,options)=>{assert.ok(url.endsWith('/s/turns'));submitted=JSON.parse(options.body);return {id:'run'};},observeDirectTurn:async()=>{observed++;}});
  await vm.runInContext(direct+'\ndirectChat("hi","hi")',ctx);
- assert.equal(submitted.temperature,null);
+ assert.equal(submitted.request.temperature,null);assert.equal(submitted.expected_revision,3);
+ assert.equal(writes,1);assert.equal(observed,1);assert.ok(submitted.request_id);
 });

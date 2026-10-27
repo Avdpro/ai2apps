@@ -975,3 +975,27 @@ def user_singleton_key(
     if client_scope == "desktop":
         return base
     return f"{base}:client:{client_scope}"
+
+
+def workload_session_principal(database: PlatformDatabase, principal: RequestPrincipal, session_id: str) -> RequestPrincipal:
+    """Restore trusted workload identity from its owned, active originating Session.
+
+    This restores identity only; callers must retain their resource access guards.
+    Never use it to replace the authenticated principal of an external request.
+    """
+    from ai2apps.core import ResourceNotFoundError
+    with database.transaction() as db:
+        row=db.execute('''SELECT i.owner_user_id,i.singleton_key,d.package_id
+            FROM sessions s JOIN app_instances i ON i.id=s.app_instance_id
+            JOIN app_definitions d ON d.id=i.app_definition_id
+            WHERE s.id=? AND s.status='active' ''',(session_id,)).fetchone()
+    if row is None or (row['owner_user_id'] is not None and row['owner_user_id']!=principal.actor_user_id):
+        raise ResourceNotFoundError('session', session_id)
+    base=user_singleton_key(row['package_id'],principal.actor_user_id)
+    key=row['singleton_key'] or ''
+    if key.startswith(base+':client:'):
+        scope=key[len(base+':client:'):]
+        validate_identity(scope,'persisted client scope')
+        if key==user_singleton_key(row['package_id'],principal.actor_user_id,scope):
+            principal=replace(principal,client_scope=scope)
+    return principal

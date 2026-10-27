@@ -62,8 +62,16 @@ class CapabilityPolicyEngine:
                 matched.extend(top)
                 # A deny wins ties; otherwise explicit approval wins allow ties.
                 values = {p.effect for p in top}
+                # Only the built-in fallback may auto-allow bounded read-only
+                # network/browser capabilities. Local deny/approval policies win.
+                ordinary_read = (
+                    bool(effects) and set(effects) <= {"external_read", "network"}
+                    and "external_read" in effects
+                    and set(capabilities) <= {"network.outbound", "browser.read"}
+                    and all(p.policy_key == "builtin.default-require-approval" for p in top)
+                )
                 effects_by_capability[capability] = (
-                    PolicyEffect.DENY
+                    PolicyEffect.ALLOW if ordinary_read else PolicyEffect.DENY
                     if PolicyEffect.DENY in values
                     else PolicyEffect.REQUIRE_APPROVAL
                     if PolicyEffect.REQUIRE_APPROVAL in values

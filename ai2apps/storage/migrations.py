@@ -32,6 +32,9 @@ class Migration:
     version: int
     name: str
     statements: tuple[str, ...] = ()
+    # Used for forward repairs of development schemas that reached the same
+    # recorded version with and without an additive column. Never rewrite data.
+    ensure_columns: tuple[tuple[str, str, str], ...] = ()
 
 
 MIGRATIONS: tuple[Migration, ...] = (
@@ -4637,6 +4640,65 @@ MIGRATIONS = (*MIGRATIONS, Migration(version=91, name="owner_custom_search_sourc
 )))
 
 
+MIGRATIONS = (*MIGRATIONS, Migration(version=92, name="notification_producer_outbox", statements=(
+    """CREATE TABLE notification_producer_outbox (
+        event_id TEXT PRIMARY KEY, identity_json TEXT NOT NULL, body_json TEXT NOT NULL,
+        state TEXT NOT NULL DEFAULT 'queued', attempts INTEGER NOT NULL DEFAULT 0,
+        next_attempt REAL NOT NULL DEFAULT 0, expires_at REAL NOT NULL,
+        created_at REAL NOT NULL, notification_id TEXT, error_code TEXT
+    )""",
+    "CREATE INDEX notification_producer_due ON notification_producer_outbox(state,next_attempt)",
+)))
+
+
+MIGRATIONS = (*MIGRATIONS, Migration(version=93, name="studio_background_jobs", statements=(
+    """CREATE TABLE studio_background_jobs (
+        id TEXT PRIMARY KEY, actor_id TEXT NOT NULL, installation_id TEXT NOT NULL,
+        app_instance_id TEXT NOT NULL, studio_id TEXT NOT NULL, mini_app_id TEXT NOT NULL,
+        kind TEXT NOT NULL, idempotency_key TEXT NOT NULL, request_json TEXT NOT NULL,
+        principal_json TEXT NOT NULL, status TEXT NOT NULL, run_id TEXT,
+        result_json TEXT, error_json TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+        UNIQUE(actor_id,installation_id,studio_id,idempotency_key)
+    )""",
+    "CREATE INDEX studio_background_jobs_status ON studio_background_jobs(status,created_at)",
+    "CREATE UNIQUE INDEX studio_background_jobs_run ON studio_background_jobs(run_id) WHERE run_id IS NOT NULL",
+)))
+
+
+
+MIGRATIONS = (*MIGRATIONS, Migration(version=94, name="system_task_service", statements=(
+    """CREATE TABLE system_tasks (
+        id TEXT PRIMARY KEY, owner TEXT NOT NULL, app_id TEXT NOT NULL, kind TEXT NOT NULL,
+        name TEXT NOT NULL, status TEXT NOT NULL, payload_json TEXT NOT NULL,
+        checkpoint_json TEXT NOT NULL DEFAULT '{}', progress_json TEXT NOT NULL DEFAULT '{}',
+        result_json TEXT NOT NULL DEFAULT '{}', dedup_key TEXT NOT NULL DEFAULT '',
+        priority INTEGER NOT NULL DEFAULT 0, run_after REAL NOT NULL,
+        attempt INTEGER NOT NULL DEFAULT 0, force_cancel INTEGER NOT NULL DEFAULT 0,
+        message TEXT NOT NULL DEFAULT '', created_at REAL NOT NULL, updated_at REAL NOT NULL,
+        started_at REAL, finished_at REAL
+    )""",
+    "CREATE INDEX system_tasks_admission ON system_tasks(status,run_after,priority)",
+    "CREATE UNIQUE INDEX system_tasks_active_key ON system_tasks(owner,app_id,dedup_key) WHERE dedup_key!='' AND status IN ('queued','running','waiting_resource','waiting_user','cancelling')",
+    """CREATE TABLE system_task_attempts (
+        task_id TEXT NOT NULL REFERENCES system_tasks(id), owner TEXT NOT NULL,
+        number INTEGER NOT NULL, status TEXT NOT NULL, started_at REAL NOT NULL,
+        finished_at REAL, error TEXT NOT NULL DEFAULT '', PRIMARY KEY(task_id,number)
+    )""",
+    """CREATE TABLE system_task_schedules (
+        id TEXT NOT NULL, owner TEXT NOT NULL, app_id TEXT NOT NULL, kind TEXT NOT NULL,
+        name TEXT NOT NULL, payload_json TEXT NOT NULL, next_run REAL NOT NULL,
+        interval_seconds REAL, enabled INTEGER NOT NULL DEFAULT 1,
+        last_task_id TEXT, error TEXT NOT NULL DEFAULT '', updated_at REAL NOT NULL,
+        PRIMARY KEY(owner,app_id,id)
+    )""",
+)))
+
+
+MIGRATIONS = (*MIGRATIONS, Migration(version=95, name="system_task_trigger_compatibility",
+    ensure_columns=(("system_tasks", "trigger", "TEXT NOT NULL DEFAULT 'manual'"),),
+))
+
+
 def _validate_migrations(migrations: Sequence[Migration]) -> None:
     versions = [migration.version for migration in migrations]
     expected = list(range(1, len(migrations) + 1))
@@ -4704,6 +4766,10 @@ def apply_migrations(
             )
 
         for migration in migrations[user_version:]:
+            for table, column, definition in migration.ensure_columns:
+                columns = {row[1] for row in connection.execute(f'PRAGMA table_info("{table}")')}
+                if column not in columns:
+                    connection.execute(f'ALTER TABLE "{table}" ADD COLUMN "{column}" {definition}')
             for statement in migration.statements:
                 connection.execute(statement)
             connection.execute(

@@ -565,12 +565,12 @@ class ReadAloudTaskManager:
         target.with_suffix('.warnings.json').write_text(_json(warnings))
         return target
 
-    def save_quick_audio(self, owner_user_id: str, content: bytes, *, title: str = "", model_label: str = "", voice: str = "", mini_app_id: str = "ai2apps.audio.quick-read", warnings: list[str] | None = None) -> str:
+    def save_quick_audio(self, owner_user_id: str, content: bytes, *, title: str = "", model_label: str = "", voice: str = "", mini_app_id: str = "ai2apps.audio.quick-read", warnings: list[str] | None = None, output_key: str | None = None) -> str:
         """Use the shared, owner-authorized Artifact download route for Save As."""
         if self.workspace is None:
             raise ReadAloudRenderError("workspace_unavailable", "Audio storage is not ready", status_code=503)
         session_id = self._artifact_session(owner_user_id)
-        name = f"quick-read-{uuid.uuid4().hex}.wav"
+        name = f"quick-read-{output_key or uuid.uuid4().hex}.wav"
         source = self.root / name
         try:
             source.write_bytes(content)
@@ -583,13 +583,13 @@ class ReadAloudTaskManager:
         self.quick_history(owner_user_id, mini_app_id=mini_app_id)
         return f"/v1/platform/sessions/{session_id}/artifacts/{artifact.id}/download"
 
-    def save_separation_output(self, owner_user_id: str, content: bytes, filename: str) -> dict:
+    def save_separation_output(self, owner_user_id: str, content: bytes, filename: str, *, output_key: str | None = None) -> dict:
         if self.workspace is None:
             raise ReadAloudRenderError("workspace_unavailable", "Audio storage is not ready", status_code=503)
         session_id = self._artifact_session(owner_user_id)
         mini_app_id = "ai2apps.media-voice.source-separation"
         title = Path(filename).stem[:100] or "Separated audio"
-        batch = uuid.uuid4().hex[:8]
+        batch = output_key or uuid.uuid4().hex[:8]
         created = []
         try:
             with zipfile.ZipFile(BytesIO(content)) as archive, tempfile.TemporaryDirectory(dir=self.root) as temp:
@@ -621,8 +621,9 @@ class ReadAloudTaskManager:
                     "downloadUrl": f"/v1/platform/sessions/{session_id}/artifacts/{bundle.id}/download",
                     "tracks": [item for item in history if item['id'] in ids]}
         except Exception:
-            for item in created:
-                self.workspace.retire_artifact(session_id, item.id)
+            if output_key is None:
+                for item in created:
+                    self.workspace.retire_artifact(session_id, item.id)
             raise
 
     def output_history(self, owner_user_id: str) -> list[dict[str, Any]]:
@@ -643,12 +644,12 @@ class ReadAloudTaskManager:
                  "downloadUrl": f"/v1/platform/sessions/{session_id}/artifacts/{item.id}/download"}
                 for item in records[:20]]
 
-    def save_studio_output(self, owner_user_id: str, content: bytes, *, mini_app_id: str, filename: str, media_type: str) -> str:
+    def save_studio_output(self, owner_user_id: str, content: bytes, *, mini_app_id: str, filename: str, media_type: str, output_key: str | None = None) -> str:
         session_id = self._artifact_session(owner_user_id)
         with tempfile.TemporaryDirectory(dir=self.root) as temp:
             source = Path(temp) / "output"
             source.write_bytes(content)
-            artifact = self.workspace.import_artifact(session_id, source, f"{uuid.uuid4().hex[:8]}-{Path(filename).name}",
+            artifact = self.workspace.import_artifact(session_id, source, f"{output_key or uuid.uuid4().hex[:8]}-{Path(filename).name}",
                 media_type=media_type, metadata={"studioId": "ai2apps.readaloud", "miniAppId": mini_app_id, "title": filename})
         self.output_history(owner_user_id)
         return f"/v1/platform/sessions/{session_id}/artifacts/{artifact.id}/download"

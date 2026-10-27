@@ -99,3 +99,52 @@ test('Mobile dialog uses roomy native new-tab links without timers or blank-page
  assert(links[0].href.startsWith('xhsdiscover://item/'));assert(links[1].href.startsWith('https://www.rednote.com/explore/'));
  assert(dialog.style.cssText.includes('padding:24px'));assert(dialog.style.cssText.includes('max-width:460px'));
 });
+
+test('Mobile cart accepts only completed verified Amazon cart routes and preserves store parameters',()=>{
+ const source=fs.readFileSync(root+'studio_mini_apps.js','utf8');
+ const fragment=source.slice(source.indexOf('    function mobileCartURLs'),source.indexOf('    function showMobileResult'));
+ const context={URL};vm.runInNewContext(fragment+'\nglobalThis.carts=mobileCartURLs;',context);
+ const fresh='https://www.amazon.com/alm/cart?almBrandId=FreshObserved';
+ const task={status:'completed',capability:'prepare_cart',result:{recognized:true,stores:[{channel:'fresh',page_url:fresh},{channel:'whole_foods',page_url:'https://www.amazon.com/alm/cart?almBrandId=WholeFoodsObserved'}]}};
+ assert.equal(context.carts(task)[0].url.href,fresh);
+ assert.equal(context.carts(task).length,2);
+ assert.throws(()=>context.carts({...task,status:'running'}));
+ for(const page_url of ['https://evil.test/cart/','https://www.amazon.com/checkout/','https://www.amazon.com/cart/%63heckout','javascript:alert(1)','https://user:pass@www.amazon.com/cart/'])
+  assert.throws(()=>context.carts({...task,result:{recognized:true,page_url}}));
+});
+
+test('Mobile cart focus opens phone dialog and does not focus desktop browser',async()=>{
+ const source=fs.readFileSync(root+'studio_mini_apps.js','utf8');
+ const start=source.indexOf("                        if(request.action==='focus'&&(window.AI2APPS_MOBILE_SURFACE");
+ const end=source.indexOf('                        reply({value:await payload(await fetch(`${base}/web-agent/tasks/${encodeURIComponent(request.taskId)}/pages/',start);
+ const fetched=[],replies=[],dialogs=[];
+ const context={request:{action:'focus',taskId:'cart'},window:{AI2APPS_MOBILE_SURFACE:true},frame:{closest:()=>false},binding:{miniAppId:'ai2apps.shopping-pro'},base:'/mount',abort:{signal:{}},payload:async r=>r,fetch:async url=>{fetched.push(url);return {status:'completed',capability:'prepare_cart'};},mobileCartURLs:()=>[{url:new URL('https://www.amazon.com/alm/cart?almBrandId=Fresh'),channel:'fresh'}],showMobileResult:(url,options)=>{dialogs.push(options);return {addEventListener(){}};},mobileDialogs:new Set(),reply:r=>replies.push(r)};
+ vm.runInNewContext('globalThis.run=async()=>{'+source.slice(start,end)+'};',context);await context.run();
+ assert.deepEqual(fetched,['/mount/web-agent/tasks/cart']);assert.equal(dialogs[0].cart,true);assert.equal(replies[0].value.opened_on,'mobile');
+});
+
+test('Phone cart dialog offers native new-tab links for every prepared store',()=>{
+ const source=fs.readFileSync(root+'studio_mini_apps.js','utf8');
+ const fragment=source.slice(source.indexOf('    function showMobileResult'),source.indexOf('    function normalizedLocale'));
+ const nodes=[];const make=tag=>{const n={tag,style:{},children:[],append(...items){this.children.push(...items);},addEventListener(){},showModal(){},close(){},remove(){}};nodes.push(n);return n;};
+ const context={URL,document:{documentElement:{lang:'zh'},body:{append(){}},createElement:make}};
+ vm.runInNewContext(fragment+'\nglobalThis.show=showMobileResult;',context);
+ const fresh=new URL('https://www.amazon.com/alm/cart?almBrandId=Fresh');
+ const whole=new URL('https://www.amazon.com/alm/cart?almBrandId=WholeFoods');
+ context.show(fresh,{cart:true,stores:[{url:fresh,channel:'fresh'},{url:whole,channel:'whole_foods'}]});
+ const links=nodes.filter(n=>n.tag==='a');assert.equal(links.length,2);assert.equal(links[0].href,fresh.href);assert.equal(links[1].href,whole.href);
+ assert(links.every(n=>n.target==='_blank'&&n.rel==='noopener noreferrer'));
+ assert(nodes.some(n=>n.textContent==='查看亚马逊购物车'));assert(nodes.some(n=>n.textContent?.includes('相同的亚马逊账号')));
+});
+
+test('notification SDK sends only through the bound host channel',async()=>{
+ const c=client(),sent=[],port={postMessage:m=>sent.push(m),start(){}};
+ c.events.message({source:c.parent,data:{type:'ai2apps:studio-connected',version:1},ports:[port]});
+ const notification={event_id:'stable-business-id',content:{title:'A < B',body:'Text'},target:{type:'https_url',app_id:'example.app',url:'https://example.com/news'}};
+ const result=c.window.AI2AppsNotifications.send(notification);
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(sent.length,1);assert.equal(sent[0].operation,'notifications.send');
+ assert.equal(sent[0].notification,notification);assert.equal(sent[0].mountId,undefined);
+ port.onmessage({data:{id:sent[0].id,value:{event_id:'stable-business-id',status:'queued'}}});
+ assert.equal((await result).status,'queued');
+});

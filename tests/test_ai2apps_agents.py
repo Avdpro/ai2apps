@@ -78,6 +78,7 @@ async def _wait_status(runtime, run_id, statuses, timeout=3.0):
     raise AssertionError(
         f"Run {run_id} did not reach {sorted(item.value for item in statuses)}; "
         f"current={runtime.agents.get_run(run_id).status.value}; "
+        f"error={runtime.agents.get_run(run_id).error}; "
         f"steps={[(step.kind, step.status.value) for step in runtime.agents.list_steps(run_id)]}"
     )
 
@@ -558,9 +559,10 @@ def test_per_run_budget_is_bounded_by_agent_definition(tmp_path):
         "timeout_seconds": 30,
         "max_model_tokens": 500,
     }
-    assert runtime.agent_runtime._step_budget(
-        run, runtime.agents.get_definition(run.agent_definition_id)
-    ) == 2
+    from ai2apps.agents.token_budget import step_allowance
+    from ai2apps.agents.models import AgentExecutionContext
+    context = AgentExecutionContext(runtime.agents.get_definition(run.agent_definition_id), run, [], [])
+    assert step_allowance(context) == (2, 2)
     assert before + timedelta(seconds=29) < run.deadline_at
     assert run.deadline_at <= before + timedelta(seconds=31)
 
@@ -1759,10 +1761,48 @@ async def test_general_agent_applies_context_and_token_budgets_before_effects(
             input={"model": "test-model", "message_id": current.message.id},
         )
         runtime.agent_runtime.wake()
-        failed = await _wait_status(runtime, run.id, AgentRunStatus.FAILED)
-
-        assert failed.error["code"] == "model_token_budget_exceeded"
+        waiting = await _wait_status(runtime, run.id, AgentRunStatus.WAITING_INPUT)
+        assert waiting.error is None
+        item = runtime.agents.list_interactions(run.id)[0]
+        assert item.request_key == 'token-budget:1'
+        assert item.request['used_tokens'] == 1
         assert [step.kind for step in runtime.agents.list_steps(run.id)] == ["model"]
+        from ai2apps.agents.token_budget import STOP
+        runtime.agents.respond_interaction(run.id, item.id, response_id='budget-stop', response={'answer': STOP})
+        runtime.agent_runtime.wake()
+        done = await _wait_status(runtime, run.id, AgentRunStatus.COMPLETED)
+        assert done.output['budget_stopped'] is True
+        assert [step.kind for step in runtime.agents.list_steps(run.id)] == ['model']
+    finally:
+        await runtime.stop_background_tasks()
+
+
+@pytest.mark.asyncio
+async def test_general_agent_budget_continue_resumes_pending_tool_once(tmp_path):
+    from ai2apps.agents.token_budget import CONTINUE
+    runtime = _runtime(tmp_path)
+    calls = []
+    async def model(request):
+        calls.append(request)
+        if len(calls) > 1:
+            return {'choices':[{'message':{'role':'assistant','content':'done'},'finish_reason':'stop'}], 'usage':{'total_tokens':5}}
+        alias = next(t['function']['name'] for t in request['tools'] if t['function']['name'].startswith('system__echo_'))
+        return {'choices':[{'message':{'role':'assistant','content':None,'tool_calls':[{'id':'once','type':'function','function':{'name':alias,'arguments':'{"value":"once"}'}}]},'finish_reason':'tool_calls'}], 'usage':{'total_tokens':5}}
+    runtime.agent_runtime.bind_model_provider(model)
+    await runtime.start_background_tasks(retention_interval_seconds=60)
+    try:
+        run, _ = runtime.agents.create_run(session_id=_session(runtime),agent_key='ai2apps.general-agent',input={'prompt':'test budget','model':'test','tools':['system.echo']},budget={'max_model_tokens':1})
+        runtime.agent_runtime.wake()
+        await _wait_status(runtime,run.id,AgentRunStatus.WAITING_INPUT)
+        assert len(calls) == 1
+        item = runtime.agents.list_interactions(run.id)[0]
+        await runtime.agent_runtime.stop()
+        runtime.agents.respond_interaction(run.id,item.id,response_id='continue-once',response={'answer':CONTINUE})
+        await runtime.agent_runtime.start()
+        done = await _wait_status(runtime,run.id,AgentRunStatus.COMPLETED)
+        assert done.output['content'] == 'done'
+        assert len(calls) == 2
+        assert len([s for s in runtime.agents.list_steps(run.id) if s.tool_name == 'system.echo']) == 1
     finally:
         await runtime.stop_background_tasks()
 
@@ -1771,20 +1811,29 @@ async def test_general_agent_applies_context_and_token_budgets_before_effects(
 async def test_general_agent_preserves_rich_input_and_per_run_instructions(tmp_path):
     runtime = _runtime(tmp_path)
     session_id = _session(runtime)
+    import base64
+    import io
+    from PIL import Image
+    image = io.BytesIO()
+    Image.new("RGB", (8, 8), "blue").save(image, format="PNG")
+    image_url = "data:image/png;base64," + base64.b64encode(image.getvalue()).decode()
     rich_content = [
-        {"type": "image_url", "image_url": {"url": "data:image/png;base64,AA=="}},
+        {"type": "image_url", "image_url": {"url": image_url}},
         {"type": "text", "text": "Describe this"},
     ]
 
     async def model_provider(request):
-        assert request["messages"][0] == {
+        assert {
             "role": "system",
             "content": "Be concise",
-        }
-        assert request["messages"][-1] == {
-            "role": "user",
-            "content": rich_content,
-        }
+        } in request["messages"]
+        message = request["messages"][-1]
+        assert message["role"] == "user"
+        assert message["content"][-1] == rich_content[-1]
+        assert any(part.get("type") == "image_url" and part["image_url"]["url"].startswith("data:image/") for part in message["content"])
+        assert any("artifact_id=" in part.get("text", "") for part in message["content"])
+        assert any(runtime.workspace.artifact_path(artifact).read_bytes() == image.getvalue()
+                   for artifact in runtime.workspace.list_artifacts(session_id))
         return {
             "choices": [
                 {

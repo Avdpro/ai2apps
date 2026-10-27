@@ -1,0 +1,52 @@
+const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('fs'),path=require('path');
+const {chromium}=require('playwright');
+test('mobile rows stay compact while preserving details, quantity, selection and desktop information',async()=>{
+ const browser=await chromium.launch({headless:true,channel:'chrome'});
+ try{
+  const page=await browser.newPage({viewport:{width:390,height:844}}),errors=[];
+  page.on('pageerror',e=>errors.push(e.message));
+  const base=path.resolve(__dirname,'../../packages/ai2apps-shopping-pro/web');
+  await page.setContent(fs.readFileSync(base+'/index.html','utf8').replace(/<script[\s\S]*?<\/script>/g,''));
+  await page.evaluate(()=>{
+   const canvas=document.createElement('canvas');canvas.width=48;canvas.height=56;canvas.getContext('2d').fillRect(0,0,48,56);
+   const catalog=Array.from({length:4},(_,i)=>({id:'item-'+i,title:'Very long product name Greek Yogurt Honey Vanilla Family Size 32oz Tub '+i,image_data_url:canvas.toDataURL('image/jpeg'),purchase_count:3,interval_days:5,last_purchase:'2026-10-10',last_unit_price_minor:597,last_price_currency:'USD',preferred_channel:'fresh'}));
+   const rows=catalog.map((p,i)=>({id:p.id,quantity:2,selected:i<3,score:90-i,reason:'A detailed recommendation based on observed purchase dates. '.repeat(9)}));
+   window.saved=[];window.opened=[];
+   window.startupOptions=null;window.AI2AppsWebAgent={startup:async options=>{window.startupOptions=options;return {profiles:[{key:'default',name:'Default',is_default:true}],draft:JSON.stringify({miniApp:'ai2apps.shopping-pro',profile:'default',catalog,rows,sourceTasks:[],historyTask:'history'})};},profiles:async()=>{throw Error('Redundant profiles request');},onTask(){},draft:async()=>{throw Error('Redundant draft request');},saveDraft:async data=>window.saved.push(data),openResult:async(...args)=>window.opened.push(args)};
+  });
+  await page.addScriptTag({path:base+'/i18n.js'});await page.addScriptTag({path:base+'/shopping.js'});
+  await page.waitForSelector('#app',{state:'visible'});await page.click('#feature-restock');await page.click('#store-amazon');
+  const first=page.locator('#items .product-card').first();
+  assert((await first.boundingBox()).height<145);
+  assert.equal(await first.locator('details').getAttribute('open'),null);
+  assert.equal(await first.locator('.product-detail-body').isVisible(),false);
+  assert.equal(await page.locator('#items .product-card').count(),3);
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  await first.locator('.product-quantity').fill('3');await first.locator('.product-quantity').dispatchEvent('change');
+  assert.equal(await page.evaluate(()=>window.saved.at(-1).rows[0].quantity),3);
+  await first.locator('summary').click();assert.equal(await first.locator('.reason').isVisible(),true);assert.equal(await first.locator('.product-full-title').isVisible(),true);
+  await first.locator('.product-check').click();assert.equal(await page.locator('#items .product-card').count(),2);assert.equal(await page.locator('#unselected-items .product-card').count(),2);
+  await page.setViewportSize({width:1000,height:900});await page.waitForFunction(()=>[...document.querySelectorAll('#items .product-details')].every(d=>d.open));assert.equal(await page.locator('#items .product-details:not([open])').count(),0);assert.equal(await page.locator('#items .reason').first().isVisible(),true);
+  await page.setViewportSize({width:320,height:700});await page.waitForFunction(()=>[...document.querySelectorAll('#items .product-details')].every(d=>!d.open));assert.equal(await page.locator('#items .product-details[open]').count(),0);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  const beforeClear=await page.locator('.product-card').count();
+  await page.click('#clear-list');
+  assert.equal(await page.locator('#clear-list-dialog').isVisible(),true);
+  assert.match(await page.locator('#clear-list-hint').textContent(),/purchase history will not be deleted/);
+  assert.equal(await page.locator('.product-card').count(),beforeClear);
+  await page.click('#clear-list-cancel');
+  assert.equal(await page.locator('.product-card').count(),beforeClear);
+  await page.click('#clear-list');await page.click('#clear-list-confirm');
+  await page.waitForFunction(()=>window.saved.at(-1)?.recommendationsCleared===true);
+  assert.equal(await page.locator('.product-card').count(),0);
+  assert.equal(await page.locator('#clear-list').isDisabled(),true);
+  assert.equal(await page.locator('#recommend').isEnabled(),true);
+  assert.equal(await page.evaluate(()=>window.saved.at(-1).catalog.length),4);
+  assert.equal(await page.evaluate(()=>window.saved.at(-1).historyTask),'history');
+  await page.evaluate(()=>{window.AI2AppsWebAgent.startup=async()=>({profiles:[{key:'default',is_default:true}],draft:JSON.stringify(window.saved.at(-1))});});
+  await page.setContent(fs.readFileSync(base+'/index.html','utf8').replace(/<script[\s\S]*?<\/script>/g,''));
+  await page.addScriptTag({path:base+'/i18n.js'});await page.addScriptTag({path:base+'/shopping.js'});
+  await page.waitForSelector('#app',{state:'visible'});await page.click('#feature-restock');await page.click('#store-amazon');
+  assert.equal(await page.locator('.product-card').count(),0,'cleared rows must not reappear on reopen');
+  assert.deepEqual(await page.evaluate(()=>window.startupOptions),{includeDraft:true});assert.deepEqual(errors,[]);
+ }finally{await browser.close();}
+});

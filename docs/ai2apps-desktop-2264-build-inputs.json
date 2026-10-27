@@ -1,0 +1,37 @@
+{
+  "schema": "ai2apps.desktop-build-inputs/v1",
+  "version": "0.1.8",
+  "build": 2264,
+  "runtimeProfile": "cloud",
+  "sandbox": false,
+  "native": {
+    "baseCommit": "06e98acfcb1e853da0783ab3c5591e2f7dc91e62",
+    "worktreeClean": false,
+    "note": "Existing AI2Apps patched Firefox 153 input. Binary input is pinned below; this is not a claim of a clean upstream native checkout. Rendering lease patches are retained under ai2apps/browser/native_rendering. P4 policy replacement is disabled.",
+    "xulSha256": "5e3f967ac39c40188b01a20cfc938bc81c5dc9b06a08addb5745962038185fdc",
+    "omniSha256": "312a734ff9eb9a13f99f08bb022ab98a7915082617c5d0c5dc0ff53cebcd3e03",
+    "browserOmniSha256": "96484207ebd01c3dec10160c55d9a63e63f8b6b9901e8ce9f8016eddf2a128b3",
+    "shellSourceMatchesPackaged": true,
+    "bidiRootSourceMatchesPackaged": true,
+    "protocolRegression": "passed"
+  },
+  "scope": "Desktop host only; no independent Package, model Runtime, Cloud server or iOS publication",
+  "acceptance": {
+    "hostPytestPassed": 2646,
+    "hostPytestSkipped": 2,
+    "frontendNodePassed": 1009,
+    "aaatPassed": 448,
+    "swiftTestingPassed": 79,
+    "xctestPassed": 2,
+    "realDevice": "User reported prior phone authorization/reconnect/revocation, data migration and target-Mac acceptance complete; not observed by release automation. New 2264 upgrade still requires post-publication acceptance.",
+    "userBubbleDesign": "User reconfirmed black background and white text on 2026-10-27"
+  },
+  "releaseNotes": [
+    "Durable scoped in-App and Mini-App Chat with owner-controlled actions and background task recovery.",
+    "Intelligence article reading, incremental editing, source/image preservation and Mobile loading/navigation improvements.",
+    "Desktop and Mobile Chat presentation, attachments, parameters and session recovery improvements.",
+    "Protected WebAgent rendering leases and bounded browser recovery, retaining existing background safeguards.",
+    "Owner/mobile access, notification and startup compatibility improvements."
+  ],
+  "pending": ["Formal signed App and notarized DMG", "Immutable dual-source upload and audited Cloud rollout", "Post-publication target-Mac update"]
+}

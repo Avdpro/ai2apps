@@ -101,7 +101,7 @@ def test_video_studio_uses_first_party_surface_and_async_video_api():
     assert ".vs-drop.drag-target" in stylesheet
     assert "video_studio.error.gallery_asset_only" in script
     assert "/v1/videos/generations" in script
-    assert "/v1/videos/joins" in script
+    assert "/join`" in script
     assert "first_frame" in script and "last_frame" in script
     assert "video_studio.batch_title" in template
     assert "capability_provisioning.js" in template
@@ -244,7 +244,19 @@ def test_video_studio_extract_audio_run_materializes_wav_artifact(tmp_path):
     )
     app = FastAPI()
     app.include_router(create_video_studio_router(lambda: runtime, lambda: principal))
+    from ai2apps.studio.background import StudioBackgroundJobs
+    import asyncio
+    runtime.studio_jobs = StudioBackgroundJobs(runtime)
     client = TestClient(app)
+    original_post = client.post
+    def submit_and_drain(*args, **kwargs):
+        response = original_post(*args, **kwargs)
+        with database.transaction() as db:
+            rows = db.execute("SELECT * FROM studio_background_jobs WHERE status='queued'").fetchall()
+        for row in rows:
+            asyncio.run(runtime.studio_jobs._run(dict(row)))
+        return response
+    client.post = submit_and_drain
     headers = {"X-AI2Apps-App-Instance": app_instance_id}
 
     catalog = client.get("/video-studio/mini-apps").json()

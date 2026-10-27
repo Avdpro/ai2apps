@@ -3,6 +3,24 @@ from ai2apps.intelligence.models import SourceInput, ChannelInput
 from ai2apps.intelligence.store import IntelligenceStore
 
 
+def test_fifteen_minute_social_interval_persists_and_does_not_extend_on_skip(tmp_path):
+    import time
+    store = IntelligenceStore(tmp_path)
+    channel = store.save_channel('alice', ChannelInput(name='AI', interests='news').model_dump())
+    source = SourceInput(name='OpenAI', url='https://youtube.com/@OpenAI', social_interval_hours=0.25)
+    saved = store.save_source('alice', channel['id'], source.model_dump())
+    before = time.time()
+    admitted = store.claim_social('alice', saved['id'])
+    assert admitted['allowed']
+    assert before + 900 <= admitted['next_at'] <= time.time() + 900
+    store.finish_social('alice', saved['id'], admitted['token'], 'success')
+    reopened = IntelligenceStore(tmp_path)
+    assert reopened.get('sources', 'alice', saved['id'])['social_interval_hours'] == 0.25
+    deferred = reopened.claim_social('alice', saved['id'])
+    assert not deferred['allowed']
+    assert deferred['next_at'] == admitted['next_at']
+
+
 def test_youtube_source_normalizes_stable_video_ids_and_channel_tabs():
     s=SourceInput(name='OpenAI',url='https://youtube.com/@OpenAI')
     assert s.kind=='social' and s.url=='https://www.youtube.com/@OpenAI/videos'

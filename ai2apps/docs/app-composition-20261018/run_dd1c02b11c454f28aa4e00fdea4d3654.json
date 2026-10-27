@@ -1,0 +1,35 @@
+{
+  "id": "run_dd1c02b11c454f28aa4e00fdea4d3654",
+  "status": "completed",
+  "session_id": "ses_d1648811cc564d1ba051b55764087231",
+  "created_at": "2026-10-17T19:16:16.315134Z",
+  "finished_at": "2026-10-17T19:16:46.593776Z",
+  "tools": [
+    {
+      "tool_name": "image.edit",
+      "status": "completed",
+      "output": {
+        "artifact": {
+          "download_url": "/v1/platform/sessions/ses_d1648811cc564d1ba051b55764087231/artifacts/art_c99ace339fd441fb838b64548af3d74d/download",
+          "id": "art_c99ace339fd441fb838b64548af3d74d",
+          "media_type": "image/png",
+          "name": "stjob_81d74845e3e74ce39a590058157d2042.png",
+          "size_bytes": 1007152,
+          "uri": "artifact://art_c99ace339fd441fb838b64548af3d74d"
+        },
+        "capability": "image.edit",
+        "mini_app_id": "ai2apps.imagine.image-edit",
+        "model": "cloud/ai2apps/openai/gpt-image-2",
+        "provider": "ai2apps.imagine.image-edit",
+        "provider_attempts": [
+          {
+            "provider": "ai2apps.imagine.image-edit",
+            "status": "succeeded"
+          }
+        ],
+        "studio_job_id": "stjob_81d74845e3e74ce39a590058157d2042",
+        "studio_run_id": "strun_a4343c8b7cbe49c6ba656093265e7a94"
+      }
+    }
+  ]
+}

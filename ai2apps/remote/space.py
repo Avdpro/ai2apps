@@ -13,7 +13,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from ai2apps.core import utc_now
 from .security import RemoteTokenError, _decode
 
-SPACE_GATEWAY_READY = False
+SPACE_GATEWAY_READY = True
 
 SPACE_AUDIENCE = 'ai2apps-personal-space-v1'
 
@@ -88,7 +88,7 @@ class PersonalSpace:
 
     async def declare(self, device, enabled=True):
         self.installation(device)
-        from .visitor_space import app_gateway_ready
+        from .visitor_space import app_gateway_ready, walk_cards
         from .anonymous_space import PROTOCOL
         body = {'protocol': 'personal-space-v1', 'enabled': enabled}
         settings = self.visitor_settings(device)
@@ -97,7 +97,7 @@ class PersonalSpace:
                 published=settings['published'] is not None,
                 visitorSessionProtocol='personal-space-anonymous-session-v1',
                 spaceEpoch=settings['epoch']+1, publishedRevision=settings['revision']+1,
-                publishedAppCount=sum(c['kind']=='app' and not c.get('hidden') for c in (settings['published'] or {}).get('cards', [])))
+                publishedAppCount=sum(c['kind']=='app' and not c.get('hidden') for c in walk_cards((settings['published'] or {}).get('cards', []))))
         result = await self.manager._request('PUT', '/v1/internal/spaces/device', device=device, json=body)
         if app_gateway_ready():
             self.anonymous_capabilities[device.device_id] = {**result, '_local_epoch': settings['epoch'], '_local_revision': settings['revision']}
@@ -125,7 +125,7 @@ class PersonalSpace:
         if len(self.sessions) >= 1024:
             raise RemoteTokenError('Personal space is busy')
         if anonymous:
-            from .visitor_space import app_gateway_ready
+            from .visitor_space import app_gateway_ready, walk_cards
             from .anonymous_space import verify, PROTOCOL
             if not app_gateway_ready():
                 raise RemoteTokenError('Anonymous visitor gateway unavailable')

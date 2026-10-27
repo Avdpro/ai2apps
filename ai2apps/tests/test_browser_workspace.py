@@ -203,3 +203,19 @@ def test_composite_root_cancel_is_owner_scoped_and_cancels_children(tmp_path):
     assert client.post('/v1/platform/browser-workspace/roots/foreign/cancel').status_code==404
     assert client.post('/v1/platform/browser-workspace/roots/pool/cancel').status_code==200
     assert all(tasks.get('owner',task['id'])['status']=='cancelled' for task in children)
+
+
+def test_cancelled_human_pause_retains_slot_until_cleanup(tasks):
+    import json
+    tasks.configure('owner',1,1)
+    first=enqueue(tasks);tasks.claim('owner','local-background')
+    tasks.update('owner',first['id'],status='waiting_input',run_id='run',paused=True,
+        browser_context_json=json.dumps({'created_by_run':'run','bidi_context':'tab'}))
+    enqueue(tasks)
+    tasks.update('owner',first['id'],status='cancelling')
+    assert tasks.get('owner',first['id'])['holds_browser_slot']
+    assert tasks.claim('owner','local-background') is None
+    tasks.update('owner',first['id'],status='cancelled')
+    assert tasks.claim('owner','local-background') is None
+    tasks.update('owner',first['id'],browser_context_json=json.dumps({'created_by_run':'run','cleanup':{'state':'verified'}}))
+    assert tasks.claim('owner','local-background')

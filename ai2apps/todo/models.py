@@ -88,7 +88,7 @@ class TaskInput(BaseModel):
 
     _valid_emoji = field_validator("emoji")(validate_emoji)
 
-    status: Literal["not_started", "in_progress", "completed", "paused"] = "not_started"
+    status: Literal["not_started", "in_progress", "awaiting_acceptance", "completed", "paused"] = "not_started"
     progress: int = Field(default=0, ge=0, le=100, strict=True)
     completed: bool = False
     executor: Literal["internal", "codex", "claude", "codex_desktop"] = "internal"
@@ -158,10 +158,10 @@ def normalize_task_state(data, old=None):
             data["progress"] = 100
         elif data["status"] == "not_started":
             data["progress"] = 0
-        elif data["progress"] == 100:
+        elif data["progress"] == 100 and data["status"] != "awaiting_acceptance":
             data["progress"] = 0
     elif data["progress"] != previous["progress"]:
-        if data["progress"] == 100:
+        if data["progress"] == 100 and data["status"] != "awaiting_acceptance":
             data["status"] = "completed"
         elif data["status"] == "completed" or (data["progress"] > 0 and data["status"] == "not_started"):
             data["status"] = "in_progress"

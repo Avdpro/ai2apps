@@ -84,7 +84,12 @@ def question_action(context, arguments):
     )
 
 
-def install_control_tools(agents, services, registry, *, service_id, provider_key):
+def install_control_tools(agents, services, registry, *, service_id, provider_key, capability_router=None):
+    from .parameter_forms import install_parameter_forms
+    install_parameter_forms(agents, services, registry, service_id=service_id, provider_key=provider_key, capability_router=capability_router)
+    from .app_interactions import install_app_interactions
+    install_app_interactions(agents, services, registry, service_id=service_id, provider_key=provider_key)
+
     def run_for(context):
         if not context.trace_id or not context.session_id:
             raise ToolProviderError("This Tool requires an Agent Run")

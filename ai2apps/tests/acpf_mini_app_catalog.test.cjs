@@ -1,5 +1,5 @@
 const test=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs');
-const context={window:{},document:{documentElement:{lang:'en'}}};
+const context={window:{addEventListener(){},},document:{documentElement:{lang:'en'}}};
 vm.runInNewContext(fs.readFileSync(__dirname+'/../web/static/js/capability_provisioning.js','utf8'),context);
 const select=context.window.AI2AppsCapabilities.miniAppPackageComponents;
 test('ACPF Mini-App selection requires declared host placement',()=>{

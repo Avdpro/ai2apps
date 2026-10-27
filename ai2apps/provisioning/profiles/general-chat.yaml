@@ -196,9 +196,13 @@ capabilities:
             api: metal
             unified_memory_gib: {minimum: 8}
         stack:
-          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.3.1,<2.0.0"}
-          provider: {package_id: ai2apps/model-sensevoice-small, service_key: ai2apps.model.sensevoice-small, version: ">=0.2.2,<1.0.0"}
-          checkpoint: {model_id: ai2apps.model.sensevoice-small/default}
+          components:
+            - {id: audio-runtime, kind: package, phase: runtime, package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.3.1,<2.0.0"}
+            - {id: punctuation-provider, kind: package, phase: provider, package_id: ai2apps/punctuation-restorer, service_key: ai2apps.model.punctuation-restorer, version: ">=0.1.0,<1.0.0"}
+            - {id: sensevoice-provider, kind: package, phase: provider, package_id: ai2apps/model-sensevoice-small, service_key: ai2apps.model.sensevoice-small, version: ">=0.2.2,<1.0.0"}
+            - {id: punctuation-checkpoint, kind: checkpoint, phase: checkpoint, model_id: ai2apps.model.punctuation-restorer/default}
+            - {id: sensevoice-checkpoint, kind: checkpoint, phase: checkpoint, model_id: ai2apps.model.sensevoice-small/default}
+            - {id: sensevoice-verify, kind: verify, phase: verify, service_key: ai2apps.model.sensevoice-small, capabilities: [speech_recognition]}
   audio.speech_generation:
     trigger: on_feature_request
     presentation:

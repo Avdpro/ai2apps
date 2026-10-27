@@ -1,0 +1,24 @@
+{
+  "protocol":"desktop-mobile-agent-v1",
+  "status":"client implemented; exact Edge and real-device acceptance pending",
+  "public_documents":["GET /mobile/home","GET /mobile/agent-chat"],
+  "public_bootstrap":["GET /v1/mobile/agent/bootstrap"],
+  "proof_relays":["POST /v1/mobile/agent/connections/{uuid}/challenge","POST /v1/mobile/agent/connections/{uuid}/lease","POST /v1/mobile/agent/connections/{uuid}/revoke","POST /v1/mobile/agent/connections/{uuid}/nonce"],
+  "signed_only":[
+    "GET /v1/mobile/agent/models","GET /v1/mobile/agent/agents","GET /v1/mobile/agent/chat/state",
+    "GET /v1/mobile/agent/chat/threads","POST /v1/mobile/agent/chat/threads",
+    "GET /v1/mobile/agent/chat/threads/{id}/content",
+    "GET /v1/mobile/agent/chat/threads/{id}/agent-runs","POST /v1/mobile/agent/chat/threads/{id}/agent-runs",
+    "GET /v1/mobile/agent/agent-runs/{id}","POST /v1/mobile/agent/agent-runs/{id}/cancel",
+    "POST /v1/mobile/agent/agent-runs/{id}/interactions/{id}/respond",
+    "GET /v1/mobile/agent/agent-runs/{id}/interactions/{id}/handoff",
+    "GET /v1/mobile/agent/agent-runs/{id}/interactions/{id}/parameters",
+    "PUT /v1/mobile/agent/agent-runs/{id}/interactions/{id}/parameters",
+    "GET /v1/mobile/agent/agent-runs/{id}/interactions/{id}/parameters/materials",
+    "GET /v1/mobile/agent/agent-runs/{id}/interactions/{id}/parameters/search/{id}",
+    "POST /v1/mobile/agent/agent-runs/{id}/interactions/{id}/parameters/{submit|switch|audio|gallery|search/prepare|materials/upload|materials/gallery}",
+    "GET /v1/mobile/agent/assets/{run_id}/{view_index}/{item_index}",
+    "GET /v1/mobile/agent/artifacts/{run_id}/{artifact_id}"
+  ],
+  "notes":["Placeholder entries are a review matrix, not a generic proxy wildcard.","Static assets remain constrained by the existing exact Mobile static allowlist.","Never export /admin, /v1/platform, Desktop decision/ack/configure or arbitrary Cloud internal forwarding.","The local signer verifies original method/path/query/body before dispatch; Edge admission never grants Agent authority."]
+}

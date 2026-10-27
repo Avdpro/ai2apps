@@ -1,5 +1,5 @@
 const test=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs');
-const context={window:{addEventListener(){}},fetch:async(url)=>{assert.equal(url,'/admin/static/js/browser_snapshot.js?v=upload-controls-2');return {ok:true,text:async()=>fs.readFileSync(__dirname+'/../web/static/js/browser_snapshot.js','utf8')};}};
+const context={window:{addEventListener(){}},fetch:async(url)=>{assert.equal(url,'/admin/static/js/browser_snapshot.js?v=probe-consistency-20261026');return {ok:true,text:async()=>fs.readFileSync(__dirname+'/../web/static/js/browser_snapshot.js','utf8')};}};
 vm.runInNewContext(fs.readFileSync(__dirname+'/../web/static/js/browser_bidi_client.js','utf8'),context);
 const Client=context.window.AI2AppsBiDi.AI2AppsPageClient;
 test('observation and target resolution use the shared enhanced snapshot and retain refs',async()=>{
@@ -9,6 +9,21 @@ test('observation and target resolution use the shared enhanced snapshot and ret
  const observation=await client.explorationObservation();
  assert.match(observation.html,/data-ai2apps-ref/);assert.equal(observation.controls[0].ref,'e1');
  assert.equal((await client.findTarget('e1')).name,'登录');assert.equal((await client.findTarget('内容',{operation:'input'})).ref,'e2');
- assert.equal(calls.length,3);assert.ok(calls.every(call=>call.source.includes('data-ai2apps-shadow-root')));
+ assert.deepEqual(calls.map(call=>call.args[0].maxItems),[600,600,150]);assert.equal(calls.length,3);assert.ok(calls.every(call=>call.source.includes('data-ai2apps-shadow-root')));
  assert.ok(calls.every(call=>call.args[0].htmlMode==='visible'));
+});
+
+test('annotated observed refs select only the current ref and never fall back when stale',async()=>{
+ const client=new Client({});client.snapshot=async()=>({items:[{ref:'e1',text:'Same label',rect:[0,0,10,10]},{ref:'e2',text:'Same label with details',rect:[10,0,10,10]}]});
+ assert.equal((await client.findTarget('Same label (ref e2)')).ref,'e2');
+ assert.equal(await client.findTarget('Same label (ref e999)'),null);
+ assert.equal((await client.findTarget('button e2 (full date label)')).ref,'e2');
+ assert.equal(await client.findTarget('e1 or e2'),null);
+});
+
+test('long descriptions cannot click incidental short labels or search controls',async()=>{
+ const client=new Client({});client.snapshot=async()=>({items:[{ref:'e1',text:'Workspace',rect:[0,0,10,10]},{ref:'e2',text:'Search',rect:[20,0,10,10]}]});
+ assert.equal(await client.findTarget('Search document only inside Workspace toolbar'),null);
+ assert.equal((await client.findTarget('Workspace')).ref,'e1');
+ assert.equal((await client.findTarget('e1')).ref,'e1');
 });

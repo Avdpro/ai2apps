@@ -1,0 +1,153 @@
+{
+  "status": "internal_candidate_baseline_verified_not_full_release_acceptance",
+  "date": "2026-10-25",
+  "productVersion": "0.1.8",
+  "build": 2263,
+  "sourceCommit": "fa377dcb62875d5c82fc8177afd4277cd2357db9",
+  "sourceClean": false,
+  "dirtyTreeExplicitlyApproved": true,
+  "binaryFullyReproducibleFromTag": false,
+  "identity": {
+    "bundle": "com.ai2apps.desktop",
+    "instance": "default",
+    "runtimeProfile": "cloud",
+    "architecture": "arm64"
+  },
+  "signing": {
+    "cdhash": "de6c66bb22295a734dc800218a493da55016ca81",
+    "hardened_runtime": true,
+    "identifier": "com.ai2apps.desktop",
+    "team_identifier": "84XL5V265N"
+  },
+  "notarization": {
+    "status": "not_stapled"
+  },
+  "artifacts": {
+    "AI2Apps-0.1.8-build2263-macos-arm64-internal.dmg": {
+      "path": "/Users/avdpropang/sdk/omlx-moe-cache/ai2apps/.build/internal-candidate-0.1.8-build2263/AI2Apps-0.1.8-build2263-macos-arm64-internal.dmg",
+      "size": 268027661,
+      "sha256": "725a6e6b1e49e58a571a5ee9a17b388abb399072e6560ae451a737d45ecaa68f"
+    },
+    "AI2Apps-0.1.8-build2263-macos-arm64-internal.release.json": {
+      "path": "/Users/avdpropang/sdk/omlx-moe-cache/ai2apps/.build/internal-candidate-0.1.8-build2263/AI2Apps-0.1.8-build2263-macos-arm64-internal.release.json",
+      "size": 1024,
+      "sha256": "c67b2ef0c031735fc4999cf04460a53679194ac3fe955a83f0bfdb82d44972b3"
+    },
+    "source-manifest.json": {
+      "path": "/Users/avdpropang/sdk/omlx-moe-cache/ai2apps/.build/internal-candidate-0.1.8-build2263/source-manifest.json",
+      "size": 295834,
+      "sha256": "2ed614a460072e13afd30294c3edfd2ed8a9f93403c9e6c23a86dc952fbe83c4"
+    },
+    "external-input-manifest.json": {
+      "path": "/Users/avdpropang/sdk/omlx-moe-cache/ai2apps/.build/internal-candidate-0.1.8-build2263/external-input-manifest.json",
+      "size": 14960757,
+      "sha256": "0eedf0fa314ef26dd26ce290907ac167f8b8ec678382159ae3ed3ed00825b976"
+    },
+    "source-inputs.tar.gz": {
+      "path": "/Users/avdpropang/sdk/omlx-moe-cache/ai2apps/.build/internal-candidate-0.1.8-build2263/source-inputs.tar.gz",
+      "size": 39341144,
+      "sha256": "667383473588908ce19750214d8f052fe8b45b1c8aeeee003cbcbad0211332a7"
+    }
+  },
+  "bundleSourceVerification": {
+    "exactSourceFiles": 1769,
+    "expectedAbiExclusions": [],
+    "missing": [],
+    "unexpectedDifferences": [],
+    "version": "0.1.8",
+    "build": 2263,
+    "development": false,
+    "runtimeProfile": "cloud",
+    "sourceRootAbsentInAppAndHelper": true,
+    "signatureMetadataNormalizedCodeMatches": [
+      "ai2apps/remote/bin/darwin-arm64/frpc",
+      "ai2apps/remote/bin/darwin-x86_64/frpc"
+    ]
+  },
+  "sourceStableThroughBuild": true,
+  "python311": {
+    "python": "3.11.10 (main, Oct 16 2024, 08:56:36) [Clang 18.1.8 ]",
+    "compiled": 1076,
+    "errors": []
+  },
+  "updaterSmoke": {
+    "status": "passed",
+    "fromBuild": 2262,
+    "toBuild": 2263,
+    "backupBuild": 2262,
+    "launcherHealthOnly": true,
+    "candidateRetained": true,
+    "pendingMarkerRemoved": true,
+    "installedSignatureVerified": true,
+    "temporaryPathsOnly": true,
+    "helperLocalUiLaunched": false,
+    "targetMacFullUpgrade": false
+  },
+  "coldLocal": {
+    "status": "passed",
+    "version": "0.1.8",
+    "database": {
+      "configured": true,
+      "status": "ready",
+      "schema_version": 95,
+      "target_schema_version": 95,
+      "filename": "ai2apps-platform.sqlite3",
+      "journal_mode": "wal"
+    },
+    "readySeconds": 3.041,
+    "servedAssetSha256": {
+      "js/intelligence.js": "9ad631a69edde080991731595a203af9515783dd5f0dd36985763f0cd9885aa0",
+      "js/mobile_agent_connection.js": "1113cb654f570f3a3d7203c63bb90af4939ac3a1fc28ce508c9d8ce8552bb900",
+      "js/mini_app_chat.js": "fb2705c20ea503687b162a15918f1634b6eb69d407f75f098ce46f50830de2de"
+    },
+    "freshTemporaryBasePath": true,
+    "installedUserDataUsed": false,
+    "runtimeEntrypoint": "/Users/avdpropang/sdk/omlx-moe-cache/ai2apps/.build/internal-candidate-0.1.8-build2263/AI2Apps.app/Contents/Library/LoginItems/AI2AppsHelper.app/Contents/Resources/AI2AppsLocal/bin/omlx",
+    "fullNativeShellAcceptance": false
+  },
+  "gates": {
+    "standardReleaseAppVerifier": true,
+    "deepStrictCodesign": true,
+    "dmgContentsAndChecksum": true,
+    "standardNotarizationPreflight": true,
+    "internalUpdateEligibility2262to2263": true,
+    "launcherHealthOnly": true,
+    "gitDiffCheck": true,
+    "launcherMinimumMacOS": "13.0"
+  },
+  "preflightTests": {
+    "aaat": 352,
+    "swiftTesting": 77,
+    "xctest": 2,
+    "backgroundChatSessions": 79,
+    "ownerEditorialStartup": 54,
+    "articleBrowser": 6,
+    "chatNotificationDiscoverBrowser": 16,
+    "ownerMobilePackageNotifications": {
+      "firstRunPassed": 140,
+      "sandboxBlockedLoopback": 1,
+      "entireBlockedModuleNativeRerunPassed": 11
+    },
+    "overlapWarning": "These suites overlap; counts must not be summed as unique cases."
+  },
+  "initialHarnessFailures": [
+    "Updater smoke used mixed Foundation /private/tmp and /tmp aliases; fixed harness to consistent /tmp, retained original failure log, no updater source change.",
+    "Cold Local smoke initially passed uppercase INFO; corrected CLI harness to documented lowercase info and reran successfully."
+  ],
+  "pendingAcceptance": [
+    "native Shell launch and browser task operation on this candidate",
+    "real phone pairing/reconnect/revocation and notifications",
+    "production signed Package install-to-provider execution on a clean instance",
+    "existing-data schema migration and real media workflows",
+    "target Mac full download/install/relaunch/backup cleanup",
+    "formal source freeze/commit and final signing/notarization/publication"
+  ],
+  "notPerformed": [
+    "No /Applications replacement",
+    "No fixed Dev/App-Dev/Test replacement or restart",
+    "No Apple notarization submission",
+    "No GitHub/ModelScope upload",
+    "No stable manifest or Cloud code change",
+    "No real model inference or paid search"
+  ]
+}

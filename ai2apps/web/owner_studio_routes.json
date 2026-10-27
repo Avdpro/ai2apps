@@ -21,6 +21,11 @@
   },
   {
     "module": "imagine_studio",
+    "method": "POST",
+    "path": "/v1/platform/imagine-studio/runs/recover-session-results"
+  },
+  {
+    "module": "imagine_studio",
     "method": "GET",
     "path": "/v1/platform/imagine-studio/runs"
   },
@@ -43,6 +48,11 @@
     "module": "imagine_studio",
     "method": "POST",
     "path": "/v1/platform/imagine-studio/runs/{run_id}/upscale"
+  },
+  {
+    "module": "imagine_studio",
+    "method": "POST",
+    "path": "/v1/platform/imagine-studio/runs/{run_id}/adjust"
   },
   {
     "module": "imagine_studio",
@@ -808,5 +818,55 @@
     "module": "studio_mini_apps",
     "method": "POST",
     "path": "/v1/platform/studios/ai2apps.ai-browser/mini-app-mounts/{mount_id}/web-agent/delete-shopping-history"
+  },
+  {
+    "module": "studio_background",
+    "method": "POST",
+    "path": "/v1/platform/studio-jobs"
+  },
+  {
+    "module": "studio_background",
+    "method": "GET",
+    "path": "/v1/platform/studio-jobs"
+  },
+  {
+    "module": "studio_background",
+    "method": "GET",
+    "path": "/v1/platform/studio-jobs/by-run/{run_id}"
+  },
+  {
+    "module": "studio_background",
+    "method": "GET",
+    "path": "/v1/platform/studio-jobs/{identifier}"
+  },
+  {
+    "module": "studio_background",
+    "method": "POST",
+    "path": "/v1/platform/studio-jobs/{identifier}/retry"
+  },
+  {
+    "module": "studio_background",
+    "method": "POST",
+    "path": "/v1/platform/studio-jobs/{identifier}/cancel"
+  },
+  {
+    "module": "video_studio",
+    "method": "POST",
+    "path": "/v1/platform/video-studio/runs/{run_id}/output-clip"
+  },
+  {
+    "module": "video_studio",
+    "method": "POST",
+    "path": "/v1/platform/video-studio/runs/{run_id}/join"
+  },
+  {
+    "module": "notifications",
+    "method": "POST",
+    "path": "/v1/platform/notifications/resolve-target"
+  },
+  {
+    "module": "studio_mini_apps",
+    "method": "POST",
+    "path": "/v1/platform/studios/{studio_id}/mini-app-mounts/{mount_id}/notifications"
   }
 ]

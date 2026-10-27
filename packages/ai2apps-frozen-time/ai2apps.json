@@ -1,1 +1,99 @@
-{"schemaVersion":"ai2apps.package-manifest.v1","package":{"id":"ai2apps/frozen-time","type":"app","version":"0.1.0","displayName":"Frozen Time","description":"Camera motion from a still image using local depth and Meridian models."},"compatibility":{"ai2apps":">=0.1.0 <2.0.0","platforms":["darwin"],"architectures":["arm64"]},"entrypoints":[{"name":"main","kind":"app","path":"web/index.html"}],"permissions":[],"dependencies":[],"files":[],"sbom":{"format":"spdx-json-2.3","path":"META/sbom.spdx.json"}}
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/frozen-time",
+    "type": "app",
+    "version": "0.1.2",
+    "displayName": "Frozen Time",
+    "description": "Camera motion from a still image using local depth and Meridian models.",
+    "license": {
+      "name": "Apache License 2.0",
+      "spdx": "Apache-2.0",
+      "path": "LICENSE",
+      "url": "https://www.apache.org/licenses/LICENSE-2.0"
+    }
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": [
+      "darwin"
+    ],
+    "architectures": [
+      "arm64"
+    ]
+  },
+  "entrypoints": [
+    {
+      "name": "main",
+      "kind": "app",
+      "path": "web/index.html"
+    }
+  ],
+  "permissions": [],
+  "dependencies": [],
+  "files": [],
+  "sbom": {
+    "format": "spdx-json-2.3",
+    "path": "META/sbom.spdx.json"
+  },
+  "capabilityCatalog": {
+    "schemaVersion": "ai2apps.package-capabilities.v1",
+    "entries": [
+      {
+        "kind": "mini-app",
+        "identity": "ai2apps.imagine.frozen-time",
+        "provides": [
+          "image.frozen_time"
+        ],
+        "tasks": [
+          "Frozen Time",
+          "静止时间"
+        ],
+        "inputTypes": [
+          "audio",
+          "image"
+        ],
+        "outputTypes": [
+          "archive",
+          "document",
+          "video"
+        ],
+        "requirements": {
+          "capabilities": []
+        },
+        "agent": {
+          "mode": "aaat",
+          "declarationVersion": "1.0.0",
+          "exports": [
+            {
+              "name": "image.frozen_time",
+              "interfaceVersion": "1.0.0",
+              "inputTypes": [
+                "audio",
+                "image"
+              ],
+              "outputTypes": [
+                "archive",
+                "document",
+                "video"
+              ]
+            }
+          ]
+        },
+        "scope": "Requires a Desktop host implementing these declared AaAT exports. UI bridge edits drafts only; execution uses host-owned durable tasks and shared output.",
+        "processing": "local",
+        "pricing": "unknown",
+        "localizations": {
+          "en": {
+            "displayName": "Frozen Time",
+            "description": "Turn a still photo into a camera journey, interactive HTML or Live Photo."
+          },
+          "zh": {
+            "displayName": "静止时间",
+            "description": "将照片转换为实况照片、交互环绕或运镜视频。"
+          }
+        }
+      }
+    ]
+  }
+}

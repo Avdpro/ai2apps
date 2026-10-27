@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import replace
 from typing import Any
 
@@ -109,6 +110,13 @@ def browser_builder_executor(context: AgentExecutionContext):
     ir = parameters.get("ir")
     if not isinstance(ir, dict):
         return FailAction("invalid_browser_agent_ir", "Compiled browser Agent IR is required")
+    from ai2apps.agent_builder.execution_policy import resolve_policy
+    policy=resolve_policy(ir.get('execution_policy'))
+    deadline=(parameters.get('browser_context') or {}).get('task_deadline_at')
+    if deadline is None and policy['timeout_seconds'] is not None:
+        deadline=context.run.created_at.timestamp()+policy['timeout_seconds']
+    if deadline is not None and time.time()>=deadline:
+        return FailAction('browser_task_timeout','Browser Task total time budget expired')
     steps = ir.get("steps")
     if not isinstance(steps, list) or not steps:
         return FailAction("invalid_browser_agent_ir", "Browser Agent IR has no steps")
@@ -134,6 +142,8 @@ def browser_builder_executor(context: AgentExecutionContext):
             if current == "done":
                 return _completion(parameters, ir, evidence, variables)
             if current == "pause":
+                if not policy['allow_user_intervention']:
+                    return FailAction('browser_user_intervention_disabled','Task requires user takeover; disabled by Task policy')
                 return FailAction(
                     "browser_agent_needs_user",
                     "Browser Agent requires user takeover before it can continue",
@@ -141,7 +151,7 @@ def browser_builder_executor(context: AgentExecutionContext):
                 )
             return FailAction(
                 "browser_agent_step_failed",
-                str(evidence[-1].get('evidence',{}).get('message') or evidence[-1].get('evidence',{}).get('reason') or 'Browser Agent followed a failed transition') if evidence else 'Browser Agent followed a failed transition',
+                str(evidence[-1].get('evidence',{}).get('message') or evidence[-1].get('evidence',{}).get('result',{}).get('reason') or evidence[-1].get('evidence',{}).get('reason') or 'Browser Agent followed a failed transition') if evidence else 'Browser Agent followed a failed transition',
             )
         step = by_id.get(current)
         if step is None:
@@ -188,7 +198,13 @@ def browser_builder_executor(context: AgentExecutionContext):
                 Draft202012Validator(schema).validate(child_input)
             except ValidationError as error:
                 return FailAction("agent_call_input_invalid", error.message)
-            child_parameters = {**parameters, "ir": namespace_ir(call["ir"], f"{current}@{sequence}"),
+            from ai2apps.agent_builder.execution_policy import inherit_policy
+            child_ir = namespace_ir(call["ir"], f"{current}@{sequence}")
+            try:
+                child_ir["execution_policy"] = inherit_policy(ir.get("execution_policy"), child_ir.get("execution_policy"), child_ir.get('minimum_execution_policy'))
+            except ValueError as error:
+                return FailAction('browser_task_policy_conflict',str(error))
+            child_parameters = {**parameters, "ir": child_ir,
                 "invocation_input": child_input, "capability_name": call["capability"],
                 "call_path": [*parameters.get("call_path", []), {key: call[key]
                     for key in ("agent_id", "generation_id", "capability")}],
@@ -317,6 +333,8 @@ def browser_builder_executor(context: AgentExecutionContext):
             if outcome not in {"success", "true", "false", "not_found", "needs_user", "failed"}:
                 return FailAction("ai_step_outcome_invalid", "Classifier returned an unsupported outcome")
             if outcome == "needs_user":
+                if not policy['allow_user_intervention']:
+                    return FailAction('browser_user_intervention_disabled','Task requires human interaction; disabled by Task policy')
                 assistance_key = f"browser-assistance:{current}:{sequence}"
                 assistance = context.interaction(assistance_key)
                 if assistance is None or assistance.status is not InteractionStatus.SUBMITTED:
@@ -345,6 +363,8 @@ def browser_builder_executor(context: AgentExecutionContext):
             current = str(transitions.get(outcome) or (transitions.get("success") if outcome == "true" else None) or "failed")
             continue
         if operation == "approval":
+            if not policy['allow_user_intervention'] and not parameters.get('preview'):
+                return FailAction('browser_user_intervention_disabled','Task requires approval; disabled by Task policy')
             if bool(parameters.get("preview")):
                 return CompleteAction(
                     {
@@ -471,6 +491,7 @@ def browser_builder_executor(context: AgentExecutionContext):
                     "draft_id": parameters.get("draft_id"),
                     "generation_id": parameters.get("generation_id"),
                     "workflow_id": parameters.get("workflow_id"),
+                    "execution_policy": ir.get("execution_policy"),
                     "site_scope": ir.get("site_scope", []),
                     "invocation_input": parameters.get("invocation_input", {}),
                     "call_path": parameters.get("call_path", []),
@@ -489,12 +510,15 @@ def browser_builder_executor(context: AgentExecutionContext):
         response = interaction.response if isinstance(interaction.response, dict) else {}
         outcome = str(response.get("outcome") or "failed")
         if outcome == "needs_user":
+            if not policy['allow_user_intervention']:
+                return FailAction('browser_user_intervention_disabled','Task requires human interaction; disabled by Task policy')
             assistance_key = "browser-assistance:" + interaction.id
             confirmation = bool(response.get("evidence", {}).get("confirmation_required"))
             assistance = context.interaction(assistance_key)
             if assistance is None or assistance.status is not InteractionStatus.SUBMITTED:
                 return InteractionAction(request_key=assistance_key, kind=InteractionKind.APPROVAL if confirmation else InteractionKind.FORM,
-                    prompt=str(response.get("evidence", {}).get("reason") or "请在任务页面完成验证，然后继续。"),
+                    prompt=str(response.get("evidence", {}).get("assistance_message") or
+                        "任务未能继续。请打开任务页面检查当前状态，反馈具体情况或取消；不要重复执行尚未核实的操作。")[:4000],
                     response_schema=({"type": "object", "properties": {"decision": {"enum": ["approve", "deny"]}},
                         "required": ["decision"], "additionalProperties": False} if confirmation else
                         {"type": "object", "properties": {"continued": {"const": True}},
@@ -502,6 +526,7 @@ def browser_builder_executor(context: AgentExecutionContext):
                     ui_hints={"control": "agent_confirmation" if confirmation else "browser_user_assistance", "surface": "browser_sidebar"},
                     request={"control": "agent_confirmation" if confirmation else "browser_user_assistance", "step_id": current,
                         "action_hash": response.get("evidence", {}).get("action_hash"),
+                        "reason": response.get("evidence", {}).get("reason"),
                         "call_path": parameters.get("call_path", [])}, timeout_seconds=86_400)
             if confirmation and (assistance.response or {}).get("decision") != "approve":
                 return FailAction("browser_confirmation_denied", "User declined the proposed browser action")

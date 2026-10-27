@@ -134,6 +134,11 @@
     window.readAloudApp = function () {
         const segmentSaves = new Map();
         return {
+        mobileViewport: !!window.AI2APPS_MOBILE_SURFACE || window.innerWidth <= 760,
+        mobileActiveMiniAppId:'',
+        mobileWorkspaceReady:false,
+        backgroundJobs:[],backgroundJobTimer:null,backgroundJobRefresh:false,backgroundJobSignature:'',quickSubmission:null,
+        get hasActiveMiniApp(){return !this.mobileViewport || !!this.mobileActiveMiniAppId;},
         expandedLineId: '', lineEditing: false, pendingLineRemoval: null, busy: false, notice: '', noticeTone: '', noticeTimer: null, leftView: 'mini-apps', pipelineMode: 'quick', tab: 'script',
         miniAppDefinitions: [], runs: [], selectedRunId: '', selectedArtifactId: '', runTimer: null, draftTimer: null,
         packageMiniAppId: '', packageMiniAppUrl: '', packageMiniAppMountId: '', packageMiniAppLoading: false, packageMiniAppError: '', packageMiniAppReadiness: {}, packageMiniAppSetupBusy: false,
@@ -312,34 +317,63 @@
             if (this.quickGenerating || !this.quickForm.text.trim()) return;
             if (this.quickForm.voice.startsWith('character:') && !this.quickCharacter) { this.fail(new Error('Character no longer exists; select another actor.')); return; }
             if (!this.quickProvider?.ready) { if (this.quickCharacter) this.fail(new Error('Configure the character’s bound model in Characters first.')); else await this.configureSpeech(); return; }
-            this.waitDialogDismissed = false; this.quickGenerating = true; this.quickStatus = 'running'; this.notice = '';
-            this.showMobilePanel('output');
-            const title = this.quickForm.text.trim().slice(0, 80);
-            const task = { id: 'quick-' + Date.now(), title, status: 'running', url: '', model: this.quickProvider.displayName, actor: this.quickCharacter?.name || this.quickForm.voice || this.quickActors[0] || '', createdAt: new Date().toLocaleString() };
-            this.quickTasks.unshift(task); this.selectQuickTask(task);
-            try {
-                const response = await fetch(API + '/quick-read', {
-                    method: 'POST', credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json', ...(appInstanceId() ? { 'X-AI2Apps-App-Instance': appInstanceId() } : {}) },
-                    body: JSON.stringify({ text: this.quickForm.text, speed: Number(this.quickForm.speed ?? 1), asr_verification: !!this.quickForm.asrVerification, asr_model_id: this.quickForm.asrVerification ? this.quickForm.asrModelId || null : null, model_id: this.quickProvider.id, voice_profile_id: this.quickCharacter?.id || null, voice: this.quickCharacter ? null : this.quickActors.includes(this.quickForm.voice) ? this.quickForm.voice : null }),
-                });
-                if (!response.ok) { const error = await response.json().catch(() => ({})); throw new Error(error.detail || error.error?.message || tr('readaloud.quick.failed')); }
-                const blob = await response.blob();
-                if (!blob.size) throw new Error(tr('readaloud.quick.failed'));
-                Object.assign(this.quickTasks.find(item => item.id === task.id), { blob, url: URL.createObjectURL(blob), downloadUrl: response.headers.get('X-AI2Apps-Download-URL') || '', status: 'succeeded' });
-                if (this.selectedQuickTaskId === task.id) this.selectQuickTask(this.quickTasks.find(item => item.id === task.id));
-                await this.refreshOutputs(this.quickTasks.find(item => item.id === task.id)?.downloadUrl);
-                if (this.quickTasks.length > 20) this.quickTasks.splice(20).forEach(item => { if (item.url?.startsWith('blob:')) URL.revokeObjectURL(item.url); });
-                this.scheduleDraft();
-                if (this.pipelineMode === 'quick' && this.selectedQuickTaskId === task.id) this.$nextTick(() => this.$refs.audioPlayer?.play().catch(() => {}));
-            } catch (error) { Object.assign(this.quickTasks.find(item => item.id === task.id), { status: 'failed', error: error.message }); if (this.selectedQuickTaskId === task.id) this.quickStatus = 'failed'; this.fail(error); } finally { this.quickGenerating = false; this.icons(); }
+            this.quickGenerating=true;this.notice='';
+            const payload={text:this.quickForm.text,speed:Number(this.quickForm.speed??1),asr_verification:!!this.quickForm.asrVerification,
+                asr_model_id:this.quickForm.asrModelId||null,model_id:this.quickProvider.id,voice_profile_id:this.quickCharacter?.id||null,
+                voice:this.quickCharacter?null:this.quickActors.includes(this.quickForm.voice)?this.quickForm.voice:null};
+            const serialized=JSON.stringify(payload);
+            if(this.quickSubmission?.payload!==serialized)this.quickSubmission={payload:serialized,key:crypto.randomUUID()};
+            try{
+                const response=await fetch('/v1/platform/studio-jobs',{method:'POST',credentials:'same-origin',
+                    headers:{'Content-Type':'application/json','X-AI2Apps-App-Instance':appInstanceId(),'Idempotency-Key':this.quickSubmission.key},
+                    body:JSON.stringify({kind:'quick-read',payload})});
+                const job=await response.json();if(!response.ok)throw Error(typeof job.detail==='string'?job.detail:'Could not submit generation');
+                this.quickSubmission=null;this.quickStatus=job.status;
+                this.quickGenerating=false;this.showMobilePanel('output');await this.refreshBackgroundJobs();
+            }catch(error){this.fail(error);}
+            finally{this.quickGenerating=false;this.icons();}
         },
+        async actOnBackgroundJob(job, action){
+            try{
+                const response=await fetch('/v1/platform/studio-jobs/'+encodeURIComponent(job.id)+'/'+action,{method:'POST',credentials:'same-origin'});
+                const body=await response.json();if(!response.ok)throw Error(typeof body.detail==='string'?body.detail:'Task action failed');
+                await this.refreshBackgroundJobs();
+            }catch(error){this.fail(error);}
+        },
+        async refreshBackgroundJobs(){
+            if(this.backgroundJobRefresh)return;this.backgroundJobRefresh=true;
+            try{
+                const response=await fetch('/v1/platform/studio-jobs?studio_id=ai2apps.readaloud',{credentials:'same-origin'});
+                if(!response.ok)return;
+                const jobs=(await response.json()).items||[];
+                const signature=JSON.stringify(jobs.map(job=>[job.id,job.status]));
+                if(signature!==this.backgroundJobSignature){
+                    this.backgroundJobSignature=signature;this.backgroundJobs=jobs;
+                    await this.refreshOutputs();
+                    await this.refreshQuickHistory();
+                    const pending=this.pendingVoicePreview,completed=pending&&jobs.find(job=>job.id===pending.id);
+                    if(completed&&['succeeded','failed','cancelled','interrupted','publish_failed'].includes(completed.status)) {
+                        this.pendingVoicePreview=null;
+                        const same=pending.fingerprint===JSON.stringify(pending.kind==='design'?this.designPayload():this.trainingPayload());
+                        if(same){
+                            if(pending.kind==='design')this.designStatus=completed.status;else this.trainingPreviewStatus=completed.status;
+                            if(completed.status==='succeeded'){
+                                this.voiceProfiles=(await request('/voice-profiles')).items||[];
+                                if(pending.kind==='clone')this.trainingPreviewUrl=completed.result?.downloadUrl||'';
+                                else {const profile=this.voiceProfiles.find(v=>v.id===completed.result?.profileId);if(profile&&completed.result?.profileUpdated)this.openVoice(profile);}
+                            }
+                        }
+                    }
+                }
+            }finally{this.backgroundJobRefresh=false;}
+        },
+
         async restoreProject() {
             if (this.pipelineMode === 'quick') { this.selected = null; this.selectedProjectId = ''; this.mobilePanel = 'create'; return; }
             const projectId = this.currentProjects.find(item => item.id === this.selectedProjectId)?.id || this.currentProjects[0]?.id || '';
             await this.openProject(projectId, false);
         },
-        get currentMiniApp() { return this.packageMiniAppId ? (this.miniApps.find(item => item.id === this.packageMiniAppId) || this.miniApps[0]) : (this.miniApps.find(item => item.mode === (this.pipelineMode === 'training' ? 'voice' : this.pipelineMode)) || this.miniApps[0]); },
+        get currentMiniApp() { if(this.mobileViewport)return this.miniApps.find(item=>item.id===this.mobileActiveMiniAppId)||{id:'',name:'',mode:'',status:'inactive'}; return this.packageMiniAppId ? (this.miniApps.find(item => item.id === this.packageMiniAppId) || this.miniApps[0]) : (this.miniApps.find(item => item.mode === (this.pipelineMode === 'training' ? 'voice' : this.pipelineMode)) || this.miniApps[0]); },
         get miniAppChatEnabled() { return !window.AI2APPS_MOBILE_SURFACE && Boolean(window.AI2AppsMiniAppChat && this.currentMiniApp && (this.currentMiniApp.source !== 'package' || this.currentMiniApp.chat?.enabled === true)); },
         get currentRun() { if(this.lineAudioArtifact)return null; return this.runs.find(item => item.id === this.selectedRunId) || this.runs[0] || null; },
         get currentArtifact() { if(this.lineAudioArtifact)return this.lineAudioArtifact; return this.currentRun?.artifacts?.find(item => item.id === this.selectedArtifactId) || this.currentRun?.artifacts?.[0] || null; },
@@ -368,35 +402,39 @@
         async init() {
             this.starting = true; this.startupError = '';
             try { await this.initializeStudio(); }
-            catch (error) { this.startupError = error?.message || String(error); this.fail(error); }
-            finally { this.starting = false; }
+            catch (error) { this.starting=false; this.startupError = error?.message || String(error); this.fail(error); }
+            finally { if(!this.mobileViewport)this.starting = false; }
         },
         async initializeStudio() {
+            if(!this.backgroundJobTimer)this.backgroundJobTimer=setInterval(()=>this.refreshBackgroundJobs().catch(()=>{}),3000);
+            this.refreshBackgroundJobs().catch(()=>{});
             try { const saved = JSON.parse(localStorage.getItem('ai2apps.readaloud.favorites') || '[]'); this.favoriteMiniApps = Array.isArray(saved) ? saved : []; } catch (_) {}
-            this.setupMiniAppChat();
+            if(!this.mobileViewport)this.setupMiniAppChat();
             window.addEventListener('beforeunload', () => { this.saveDraft().catch(() => {}); this.cleanup(); }, { once: true });
             window.addEventListener('message', event => this.acceptGalleryMessage(event));
             window.addEventListener('ai2apps:studio-output-state', event => { if(event.detail?.studioId === APP_ID) this.packageOutputBusy = event.detail.running; });
-            window.addEventListener('ai2apps:studio-output', event => { if (event.detail?.studioId === APP_ID) { this.refreshOutputs(event.detail.result?.tracks?.[0]?.downloadUrl || event.detail.result?.downloadUrl || '').catch(error => this.fail(error)); this.rightCollapsed = false; } });
+            window.addEventListener('ai2apps:studio-output', event => { if (event.detail?.studioId === APP_ID) { this.refreshOutputs(event.detail.preserveSelection ? '' : event.detail.result?.tracks?.[0]?.downloadUrl || event.detail.result?.downloadUrl || '').catch(error => this.fail(error)); this.rightCollapsed = false; } });
             window.addEventListener('resize', () => this.applyResponsiveLayout());
             this.applyResponsiveLayout();
             try { this.miniAppDefinitions = (await request('/mini-apps')).items || []; } catch (_) {}
             this.refreshAllPackageMiniAppReadiness().catch(error => this.fail(error));
             const pendingMiniApp = window.AI2AppsStudioMiniApps?.pendingSetup(APP_ID)?.miniAppId;
-            const rememberedId = pendingMiniApp || localStorage.getItem('ai2apps.readaloud.active-mini-app');
+            const rememberedId = this.mobileViewport ? null : pendingMiniApp || localStorage.getItem('ai2apps.readaloud.active-mini-app');
             const rememberedMiniApp = rememberedId === 'ai2apps.audio.ensemble-drama' ? 'ai2apps.audio.audiobook' : rememberedId;
             const remembered = this.miniApps.find(item => item.id === (rememberedMiniApp === 'ai2apps.audio.character-training' ? 'ai2apps.audio.voice-design' : rememberedMiniApp));
             if (remembered?.source === 'package') await this.mountPackageMiniApp(remembered);
             else if (remembered) this.pipelineMode = remembered.mode;
             await Promise.all([
-                this.refresh(false),
-                this.packageMiniAppId ? Promise.resolve() : this.loadDraft(this.currentMiniApp.id)
+                this.mobileViewport ? Promise.resolve() : this.refresh(false),
+                !this.hasActiveMiniApp || this.packageMiniAppId ? Promise.resolve() : this.loadDraft(this.currentMiniApp.id)
             ]);
             if (rememberedMiniApp === 'ai2apps.audio.character-training') { await this.loadDraft(rememberedMiniApp); this.pipelineMode = 'training'; this.showVoiceForm = true; }
             if (this.leftView === 'assets') this.mountGalleryMini();
             if (this.leftView === 'chat') this.mountMiniAppChat();
-            await this.restoreProject();
+            if(this.hasActiveMiniApp)await this.restoreProject();
             this.starting = false;
+            // Mobile detail must not wait for unrelated history and capability probes.
+            if(this.mobileViewport)await this.openShellMiniApp?.();
             const background = await Promise.allSettled([
                 this.refreshRuns(), this.refreshQuickHistory(), this.refreshTrainingHistory(),
                 this.refreshOutputs(), this.probeCapabilities()
@@ -406,7 +444,7 @@
                 const resumed = await window.AI2AppsStudioMiniApps?.resumeSetup(APP_ID, this.miniApps.filter(item => item.source === 'package'));
                 if (resumed?.status === 'ready') {
                     const item = this.miniApps.find(value => value.id === (resumed.miniAppId || this.packageMiniAppId));
-                    if (item?.source === 'package' && item.id !== this.packageMiniAppId) await this.mountPackageMiniApp(item);
+                    if (item?.source === 'package' && item.id !== this.packageMiniAppId && (!this.mobileViewport || this.hasActiveMiniApp)) await this.mountPackageMiniApp(item);
                     else if (item?.source === 'package') await this.refreshPackageMiniAppReadiness(item);
                     await this.refreshAllPackageMiniAppReadiness();
                     await this.refresh(); this.success(tr('readaloud.deps_ready'));
@@ -420,8 +458,9 @@
                     this.success(tr(capability === 'audio.voice_clone' ? 'readaloud.success.voice_configured' : capability === 'audio.speech_recognition' ? 'readaloud.success.stt_configured' : 'readaloud.success.speech_configured'));
                 } catch (error) { this.fail(error); }
             }
+            if(!this.mobileViewport)await this.openShellMiniApp?.();
         },
-        cleanup() { this.linePlayer?.pause(); clearTimeout(this.dialogueTimer); clearTimeout(this.runTimer); clearTimeout(this.draftTimer); this.chatController?.dispose(); this.packageChatBridge?.dispose(); this.quickTasks.forEach(task => { if (task.url) URL.revokeObjectURL(task.url); }); const urls = new Set(this.previewHistory.filter(item => item.local).map(item => item.url)); if (this.trainingAudioUrl?.startsWith('blob:')) urls.add(this.trainingAudioUrl); urls.forEach(url => URL.revokeObjectURL(url)); this.trainingStream?.getTracks().forEach(track => track.stop()); },
+        cleanup() { clearInterval(this.backgroundJobTimer);this.backgroundJobTimer=null; this.linePlayer?.pause(); clearTimeout(this.dialogueTimer); clearTimeout(this.runTimer); clearTimeout(this.draftTimer); this.chatController?.dispose(); this.packageChatBridge?.dispose(); this.quickTasks.forEach(task => { if (task.url) URL.revokeObjectURL(task.url); }); const urls = new Set(this.previewHistory.filter(item => item.local).map(item => item.url)); if (this.trainingAudioUrl?.startsWith('blob:')) urls.add(this.trainingAudioUrl); urls.forEach(url => URL.revokeObjectURL(url)); this.trainingStream?.getTracks().forEach(track => track.stop()); },
         icons() { this.$nextTick(() => window.lucide?.createIcons()); },
         dismissNotice() { clearTimeout(this.noticeTimer); this.noticeTimer = null; this.notice = ''; },
         showNotice(text, tone) {
@@ -430,18 +469,14 @@
         },
         success(text) { this.showNotice(text, 'success'); },
         fail(error) { this.showNotice(error?.message || String(error), 'error'); },
-        setupMiniAppChat() {
-            if (!window.AI2AppsMiniAppChat) return;
-            this.chatController = window.AI2AppsMiniAppChat.createStudioController({
-                describe: () => this.describeMiniAppChat(),
-                invoke: (name, args) => this.invokeMiniAppChatTool(name, args),
-                help: () => this.readMiniAppHelp(),
-            });
-            this.chatMiniUrl = this.chatController.url();
-        },
-        mountMiniAppChat() {
-            if (!this.chatController) this.setupMiniAppChat();
-            return new Promise(resolve => this.$nextTick(() => { this.chatController?.bind(this.$refs.miniAppChat); resolve(); }));
+        setupMiniAppChat() { /* Execution starts only when the scoped Chat is mounted. */ },
+        async mountMiniAppChat() {
+            if(this.currentMiniApp?.source==='package'&&(!this.packageChatBridge||this.packageChatMiniId!==this.currentMiniApp.id)){
+                this.packageChatBridge?.dispose();
+                this.packageChatBridge=window.AI2AppsMiniAppChat.createPackageBridge(()=>this.$refs.packageMiniApp,this.currentMiniApp.chat);
+                this.packageChatMiniId=this.currentMiniApp.id;
+            }
+            return window.AI2AppsStudioChat.mount(this,{appId:APP_ID,outputs:o=>o.studioOutputs||[],selectOutput:async(o,id)=>{o.selectedOutput=o.studioOutputs.find(x=>x.id===id);o.rightCollapsed=false;o.icons();},refresh:async o=>{await o.refreshOutputs();}});
         },
         async describeMiniAppChat() {
             const miniApp = this.currentMiniApp;
@@ -451,12 +486,12 @@
             }
             const context = {
                 mode: this.pipelineMode, ready: this.miniAppReady(miniApp),
-                selectedModel: this.selectedSpeechProvider?.displayName || null,
+                selectedModel: this.selectedSpeechProvider?.displayName || null, modelId:this.selectedSpeechProvider?.id||null, availableVoices:this.quickActors,
                 project: this.selected ? {
                     id: this.selected.id, title: this.selected.title, purpose: this.selected.purpose,
-                    sourceText: String(this.selected.sourceText || '').slice(0, 20000),
+                    sourceText: String(this.selected.sourceText || '').slice(0, 4000),
                     characters: (this.selected.characters || []).map(item => ({ id: item.id, name: item.name, role: item.role || 'auto', notes: item.description || '', voiceProfileId: item.voiceProfileId || null })),
-                    segments: (this.selected.segments || []).slice(0, 30).map(item => ({ id: item.id, speakerId: item.speakerId, text: String(item.text || '').slice(0, 500), emotion: item.emotion, speed: item.speed })),
+                    segments: (this.selected.segments || []).slice(0, 10).map(item => ({ id: item.id, speakerId: item.speakerId, text: String(item.text || '').slice(0, 200), emotion: item.emotion, speed: item.speed })),
                 } : null,
                 draft: this.pipelineMode === 'quick' ? this.quickForm : this.pipelineMode === 'voice' ? this.voiceForm : this.pipelineMode === 'training' ? { ...this.trainingForm, samples:this.trainingSamples.map(({assetId,name,transcript,confirmed,selected,duration,state})=>({assetId,name,transcript,confirmed,selected,duration,state})), audioFile: this.trainingForm.audioFile?.name || null, resourceHandle: undefined } : this.segmentForm,
             };
@@ -535,7 +570,7 @@
                 const [projects, providers, voices] = await Promise.all([request('/projects'), request('/providers'), request('/voice-profiles')]);
                 this.projects = projects.items || []; this.providers = providers.items || []; this.voiceProfiles = voices.items || []; this.normalizeVoiceDesignBinding();
                 if (!this.speechProviders.some(item => item.id === this.selectedTtsModel)) this.selectedTtsModel = this.speechProviders.find(item => item.ready)?.id || this.speechProviders[0]?.id || '';
-                if (restore) await this.restoreProject();
+                if (restore && this.hasActiveMiniApp) await this.restoreProject();
                 this.icons();
             } catch (error) { this.fail(error); } finally { this.busy = false; }
         },
@@ -577,7 +612,34 @@
             catch (error) { this.startupError = error?.message || String(error); this.fail(error); }
             finally { this.starting = false; }
         },
-        async activateMiniApp(id) { const item = this.miniApps.find(value => value.id === id); if (!item) return; if (!this.packageMiniAppId) await this.saveDraft(); localStorage.setItem('ai2apps.readaloud.active-mini-app', item.id); if (this.leftView !== 'chat') this.leftView = 'mini-apps'; if (item.source === 'package') { await this.mountPackageMiniApp(item); if (!this.miniAppChatEnabled && this.leftView === 'chat') this.leftView = 'mini-apps'; return; } this.packageChatBridge?.dispose(); this.packageChatBridge = null; this.packageMiniAppId = ''; this.packageMiniAppUrl = ''; this.packageMiniAppError = ''; this.resetProjectDraft(); this.pipelineMode = item.mode; if (item.mode === 'drama') this.tab = 'script'; if (item.mode === 'voice') this.showVoiceForm = false; await this.loadDraft(item.id); await this.restoreProject(); this.chatController?.changed(); this.emitBridge('mini-app.ready', { miniAppId: item.id, version: item.version }); this.icons(); },
+        async activateMiniApp(id) { if(this.mobileViewport)return this.activateMobileMiniApp(id); const item = this.miniApps.find(value => value.id === id); if (!item) return; if (!this.packageMiniAppId) await this.saveDraft(); if(this.mobileViewport)this.mobileActiveMiniAppId=id; localStorage.setItem('ai2apps.readaloud.active-mini-app', item.id); if (this.leftView !== 'chat') this.leftView = 'mini-apps'; if (item.source === 'package') { await this.mountPackageMiniApp(item); if (!this.miniAppChatEnabled && this.leftView === 'chat') this.leftView = 'mini-apps'; return; } this.packageChatBridge?.dispose(); this.packageChatBridge = null; this.packageMiniAppId = ''; this.packageMiniAppUrl = ''; this.packageMiniAppError = ''; this.resetProjectDraft(); this.pipelineMode = item.mode; if (item.mode === 'drama') this.tab = 'script'; if (item.mode === 'voice') this.showVoiceForm = false; await this.loadDraft(item.id); await this.restoreProject(); if(this.leftView==='chat')void this.mountMiniAppChat();else this.chatController?.changed(); this.emitBridge('mini-app.ready', { miniAppId: item.id, version: item.version }); this.icons(); },
+        async activateMobileMiniApp(id) {
+            const item=this.miniApps.find(value=>value.id===id);if(!item)return;
+            if(this.mobileWorkspaceReady && !this.packageMiniAppId)await this.saveDraft();
+            this.mobileWorkspaceReady=false;
+            this.mobileActiveMiniAppId=id;
+            this.packageChatBridge?.dispose();this.packageChatBridge=null;
+            this.packageMiniAppId='';this.packageMiniAppUrl='';this.packageMiniAppError='';
+            this.resetProjectDraft();this.pipelineMode=item.mode;
+            if(item.mode==='drama')this.tab='script';
+            if(item.mode==='voice')this.showVoiceForm=false;
+            // Publish the selected shell before any workspace data request.
+            this.showMobileMiniAppShell?.();
+            if(item.source==='package')await this.mountPackageMiniApp(item);
+            else {
+                const voices=request('/voice-profiles').then(value=>{this.voiceProfiles=value.items||[];});
+                const jobs=[request('/providers').then(value=>{this.providers=value.items||[];}),voices,
+                    item.mode==='voice' ? voices.then(()=>this.loadDraft(id)) : this.loadDraft(id)];
+                if(['audiobook','drama'].includes(item.mode))jobs.push(request('/projects').then(value=>{this.projects=value.items||[];}));
+                const results=await Promise.allSettled(jobs);
+                const failed=results.find(result=>result.status==='rejected');
+                if(failed)throw failed.reason;
+                this.normalizeVoiceDesignBinding();
+                if(!this.speechProviders.some(value=>value.id===this.selectedTtsModel))this.selectedTtsModel=this.speechProviders.find(value=>value.ready)?.id||'';
+                if(['audiobook','drama'].includes(item.mode))await this.restoreProject();
+            }
+            this.mobileWorkspaceReady=true;this.icons();
+        },
         miniAppReady(item) { if (item?.source === 'package') return this.packageMiniAppReadiness[item.id] === true; return item?.capability === 'audio.voice_clone' ? this.voiceCloneReady : this.speechReady; },
         async refreshAllPackageMiniAppReadiness() {
             try { this.packageMiniAppReadiness = await window.AI2AppsStudioMiniApps?.readiness(APP_ID) || {}; }
@@ -634,7 +696,7 @@
                 }));
                 this.emitBridge('mini-app.ready', { miniAppId: item.id, version: item.version, mountId: mount.id });
             } catch (error) { this.packageMiniAppError = error?.message || String(error); }
-            finally { this.packageMiniAppLoading = false; this.chatController?.changed(); this.icons(); }
+            finally { this.packageMiniAppLoading = false; if(this.leftView==='chat')void this.mountMiniAppChat();else this.chatController?.changed(); this.icons(); }
         },
         applyResponsiveLayout() { if (window.innerWidth < 760 && !['mini-apps', 'create', 'output'].includes(this.mobilePanel)) this.mobilePanel = 'create'; },
         showMobilePanel(panel) { this.mobilePanel = panel; if (panel === 'mini-apps') this.leftCollapsed = false; if (panel === 'output') this.rightCollapsed = false; this.icons(); },
@@ -712,10 +774,12 @@
         },
 
         async acceptGalleryMessage(event) {
+            if(!this.hasActiveMiniApp || (this.mobileViewport && !this.mobileWorkspaceReady))return;
             if (event.origin !== window.location.origin || event.data?.type !== 'ai2apps.gallery.asset-selected') return;
             try { await this.useGalleryAsset(event.data.asset); } catch (error) { this.fail(error); }
         },
         async acceptGalleryDrop(event) {
+            if(!this.hasActiveMiniApp || (this.mobileViewport && !this.mobileWorkspaceReady))return;
             event.preventDefault();
             if (this.pipelineMode === 'training' && event.dataTransfer?.files?.[0]?.type.startsWith('audio/')) { await this.importTrainingFile(event.dataTransfer.files[0]); return; }
             const raw = event.dataTransfer?.getData('application/x-ai2apps-gallery-asset');
@@ -992,7 +1056,8 @@
                 if (fingerprint !== JSON.stringify(this.trainingPayload())) { this.trainingPreviewStatus = 'idle'; return; }
                 this.trainingForm.profileId = saved.id; payload.profile_id = saved.id;
                 fingerprint = JSON.stringify(this.trainingPayload()); this.scheduleDraft();
-                const response = await fetch(API + '/training/preview', {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+                const response = await fetch(API + '/training/preview', {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','Prefer':'respond-async','X-AI2Apps-App-Instance':appInstanceId(),'Idempotency-Key':crypto.randomUUID()},body:JSON.stringify(payload)});
+                if(response.status===202){const job=await response.json();this.trainingPreviewStatus=job.status;this.pendingVoicePreview={id:job.id,kind:'clone',fingerprint};await this.refreshBackgroundJobs();return;}
                 if (!response.ok) { const error = await response.json(); throw new Error(error.detail || error.error?.message || tr('readaloud.quick.failed')); }
                 if (fingerprint === JSON.stringify(this.trainingPayload())) { this.trainingPreviewUrl = response.headers.get('X-AI2Apps-Download-URL'); this.trainingPreviewStatus = 'succeeded'; this.trainingPreviewTitle = payload.name; await this.refreshTrainingHistory(); await this.refreshOutputs(this.trainingPreviewUrl); this.voiceProfiles = (await request('/voice-profiles')).items || []; }
             } catch(error) { this.trainingPreviewStatus = 'failed'; this.fail(error); } finally { this.trainingBusy = false; }
@@ -1219,7 +1284,15 @@
         get designProvider() { return this.voiceDesignProviders.find(item=>item.id===this.voiceForm.modelId); },
         get designCanRun() { return this.voiceForm.name.trim() && this.voiceDesignProviders.some(item=>item.id===this.voiceForm.modelId) && this.voiceForm.description?.trim() && this.voiceForm.referenceTranscript.trim(); },
         async createVoiceProfile() { if (!this.designCanRun || this.designBusy) return; try { const profile=await request('/design/profiles',{method:'POST',body:this.designPayload()}); this.voiceForm.profileId=profile.id; this.designStatus=this.designPreviewUrl?'succeeded':'idle'; await this.refresh(); this.success(tr('readaloud.save'));this.scheduleDraft(); } catch(error){this.fail(error);} },
-        async previewDesignedVoice() { if (!this.designCanRun || this.designBusy) return;this.waitDialogDismissed=false;this.designBusy=true;this.designStatus='running';this.showMobilePanel('output'); const payload=this.designPayload();try {const profile=await request('/design/preview',{method:'POST',body:payload}); if (JSON.stringify(payload)===JSON.stringify(this.designPayload())) this.openVoice(profile); await this.refresh(); await this.refreshOutputs(profile.training?.design?.preview?.download_url || this.designPreviewUrl);}catch(error){this.designStatus='failed';this.fail(error);}finally{this.designBusy=false;} },
+        async previewDesignedVoice() {
+            if(!this.designCanRun||this.designBusy)return;
+            this.waitDialogDismissed=false;this.designBusy=true;this.designStatus='running';this.showMobilePanel('output');const payload=this.designPayload();
+            try {
+                const response=await fetch(API+'/design/preview',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','Prefer':'respond-async','X-AI2Apps-App-Instance':appInstanceId(),'Idempotency-Key':crypto.randomUUID()},body:JSON.stringify(payload)});
+                const job=await response.json();if(!response.ok)throw new Error(job.detail||'Voice design failed');
+                this.pendingVoicePreview={id:job.id,kind:'design',fingerprint:JSON.stringify(payload)};this.designStatus=job.status;await this.refreshBackgroundJobs();
+            }catch(error){this.designStatus='failed';this.fail(error);}finally{this.designBusy=false;}
+        },
         async convertDesignedVoice() { if (!this.designPreviewUrl||!this.voiceForm.profileId||!this.conversionModelId||this.designBusy)return;this.designBusy=true;try {const profile=await request(`/design/profiles/${encodeURIComponent(this.voiceForm.profileId)}/convert`,{method:'POST',body:{model_id:this.conversionModelId}});await this.refresh();this.editTrainingVoice(profile);}catch(error){this.fail(error);}finally{this.designBusy=false;} },
 
 

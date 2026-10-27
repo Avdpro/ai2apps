@@ -66,6 +66,11 @@ async def principal(request: Request):
         if route['method'] == request.method and compile_path(route['path'])[0].fullmatch(path):
             required = module_apps.get(route['module'])
             break
+    if path == '/v1/platform/notifications/resolve-target':
+        payload=await request.json()
+        required=(payload.get('target') or {}).get('app_id') if isinstance(payload,dict) and isinstance(payload.get('target'),dict) else None
+        if not isinstance(required,str):
+            raise HTTPException(403,'Notification target App required')
     if '/studios/' in path:
         required = path.split('/studios/', 1)[1].split('/', 1)[0]
     if required and not app_enabled(runtime, actor, required):
@@ -122,7 +127,7 @@ def create_app(runtime_provider):
             response.headers['Content-Disposition'] = 'attachment'
         return response
 
-    factories = {'studio_mini_apps': 'create_studio_mini_app_router', 'agents':'create_agent_router'}
+    factories = {'studio_mini_apps': 'create_studio_mini_app_router', 'agents':'create_agent_router', 'notifications':'create_notification_router'}
     for module in sorted({row['module'] for row in ROUTES} - {'cloud'}):
         factory = getattr(import_module('ai2apps.api.' + module),
                           factories.get(module, 'create_' + module + '_router'))

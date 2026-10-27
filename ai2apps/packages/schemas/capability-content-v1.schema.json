@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.ai2apps.com/capability-content/v1",
+  "title": "Read only capability discovery page",
+  "type": "object", "additionalProperties": false,
+  "required": ["schemaVersion", "catalogSnapshot", "matching", "outcome", "counts", "items", "nextCursor"],
+  "properties": {
+    "schemaVersion": {"const": "ai2apps.capability-content.v1"},
+    "catalogSnapshot": {"$ref": "#/$defs/digest"},
+    "matching": {"const": "normalized-keyword-and-exact-filters"},
+    "outcome": {"enum": ["matches", "unverified_candidates", "no_match", "no_compatible_release", "no_candidates"]},
+    "counts": {"type": "object", "additionalProperties": false, "required": ["match", "unverified", "excluded"], "properties": {"match": {"type": "integer", "minimum": 0}, "unverified": {"type": "integer", "minimum": 0}, "excluded": {"type": "integer", "minimum": 0}}},
+    "nextCursor": {"type": ["string", "null"]},
+    "items": {"type": "array", "maxItems": 100, "items": {"$ref": "#/$defs/card"}}
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "strings": {"oneOf": [{"const": "unknown"}, {"type": "array", "items": {"type": "string"}}]},
+    "objectOrUnknown": {"oneOf": [{"const": "unknown"}, {"type": "object"}]},
+    "reasons": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["code"], "properties": {"code": {"type": "string"}, "field": {"type": "string"}}}},
+    "target": {"type": "object", "additionalProperties": false, "required": ["packageId", "version", "manifestSha256", "artifactSha256"], "properties": {"packageId": {"type": "string"}, "version": {"type": "string"}, "manifestSha256": {"$ref": "#/$defs/digest"}, "artifactSha256": {"$ref": "#/$defs/digest"}}},
+    "card": {
+      "type": "object", "additionalProperties": false,
+      "required": ["cardKey", "contentKind", "identity", "componentVersion", "displayName", "description", "localizations", "placements", "scope", "provides", "tasks", "inputTypes", "outputTypes", "requirements", "agent_support", "agent", "processing", "pricing", "license", "permissions", "compatibility", "downloadBytes", "publisher", "release", "installationTarget", "provenance", "match"],
+      "properties": {
+        "cardKey": {"type": "string"}, "contentKind": {"enum": ["app", "mini-app"]}, "identity": {"type": "string"}, "componentVersion": {"type": ["string", "null"]},
+        "displayName": {"type": "string"}, "description": {"type": "string"}, "scope": {"type": "string"},
+        "localizations": {"$ref": "#/$defs/objectOrUnknown"}, "placements": {"$ref": "#/$defs/strings"},
+        "provides": {"$ref": "#/$defs/strings"}, "tasks": {"$ref": "#/$defs/strings"}, "inputTypes": {"$ref": "#/$defs/strings"}, "outputTypes": {"$ref": "#/$defs/strings"},
+        "requirements": {"type": "object", "additionalProperties": false, "required": ["declaration", "dependencies"], "properties": {"declaration": {"$ref": "#/$defs/objectOrUnknown"}, "dependencies": {"type": "array", "items": {"type": "object"}}}},
+        "agent_support": {"enum": ["declared", "ui_only", "unverified"]}, "agent": {"$ref": "#/$defs/objectOrUnknown"},
+        "processing": {"enum": ["local", "cloud", "hybrid", "unknown"]}, "pricing": {"enum": ["free", "paid", "usage-based", "unknown"]},
+        "license": {"$ref": "#/$defs/objectOrUnknown"}, "permissions": {"type": "array", "items": {"type": "object"}},
+        "compatibility": {"type": "object"}, "downloadBytes": {"type": "integer", "minimum": 1},
+        "publisher": {"type": "object", "required": ["id", "displayName"], "properties": {"id": {"type": "string"}, "displayName": {"type": "string"}}},
+        "release": {"type": "object", "additionalProperties": false, "required": ["packageId", "version", "status", "manifestSha256", "artifactSha256", "envelopeUrl", "detailsUrl"], "properties": {"packageId": {"type": "string"}, "version": {"type": "string"}, "status": {"const": "published"}, "manifestSha256": {"$ref": "#/$defs/digest"}, "artifactSha256": {"$ref": "#/$defs/digest"}, "envelopeUrl": {"type": "string", "pattern": "^/v1/registry/packages/"}, "detailsUrl": {"type": "string", "pattern": "^/v1/registry/packages/"}}},
+        "installationTarget": {"$ref": "#/$defs/target"},
+        "provenance": {"type": "object", "additionalProperties": false, "required": ["kind", "runtimeVerified"], "properties": {"kind": {"enum": ["publisher-signed-declaration", "verified-release-no-capability-declaration"]}, "runtimeVerified": {"const": false}}},
+        "match": {"type": "object", "additionalProperties": false, "required": ["status", "reasons", "exclusions", "unknown"], "properties": {"status": {"enum": ["match", "unverified", "excluded"]}, "reasons": {"$ref": "#/$defs/reasons"}, "exclusions": {"$ref": "#/$defs/reasons"}, "unknown": {"$ref": "#/$defs/reasons"}}}
+      }
+    }
+  }
+}

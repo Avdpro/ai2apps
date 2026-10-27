@@ -836,7 +836,7 @@ async def test_early_compaction_is_soft_and_does_not_drop_pinned_instructions(tm
         assert isinstance(action, ModelCallAction)
         assert marker in action.request["messages"][0]["content"]
         assert len(json.dumps(action.request).encode()) > 32768
-        assert action.context_audit["max_bytes"] == 524288
+        assert action.context_audit["max_bytes"] == 2097152
     finally:
         r.stop()
 

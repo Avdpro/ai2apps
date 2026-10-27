@@ -46,4 +46,4 @@ async def review(runtime, request, principal, channel, pages, preferences, stage
         + json.dumps(Decisions.model_json_schema()),
         {'channel': {k: channel.get(k) for k in ('interests','excluded','post_filter_level','post_filter_guidance')},
          'stage': stage, 'preferences': preferences[:30],
-         'posts': [{'index': i, **{k: p.get(k) for k in ('url','title','text','author','image_url','images')}} for i,p in enumerate(pages)]}, validate)
+         'posts': [{'index': i, **{k: p.get(k) for k in ('url','title','text','author','image_url','images')}} for i,p in enumerate(pages)]}, validate,stage='post_filter')
