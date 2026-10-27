@@ -1,5 +1,10 @@
 # AI2Apps Desktop 下一版 Release 台账
 
+### NXR-RELEASE-ROUTING-20261028
+
+- 修复 Desktop 发布误触发 PyPI/Homebrew：两个工作流任务级排除 `v…-build…` 和非 `v` 的独立 Package 标签，保留普通版本发布、PyPI 版本一致性和 Homebrew dev/prerelease 限制。新增无网络路由回归。
+- 精确撤回 `8fc30826119e57b0550209ff0d05b60b5109eefe` 对 Formula/omlx.rb 的唯一摘要改动，恢复其父提交状态；不追溯重写更早的 formula 历史，不修改 2264 tag/DMG、Cloud 或实例数据。后续候选源码必须携带路由修复。
+
 ### NXR-RELEASE-2262-PUBLISHED-20261014：0.1.7 / 2262 已推送 100%
 
 - 当前生产基线：0.1.7 / Build 2262，状态 released_pending_target_mac；2026-10-14 02:25（北京时间）Cloud 0% 发布及 10000 basis points 扩灰成功。清单摘要 f006f8dc6a539097ad27593efc086af7f124285a83e4c667154ab64df502288e；本机及海外服务器 GET/HEAD 200、条件请求 304、无 Cookie，容器 healthy，近十分钟错误匹配 0。未声称中国三运营商独立探针覆盖。
