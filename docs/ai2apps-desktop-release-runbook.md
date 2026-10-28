@@ -238,6 +238,12 @@ apps/ai2apps-acefox/scripts/verify-update-candidate.py \
 
 ## 7. 发布 GitHub Release
 
+发布前必须确认候选 tag 所指提交的 `publish-pypi.yml` 和
+`update-formula.yml` 已隔离 Desktop `v…-build…` 与独立 Package 标签，
+全部 PyPI/Homebrew 任务应直接 skipped。仅修 main 不能保护使用旧工作流的新 tag。
+运行 `tests/test_release_workflow_routing.py` 验证；保留普通包版本一致性校验，
+不要为清除历史红灯重发 Desktop tag 或重跑旧 tag 的发布任务。
+
 先核对登录、仓库、tag 和远端源码 commit：
 
 ```bash

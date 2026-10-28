@@ -4852,6 +4852,8 @@
   "models.defaults.agent.no_models": "No available chat models. Enable a cloud model or install a local model first.",
   "models.defaults.agent.manual_notice": "Manual choice: Agent capability declarations are incomplete or below automatic requirements. You can still save and use this model.",
   "models.defaults.agent.no_qualified": "No model qualifies for automatic selection: standard/complex work and reliable tool calling must be declared. Choose and save a model manually; capability is never inferred from its name.",
+  "models.defaults.agent.api_unavailable": "The API default model is unavailable. Choose another Agent model.",
+  "models.defaults.agent.api_unverified": "The API default model can be used for Agent, but its task complexity and reliable tool-calling capabilities are not verified for automatic selection.",
   "intelligence.article_chat.research_title": "Deep research",
   "intelligence.article_chat.research_wait": "Preparing research topics…",
   "intelligence.article_chat.opening_chat": "Opening Chat…",
@@ -4872,5 +4874,16 @@
   "intelligence.import.confirming": "Checking whether the article was saved…",
   "intelligence.import.unknown_outcome": "Connection interrupted. Import status is unconfirmed; refresh the article list later to check.",
   "intelligence.progress.parallel": "Generating in parallel",
-  "intelligence.progress.completed_articles": "Articles completed"
+  "intelligence.progress.completed_articles": "Articles completed",
+  "chat.mode.chat_tooltip": "Chat directly with the selected model.",
+  "chat.mode.agent_tooltip": "Use tools and Apps to complete tasks. Tasks can continue after this page closes; return to view results.",
+  "chat.app_usage.title": "App usage rules",
+  "chat.app_usage.manual": "Approve myself",
+  "chat.app_usage.ai": "AI approval",
+  "chat.app_usage.always": "Always approve",
+  "chat.app_usage.tooltip": "For future Tool/App execution approvals in this conversation: ask me; let AI approve only necessary low-risk calls and ask me otherwise; or always approve all execution requests. Parameter, license and payment confirmations still apply.",
+  "chat.app_usage.unavailable": "Connect to Desktop and create a conversation first.",
+  "chat.voice_start_tooltip": "Voice input",
+  "chat.voice_stop_tooltip": "Stop and transcribe",
+  "chat.attach_files_tooltip": "Attach files (large local files stay at their original path)"
 }

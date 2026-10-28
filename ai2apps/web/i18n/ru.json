@@ -2805,5 +2805,16 @@
   "intelligence.import.confirming": "Проверяем, сохранена ли статья…",
   "intelligence.import.unknown_outcome": "Соединение прервано. Результат сохранения не подтверждён; обновите список статей позже.",
   "intelligence.progress.parallel": "Параллельная генерация",
-  "intelligence.progress.completed_articles": "Готовые статьи"
+  "intelligence.progress.completed_articles": "Готовые статьи",
+  "chat.mode.chat_tooltip": "Общайтесь напрямую с выбранной моделью.",
+  "chat.mode.agent_tooltip": "Выполняйте задачи с помощью инструментов и приложений. Задачи могут продолжаться после закрытия этой страницы; вернитесь, чтобы посмотреть результаты.",
+  "chat.app_usage.title": "Правила использования Apps",
+  "chat.app_usage.manual": "Одобряю я",
+  "chat.app_usage.ai": "Одобряет ИИ",
+  "chat.app_usage.always": "Одобрять всегда",
+  "chat.app_usage.tooltip": "Для будущих запусков инструментов и Apps в этом диалоге: спрашивать меня; ИИ одобряет только необходимые вызовы с низким риском, иначе спрашивает; или одобрять все запуски. Подтверждения параметров, лицензий и платежей сохраняются.",
+  "chat.app_usage.unavailable": "Сначала подключитесь к Desktop и создайте диалог.",
+  "chat.voice_start_tooltip": "Голосовой ввод",
+  "chat.voice_stop_tooltip": "Остановить запись и расшифровать",
+  "chat.attach_files_tooltip": "Прикрепить файлы (большие локальные файлы остаются по исходному пути)"
 }

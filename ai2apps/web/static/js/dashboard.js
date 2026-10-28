@@ -530,6 +530,15 @@
             agentModelNotice() {
                 const options = this.defaultModelOptions('work_agent');
                 if (!options.length) return window.t('models.defaults.agent.no_models');
+                if (!this.defaultModels.work_agent && this.cloudDefaultPolicy?.apiDefault) {
+                    const apiId = `cloud/ai2apps/${this.cloudDefaultPolicy.apiDefault.modelId}`;
+                    const catalogId = `cloud/${this.cloudDefaultPolicy.apiDefault.modelId}`;
+                    const apiModel = options.find(model =>
+                        model.id === apiId || model.id === catalogId);
+                    if (!apiModel) return window.t('models.defaults.agent.api_unavailable');
+                    return AI2AppsConversationModelPolicy.agentEligible(apiModel)
+                        ? '' : window.t('models.defaults.agent.api_unverified');
+                }
                 const selected = options.find(model => model.id === this.defaultModels.work_agent);
                 if (selected && !AI2AppsConversationModelPolicy.agentEligible(selected)) return window.t('models.defaults.agent.manual_notice');
                 if (!options.some(AI2AppsConversationModelPolicy.agentEligible)) return window.t('models.defaults.agent.no_qualified');

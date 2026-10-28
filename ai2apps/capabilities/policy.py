@@ -17,6 +17,7 @@ class CapabilityPolicyEngine:
     def __init__(self, repository: CapabilityRepository) -> None:
         self.repository = repository
         self._auditor: Auditor | None = None
+        self.session_reviewer = None
 
     def bind_ai_auditor(self, auditor: Auditor | None) -> None:
         """Bind an independent auditor; invalid/error results fail closed to approval."""
@@ -31,6 +32,7 @@ class CapabilityPolicyEngine:
         capabilities: tuple[str, ...],
         effects: tuple[str, ...],
         arguments: dict[str, Any],
+        invocation_key: str = "",
     ) -> CapabilityDecision:
         leases = self.repository.active_leases_for_run(run_id, tool_name, arguments)
         leased = {
@@ -91,6 +93,31 @@ class CapabilityPolicyEngine:
             }
         }
         source = "policy"
+
+        session_id, rule = self.repository.approval_rule_for_run(run_id)
+        if effect is PolicyEffect.REQUIRE_APPROVAL and rule['mode'] != 'manual':
+            evidence['session_rule'] = {**rule, 'session_id':session_id}
+            if rule['mode'] == 'always':
+                effect, source = PolicyEffect.ALLOW, 'session_always'
+            elif self.session_reviewer is not None:
+                try:
+                    review = await self.session_reviewer({
+                        'run_id':run_id, 'session_id':session_id, 'rule_revision':rule['revision'],
+                        'tool_name':tool_name, 'capabilities':unresolved, 'effects':effects,
+                        'arguments':sanitize_value(arguments), 'invocation_key':invocation_key,
+                    })
+                    # A changed rule cannot authorize an in-flight review.
+                    if self.repository.session_approval_rule(session_id) == rule:
+                        evidence['session_review'] = review
+                        if review.get('necessary') is True and review.get('risk') in {'none','low'}:
+                            effect, source = PolicyEffect.ALLOW, 'session_ai'
+                except Exception as exc:
+                    evidence['session_review'] = {'error':type(exc).__name__}
+            # Existing global auditors must not override a user-required fallback.
+            return CapabilityDecision(effect, source, capabilities,
+                tuple(sorted(leased | (set(unresolved) if effect is PolicyEffect.ALLOW else set()))),
+                matched_policy_ids=tuple(dict.fromkeys(p.id for p in matched)),
+                matched_lease_ids=tuple(x.id for x in leases),evidence=evidence)
 
         if effect is PolicyEffect.REQUIRE_APPROVAL and self._auditor is not None:
             request = {

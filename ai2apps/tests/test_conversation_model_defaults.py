@@ -9,6 +9,10 @@ def test_independent_chat_agent_defaults_and_legacy_migration(tmp_path):
     assert store.default_models()['work_agent'] == ''
     assert store.resolve_default_model('work_chat') == 'old-default'
     assert store.resolve_default_model('work_agent', 'unqualified-fallback') is None
+    store.cloud_default_policy = lambda: {'apiDefault': {'modelId': 'arbitrary-provider-model'}}
+    assert store.resolve_default_model('work_chat') == 'cloud/ai2apps/arbitrary-provider-model'
+    assert store.resolve_default_model('work_agent') == 'cloud/ai2apps/arbitrary-provider-model'
+    assert store.resolve_default_model('work_agent', profile='privacy') is None
     store.put_default_models({'work_chat': 'light', 'work_agent': 'qualified', 'work_standard': 'old-default'},
                              available_model_ids={'light', 'qualified', 'old-default'})
     restored = ModelManagerStore(tmp_path).default_models()

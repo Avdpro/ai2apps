@@ -137,3 +137,10 @@ test('Mobile reference material slot delegates bounded upload without multipart 
   addMaterials:async(field,assets)=>selected=assets});
  await f.importMaterials({key:'input',references:true},{files:[file]});assert.equal(selected[0].id,'attc_ref');
 });
+test('file picker retains the busy guard without disabling the input or uploading before selection',()=>{
+ const ctx=setup();ctx.document.createElement=()=>({});let cancelled=0,clicked=0;
+ const f=Object.create(ctx.window.FormView.prototype),input={disabled:false,click(){assert.equal(this.disabled,false);clicked++;}};
+ Object.assign(f,{inputs:[input],busy:false,cancelAutoSubmit(){cancelled++;},perform(){assert.fail('opening a picker must not enter the upload lock');}});
+ const button=f.filePickerButton('Upload material',input);button.onclick();assert.equal(clicked,1);assert.equal(f.busy,false);
+ f.busy=true;button.onclick();assert.equal(clicked,1);assert.equal(cancelled,2);
+});

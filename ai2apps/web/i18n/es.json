@@ -2809,5 +2809,16 @@
   "intelligence.import.confirming": "Comprobando si se guardó el artículo…",
   "intelligence.import.unknown_outcome": "Conexión interrumpida. El resultado no está confirmado; actualiza la lista de artículos más tarde.",
   "intelligence.progress.parallel": "Generación en paralelo",
-  "intelligence.progress.completed_articles": "Artículos completados"
+  "intelligence.progress.completed_articles": "Artículos completados",
+  "chat.mode.chat_tooltip": "Conversa directamente con el modelo seleccionado.",
+  "chat.mode.agent_tooltip": "Usa herramientas y Apps para completar tareas. Pueden continuar al cerrar esta página; vuelve para consultar los resultados.",
+  "chat.app_usage.title": "Reglas de uso de Apps",
+  "chat.app_usage.manual": "Yo apruebo",
+  "chat.app_usage.ai": "Aprobación de IA",
+  "chat.app_usage.always": "Aprobar siempre",
+  "chat.app_usage.tooltip": "Para futuras autorizaciones de herramientas y Apps en esta conversación: preguntarme; la IA aprueba solo llamadas necesarias de bajo riesgo y consulta las demás; o aprobar todas. Se mantienen las confirmaciones de parámetros, licencias y pagos.",
+  "chat.app_usage.unavailable": "Conecta Desktop y crea una conversación primero.",
+  "chat.voice_start_tooltip": "Entrada de voz",
+  "chat.voice_stop_tooltip": "Detener y transcribir",
+  "chat.attach_files_tooltip": "Adjuntar archivos (los archivos locales grandes conservan su ruta original)"
 }

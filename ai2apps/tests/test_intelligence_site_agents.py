@@ -17,6 +17,11 @@ async def test_observed_rule_compiles_and_repair_versions_same_draft(tmp_path,mo
     source={'name':'Site','channel_id':'channel','url':'https://example.com/news'}
     body=site_agents.LearnRequest(kind='list',url=source['url'],regions=[{'selector':'#news','sample':'Headlines','count':20}])
     first=await site_agents.learn(runtime,None,principal,source,body)
+    # An unvalidated candidate is not saved in site_recipes. Relearning must
+    # still version that same draft rather than create another menu entry.
+    retry=await site_agents.learn(runtime,None,principal,source,body)
+    assert retry['draft_id']==first['draft_id']
+    assert retry['generation_id']!=first['generation_id']
     assert first['ir']['steps'][0]['mode']=='compiled'
     assert first['ir']['steps'][0]['operation']=='extract_list'
     repo=AgentBuilderRepository(db)
@@ -25,7 +30,11 @@ async def test_observed_rule_compiles_and_repair_versions_same_draft(tmp_path,mo
     repo.activate_generation(first['draft_id'],first['generation_id'],'alice')
     second=await site_agents.learn(runtime,None,principal,source,body,first)
     assert second['draft_id']==first['draft_id'] and second['generation_id']!=first['generation_id']
-    assert len(repo.list_generations(first['draft_id'],'alice'))==2
+    assert len(repo.list_generations(first['draft_id'],'alice'))==3
+    assert repo.get_generation(first['generation_id'],'alice').status.value=='active'
+    other={**source,'url':'https://example.com/other'}
+    with pytest.raises(ValueError):
+        await site_agents.learn(runtime,None,principal,other,body,first)
     with pytest.raises(Exception):repo.get_generation(first['generation_id'],'bob')
     body.url='https://other.com/news'
     with pytest.raises(ValueError):await site_agents.learn(runtime,None,principal,source,body)
@@ -111,6 +120,8 @@ async def test_x_observed_rule_compiles_and_repairs_same_owned_draft(tmp_path,mo
     monkeypatch.setattr(x_agents,'model_json',model)
     source={'name':'X F1','channel_id':'c','url':'https://x.com/F1'}
     first=await x_agents.learn(runtime,principal,source,'feed',source['url'],observed)
+    retry=await x_agents.learn(runtime,principal,source,'feed',source['url'],observed)
+    assert retry['draft_id']==first['draft_id']
     assert first['ir']['steps'][0]['mode']=='compiled'
     assert first['ir']['steps'][0]['arguments']['x_extraction']['text']=='p[lang="en"]'
     repo=AgentBuilderRepository(db)

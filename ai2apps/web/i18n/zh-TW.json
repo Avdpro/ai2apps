@@ -2821,5 +2821,16 @@
   "intelligence.import.confirming": "正在確認收錄結果…",
   "intelligence.import.unknown_outcome": "連線中斷，尚未確認收錄結果；請稍後重新整理文章清單查看。",
   "intelligence.progress.parallel": "並行生成",
-  "intelligence.progress.completed_articles": "已完成文章"
+  "intelligence.progress.completed_articles": "已完成文章",
+  "chat.mode.chat_tooltip": "直接與所選模型對話。",
+  "chat.mode.agent_tooltip": "呼叫工具和 App 完成任務；關閉此頁面後任務可繼續，返回後可查看結果。",
+  "chat.app_usage.title": "App 使用規則",
+  "chat.app_usage.manual": "由我批准",
+  "chat.app_usage.ai": "AI 批准",
+  "chat.app_usage.always": "總是批准",
+  "chat.app_usage.tooltip": "本對話後續 Tool/App 執行授權：由我批准；AI 僅批准低風險且必要的呼叫，否則詢問我；總是批准則自動允許所有執行授權。參數、許可及付款等業務確認仍需處理。",
+  "chat.app_usage.unavailable": "請先連線 Desktop 並建立對話。",
+  "chat.voice_start_tooltip": "語音輸入",
+  "chat.voice_stop_tooltip": "停止錄音並轉寫",
+  "chat.attach_files_tooltip": "新增附件（本機大型檔案僅引用原始路徑）"
 }

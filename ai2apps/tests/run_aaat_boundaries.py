@@ -5,6 +5,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[2]
 TESTS = (
+    'ai2apps/tests/test_session_tool_approval_rules.py',
     'ai2apps/tests/test_package_generation_aaat.py',
     'ai2apps/tests/test_studio_app_chat.py',
     'ai2apps/tests/test_app_chat_durable.py',

@@ -4852,6 +4852,8 @@
   "models.defaults.agent.no_models": "没有可用的对话模型，请先启用云端模型或安装本地模型。",
   "models.defaults.agent.manual_notice": "已手动选择：该模型的 Agent 能力声明不完整或未达自动要求；仍可保存使用，效果由你判断。",
   "models.defaults.agent.no_qualified": "没有符合自动选择要求的模型：缺少中等/复杂任务及可靠工具调用声明。可手动选择下方模型并保存；系统不会按模型名称推断能力。",
+  "models.defaults.agent.api_unavailable": "API 默认模型当前不可用，请选择其它 Agent 模型。",
+  "models.defaults.agent.api_unverified": "API 默认模型可用于 Agent，但尚未声明符合自动选择所需的任务复杂度与可靠工具调用能力。",
   "intelligence.article_chat.research_title": "深入调研",
   "intelligence.article_chat.research_wait": "正在准备调研话题…",
   "intelligence.article_chat.opening_chat": "正在打开 Chat…",
@@ -4872,5 +4874,16 @@
   "intelligence.import.confirming": "正在确认收录结果…",
   "intelligence.import.unknown_outcome": "连接中断，尚未确认收录结果；请稍后刷新文章列表查看。",
   "intelligence.progress.parallel": "并行生成",
-  "intelligence.progress.completed_articles": "已完成文章"
+  "intelligence.progress.completed_articles": "已完成文章",
+  "chat.mode.chat_tooltip": "直接与所选模型对话。",
+  "chat.mode.agent_tooltip": "调用工具和 App 完成任务；关闭此页面后任务可继续，返回后可查看结果。",
+  "chat.app_usage.title": "App 使用规则",
+  "chat.app_usage.manual": "由我批准",
+  "chat.app_usage.ai": "AI 批准",
+  "chat.app_usage.always": "总是批准",
+  "chat.app_usage.tooltip": "本对话后续 Tool/App 运行授权：由我批准；AI 仅批准低风险且必要的调用，否则询问我；总是批准则自动允许所有运行授权。参数、许可及付款等业务确认仍需处理。",
+  "chat.app_usage.unavailable": "请先连接 Desktop 并建立对话。",
+  "chat.voice_start_tooltip": "语音输入",
+  "chat.voice_stop_tooltip": "停止录音并转写",
+  "chat.attach_files_tooltip": "添加附件（本地大文件仅引用原文件）"
 }

@@ -1025,5 +1025,16 @@
   "intelligence.import.confirming": "Speicherstatus des Artikels wird geprüft…",
   "intelligence.import.unknown_outcome": "Verbindung unterbrochen. Der Importstatus ist unbestätigt. Aktualisieren Sie später die Artikelliste.",
   "intelligence.progress.parallel": "Parallele Erstellung",
-  "intelligence.progress.completed_articles": "Fertige Artikel"
+  "intelligence.progress.completed_articles": "Fertige Artikel",
+  "chat.mode.chat_tooltip": "Direkt mit dem ausgewählten Modell chatten.",
+  "chat.mode.agent_tooltip": "Aufgaben mit Tools und Apps erledigen. Aufgaben können nach dem Schließen dieser Seite weiterlaufen; Ergebnisse sind bei der Rückkehr verfügbar.",
+  "chat.app_usage.title": "App-Nutzungsregeln",
+  "chat.app_usage.manual": "Selbst genehmigen",
+  "chat.app_usage.ai": "KI-Genehmigung",
+  "chat.app_usage.always": "Immer genehmigen",
+  "chat.app_usage.tooltip": "Künftige Tool/App-Ausführungen in diesem Gespräch: mich fragen; KI genehmigt nur notwendige Aufrufe mit geringem Risiko, sonst fragt sie mich; oder alle Ausführungen genehmigen. Parameter-, Lizenz- und Zahlungsbestätigungen bleiben erforderlich.",
+  "chat.app_usage.unavailable": "Zuerst mit Desktop verbinden und ein Gespräch erstellen.",
+  "chat.voice_start_tooltip": "Spracheingabe",
+  "chat.voice_stop_tooltip": "Aufnahme stoppen und transkribieren",
+  "chat.attach_files_tooltip": "Dateien anhängen (große lokale Dateien bleiben am ursprünglichen Pfad)"
 }

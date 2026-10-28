@@ -204,7 +204,7 @@ function aiBrowserApp() {
                 const [workspace,drafts,catalog,recipes]=await Promise.all([
                     this.request('/browser-workspace'),...(this.mobileMode?[Promise.resolve({items:[]}),Promise.resolve({items:[]}),Promise.resolve({items:[]})]:[this.request('/agent-drafts'),this.request('/agent-capabilities'),this.request('/agent-recipes')]),
                 ]);
-                this.domainSettings=workspace.domain_settings||{};this.tasks=workspace.tasks;this.consumeTaskIntent();this.taskTree=workspace.task_tree||[];if(this.view!=='settings')this.settings=workspace.settings;this.drafts=[...(drafts.items||[]),...(recipes.items||[]).filter(recipe=>!recipe.committed_draft_id).map(recipe=>({...recipe,recipe_only:true}))];
+                this.domainSettings=workspace.domain_settings||{};this.tasks=workspace.tasks;this.consumeTaskIntent();this.taskTree=workspace.task_tree||[];if(this.view!=='settings')this.settings=workspace.settings;this.drafts=[...(drafts.items||[]),...(recipes.items||[]).filter(recipe=>!recipe.committed_draft_id).map(recipe=>({...recipe,recipe_only:true}))].filter(draft=>!draft.source?.provenance?.intelligence_recipe_key);
                 const expanded=new Map(this.domains.map(d=>[d.name,d.expanded]));
                 const validDomain=name=>{if(typeof name!=='string'||!name||['null','undefined'].includes(name.toLowerCase()))return false;try{return new URL('https://'+name).hostname===name;}catch(_){return false;}};
                 const groups=new Map((workspace.domains||[]).filter(validDomain).map(name=>[name,[]]));

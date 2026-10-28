@@ -205,11 +205,14 @@ class ModelManagerStore:
         explicit = self.default_models(profile)[purpose]
         if explicit:
             return explicit
-        if purpose == "work_chat":
-            return self.resolve_default_model("work_standard", fallback, profile=profile)
-        if purpose == "work_agent":
-            # Automatic Agent routing needs the live, declared capability catalog;
-            # never accept a caller's unconstrained Chat fallback here.
+        if purpose in {"work_chat", "work_agent"}:
+            if profile == "normal":
+                policy = self.cloud_default_policy()
+                model = policy.get("apiDefault")
+                if model:
+                    return f"cloud/ai2apps/{model['modelId']}"
+            if purpose == "work_chat":
+                return self.resolve_default_model("work_standard", fallback, profile=profile)
             return None
         if profile == "privacy":
             return None

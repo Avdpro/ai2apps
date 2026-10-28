@@ -4699,6 +4699,15 @@ MIGRATIONS = (*MIGRATIONS, Migration(version=95, name="system_task_trigger_compa
 ))
 
 
+MIGRATIONS = (*MIGRATIONS, Migration(version=96, name="session_tool_approval_rules", statements=(
+    """CREATE TABLE session_tool_approval_rules (
+        session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+        mode TEXT NOT NULL CHECK(mode IN ('manual','ai','always')),
+        revision INTEGER NOT NULL, actor_id TEXT NOT NULL, updated_at TEXT NOT NULL
+    )""",
+)))
+
+
 def _validate_migrations(migrations: Sequence[Migration]) -> None:
     versions = [migration.version for migration in migrations]
     expected = list(range(1, len(migrations) + 1))

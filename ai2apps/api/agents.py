@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -35,6 +35,11 @@ from ai2apps.core import RepositoryError
 from ai2apps.events.stream import stream_events
 from ai2apps.identity import RequestPrincipal
 from ai2apps.platform_runtime import PlatformRuntime
+
+
+class SessionApprovalRuleRequest(BaseModel):
+    mode: Literal['manual','ai','always']
+    expected_revision: int = Field(ge=0)
 
 
 class SessionMemoryCompactRequest(BaseModel):
@@ -505,6 +510,22 @@ def create_agent_router(
             return repository_error_response(error)
         except ValueError as error:
             return platform_error_response(status_code=422, code="invalid_memory_request", message=str(error))
+
+    @router.get('/sessions/{session_id}/tool-approval-rule', dependencies=[session_access])
+    def get_session_approval_rule(session_id: str, principal: RequestPrincipal = principal_dependency):
+        if not principal.is_core: raise HTTPException(status_code=403, detail='Core user required')
+        runtime = _runtime_or_error(runtime_provider)
+        if isinstance(runtime, JSONResponse): return runtime
+        return runtime.capabilities.session_approval_rule(session_id)
+
+    @router.put('/sessions/{session_id}/tool-approval-rule', dependencies=[session_access])
+    def set_session_approval_rule(session_id: str, request: SessionApprovalRuleRequest, principal: RequestPrincipal = principal_dependency):
+        if not principal.is_core: raise HTTPException(status_code=403, detail='Core user required')
+        runtime = _runtime_or_error(runtime_provider)
+        if isinstance(runtime, JSONResponse): return runtime
+        try:
+            return runtime.capabilities.set_session_approval_rule(session_id,request.mode,request.expected_revision,principal.actor_user_id)
+        except RepositoryError as error: return repository_error_response(error)
 
     @router.get("/sessions/{session_id}/agent-runs", response_model=AgentRunListResponse)
     def session_runs(session_id: str, principal: RequestPrincipal = principal_dependency):

@@ -57,7 +57,7 @@ def budget_decision(context, used):
 
 
 def total_model_tokens(steps):
-    return sum(value for step in steps if step.kind=='model' and step.status is RunStepStatus.COMPLETED
+    return sum(value for step in steps if (step.kind=='model' or step.kind=='internal' and step.input.get('schema')=='ai2apps.tool-approval-review/v1') and step.status is RunStepStatus.COMPLETED
         if isinstance(step.output,dict) and isinstance(step.output.get('usage'),dict)
         if type(value:=step.output['usage'].get('total_tokens')) is int and value>0)
 

@@ -179,6 +179,7 @@ class AgentBuilderRepository:
         site_scope: list[str],
         source: dict[str, Any],
         agent_type: AgentType = AgentType.WEB,
+        reuse_provenance_key: str | None = None,
     ) -> AgentDraftRecord:
         name = name.strip()
         if not name:
@@ -186,6 +187,35 @@ class AgentBuilderRepository:
         draft_id = new_entity_id(EntityIdKind.AGENT_DRAFT)
         now = utc_now_text()
         with self.database.transaction(write=True) as connection:
+            if reuse_provenance_key is not None:
+                if not reuse_provenance_key.isidentifier():
+                    raise ValueError("Invalid provenance identity key")
+                identity = (source.get("provenance") or {}).get(reuse_provenance_key)
+                if not isinstance(identity, str) or not identity:
+                    raise ValueError("Missing provenance identity")
+                existing = connection.execute(
+                    """SELECT * FROM agent_drafts WHERE owner_user_id=?
+                       AND agent_type=? AND status!='archived'
+                       AND json_extract(source_json,?)=?
+                       ORDER BY CASE WHEN active_generation_id IS NULL THEN 1 ELSE 0 END,
+                                updated_at DESC,id LIMIT 1""",
+                    (owner_user_id, agent_type.value,
+                     '$.provenance.' + reuse_provenance_key, identity),
+                ).fetchone()
+                if existing is not None:
+                    # Reuse the draft identity; immutable generations and its
+                    # active pointer remain intact until separate validation.
+                    connection.execute(
+                        """UPDATE agent_drafts SET name=?,description=?,source_json=?,
+                           site_scope_json=?,site_key=?,revision=revision+1,updated_at=?,
+                           status=CASE WHEN active_generation_id IS NULL THEN 'editing'
+                                       ELSE 'active' END WHERE id=?""",
+                        (name, description, _json(source), _json(site_scope),
+                         site_key_from_source(source, site_scope), now, existing['id']),
+                    )
+                    return self._draft(connection.execute(
+                        "SELECT * FROM agent_drafts WHERE id=?", (existing['id'],)
+                    ).fetchone())
             connection.execute(
                 """
                 INSERT INTO agent_drafts(

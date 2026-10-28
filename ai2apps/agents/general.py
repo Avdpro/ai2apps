@@ -442,17 +442,8 @@ class GeneralAgentExecutor:
 
     @staticmethod
     def _total_model_tokens(steps: tuple[RunStepRecord, ...]) -> int:
-        total = 0
-        for step in steps:
-            if step.kind != "model" or step.status is not RunStepStatus.COMPLETED:
-                continue
-            usage = (step.output or {}).get("usage")
-            if not isinstance(usage, dict):
-                continue
-            value = usage.get("total_tokens")
-            if isinstance(value, int) and value > 0:
-                total += value
-        return total
+        from .token_budget import total_model_tokens
+        return total_model_tokens(steps)
 
     async def __call__(self, context: AgentExecutionContext) -> AgentAction:
         ensured = await asyncio.to_thread(self._ensure_prompt, context)
@@ -857,6 +848,7 @@ class GeneralAgentExecutor:
             if (
                 step.kind == "model"
                 or step.kind == "tool"
+                or step.kind == "internal" and step.input.get('schema') == 'ai2apps.tool-approval-review/v1'
             )
             and isinstance(step.output, dict)
             for item in (step.output.get("ai2apps_cloud") or [])

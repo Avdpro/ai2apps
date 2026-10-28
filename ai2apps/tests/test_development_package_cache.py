@@ -1,4 +1,5 @@
 import os
+import json
 import shutil
 from pathlib import Path
 
@@ -6,6 +7,7 @@ import pytest
 
 from ai2apps.extensions.development import DevelopmentPackageLoader
 from ai2apps.extensions.models import ExtensionError
+from test_app_interactions import runtime
 
 
 @pytest.fixture
@@ -64,3 +66,48 @@ def test_file_additions_removals_and_package_removal_invalidate_cache(loader):
     shutil.rmtree(loader.packages_root / 'search')
     assert loader.discover() == ()
     assert not loader._validated
+
+
+def test_capability_catalog_uses_builder_component_projection_and_rejects_unknown_identity(loader):
+    package=loader.discover()[0]
+    assert package.manifest['mini_apps'][0]['id']=='ai2apps.search-all'
+    path=loader.packages_root/'search'/'ai2apps.json'
+    manifest=json.loads(path.read_text())
+    manifest['capabilityCatalog']['entries'][0]['identity']='example.undeclared'
+    path.write_text(json.dumps(manifest))
+    assert loader.discover(isolate_invalid=True)==()
+    assert 'Capability identity' in loader.errors['search']
+    assert not loader._validated
+
+
+def test_isolation_keeps_valid_packages_and_clears_diagnostic_after_repair(loader):
+    bad=loader.packages_root/'broken';bad.mkdir()
+    (bad/'app.yaml').write_text('schema: ai2apps.app/v1')
+    (bad/'ai2apps.json').write_text('invalid')
+    assert len(loader.discover(isolate_invalid=True))==1
+    assert set(loader.errors)=={'broken'}
+    shutil.rmtree(bad)
+    assert len(loader.discover(isolate_invalid=True))==1
+    assert loader.errors=={}
+
+
+def test_invalid_source_package_cannot_block_system_apps_or_reuse_stale_definition(loader,runtime):
+    manager=runtime.extension_manager
+    manager._development_loader=loader
+    package=manager.refresh_development_packages()[0]
+    assert manager.launch_app(package.package_id)[0].id
+    # A rejected live source must not silently reactivate an older stored copy.
+    with runtime.database.transaction(write=True) as db:
+        old=dict(db.execute('SELECT * FROM app_definitions WHERE package_id=? AND status=?',(package.package_id,'enabled')).fetchone())
+        old.update(id='app_'+'f'*32,status='disabled',package_version='0.0.1+fixture',effective_digest='sha256:'+'0'*64,upstream_digest='sha256:'+'0'*64)
+        manifest=json.loads(old['manifest_json']);manifest.pop('development');old['manifest_json']=json.dumps(manifest)
+        db.execute('INSERT INTO app_definitions('+','.join(old)+') VALUES('+','.join('?' for _ in old)+')',tuple(old.values()))
+    path=loader.packages_root/'search'/'ai2apps.json';original=path.read_text()
+    path.write_text('invalid')
+    for app in ('ai2apps.settings','ai2apps.account'):
+        assert manager.launch_app(app)[0].id
+    assert manager._active_app_definition(package.package_id) is None
+    assert loader.errors
+    path.write_text(original)
+    assert manager.launch_app(package.package_id)[0].id
+    assert not loader.errors

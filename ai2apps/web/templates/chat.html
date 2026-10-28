@@ -6,6 +6,7 @@
 <link rel="stylesheet" href="{{ static('css/chat_message_feedback.css') }}?v=20261026">
 <script src="{{ static('js/chat_message_feedback.js') }}?v=20261026"></script>
 <script src="{{ static('js/chat_session_activity.js') }}?v=20261027"></script>
+<script src="{{ static('js/chat_button_hints.js') }}?v=20261028"></script>
 
 <link rel="stylesheet" href="{{ static('css/chat_message_stream.css') }}?v=bubbles-contrast-20261026">
 <link rel="stylesheet" href="{{ static('css/capability_provisioning.css') }}?v=action-breathe-v1">
@@ -13,8 +14,8 @@
 <script src="{{ static('js/studio_audio_recorder.js') }}"></script>
 <link rel="stylesheet" href="{{ static('css/gallery_picker.css') }}">
 <script src="{{ static('js/gallery_picker.js') }}"></script>
-<script src="{{ static('js/conversation_model_policy.js') }}"></script>
-<script src="{{ static('js/agent_parameter_forms.js') }}?v=approval-countdown-20261027"></script>
+<script src="{{ static('js/conversation_model_policy.js') }}?v=declaration-details-20261028"></script>
+<script src="{{ static('js/agent_parameter_forms.js') }}?v=file-picker-20261028"></script>
 <script src="{{ static('js/chat_image_actions.js') }}"></script>
 <script src="{{ static('js/browser_bidi_client.js') }}?v=read-captcha-scope-20261027"></script>
 <script src="{{ static('js/agent_browser_task_controls.js') }}"></script>
@@ -41,6 +42,18 @@
 <script defer src="/admin/static/js/katex-auto-render.min.js"></script>
 
 <style>
+    .chat-shell button, .chat-shell select, .chat-shell [role="button"] { cursor: pointer; }
+    .chat-shell button:disabled, .chat-shell select:disabled,
+    .chat-shell [aria-disabled="true"] { cursor: not-allowed; }
+    .chat-button-hint {
+        position: fixed; z-index: 10000; pointer-events: none;
+        max-width: min(320px, calc(100vw - 16px)); padding: 7px 9px;
+        border-radius: 8px; background: rgba(23,23,23,.96); color: white;
+        box-shadow: 0 8px 24px rgba(0,0,0,.2);
+        font-size: 11px; font-weight: 600; line-height: 1.35;
+        white-space: normal; overflow-wrap: anywhere;
+    }
+
     /* Hidden controls must not reserve title space; keyboard focus reveals them too. */
     .chat-history-actions { display: flex; flex-shrink: 0; width: 0; overflow: hidden; opacity: 0; pointer-events: none; }
     .chat-history-actions > button { flex: 0 0 20px; }
@@ -233,7 +246,7 @@
         position: relative;
     }
 
-    .chat-hover-tip:hover {
+    .chat-hover-tip:is(:hover, :focus-visible, :focus-within) {
         z-index: 239;
     }
 
@@ -262,7 +275,7 @@
         transition: opacity 80ms ease, transform 80ms ease;
     }
 
-    .chat-hover-tip[data-tooltip]:not([data-tooltip=""]):hover::after {
+    .chat-hover-tip[data-tooltip]:not([data-tooltip=""]):is(:hover, :focus-visible, :focus-within)::after {
         opacity: 1;
         transform: translate(-50%, 0) scale(1);
     }
@@ -273,7 +286,7 @@
         transform: translate(-50%, 3px) scale(0.98);
     }
 
-    .chat-hover-tip-top[data-tooltip]:not([data-tooltip=""]):hover::after {
+    .chat-hover-tip-top[data-tooltip]:not([data-tooltip=""]):is(:hover, :focus-visible, :focus-within)::after {
         transform: translate(-50%, 0) scale(1);
     }
 
@@ -283,7 +296,7 @@
         transform: translate(0, -3px) scale(0.98);
     }
 
-    .chat-hover-tip-align-left[data-tooltip]:not([data-tooltip=""]):hover::after {
+    .chat-hover-tip-align-left[data-tooltip]:not([data-tooltip=""]):is(:hover, :focus-visible, :focus-within)::after {
         transform: translate(0, 0) scale(1);
     }
 
@@ -293,7 +306,7 @@
         transform: translate(0, -3px) scale(0.98);
     }
 
-    .chat-hover-tip-align-right[data-tooltip]:not([data-tooltip=""]):hover::after {
+    .chat-hover-tip-align-right[data-tooltip]:not([data-tooltip=""]):is(:hover, :focus-visible, :focus-within)::after {
         transform: translate(0, 0) scale(1);
     }
 
@@ -302,8 +315,8 @@
         transform: translate(0, 3px) scale(0.98);
     }
 
-    .chat-hover-tip-top.chat-hover-tip-align-left[data-tooltip]:not([data-tooltip=""]):hover::after,
-    .chat-hover-tip-top.chat-hover-tip-align-right[data-tooltip]:not([data-tooltip=""]):hover::after {
+    .chat-hover-tip-top.chat-hover-tip-align-left[data-tooltip]:not([data-tooltip=""]):is(:hover, :focus-visible, :focus-within)::after,
+    .chat-hover-tip-top.chat-hover-tip-align-right[data-tooltip]:not([data-tooltip=""]):is(:hover, :focus-visible, :focus-within)::after {
         transform: translate(0, 0) scale(1);
     }
 
@@ -1367,6 +1380,7 @@
         background: var(--bg-tertiary);
         cursor: text;
     }
+    .chat-mode-row .chat-mode-switch { margin-left: auto; }
     .chat-mode-switch {
         display: inline-flex;
         padding: 0.18rem;
@@ -1413,14 +1427,6 @@
         color: var(--text-secondary);
         font-size: 0.68rem;
     }
-    /* Explicit controls keep exact 10K deltas instead of native min/step grid rounding. */
-    .chat-agent-budget-field { display: inline-block; position: relative; width: 7rem; }
-    .chat-agent-budget { width: 100%; min-width: 0; padding-right: 1.25rem; -moz-appearance: textfield; appearance: textfield; }
-    .chat-agent-budget::-webkit-inner-spin-button, .chat-agent-budget::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-    .chat-agent-budget-steps { position: absolute; right: 2px; top: 3px; bottom: 3px; width: 1rem; display: flex; flex-direction: column; }
-    .chat-agent-budget-steps button { display: flex; align-items: center; justify-content: center; flex: 1; padding: 0; border: 0; border-radius: 2px; color: var(--text-secondary); background: var(--bg-tertiary); font-size: 9px; line-height: 1; cursor: pointer; }
-    .chat-agent-budget-steps button:hover { background: var(--border-faint); }
-    @media (max-width: 767px), (pointer: coarse) { .chat-agent-budget-control { display: none !important; } }
     .agent-parameter-panel {
         margin: 0.45rem 0.65rem 0;
         border: 1px solid var(--border-faint);
@@ -2839,36 +2845,44 @@
                         @change="handleAttachmentSelect($event)" class="hidden">
 
                     <div class="chat-mode-row" @click="focusComposerFromSurface($event)">
+                        <button @click="$refs.attachmentInput.click()"
+                            :disabled="!apiKeySet || !currentModel || isCurrentChatStreaming()"
+                            class="w-8 h-8 shrink-0 bg-surface-muted hover:bg-surface rounded-full border border-line transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+                            :title="window.t('chat.attach_files_tooltip')"
+                            :aria-label="window.t('chat.attachments')">
+                            <i data-lucide="paperclip" class="w-4 h-4" style="color: var(--text-tertiary);"></i>
+                        </button>
+                        {% if principal_is_core %}<div class="flex items-center gap-1 min-w-0" x-show="!terminalAssistantMode">
+                            <span class="chat-hover-tip chat-hover-tip-top chat-hover-tip-align-left flex items-center justify-center w-8 h-8 shrink-0" tabindex="0"
+                                :data-tooltip="window.t('chat.app_usage.tooltip')" :aria-label="window.t('chat.app_usage.title')">
+                                <i data-lucide="shield-check" class="w-4 h-4" style="color:var(--text-secondary);"></i>
+                            </span>
+                            <select :value="appUsageRule" @change="setAppUsageRule($event.target.value).finally(() => $el.value = appUsageRule)" :disabled="appUsageRuleBusy"
+                                :aria-label="window.t('chat.app_usage.title')" class="text-xs bg-transparent border-0 min-w-0 cursor-pointer" style="color:var(--text-secondary);">
+                                <option value="manual" x-text="window.t('chat.app_usage.manual')"></option>
+                                <option value="ai" x-text="window.t('chat.app_usage.ai')"></option>
+                                <option value="always" x-text="window.t('chat.app_usage.always')"></option>
+                            </select>
+                        </div>{% endif %}
                         <div class="chat-mode-switch" role="group" aria-label="Conversation mode">
-                            <button type="button" class="chat-mode-option"
+                            <button type="button" class="chat-mode-option chat-hover-tip chat-hover-tip-top chat-hover-tip-align-right"
+                                :data-tooltip="window.t('chat.mode.chat_tooltip')"
+                                :aria-description="window.t('chat.mode.chat_tooltip')"
                                 :class="{ 'is-active': !agentMode }"
                                 :aria-pressed="!agentMode"
                                 :disabled="isLegacyChatStreaming()"
                                 @click="setConversationMode('chat')">Chat</button>
-                            {% if principal_is_core %}<button type="button" class="chat-mode-option"
+                            {% if principal_is_core %}<button type="button" class="chat-mode-option chat-hover-tip chat-hover-tip-top chat-hover-tip-align-right"
+                                :data-tooltip="window.t('chat.mode.agent_tooltip')"
+                                :aria-description="window.t('chat.mode.agent_tooltip')"
                                 :class="{ 'is-active': agentMode }"
                                 :aria-pressed="agentMode"
                                 :disabled="isLegacyChatStreaming()"
                                 @click="setConversationMode('agent')">Agent</button>{% endif %}
                         </div>
-                        {% if principal_is_core %}<label x-show="agentMode" class="text-xs chat-agent-budget-control" title="每轮输入与输出 token 额度；用尽后询问是否继续并重置额度">
-                            <span x-text="document.documentElement.lang.startsWith('zh') ? '任务预算' : 'Task budget'"></span>
-                            <span class="chat-agent-budget-field">
-                            <input type="number" min="1" step="1" aria-label="Agent token budget" :placeholder="String(defaultAgentTokenBudget())"
-                                class="chat-agent-select chat-agent-budget" x-model.number="agentModelTokenBudget"
-                                @focus="ensureAgentTokenBudget($el)"
-                                @keydown.up.prevent="stepAgentTokenBudget(10000)" @keydown.down.prevent="stepAgentTokenBudget(-10000)"
-                                @change="localStorage.setItem('ai2apps.agentTokenBudget', String(agentModelTokenBudget))">
-                            <span class="chat-agent-budget-steps">
-                                <button type="button" @click.prevent="stepAgentTokenBudget(10000)" aria-label="Increase budget by 10K" title="+10K">▴</button>
-                                <button type="button" @click.prevent="stepAgentTokenBudget(-10000)" aria-label="Decrease budget by 10K" title="−10K">▾</button>
-                            </span>
-                            </span>
-                        </label>{% endif %}
-                        <span class="chat-mode-hint"
-                            x-text="agentMode ? selectedAgentDescription() : 'Direct model conversation'"></span>
                     </div>
-                    <p x-show="modelSelectionNotice" x-text="modelSelectionNotice" class="chat-model-selection-notice text-xs px-3 py-2" role="status"></p>
+                    <p x-show="appUsageRuleError" x-text="appUsageRuleError" class="text-xs px-3 py-1" role="alert" style="color:var(--text-danger);"></p>
+                    <p x-show="showModelSelectionWarning()" x-text="modelSelectionNotice" class="chat-model-selection-notice text-xs px-3 py-2" role="status"></p>
                     <details x-show="agentMode && agentParameterFields(currentAgentKey).length"
                         class="agent-parameter-panel">
                         <summary x-text="'Agent parameters · ' + agentRunName({ agent_key: currentAgentKey })"></summary>
@@ -2950,13 +2964,6 @@
                     </div>
 
                     <div class="flex items-end">
-                        <button @click="$refs.attachmentInput.click()"
-                            :disabled="!apiKeySet || !currentModel || isCurrentChatStreaming()"
-                            class="w-10 h-10 m-1 shrink-0 bg-surface-muted hover:bg-surface rounded-full border border-line transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
-                            :title="document.documentElement.lang.startsWith('zh') ? '添加附件（本地大文件仅引用原文件）' : 'Attach files (large local files stay at their original path)'"
-                            :aria-label="document.documentElement.lang.startsWith('zh') ? '添加附件' : 'Attach files'">
-                            <i data-lucide="paperclip" class="w-4 h-4" style="color: var(--text-tertiary);"></i>
-                        </button>
                         <div class="chat-hover-tip chat-hover-tip-top chat-hover-tip-align-left shrink-0"
                             :data-tooltip="availableAudioModelsByType('audio_stt').length === 0
                                 ? window.t('chat.install_stt_tooltip')
@@ -2964,17 +2971,17 @@
                                     ? window.t('chat.voice_input_streaming_tooltip')
                                     : (audioInputStarting
                                         ? window.t('chat.voice_input_starting_tooltip')
-                                        : (audioInputBusy ? window.t('chat.voice_input_busy_tooltip') : ''))) ">
+                                        : (audioInputBusy ? window.t('chat.voice_input_busy_tooltip') : window.t(audioRecording ? 'chat.voice_stop_tooltip' : 'chat.voice_start_tooltip')))) ">
                             <button
                                 @click="requestSpeechRecognition()"
                                 :disabled="isCurrentChatStreaming() || audioInputBusy || audioInputStarting"
                                 :aria-disabled="isCurrentChatStreaming() || audioInputBusy || audioInputStarting"
                                 :aria-busy="audioInputStarting || audioInputBusy"
-                                class="w-10 h-10 m-1 shrink-0 rounded-full border transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+                                class="w-10 h-10 m-1 shrink-0 rounded-full border-0 transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
                                 :class="(audioInputStarting || audioInputBusy)
-                                        ? 'bg-surface border-line cursor-wait'
-                                        : (audioRecording ? 'bg-red-50 border-red-300 text-red-600' : 'bg-surface-muted hover:bg-surface border-line')"
-                                :title="availableAudioModelsByType('audio_stt').length === 0 ? '' : (audioRecording ? 'Stop and transcribe' : (audioInputStarting ? 'Starting microphone…' : (audioInputBusy ? 'Transcribing…' : 'Voice input'))) ">
+                                        ? 'bg-transparent cursor-wait'
+                                        : (audioRecording ? 'bg-red-50 text-red-600' : 'bg-transparent hover:bg-surface-muted')"
+                                :aria-label="window.t(audioRecording ? 'chat.voice_stop_tooltip' : 'chat.voice_start_tooltip')">
                                 <span x-show="audioInputStarting || audioInputBusy"
                                     class="w-4 h-4 rounded-full border-2 border-current border-t-transparent animate-spin"
                                     aria-hidden="true"></span>
@@ -3000,10 +3007,12 @@
                         <div class="relative flex-shrink-0">
                             <button x-show="!isCurrentChatStreaming()" @click="sendMessage()"
                                 :disabled="(!inputMessage.trim() && uploadImages.length === 0 && uploadDocuments.length === 0) || hasPendingUploads() || !apiKeySet || !currentModel"
+                                :title="window.t('chat.shortcut_send')" :aria-label="window.t('chat.shortcut_send')"
                                 class="w-10 h-10 m-1 bg-accent hover:bg-accent-hover disabled:bg-surface-muted rounded-full transition-colors flex items-center justify-center">
                                 <i data-lucide="arrow-up" class="w-4 h-4 text-accent-fg"></i>
                             </button>
                             <button x-show="isCurrentChatStreaming()" @click="stopStreaming()"
+                                :title="window.t('chat.shortcut_stop')" :aria-label="window.t('chat.shortcut_stop')"
                                 class="w-10 h-10 m-1 bg-surface-muted hover:bg-surface rounded-full border border-line transition-colors flex items-center justify-center">
                                 <div class="w-3 h-3 rounded-[2px]" style="background-color: var(--text-danger);"></div>
                             </button>
@@ -3278,6 +3287,11 @@
                     <div x-show="availableModels.length === 0">
                         {{ t('chat.no_models') }}
                     </div>
+                    <details x-show="agentMode && currentModel && modelSelectionNotice && !showModelSelectionWarning()"
+                        x-cloak class="text-xs pt-1" style="color:var(--text-secondary);">
+                        <summary class="cursor-pointer" x-text="document.documentElement.lang.startsWith('zh') ? '模型能力说明' : 'Model capability details'"></summary>
+                        <p class="mt-2 leading-relaxed" x-text="modelSelectionNotice"></p>
+                    </details>
                 </div>
 
                 <!-- Local models are an optional enhancement. Account Cloud models remain usable. -->
@@ -4108,8 +4122,11 @@
             chatSessions: {},
             messages: [],
             inputMessage: '',
+            appUsageRule: 'manual',
+            appUsageRuleRevision: 0,
+            appUsageRuleBusy: false,
+            appUsageRuleError: '',
             agentMode: CHAT_PRINCIPAL_IS_CORE && !{{ terminal_assistant | default(false) | tojson }},
-            agentModelTokenBudget: Number(localStorage.getItem('ai2apps.agentTokenBudget')) || null,
             availableAgents: [],
             currentAgentKey: 'ai2apps.general-agent',
             agentInputError: null,
@@ -4677,6 +4694,13 @@
                 });
             },
 
+            showModelSelectionWarning() {
+                if (!this.agentMode || !this.modelSelectionNotice) return false;
+                if (!this.currentModel) return true;
+                const model = this.availableModels.find(item => item.id === this.currentModel);
+                return !model || AI2AppsConversationModelPolicy.agentSummary(model).unsupported.length > 0;
+            },
+
             registerCloudDefaultModel(apiDefault, models = this.availableModels) {
                 if (!apiDefault?.modelId) return models;
                 const id = `cloud/ai2apps/${apiDefault.modelId}`;
@@ -4712,7 +4736,12 @@
                 }
                 if (this.agentMode && !this.modelSelectionExplicit) {
                     this.currentModel = this.resolvePreferredDefaultModel(defaultModel);
-                    this.modelSelectionNotice = this.currentModel ? '' : '没有符合自动默认条件的 Agent 模型，请明确选择模型。';
+                    const selected = this.availableModels.find(model => model.id === this.currentModel);
+                    this.modelSelectionNotice = !this.currentModel
+                        ? 'Agent 默认模型不可用，请明确选择模型。'
+                        : !AI2AppsConversationModelPolicy.agentEligible(selected)
+                            ? AI2AppsConversationModelPolicy.agentNotice(selected, {language: document.documentElement.lang})
+                            : '';
                     return;
                 }
                 if (!this.currentModel || !this.isModelAvailableOnServer(this.currentModel)) {
@@ -6891,6 +6920,7 @@
             },
 
             async init() {
+        this.$nextTick(() => window.AI2AppsChatButtonHints?.install(this.$root));
 
         this.loadPromptProfiles();
         this.loadTerminalAssistantChats();
@@ -8561,6 +8591,7 @@
                         owned_by: m.owned_by,
                         model_type: adminModel?.model_type || m.model_type || this.modelTypeMap[gatewayId] || 'llm',
                         capabilities: adminModel?.capabilities ?? m.capabilities ?? [],
+                        agent_capability_declaration: adminModel?.agent_capability_declaration ?? m.agent_capability_declaration ?? null,
                         cache_moe: Boolean(adminModel?.cache_moe),
                         fusion_cached_moe_roles: adminModel?.fusion_cached_moe_roles || [],
                         source_type: adminModel?.source_type || 'local',
@@ -8576,11 +8607,13 @@
             const cloudDefaultsData = cloudDefaultsResponse?.ok ? await cloudDefaultsResponse.json() : {};
             this.availableModels = this.registerCloudDefaultModel(cloudDefaultsData.policy?.apiDefault, nextModels);
             const apiDefaultId = cloudDefaultsData.policy?.apiDefault?.modelId;
-            this.preferredChatModel = defaultsData.defaults?.work_chat || defaultsData.defaults?.work_standard
-                || (apiDefaultId ? `cloud/ai2apps/${apiDefaultId}` : null);
+            const apiDefaultModel = apiDefaultId ? `cloud/ai2apps/${apiDefaultId}` : null;
+            this.preferredChatModel = defaultsData.defaults?.work_chat || apiDefaultModel
+                || defaultsData.defaults?.work_standard || null;
             this.preferredAgentModel = AI2AppsConversationModelPolicy.agentDefault(this.availableModels,
                 defaultsData.defaults?.work_agent,
-                [defaultsData.defaults?.work_standard, defaultsData.defaults?.work_complex]);
+                [defaultsData.defaults?.work_standard, defaultsData.defaults?.work_complex],
+                apiDefaultModel);
             this.reconcileCurrentModelAfterLoad(this.agentMode ? this.preferredAgentModel : this.preferredChatModel);
             // x-for can replace options without changing currentModel, so x-model
             // alone does not restore the native select after a catalog refresh.
@@ -9328,23 +9361,37 @@
         await this.fetchWorkerStats({ force: true });
     },
 
-    defaultAgentTokenBudget() {
-        const declared = Number(this.availableAgents.find(agent => agent.agent_key === this.currentAgentKey)?.manifest?.max_total_model_tokens);
-        return Number.isSafeInteger(declared) && declared > 0 ? declared : 500000;
+    async loadAppUsageRule(chatId) {
+        this.appUsageRule = 'manual';
+        this.appUsageRuleRevision = 0;
+        this.appUsageRuleError = '';
+        if (!CHAT_PRINCIPAL_IS_CORE || !chatId?.startsWith('ses_')) return;
+        try {
+            const rule = await this.agentPlatformFetch(`/sessions/${chatId}/tool-approval-rule`);
+            if (this.currentChatId === chatId) {
+                this.appUsageRule = rule.mode;
+                this.appUsageRuleRevision = rule.revision;
+            }
+        } catch (error) {
+            if (this.currentChatId === chatId) this.appUsageRuleError = error.message;
+        }
     },
 
-    ensureAgentTokenBudget(input) {
-        if (Number.isSafeInteger(this.agentModelTokenBudget) && this.agentModelTokenBudget > 0) return;
-        this.agentModelTokenBudget = this.defaultAgentTokenBudget();
-        // Keep the focused input in sync before Alpine's next DOM update.
-        input.value = String(this.agentModelTokenBudget);
-    },
-
-    stepAgentTokenBudget(delta) {
-        const current = Number.isSafeInteger(this.agentModelTokenBudget) && this.agentModelTokenBudget > 0
-            ? this.agentModelTokenBudget : this.defaultAgentTokenBudget();
-        this.agentModelTokenBudget = Math.max(1, Math.min(Number.MAX_SAFE_INTEGER, current + delta));
-        localStorage.setItem('ai2apps.agentTokenBudget', String(this.agentModelTokenBudget));
+    async setAppUsageRule(mode) {
+        if (!['manual','ai','always'].includes(mode) || this.appUsageRuleBusy) return;
+        this.appUsageRuleBusy = true;
+        this.appUsageRuleError = '';
+        try {
+            if (!this.currentChatId) await this.startNewChat({initialModel:this.currentModel,initialModelExplicit:this.modelSelectionExplicit,initialAgentMode:this.agentMode});
+            const chatId = this.currentChatId;
+            if (!chatId?.startsWith('ses_')) throw new Error(window.t('chat.app_usage.unavailable'));
+            const rule = await this.agentPlatformFetch(`/sessions/${chatId}/tool-approval-rule`, {
+                method:'PUT', body:JSON.stringify({mode,expected_revision:this.appUsageRuleRevision}),
+            });
+            if (this.currentChatId === chatId) {this.appUsageRule=rule.mode;this.appUsageRuleRevision=rule.revision;}
+        } catch (error) {
+            this.appUsageRuleError = error.message;
+        } finally {this.appUsageRuleBusy=false;}
     },
 
     async setConversationMode(mode) {
@@ -9352,9 +9399,11 @@
         if (!this.modelSelectionExplicit) {
             const selected = this.agentMode ? this.preferredAgentModel : this.resolvePreferredDefaultModel(this.preferredChatModel);
             await this.selectModel(selected, {explicit: false});
-            if (this.agentMode && !selected) this.modelSelectionNotice = '没有声明支持中等及以上复杂度且工具调用可靠的可用模型，请明确选择模型，或完善模型能力声明。';
+            if (this.agentMode && !selected) this.modelSelectionNotice = 'Agent 默认模型不可用，请明确选择模型。';
+            else if (this.agentMode && !AI2AppsConversationModelPolicy.agentEligible(this.availableModels.find(m => m.id === selected)))
+                this.modelSelectionNotice = AI2AppsConversationModelPolicy.agentNotice(this.availableModels.find(m => m.id === selected), {language: document.documentElement.lang});
         } else if (this.agentMode && !AI2AppsConversationModelPolicy.agentEligible(this.availableModels.find(m => m.id === this.currentModel))) {
-            this.modelSelectionNotice = '保留你明确选择的模型；其 Agent 能力声明尚不满足自动默认条件。';
+            this.modelSelectionNotice = AI2AppsConversationModelPolicy.agentNotice(this.availableModels.find(m => m.id === this.currentModel), {explicit: true, language: document.documentElement.lang});
         }
         const session = this.getChatSession(this.currentChatId, true);
         if (session) {
@@ -10055,6 +10104,7 @@
         chatId, userMessage, model, instructions, agentKey,
         invocationPrompt, parameters, invocationSource,
     }) {
+        if (this.appUsageRuleError) throw new Error(this.appUsageRuleError);
         const knowledgeContext = await this.retrieveChatKnowledge(
             [userMessage],
             { chatId }
@@ -10080,9 +10130,7 @@
         const snapshot = await this.agentPlatformFetch(`/sessions/${chatId}/agent-runs`, {
             method: 'POST',
             headers: { 'Idempotency-Key': `chat:${chatId}:${userMessage.id}` },
-            body: JSON.stringify({ agent: agentKey || 'ai2apps.general-agent', input,
-                ...(Number.isSafeInteger(this.agentModelTokenBudget) && this.agentModelTokenBudget > 0
-                    ? {budget: {max_model_tokens: this.agentModelTokenBudget}} : {}) }),
+            body: JSON.stringify({ agent: agentKey || 'ai2apps.general-agent', input }),
         });
         // Resolve through Alpine's reactive collection after the asynchronous request.
         // The original plain object does not notify templates when new fields are added.
@@ -10503,6 +10551,9 @@
     },
 
     async startNewChat({ initialModel = null, initialModelExplicit = true, initialAgentMode = !this.terminalAssistantMode, initialAgentKey = null } = {}) {
+        this.appUsageRule = 'manual';
+        this.appUsageRuleRevision = 0;
+        this.appUsageRuleError = '';
         const choiceRevision = this._modelChoiceRevision;
         this.modelSelectionExplicit = !!initialModel && initialModelExplicit;
         this.modelSelectionNotice = '';
@@ -10553,7 +10604,7 @@
                 ? this.resolveGatewayModelId(initialModel)
                 : this.resolvePreferredDefaultModel(this.agentMode ? this.preferredAgentModel : this.preferredChatModel);
         }
-        if (this.agentMode && !this.currentModel) this.modelSelectionNotice = '没有符合自动默认条件的 Agent 模型，请明确选择模型。';
+        if (this.agentMode && !this.currentModel) this.modelSelectionNotice = 'Agent 默认模型不可用，请明确选择模型。';
         this.currentChatId = chatId;
         this.l1OptimizationMode = 'auto';
         this.engineBoostMode = 'natural';
@@ -10674,6 +10725,7 @@
             this.ensureMessageIds(session.messages);
             session.messages.forEach(m => this.ensureVariantMeta(m, session));
             this.currentChatId = chatId;
+            await this.loadAppUsageRule?.(chatId);
             this.l1OptimizationMode = session.l1OptimizationMode ?? 'auto';
             this.engineBoostMode = session.engineBoostMode ?? 'natural';
             this.rushActive = session.rushEnabled === true;

@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 import inspect
 import json
+import logging
 import os
 import shutil
 import tempfile
@@ -97,17 +98,29 @@ class InteractivePackageManager:
                 self._deactivate_development_app(key)
             return ()
         with self._development_lock:
-            discovered = self._development_loader.discover()
-            current = {item.package_id: item for item in discovered}
+            # Invalid source Packages remain rejected, but cannot deny access to
+            # unrelated Apps (especially Account/Settings needed for recovery).
+            discovered = self._development_loader.discover(isolate_invalid=True)
+            current = {}
+            rejected = set()
             for package in discovered:
-                self._activate_development_app(package)
+                try:
+                    self._activate_development_app(package)
+                    current[package.package_id] = package
+                except ExtensionError as error:
+                    rejected.add(package.package_id)
+                    logging.getLogger(__name__).warning('Development Package activation rejected: %s: %s', package.package_id, error)
             stale = (
                 set(self._development_packages) | set(self._active_development_app_keys())
             ) - current.keys()
             for key in stale:
-                self._deactivate_development_app(key)
+                active = self._active_app_definition(key)
+                development = json.loads(active['manifest_json']).get('development', {}) if active else {}
+                source = development.get('sourceRoot', '')
+                quarantined = key in rejected or Path(source).name in self._development_loader.errors
+                self._deactivate_development_app(key, allow_fallback=not quarantined)
             self._development_packages = current
-            return discovered
+            return tuple(current.values())
 
     def _active_development_app_keys(self) -> tuple[str, ...]:
         with self.database.transaction() as connection:
@@ -217,7 +230,7 @@ class InteractivePackageManager:
                     (definition_id, version, _json(state), now, instance["id"]),
                 )
 
-    def _deactivate_development_app(self, key: str) -> None:
+    def _deactivate_development_app(self, key: str, *, allow_fallback: bool = True) -> None:
         active = self._active_app_definition(key)
         if active is None:
             return
@@ -240,7 +253,7 @@ class InteractivePackageManager:
                 if not self._is_development_manifest(json.loads(row["manifest_json"]))
             ),
             None,
-        )
+        ) if allow_fallback else None
         now = utc_now_text()
         with self.database.transaction(write=True) as connection:
             connection.execute(

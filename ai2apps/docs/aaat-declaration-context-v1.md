@@ -170,9 +170,14 @@ Models must pass submitted arguments unchanged rather than adding optional field
 
 ### Conversation model defaults
 
-Chat and Agent use independent `work_chat` and `work_agent` model routes. Empty Chat
-routes inherit the legacy `work_standard` route/API default. Automatic Agent selection
-requires model catalog capability flags `work_standard` or `work_complex`, together
+Chat and Agent use independent `work_chat` and `work_agent` model routes. In the
+normal profile, empty Chat and Agent routes both resolve to the current account
+API default model. This is an explicit platform default, not a capability inference
+from the model name. If that API model is unavailable, Agent requires a user choice
+instead of silently substituting another model; Chat retains its legacy standard
+route fallback only when no API default policy is available. Privacy remains isolated.
+Without an API default, automatic Agent selection requires model catalog capability
+flags `work_standard` or `work_complex`, together
 with `tool_calling_reliable`. These declarations describe task capacity and verified
 tool suitability, not reasoning effort, parameter count, provider or model name. They
 are supplied by the model/Package catalog owner; missing declarations never qualify.
@@ -474,3 +479,42 @@ UI 操作绑定 mount/revision，待原页面应用回执，不重放未知结�
 功能任务，恢复读取原持久结果。Todo 首批迁移，其他入口不自动声称支持。
 见 [统一接入标准](app-chat-durable-v2.md) 与
 [420 项回归及 App-Dev 实际模型验收](acceptance/app-chat-durable-20261027/README.md)。
+
+### Agent model declaration presentation (2026-10-28)
+
+Conversation model projection and the account API Default alias retain the catalog's
+`agent_capability_declaration.declarations`, including explicit false and unknown
+values. A positive-only capability list cannot represent explicit unsupported claims.
+UI distinguishes missing declarations from explicit unsupported requirements and names
+the affected task-complexity or reliable-tool-calling requirement. Either standard or
+complex tasks declared true satisfies task capacity; both false means unsupported;
+otherwise absent/partial capacity remains unknown. This is presentation of catalog
+evidence, never a model-name inference or a change to explicit selection authority.
+The API defaults policy selects identity only; declarations come from that model's
+catalog entry rather than the defaults-policy display name.
+
+Missing declaration information is nonblocking metadata: Chat keeps it in an
+initially collapsed, neutral model-settings disclosure. Only unavailable models
+or explicit unsupported requirements appear as composer warnings in Agent mode.
+Hiding this metadata from the composer does not change eligibility or evidence.
+
+### Conversation Tool/App execution approval rules (2026-10-28)
+
+A Core user may set a revisioned, owner-bound Session approval rule through the
+explicit session rule API. Dedicated SQLite state is authoritative; imported
+conversation metadata, Tool output and model arguments cannot set it. New Sessions
+default to manual. Child Runs inherit the root conversation rule. Changes apply to
+subsequent approval decisions; already displayed interactions retain their lifecycle.
+
+Manual retains existing policy/leases/approval behavior. Always allows unresolved
+execution-capability approvals per invocation; it does not create reusable grants,
+override explicit deny or owner/license/payment/parameter guards, or authorize
+uncertain-effect retries. AI reviews the sanitized proposed invocation and user goal
+with the Run's chosen model, without Tools, and permits only necessary=true plus
+risk=none/low. Unknown, malformed, error, stale-rule or missing-model review returns
+to a manual interaction without an automatic approval countdown. Reviews are durable
+internal steps keyed to exact Run/invocation/arguments/rule revision; usage counts
+toward round and delegated budgets. They never enter business model transcripts.
+After a new review the ordinary loop rechecks budgets before effectful dispatch.
+Rule updates, review and automatic capability decisions are auditable. No owner name
+or business Tool identity determines the rule.

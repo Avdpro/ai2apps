@@ -42,6 +42,38 @@ class CapabilityRepository:
         self.database = database
         self.events = events
 
+    def session_approval_rule(self, session_id: str) -> dict:
+        with self.database.transaction() as connection:
+            row = connection.execute("SELECT mode,revision FROM session_tool_approval_rules WHERE session_id=?", (session_id,)).fetchone()
+        return dict(row) if row else {"mode": "manual", "revision": 0}
+
+    def set_session_approval_rule(self, session_id: str, mode: str, revision: int, actor_id: str) -> dict:
+        if mode not in {"manual", "ai", "always"}: raise ValueError("Invalid approval mode")
+        with self.database.transaction() as connection:
+            connection.execute("UPDATE session_tool_approval_rules SET revision=revision WHERE session_id=?", (session_id,))
+            row = connection.execute("SELECT revision FROM session_tool_approval_rules WHERE session_id=?", (session_id,)).fetchone()
+            current = row['revision'] if row else 0
+            if revision != current: raise ResourceConflictError("Approval rule changed; reload before updating")
+            connection.execute("INSERT INTO session_tool_approval_rules(session_id,mode,revision,actor_id,updated_at) VALUES (?,?,?,?,?) ON CONFLICT(session_id) DO UPDATE SET mode=excluded.mode,revision=excluded.revision,actor_id=excluded.actor_id,updated_at=excluded.updated_at", (session_id,mode,current+1,actor_id,utc_now_text()))
+            session = connection.execute("SELECT app_instance_id FROM sessions WHERE id=?",(session_id,)).fetchone()
+            self.events.append_in_transaction(connection,event_type="session.tool_approval_rule.changed",subject_id=session_id,
+                session_id=session_id,app_instance_id=session['app_instance_id'],payload={"mode":mode,"revision":current+1,"actor_id":actor_id})
+        return {"mode":mode,"revision":current+1}
+
+    def approval_rule_for_run(self, run_id: str) -> tuple[str, dict]:
+        with self.database.transaction() as connection:
+            seen=set()
+            for _ in range(64):
+                if run_id in seen: raise ValueError("Cyclic run ancestry")
+                seen.add(run_id)
+                row=connection.execute("SELECT session_id,parent_run_id FROM agent_runs WHERE id=?",(run_id,)).fetchone()
+                if row is None: raise ResourceNotFoundError("agent_run",run_id)
+                if not row['parent_run_id']: break
+                run_id=row['parent_run_id']
+            else: raise ValueError("Run ancestry exceeds limit")
+            session_id=row['session_id']
+        return session_id,self.session_approval_rule(session_id)
+
     @staticmethod
     def _policy(row) -> CapabilityPolicyRecord:
         return CapabilityPolicyRecord(

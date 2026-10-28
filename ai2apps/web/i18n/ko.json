@@ -2809,5 +2809,16 @@
   "intelligence.import.confirming": "글 저장 결과를 확인하는 중…",
   "intelligence.import.unknown_outcome": "연결이 끊겼습니다. 저장 여부를 확인하지 못했습니다. 잠시 후 글 목록을 새로고침하세요.",
   "intelligence.progress.parallel": "병렬 생성 중",
-  "intelligence.progress.completed_articles": "완료된 기사"
+  "intelligence.progress.completed_articles": "완료된 기사",
+  "chat.mode.chat_tooltip": "선택한 모델과 직접 대화합니다.",
+  "chat.mode.agent_tooltip": "도구와 App으로 작업을 수행합니다. 이 페이지를 닫아도 작업을 계속할 수 있으며, 돌아와서 결과를 확인할 수 있습니다.",
+  "chat.app_usage.title": "App 사용 규칙",
+  "chat.app_usage.manual": "직접 승인",
+  "chat.app_usage.ai": "AI 승인",
+  "chat.app_usage.always": "항상 승인",
+  "chat.app_usage.tooltip": "이 대화의 향후 도구/App 실행 승인: 직접 확인, AI가 필요하고 위험이 낮은 호출만 승인하고 나머지는 확인, 또는 모든 실행 자동 승인. 매개변수, 라이선스 및 결제 확인은 유지됩니다.",
+  "chat.app_usage.unavailable": "먼저 Desktop에 연결하고 대화를 만드세요.",
+  "chat.voice_start_tooltip": "음성 입력",
+  "chat.voice_stop_tooltip": "녹음 중지 및 받아쓰기",
+  "chat.attach_files_tooltip": "파일 첨부 (큰 로컬 파일은 원래 경로로 참조)"
 }

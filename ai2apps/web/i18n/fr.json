@@ -2809,5 +2809,16 @@
   "intelligence.import.confirming": "Vérification de l’enregistrement de l’article…",
   "intelligence.import.unknown_outcome": "Connexion interrompue. L’enregistrement reste à confirmer ; actualisez la liste des articles plus tard.",
   "intelligence.progress.parallel": "Génération en parallèle",
-  "intelligence.progress.completed_articles": "Articles terminés"
+  "intelligence.progress.completed_articles": "Articles terminés",
+  "chat.mode.chat_tooltip": "Discutez directement avec le modèle sélectionné.",
+  "chat.mode.agent_tooltip": "Utilisez des outils et des Apps pour accomplir des tâches. Elles peuvent continuer après la fermeture de cette page ; revenez consulter les résultats.",
+  "chat.app_usage.title": "Règles d’utilisation des Apps",
+  "chat.app_usage.manual": "Je valide",
+  "chat.app_usage.ai": "Validation par IA",
+  "chat.app_usage.always": "Toujours valider",
+  "chat.app_usage.tooltip": "Pour les futures autorisations d’outils et d’Apps dans cette conversation : me demander ; l’IA valide uniquement les appels nécessaires à faible risque, sinon elle me demande ; ou tout valider. Les confirmations de paramètres, de licence et de paiement restent requises.",
+  "chat.app_usage.unavailable": "Connectez Desktop et créez d’abord une conversation.",
+  "chat.voice_start_tooltip": "Saisie vocale",
+  "chat.voice_stop_tooltip": "Arrêter et transcrire",
+  "chat.attach_files_tooltip": "Joindre des fichiers (les gros fichiers locaux restent à leur emplacement initial)"
 }

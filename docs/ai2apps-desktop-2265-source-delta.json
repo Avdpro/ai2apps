@@ -1,0 +1,260 @@
+{
+  "baseline": "4f42ae7f20aa3b420d60985d6284f0e9aabac964",
+  "files": [
+    {
+      "path": "ai2apps/agent_builder/repository.py",
+      "old": "dd97750e8d0659891aaa35d27b83f1ec67a8cabd572c0e1fd0d98766900b4d98",
+      "new": "988421a537cf97255d6435445e07a723afc1ec6e63275633380b0245b8eb2245"
+    },
+    {
+      "path": "ai2apps/agents/general.py",
+      "old": "5582af87922f63eac6cceb7ea9d26a3de5c94c8148059eec752b1001054d2367",
+      "new": "37c64a54871db9754b7c7b1cab1a830674ca7cb4828d5e5bba8ba002346a07d4"
+    },
+    {
+      "path": "ai2apps/agents/runtime.py",
+      "old": "9566781cecfd7a19923a324369bef22bfaec88841c3ac8742df0c1802a52a866",
+      "new": "83a8e63c9ed192b7b51ac0fbe73c1963df3366fefde935e6d25219292d3dc1ef"
+    },
+    {
+      "path": "ai2apps/agents/token_budget.py",
+      "old": "ee5e03ab08206ce7de6f15188723a43dbd842ee03e044b1a084dbc57481dc2fd",
+      "new": "fc3b9c5fb43fd0dc837611a7f9434ee1338a0c0b8a6bd5963fbebd468a54d9dd"
+    },
+    {
+      "path": "ai2apps/api/agents.py",
+      "old": "c78556965fdb704f5f5b10fe5c931e26de1d84df2aa7e192e7e92a4179e8f044",
+      "new": "9f4b30abb267803131501a533ef219364d3a94ec9dde7fdeaf3cfd6871d5230c"
+    },
+    {
+      "path": "ai2apps/capabilities/policy.py",
+      "old": "4c9ac7b98ba63107fd7c8c2c07d8ea35b9c42446dae1d573951c246b683d0788",
+      "new": "4bbddac615a80c39efa33a70bf0395cbc32a1a0875cc90502a2a5b4708d94012"
+    },
+    {
+      "path": "ai2apps/capabilities/repository.py",
+      "old": "26c5d8a84252b062a69c1cb0e38552bf97167bdbc06507e1e51b5badf1b1b619",
+      "new": "f05d35a3b941c28688fc6efb867396978206af138150d6845bef42f34fb471b6"
+    },
+    {
+      "path": "ai2apps/config.py",
+      "old": "66dec395e2f87e3f2e3ef859b31877405b519cc6dd236c09c2a41116a453d4ec",
+      "new": "1ac9008347613bfb19f69b0886d8132440e78fe0c7fd6e51a5d27a9199999078"
+    },
+    {
+      "path": "ai2apps/docs/aaat-declaration-context-v1.md",
+      "old": "5c9a84169c101be18746577cdff97a5ab003d19a129a60621f6a45ccaf1b17e0",
+      "new": "baa2793924fc6ece49bb10296d050b74f92a031b27e4bc2e99a7e768d0c9bce6"
+    },
+    {
+      "path": "ai2apps/extensions/development.py",
+      "old": "e01c8be0929ee0b893924a2819145471c161ba07e121cb4e93dec44763380b88",
+      "new": "20cf37a3238b910f1c2d4f16eefc4a44185e8d8841168b5875e0e84e2ecd9384"
+    },
+    {
+      "path": "ai2apps/extensions/manager.py",
+      "old": "ac67d356e770003d72861e0f355860c3efaefd62c6ed9ff9273b2136245f99b4",
+      "new": "7d49bfd84e14ba7c68c0586d1b92c97f0dfd04012364e5028c28807473a3a990"
+    },
+    {
+      "path": "ai2apps/intelligence/candidate_maintenance.py",
+      "old": null,
+      "new": "cfa17f157bb51eddffedb615a2b5bc67767a6f6e915e7aa49933facd6b90f7b7"
+    },
+    {
+      "path": "ai2apps/intelligence/site_agents.py",
+      "old": "e317ad8be346e7cbcfb1e8fcb4d7942b9ee793aaf0375ae9b07154c854f0829c",
+      "new": "c58f0757d152a1a0887667707eee6fa8c80ee7b0678b1b231ec81b3ecc1cf6a9"
+    },
+    {
+      "path": "ai2apps/intelligence/x_agents.py",
+      "old": "488d66f2eb3ec983f564d8be20997fb3162f16c515294d14f437d3f6b7a047be",
+      "new": "8a921ebaaaf4ccc2b9767dfad6dd6956ce7a6544cd39b59a1c96178b4d63f44d"
+    },
+    {
+      "path": "ai2apps/model_manager.py",
+      "old": "4a7aad18c4e209aad558e04b1bb23cabf06bc2ca06ad221f590ca49c4178e196",
+      "new": "d8cd36d8268d346447472a98b70e67b0e11275bb55c0a37b8b6aca4d37bbdf0e"
+    },
+    {
+      "path": "ai2apps/storage/migrations.py",
+      "old": "5763376c410bef8d8be307680a5fb568929dbe47d201043a5e4ceb5b9a8e31e6",
+      "new": "8990b006fd22a77684097672d0b4ffd9d6b1022f4ae776f4923da98201c05f45"
+    },
+    {
+      "path": "ai2apps/tests/agent_parameter_forms.test.cjs",
+      "old": "e8947ca4b2e454a6d35ee47592e14b44bef0ee59c2febf771c4ebcc4985e9192",
+      "new": "597a6265b8672b00955d46e6f8ba0a295168c40f58aab1f7c1a3e45ad1cccf7b"
+    },
+    {
+      "path": "ai2apps/tests/ai_browser_workspace.test.cjs",
+      "old": "a5bfd6160492c7883f98b2119b7b369df239ec40e25d81591e9ab1f6c7a0bc70",
+      "new": "3a13056eb7f686d8d0f4ecc6f9e3cd2cbf040a0ea31033abb775fe5264f4efdf"
+    },
+    {
+      "path": "ai2apps/tests/chat_agent_budget_browser.test.cjs",
+      "old": "d2932868d3f08d954e9b52dc1e43bfc10535f24cf3beed25a356a70f7d70ecf6",
+      "new": "b0b5612b8539c9ce6f310202b9f38648e67ef863191707e32a80181cffd6797d"
+    },
+    {
+      "path": "ai2apps/tests/chat_app_usage_rules.test.cjs",
+      "old": null,
+      "new": "f8d32e051962922c77fb6e4c240bce4452a5dcf03f36502f967c59fc3076f843"
+    },
+    {
+      "path": "ai2apps/tests/chat_button_hints.test.cjs",
+      "old": null,
+      "new": "8f557d48eb3caac7e9fa6177e2712ed7bbfbb14351d374bc505c7ac319ffa873"
+    },
+    {
+      "path": "ai2apps/tests/conversation_model_policy.test.cjs",
+      "old": "a466fab01e01f82f3e3dba93ec23f5bc511cb0ff12ef886077f47dc5fd12c94f",
+      "new": "f7e835f0c84a8227dc35c869e06625b13ad4383d92e91698a0a02a119886a0a3"
+    },
+    {
+      "path": "ai2apps/tests/parameter_material_upload_browser.test.cjs",
+      "old": null,
+      "new": "20a00639a8902a99e12bf8dba3d13a82c45ad814ebf4fa638d39e16a4d8f0014"
+    },
+    {
+      "path": "ai2apps/tests/run_aaat_boundaries.py",
+      "old": "43d602a9cd810297e342aa4cf19efa6f8fdac29107e0b4baf32835648c666bb3",
+      "new": "7d7bc0cbe2ff1bf3d4a1022897cf62aa9ba88daabdd5f15cb8d95e92a0989299"
+    },
+    {
+      "path": "ai2apps/tests/test_agent_provenance_reuse.py",
+      "old": null,
+      "new": "f92f2c63aa5f39df6b53e4a447ed4a8475b3f7623564dfdb67dde8235d6f1ea4"
+    },
+    {
+      "path": "ai2apps/tests/test_conversation_model_defaults.py",
+      "old": "a3200dbfa9785d91d028015c3fa254924b4745269c9f13f222dafb1a127b8eef",
+      "new": "d9a1020aab4fc0270e79ccb30d1a5dc91b0cace7b0da33fafb2ae77f49005fa5"
+    },
+    {
+      "path": "ai2apps/tests/test_development_package_cache.py",
+      "old": "1b158dd8f61811fd956c927edf4fd616a3137f82fe161e2de1853c1450717758",
+      "new": "54637f082a426fec4070f497ee5a78c1eb9311b2229f0783f15c90856168f9f9"
+    },
+    {
+      "path": "ai2apps/tests/test_intelligence_candidate_maintenance.py",
+      "old": null,
+      "new": "59a39674ef333c582331eb5173da379a36c3dc80a59dd5ed65982cdfaa8efa77"
+    },
+    {
+      "path": "ai2apps/tests/test_intelligence_site_agents.py",
+      "old": "6f89d2e4971b2678bf9d820a8cf37bd7b8f73c1c20b8db33ca93bb5b03a0d6c4",
+      "new": "c46c4cdf83d4664e4868888a1bc86709f34206c33e1ebcb52b6b7ca0550f2ad3"
+    },
+    {
+      "path": "ai2apps/tests/test_session_tool_approval_rules.py",
+      "old": null,
+      "new": "4d2a1440798d8ac95ccacea9886270c9ea1694025b37e95dec783a9cd18f5e6a"
+    },
+    {
+      "path": "ai2apps/tests/test_system_tasks.py",
+      "old": "d1a293283dee62285e3c0b5d0d31a6a1fabbb7f85193c645cced12c03d83f640",
+      "new": "e13411b6e489ec42761380c3f3b1d7c57b840f3be02c8d98bbf44a20c2e3ae10"
+    },
+    {
+      "path": "ai2apps/web/i18n/de.json",
+      "old": "cb0a30c9b814bf4a7787815052e2f1d84fa22e4b855debf50661e6676ba3398e",
+      "new": "9dfde61bceef86291059a9fc709b23d2e41b36d7926e1a62ed281b91c5c28afd"
+    },
+    {
+      "path": "ai2apps/web/i18n/en.json",
+      "old": "517da9353e4da74c557c2f255418cfc2c4f4a0dccd8358712de11f93f66bf0c6",
+      "new": "ea27b06cdb8df0de9527b8fccdd009406f1ce8e3f96dc3adea04e3c67a820e54"
+    },
+    {
+      "path": "ai2apps/web/i18n/es.json",
+      "old": "d0ae3ebb031b2d7b8fe521c97691b3d4b8e163425e8d2bd829a78d3f43e6cc07",
+      "new": "58ef1f5c9048245f7165696c92fb21ea21db3ea6b64125b3bb2c5f085e902a3a"
+    },
+    {
+      "path": "ai2apps/web/i18n/fr.json",
+      "old": "6f78f2f981eba786b001924b20a71b6d8fb2c470274568b537141be0e4889948",
+      "new": "8f655276d667b54fa48812ec4b78dd1ccbf17990f96cbd74f7b04dd3b3ee274d"
+    },
+    {
+      "path": "ai2apps/web/i18n/ja.json",
+      "old": "be6e604427fd098e9781b4db4c1710ae733c1040310a54890abb6185a9466a17",
+      "new": "96fd305ec46659abb574f346deec779f45c70b5c2c86c2e0af5c80d30cfcff5c"
+    },
+    {
+      "path": "ai2apps/web/i18n/ko.json",
+      "old": "b8b5b8771e88570378e88aed5c9318ca49c92d4c5b816b8314e77440007df93e",
+      "new": "f739025b8e98d0680a89144ca574b9cd6ffe384180c2472fe5ef01da9187665c"
+    },
+    {
+      "path": "ai2apps/web/i18n/pt-BR.json",
+      "old": "ce4741b0c11e2b9ec0f3d1fa1324bcaab4ee406a179f5a7fce261c8dd7e5627f",
+      "new": "4b611481e7d48a1476e3ac4e9905c18c4655ad84c44b2e695bb15f4d76120d8c"
+    },
+    {
+      "path": "ai2apps/web/i18n/ru.json",
+      "old": "9ebb0267a592cf98b10870bf1c56ae96f87c0c027a11b1d94cf7c290a7d42db5",
+      "new": "f80c6f852cf7e4aea8fcc7f5602556e40d40920beaf08bf1c5c86fe9d36b73bd"
+    },
+    {
+      "path": "ai2apps/web/i18n/zh-TW.json",
+      "old": "106ab9de101853aa6a8ccfcb0ce3a3249232edbbb8ddc7c1678078dca6b2af47",
+      "new": "3fd130bf6b87f91e2193fdd6cbc5ce866bbd6a2edbe75d2d6880898fb99ddb7a"
+    },
+    {
+      "path": "ai2apps/web/i18n/zh.json",
+      "old": "2e6cf9b69a5a9c7838491b464edd998500be0b274e1471ffaabd14ca6edd1ff0",
+      "new": "5d62627de3966a506f82154ee689776caf4c09d78d8905bd2a8b29c78e86a0b9"
+    },
+    {
+      "path": "ai2apps/web/static/js/agent_parameter_forms.js",
+      "old": "462cde26d7984c0b28423d78cde5b0eed773570f2d1f73acfe7ed10163f735e1",
+      "new": "14cae6e28766234394d544ebb326014191858a1502f376de00ea404651cfbea5"
+    },
+    {
+      "path": "ai2apps/web/static/js/ai_browser.js",
+      "old": "cedbe8bd4f87d2c2d2f32adfd4de2faf301463c89989b19d51361e2ad41257b8",
+      "new": "0cf946d85b18c26c1feec9dd139b39482640b43a46c7e3e6030dca8657bca00d"
+    },
+    {
+      "path": "ai2apps/web/static/js/chat_button_hints.js",
+      "old": null,
+      "new": "1ac5ef7343af4664bb2caeb559d29787460a41f1bdba6560ff4c3147fb4bbfeb"
+    },
+    {
+      "path": "ai2apps/web/static/js/conversation_model_policy.js",
+      "old": "fc5f7223f4037065f429e2d5e810cae7254854df83dea9c8ed9b6c9e36e5a2bf",
+      "new": "c2a7b7b22354448f19cbc007c7954bfb16d5d01c76b8e1091b53896245220c03"
+    },
+    {
+      "path": "ai2apps/web/static/js/dashboard.js",
+      "old": "5baab8ce3f58b0e23140f7f4570b0b0c870e0c14f5c12780c4e224a8c2e0f1be",
+      "new": "86bbb115e85171005ce4ee820a328f3f93a58935dae4a850e5f585f8f9074d32"
+    },
+    {
+      "path": "ai2apps/web/static/js/shell.js",
+      "old": "eceaac6ced0eed9a8f27999f844ce4a0f340d7ee669ac99de5ec483ed738cd6d",
+      "new": "afec77dc40e71f4ee9f9ebfb69608084010ff4617cfb894062b375d0980194a2"
+    },
+    {
+      "path": "ai2apps/web/templates/chat.html",
+      "old": "ad9628aa0aaf39df4e472cf5a66ac1568008149782c88ed5cc5e8059c4b6ae38",
+      "new": "0d7576f7119ebdae11121db5120fca9e25a6ffb47cf88ab87318795db3915a33"
+    },
+    {
+      "path": "ai2apps/web/templates/dashboard/_models.html",
+      "old": "e7b3fa2a1de0c9f6484856e608addf110e5940234cad8d780e072928f0915989",
+      "new": "4b57bdd0dc9b6b0be38119752e811832de0097d32aab59cdf39c121a99d43e4f"
+    },
+    {
+      "path": "ai2apps/web/templates/mobile_ai_browser.html",
+      "old": "2eb93ec9e8e68ac094b0d72a24f08edae479fd806a42ff37c47234f6d21283ff",
+      "new": "24a713178f5e25bc8978a6ca7ab0af913798091862e5a62551de65bf134b8f96"
+    },
+    {
+      "path": "ai2apps/web/templates/system_apps/ai_browser.html",
+      "old": "c3e7c0f7921af94edecb8244e626853eadc19409d8425400d3b3089ee74b0088",
+      "new": "7b356dd5ebfdf6d86f2faa4e6d5fbd92cbc9d78818dbb01049f82cc1a614f14a"
+    }
+  ]
+}

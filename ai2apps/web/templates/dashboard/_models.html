@@ -57,8 +57,8 @@
                             </div>
                             <div class="grid gap-4 md:grid-cols-3">
                                 <template x-for="route in [
-                                    {id:'work_chat', title:'Chat 默认模型', description:'新建普通对话时使用；未设置时沿用中等复杂度工作的默认值。'},
-                                    {id:'work_agent', title:'Agent 默认模型', description:window.t('models.defaults.agent.description')},
+                                    {id:'work_chat', title:'Chat 默认模型', description:'新建普通对话时使用；默认采用 API 默认模型。'},
+                                    {id:'work_agent', title:'Agent 默认模型', description:'新建 Agent 对话时使用；默认采用 API 默认模型。也可手动选择其它对话模型。'},
                                     {id:'work_simple', title:window.t('models.defaults.work_simple.title'), description:window.t('models.defaults.work_simple.description')},
                                     {id:'work_standard', title:window.t('models.defaults.work_standard.title'), description:window.t('models.defaults.work_standard.description')},
                                     {id:'work_complex', title:window.t('models.defaults.work_complex.title'), description:window.t('models.defaults.work_complex.description')}
@@ -68,7 +68,7 @@
                                         <span class="mt-2 block min-h-10 text-xs leading-5 text-neutral-500" x-text="route.description"></span>
                                         <select x-model="defaultModels[route.id]" @change="defaultModelsStatus=''; defaultModelsError=''"
                                                 class="mt-4 w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm">
-                                            <option value="" x-text="route.id === 'work_agent' ? '自动选择符合能力声明的模型' : route.id === 'work_chat' ? '沿用标准任务默认模型' : cloudDefaultLabel()">{{ t('models.defaults.use_api_default') }}</option>
+                                            <option value="" x-text="cloudDefaultLabel()">{{ t('models.defaults.use_api_default') }}</option>
                                             <template x-if="defaultModels[route.id] && !defaultModelOptions(route.id).some(model => model.id === defaultModels[route.id])">
                                                 <option :value="defaultModels[route.id]" disabled x-text="window.t('models.defaults.unavailable').replace('{model}', defaultModels[route.id])"></option>
                                             </template>

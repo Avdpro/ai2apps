@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 from copy import deepcopy
 from dataclasses import dataclass
@@ -52,6 +53,7 @@ class DevelopmentPackageLoader:
 
     def __init__(self, source_root: Path) -> None:
         self._validated: dict[Path, tuple[tuple, DevelopmentAppPackage]] = {}
+        self.errors: dict[str, str] = {}
         self.source_root = source_root.resolve(strict=True)
         if not (self.source_root / "ai2apps" / "__init__.py").is_file():
             raise ExtensionError(
@@ -65,8 +67,9 @@ class DevelopmentPackageLoader:
                 "Development source root must contain a packages directory",
             )
 
-    def discover(self) -> tuple[DevelopmentAppPackage, ...]:
+    def discover(self, *, isolate_invalid: bool = False) -> tuple[DevelopmentAppPackage, ...]:
         result: list[DevelopmentAppPackage] = []
+        errors: dict[str, str] = {}
         present: set[Path] = set()
         for candidate in sorted(self.packages_root.iterdir(), key=lambda item: item.name):
             if (
@@ -77,8 +80,17 @@ class DevelopmentPackageLoader:
             ):
                 continue
             present.add(candidate.resolve(strict=True))
-            result.append(self._load(candidate))
+            try:
+                result.append(self._load(candidate))
+            except ExtensionError as error:
+                self._validated.pop(candidate.resolve(strict=True), None)
+                if not isolate_invalid:
+                    raise
+                errors[candidate.name] = str(error)
+                if self.errors.get(candidate.name) != str(error):
+                    logging.getLogger(__name__).warning('Development Package quarantined: %s', error)
         self._validated = {root: value for root, value in self._validated.items() if root in present}
+        self.errors = errors
         return tuple(result)
 
     def _load(self, candidate: Path) -> DevelopmentAppPackage:

@@ -52,9 +52,11 @@ async def learn(runtime, principal, source, mode, url, observed, previous=None):
     repo=AgentBuilderRepository(runtime.database)
     if previous:
         draft=repo.get_draft(previous['draft_id'],principal.actor_user_id)
+        if draft.source.get('provenance',{}).get('intelligence_recipe_key') != site_agents.recipe_key(source,kind):
+            raise ValueError('Rule belongs to another source or read kind')
         draft=repo.update_draft(draft.id,principal.actor_user_id,expected_revision=draft.revision,source=agent)
     else:
-        draft=repo.create_draft(owner_user_id=principal.actor_user_id,name=agent['name'],description=agent['description'],site_scope=agent['site_scope'],source=agent)
+        draft=repo.create_draft(owner_user_id=principal.actor_user_id,name=agent['name'],description=agent['description'],site_scope=agent['site_scope'],source=agent,reuse_provenance_key='intelligence_recipe_key')
     generation=repo.create_generation(draft,source_digest=compiled.source_digest,compiler_version=compiled.ir['compiler_version'],
         policy_version=compiled.ir['policy_version'],ir=compiled.ir,report=compiled.report,valid=True)
     return {'draft_id':draft.id,'generation_id':generation.id,'ir':generation.ir,'rule':rule}

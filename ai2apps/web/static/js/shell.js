@@ -19,14 +19,21 @@
     // Product Dock order is independent of catalog order and translated names.
     const defaultDockOrder = [
         'ai2apps.general-chat',
+        'ai2apps.intelligence',
         'ai2apps.imagine-studio',
         'ai2apps.readaloud',
         'ai2apps.video-studio',
         'ai2apps.gallery',
+        'ai2apps.ai-browser',
         'ai2apps.todo',
         'ai2apps.discover',
-        'ai2apps.ai-browser',
         'ai2apps.knowledge',
+        'ai2apps.coder',
+    ];
+    const previousDefaultDockOrder = [
+        'ai2apps.general-chat', 'ai2apps.imagine-studio', 'ai2apps.readaloud',
+        'ai2apps.video-studio', 'ai2apps.gallery', 'ai2apps.todo',
+        'ai2apps.discover', 'ai2apps.ai-browser', 'ai2apps.knowledge',
         'ai2apps.coder',
     ];
     const appStage = root.querySelector('.app-stage');
@@ -217,7 +224,18 @@
     function readDockOrder() {
         try {
             const value = JSON.parse(localStorage.getItem(storage.order));
-            if (Array.isArray(value)) return value.filter((id) => byId.has(id));
+            if (Array.isArray(value)) {
+                // Upgrade only the former factory order; preserve manually reordered Docks.
+                if (previousDefaultDockOrder.every((id, index) => value[index] === id)) {
+                    const upgraded = [
+                        ...defaultDockOrder.filter((id) => byId.has(id)),
+                        ...value.filter((id) => byId.has(id) && !defaultDockOrder.includes(id)),
+                    ];
+                    localStorage.setItem(storage.order, JSON.stringify(upgraded));
+                    return upgraded;
+                }
+                return value.filter((id) => byId.has(id));
+            }
         } catch (_) { /* use product Dock defaults */ }
         return defaultDockOrder.filter((id) => byId.has(id));
     }

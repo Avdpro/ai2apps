@@ -3,6 +3,14 @@ const translations=JSON.parse(fs.readFileSync(__dirname+'/../web/i18n/zh.json','
 const t=key=>translations[key]||key;
 const source=fs.readFileSync(__dirname+'/../web/static/js/ai_browser.js','utf8');
 function setup(){const context={crypto:{randomUUID:()=> 'worker-1234567890'},window:{t,},document:{getElementById:()=>({classList:{toggle(){}}})},Map,URL,URLSearchParams,console,setTimeout:()=>0,clearTimeout:()=>{}};vm.runInNewContext(source,context);return context.aiBrowserApp();}
+test('internal extraction candidates and active rules never appear as website capabilities',async()=>{
+ const app=setup();const internal=status=>({id:status,name:'Internal',status,site_key:'example.com',source:{provenance:{intelligence_recipe_key:'https://example.com/|list'}}});
+ const drafts=[internal('compiled'),internal('active'),{id:'saved',name:'My reader',status:'compiled',site_key:'example.com'}];
+ app.request=async path=>path==='/browser-workspace'?{domains:['example.com'],tasks:[],settings:{global_limit:4}}:path==='/agent-drafts'?{items:drafts}:path==='/agent-recipes'?{items:[]}:{items:[{agent_id:'active',name:'internal.read'}]};
+ app.refreshProfileStates=async()=>{};app.updateFrames=()=>{};app.dispatch=async()=>{};
+ await app.refresh();assert.deepEqual(Array.from(app.drafts,d=>d.id),['saved']);
+ assert.deepEqual(Array.from(app.domains[0].capabilities,c=>c.agent_id),['saved']);
+});
 test('header refresh updates catalog and remounts only the current Mini-App',async()=>{
  const app=setup(),calls=[];app.view='mini-app';app.miniAppId='search';app.miniApps=[{id:'search'}];
  app.frames.set('mini-app:search',{frame:{remove:()=>calls.push('remove')}});app.frames.set('task-one',{frame:{remove:()=>assert.fail('Task page must survive')}});

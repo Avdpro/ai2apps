@@ -2809,5 +2809,16 @@
   "intelligence.import.confirming": "記事の保存結果を確認しています…",
   "intelligence.import.unknown_outcome": "接続が中断されました。保存結果は未確認です。後ほど記事一覧を更新して確認してください。",
   "intelligence.progress.parallel": "並列生成中",
-  "intelligence.progress.completed_articles": "完了した記事"
+  "intelligence.progress.completed_articles": "完了した記事",
+  "chat.mode.chat_tooltip": "選択したモデルと直接対話します。",
+  "chat.mode.agent_tooltip": "ツールやAppでタスクを実行します。このページを閉じてもタスクは継続でき、戻ると結果を確認できます。",
+  "chat.app_usage.title": "App利用ルール",
+  "chat.app_usage.manual": "自分で承認",
+  "chat.app_usage.ai": "AIが承認",
+  "chat.app_usage.always": "常に承認",
+  "chat.app_usage.tooltip": "この会話の今後のツール・App実行承認：毎回確認、必要かつ低リスクの呼び出しのみAIが承認して他は確認、またはすべて自動承認。パラメーター、ライセンス、支払いの確認は引き続き必要です。",
+  "chat.app_usage.unavailable": "先にDesktopに接続して会話を作成してください。",
+  "chat.voice_start_tooltip": "音声入力",
+  "chat.voice_stop_tooltip": "録音を停止して文字起こし",
+  "chat.attach_files_tooltip": "ファイルを添付（大きなローカルファイルは元のパスを参照）"
 }

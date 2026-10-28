@@ -1,10 +1,17 @@
 """Learn bounded extraction rules; compile with the shared WebAgent compiler."""
 from urllib.parse import urlsplit
+import logging
 from pydantic import BaseModel, Field
 from .models import public_url
 from .service import model_json
 from ai2apps.agent_builder.compiler import compile_source
 from ai2apps.agent_builder.repository import AgentBuilderRepository
+
+logging.getLogger(__name__).info(
+    'Intelligence candidate reuse v1 loaded from %s; repository=%s; atomic_reuse=%s',
+    __file__, AgentBuilderRepository.create_draft.__code__.co_filename,
+    'reuse_provenance_key' in AgentBuilderRepository.create_draft.__code__.co_varnames,
+)
 
 
 class ObservedRegion(BaseModel):
@@ -80,10 +87,13 @@ async def learn(runtime, request, principal, source, body, previous=None):
     repository = AgentBuilderRepository(runtime.database)
     if previous:
         draft = repository.get_draft(previous['draft_id'], principal.actor_user_id)
+        if draft.source.get('provenance', {}).get('intelligence_recipe_key') != recipe_key(source, body.kind):
+            raise ValueError('规则不属于当前信息源和读取类型')
         draft = repository.update_draft(draft.id, principal.actor_user_id, expected_revision=draft.revision, source=agent_source)
     else:
         draft = repository.create_draft(owner_user_id=principal.actor_user_id, name=agent_source['name'],
-            description=agent_source['description'], site_scope=agent_source['site_scope'], source=agent_source)
+            description=agent_source['description'], site_scope=agent_source['site_scope'], source=agent_source,
+            reuse_provenance_key='intelligence_recipe_key')
     generation = repository.create_generation(draft, source_digest=compiled.source_digest,
         compiler_version=compiled.ir['compiler_version'], policy_version=compiled.ir['policy_version'],
         ir=compiled.ir, report=compiled.report, valid=True)
