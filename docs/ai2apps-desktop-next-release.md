@@ -1,8 +1,9 @@
 ### NXR-DESKTOP-RELEASE-2265-20261028
 
-- 状态：preflight。用户要求发布新增修正；候选 0.1.8 / Build 2265，基于 2264 冻结源码，纳入 2026-10-28 情报候选去重、Dock 顺序、开发 Package 隔离、Chat 默认模型/声明提示/布局/悬浮提示/麦克风/预算编辑移除、文件选择修正和会话审批规则（schema96）。独立 Package/Runtime/实验目录不发布；保留 2264 已记录延期项。
+- 状态：signed / notarized / dual_origin_uploaded / cloud_handoff_pending。0.1.8 / Build 2265 已上传 GitHub 和 ModelScope；Cloud 交由用户转交执行，尚不宣称生产推送。基于 2264 冻结源码，纳入 2026-10-28 情报候选去重、Dock 顺序、开发 Package 隔离、Chat 默认模型/声明提示/布局/悬浮提示/麦克风/预算编辑移除、文件选择修正和会话审批规则（schema96）。独立 Package/Runtime/实验目录不发布；保留 2264 已记录延期项。
 - 生产回读已确认 2264 / 10000bp，Cloud 回执摘要 `1311e3da1851d30be987c75a4624092265a6d1dc46065c01bf91c1348316aa46`；实际目标 Mac 验收仍不冒称通过。新版本 Cloud 交接由用户转交，不读取 Cookie。
-- 源码快照复用 2264 发布基线，逐文件摘要审计新增修改；原生/Swift/omlx 无新增源码差异，沿用既有输入但发布前复核。Swift 79+2 已通过，Host/AaAT/前端整套回归运行中。前端首轮依赖路径/工作目录错误，不算通过；已用正确环境重跑。发布工作流隔离已纳入候选，固定 Dev/App-Dev/Test 不替换。
+- 源码 aff206a09f21110f3ab1fba12a146b48331dc352 已推送；逐文件摘要审计，原生/Swift/omlx 沿用已复核输入。Host 2665 passed/2 skipped，AaAT 462，冻结快照专项 32，Swift 79+2，路由 17 passed。前端主快照 1020 passed，两个外部源码路径失败文件补跑 4 passed；环境失败未伪装成通过。成品冷启动、schema96、临时 2264→2265 updater 和正式候选资格检查通过。固定 Dev/App-Dev/Test 未替换。PyPI 40630246877 和 Homebrew 40630246788 实际全部 skipped。
+- 公证 aa7249e0-acf2-4b71-bc48-555e7be2b467 Accepted/stapled；DMG 267962905 bytes，SHA-256 70cbab06d23c93c51c6a4674deb50adc6c0701e2b4666c8a13ac44168caf3a04；MS revision 9f39089c94b4febb862574d9130c35dc9237fc31。交接与验收边界：docs/desktop-build-2265-cloud-handoff-2026-10-28.md。
 
 ### NXR-INTELLIGENCE-INTERNAL-CANDIDATES-20261028
 
