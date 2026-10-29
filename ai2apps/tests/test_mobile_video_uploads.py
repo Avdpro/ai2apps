@@ -91,8 +91,8 @@ async def test_subtitle_owner_preserves_missing_configuration_and_uses_path(runt
     assert subtitles.source(runtime,principal,thread.session.id,attachment.id)[0]==path
     path.write_bytes(b'changed')
     with pytest.raises(ValueError,match='changed'):subtitles.source(runtime,principal,thread.session.id,attachment.id)
-    form=runtime.app_capability_router.providers['ai2apps.video-studio.video.subtitles']
-    assert form.mini_app_id==subtitles.MINI and form.agent_context['instructions']
+    # Without its installed Package, the owner must not be pre-registered by Host.
+    assert 'ai2apps.video-studio.video.subtitles' not in runtime.app_capability_router.providers
 
 
 @pytest.mark.asyncio

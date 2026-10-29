@@ -11,9 +11,11 @@ from test_app_interactions import runtime
 
 @pytest.mark.asyncio
 async def test_disabled_provider_is_durable_scoped_and_cannot_be_forced(runtime):
+    from ai2apps.identity import IdentityRepository, OrganizationType
+    IdentityRepository(runtime.database).bind_installation(installation_id='local',cloud_device_id='test-device',organization_id='test-org',organization_type=OrganizationType.HOUSEHOLD,core_user_id='other',billing_account_id='billing',access_epoch=1)
     router=runtime.app_capability_router;calls=[]
     async def execute(args,ctx):calls.append(ctx.actor_user_id);return {'ok':True}
-    async def describe(*args):return {}
+    async def describe(*args):return {'effective_schema':{'type':'object','properties':{},'additionalProperties':False}}
     router.register(CapabilityProvider('test.toggle','test.toggle','test',execute,describe=describe))
     ctx=ToolCallContext(caller_id='test',actor_user_id='local',installation_id='local')
     router.set_enabled('local','local','test.toggle',False)

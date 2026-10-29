@@ -1285,6 +1285,8 @@ shell_router = APIRouter(tags=["apps"])
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 static_dir = STATIC_DIR
 MOBILE_STATIC_FILES = frozenset({
+    'css/chat_artifacts.css',
+    'js/chat_artifacts.js',
     'css/asset_slot.css',
     'js/asset_slot.js',
     'css/gallery_mini.css',

@@ -5,7 +5,7 @@ import yaml
 from ai2apps.studio.mini_app_chat import validate_chat_declaration
 ROOT=Path(__file__).resolve().parents[2]
 
-def test_all_fifteen_package_chat_interfaces_are_closed_and_bundled():
+def test_all_thirteen_package_chat_interfaces_are_closed_and_bundled():
  count=0
  for p in (ROOT/'packages').glob('*/app.yaml'):
   app=yaml.safe_load(p.read_text())
@@ -19,4 +19,5 @@ def test_all_fifteen_package_chat_interfaces_are_closed_and_bundled():
    assert 'package_mini_chat.js' in html.read_text()
    assert (p.parent/'web/package_mini_chat.js').read_bytes()==(ROOT/'ai2apps/web/static/js/package_mini_chat.js').read_bytes()
    assert (p.parent/chat['help']['resource']).is_file()
- assert count==15
+ # SearchAll and WebReader are now product built-ins, not independent Packages.
+ assert count==13

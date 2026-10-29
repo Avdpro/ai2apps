@@ -24,7 +24,9 @@ def test_frozen_package_uses_client_contract_compatibility_not_product_version()
     from ai2apps.packages.registry import RegistryPackageManager
     manifest=json.loads((Path(__file__).resolve().parents[2]/'packages/ai2apps-frozen-time/ai2apps.json').read_text())
     RegistryPackageManager._check_compatibility(manifest['compatibility'])
-    assert manifest['package']['version']=='0.1.2'
+    import yaml
+    app=yaml.safe_load((Path(__file__).resolve().parents[2]/'packages/ai2apps-frozen-time/app.yaml').read_text())
+    assert manifest['package']['version']==app['version']
 
 def test_live_photo_pair_metadata(tmp_path):
     import numpy as np
