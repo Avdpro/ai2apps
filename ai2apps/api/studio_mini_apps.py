@@ -514,7 +514,7 @@ def create_studio_mini_app_router(
             "items": [
                 broker.probe_declaration(studio_id, item)
                 for item in catalog["items"]
-                if item.get("source") == "package"
+                if item.get("source") in {"package", "builtin"}
             ],
         }
 
@@ -563,7 +563,7 @@ def create_studio_mini_app_router(
             ),
             None,
         )
-        if selected is None or selected.get("source") != "package":
+        if selected is None or selected.get("source") not in {"package", "builtin"}:
             raise HTTPException(
                 status_code=404, detail="Installed Studio Mini-App was not found"
             )

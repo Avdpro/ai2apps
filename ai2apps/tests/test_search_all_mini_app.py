@@ -11,8 +11,10 @@ from ai2apps.browser.background_page import BackgroundPage
 
 ROOT=Path(__file__).resolve().parents[2]
 
-def test_search_package_uses_normal_loader_and_only_compiled_scoped_capabilities():
-    package=DevelopmentPackageLoader(ROOT)._load(ROOT/'packages/ai2apps-search-all')
+def test_builtin_search_uses_shipped_declaration_and_compiled_scoped_capabilities():
+    from ai2apps.browser.builtin_mini_apps import definitions
+    minis,resources=definitions()
+    package=SimpleNamespace(manifest={'mini_apps':[next(m for m in minis if m['id']=='ai2apps.search-all')]},files={p.removeprefix('builtin_mini_apps/search-all/'):None for p in resources})
     entries=validate_web_agent(package.manifest['mini_apps'][0])
     assert [e['id'] for e in entries]==['google','bing','duckduckgo','brave','wikipedia','xiaohongshu','x','weibo','youtube','bilibili','plan','deepseek','fast_api','summarize','review']
     for entry in entries[:10]:
@@ -64,7 +66,9 @@ async def test_site_search_empty_and_assistance_results(result,outcome):
 
 
 def test_review_is_a_shared_ai_data_task_with_bounded_inputs():
-    package=DevelopmentPackageLoader(ROOT)._load(ROOT/'packages/ai2apps-search-all')
+    from ai2apps.browser.builtin_mini_apps import definitions
+    minis,resources=definitions()
+    package=SimpleNamespace(manifest={'mini_apps':[next(m for m in minis if m['id']=='ai2apps.search-all')]},files={p.removeprefix('builtin_mini_apps/search-all/'):None for p in resources})
     entries=validate_web_agent(package.manifest['mini_apps'][0])
     entry=entries[-1]
     ir=compile_source(entry['source']).ir
@@ -120,7 +124,9 @@ async def test_xhs_sort_verification_failure_is_a_source_failure_not_a_queue_int
     assert result['evidence']['reason']=='xiaohongshu_sort_not_verified'
 
 def test_summary_is_bounded_durable_read_ai_and_trusted_bundle():
-    package=DevelopmentPackageLoader(ROOT)._load(ROOT/'packages/ai2apps-search-all')
+    from ai2apps.browser.builtin_mini_apps import definitions
+    minis,resources=definitions()
+    package=SimpleNamespace(manifest={'mini_apps':[next(m for m in minis if m['id']=='ai2apps.search-all')]},files={p.removeprefix('builtin_mini_apps/search-all/'):None for p in resources})
     entry=next(e for e in validate_web_agent(package.manifest['mini_apps'][0]) if e['id']=='summarize')
     result=compile_source(entry['source']);assert result.valid,result.report
     assert [step['operation'] for step in result.ir['steps']]==['read_results','ai.transform','assign']

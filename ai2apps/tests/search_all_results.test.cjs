@@ -1,5 +1,5 @@
 const test=require('node:test'),assert=require('node:assert/strict');
-require('../../packages/ai2apps-search-all/web/merge.js');
+require('../web/static/builtin_mini_apps/search-all/web/merge.js');
 const {merge,canonical}=global.SearchAllResults;
 test('merge removes tracking for comparison and retains each original origin URL',()=>{
  const a='https://example.org/a?utm_source=google',b='https://example.org/a#part';

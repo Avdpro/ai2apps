@@ -1,6 +1,6 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 const {chromium}=require('playwright');
-const base=path.resolve(__dirname,'../../packages/ai2apps-search-all/web');
+const base=path.resolve(__dirname,'../web/static/builtin_mini_apps/search-all/web');
 for(const width of [390,1100])test(`Cloud paid consent and no-charge cancellation ${width}`,async()=>{
  const browser=await chromium.launch({headless:true,channel:'chrome'});
  try{
@@ -14,7 +14,8 @@ for(const width of [390,1100])test(`Cloud paid consent and no-charge cancellatio
   window.AI2AppsWebAgent={startup:async()=>({profiles:[{key:'default',name:'Default',is_default:true}],sources:[]}),onTask:()=>()=>{},retainedTasks:async()=>[],searchConfig:async()=>({configured:true,deepseek_available:true,fast_source:'deepseek',deepseek_route:'cloud',cloud_offer:{available:true,price_version:'v1',points_per_search:'1'}}),draft:async()=>null,saveDraft:async()=>{},prepareSearch:async()=>prep,searchPreparation:async()=>prep,startSearch:async body=>{window.starts.push(body);return done;},searchWorkflow:async()=>done,searchSummary:async()=>({status:'failed'})};
  });
  for(const file of ['i18n.js','startup.js','modes.js','merge.js','summary.js','presentation.js','diagnostics.js','search.js','workflow.js'])await page.addScriptTag({path:base+'/'+file});
- await page.waitForFunction(()=>document.querySelector('#profile').options.length>0&&!document.querySelector('#run').disabled&&document.querySelector('#run').textContent==='Optimize search terms');
+ await page.waitForFunction(()=>document.querySelector('#profile').options.length>0&&!document.querySelector('#run').disabled&&document.querySelector('#run').textContent==='Prepare fast search');
+ assert.equal(await page.locator('#mode').inputValue(),'fast');
  const source=page.locator('input[name=source][value=deepseek]');assert.equal(await source.isDisabled(),false);
  assert.match(await page.locator('#deepseek-hint').textContent(),/Points confirmation/);
  await page.locator('#query').fill('test');await page.locator('#run').click();

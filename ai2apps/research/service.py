@@ -114,9 +114,6 @@ def install_web_research_service(
         ),
     )
     router = runtime_provider().app_capability_router if runtime_provider else None
-    if router:
-        from .mini_apps import install_mini_app_providers
-        install_mini_app_providers(runtime_provider, router)
     legacy_labels = {
         'web.search': (
             {'zh': '网页搜索（HTTP）', 'en': 'Web search (HTTP)'},
@@ -133,22 +130,14 @@ def install_web_research_service(
             legacy_name, legacy_summary = legacy_labels.get(name, (None, None))
             router.register(CapabilityProvider('ai2apps.web-research.'+name.rsplit('.',1)[-1],name,'ai2apps.web-research',handler,priority=0,
                 display_name=legacy_name, summary=legacy_summary))
-            if name=='web.search':
-                schema['properties'].update(cloud_consent={'type':'boolean'},cloud_price_version={'type':'string','maxLength':100},cloud_max_points={'type':'string','maxLength':20})
-                schema['properties']['sources']={'type':'array','items':{'type':'string','minLength':1},'minItems':1,'maxItems':4,'uniqueItems':True,'description':'Search All source IDs; defaults to google and bing.'}
-                schema['properties'].update(confirmation_id={'type':'string'},preparation_id={'type':'string'},
-                    mode={'type':'string','enum':['fast','preferred','custom']},x_sort={'type':'string'},xiaohongshu_sort={'type':'string'},exclude_ads={'type':'boolean'},retain_pages={'type':'boolean'})
-                schema['properties']['sources']['maxItems']=10
-            schema['properties'].update(profile={'type':'string','default':'default'},provider={'type':'string'},parameters={'type':'object'})
+            schema['properties'].update(provider={'type':'string'},parameters={'type':'object'})
+            schema.pop('required',None)
+            schema['additionalProperties']=True
+            if not hasattr(registry,'capability_gateways'):registry.capability_gateways={}
+            registry.capability_gateways[name]=service.id
             async def routed(arguments,context,capability=name):
-                if capability=='web.search':
-                    if arguments.get('provider') not in (None,'ai2apps.search-all.search'):
-                        raise ToolProviderError('Prepare search terms and sources in the Search All form, then click Search before execution')
-                    arguments={**arguments,'provider':'ai2apps.search-all.search'}
                 return await router.invoke(capability,arguments,context)
             handler=routed
-            description += ' Uses installed Search All/Web Reader Mini-Apps through the shared background Browser Task queue. Results identify the actual Mini-App and source Tasks. Do not treat search snippets as article evidence.'
-            if name=='web.search':description+=' Requires app.collect_parameters for optimized editable search terms, mode and source confirmation. Never invent confirmation_id. Returns original article bodies, summary and citations from the shared workflow.'
 
         repository.ensure_tool(
             service_id=service.id,

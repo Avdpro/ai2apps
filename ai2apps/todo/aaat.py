@@ -2,12 +2,13 @@
 from __future__ import annotations
 
 FORM_LABELS = {'query': {'zh': '搜索内容', 'en': 'Search query'}, 'directory_id': {'zh': '目录 ID', 'en': 'Directory ID'}, 'status': {'zh': '状态', 'en': 'Status'}, 'limit': {'zh': '结果数量', 'en': 'Result limit'}, 'task_id': {'zh': '任务 ID', 'en': 'Task ID'}, 'title': {'zh': '标题', 'en': 'Title'}, 'description': {'zh': '描述', 'en': 'Description'}, 'parent_id': {'zh': '父任务 ID', 'en': 'Parent task ID'}, 'priority': {'zh': '优先级', 'en': 'Priority'}, 'project_id': {'zh': '项目 ID', 'en': 'Project ID'}, 'scope': {'zh': '统计范围', 'en': 'Scope'}, 'offset': {'zh': '起始位置', 'en': 'Offset'}}
+FORM_LABELS['directory_id'] = {'zh':'目录','en':'Directory'}
+FORM_LABELS['directory_name'] = {'zh':'新目录名称','en':'New directory name'}
 FORM_LABELS.update({'revision':{'zh':'数据版本','en':'Revision'},'patch':{'zh':'修改字段','en':'Fields to update'},'action':{'zh':'界面操作','en':'UI action'},'filter':{'zh':'列表筛选','en':'List filter'}})
 from collections import Counter
-import unicodedata
 from ai2apps.services.aaat import principal_for
 from ai2apps.services import ToolProviderError
-from .store import TodoStore
+from .store import TodoStore, normalize_name as normalize
 
 PROGRESS_FILTERS = {'progress_gt':lambda value,bound:value>bound,'progress_gte':lambda value,bound:value>=bound,
     'progress_lt':lambda value,bound:value<bound,'progress_lte':lambda value,bound:value<=bound}
@@ -18,6 +19,8 @@ DECLARATION={
     'schema':'ai2apps.aaat-declaration/v1',
     'instructions':[
         'For task status/progress questions use todo.search. Search rows already include each task’s own progress percentage, status, priority and path; do not call todo.get merely to read those fields. Filter before pagination: progress_gt/lt are strict, progress_gte/lte inclusive. For in-progress tasks above 10 percent use status=in_progress and progress_gt=10. Read next_offset only when coverage is partial; never infer full totals from a page.',
+        'When the user names a directory (for example Personal), first use todo.resolve_directory with that name. Only resolved permits using its returned directory ID in todo.create. Ambiguous requires a user choice. If not_found and the user explicitly requested this directory, pass directory_id=__todo_new__ and directory_name with the exact requested name to todo.create/app.collect_parameters; the confirmed creation atomically creates that named directory and task. Never silently replace an explicitly named directory with Inbox. Directory resolution is owner-scoped and reads no task contents.',
+        'For todo.create, never ask users to type internal directory IDs. The owner parameter form lists directory names. A single directory is preselected; if none exist, the form offers an Inbox created only after confirmation. Multiple directories require a named choice. Do not invent IDs or create a directory during discovery.',
         'Todo uses directories containing hierarchical projects. Every task may be a parent project; a project is not an App capability or a directory.',
         'For a user naming a project or asking how many tasks, priority levels or completions it has, use todo.project_stats with query set to the mentioned name. Todo resolves names and computes the full hierarchy; do not count title search matches.',
         'todo.resolve_project returns candidate IDs, paths and child counts. A unique normalized title match may resolve a longer title containing that name. Emoji, case and decorative punctuation are not identity. Use returned IDs rather than inventing them.',
@@ -38,14 +41,22 @@ DECLARATION={
 def store(runtime):return TodoStore(runtime.config.paths.artifacts_path/'todo')
 
 
+def resolve_directory(directories, query):
+    target = normalize(query)
+    if not target:
+        raise ValueError('Directory query requires a name')
+    exact = [d for d in directories if normalize(d['title']) == target]
+    candidates = exact or [d for d in directories if target in normalize(d['title'])]
+    return {'status': 'resolved' if len(exact) == 1 else 'ambiguous' if candidates else 'not_found',
+        'query': query, 'directory': exact[0] if len(exact) == 1 else None,
+        'candidates': candidates, 'match_count': len(candidates),
+        **({'creation': {'directory_id':'__todo_new__','directory_name':query.strip()}} if not candidates else {})}
+
+
 def task_progress(task):
     value=task.get('progress')
     return value if value is not None else 100 if task.get('completed') or task['status']=='completed' else 0
 
-
-def normalize(value):
-    value=unicodedata.normalize('NFKC',value).casefold()
-    return ' '.join(''.join(c if unicodedata.category(c)[0] in ('L','N','M') and c not in '\ufe0e\ufe0f' else ' ' for c in value).split())
 
 
 class Projects:
@@ -138,6 +149,30 @@ def query_projects(snapshot,operation,args):
 
 def install(runtime,register):
     from ai2apps.services.builtin_apps import obj,string,LIMIT
+    def creation_descriptor(schema):
+        async def describe(principal, model=None):
+            from copy import deepcopy
+            from ai2apps.agents.parameter_forms import schema_fields
+            active = deepcopy(schema)
+            directories = store(runtime).list_directories(principal.actor_user_id)
+            choices = [{'value':'', 'label':{'zh':'请选择目录','en':'Choose directory'}},
+                *({'value': d['id'], 'label': d['title']} for d in directories)]
+            choices.append({'value': '__todo_inbox__', 'label': {'zh':'收件箱（自动创建或使用）','en':'Inbox (create or reuse)'}})
+            choices.append({'value':'__todo_new__', 'label':{'zh':'新建指定目录','en':'Create named directory'}})
+            active['allOf'] = [{'if': {'properties': {'directory_id': {'const':'__todo_new__'}}, 'required':['directory_id']},
+                'then': {'required':['directory_name'], 'properties': {'directory_name': {'minLength':1,'pattern':r'\S'}}}}]
+            field = active['properties']['directory_id']
+            active['required'] = ['title', 'directory_id']
+            if len(directories) <= 1:
+                field['default'] = directories[0]['id'] if directories else '__todo_inbox__'
+            fields = schema_fields(active)
+            for item in fields:
+                if item['key'] == 'directory_id':
+                    item['type'] = 'select'
+                    item['options'] = choices
+            return {'effective_schema': active, 'fields': fields, 'selection_required': True}
+        return describe
+
     async def execute(name,args,context):
         owner=principal_for(runtime,context).actor_user_id
         s=store(runtime)
@@ -147,6 +182,11 @@ def install(runtime,register):
             if name in ('todo.create','todo.update') and binding['ui'].get('dirty'):raise ToolProviderError('Save or discard current Todo form edits before changing project data')
             if name in ('todo.search','todo.resolve_project','todo.project_stats'):
                 args={**args,'directory_id':binding['scope']['directory_id']}
+        if name == 'todo.resolve_directory':
+            directories = s.list_directories(owner)
+            if binding:
+                directories = [d for d in directories if d['id'] == binding['scope']['directory_id']]
+            return resolve_directory(directories, args['query'])
         if name in ('todo.resolve_project','todo.project_stats','todo.children'):
             return query_projects(s.snapshot(owner),name,args)
         if name=='todo.ui':return await runtime.app_chat.ui_action(context,args)
@@ -159,7 +199,13 @@ def install(runtime,register):
         if name=='todo.get':return {'task':s.get(owner,args['task_id'])}
         if name=='todo.create':
             if not context.invocation_id:raise ToolProviderError('Creating a Todo requires a durable Tool invocation')
-            return {'task':s.save(owner,args,creation_key='aaat:'+context.invocation_id)}
+            new_name = (args.get('directory_name') or '').strip() or None
+            if args.get('directory_id') == '__todo_new__' and not new_name:
+                raise ToolProviderError('New directory name is required')
+            if new_name and args.get('directory_id') != '__todo_new__':
+                raise ToolProviderError('Choose Create named directory to use a new directory name')
+            return {'task':s.save(owner,{k:v for k,v in args.items() if k!='directory_name'},creation_key='aaat:'+context.invocation_id,
+                create_inbox=args.get('directory_id') == '__todo_inbox__', directory_name=new_name)}
         data=s.snapshot(owner);projects=Projects(data);q=normalize(args.get('query',''))
         matches=[t for t in projects.tasks.values() if (not args.get('directory_id') or t['directory_id']==args['directory_id'])
             and (not args.get('status') or t['status']==args['status']) and q in normalize(t['title']+' '+t.get('description',''))
@@ -183,8 +229,9 @@ def install(runtime,register):
     stats_schema['oneOf']=[{'required':['project_id'],'not':{'required':['query']}},{'required':['query'],'not':{'required':['project_id']}}]
     definitions=[
         ('todo.search','查询待办 / Search Todo','Query owned tasks by status and progress percentage in one call. Returns progress, priority and project path; no todo.get needed for these fields. progress_gt/lt are strict; progress_gte/lte inclusive. Filters apply before pagination. Use todo.project_stats for hierarchy totals.',obj({'query':{'type':'string','maxLength':500},'directory_id':string(),'status':{'enum':['not_started','in_progress','awaiting_acceptance','completed','paused']},'limit':LIMIT,'offset':{'type':'integer','minimum':0,'default':0},**{k:{'type':'number','minimum':0,'maximum':100,'description':d} for k,d in PROGRESS_LABELS.items()}})),
+        ('todo.resolve_directory','定位待办目录 / Resolve Todo directory','Resolve a user-mentioned directory name to an owned ID. Only a unique normalized exact match resolves automatically; ambiguous requires user choice. Missing names return named-create parameters for todo.create when the user explicitly requested that directory. This lookup never creates directories or reads tasks.',obj({'query':string('目录名称 / Directory name')},['query'])),
         ('todo.get','读取待办 / Read Todo','Read one owned project by ID.',obj({'task_id':string()},['task_id'])),
-        ('todo.create','创建待办 / Create Todo','Create an owned task after parameter confirmation; does not launch its executor or schedule.',obj({'title':string('标题 / Title'),'directory_id':string('目录 ID / Directory ID'),'description':{'type':'string','maxLength':100000},'parent_id':string(),'priority':{'enum':['U','S','A','B','C','D'],'default':'C'}},['title','directory_id'])),
+        ('todo.create','创建待办 / Create Todo','Create an owned task after parameter confirmation; does not launch its executor or schedule.',obj({'title':string('标题 / Title'),'directory_id':string('目录 ID / Directory ID'),'directory_name':{'type':'string','maxLength':200},'description':{'type':'string','maxLength':100000},'parent_id':string(),'priority':{'enum':['U','S','A','B','C','D'],'default':'C'}},['title'])),
         ('todo.resolve_project','定位待办项目 / Resolve project','Resolve a mentioned project name, including longer titles and decorative emoji. Returns scoped candidates; disambiguate only if status is ambiguous.',obj({'query':string('项目名称 / Project name'),'directory_id':string(),'limit':LIMIT},['query'])),
         ('todo.project_stats','统计项目层级 / Project statistics','Answer task totals, priority counts and completion counts for a named Todo project. Pass query with the user-mentioned name or an actual project_id. Resolves project titles and counts the full hierarchy, including completed tasks; never count title search matches.',stats_schema),
         ('todo.children','查询子项目 / Project children','Browse direct children or recursive descendants by returned project_id, with explicit pagination coverage.',obj({'project_id':string(),'scope':{**scope,'default':'direct'},'offset':{'type':'integer','minimum':0,'default':0},'limit':LIMIT},['project_id'])),
@@ -195,6 +242,6 @@ def install(runtime,register):
     ])
     for name,title,summary,schema in definitions:
         register(name,'ai2apps.todo',title,summary,schema,lambda a,c,n=name:execute(n,a,c),
-            timeout_ms=840000 if name=='todo.ui' else 30000,effects=('workspace.write',) if name in ('todo.create','todo.update') else (),invocation_policy=confirmation(name),agent_context=DECLARATION,selection_required=name in ('todo.create','todo.update'),provider_version='2' if name=='todo.search' else '1',field_labels={**FORM_LABELS,**{k:{'zh':z,'en':PROGRESS_LABELS[k]} for k,z in [('progress_gt','进度大于（%）'),('progress_gte','进度至少（%）'),('progress_lt','进度小于（%）'),('progress_lte','进度至多（%）')]}},form_summary={'zh':{'todo.search':'按状态及进度筛选待办，直接返回任务进度、优先级和项目路径。','todo.get':'读取指定任务或项目。','todo.create':'确认参数后创建待办，不启动执行或调度。','todo.update':'按版本修改指定待办字段。','todo.ui':'操作当前待办界面。','todo.resolve_project':'按名称定位项目，必要时选择匹配项。','todo.project_stats':'统计项目的子项与全部后代。','todo.children':'浏览项目层级中的子项。'}[name],'en':summary},option_labels={'scope':{'direct':{'zh':'直接子项','en':'Direct children'},'recursive':{'zh':'全部后代','en':'All descendants'}},'status':{k:{'zh':z,'en':e} for k,z,e in [('not_started','未开始','Not started'),('in_progress','进行中','In progress'),('awaiting_acceptance','待验收','Awaiting acceptance'),('completed','已完成','Completed'),('paused','已暂停','Paused')]}})
+            descriptor=creation_descriptor(schema) if name=='todo.create' else None,timeout_ms=840000 if name=='todo.ui' else 30000,effects=('workspace.write',) if name in ('todo.create','todo.update') else (),invocation_policy=confirmation(name),agent_context=DECLARATION,selection_required=name in ('todo.create','todo.update'),provider_version='3' if name=='todo.create' else '2' if name in ('todo.search','todo.resolve_directory') else '1',field_labels={**FORM_LABELS,**{k:{'zh':z,'en':PROGRESS_LABELS[k]} for k,z in [('progress_gt','进度大于（%）'),('progress_gte','进度至少（%）'),('progress_lt','进度小于（%）'),('progress_lte','进度至多（%）')]}},form_summary={'zh':{'todo.search':'按状态及进度筛选待办，直接返回任务进度、优先级和项目路径。','todo.resolve_directory':'按目录名称匹配可访问的待办目录，唯一匹配时返回目录标识。','todo.get':'读取指定任务或项目。','todo.create':'确认参数后创建待办，不启动执行或调度。','todo.update':'按版本修改指定待办字段。','todo.ui':'操作当前待办界面。','todo.resolve_project':'按名称定位项目，必要时选择匹配项。','todo.project_stats':'统计项目的子项与全部后代。','todo.children':'浏览项目层级中的子项。'}[name],'en':summary},option_labels={'scope':{'direct':{'zh':'直接子项','en':'Direct children'},'recursive':{'zh':'全部后代','en':'All descendants'}},'status':{k:{'zh':z,'en':e} for k,z,e in [('not_started','未开始','Not started'),('in_progress','进行中','In progress'),('awaiting_acceptance','待验收','Awaiting acceptance'),('completed','已完成','Completed'),('paused','已暂停','Paused')]}})
     import logging
     logging.getLogger(__name__).info('Todo AaAT semantics loaded from %s',__file__)

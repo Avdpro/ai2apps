@@ -178,6 +178,7 @@ class AgentRunResponse(BaseModel):
     current_step: int
     budget: dict[str, int]
     usage: dict[str, int]
+    model_metrics: dict[str, Any] = Field(default_factory=dict)
     revision: int
     deadline_at: datetime
     created_at: datetime
@@ -276,6 +277,7 @@ def _run_response(runtime: PlatformRuntime, run: AgentRunRecord) -> AgentRunResp
         total = usage.get("total_tokens") if isinstance(usage, dict) else None
         if isinstance(total, int) and total > 0:
             model_tokens += total
+    from ai2apps.agents.run_metrics import observed_metrics
     return AgentRunResponse(
         id=run.id,
         agent_definition_id=run.agent_definition_id,
@@ -302,6 +304,7 @@ def _run_response(runtime: PlatformRuntime, run: AgentRunRecord) -> AgentRunResp
             "max_model_tokens": max_model_tokens,
         },
         usage={"steps": run.current_step, "model_tokens": model_tokens},
+        model_metrics=observed_metrics(steps),
         revision=run.revision,
         deadline_at=run.deadline_at,
         created_at=run.created_at,

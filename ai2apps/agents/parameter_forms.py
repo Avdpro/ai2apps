@@ -1,4 +1,7 @@
 """Trusted, Run-owned parameter form descriptors shared by Apps and Mini-Apps."""
+import json
+import re
+import fnmatch
 from dataclasses import dataclass, replace
 from typing import Callable
 from jsonschema import Draft202012Validator
@@ -22,6 +25,7 @@ class ParameterForm:
     complete: Callable | None = None
     priority: int = 0
     provider_version: str | None = None
+    configuration_app_id: str | None = None
     prompt: dict | str = '填写参数 / Complete parameters'
     related_capabilities: tuple = ()
     switch_values: Callable | None = None
@@ -207,9 +211,9 @@ def install_parameter_forms(agents,services,registry,*,service_id,provider_key,c
         item=next((i for i in agents.list_interactions(run.id) if i.request_key=='form:'+arguments['request_id']),None)
         if not item or item.status is not InteractionStatus.SUBMITTED or item.request!={'control':'parameter_form','version':resolve_form(arguments, item.ui_hints.get('provider') if item else None).version,**arguments}:raise ToolProviderError('Complete the form first')
         return item.response
-    services.ensure_tool(service_id=service_id,qualified_name=FORM_TOOL,display_name='App parameter form',description='Collect missing or invalid parameters for a registered capability in a durable Chat form. Pass capability as a string, optional provider and known values. The selected App or Mini-App declaration supplies fields, defaults, model constraints and completion behavior. A completed form has already been submitted by the user; do not ask them to confirm the same parameters again. Before requesting a form, briefly explain which App/Mini-App you will call and which inputs need completion or confirmation. Configure-only results contain the exact user-confirmed arguments to pass unchanged to the returned provider; do not add optional fields or substitute defaults after confirmation; changed arguments require fresh confirmation; execution results contain the completed operation result. Cancellation is not success.',input_schema=tool_schema(),output_schema={'type':'object'},effects=(),timeout_ms=10000)
+    services.ensure_tool(service_id=service_id,qualified_name=FORM_TOOL,display_name='App parameter form',description='Collect missing or invalid parameters for a registered capability in a durable Chat form. First read the resolved parameter contract of the selected Provider using app.describe. Pass capability as a string, optional provider and known values with exact declared names; unknown fields are rejected without execution. The selected App or Mini-App declaration supplies fields, defaults, model constraints and completion behavior. A completed form has already been submitted by the user; do not ask them to confirm the same parameters again. Before requesting a form, briefly explain which App/Mini-App you will call and which inputs need completion or confirmation. Configure-only results contain the exact user-confirmed arguments to pass unchanged to the returned provider; do not add optional fields or substitute defaults after confirmation; changed arguments require fresh confirmation; execution results contain the completed operation result. Cancellation is not success.',input_schema=tool_schema(),output_schema={'type':'object'},effects=(),timeout_ms=10000)
     registry.bind_tool(FORM_TOOL,provider_key=provider_key,handler=result)
-    def catalog(arguments,context):
+    async def catalog(arguments,context):
         from .app_interactions import CAPABILITIES
         capability=arguments.get('capability')
         forms=[{'capability':f.capability or f.key,'provider':f.key,'app_id':f.app_id,'mini_app_id':f.mini_app_id,
@@ -223,11 +227,71 @@ def install_parameter_forms(agents,services,registry,*,service_id,provider_key,c
             providers=[p for p in capability_router.inspect(context.actor_user_id,context.installation_id)
                 if not capability or capability in (p['capability'],p['id'])]
         if not capability:
-            # Discovery is a brief inventory. Full declarations are selection scoped.
-            for item in [*forms,*handoffs,*providers]:
-                item['has_agent_context']=bool(item.pop('agent_context',None))
-        return {'forms':forms,'interactions':handoffs,'providers':providers}
+            # Inventory contains identities and short scope only. Full schema and
+            # declarations stay behind exact capability selection.
+            inventory=[];seen=set()
+            for item in [*providers,*forms,*handoffs]:
+                key=item.get('id') or item.get('provider') or item['capability']
+                if key in seen:continue
+                seen.add(key)
+                text=item.get('summary') or ''
+                if isinstance(text,dict):text=text.get('en') or text.get('zh') or ''
+                inventory.append({'capability':item['capability'],'provider':key,
+                    'app_id':item['app_id'],'mini_app_id':item.get('mini_app_id'),
+                    'summary':str(text)[:96],'has_agent_context':bool(item.get('agent_context')),
+                    'status':item.get('status','registered'),'enabled':item.get('enabled',True)})
+            query=arguments.get('query','').strip().casefold()
+            if query:
+                terms = re.findall(r"[\w]+", query, flags=re.UNICODE)
+                def score(value):
+                    text=json.dumps(value,ensure_ascii=False).casefold()
+                    return (100 if query in text else 0) + sum(len(term) for term in set(terms) if term in text)
+                inventory=sorted((v for v in inventory if score(v)), key=lambda v:(-score(v),v['capability'],v['provider']))
+            offset=arguments.get('offset',0);limit=arguments.get('limit',16)
+            page=[]
+            for value in inventory[offset:offset+limit]:
+                if page and len(json.dumps([*page,value],ensure_ascii=False).encode())>6000:break
+                page.append(value)
+            return {'forms':[],'interactions':[],'providers':page,
+                'projection':'summary','coverage':'registered_capabilities_only','guidance':'Local keyword results do not establish absence of installable capabilities. Inspect available catalog discovery tools before offering substitutes; avoid repeated synonym searches.', 'total':len(inventory),
+                'next_offset':offset+len(page) if offset+len(page)<len(inventory) else None,
+                'detail_with':'app.describe(capability=<observed capability or provider>)'}
+        # A generic registered Tool can also be selected without an App form.
+        try:
+            descriptor=services.get_tool(capability)
+        except Exception:
+            descriptor=None
+        tool_details=[]
+        if descriptor is not None and descriptor.enabled and registry.visible_to_agent(descriptor.qualified_name, 'builtin:general-agent'):
+            from ai2apps.services import ToolGateway
+            gateway=ToolGateway(agents.database,agents.events,services,registry)
+            gateway.execution_scope=getattr(capability_router,'execution_scope',None)
+            visible={t.qualified_name for t in gateway.list_tools(context,include_requiring_approval=True)}
+            try:
+                run=agents.get_run(context.trace_id)
+            except Exception:
+                run=None
+            if run is not None:
+                definition=agents.get_definition(run.agent_definition_id)
+                patterns=definition.manifest.get('allowed_tools',['*'])
+                if not any(fnmatch.fnmatchcase(capability,p) for p in patterns):visible.discard(capability)
+                if run.input.get('tools') is not None and capability not in run.input['tools']:visible.discard(capability)
+            if capability in visible:
+                tool_details=[{'capability':descriptor.qualified_name,'schema':descriptor.input_schema,
+                    'description':descriptor.description,'effects':list(descriptor.effects)}]
+        # Only exact selection resolves owner dynamic contracts, never inventory.
+        if capability_router is not None:
+            from ai2apps.services.aaat import principal_for
+            from .parameter_contracts import resolve_contract
+            principal=principal_for(capability_router,context)
+            for record in forms:
+                provider=capability_router.providers.get(record['provider'])
+                if provider and provider.describe and provider.id not in capability_router.disabled(context.actor_user_id,context.installation_id):
+                    contract=await resolve_contract(provider,principal,arguments.get('values'))
+                    record.update(contract)
+                    record['parameter_contract_ready']=True
+        return {'forms':forms,'interactions':handoffs,'providers':providers,'tools':tool_details}
     services.ensure_tool(service_id=service_id,qualified_name='app.describe',display_name='Discover App interactions',
-        description='Discover registered App and Mini-App capability strings, providers and parameter declarations. Optional capability filters results. Use app.collect_parameters for forms or app.interact for handoffs. Dynamic schemas are resolved by the selected provider when opening the form.',
-        input_schema={'type':'object','properties':{'capability':{'type':'string'}},'additionalProperties':False},output_schema={'type':'object'},effects=(),timeout_ms=10000)
+        description='Discover compact registered App/Mini-App capability summaries. Query matches deterministic alternative keywords (OR, ranked exact phrase first); use short terms. Empty results are not a reason to scan unrelated pages. Use query to narrow scope and next_offset only when relevant; select capability for full schema/declaration. Do not read raw inventory fragments to obtain one schema. Optional capability filters results. Use app.collect_parameters for forms or app.interact for handoffs. Exact selection returns the current resolved parameter contract, including dynamic fields and model choices. Read it before supplying parameter names. Unknown names are rejected without execution.',
+        input_schema={'type':'object','properties':{'values':{'type':'object','maxProperties':64},'capability':{'type':'string'},'query':{'type':'string','maxLength':120},'offset':{'type':'integer','minimum':0},'limit':{'type':'integer','minimum':1,'maximum':32}},'additionalProperties':False},output_schema={'type':'object'},effects=(),timeout_ms=10000)
     registry.bind_tool('app.describe',provider_key=provider_key,handler=catalog)

@@ -113,12 +113,12 @@ def image_source(runtime,principal,session_id,identifier):
  return path,name,media
 
 
-async def avatar(runtime,args,context):
+async def avatar(runtime,args,context,*,mini_app_id=None):
  from .voice_aaat import source
  from .avatar import generate_avatar,reconcile_outputs
  from .repository import StudioRepository
  principal=principal_for(runtime,context)
- host,mounted,broker=owner(runtime,principal,VIDEO,'ai2apps.avatar.photo-speaking')
+ host,mounted,broker=owner(runtime,principal,VIDEO,mini_app_id or 'ai2apps.avatar.photo-speaking')
  image,imagename,imagetype=image_source(runtime,principal,context.session_id,args['image_id'])
  audio,audioname,audiotype=source(runtime,principal,context.session_id,args['audio_id'])
  if not imagetype.startswith('image/') or not audiotype.startswith('audio/'):raise ToolProviderError('Choose a portrait image and driving audio')
@@ -145,7 +145,7 @@ async def avatar(runtime,args,context):
  return {'status':'completed','studio_run_id':run['id'],'artifacts':current['artifacts'],'shared_output':True}
 
 
-async def frozen(runtime,args,context):
+async def frozen(runtime,args,context,*,mini_app_id=None):
  from .voice_aaat import source
  from .repository import StudioRepository
  from .extended_jobs import submit
@@ -154,7 +154,7 @@ async def frozen(runtime,args,context):
  from .live_photo import exporter_path
  from ai2apps.api.frozen_preview import normalize_upload
  from starlette.datastructures import UploadFile,Headers
- principal=principal_for(runtime,context);mini='ai2apps.imagine.frozen-time'
+ principal=principal_for(runtime,context);mini=mini_app_id or 'ai2apps.imagine.frozen-time'
  host,mounted,_=owner(runtime,principal,IMAGINE,mini)
  if not {'image.frozen_time.da','image.frozen_time.vggt'}<=mounted.capabilities:raise ToolProviderError('Installed Package does not declare Frozen Time models')
  path,name,media=image_source(runtime,principal,context.session_id,args['image_id'])
@@ -190,11 +190,25 @@ async def frozen(runtime,args,context):
 
 
 async def avatar_descriptor(runtime,principal,model=None):
- from ai2apps.avatar import avatar_models
+ from ai2apps.avatar import avatar_models,describe_model
  from .capability_broker import StudioCapabilityBroker
+ from ai2apps.agents.parameter_forms import schema_fields
  models=avatar_models(runtime);broker=StudioCapabilityBroker(runtime)
- return {'effective_schema':deepcopy(AVATAR_SCHEMA),'models':[{'id':m.id,'label':m.display_name,'ready':broker._model_stack_ready(runtime,m)} for m in models],
-  'configuration_required':not any(broker._model_stack_ready(runtime,m) for m in models),
+ choices=[describe_model(m,ready=broker._model_stack_ready(runtime,m)) for m in models]
+ schema=deepcopy(AVATAR_SCHEMA)
+ fields=schema_fields(schema)
+ selected=next((m for m in choices if m['id']==model),None)
+ # A single compatible model is unambiguous; multiple models remain a choice.
+ if selected is None and model is None and len(choices)==1:selected=choices[0]
+ if selected:
+  schema['properties']['preset']['enum']=[p['id'] for p in selected['presets']]
+  schema['properties']['resolution']['enum']=selected['resolutions']
+ for f in fields:
+  if f['key']=='model_id':f['type']='model'
+  if selected and f['key']=='preset':f.update(type='select',options=[{'value':p['id'],'label':p['label']} for p in selected['presets']])
+  if selected and f['key']=='resolution':f.update(type='select',options=[{'value':v,'label':v} for v in selected['resolutions']])
+ return {'effective_schema':schema,'fields':fields,'model_field':'model_id','models':choices,
+  'configuration_required':not any(m['ready'] for m in choices),
   'install':{'appId':VIDEO,'capability':'video.avatar_generation','requirements':{}}}
 
 async def frozen_descriptor(runtime,principal,model=None):

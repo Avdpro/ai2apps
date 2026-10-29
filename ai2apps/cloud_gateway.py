@@ -356,15 +356,18 @@ def _ai2apps_request_body(request: Any) -> dict[str, Any]:
     return body
 
 
-def _openai_usage(value: Any) -> dict[str, int]:
+def _openai_usage(value: Any) -> dict[str, Any]:
     usage = value if isinstance(value, dict) else {}
     prompt = int(usage.get("inputTokens") or 0)
     completion = int(usage.get("outputTokens") or 0)
-    return {
-        "prompt_tokens": prompt,
-        "completion_tokens": completion,
-        "total_tokens": prompt + completion,
-    }
+    result = {"prompt_tokens":prompt,"completion_tokens":completion,"total_tokens":prompt+completion}
+    cached=usage.get("cachedInputTokens")
+    if type(cached) is int and 0<=cached<=prompt:
+        result['prompt_tokens_details']={'cached_tokens':cached}
+    for key in ('cacheUsageReported','cacheUsageSource','providerCurrencyCost'):
+        if key in usage:result[key]=usage[key]
+    return result
+
 
 
 def _finish_reason(value: Any) -> str:
@@ -529,6 +532,8 @@ async def _proxy_ai2apps_chat_completion(
                     "released",
                     "balance",
                     "pricingVersion",
+                    "points",
+                    "status",
                     "stopReason",
                 )
                 if payload.get(key) is not None

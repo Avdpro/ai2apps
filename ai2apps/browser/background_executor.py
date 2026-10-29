@@ -425,6 +425,10 @@ class BackgroundExecutor:
                 return dict(outcome='failed', evidence={'operation': operation, 'result': result})
         elif operation == 'inspect':
             result = {'page': before, 'context': page.context_id, 'windows': await page.related_windows()}
+            if args.get('visual_goal'):
+                if not getattr(page,'visual_recovery',None):
+                    return dict(outcome='failed',evidence={'reason':'visual_observation_unavailable'})
+                result['visual_observation']=await page.visual_recovery.describe_page(page,args['visual_goal'])
             if intent(step):
                 result['target'] = await page.find_target(intent(step))
         elif operation in ('click', 'delete', 'input', 'hover'):

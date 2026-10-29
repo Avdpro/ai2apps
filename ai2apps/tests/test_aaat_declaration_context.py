@@ -114,7 +114,7 @@ async def test_generic_invocation_policy_skips_reconfirming_an_app_verified_rece
         thread,_=ChatRepository(runtime.database,runtime.events,principal=principal).create_thread(title='Generic receipt')
         run,_=runtime.agents.create_run(session_id=thread.session.id,agent_key='ai2apps.general-agent',input={'model':'test','prompt':'run','tools':['gallery.search']})
         runtime.agent_runtime.wake();await wait(runtime,run.id,'completed')
-        assert calls==[('confirmed',thread.session.id,run.id),'execute'],[(s.tool_name,s.error,s.output) for s in runtime.agents.list_steps(run.id) if s.kind=='tool']
+        assert calls==[('confirmed',thread.session.id,run.id),'describe','execute'],[(s.tool_name,s.error,s.output) for s in runtime.agents.list_steps(run.id) if s.kind=='tool']
         assert not runtime.agents.list_interactions(run.id)
     finally:await runtime.stop_background_tasks()
 
@@ -136,7 +136,7 @@ async def test_standalone_app_handoff_discovery_preserves_declared_context(runti
     key='test.ticket.review'
     try:
         register_capability(InteractionCapability(key,'test.ticket-app',{'type':'object','properties':{}},agent_context=declaration))
-        result=runtime.service_registry.bound_tool('app.describe').handler({'capability':key},context(runtime))
+        result=await runtime.service_registry.bound_tool('app.describe').handler({'capability':key},context(runtime))
         assert result['interactions'][0]['agent_context']==declaration
         assert result['interactions'][0]['app_id']=='test.ticket-app'
     finally:CAPABILITIES.pop(key,None)

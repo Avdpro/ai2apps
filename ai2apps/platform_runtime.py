@@ -1013,9 +1013,18 @@ class PlatformRuntime:
         )
         from ai2apps.packages.app_exports import AppExportBinder
         self.package_app_exports = AppExportBinder(self)
-        self.extension_manager.package_capabilities_changed = self.package_app_exports.sync
-        self.service_registry.bindings_changed = self.package_app_exports.sync
-        self.package_app_exports.sync()
+        from ai2apps.packages.mini_app_exports import MiniAppExportBinder
+        self.package_mini_exports = MiniAppExportBinder(self)
+        from ai2apps.studio.package_sdk import install as install_studio_sdk
+        install_studio_sdk(self.package_mini_exports)
+        from ai2apps.browser.package_sdk import install as install_browser_sdk
+        install_browser_sdk(self.package_mini_exports)
+        def sync_package_exports():
+            self.package_app_exports.sync()
+            self.package_mini_exports.sync()
+        self.extension_manager.package_capabilities_changed = sync_package_exports
+        self.service_registry.bindings_changed = sync_package_exports
+        sync_package_exports()
         logger.info("Platform App exports synchronized: %.3fs", time.perf_counter() - claimed_started)
         self.provisioning = CapabilityProvisioner(
             runtime=self,

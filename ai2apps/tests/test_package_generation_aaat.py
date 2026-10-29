@@ -3,7 +3,8 @@ import asyncio
 from dataclasses import replace
 from types import SimpleNamespace as NS
 import pytest
-from test_studio_app_chat import runtime,identity,P
+from test_studio_app_chat import identity,P
+from legacy_package_backend_fixture import runtime
 from ai2apps.services import ToolCallContext
 from ai2apps.chat import ChatRepository
 from ai2apps.studio import package_generation_aaat as owner

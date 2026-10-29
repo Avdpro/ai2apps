@@ -1,4 +1,4 @@
-const test=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs');const c={URL};vm.runInNewContext(fs.readFileSync(__dirname+'/../../packages/ai2apps-search-all/web/modes.js','utf8'),c);
+const test=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs');const c={URL};vm.runInNewContext(fs.readFileSync(__dirname+'/../web/static/builtin_mini_apps/search-all/web/modes.js','utf8'),c);
 const plan={sources:['xiaohongshu','bilibili'],x_sort:'top',xiaohongshu_sort:'likes',limit:5,reason:'菜谱优先参考高赞实践和烹饪演示'};
 test('preferred recipe strategy retains chosen source order and likes',()=>{assert.equal(c.SearchAllModes.validatePlan(plan),plan)});
 test('unknown sources, duplicate sources and unsupported sorting cannot execute',()=>{for(const bad of [{sources:['unknown']},{sources:['x','x']},{x_sort:'likes'},{xiaohongshu_sort:'random'},{limit:30}])assert.throws(()=>c.SearchAllModes.validatePlan({...plan,...bad}),/Invalid/)});

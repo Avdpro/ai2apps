@@ -40,6 +40,7 @@ class AppChatOwner:
     instructions: str = ''
     mini_app_id: str | None = None
     exports: Callable | None = None
+    export_access: Callable | None = None
 
 
 class ScopedExecutor(GeneralAgentExecutor):
@@ -143,7 +144,7 @@ class AppChatService:
     def exported(self,owner,scope):
         providers=tuple(owner.exports(scope)) if owner.exports else tuple(p for p in self.runtime.app_capability_router.providers.values()
             if p.capability in owner.capabilities and p.app_id==owner.app_id and p.mini_app_id==owner.mini_app_id)
-        if any(p.app_id!=owner.app_id or self.runtime.app_capability_router.providers.get(p.id) is not p for p in providers):
+        if any((p.app_id!=owner.app_id and not (owner.export_access and owner.export_access(scope,p))) or self.runtime.app_capability_router.providers.get(p.id) is not p for p in providers):
             raise ValueError('App Chat exports must be registered providers of the owning App')
         return providers
 
@@ -188,7 +189,16 @@ class AppChatService:
             with self.database.transaction() as db:
                 row=db.execute('SELECT session_id FROM app_chat_sessions WHERE owner=? AND registration=? AND scope_json=?',(actor,registration,scope_json)).fetchone()
             if row:
-                self.owner(self.binding(row['session_id']));return row['session_id']
+                sid=row['session_id'];binding=self.binding(sid);self.owner(binding)
+                current={p.id:p.version for p in self.exported(owner,scope)}
+                if binding['providers']!=current:
+                    # Explicitly reopening an idle conversation refreshes its
+                    # installed interfaces. Never widen an admitted Run's scope.
+                    with self.database.transaction(write=True) as db:
+                        active=db.execute("SELECT 1 FROM agent_runs WHERE session_id=? AND status NOT IN ('completed','failed','cancelled','timed_out','interrupted')",(sid,)).fetchone()
+                        if active:raise ValueError('App Chat capabilities changed; finish the active turn before reopening')
+                        db.execute('UPDATE app_chat_sessions SET providers_json=?,ui_revision=ui_revision+1 WHERE session_id=?',(json.dumps(current),sid))
+                return sid
             parent_record=SessionRepository(self.database).get(parent)
             sid=SessionRepository(self.database,self.runtime.events).create(app_instance_id=parent_record.app_instance_id,
                 title=owner.app_id+' Chat',visibility=SessionVisibility.UNLISTED).id

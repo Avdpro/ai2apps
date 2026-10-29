@@ -1015,3 +1015,132 @@ AI Browser Package 复用同一宿主适配器；切换 Mini-App 不扩大原 Ru
 跨 Studio placement 必须显式登记所属宿主 Provider，不因同属 Package 继承其他能力。
 签名 capabilityCatalog 仅供发现，不能替代宿主注册、版本与权限检查；发布 Package
 也不能替代对应 Desktop 宿主升级。
+
+### Todo creation directory presentation (2026-10-28)
+
+Todo owns the directory selector for `todo.create` (Provider version2). Describe is
+read-only and returns owner-scoped directory IDs as values with human-readable
+names as options. One existing directory is preselected; multiple directories
+require a choice. An Inbox option is available without guessing IDs. When no
+directories exist, Inbox is the default; the directory is created only together
+with the confirmed task, in the same TodoStore transaction. A failed task write
+rolls back the Inbox, and durable invocation replay uses the same receipt and
+owner-scoped stable Inbox identity. Shared Agent/form infrastructure does not
+identify Todo or create directories on its behalf. Existing stale version1
+parameter forms must follow normal declaration/version refresh guards.
+
+Explicit directory names use Todo's read-only `todo.resolve_directory` before
+creation. Unique normalized exact matches resolve; duplicate or partial matches
+require selection, and missing names never silently fall back to Inbox. In-App
+Chat resolution remains within its fixed directory scope.
+
+As of 2026-10-28 (Todo create Provider version3), an explicitly requested missing
+directory is not a reason to ask for an ID or silently use Inbox. Read-only
+resolution returns a `creation` parameter proposal; the form uses its existing
+directory select and conditional-required text field to show the requested new
+name. Confirmation creates/reuses that normalized directory and the task in the
+same transaction. A durable replay checks its original named request receipt
+before resolving directory identity, so a later rename cannot create a duplicate.
+This proposal is business data, not authorization; existing confirmation and
+In-App directory scope guards continue to apply.
+
+Owner invocation_policy may coexist with the standard configure-only form path.
+A false policy return does not invalidate an exact, current, unused submitted form;
+raise InvocationPolicyError for explicit rejection. Core must still evaluate that
+policy even when a matching form receipt exists. Do not add per-App confirmation
+bypasses or change selection_required to hide duplicate confirmation defects.
+
+## Package-owned Mini-App interface
+
+New or migrated Package Mini-Apps declare `mini_apps[].aaat` in their signed
+`app.yaml`, using [Host SDK exports v1](package-mini-app-host-exports-v1.md).
+The matching capability catalog is for discovery and must agree with the signed
+runtime interface. Do not preregister a missing Mini-App, embed its public schema
+in a host startup adapter, or present a catalog-only capability as executable.
+
+Installed Package Providers are owned by the Package App. Studio In-App Chat
+includes only the exact current Mini-App's validated host placement. Reuse native
+SDK queues, Profile bindings, original material references and shared output;
+never add a second page-owned execution lifecycle. Missing SDK support requires a
+matching host update, not a fabricated fallback Provider. Unsupported/removed
+Packages revoke forms and future invocations; uncertain submissions are read back
+without effectful replay.
+
+### Continuation-only form presentation (2026-10-29)
+
+A trusted owner `describe` may return `handoff_only: true`, localized
+`continue_label` and `handoff_message` when completion must occur through its
+registered continuation. The shared form applies this only alongside
+`can_continue_in_app`: hide the ordinary submit action, explain the required
+handoff and promote the owner continuation as the primary action. Enter must not
+submit. These fields are presentation only; they cannot register a continuation,
+change permissions or complete work. The owner must retain its server-side submit
+and completion guards. Ordinary forms keep their submit and optional handoff.
+
+### Lazy Tool selection and review (2026-10-29)
+
+General Agent defaults to a compact Tool index plus platform controls. Call `app.describe` with the observed exact capability/provider to load its callable schema and trusted declaration before invoking it; keyword search is an OR-ranked deterministic discovery aid, not semantic authorization. The loaded schema set is append-only within the Run. Owners must continue to enforce resource ownership, supported scope, permissions, version and business confirmation at their actual entry points. Do not depend on a full global tool schema inventory or re-ask a selection that the owner's subsequent review interaction already collects.
+
+### Overlapping capability scope (2026-10-29)
+
+Owners should state positive scope and neighboring exclusions early in their Tool
+summary so the compact index can distinguish related operations before either
+schema is loaded. Their trusted declaration should explain when to choose each
+operation and which output reference to carry forward. General Agent chooses from
+the current requested change, rather than the previous Tool or schema availability;
+preserving an existing property does not itself request that transformation again.
+This is planning guidance, not a classifier, authority grant or automatic retry.
+
+### Discover query projections (Cloud1.80, 2026-10-29)
+
+Discover negotiates projections-v1 only when advertised. Agent search requests
+bounded summary cards and latest_compatible by default; history requires explicit
+opt-in. Exact tags/AND/OR and status filters are never silently dropped on older
+servers. discover.taxonomy supplies observed bilingual IDs; names do not imply
+processing, pricing or Agent declarations. Legacy servers retain local projection.
+Selected candidate detail refreshes the exact Package/version/card identity and
+both digests from Cloud with no inherited search/device filters; withdrawal,
+conflict or schema errors never substitute another release. Pagination snapshots
+cannot mix, and metadata never grants installation authority. Existing signed
+Discover review and local install checks remain mandatory.
+
+Cache usage metadata preserves reported zero, explicitly unreported and historical
+unknown separately. Missing provenance on old Cloud receipts does not establish a
+physical cache miss; AI2Apps Points are not provider currency cost.
+
+### 对话中的生成素材
+
+功能 Tool 完成后应返回标准 `files` 列表，每项至少包含当前调用 Session
+的 `artifact_id`、`filename`、`media_type` 和精确的 Workspace `url`。单一
+`artifact.download_url` 也受支持。不要只把产物 ID 写在自然语言中，也不要
+返回原始文件路径。宿主已有共享 Output 时，owner adapter 可导出 caller
+Session 素材引用，但不得为 Mini-App 建立另一套输出历史。
+
+Chat 从 Workspace 校验实际名称、类型和大小，以 metadata-only 的
+`artifacts` 保存到最终消息与 Run。卡片支持按需播放音频/视频、PDF 和
+文本预览、文档下载及显式加入素材库；无法在浏览器预览的格式交给兼容
+本机应用。素材不内嵌到模型 Context。历史标准 `downloadUrl` 可只读恢复，
+但只在没有新式输出引用、且当前 principal 仍有源 Session 权限时采用。
+
+### 精确参数契约与纠错（2026-10-29）
+
+动态 Provider 的候选摘要不等于参数表。定向 `app.describe` 会实际解析当前
+Provider 的 schema、字段和模型约束，返回版本与契约指纹；Agent 先读取，再按
+精确字段名构造参数。原生 Tool 定义已经完整提供当前参数表时不增加审阅往返。
+需要模型相关字段时可向 describe 传入 `values`，字段身份由 owner 的
+`model_field` 声明提供，不按名称猜测。
+
+未知字段、嵌套字段或类型不匹配在提交前返回结构化错误和完整当前契约，不丢弃
+原值，不调用另一层 AI 做意义映射。错误仅表示尚未提交；已执行或结果不确定的
+调用不允许套用这个恢复路径。取消、授权、版本变更和撤销检查继续生效。
+
+Package Host SDK 可以细化已签名字段的展示类型和选项，不能增加字段身份。
+跨 Package 的模型配置宿主必须在可信注册时绑定，不能由返回内容任意指定。
+旧共享输出作为后续素材时，仅从同一 Chat 成功输出证据解析精确 ID，重新检查
+源和目标 Session 权限与声明 MIME 后导入；不扫描任意用户 Session。
+
+契约恢复要求：参数错误回执与提前加载的可信契约都保留 owner 的配置状态、
+model_field 和安装意图。已有当前指纹的契约可直接用于纠正调用，无需再次
+app.describe。模型列表为空也允许以已知素材进入参数表单；实际配置动作仍走
+宿主绑定的 ACPF 和原确认流程。无注册 handoff 的能力使用 app.interact 时，
+返回已注册表单的明确纠正依据，不自动切换执行器或替用户确认。

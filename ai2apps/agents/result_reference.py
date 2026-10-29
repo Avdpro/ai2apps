@@ -69,13 +69,16 @@ def install_result_reader(agents, services, registry, *, service_id, provider_ke
         display_name="Read Tool result",
         description=(
             "Read a bounded fragment of a completed Tool result in the current Agent Run. "
-            "Use the step_id from its preview. Offsets count Unicode characters in the stored JSON text."
+            "Use the step_id from its preview. Offsets count Unicode characters in the stored JSON text. "
+            "Already-read ranges return an existing read reference instead of duplicating text. "
+            "Set reread=true only when the earlier content is no longer available after context compaction."
         ),
         input_schema={
             "type": "object",
             "properties": {
                 "step_id": {"type": "string", "minLength": 1},
                 "offset": {"type": "integer", "minimum": 0, "default": 0},
+                "reread": {"type": "boolean", "default": False},
                 "limit": {
                     "type": "integer",
                     "minimum": 1,
@@ -117,6 +120,18 @@ def install_result_reader(agents, services, registry, *, service_id, provider_ke
         if offset > len(text):
             raise ToolProviderError("Offset exceeds Tool result length")
         end = min(len(text), offset + limit)
+        sha=hashlib.sha256(text.encode("utf-8")).hexdigest()
+        if not arguments.get('reread'):
+            for previous in reversed(agents.list_steps(run.id)):
+                if previous.kind!='tool' or previous.tool_name!=RESULT_READER or previous.status is not RunStepStatus.COMPLETED:continue
+                value=previous.output or {}
+                if (value.get('step_id')==step.id and value.get('sha256')==sha
+                    and isinstance(value.get('content'),str) and type(value.get('offset')) is int
+                    and value['offset']<=offset and value['offset']+len(value['content'])>=end):
+                    return {'step_id':step.id,'sha256':sha,'offset':offset,
+                        'next_offset':end if end<len(text) else None,'total_characters':len(text),
+                        'already_read':True,'previous_read_step_id':previous.id,
+                        'notice':'Reuse the previous read. If compacted away, request this source with reread=true.'}
         return {
             "step_id": step.id,
             "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),

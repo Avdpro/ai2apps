@@ -124,10 +124,11 @@ def test_image_bounds():
     assert annotated_image(png(),{'width':200,'height':100},{'x':20,'y':20,'width':40,'height':20}).startswith('data:image/jpeg;base64,')
     with pytest.raises(VisualRecoveryUnavailable):annotated_image(png(),{'width':200,'height':100},{'x':195,'y':20,'width':40,'height':20})
 
-def test_private_route_cannot_inherit_normal_recognition():
+@pytest.mark.asyncio
+async def test_private_route_cannot_inherit_normal_recognition():
     runtime,run,_=setup(image=False);profiles=[]
     runtime.model_manager.default_models=lambda profile:profiles.append(profile) or ({'image_recognition':'cloud/provider/model'} if profile=='normal' else {})
-    with pytest.raises(VisualRecoveryUnavailable):visual_model(runtime,run)
+    with pytest.raises(VisualRecoveryUnavailable):await visual_model(runtime,run)
     assert profiles==['privacy']  # Never inspect/inherit normal recognition defaults.
 
 @pytest.mark.asyncio
@@ -179,13 +180,14 @@ async def test_owner_changed_state_during_model_review_prevents_click():
     page.pointer_to.assert_not_called()
 
 
-def test_current_model_not_replaced_by_unverified_model_or_another_tier():
+@pytest.mark.asyncio
+async def test_current_model_not_replaced_by_unverified_model_or_another_tier():
     runtime,run,_=setup(image=False);calls=[]
     def resolve(purpose,**kwargs):calls.append((purpose,kwargs));return 'cloud/provider/model'
     runtime.model_manager.resolve_default_model=resolve
     runtime.model_manager.default_models=lambda profile:{'image_recognition':'other-vision'}
     runtime.model_invocations.model=lambda identifier:None
-    with pytest.raises(VisualRecoveryUnavailable):visual_model(runtime,run)
+    with pytest.raises(VisualRecoveryUnavailable):await visual_model(runtime,run)
     assert calls==[('work_standard',{'profile':'privacy'})]
 
 @pytest.mark.asyncio
@@ -269,7 +271,8 @@ async def test_cart_quantity_menu_is_never_an_increment_candidate():
 
 @pytest.mark.parametrize('profile',['normal','privacy'])
 @pytest.mark.parametrize('provider',['vision-alpha','vision-beta'])
-def test_visual_recovery_uses_only_configured_same_profile_image_route(profile,provider):
+@pytest.mark.asyncio
+async def test_visual_recovery_uses_only_configured_same_profile_image_route(profile,provider):
     runtime,run,_=setup(image=False)
     run.input['parameters']['model_profile']=profile
     selected=[]
@@ -277,18 +280,19 @@ def test_visual_recovery_uses_only_configured_same_profile_image_route(profile,p
         selected.append(p);return {'image_recognition':f'cloud/{provider}/camera-model'}
     runtime.model_manager.default_models=defaults
     runtime.model_manager.list_cloud=lambda:[{'id':provider,'models':[{'id':'camera-model','enabled':True,'capabilities':{'imageInput':True}}]}]
-    assert visual_model(runtime,run)==f'cloud/{provider}/camera-model'
+    assert await visual_model(runtime,run)==f'cloud/{provider}/camera-model'
     assert selected==[profile]
 
 
-def test_visual_route_respects_system_privacy_upgrade_without_normal_fallback():
+@pytest.mark.asyncio
+async def test_visual_route_respects_system_privacy_upgrade_without_normal_fallback():
     runtime,run,_=setup(image=False);runtime.privacy_mode=True
     selected=[]
     def defaults(p):
         selected.append(p);return {'image_recognition':'cloud/private/camera'} if p=='normal' else {}
     runtime.model_manager.default_models=defaults
     runtime.model_manager.list_cloud=lambda:[{'id':'private','models':[{'id':'camera','enabled':True,'capabilities':{'imageInput':True}}]}]
-    with pytest.raises(VisualRecoveryUnavailable):visual_model(runtime,run)
+    with pytest.raises(VisualRecoveryUnavailable):await visual_model(runtime,run)
     assert selected==['privacy']
 
 @pytest.mark.asyncio
@@ -446,3 +450,26 @@ async def test_input_section_diagnostics_never_log_goal_or_readback_values(caplo
     assert 'dispatch_state=acknowledged' in caplog.text
     assert 'private-goal-value' not in caplog.text and 'private-readback-value' not in caplog.text
     assert result['input_section']['wait_ms']>=0 and result['input_section']['hold_ms']>=0
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('model',['cloud/provider/model','cloud/another-provider/camera'])
+async def test_goal_screenshot_description_is_observed_and_never_dispatches_input(monkeypatch,model):
+    runtime,run,payloads=setup([{'description':'Observed blue and red logo on a white page.'}])
+    page=Page()
+    async def route(*args):return model
+    monkeypatch.setattr('ai2apps.browser.visual_recovery.visual_model',route)
+    helper=VisualControlRecovery(runtime,run,['https://arbitrary.test/**'])
+    result=await helper.describe_page(page,'Describe the visible logo')
+    assert result['source']=='browser_screenshot' and result['model']==model
+    assert result['description'].startswith('Observed')
+    assert payloads[0]['messages'][1]['content'][1]['image_url']['url'].startswith('data:image/')
+    assert helper.evidence[0]['phase']=='describe'
+    page.pointer_to.assert_not_called()
+
+@pytest.mark.asyncio
+async def test_goal_screenshot_observation_honors_visual_off_policy():
+    runtime,run,payloads=setup();page=Page()
+    helper=VisualControlRecovery(runtime,run,['https://arbitrary.test/**'],policy={'visual_review':'off'})
+    with pytest.raises(VisualRecoveryUnavailable,match='disabled'):await helper.describe_page(page,'Describe logo')
+    assert not payloads
+    page.connection.command.assert_not_called()

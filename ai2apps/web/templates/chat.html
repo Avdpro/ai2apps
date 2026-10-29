@@ -17,6 +17,8 @@
 <script src="{{ static('js/conversation_model_policy.js') }}?v=declaration-details-20261028"></script>
 <script src="{{ static('js/agent_parameter_forms.js') }}?v=file-picker-20261028"></script>
 <script src="{{ static('js/chat_image_actions.js') }}"></script>
+<script src="{{ static('js/chat_artifacts.js') }}?v=1"></script>
+<link rel="stylesheet" href="{{ static('css/chat_artifacts.css') }}?v=1">
 <script src="{{ static('js/browser_bidi_client.js') }}?v=read-captcha-scope-20261027"></script>
 <script src="{{ static('js/agent_browser_task_controls.js') }}"></script>
 <script src="{{ static('js/aaat_result_views.js') }}?v=card-masonry-20261026"></script>
@@ -2448,6 +2450,7 @@
                                     </template>
                                 </div>
                             </template>
+                            <div x-effect="window.AI2AppsChatArtifacts.render($el, msg.artifacts || [], {apiKey:getApiKey(), includeImages:true, imageUrls:getImageUrls(msg.content)})"></div>
                             <div class="message-body markdown-content" data-math-pending="true"
                                 :data-math-version="String(getTextContent(msg.content).length)"
                                 x-html="renderMarkdown(getTextContent(msg.content))"></div>
@@ -10176,6 +10179,7 @@
                     role: 'assistant',
                     content: run.output.content ?? '',
                     aaat_views: this.cloneData(run.output.aaat_views || []),
+                    artifacts: this.cloneData(run.output.artifacts || []),
                     model: session.model || this.currentModel,
                     agent_run_id: run.id,
                     _agentRunId: run.id,

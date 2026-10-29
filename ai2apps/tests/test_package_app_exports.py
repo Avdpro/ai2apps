@@ -13,6 +13,32 @@ from ai2apps.agents.parameter_forms import FORMS
 from test_app_interactions import runtime
 
 
+def test_fresh_runtime_does_not_predeclare_package_mini_apps(runtime):
+    """Actual production startup, without the legacy backend unit fixture."""
+    forbidden={'video.avatar','image.frozen_time','voice.generate_music',
+        'voice.generate_song','voice.generate_sound_effects','voice.detailed_transcription',
+        'voice.separate','voice.replace_speaker','video.dub','video.replace_speaker',
+        'shopping.history','shopping.prepare_cart','travel.flights','travel.hotels'}
+    providers=runtime.app_capability_router.providers.values()
+    assert not forbidden & {p.capability for p in providers}
+    assert not forbidden & {f.capability or f.key for f in FORMS.values()}
+    assert {p.mini_app_id for p in providers if p.app_id=='ai2apps.ai-browser'} >= {'ai2apps.search-all','ai2apps.web-reader'}
+    assert any(p.capability=='todo.create' for p in providers)
+    assert any(p.capability=='voice.quick_read' for p in providers)
+
+
+def test_catalog_only_installed_package_does_not_create_execution_interface(runtime,monkeypatch):
+    f=fixture(runtime,monkeypatch)
+    f.state['installed'][f.pid]['aaatRuntime']=[]
+    f.effective.manifest['aaat']['exports']=[]
+    runtime.package_app_exports.sync()
+    assert f.provider.id not in runtime.app_capability_router.providers
+    assert f.provider.id not in FORMS
+    from ai2apps.packages.installed_capabilities import inspect
+    observed=inspect(runtime,RequestPrincipal.legacy_local(),f.target)
+    assert observed['status']=='adapter_required' and not observed['callable']
+
+
 def fixture(runtime,monkeypatch,suffix='alpha'):
     app='publisher.'+suffix;pid='publisher/'+suffix;cap=suffix+'.compute';toolname='isolated.'+suffix+'.compute'
     schema={'x-ai2apps-interface-version':'1.0.0','type':'object','properties':{'value':{'type':'string'}},'required':['value'],'additionalProperties':False}
@@ -147,6 +173,9 @@ async def test_durable_chat_install_handoff_http_restart_and_cancel(runtime,monk
         url=f'/v1/platform/agent-runs/{run.id}/interactions/{item.id}'
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url='http://test') as client:
             state=(await client.get(url+'/parameters')).json()
+            assert state['handoff_only'] and state['configuration_required']
+            assert state['continue_label']['en']=='Review installation in Discover'
+            assert state['handoff_message']['zh']
             assert state['can_continue_in_app'] and state['values']==arguments['values']
             start=await client.post(url+'/parameters/handoff',json={'revision':state['revision'],'values':state['values']})
             assert start.status_code==200,start.text

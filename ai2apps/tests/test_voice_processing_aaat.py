@@ -14,7 +14,7 @@ from ai2apps.services import ToolCallContext
 from ai2apps.studio import voice_aaat as owner
 from ai2apps.studio.capability_broker import StudioCapabilityBroker,MountedMiniApp
 from ai2apps.studio.video_jobs import submit_package
-from test_app_interactions import runtime
+from legacy_package_backend_fixture import runtime
 
 
 def setup(runtime,tmp_path,monkeypatch):

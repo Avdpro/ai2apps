@@ -8,10 +8,13 @@ async def describe(runtime,principal,form,values,item):
     if not provider: raise HTTPException(409,'Provider changed')
     if provider.id in runtime.app_capability_router.disabled(principal.actor_user_id,principal.installation_id):raise HTTPException(409,'Provider disabled')
     descriptor=await provider.describe(principal,values.get('model'))
+    model_field=descriptor.get('model_field')
+    if isinstance(model_field,str) and model_field!='model' and values.get(model_field):
+        descriptor=await provider.describe(principal,values[model_field])
     schema=descriptor['effective_schema']
     fields=descriptor.get('fields') or schema_fields(schema)
     if descriptor.get('models'):
-        fields=[{**f,'type':'model'} if f['key']=='model' else f for f in fields]
+        fields=[{**f,'type':'model'} if f['key']==descriptor.get('model_field','model') else f for f in fields]
     return {'schema':schema,'fields':fields,'models':descriptor.get('models',[]),
         'auto_submit_allowed':descriptor.get('auto_submit_allowed') is not False,
         'configuration_required':bool(descriptor.get('configuration_required')),'constraints':descriptor.get('constraints',{}),'warnings':descriptor.get('warnings',[]),
@@ -31,7 +34,7 @@ def register_provider_form(provider):
     form=ParameterForm(provider.id,provider.app_id,{'type':'object','properties':{}},(),
         mini_app_id=provider.mini_app_id,version=1,capability=provider.capability,
         priority=provider.priority,provider_version=provider.version,describe=describe,complete=complete,
-        related_capabilities=provider.related_capabilities,switch_values=provider.switch_values,continuation=provider.continuation,display_name=provider.display_name,summary=provider.summary,agent_context=provider.agent_context)
+        configuration_app_id=provider.configuration_app_id,related_capabilities=provider.related_capabilities,switch_values=provider.switch_values,continuation=provider.continuation,display_name=provider.display_name,summary=provider.summary,agent_context=provider.agent_context)
     existing=FORMS.get(provider.id)
     if existing and (existing.app_id,existing.mini_app_id)!=(form.app_id,form.mini_app_id):
         raise ValueError('Provider form owner collision')

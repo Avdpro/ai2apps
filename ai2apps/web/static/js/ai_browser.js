@@ -140,7 +140,7 @@ function aiBrowserApp() {
             this.miniAppsState='loading';
             try{
                 const catalog=await window.AI2AppsStudioMiniApps.list('ai2apps.ai-browser');
-                this.miniApps=catalog.items.filter(item=>item.source==='package'&&item.web_agent);
+                this.miniApps=catalog.items.filter(item=>['package','builtin'].includes(item.source)&&item.web_agent);
                 this.miniAppsState='ready';
                 this.refreshIcons();
                 for(const [key,item] of this.frames)if(key.startsWith('mini-app:')&&

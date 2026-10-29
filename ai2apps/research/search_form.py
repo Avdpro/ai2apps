@@ -28,6 +28,7 @@ async def describe(runtime,principal,form,values,item):
     mini=mounted(runtime,principal,item,run.session_id)
     available=prep.choices(runtime,principal,mini)
     schema=prep.schema(available+[{'id':'fast_api','name':'Search API'}])
+    schema['properties']['mode']['default']='fast'
     schema['properties']['preparation_ready']={'type':'boolean'}
     fields=[f for f in schema_fields(schema) if f['key'] not in ('preparation_id','preparation_ready','cloud_price_version','cloud_max_points')]
     for field in fields:
@@ -54,14 +55,22 @@ async def complete(runtime,principal,form,values,run):
     try:record=prep.owned(runtime,principal,values.get('preparation_id',''),session_id=run.session_id)
     except ValueError as error:raise HTTPException(422,str(error)) from error
     if record['origin_run']!=run.id:raise HTTPException(409,'Search preparation Run changed')
-    item=next((i for i in runtime.agents.list_interactions(run.id) if record['scope']=='interaction:'+i.id and i.status.value=='pending' and i.ui_hints.get('provider')==PROVIDER),None)
+    item=next((i for i in runtime.agents.list_interactions(run.id) if record['scope']=='interaction:'+i.id and i.status.value=='pending' and i.ui_hints.get('provider')==form.key),None)
     if item is None:raise HTTPException(409,'Search preparation interaction changed')
     mini=mounted(runtime,principal,item,run.session_id)
     values={k:v for k,v in values.items() if k!='preparation_ready'}
     try:arguments=prep.confirm(runtime,principal,mini,values['preparation_id'],values,scope='interaction:'+item.id)
     except (ValueError,KeyError,ValidationError) as error:raise HTTPException(422,str(error)) from error
-    return {'capability':'web.search','provider':PROVIDER,'arguments':{**arguments,'provider':PROVIDER},'configure_only':True}
+    return {'capability':'web.search','provider':form.key,'arguments':{**arguments,'provider':form.key},'configure_only':True}
 
 def install(runtime):
     form=FORMS[PROVIDER]
     FORMS[PROVIDER]=replace(form,describe=describe,complete=complete,related_capabilities=(),continuation=None)
+
+
+def begin_form(runtime,principal,item,run,values,revision):
+    """The owner chooses preparation policy; the generic form API only delegates."""
+    return prep.begin(runtime,principal,mounted(runtime,principal,item,run.session_id),
+        scope='interaction:'+item.id,session_id=run.session_id,origin_run=run.id,
+        query=values.get('query',''),profile=values.get('profile','default'),
+        locale=values.get('locale','zh'),request_id=str(revision),fast=values.get('mode','fast')=='fast')

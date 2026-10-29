@@ -934,7 +934,7 @@
             }));
             return {
                 ...catalog,
-                items: (catalog?.items || []).map(item => item?.source === 'package'
+                items: (catalog?.items || []).map(item => ['package','builtin'].includes(item?.source)
                     ? localizedDeclaration(item, document.documentElement.lang)
                     : item),
             };

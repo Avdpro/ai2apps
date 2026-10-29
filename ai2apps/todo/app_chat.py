@@ -13,7 +13,7 @@ UI_SCHEMA={'type':'object','properties':{
 
 def install(runtime):
     from ai2apps.services import ToolProviderError
-    names=('todo.search','todo.get','todo.create','todo.update','todo.resolve_project','todo.project_stats','todo.children','todo.ui')
+    names=('todo.resolve_directory','todo.search','todo.get','todo.create','todo.update','todo.resolve_project','todo.project_stats','todo.children','todo.ui')
     def validate(actor,scope):
         if set(scope)-{'directory_id'} or not scope.get('directory_id'):raise ValueError('Select a Todo directory before starting Chat')
         snapshot=store(runtime).snapshot(actor)

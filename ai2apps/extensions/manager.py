@@ -119,7 +119,11 @@ class InteractivePackageManager:
                 source = development.get('sourceRoot', '')
                 quarantined = key in rejected or Path(source).name in self._development_loader.errors
                 self._deactivate_development_app(key, allow_fallback=not quarantined)
+            previous = self._development_packages
             self._development_packages = current
+            if previous != current:
+                changed = getattr(self, "package_capabilities_changed", None)
+                if changed: changed()
             return tuple(current.values())
 
     def _active_development_app_keys(self) -> tuple[str, ...]:
@@ -1265,6 +1269,8 @@ class InteractivePackageManager:
                 "effective_digest,manifest_json FROM app_definitions "
                 "WHERE status='enabled' ORDER BY package_id"
             ).fetchall()
+        reserved = {d.get('id') for row in rows if row['source'] == 'builtin'
+                    for d in json.loads(row['manifest_json']).get('mini_apps', [])}
         result: list[dict] = []
         for row in rows:
             manifest = json.loads(row["manifest_json"])
@@ -1277,6 +1283,8 @@ class InteractivePackageManager:
             for declaration in declarations:
                 if not isinstance(declaration, dict):
                     continue
+                if row['source'] != 'builtin' and declaration.get('id') in reserved:
+                    continue
                 matching = [
                     placement
                     for placement in declaration.get("placements", [])
@@ -1286,7 +1294,7 @@ class InteractivePackageManager:
                 if not matching:
                     continue
                 item = json.loads(json.dumps(declaration))
-                item["source"] = "package"
+                item["source"] = "builtin" if row["source"] == "builtin" else "package"
                 item["provider"] = {
                     "appId": row["package_id"],
                     "name": row["display_name"],
@@ -1298,6 +1306,16 @@ class InteractivePackageManager:
                 }
                 result.append(item)
         return tuple(result)
+
+    def builtin_mini_app_owner(self, studio_id, mini_app_id):
+        """Native product identities cannot be overridden by installed Packages."""
+        with self.database.transaction() as connection:
+            rows = connection.execute("SELECT package_id,manifest_json FROM app_definitions WHERE source='builtin' AND status='enabled'").fetchall()
+        for row in rows:
+            for mini in json.loads(row['manifest_json']).get('mini_apps', []):
+                if mini.get('id') == mini_app_id and any(p.get('studio') == studio_id for p in mini.get('placements', [])):
+                    return row['package_id']
+        return None
 
     def _studio_mini_app_definition(
         self,
@@ -1327,6 +1345,9 @@ class InteractivePackageManager:
                     matches.append((dict(row), declaration))
         if not matches:
             raise ResourceNotFoundError("studio_mini_app", mini_app_id)
+        native = [item for item in matches if item[0]['source'] == 'builtin']
+        if native:
+            matches = native
         if len(matches) != 1:
             raise ExtensionError(
                 "studio_mini_app_conflict",
@@ -1717,6 +1738,20 @@ class InteractivePackageManager:
         ):
             raise ExtensionError("unsafe_app_resource", "Unsafe App resource path")
         entry = self.instance_entry(instance_id, principal=principal)
+        if entry['source'] == 'builtin':
+            with self.database.transaction() as connection:
+                row = connection.execute("SELECT manifest_json FROM app_definitions WHERE package_id=? AND source='builtin' AND status='enabled'", (entry['app_key'],)).fetchone()
+            allowed = json.loads(row['manifest_json']).get('builtin_resources', []) if row else []
+            if resource not in allowed:
+                raise ResourceNotFoundError('app_resource', resource)
+            # Only exact product-owned files under shipped static assets are served.
+            from ai2apps import web
+            root = Path(web.__file__).parent / 'static'
+            root = root.resolve(strict=True)
+            path = (root / resource).resolve(strict=True)
+            if not path.is_relative_to(root) or not path.is_file():
+                raise ExtensionError('unsafe_app_resource', 'Built-in resource escaped shipped assets')
+            return path
         if entry["source"] == "development":
             package = self._development_packages.get(entry["app_key"])
             if package is None or package.effective_digest != entry["effective_digest"]:

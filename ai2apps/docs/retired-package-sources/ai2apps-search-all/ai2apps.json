@@ -1,0 +1,87 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/search-all",
+    "type": "app",
+    "version": "0.1.2",
+    "displayName": "Search All",
+    "description": "Multi-source WebAgent search Mini-App."
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": [
+      "darwin"
+    ],
+    "architectures": [
+      "arm64"
+    ]
+  },
+  "entrypoints": [
+    {
+      "name": "main",
+      "kind": "app",
+      "path": "web/index.html"
+    }
+  ],
+  "permissions": [],
+  "dependencies": [],
+  "files": [],
+  "capabilityCatalog": {
+    "schemaVersion": "ai2apps.package-capabilities.v1",
+    "entries": [
+      {
+        "kind": "mini-app",
+        "identity": "ai2apps.search-all",
+        "provides": [
+          "web.search"
+        ],
+        "tasks": [
+          "Search All",
+          "一搜到底"
+        ],
+        "inputTypes": [
+          "text"
+        ],
+        "outputTypes": [
+          "file"
+        ],
+        "requirements": {
+          "capabilities": []
+        },
+        "agent": {
+          "mode": "aaat",
+          "declarationVersion": "1.0.0",
+          "exports": [
+            {
+              "name": "web.search",
+              "interfaceVersion": "1.0.0",
+              "inputTypes": [
+                "text"
+              ],
+              "outputTypes": [
+                "file"
+              ]
+            }
+          ]
+        },
+        "scope": "Package-owned signed AaAT declarations bind to versioned native Host SDK protocols. Requires a host supporting ai2apps.mini-app-host-exports/v1; no catalog-only execution. Native tasks and shared Output remain host-owned.",
+        "processing": "hybrid",
+        "pricing": "unknown",
+        "localizations": {
+          "en": {
+            "displayName": "Search All",
+            "description": "Search several sources, merge links and retain provenance."
+          },
+          "zh": {
+            "displayName": "一搜到底",
+            "description": "多源搜索、合并去重并保留来源。"
+          }
+        }
+      }
+    ]
+  },
+  "sbom": {
+    "format": "spdx-json-2.3",
+    "path": "META/sbom.spdx.json"
+  }
+}

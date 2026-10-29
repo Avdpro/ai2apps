@@ -6,7 +6,7 @@ ROOT=Path(__file__).resolve().parents[2]
 SDK=ROOT/'ai2apps/web/static/js/package_mini_chat.js'
 VERSIONS={'ai2apps-audio-generation-suite':'0.2.3','ai2apps-media-voice-studio-suite':'0.2.3',
  'ai2apps-avatar-studio-suite':'0.1.4','ai2apps-frozen-time':'0.1.2',
- 'ai2apps-search-all':'0.1.1','ai2apps-shopping-pro':'0.1.1','ai2apps-trip-planner':'0.1.1','ai2apps-web-reader':'0.1.1'}
+ 'ai2apps-shopping-pro':'0.1.1','ai2apps-trip-planner':'0.1.1'}
 class Fields(HTMLParser):
  def __init__(self):super().__init__();self.fields={};self.select=None
  def handle_starttag(self,tag,attrs):

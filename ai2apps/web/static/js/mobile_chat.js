@@ -212,7 +212,7 @@
             meta.textContent = options.agent;
             node.appendChild(meta);
         }
-        for (const image of options?.images || []) {
+        for (const image of (options?.images || []).filter(image=>!(options?.artifacts||[]).some(a=>a.artifact_id===image.artifact_id))) {
             const img = document.createElement('img');img.className='mchat-generated-image';img.alt=image.filename||'Generated image';img.loading='lazy';
             const failure=document.createElement('small');failure.hidden=true;failure.textContent='图片读取失败，请重新连接后刷新。';node.append(img,failure);
             const failed=(error)=>{img.hidden=true;failure.hidden=false;if(error instanceof Error)failure.textContent=error.message;};img.onerror=failed;
@@ -230,6 +230,10 @@
             note.textContent = '📎 ' + name;
             node.appendChild(note);
         });
+        if (options?.artifacts && window.AI2AppsChatArtifacts) {
+            const assets=document.createElement('div');node.append(assets);
+            window.AI2AppsChatArtifacts.render(assets,options.artifacts,{signed:signedAgent,runId:options.runId,includeImages:true});
+        }
         if (options?.views && window.AI2AppsResultViews) {
             const views = document.createElement('div');
             window.AI2AppsResultViews.render(views, options.views, signedAgent && options.runId ? {resolveImage:(_,vi,ii)=>window.AI2AppsAgentConnection.resultImage(options.runId,vi,ii)} : {});
@@ -261,6 +265,7 @@
             images: Array.isArray(message.content) ? message.content.filter(p=>p?.type==='image_url').map(p=>p.image_url||{}) : [],
             agent: message.metadata?.agent_run_id ? 'Agent' : null,
             views: message.metadata?.aaat_views || message.aaat_views,
+            artifacts: message.metadata?.artifacts || message.artifacts,
             runId: message.metadata?.agent_run_id,
             createdAt: message.created_at,
         }));

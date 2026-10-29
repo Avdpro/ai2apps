@@ -17,6 +17,9 @@ def selected_capabilities(steps, aliases, interactions=()):
             name = step.tool_name
             if name in {'app.describe', 'app.collect_parameters', 'app.interact'}:
                 add(arguments.get('capability'))
+                if name == 'app.describe' and arguments.get('capability') and step.status.value == 'completed' and isinstance(step.output,dict):
+                    for item in [*step.output.get('forms',[]),*step.output.get('providers',[])]:
+                        if isinstance(item,dict):add(item.get('capability'))
         elif step.kind == 'model' and isinstance(step.output, dict):
             for choice in step.output.get('choices', []) or []:
                 if not isinstance(choice,dict) or not isinstance(choice.get('message'),dict):continue
@@ -78,3 +81,19 @@ def reviewed(request, declarations):
             if all(provider in entry.get('providers',[]) for provider in required['providers']):return True
         return False
     return all(contains(entry) for entry in declarations)
+
+
+def workflow_selection(router, tools, scope, selected):
+    """Owner-declared workflow dependencies, bounded to that same App/Mini-App."""
+    from .parameter_forms import FORMS
+    from .app_interactions import CAPABILITIES
+    expanded=set(selected)
+    for entry in declarations_for(router,tools,scope,selected):
+        owner=(entry['app_id'],entry.get('mini_app_id'))
+        permitted={p.capability for p in router.providers.values()
+            if (p.app_id,p.mini_app_id)==owner}
+        permitted.update((getattr(d,'capability',None) or d.key) for d in (*FORMS.values(),*CAPABILITIES.values())
+            if (d.app_id,d.mini_app_id)==owner)
+        for workflow in entry['declaration'].get('workflows',[]):
+            expanded.update(c for c in workflow.get('capabilities',[]) if c in permitted)
+    return expanded

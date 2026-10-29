@@ -19,13 +19,13 @@ def response(name=None,args=None,text='done'):
     return {'choices':[{'message':message,'finish_reason':'stop' if name is None else 'tool_calls'}]}
 
 
-def register(runtime,name,handler,*,prepare=None,describe=None,effects=(),instruction='Use actual returned IDs and report partial coverage.'):
+def register(runtime,name,handler,*,prepare=None,describe=None,invocation_policy=None,effects=(),instruction='Use actual returned IDs and report partial coverage.'):
     original=runtime.services.get_tool('gallery.search')
     runtime.services.ensure_tool(service_id=original.service_id,qualified_name=name,display_name=name,
         description='Fixture capability',input_schema={'type':'object','properties':{'query':{'type':'string'},'provider':{'type':'string'}}},
         output_schema={'type':'object'},effects=effects,timeout_ms=1000)
     runtime.app_capability_router.register(CapabilityProvider(name+'.provider',name,'test.flow',handler,
-        prepare=prepare,describe=describe,agent_context={'schema':'ai2apps.aaat-declaration/v1','instructions':[instruction]}))
+        prepare=prepare,describe=describe,invocation_policy=invocation_policy,agent_context={'schema':'ai2apps.aaat-declaration/v1','instructions':[instruction]}))
     async def routed(args,context):return await runtime.app_capability_router.invoke(name,args,context)
     runtime.service_registry.bind_tool(name,provider_key=runtime.service_registry.bound_tool('gallery.search').provider_key,handler=routed)
 
@@ -132,15 +132,16 @@ def test_review_binds_current_provider_version_with_grouped_context():
     assert not reviewed({'messages':[{'role':'tool','content':PREFIX+json.dumps([entry])}]},[required])
 
 
-def test_discovery_includes_provider_without_form_but_defers_full_context(runtime):
+@pytest.mark.asyncio
+async def test_discovery_includes_provider_without_form_but_defers_full_context(runtime):
     async def execute(args,ctx):return {'ok':True}
     register(runtime,'test.no_form',execute)
     from test_builtin_app_aaat import context
     describe=runtime.service_registry.bound_tool('app.describe').handler
-    summary=describe({},context(runtime))
+    summary=await describe({'query':'test.no_form'},context(runtime))
     row=next(p for p in summary['providers'] if p['capability']=='test.no_form')
     assert row['has_agent_context'] and 'agent_context' not in row
-    details=describe({'capability':'test.no_form'},context(runtime))
+    details=await describe({'capability':'test.no_form'},context(runtime))
     assert details['providers'][0]['agent_context']['instructions']
 
 
@@ -159,21 +160,29 @@ def test_malformed_selection_is_not_promoted_or_allowed_to_crash_context():
     assert selected_capabilities([step],{'form':SimpleNamespace(qualified_name='app.collect_parameters')})=={'app.collect_parameters'}
 
 @pytest.mark.asyncio
-async def test_explicit_form_confirmation_reused_once_after_restart(runtime):
-    seen=[]
+@pytest.mark.parametrize('identity,policy_mode', [('fixture.confirmed_create',None),('arbitrary.alpha_create','unconfirmed'),('unrelated.beta_create','unconfirmed'),('arbitrary.denied_create','deny')])
+async def test_explicit_form_confirmation_reused_once_after_restart(runtime,identity,policy_mode):
+    seen=[];policy_calls=[]
     async def descriptor(principal,model=None):return {'selection_required':True,'effective_schema':{'type':'object','properties':{'query':{'type':'string'}},'required':['query']}}
     async def execute(args,context):seen.append(args);return {'created_fixture':True}
-    register(runtime,'fixture.confirmed_create',execute,describe=descriptor)
+    async def policy(args,context):
+        policy_calls.append(args)
+        if policy_mode=='deny':
+            from ai2apps.services.aaat import InvocationPolicyError
+            raise InvocationPolicyError('fixture_policy_denied','Owner rejected this operation')
+        return False
+    register(runtime,identity,execute,describe=descriptor,invocation_policy=policy if policy_mode else None)
     async def model(request):
         results=[json.loads(m['content']) for m in request['messages'] if m.get('role')=='tool']
         if any(r.get('created_fixture') for r in results):return response(text='Created once.')
+        if any(r.get('error',{}).get('code')=='fixture_policy_denied' for r in results):return response(text='Owner denied the operation.')
         forms=[r['result'] for r in results if r.get('result',{}).get('user_confirmed')]
-        if forms:return response('fixture.confirmed_create',forms[-1]['arguments'])
-        return response('app.collect_parameters',{'request_id':'fixture-confirm','capability':'fixture.confirmed_create','initial_values':{'query':'prefilled'}})
+        if forms:return response(identity,forms[-1]['arguments'])
+        return response('app.collect_parameters',{'request_id':'fixture-confirm','capability':identity,'initial_values':{'query':'prefilled'}})
     runtime.agent_runtime.bind_model_provider(model)
     await runtime.start_background_tasks(retention_interval_seconds=60)
     try:
-        run=new_run(runtime,['app.collect_parameters','fixture.confirmed_create'])
+        run=new_run(runtime,['app.collect_parameters',identity])
         runtime.agent_runtime.wake();await wait(runtime,run.id,'waiting_input')
         item=runtime.agents.list_interactions(run.id)[0]
         assert item.prompt=='Prepare call'
@@ -187,9 +196,14 @@ async def test_explicit_form_confirmation_reused_once_after_restart(runtime):
             submitted=await client.post(base+'/submit',json={'revision':1,'values':{'query':'user-final'}})
             assert submitted.status_code==200,submitted.text
         await runtime.agent_runtime.start();runtime.agent_runtime.wake()
-        await wait(runtime,run.id,'completed')
-        assert len(seen)==1 and seen[0]['query']=='user-final'
+        done=await wait(runtime,run.id,'failed' if policy_mode=='deny' else 'completed')
         assert len(runtime.agents.list_interactions(run.id))==1
+        if policy_mode:assert policy_calls and policy_calls[-1]['query']=='user-final'
+        if policy_mode=='deny':
+            assert not seen
+            assert done.error['code']=='fixture_policy_denied'
+            return
+        assert len(seen)==1 and seen[0]['query']=='user-final'
         with runtime.database.transaction() as db:
             claim=db.execute('SELECT call_id FROM agent_parameter_invocations WHERE interaction_id=?',(item.id,)).fetchone()
         assert sum(s.action_key==claim['call_id'] for s in runtime.agents.list_steps(run.id))==1

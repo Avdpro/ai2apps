@@ -17,3 +17,28 @@ No Cloud API or native browser-control protocol is added by this UI.
 Imagine Studio (`ai2apps.imagine-studio`), Video Studio (`ai2apps.video-studio`) and Voice Studio (`ai2apps.readaloud`) use the same fixed-bottom menu. Their templates include `_mini_app_more.html`; `studio_mini_apps.css` gives the cards their own scroll region while the footer stays outside it. The nine host locales provide the menu and customization form labels.
 
 The ACPF chooser accepts only the four known host IDs and filters explicit manifest placements for the current host. Studio customization uses `createPrivateMiniAppProject` and the existing Coder handoff. Each brief binds the generated Package to the selected Studio and its host SDK/output contract. Voice Studio explicitly requires the shared Quick Read Preview & Output and preserves private Line caches. Studio generation does not inherit AI Browser's WebAgent execution requirements. Installation refreshes the host catalog/readiness without replacing the current working draft or output.
+
+## Built-in browser research and goal fallback (2026-10-29)
+
+Search All and Web Reader ship inside the AI Browser App, with exact resource
+allowlists and native AaAT declarations. They require no registry Package install.
+Their former Package source snapshots are retained only as historical regression
+fixtures under `docs/retired-package-sources/`; they are not development Package
+roots or publication candidates. Shopping Pro and Trip Planner remain Packages.
+Product-owned Mini-App identities take precedence over obsolete installed copies;
+foreign Package declarations cannot override built-in identities. All resource,
+mount, Session, Profile and current declaration checks remain enforced.
+
+`web.search` prefers built-in Search All, defaulting to fast mode. Search source
+selection and paid-route consent retain the same preparation/confirmation receipts.
+`web.fetch` prefers built-in Web Reader. HTTP alternatives are not screenshot
+readers and should not silently replace browser tasks.
+
+`browser.complete_goal` exposes the existing durable browser queue for a goal and
+starting URL. Its owner declaration requires using a suitable available Mini-App
+first. The initial supported scope is read-only browsing/search, preserving login,
+CAPTCHA, consent, cancellation, uncertain-action and Profile guards. `visual=true`
+adds a native BiDi screenshot observation through the declared vision route; text
+extraction alone cannot satisfy this flag. The fallback cannot bypass a denied or
+cancelled Mini-App call. Functional Mini-Chat scope stays limited to its selected
+Mini-App and does not gain the host's general goal capability.

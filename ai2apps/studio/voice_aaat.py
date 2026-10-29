@@ -117,7 +117,7 @@ def output(runtime, principal, session_id, job):
         'url':f'/v1/platform/sessions/{session_id}/artifacts/{imported.id}/download'}
 
 
-async def execute(runtime,args,context,*,replacement=False,video=False,host_app=None):
+async def execute(runtime,args,context,*,replacement=False,video=False,host_app=None,mini_app_id=None):
     from jsonschema import Draft202012Validator
     from ai2apps.api.ownership import authorize_session
     from .capability_broker import MountedMiniApp,_declared_capabilities
@@ -128,6 +128,7 @@ async def execute(runtime,args,context,*,replacement=False,video=False,host_app=
     Draft202012Validator(REPLACE_SCHEMA if replacement else SEPARATE_SCHEMA).validate(args)
     app=host_app or ('ai2apps.video-studio' if video else APP)
     capability,mini=('media.video_speaker_voice_replacement','ai2apps.media-voice.video-speaker-replacement') if video else ((REPLACE,REPLACE_MINI) if replacement else (SEPARATE,SEPARATE_MINI))
+    mini=mini_app_id or mini
     definition,declaration=runtime.extension_manager._studio_mini_app_definition(app,mini,principal)
     caps=_declared_capabilities(declaration)
     action=args.get('action','analyze')

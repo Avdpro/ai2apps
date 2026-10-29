@@ -1,6 +1,6 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 const {chromium}=require('playwright');
-const base=path.resolve(__dirname,'../../packages/ai2apps-search-all/web');
+const base=path.resolve(__dirname,'../web/static/builtin_mini_apps/search-all/web');
 for(const width of [390,1100])test('Completed search changes mode and survives lost response '+width,async()=>{
  const browser=await chromium.launch({headless:true,channel:'chrome'});
  try{

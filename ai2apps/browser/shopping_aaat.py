@@ -100,11 +100,11 @@ def cart_values(runtime,principal,form,values,item):
     return values
 
 
-def cart_receipt(runtime,args,context):
+def cart_receipt(runtime,args,context,*,provider_id=None):
     if not context.invocation_id or not context.trace_id:raise ToolProviderError('Cart requires a durable confirmed invocation')
     run=runtime.agents.get_run(context.trace_id)
     if run.session_id!=context.session_id:raise ToolProviderError('Cart Session mismatch')
-    provider=APP+'.shopping.prepare_cart'
+    provider=provider_id or APP+'.shopping.prepare_cart'
     expected={k:v for k,v in args.items() if k!='provider'}
     for item in reversed(runtime.agents.list_interactions(run.id)):
         if item.ui_hints.get('provider')!=provider:continue
@@ -126,25 +126,65 @@ def cart_receipt(runtime,args,context):
     raise ToolProviderError('Confirm the exact Shopping Pro products, quantities and profile in this Run before preparing the cart')
 
 
+async def execute_operation(runtime,args,context,operation,*,mini_app_id=None,provider_id=None):
+    from ai2apps.research.mini_apps import wait_task
+    if not context.invocation_id:raise ToolProviderError('Shopping requires a durable Tool invocation')
+    principal=principal_for(runtime,context)
+    if operation=='prepare_cart':cart_receipt(runtime,args,context,provider_id=provider_id)
+    broker=WebAgentMiniAppBroker(runtime);mounted=broker.registered(mini_app_id or MINI,principal,context.session_id)
+    parameters={k:v for k,v in args.items() if k not in ('profile','history_mode')}
+    mode=args.get('history_mode','incremental')
+    if mode not in ('incremental','cache'):raise ToolProviderError('AaAT supports incremental or cached history only')
+    history_operation=operation in ('history','refresh_list')
+    if history_operation and args.get('previous_task'):
+        raise ToolProviderError('AaAT resolves history references automatically; previous_task is not an input')
+    if operation=='refresh_list':parameters['previous_task']=''
+    if operation=='history' and mode=='cache':
+        from .shopping_cache import latest_history
+        observed=latest_history(broker,mounted,principal,args.get('profile','default'))
+        if not observed:raise ToolProviderError('没有本地购物历史，请选择增量刷新。')
+    else:
+        task=broker.submit_declared(mounted,principal,capability=operation,
+            parameters=parameters,profile=args.get('profile','default'),
+            request_id='aaat-'+context.invocation_id,
+            **({'_shopping_history_mode':mode} if history_operation else {}))
+        observed=await wait_task(runtime,broker,mounted,principal,task,context,time.monotonic()+850)
+    raw=observed.get('result') or {};result={'browser_task_id':observed['id'],'result':raw,'untrusted':True}
+    source_tasks=[observed['id']] if operation in ('history','refresh_list') else args.get('source_tasks',[])
+    if operation in ('recommend','revise','refresh_list'):
+        catalog=[{**row,'_source_task':observed['id']} for row in product_rows(raw)] if operation=='refresh_list' else [{**row,'_source_task':key} for key in source_tasks for row in product_rows(broker.task_declared(mounted,principal,key).get('result') or {})]
+        plan=(raw.get('assigned') or {}).get('shopping_report',{}).get('plan',{}) if operation=='refresh_list' else raw
+        result['report']=report(plan,catalog)
+        result['aaat_view']=table_view(catalog,result['report']['items'])
+    elif operation=='prepare_cart':
+        catalog=[{**row,'_source_task':key} for key in source_tasks for row in product_rows(broker.task_declared(mounted,principal,key).get('result') or {})]
+        result['aaat_view']=table_view(catalog,raw.get('items',[]),cart=True)
+    result['aaat_context']={'schema':'ai2apps.aaat-result-context/v1','status':'partial' if raw.get('status')=='partial' else 'complete','data_trust':'untrusted',
+        'scope':{'profile':args.get('profile','default'),'source_tasks':source_tasks},'coverage':{'task_status':observed['status']}}
+    return result
+
+
+def discovery_context(runtime,context):
+    from .shopping_cache import latest_history, recent_tasks, discovery_mount
+    principal=principal_for(runtime,context)
+    broker=WebAgentMiniAppBroker(runtime);mounted=discovery_mount(broker,principal,context.session_id)
+    if mounted is None:return {'history':{'available':False,'source_tasks':[]},'recent_tasks':[]}
+    history=latest_history(broker,mounted,principal,'default')
+    tasks=recent_tasks(broker,mounted,principal,session_id=context.session_id,limit=4)
+    return {'history':{'source_tasks':[history['id']] if history else [],'profile':'default',
+        'available':history is not None},'recent_tasks':[{
+            'task_id':t['id'],'capability':'shopping.'+t['capability'],'profile':t['profile_key'],
+            'state':t['status'],'message':str(t.get('message') or '')[:300],
+            'failure':{k:str(v)[:300] for k,v in (t.get('failure') or {}).items() if k in ('code','message')},
+            'arguments':{k:v[:20 if k=='selected' else 4] for k,v in t['input'].items() if k in ('selected','source_tasks') and isinstance(v,list)}} for t in tasks]}
+
 def install(runtime,register):
     from ai2apps.research.mini_apps import wait_task
     from ai2apps.agents.parameter_forms import FORMS, schema_fields, present_fields
     from dataclasses import replace
     with runtime.database.transaction(write=True) as db:
         db.execute('CREATE TABLE IF NOT EXISTS shopping_cart_confirmations (interaction_id TEXT PRIMARY KEY,invocation_id TEXT NOT NULL)')
-    def discover(context):
-        from .shopping_cache import latest_history, recent_tasks, discovery_mount
-        principal=principal_for(runtime,context)
-        broker=WebAgentMiniAppBroker(runtime);mounted=discovery_mount(broker,principal,context.session_id)
-        if mounted is None:return {'history':{'available':False,'source_tasks':[]},'recent_tasks':[]}
-        history=latest_history(broker,mounted,principal,'default')
-        tasks=recent_tasks(broker,mounted,principal,session_id=context.session_id,limit=4)
-        return {'history':{'source_tasks':[history['id']] if history else [],'profile':'default',
-            'available':history is not None},'recent_tasks':[{
-                'task_id':t['id'],'capability':'shopping.'+t['capability'],'profile':t['profile_key'],
-                'state':t['status'],'message':str(t.get('message') or '')[:300],
-                'failure':{k:str(v)[:300] for k,v in (t.get('failure') or {}).items() if k in ('code','message')},
-                'arguments':{k:v[:20 if k=='selected' else 4] for k,v in t['input'].items() if k in ('selected','source_tasks') and isinstance(v,list)}} for t in tasks]}
+    def discover(context):return discovery_context(runtime,context)
     for operation in ('history','refresh_list','recommend','revise','prepare_cart','gift_recommend'):
         async def describe(principal,model=None,operation=operation):
             _,declaration=runtime.extension_manager._studio_mini_app_definition(APP,MINI,principal)
@@ -161,40 +201,7 @@ def install(runtime,register):
             if 'selected' in schema['properties']:schema['properties']['selected']['title']='确认商品与目标数量 / Confirm products and target quantities'
             return {'effective_schema':schema,'fields':present_fields(schema_fields(schema),FORM_LABELS,{'history_mode':{'incremental':{'zh':'增量刷新','en':'Incremental refresh'},'cache':{'zh':'仅用本地缓存','en':'Local cache only'}},'locale':{'zh':{'zh':'中文','en':'Chinese'},'en':{'zh':'英文','en':'English'}}}),'selection_required':operation in ('history','refresh_list','prepare_cart','gift_recommend')}
         async def execute(args,context,operation=operation):
-            if not context.invocation_id:raise ToolProviderError('Shopping requires a durable Tool invocation')
-            principal=principal_for(runtime,context)
-            if operation=='prepare_cart':cart_receipt(runtime,args,context)
-            broker=WebAgentMiniAppBroker(runtime);mounted=broker.registered(MINI,principal,context.session_id)
-            parameters={k:v for k,v in args.items() if k not in ('profile','history_mode')}
-            mode=args.get('history_mode','incremental')
-            if mode not in ('incremental','cache'):raise ToolProviderError('AaAT supports incremental or cached history only')
-            history_operation=operation in ('history','refresh_list')
-            if history_operation and args.get('previous_task'):
-                raise ToolProviderError('AaAT resolves history references automatically; previous_task is not an input')
-            if operation=='refresh_list':parameters['previous_task']=''
-            if operation=='history' and mode=='cache':
-                from .shopping_cache import latest_history
-                observed=latest_history(broker,mounted,principal,args.get('profile','default'))
-                if not observed:raise ToolProviderError('没有本地购物历史，请选择增量刷新。')
-            else:
-                task=broker.submit_declared(mounted,principal,capability=operation,
-                    parameters=parameters,profile=args.get('profile','default'),
-                    request_id='aaat-'+context.invocation_id,
-                    **({'_shopping_history_mode':mode} if history_operation else {}))
-                observed=await wait_task(runtime,broker,mounted,principal,task,context,time.monotonic()+850)
-            raw=observed.get('result') or {};result={'browser_task_id':observed['id'],'result':raw,'untrusted':True}
-            source_tasks=[observed['id']] if operation in ('history','refresh_list') else args.get('source_tasks',[])
-            if operation in ('recommend','revise','refresh_list'):
-                catalog=[{**row,'_source_task':observed['id']} for row in product_rows(raw)] if operation=='refresh_list' else [{**row,'_source_task':key} for key in source_tasks for row in product_rows(broker.task_declared(mounted,principal,key).get('result') or {})]
-                plan=(raw.get('assigned') or {}).get('shopping_report',{}).get('plan',{}) if operation=='refresh_list' else raw
-                result['report']=report(plan,catalog)
-                result['aaat_view']=table_view(catalog,result['report']['items'])
-            elif operation=='prepare_cart':
-                catalog=[{**row,'_source_task':key} for key in source_tasks for row in product_rows(broker.task_declared(mounted,principal,key).get('result') or {})]
-                result['aaat_view']=table_view(catalog,raw.get('items',[]),cart=True)
-            result['aaat_context']={'schema':'ai2apps.aaat-result-context/v1','status':'partial' if raw.get('status')=='partial' else 'complete','data_trust':'untrusted',
-                'scope':{'profile':args.get('profile','default'),'source_tasks':source_tasks},'coverage':{'task_status':observed['status']}}
-            return result
+            return await execute_operation(runtime,args,context,operation)
         capability='shopping.'+operation
         register(capability,APP,'Shopping Pro: '+operation,
             {'refresh_list':'Refresh purchase history AND generate the replenishment list using Shopping Pro business rules.',
@@ -225,6 +232,12 @@ def install(runtime,register):
             describe_cart=describe
             key=APP+'.'+capability
             FORMS[key]=replace(FORMS[key],describe=cart_form,prepare_values=cart_values,prompt={'zh':'确认购物车商品和数量','en':'Confirm cart products'})
+    install_result_policy(runtime)
+
+
+
+def install_result_policy(runtime):
+    if 'shopping-owner-report' in runtime.app_capability_router.result_policies:return
     def preview(step):
         out=step.output or {}
         return {k:out[k] for k in ('browser_task_id','report','aaat_context') if k in out}
@@ -243,7 +256,6 @@ def install(runtime,register):
     runtime.app_capability_router.register_result_policy(AgentResultPolicy('shopping-owner-report',
         lambda steps:{'role':'system','content':'Shopping Pro report fields are authoritative. Preserve calendar buckets and unknown values; a history read alone is not a recommendation. Show the actual cart outcome, never infer success from submission.'},
         finalize,preview,('shopping.refresh_list','shopping.recommend','shopping.revise','shopping.prepare_cart')))
-
 
 async def owned_product_image(runtime,principal,task_id,product_id):
     from .tasks import BrowserTaskRepository

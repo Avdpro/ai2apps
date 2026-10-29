@@ -1,5 +1,5 @@
 const test=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs');
-const code=fs.readFileSync(__dirname+'/../../packages/ai2apps-search-all/web/workflow.js','utf8');
+const code=fs.readFileSync(__dirname+'/../web/static/builtin_mini_apps/search-all/web/workflow.js','utf8');
 const tick=()=>new Promise(r=>setImmediate(r));
 function ui(options={}){
  const nodes=new Map(),calls=[],sources=['google','bing','wikipedia','x'].map(value=>({value,checked:value==='google',disabled:false,dataset:{}}));
@@ -10,7 +10,7 @@ function ui(options={}){
  const document={documentElement:{lang:'zh'},getElementById:get,querySelector:()=>get('summaryHint'),createElement:tag=>node(tag),querySelectorAll:selector=>selector.includes('name=source')?selector.includes(':checked')?sources.filter(s=>s.checked):sources:[...sources,...['query','mode','limit','profile','add-source'].map(get)]};
  const host={beforeSearch:async()=>{calls.push('pages');return options.before!==false;},show:s=>calls.push(['show',s.status])};
  const sdk={saveDraft:async v=>{assert.equal(v.schema,'ai2apps.mini-app-draft/v1');assert.equal(v.miniApp,'ai2apps.search-all');calls.push(['save',v]);},draft:async()=>options.draft?JSON.stringify(options.draft):null,prepareSearch:async body=>{calls.push(['prepare',body]);if(options.prepare)return options.prepare;return prepared;},searchPreparation:async()=>prepared,searchConfig:async()=>({configured:!!options.api}),startSearch:async body=>{calls.push(['start',body]);return {status:'queued'};},searchWorkflow:async()=>({status:'completed',output:{}})};
- const ctx={document,AI2AppsWebAgent:sdk,SearchAllWorkflowHost:host,crypto:{randomUUID:()=> 'request'},setTimeout,Date,console,location:{search:'?locale=zh'},URLSearchParams};vm.createContext(ctx);vm.runInContext(fs.readFileSync(__dirname+'/../../packages/ai2apps-search-all/web/i18n.js','utf8'),ctx);vm.runInContext(code,ctx);
+ const ctx={document,AI2AppsWebAgent:sdk,SearchAllWorkflowHost:host,crypto:{randomUUID:()=> 'request'},setTimeout,Date,console,location:{search:'?locale=zh'},URLSearchParams};vm.createContext(ctx);vm.runInContext(fs.readFileSync(__dirname+'/../web/static/builtin_mini_apps/search-all/web/i18n.js','utf8'),ctx);vm.runInContext(code,ctx);
  return {get,calls,sources,prepared,submit:()=>get('search').onsubmit({preventDefault(){}})};
 }
 test('prepare optimizes terms but never starts a source search; mode and sources become editable',async()=>{

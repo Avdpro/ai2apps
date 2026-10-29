@@ -104,3 +104,19 @@ async def test_arbitrary_owner_scope_provider_version(runtime,app_id,capability)
  runtime.app_capability_router.providers[provider.id]=replace(provider,version='2')
  with pytest.raises(Exception):await runtime.tools.execute(capability,{},context=ctx)
  assert calls==[sid]
+ assert runtime.app_chat.open(P(),owner.id,{}, {})==sid
+ await runtime.tools.execute(capability,{},context=ctx)
+ assert calls==[sid,sid]
+
+
+def test_reopen_does_not_refresh_an_active_turn_scope(runtime):
+ sid,d,t=open_chat(runtime)
+ service=runtime.app_chat
+ prior=service.binding(sid)['providers']
+ provider=runtime.app_capability_router.providers['ai2apps.todo.todo.search']
+ runtime.app_capability_router.providers[provider.id]=replace(provider,version='new-interface')
+ runtime.agents.create_run(session_id=sid,agent_key='ai2apps.app-chat-agent',input={'prompt':'fixture only','model':'fixture'})
+ with pytest.raises(ValueError,match='active turn'):
+  service.open(P(),'ai2apps.todo.chat',{'directory_id':d['id']},{})
+ assert service.binding(sid)['providers']==prior
+ assert not service.provider_visible(sid,runtime.app_capability_router.providers[provider.id])

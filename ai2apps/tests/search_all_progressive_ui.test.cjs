@@ -4,7 +4,7 @@ test('shared workflow article progress updates changed cards without recreating 
  const browser=await chromium.launch({headless:true,channel:'chrome'});
  try{
   const page=await browser.newPage({viewport:{width:390,height:844}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
-  const base=path.resolve(__dirname,'../../packages/ai2apps-search-all/web');
+  const base=path.resolve(__dirname,'../web/static/builtin_mini_apps/search-all/web');
   await page.setContent(fs.readFileSync(base+'/index.html','utf8').replace(/<script[\s\S]*?<\/script>/g,''));
   await page.evaluate(()=>{window.SearchAllSharedWorkflow=true;window.AI2AppsWebAgent={startup:async()=>({profiles:[{key:'default',name:'Default',is_default:true}],sources:[]}),searchConfig:async()=>({configured:false,deepseek_available:false}),onTask:()=>()=>{},retainedTasks:async()=>[],openResult:async()=>({})};});
   for(const name of ['i18n.js','startup.js','merge.js','presentation.js','diagnostics.js','modes.js','summary.js','search.js'])await page.addScriptTag({path:base+'/'+name});

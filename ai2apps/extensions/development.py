@@ -176,6 +176,7 @@ class DevelopmentPackageLoader:
                     "mode": "source",
                     "packageId": package["id"],
                     "sourceRoot": str(root),
+                    "capabilityCatalog": deepcopy(outer.get("capabilityCatalog")),
                 },
             }
         )

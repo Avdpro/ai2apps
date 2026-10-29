@@ -322,6 +322,11 @@ class InteractiveArchive:
                             f"Duplicate Studio Mini-App id: {mini_app_id}",
                         )
                     seen_mini_app_ids.add(mini_app_id)
+                    try:
+                        from ai2apps.packages.mini_app_exports import declarations as mini_exports
+                        mini_exports(item)
+                    except (ValueError,TypeError,KeyError) as error:
+                        raise ExtensionError('invalid_mini_app_aaat', str(error)) from error
                     if "localizations" in item:
                         try:
                             validate_app_localizations(item["localizations"])

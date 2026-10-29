@@ -74,16 +74,13 @@ def create_parameter_forms_router(runtime_provider, principal_provider):
     @router.post('/search/prepare')
     def prepare_search(run_id:str,interaction_id:str,body:DraftInput,principal=dep):
         from ai2apps.research import search_preparation as search
-        from ai2apps.research.search_form import PROVIDER, mounted
+        from ai2apps.research.search_form import PROVIDER, mounted, begin_form
         runtime,run,item,form=resolve(run_id,interaction_id,principal)
         if form.key!=PROVIDER:raise HTTPException(422,'Not a Search All form')
         current=draft(runtime,item,form,principal)
         if body.revision!=current['revision'] or body.values!=current['values']:raise HTTPException(409,'Save the search draft first')
         try:
-            return search.begin(runtime,principal,mounted(runtime,principal,item,run.session_id),
-                scope='interaction:'+item.id,session_id=run.session_id,origin_run=run.id,
-                query=body.values.get('query',''),profile=body.values.get('profile','default'),
-                locale=body.values.get('locale','zh'),request_id=str(body.revision))
+            return begin_form(runtime,principal,item,run,body.values,body.revision)
         except ValueError as error:raise HTTPException(422,str(error)) from error
     @router.get('/search/{preparation_id}')
     def search_preparation(run_id:str,interaction_id:str,preparation_id:str,principal=dep):
@@ -103,7 +100,9 @@ def create_parameter_forms_router(runtime_provider, principal_provider):
         # aliases and dynamic fields resolve. Persist the reviewed projection so
         # submit still compares exact canonical values and revision.
         from ai2apps.agents.tool_arguments import prepare_arguments
-        prepared,_=prepare_arguments(schema,current['values'])
+        from ai2apps.agents.artifact_outputs import bind_output_materials
+        bound=bind_output_materials(runtime,principal,run.session_id,schema,current['values'])
+        prepared,contract_error=prepare_arguments(schema,bound)
         if prepared!=current['values'] and not handoff_record(runtime,item):
             with runtime.database.transaction(write=True) as db:
                 if db.execute('SELECT 1 FROM agent_parameter_handoffs WHERE interaction_id=?',(item.id,)).fetchone():
@@ -127,6 +126,7 @@ def create_parameter_forms_router(runtime_provider, principal_provider):
             'prompt_labels':form.prompt if isinstance(form.prompt,dict) else ({'zh':'确认调用参数','en':'Confirm call parameters'} if form.prompt=='填写参数 / Complete parameters' else None),
             'can_continue_in_app':form.continuation in ADAPTERS,'waiting_app':bool(handoff),
             'studio_run_id':handoff['studio_run_id'] if handoff else None,**current,
+            'parameter_contract_error':json.loads(contract_error) if contract_error else None,
             **diagnostics(schema,current['values']), 'models':[], 'configure_only':form.mode=='configure',**extra}
     @router.get('/setup')
     async def setup(run_id:str,interaction_id:str,principal=dep):
@@ -136,7 +136,7 @@ def create_parameter_forms_router(runtime_provider, principal_provider):
         current=draft(runtime,item,form,principal)
         descriptor=await form.describe(runtime,principal,form,current['values'],item) if form.describe else {}
         install=descriptor.get('install')
-        if not isinstance(install,dict) or install.get('appId')!=form.app_id or not install.get('capability'):
+        if not isinstance(install,dict) or install.get('appId')!=(form.configuration_app_id or form.app_id) or not install.get('capability'):
             raise HTTPException(422,'This Provider has not declared an owning App configuration flow')
         with runtime.database.transaction() as db:
             origin=db.execute('''SELECT s.id session_id,i.id instance_id,d.package_id app_id FROM sessions s
@@ -148,7 +148,7 @@ def create_parameter_forms_router(runtime_provider, principal_provider):
         install={**install,'actionId':'aaat-setup:'+item.id+':'+hashlib.sha256((form.key+str(form.provider_version)).encode()).hexdigest()[:16],
             'intent':{'returnTo':'/apps/'+origin['app_id'],'resumeToken':item.id,'completionPolicy':'configure_only'}}
         return {'run_id':run.id,'interaction_id':item.id,'provider':form.key,'provider_version':form.provider_version,
-            'origin':dict(origin),'target':{'app_id':form.app_id,'mini_app_id':form.mini_app_id},
+            'origin':dict(origin),'target':{'app_id':install['appId'],'mini_app_id':form.mini_app_id},
             'install':install,'revision':current['revision'],'desktop_required':True}
 
     async def configuration(run_id, interaction_id, principal):
@@ -229,7 +229,13 @@ def create_parameter_forms_router(runtime_provider, principal_provider):
         if len(json.dumps(body.values))>16384:raise HTTPException(413,'Draft too large')
         extra=await form.describe(runtime,principal,form,body.values,item) if form.describe else {}
         from ai2apps.agents.tool_arguments import prepare_arguments
-        body.values,_=prepare_arguments(extra.get('schema',form.schema),body.values)
+        active_schema=extra.get('schema',form.schema)
+        from ai2apps.agents.parameter_contracts import problems
+        if any(e['validator'] in ('additionalProperties','unevaluatedProperties') for e in problems(active_schema,body.values,partial=True)):
+            _,error=prepare_arguments(active_schema,body.values)
+            raise HTTPException(422,json.loads(error))
+        from ai2apps.agents.artifact_outputs import bind_output_materials
+        body.values=bind_output_materials(runtime,principal,run.session_id,active_schema,body.values)
         validate(runtime,principal,form,body.values)
         with runtime.database.transaction(write=True) as db:
             if db.execute('SELECT 1 FROM agent_parameter_handoffs WHERE interaction_id=?',(item.id,)).fetchone():raise HTTPException(409,'Continue editing in the target App')

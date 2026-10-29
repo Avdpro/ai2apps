@@ -12,7 +12,7 @@ from ai2apps.agents.parameter_forms import resolve_form
 from ai2apps.chat import ChatRepository
 from ai2apps.identity import RequestPrincipal
 from ai2apps.services import ToolCallContext
-from test_app_interactions import runtime
+from legacy_package_backend_fixture import runtime
 
 
 def context(runtime):
@@ -106,10 +106,14 @@ async def test_quick_read_uses_host_job_and_exact_invocation_key(runtime,monkeyp
     ctx=replace(context(runtime),invocation_id='quick-read-test');seen=[]
     monkeypatch.setattr(runtime.extension_manager,'launch_app',lambda *a,**k:(SimpleNamespace(id='voice-instance'),None,False))
     def submit(**kw):
-        seen.append(kw);return {'id':'job-q','status':'succeeded','result':{'downloadUrl':'/shared/voice/output'}}
+        seen.append(kw)
+        session=runtime.readaloud_tasks._artifact_session(RequestPrincipal.legacy_local().actor_user_id)
+        source=runtime.config.paths.artifacts_path/'quick-read-fixture.wav';source.write_bytes(b'RIFF fixture')
+        artifact=runtime.workspace.import_artifact(session,source,name='quick.wav',media_type='audio/wav')
+        return {'id':'job-q','status':'succeeded','result':{'downloadUrl':f'/v1/platform/sessions/{session}/artifacts/{artifact.id}/download'}}
     monkeypatch.setattr(runtime.studio_jobs,'submit',submit)
     result=await runtime.app_capability_router.invoke('voice.quick_read',{'text':'朗读测试','model_id':'tts-model'},ctx)
-    assert result['downloadUrl']=='/shared/voice/output' and result['mini_app_id']=='ai2apps.audio.quick-read'
+    assert result['files'][0]['url'].startswith(f'/v1/platform/sessions/{ctx.session_id}/artifacts/') and result['mini_app_id']=='ai2apps.audio.quick-read'
     assert seen[0]['kind']=='quick-read' and seen[0]['key']=='aaat:quick-read-test'
     assert seen[0]['payload']['model_id']=='tts-model' and seen[0]['studio_id']=='ai2apps.readaloud'
 
@@ -151,6 +155,6 @@ async def test_common_app_schema_is_preflight_before_any_business_handler(runtim
     assert provider.prepare is not None
     with pytest.raises(CapabilityInvocationError) as caught:
         await router.invoke(capability,{},context(runtime))
-    assert caught.value.code=='invalid_tool_arguments'
+    assert caught.value.code=='parameter_contract_mismatch'
     assert caught.value.details['phase']=='prepare'
     handler.assert_not_awaited()

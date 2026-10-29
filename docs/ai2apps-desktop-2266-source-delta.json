@@ -1,0 +1,1000 @@
+{
+  "baseline": "aff206a09f21110f3ab1fba12a146b48331dc352",
+  "files": [
+    {
+      "path": "ai2apps/agents/aaat_context.py",
+      "old": "a982f6fb60537aba487802c643301e8f33ec810604a924e352fd633c222f8b30",
+      "new": "93cfcbdbd51ee4f91d7e998e783cee1ffabd2f98e58ff923260f1c24ba001fbd"
+    },
+    {
+      "path": "ai2apps/agents/artifact_outputs.py",
+      "old": null,
+      "new": "186c0b2d5ce6de22ec91be8da1a151ea8430e31bd82d946c6e8690b4e8943a32"
+    },
+    {
+      "path": "ai2apps/agents/general.py",
+      "old": "37c64a54871db9754b7c7b1cab1a830674ca7cb4828d5e5bba8ba002346a07d4",
+      "new": "a5475e583f2cb07e97527dc9f38aa4ef38c450a8225398a10c31e86b93c83d52"
+    },
+    {
+      "path": "ai2apps/agents/parameter_contracts.py",
+      "old": null,
+      "new": "77633a9d2fc3f3e015c0a95eef14d3de84315a9c988e9840b14577889ae69e41"
+    },
+    {
+      "path": "ai2apps/agents/parameter_forms.py",
+      "old": "35e278d97fa7672f4fa22ae9b3e9ec151d18429d20bfaf82414eb10765a45703",
+      "new": "43dcf1acb9598a43e1f424613d5b1796386a3a5d04de11f5bf0f7669fcf9065d"
+    },
+    {
+      "path": "ai2apps/agents/provider_forms.py",
+      "old": "01ecf3f080b5f55196eb2b80f24ec9c9d0ae7aaf487878108c5f772042c18ccb",
+      "new": "e2b04752062b7b84728c23a1f198a4f674212f6bfdf07b5a924e86f21c1af52a"
+    },
+    {
+      "path": "ai2apps/agents/result_reference.py",
+      "old": "e18be7f57238e9a1ffed2c8f849ac3cfda2a05462d043558cc8a955211ccc9fd",
+      "new": "fc8f53af1b381b2623229f7226fed66935319c164059dafb730ed87c526576ba"
+    },
+    {
+      "path": "ai2apps/agents/run_metrics.py",
+      "old": null,
+      "new": "3ab6fbca7a1659a55a9acc9dd88df535fad8c10b86befea102af7679639ea023"
+    },
+    {
+      "path": "ai2apps/agents/runtime.py",
+      "old": "83a8e63c9ed192b7b51ac0fbe73c1963df3366fefde935e6d25219292d3dc1ef",
+      "new": "98fb43c058fd1b7c4f55fb07a942e8e0b31282345863c9715e45a60e9b32c651"
+    },
+    {
+      "path": "ai2apps/agents/tool_arguments.py",
+      "old": "b3cf18a019e1f73d5474a7d6b47798404d617a4a41ee7d4a26c276c3b4a7589c",
+      "new": "958be2736489bb1dc94f6cbb7938396a3310569ef16aa5990632887335ac3f12"
+    },
+    {
+      "path": "ai2apps/agents/tool_loading.py",
+      "old": null,
+      "new": "cceb608604a34fa5cf35e01fbecfd1892450d3b56922513602a06d70a6e80208"
+    },
+    {
+      "path": "ai2apps/agents/tool_recovery.py",
+      "old": "0f3ad9c318c1572efc614ef9f7152e43b28393e5917af941feda3c6d0aaab61c",
+      "new": "633c74b2f99b2a8738c3e2fec3128cf2f79d7cb0802328c5232a247e7dbcb2c4"
+    },
+    {
+      "path": "ai2apps/api/agents.py",
+      "old": "9f4b30abb267803131501a533ef219364d3a94ec9dde7fdeaf3cfd6871d5230c",
+      "new": "f0165cd0ad7aac602380785ed19691daa23d0f482650577a63a8ba56db21013d"
+    },
+    {
+      "path": "ai2apps/api/chat.py",
+      "old": "fc5f9049aa7cd4851317812eea986475cff66cd26ae9d63ee8eca70d8e22c123",
+      "new": "75c40ab5c8ed39c363d0dc781bff10ebb6bd844fac50e9998b6215265aeef334"
+    },
+    {
+      "path": "ai2apps/api/parameter_forms.py",
+      "old": "d49eff5b00be3932a9583430e9eb72297b381ad375f95ec026b72b68cfbc391f",
+      "new": "25f03c784eaeba2221f9f38a515e52480e145ed105d7496af7690515a3ab6842"
+    },
+    {
+      "path": "ai2apps/api/studio_mini_apps.py",
+      "old": "91583eb8f278b293c46322fe7ee9cbb302ba4ecf5d17cb4a1d371485f3db41ee",
+      "new": "141c02b4a23577532587f0a90b6a10f52f2231e9e30bc5d7353a7a6c2f739abe"
+    },
+    {
+      "path": "ai2apps/app_chat/service.py",
+      "old": "5c116913748c239c25ba31c08d0dcab9873259d6fde23043923a9c91608517f5",
+      "new": "74c601e6863aae3598cc04ec1f619ca81957c9421f27f7909ab5a927f130da30"
+    },
+    {
+      "path": "ai2apps/apps/system.py",
+      "old": "62958419a78ec0ab20dd1e95d2a8393799213792f97a82110e7e031b4e21789b",
+      "new": "8035c3ae59d9596b5f61ecffb280d335e6d09f67a88b111b95576b0c4dd4409a"
+    },
+    {
+      "path": "ai2apps/browser/background_executor.py",
+      "old": "05d05f926651232dfa3a08636c2d5cb9d8c10182327b07a491ff309617ce7894",
+      "new": "c856f57bf738556f367b300e47b243fa5697a85ca302b91fcddda86f694d7179"
+    },
+    {
+      "path": "ai2apps/browser/builtin_mini_apps.py",
+      "old": null,
+      "new": "1eb85d217f4826f56210325b4763014af566c15a27b81c0444ca723b45636f08"
+    },
+    {
+      "path": "ai2apps/browser/goal_aaat.py",
+      "old": null,
+      "new": "f834a4096a431019a5d3747543c5ac3d373a8693ac911509362649badf514452"
+    },
+    {
+      "path": "ai2apps/browser/package_sdk.py",
+      "old": null,
+      "new": "bfa18112f13ce1b90a6c50291d6d7d6293605d8bcde2685a3bd1f05512698671"
+    },
+    {
+      "path": "ai2apps/browser/shopping_aaat.py",
+      "old": "6537df305f1b006ffb1f2f106a3909d867e897fdf1defd1264dd51279a8f7120",
+      "new": "60eef2ba35e046c4567386b1bd46f743198feed95433b20ebb44b4a93cec8315"
+    },
+    {
+      "path": "ai2apps/browser/social.py",
+      "old": "efed6fdcd7ba1a8849b94189cd716eb84eacbc9e0fa859b170a2b4a1c921499f",
+      "new": "af172325687cb6755fa35ae64dd910d7880e231fbda7676cf1c45d2122849842"
+    },
+    {
+      "path": "ai2apps/browser/social_media.py",
+      "old": "e1364cd8b554cd2071e009174591fb43d76d00c57ceb63d90f5ad881d5b72ff3",
+      "new": "7be9a16dc1b2207e7baf6e917a4bbe6fbee9ddefb5f9094f4780b728e34aa9a5"
+    },
+    {
+      "path": "ai2apps/browser/visual_recovery.py",
+      "old": "a8462c3a07a706e171bee8e2090617b01bf2e3c58f3543b4344899e963152db5",
+      "new": "f1ca36fcfbe9a69e7cb044c335eceb5ae2df29256870d20e460960c2ce424bcf"
+    },
+    {
+      "path": "ai2apps/cloud_gateway.py",
+      "old": "5cebedf7fc35b38e0ba78fc570c5c59ca88cbcf0b5c443922b7a74af5c25213a",
+      "new": "d1804bfad0786e2bdf522abdefd6dd01c78ce564ce192b761e4588ac0ba124ad"
+    },
+    {
+      "path": "ai2apps/docs/aaat-declaration-context-v1.md",
+      "old": "baa2793924fc6ece49bb10296d050b74f92a031b27e4bc2e99a7e768d0c9bce6",
+      "new": "48708e647185dc5aeae1fa345ac5549fc234910315a4102623c06a2f091bda96"
+    },
+    {
+      "path": "ai2apps/docs/ai-browser-mini-app-library.md",
+      "old": "a783be1bdf4ce1f7418f881a0d7e3d0b69c91fc245c9fd29f025e38206a3ae6a",
+      "new": "084db5612643c3bb094287607e41b101e377b3785b0a941fe82b8c49e25557be"
+    },
+    {
+      "path": "ai2apps/docs/app-mini-app-agent-tool-integration.md",
+      "old": "8352b4c14622b21ddf5347084002b35fee561a961987f45981686514e561cb57",
+      "new": "074d94084f261d0f7c69bfafd370ac6cff81fa9f26e5cfb1db4f889e6c930424"
+    },
+    {
+      "path": "ai2apps/docs/builtin-browser-package-retirement-20261029.md",
+      "old": null,
+      "new": "e0c44224ff15aa87fa84c5cb3228cefe0d7889bb4d19505ffc7b766d0d9ac89e"
+    },
+    {
+      "path": "ai2apps/docs/cloud-handoffs/discover-query-projections-20261029.md",
+      "old": null,
+      "new": "7052161efc1139a6572b1f07dbc28f13aa745e956ac95cf2619a862268f3daed"
+    },
+    {
+      "path": "ai2apps/docs/discover-bilingual-20261023.md",
+      "old": "d051f5e3936b8ac69898045372c7c414d1edfeeaad4092dcca34618d1001cc54",
+      "new": "036dfe630c0e0c51cdcd0e0cd4e838895747916290b7051eaa11cc4d6d70d473"
+    },
+    {
+      "path": "ai2apps/docs/imagine-reference-prefill-20261020.md",
+      "old": "738368900b6a0c06f41ab14a9c9bba568a54f47fc6a48e5254e5d078cefb74aa",
+      "new": "b116d1c1eb5cd2c1be690a7b0d89c94d452533de258101bb944cb89c390fad46"
+    },
+    {
+      "path": "ai2apps/docs/package-mini-app-host-exports-v1.md",
+      "old": null,
+      "new": "414e7152c18336faf6ab3bdd5e22c4f0fef46a4b7e1c71f29b4e63e2dd5f2dfd"
+    },
+    {
+      "path": "ai2apps/docs/retired-package-sources/ai2apps-search-all/LICENSE",
+      "old": null,
+      "new": "0f581a45a6c8adf29376d894ec05e5df519bdb484bbfb83705e0314a3e516686"
+    },
+    {
+      "path": "ai2apps/docs/retired-package-sources/ai2apps-search-all/META/sbom.spdx.json",
+      "old": null,
+      "new": "e89d459243fed6fe3324bfe9664e8f4690fc4974544bdc5fbdbac2ba538c1e76"
+    },
+    {
+      "path": "ai2apps/docs/retired-package-sources/ai2apps-search-all/README.md",
+      "old": null,
+      "new": "b8564f43d44d39ffd0e9c5bfc4b5eba7647864c07be605be92b86c573d812eb7"
+    },
+    {
+      "path": "ai2apps/docs/retired-package-sources/ai2apps-search-all/ai2apps.json",
+      "old": null,
+      "new": "0a168d25a4218e170eab06cc262770ab79c84d0dc72bbe5a209a0f8990166a6b"
+    },
+    {
+      "path": "ai2apps/docs/retired-package-sources/ai2apps-search-all/app.yaml",
+      "old": null,
+      "new": "e1943b705c9baa3009f8824d94af812646e93924160abea9559727861757763c"
+    },
+    {
+      "path": "ai2apps/docs/retired-package-sources/ai2apps-search-all/help/mini-chat/help.md",
+      "old": null,
+      "new": "b1e9f0f8abb968b714c4a526dc07c8e3ee5d45d836ae2ad3514e2054bb45be49"
+    },
+    {
+      "path": "ai2apps/docs/retired-package-sources/ai2apps-search-all/web/diagnostics.js",
+      "old": null,
+      "new": "00affdbae9c1d2b02383468e9ed10e5098b3f349d3f22be04a4eedf29ef0b435"
+    },
+    {
+      "path": "ai2apps/docs/retired-package-sources/ai2apps-search-all/web/i18n.js",
+      "old": null,
+      "new": "c159f75a362635d39c2fb4f7b7ed793b1eda025fce8801d90d2bbac1d3eb0ac4"
+    },
+    {
+      "path": "ai2apps/docs/retired-package-sources/ai2apps-search-all/web/index.chat.js",
+      "old": null,
+      "new": "cd8dd5d1e05029efd260448d1cc8a231e64485ac3ef9ca99626e0dd5f68c0862"
+    },
+    {
+      "path": "ai2apps/docs/retired-package-sources/ai2apps-search-all/web/index.html",
+      "old": null,
+      "new": "35f852776a022f028c88f64ced57f149c6015a20ff559b0ead58cc69186494a1"
+    },
+    {
+      "path": "ai2apps/docs/retired-package-sources/ai2apps-search-all/web/merge.js",
+      "old": null,
+      "new": "237725c3b9d5351510d3e1750e6fa494b681ce5342bc7301343c8ad8467ab8e7"
+    },
+    {
+      "path": "ai2apps/docs/retired-package-sources/ai2apps-search-all/web/modes.js",
+      "old": null,
+      "new": "a2864f330c3e9e389e42c8596202dfd248249e684f9b307d808f7c508da7a897"
+    },
+    {
+      "path": "ai2apps/docs/retired-package-sources/ai2apps-search-all/web/package_mini_chat.js",
+      "old": null,
+      "new": "4429533020c0e64af99c3b27cb6e602e59c233aadf66c934bd46c31bdc70b749"
+    },
+    {
+      "path": "ai2apps/docs/retired-package-sources/ai2apps-search-all/web/presentation.js",
+      "old": null,
+      "new": "bfbb4156b085118eab5b1b9122cbb596f69b941b9233bda8121267cf9b601109"
+    },
+    {
+      "path": "ai2apps/docs/retired-package-sources/ai2apps-search-all/web/search.js",
+      "old": null,
+      "new": "83d269be6e9c4bca0d23aeea4e156230c5760d3b8184c7831f28d2eefcfafe98"
+    },
+    {
+      "path": "ai2apps/docs/retired-package-sources/ai2apps-search-all/web/startup.js",
+      "old": null,
+      "new": "21ca277d91893874b5ddc60ea40af203f7f61b8299fd523aacc963b9e7fea8cc"
+    },
+    {
+      "path": "ai2apps/docs/retired-package-sources/ai2apps-search-all/web/summary.js",
+      "old": null,
+      "new": "c8193a4d4794f5230e2e09b03062829c37e55bbb6f5ebdeafedc9772f9bb9cc2"
+    },
+    {
+      "path": "ai2apps/docs/retired-package-sources/ai2apps-search-all/web/web_agent_mini_app_sdk.js",
+      "old": null,
+      "new": "de0be3d8079b96f03ec2d797377ebcd475fe4067717269b8912f5dbe7673366a"
+    },
+    {
+      "path": "ai2apps/docs/retired-package-sources/ai2apps-search-all/web/workflow.js",
+      "old": null,
+      "new": "c4f37cd12dc06fed79b29835de585d98b4820b92e2842aa323f91998c2805200"
+    },
+    {
+      "path": "ai2apps/docs/retired-package-sources/ai2apps-web-reader/LICENSE",
+      "old": null,
+      "new": "0f581a45a6c8adf29376d894ec05e5df519bdb484bbfb83705e0314a3e516686"
+    },
+    {
+      "path": "ai2apps/docs/retired-package-sources/ai2apps-web-reader/META/sbom.spdx.json",
+      "old": null,
+      "new": "ab6e280e20b4258c9b407dcd946000dd552f1c58700f3e85e69170a63a91fee7"
+    },
+    {
+      "path": "ai2apps/docs/retired-package-sources/ai2apps-web-reader/README.md",
+      "old": null,
+      "new": "4141386e90044e0f743b5fcd70cb664e189ccd8f78ba0af405fbebd718f9e150"
+    },
+    {
+      "path": "ai2apps/docs/retired-package-sources/ai2apps-web-reader/ai2apps.json",
+      "old": null,
+      "new": "e3a331cfb5aba9399a10f320da312acd667ef2b0a5ec8b8a722a6a7434c135ed"
+    },
+    {
+      "path": "ai2apps/docs/retired-package-sources/ai2apps-web-reader/app.yaml",
+      "old": null,
+      "new": "9f986c7b80e215b3b6daa0d64e73bc38b9a02d12811a5643b51462a570a13312"
+    },
+    {
+      "path": "ai2apps/docs/retired-package-sources/ai2apps-web-reader/help/mini-chat/help.md",
+      "old": null,
+      "new": "b1e9f0f8abb968b714c4a526dc07c8e3ee5d45d836ae2ad3514e2054bb45be49"
+    },
+    {
+      "path": "ai2apps/docs/retired-package-sources/ai2apps-web-reader/web/index.chat.js",
+      "old": null,
+      "new": "542c47b76ace00a5f0c6c514af5b6cebec34335691ed3448620615143dc5d917"
+    },
+    {
+      "path": "ai2apps/docs/retired-package-sources/ai2apps-web-reader/web/index.html",
+      "old": null,
+      "new": "2a56e1a8f84f9022aa5b8760beb3ca9aa11470e51ce33f237b690d101e6aa02a"
+    },
+    {
+      "path": "ai2apps/docs/retired-package-sources/ai2apps-web-reader/web/package_mini_chat.js",
+      "old": null,
+      "new": "4429533020c0e64af99c3b27cb6e602e59c233aadf66c934bd46c31bdc70b749"
+    },
+    {
+      "path": "ai2apps/docs/retired-package-sources/ai2apps-web-reader/web/reader.js",
+      "old": null,
+      "new": "9449e34db081e45c1624dd8e6edf630c3c98a13039e8c0582269b08397beb04d"
+    },
+    {
+      "path": "ai2apps/docs/retired-package-sources/ai2apps-web-reader/web/web_agent_mini_app_sdk.js",
+      "old": null,
+      "new": "0706786e6ea8c8f5e85c5c66bc412b6b4605f779524b9eab911dcbf934f9a6c2"
+    },
+    {
+      "path": "ai2apps/extensions/archive.py",
+      "old": "2d34327413b3cd6e8f17c54193b5620b5772534915035647304a70bc38dbf4c0",
+      "new": "94e88779730582cab39e21e95742239751e569804859ebfe2d9794702efe16fa"
+    },
+    {
+      "path": "ai2apps/extensions/development.py",
+      "old": "20cf37a3238b910f1c2d4f16eefc4a44185e8d8841168b5875e0e84e2ecd9384",
+      "new": "ccdd7647608654d7a990b4c74b320320e3c130adb2b741b37c5270239512df99"
+    },
+    {
+      "path": "ai2apps/extensions/manager.py",
+      "old": "7d49bfd84e14ba7c68c0586d1b92c97f0dfd04012364e5028c28807473a3a990",
+      "new": "6b1e07b5fc04e3c32197c5b8d49702e8fa13a611f5c685b36c08151f3916ca84"
+    },
+    {
+      "path": "ai2apps/images/mini_parameters.py",
+      "old": "c76e6a89fbe6f5cb45e757a17eba8c7ccfe0b81d8d29496584b5125f794bd2ad",
+      "new": "74b533fa46493208cabcd6970c39663ea27bd11fbf3243d5ada156db8a211885"
+    },
+    {
+      "path": "ai2apps/images/service.py",
+      "old": "f12d0703cc530d88d5b863c97e8aa08e0d38f158b87250b17450394b5910d593",
+      "new": "3cfa24657f51dcb1e75037d413e9fdbb6d329aa49ffc9b817aa78d3c64864edc"
+    },
+    {
+      "path": "ai2apps/model_vision.py",
+      "old": null,
+      "new": "80e5ef639bb56e9d3262520a92cc6e0ec7ea73e981487788b1cd03ccc7d4679b"
+    },
+    {
+      "path": "ai2apps/packages/aaat.py",
+      "old": "3499d97f122c2de6766a8a6f4b007a2f933720ffe886351d2485ba85e3345a8d",
+      "new": "cfc1062afc98c45b81e6eb3eb46fdc927a0840b1b1f93338e4b213af6e4a3075"
+    },
+    {
+      "path": "ai2apps/packages/bilingual_search.py",
+      "old": "06264a58b884393f7b1848a91dba0a83d8d0286d8e100fffc475521f9fd3ee60",
+      "new": "27acc76e7c4956dcccae18558ed694424e57c36673dac5ba780f30ed177b911c"
+    },
+    {
+      "path": "ai2apps/packages/capability_catalog.py",
+      "old": "880546d1e2dfaa474f49c27ff0d1b1f588596f6001058756c9cab7c5d9a4cfc1",
+      "new": "a6f9c9cb35cdab7306123340d57716d139d704aabced2a4b2d8215e47ded5828"
+    },
+    {
+      "path": "ai2apps/packages/contract_v1.py",
+      "old": "f513d1b55a5cbc744479912883696b73da9731923faef22e44e2b561e4ddb3a5",
+      "new": "32829874a639a14f3a1eaf2e20437511748cd205851db35d22ad94178e198640"
+    },
+    {
+      "path": "ai2apps/packages/discovery_projection.py",
+      "old": null,
+      "new": "1a4374cf9f8ecf2e6c229be582c6a41f3d75ef71588e155915e89bc5fe612b67"
+    },
+    {
+      "path": "ai2apps/packages/install_handoff.py",
+      "old": "a8d645244eab4cc326d2adad8efcca10a8d8c1f0673358e8c045733188a0319f",
+      "new": "be6ec09fd0d8b1d10a13f224474ba9feb7d74e02321f6a18a8490007c2c27a39"
+    },
+    {
+      "path": "ai2apps/packages/installed_capabilities.py",
+      "old": "1205d1cf66a4320d279564e230d87bd6cd0362a49d5a3754dd05e3d607beace4",
+      "new": "cc9bcf4f3a915856d2eb5584d7fdc9f4e532a122dfe85da5e587f57490b5a6d1"
+    },
+    {
+      "path": "ai2apps/packages/mini_app_exports.py",
+      "old": null,
+      "new": "114f0f6082a984acb982b24af95dbb8af893077c675c78b38a0811eabe650b0e"
+    },
+    {
+      "path": "ai2apps/packages/registry.py",
+      "old": "7dd130408914511f7c1d81c085451f43023d29bea5e1a2a378218869e202b263",
+      "new": "46837bc8db9b7a535e6256fd7997b291356622ec9e3020837871adc71d0514de"
+    },
+    {
+      "path": "ai2apps/packages/schemas/capability-query-v1.schema.json",
+      "old": null,
+      "new": "09fdc88b2f7f5c0bc0db431623361ccec6af9978afab5e87f3971ece891e679f"
+    },
+    {
+      "path": "ai2apps/platform_runtime.py",
+      "old": "8109c59dd58df08499a6f53eadc520f44e3241cc478327e898b2ba1901b7f9a7",
+      "new": "96788fe6cfd51e9eee74f160adf400aed236e84472ec63d4842dd2993a0bf254"
+    },
+    {
+      "path": "ai2apps/research/search_form.py",
+      "old": "87a0f20c9ecbcd7b407038456997449e5d5f440eebde89b824e41280ba49b2b1",
+      "new": "47da6f02b29275c73e3b08fed82354307fc1d1d0baf88634f9a3f1cdc2244d09"
+    },
+    {
+      "path": "ai2apps/research/search_preparation.py",
+      "old": "791b093369fbd0c2048a398267bc6e5d248e927d9d646eaea92ae3c44964d0a8",
+      "new": "00b65a36bcadef4d8f717651f88764d1e4d2cf71d708105d13ca50d922162f0c"
+    },
+    {
+      "path": "ai2apps/research/search_workflow.py",
+      "old": "7d530665054d1a0c5c83d1881adb22bad6075a7e1efdf8acf0b6d5345514186c",
+      "new": "09f401a53a34c37c0cd8bf96a1dfa1941400951b97ecbee2a5c8cd0e1d8035de"
+    },
+    {
+      "path": "ai2apps/research/service.py",
+      "old": "eee97722200c0992aee775b849d44b548d9471476378fa45f94b89e245bb6138",
+      "new": "f6785dfb4b47fabcad9373240944063b2f9b1b6fc54c014986261e4974660111"
+    },
+    {
+      "path": "ai2apps/scripts/prepare_package_chat_upgrade.py",
+      "old": "30a45c14bd23dd44dfef86dff9c982b41ef052e59a737e4d661e1d5e433c2486",
+      "new": "0f76542f0bb2d356d7cb43290fc038eac35fffe3d99b35813bbd1ece4f5f7e27"
+    },
+    {
+      "path": "ai2apps/services/builtin_apps.py",
+      "old": "ef3e4483acb5848db4902f717abea455f97be025719b890302f4222394c8739b",
+      "new": "205a3e8ea34a677c782b62e67bd9053db9bb1d897265bba547c74ae9b3557938"
+    },
+    {
+      "path": "ai2apps/services/capability_routing.py",
+      "old": "0f71bb8dccb847f33c5702d9a39e8b815d88caf5f0f18df2b6497a9dac406572",
+      "new": "745a3f12264ae751d0e6f82c81b4aa801c01fbe25719ee62ff3c3a95e8d952ee"
+    },
+    {
+      "path": "ai2apps/services/repository.py",
+      "old": "f998566cf75660156c75e0d42e2d5a5441b2a263ee36a3ed9f12e53a53e7ccc4",
+      "new": "d179ab66e9bfbfbd87ec2ce2f9bcfb47d39d170a4d36a509f5e7acc2d99744d3"
+    },
+    {
+      "path": "ai2apps/studio/app_chat.py",
+      "old": "c740a0afd6c43aa6e3891ec05dc4dd788fabd65396e1d73aadad4d1294881b8f",
+      "new": "35c338b9245b35373500eaf5229494c4034099fc4d5632fadb3a18fa717fc13f"
+    },
+    {
+      "path": "ai2apps/studio/package_generation_aaat.py",
+      "old": "d16c64fa06d6b8c1b9f3cc82348b6d1dd89f2ceb71e05d06e96587aab0707636",
+      "new": "63ffefcc7b2e0e83da30fc73d0faaa90b7a54acf16a7fbb873cc1d104c6c5fcb"
+    },
+    {
+      "path": "ai2apps/studio/package_sdk.py",
+      "old": null,
+      "new": "378395169fb8bbcd6ce7c54aa5fdad289adea8124a12f8e1c6d62e9cde2c1ce5"
+    },
+    {
+      "path": "ai2apps/studio/subtitle_aaat.py",
+      "old": "82616e2a28ffc3df66f46125c670cc4c06201d59972facd0b85131ad51bd4902",
+      "new": "e6321c162cf09f3fb3cba799248d15ba49cea747a5e2039e3932a3268f0e3154"
+    },
+    {
+      "path": "ai2apps/studio/video_localization_aaat.py",
+      "old": "8e7915b597dfd00b32d0c3773ec230740d2bc1a43485d52b39e4b7f4b42b901d",
+      "new": "fb8f0932644038363982060f501efb2ad0c022d1fe045d413fbb790c6e1b08e0"
+    },
+    {
+      "path": "ai2apps/studio/voice_aaat.py",
+      "old": "d4bb3e080ccd57be59f823af5e8c11e81f7fa9242329ea28bec9fe73fd37230d",
+      "new": "7f7a3847b2a9f9efebb40b73a85a34f6494d1152d9ae110a9d3d5c9cd77dabe3"
+    },
+    {
+      "path": "ai2apps/tests/chat_artifacts_browser.test.cjs",
+      "old": null,
+      "new": "7ac9a5e78d7be34894209a4359b0a94cf602cb0a6f0b33fe8ac5c987fb614134"
+    },
+    {
+      "path": "ai2apps/tests/cloud_search_ui.test.cjs",
+      "old": "d6062fb6ceaa3bac72b3622bf22810aa6e8dfcb8ca9731b8db440facf57c1dca",
+      "new": "026e032727603700410dc829c40d1ddf898c4939e18584bb764106f15d5e3343"
+    },
+    {
+      "path": "ai2apps/tests/deepseek_search_ui.test.cjs",
+      "old": "6b319279babe36a32468e70ffbac6dce295df207e83b4349595e8d118250b4f6",
+      "new": "7dc7d91238a6d083a1efd8aba6b88915d5fdcebdc2ea49a6dc55f8e17f0c156d"
+    },
+    {
+      "path": "ai2apps/tests/exact_parameter_contract_browser.test.cjs",
+      "old": null,
+      "new": "24adc35b45a9aee0dbbec1a9fd60f18882cec29cdf04d7f82cddb63ce1e200e6"
+    },
+    {
+      "path": "ai2apps/tests/legacy_package_backend_fixture.py",
+      "old": null,
+      "new": "150625a14840f8a11667c9ea4202e74432efb121c469b3ba46a16e534ebaeab2"
+    },
+    {
+      "path": "ai2apps/tests/parameter_records_browser.test.cjs",
+      "old": "3afccc8a94debb98c9d5d5175fea2b434627980cc0864a896d6de084103f2382",
+      "new": "e756a593af3df9c293c5c8f9fb5c90efa1c9f9d4b094ca053850f55192157e05"
+    },
+    {
+      "path": "ai2apps/tests/parameter_setup_reveal_browser.test.cjs",
+      "old": null,
+      "new": "df7d2b2e99fe797a49a3933a9b4a12a3addaf0b86944e2514aa21b724abc5f33"
+    },
+    {
+      "path": "ai2apps/tests/run_aaat_boundaries.py",
+      "old": "7d7bc0cbe2ff1bf3d4a1022897cf62aa9ba88daabdd5f15cb8d95e92a0989299",
+      "new": "3e1578be57e0aef98855018eecaa778705185e3df68071d90921ce8bd21ddca2"
+    },
+    {
+      "path": "ai2apps/tests/search_all_lifecycle_ui.test.cjs",
+      "old": "117542e57056dff4af354cdd82c91c3d4f889eed3d9576c158bf5f02aecdec2f",
+      "new": "43c266de223eddb5787f5c59a42dca6603f2d2d3616a184dfa3ffcfb1096616f"
+    },
+    {
+      "path": "ai2apps/tests/search_all_modes.test.cjs",
+      "old": "0fcae8b065f87ba9ffbb48012ba4492761d8ec3708038576d0dca638fec74202",
+      "new": "cd00363931375e62b06056669de6fc8bb0af1c4a71b642af30852df5ba64a310"
+    },
+    {
+      "path": "ai2apps/tests/search_all_presentation.test.cjs",
+      "old": "069f187610122f929d6f34687fcd9b04a626e3610b9209eb3a402b7cdcc8293a",
+      "new": "e8745e2d9f9ccae30cc37d0147a36d8ec32e3ba5be9ec2aefbe8e164da3bf3bc"
+    },
+    {
+      "path": "ai2apps/tests/search_all_progressive_ui.test.cjs",
+      "old": "9bf026bb5977feb03eb6aeafa2433e84f93e98e26e418511f685419b34f09d39",
+      "new": "9503b0e4e4629a989e15289108a8540a44ca9f22c874300f8815b9f52b84a6f9"
+    },
+    {
+      "path": "ai2apps/tests/search_all_repeat_ui.test.cjs",
+      "old": "1edfd58e725debbaf96e8e03e0d53147eae65dcee51f6a9bb317fa3fe48f857b",
+      "new": "371e526eaa27e359770a5e1dc5616a5c890427efa32228f1f43f3ce163676b5d"
+    },
+    {
+      "path": "ai2apps/tests/search_all_results.test.cjs",
+      "old": "59605819bcf4224a21f55a2d0e1cfbb7a5f4244b883d1a84b9d00e7bf7c74462",
+      "new": "5a6c216bda8f544f4f341ca40fec1eef3956102fe909a31abd72665caf8de7f5"
+    },
+    {
+      "path": "ai2apps/tests/search_all_startup.test.cjs",
+      "old": "ba1fce6cf8424bf40c448d83762e577b4caee460cb6a632824b694914e50931a",
+      "new": "0eb836a972add70fbcb5ecd4de5d7c22624f3c227905b3f7285a9a1ef7781adc"
+    },
+    {
+      "path": "ai2apps/tests/search_all_summary.test.cjs",
+      "old": "fc750e4c13bc0b90e49aeecaa5a6bd0ccb3f962b9e3306fefc5dde6174e50a70",
+      "new": "35ddc8e791a2e3544c00223ae0043e54f557d8ebd0d8ac3412b2916f6c4b3e24"
+    },
+    {
+      "path": "ai2apps/tests/search_all_workflow_ui.test.cjs",
+      "old": "683b10a341ff2570229f42374cd4286750a8b3b045a01307d33648a975234340",
+      "new": "f42f268460606c229f81711447372beeb87fb27dcdde6a448d0c858433b51f4f"
+    },
+    {
+      "path": "ai2apps/tests/test_aaat_boundary_behavior.py",
+      "old": "9a3ae781ed0967a92cc7e087b3ea9d209ad6c378b8d230624cb185a706f069bb",
+      "new": "c0be217b980789f829775d3731d60d2fa160fc38c9a0ea4b1ecd75008be0c5c2"
+    },
+    {
+      "path": "ai2apps/tests/test_aaat_declaration_context.py",
+      "old": "ffdf0d757c4e0ef63eab5f28d04dbcc61d56068604d411f2718e704400668bc0",
+      "new": "6baad7ab2573d17e2d788379a44161d846dc3f47a4c6db93b4af6b26e5b76174"
+    },
+    {
+      "path": "ai2apps/tests/test_aaat_execution_flow.py",
+      "old": "2884a8180fed0f56434809189329106de47b39ec69d1ea66c4e6fa53c2531c92",
+      "new": "79a7c834d6c60db33611b8385c15845aa499c2ad5b9ea9f16b8e43fe0b4372bf"
+    },
+    {
+      "path": "ai2apps/tests/test_aaat_form_i18n.py",
+      "old": "dc1049f9d1122c4c4ad49c09788fa746a39088492840c0c24b5320fa5fa61778",
+      "new": "f5f58995097d0b99abcf65987858497f4633ec160d3efdb6d5e8d8de092a6d9e"
+    },
+    {
+      "path": "ai2apps/tests/test_app_chat_durable.py",
+      "old": "34a4b7e7315b4e0ab30577b672adb95a9aa8f15c080e53c566f920eab4c64050",
+      "new": "03e561a7548e3a382e515c972a023de4e272caae4a1ef14af0f158b931634772"
+    },
+    {
+      "path": "ai2apps/tests/test_browser_builtin_aaat.py",
+      "old": null,
+      "new": "c7f0ca9558ab3731223754b428c52f629fd394ae1552fb78995743831e33a68f"
+    },
+    {
+      "path": "ai2apps/tests/test_builtin_app_aaat.py",
+      "old": "4a24de11dd7195e13400f7741e51c75602b431aeafcb134e2eb288583d737d24",
+      "new": "5ab974cedf5f80592a61a26c818556a99c738e9f31cfd8752bc076191d4ae42c"
+    },
+    {
+      "path": "ai2apps/tests/test_capability_catalog_client.py",
+      "old": "0ffc70e26b4ca87eb23f96422a46eb0ebb2cdee2cf9bf9ff16fa24f2cd7ed438",
+      "new": "9aaf7def10eb94fe7e0535b29cabe316aad02e51c7fe030268489963744d43e3"
+    },
+    {
+      "path": "ai2apps/tests/test_chat_artifact_outputs.py",
+      "old": null,
+      "new": "5acda63ce7c69cb0bbb1666ace6e0534e128e1405127518a47674bf9a0a7b836"
+    },
+    {
+      "path": "ai2apps/tests/test_development_package_cache.py",
+      "old": "54637f082a426fec4070f497ee5a78c1eb9311b2229f0783f15c90856168f9f9",
+      "new": "bca2f425e2ca560a097880c8e9d5c27424cf2d5ce4a97f8060455a9d6bbd2564"
+    },
+    {
+      "path": "ai2apps/tests/test_discover_bilingual.py",
+      "old": "6e4603e4b071446e314d1ef825ca48e6fcb88e554a62b091e03946a821217f4e",
+      "new": "55aa0eb181f80a0f76de5173d94254a07f1997a9b85220e2afbed18e7fa47dd0"
+    },
+    {
+      "path": "ai2apps/tests/test_discovery_efficiency.py",
+      "old": null,
+      "new": "017c6b7b6e427941d45af62d9a59df6029e4c1d3e83a0f8d649f1bdabf1ad717"
+    },
+    {
+      "path": "ai2apps/tests/test_discovery_query_projections.py",
+      "old": null,
+      "new": "3b01f1392e5cb18c0fea607e882b40b986a66f3734ab83145700773be889c885"
+    },
+    {
+      "path": "ai2apps/tests/test_exact_parameter_contract.py",
+      "old": null,
+      "new": "65e6024bafda908cd59b624f347a942f41f82067fde95e708894b29b0fa9a992"
+    },
+    {
+      "path": "ai2apps/tests/test_imagine_reference_context.py",
+      "old": "b4cca9de5faa833d7e3b399e4bb73549d16af067f3a1554c7065cfaa7849632d",
+      "new": "654c9ae850d81f1e749789fa9d4fdd060313eeb71b05a9afb5ce8ff27fae25de"
+    },
+    {
+      "path": "ai2apps/tests/test_imagine_reference_tools.py",
+      "old": "48569c3df1613f176c147138d6a383d28893f6d2c287e035ae882d13b3c43275",
+      "new": "ac50ca7f1071c75c65cf30f673cde648e0b11d5374cefe6cee3fea8ab9890ea2"
+    },
+    {
+      "path": "ai2apps/tests/test_lazy_tool_catalog.py",
+      "old": null,
+      "new": "efa486385d1f236b4074f0b6bc9ff796259ff582778f19a9c237494f599d2f67"
+    },
+    {
+      "path": "ai2apps/tests/test_mobile_agent_gateway.py",
+      "old": "8123438ee0b54b5f9bf6f4d402f9419fa920fb7e23e6aa0d26e06f9575ff0dd8",
+      "new": "a37196f06849bf47292e5464e8e431dc445277ffef1475c1bf8b03395adf5ff1"
+    },
+    {
+      "path": "ai2apps/tests/test_mobile_unified.py",
+      "old": "0229b7e769c54392e1689125229ef896a0ae767af836af4d375f132ead0358dd",
+      "new": "7d13276a8ef13e8ba4abf26d690698b4c3e1497f45201d19a463f268c0d5a925"
+    },
+    {
+      "path": "ai2apps/tests/test_mobile_video_uploads.py",
+      "old": "5546a6f7c1847e8e435d6303f72e2cf191058216762a98c288fbd6356daaa85a",
+      "new": "30c62f3fa5799ed9a19be0ce675b94b02b42c48e929ea922da1c2be81a8b15d6"
+    },
+    {
+      "path": "ai2apps/tests/test_model_vision.py",
+      "old": null,
+      "new": "bd70f118ffbe8c0553985699f1bca01d6adf0dd4cf6f8c3998e1f7bebd02111d"
+    },
+    {
+      "path": "ai2apps/tests/test_package_app_exports.py",
+      "old": "6f5f3bf49d8bb074eac0f46d32543c72f6b52fa984adf2875e2e1427c448044f",
+      "new": "0a70a685f29ff2f4f711a51d7c98346dbf4df6e88a55474b2be3212d83311681"
+    },
+    {
+      "path": "ai2apps/tests/test_package_generation_aaat.py",
+      "old": "8075e14b9c68c9ebf58dd29fafeee4a368d6381776f8a5b57655c603f2d28ac1",
+      "new": "4b1065544bb28fe29b74e664e2fbb4dd6a8373f97fc17b162dfe84571ae0d0a4"
+    },
+    {
+      "path": "ai2apps/tests/test_package_mini_app_exports.py",
+      "old": null,
+      "new": "71670b1aad6b14e0f8f1c4608a6f7804c52e7cdc3d49660c48865f805cf3e452"
+    },
+    {
+      "path": "ai2apps/tests/test_parameter_forms.py",
+      "old": "98f1a2be2a9a3e035c82243b33d813646e36dcee982a15da244c25eef2fe6a43",
+      "new": "b1ca3df1a4443162677017d60b9dae1ccef7351a922279b702031de9db0e449b"
+    },
+    {
+      "path": "ai2apps/tests/test_provider_parameters.py",
+      "old": "e5d1edde25470fd8070c688cc0b67a6edcdf1770b5aa1da7e48ff56560250c5b",
+      "new": "e2c270f590f7ac0f53306c391d0e059900fac6143a17309b52ba352a5cb1f8d4"
+    },
+    {
+      "path": "ai2apps/tests/test_search_all_mini_app.py",
+      "old": "35bf8443c69786794d518b171ef33d39bdf105d48a8dcc1df97d1f85a0e2256f",
+      "new": "4080002aec45db0f7af091c9588c8379d7a1ec70fae970d69e76b4e734cbeb22"
+    },
+    {
+      "path": "ai2apps/tests/test_search_workflow.py",
+      "old": "e6c91ddf772e04ff716be6c67a99b62b6f90b8ad788943dc4ca1754c52f9f6e5",
+      "new": "6fed4c3e275452dda58a4f81a22d21a82c3a11f9efff9c3b89eb8291333bcb21"
+    },
+    {
+      "path": "ai2apps/tests/test_shopping_aaat.py",
+      "old": "660b276747e311b4945eeaa57c69e762234337e4ea2dabba15f00c3e309b33bd",
+      "new": "b3c3a2c998dc990252498fc86051ac2d332281a4d914127f2fa383846b5671ae"
+    },
+    {
+      "path": "ai2apps/tests/test_shopping_chat_recovery.py",
+      "old": "5a970380d76095ba65e6181bce18bd8e3136e4c80e78d8b3527abdc8240e569b",
+      "new": "579a13da332433d964df96adb9d700306640dc6f1f9cc6cfe3b4109f7c9daa60"
+    },
+    {
+      "path": "ai2apps/tests/test_social_media.py",
+      "old": "2eec68e3e068cd3bb6eacd9b50388f53c296a840aec58c82019981aa6a0c964f",
+      "new": "70013d31276b5f291c6176ddde2d27c6e4149bc2c3700f92d368fce221bc9c29"
+    },
+    {
+      "path": "ai2apps/tests/test_social_metrics_recovery.py",
+      "old": "5c65ff769526cfb17469f0f401927a8061e6c6374a6e026dc3eb36a9322800cb",
+      "new": "28ffd00ea73b9eb28d39fae2d870f234b1fe28271c78e0db7e25bc8446ef597b"
+    },
+    {
+      "path": "ai2apps/tests/test_todo_create_directory.py",
+      "old": null,
+      "new": "24cbbf1e28b13f0dce175ad1e7096e70cc9b342557ef53a210bf52c270a5647b"
+    },
+    {
+      "path": "ai2apps/tests/test_tool_argument_preparation.py",
+      "old": "999165915d8bde72cf9f32d3abd5937b5dbc578fac550f80022e9cb5d49935ea",
+      "new": "e02eacb70f4115c4d10bb8463a493cca0085b0dd4b224d4d889743183bd2ac36"
+    },
+    {
+      "path": "ai2apps/tests/test_travel_aaat.py",
+      "old": "efd347286f6b34e76293214a66fb8f1d55579196b75fdfc64a8cdb383e79be42",
+      "new": "f83e26524d7eb5c28b3b06a7e804be69f71e884da6f155641fc555d67e0e56cd"
+    },
+    {
+      "path": "ai2apps/tests/test_video_localization_aaat.py",
+      "old": "f440cbbd872c672d2d81c5bb794ae934f4748eeeaa13083caefb76a6649abfcb",
+      "new": "e1c6960f0b45a05a028e1999b2d13d9e3095387c02c7e3943e63056796e26da9"
+    },
+    {
+      "path": "ai2apps/tests/test_voice_processing_aaat.py",
+      "old": "d12f9172284d08780c49e038f814afc8aba03c60257a060ca05450de2e4ac735",
+      "new": "8245703db9b3daf1dade5ffc4c764ebfdc2473f17ae87798656d8b1ff638479a"
+    },
+    {
+      "path": "ai2apps/tests/test_web_agent_mini_apps.py",
+      "old": "9f7dd3354ca88516e7f96a71c3e952156bdfba5e6e1f8410ca8c4fe27f01173e",
+      "new": "1bb5664acc25fb61352200d22a9d086c2162b76f644740e9c995e5673404b16e"
+    },
+    {
+      "path": "ai2apps/tests/test_web_mini_app_aaat.py",
+      "old": "ecd870ced1c73e2d505bb3c4846c5abc8f6b4f9ece16a1ec36dcc14838fad227",
+      "new": "9d7ba9fff52c11d08f03030433bd44493bd8bea8585b81654625bfdde14f4b9c"
+    },
+    {
+      "path": "ai2apps/tests/test_webagent_execution_policy.py",
+      "old": "6bf40f176e90a29df7700adb581d7ec14daeb0081c92380794fda8fb68b995b0",
+      "new": "dd3b326d81cb21f1e0a12b8ed0416fd85877a5f214d76d9a07a19670d04c7888"
+    },
+    {
+      "path": "ai2apps/tests/test_webagent_visual_recovery.py",
+      "old": "5b0e5c4062283f545c5e2a6f230559452ffa1b8df8f56b7f67fdaf26ea1218cb",
+      "new": "f2dda57421b460cfb784f3d6775096196624224394e593689fc90672ba04ecd9"
+    },
+    {
+      "path": "ai2apps/tests/web_mini_app_i18n.test.cjs",
+      "old": "bd62b11a8fe99ce22a2e0305bbad9d56fb3ee7f1cd7b4e3e45658ed2423ea882",
+      "new": "0c3158448987a848800770dc4941a5c428e37cb417b2f47030ae7f227cce8e79"
+    },
+    {
+      "path": "ai2apps/todo/aaat.py",
+      "old": "26b24edb1bf6354091e39bbe5bdc89011c4caeba3e20163ba9c73ce83e1509b2",
+      "new": "d061e97381aebd45074014e9e57010fb706632af70c57bbb59a3812bdaf1c6cf"
+    },
+    {
+      "path": "ai2apps/todo/app_chat.py",
+      "old": "bf1c705fcde3f81cc249fb058ff067aab446e9022e0ba51604758f8b782cc2e0",
+      "new": "25cc6e99185e9c0fd12d86862c05350fd48541b5a04a6a1bb7de16641855a09b"
+    },
+    {
+      "path": "ai2apps/todo/store.py",
+      "old": "da26a53059a1f2d95ec6557df6ce4e0a5735d1bbc72da58034ed3e8d1dcc5590",
+      "new": "a3be0c1e453c6c94bfedadea8bc4f3e0e96c9e708d30309b708d6b106a09f106"
+    },
+    {
+      "path": "ai2apps/web/mobile_agent_gateway.py",
+      "old": "37ba14b43a52e5e683c2cd28aca08664786bef2db6a9451c50aa63fad5276fcf",
+      "new": "d36ec476d678afe952b2a77a3f103d6da1a808ca23ce3c19934ef29bd4162cfb"
+    },
+    {
+      "path": "ai2apps/web/owner_agent_gateway.py",
+      "old": "7073dc412b5489a5a5ea33a830a7585a61d5ab35ab3e08c7bc1eb6ab41ae113a",
+      "new": "adebb1263ec25bb0a2b7c854d2a2c92c1ae3e12067da82ef48bf7d76fcbc8822"
+    },
+    {
+      "path": "ai2apps/web/static/builtin_mini_apps/search-all/LICENSE",
+      "old": null,
+      "new": "0f581a45a6c8adf29376d894ec05e5df519bdb484bbfb83705e0314a3e516686"
+    },
+    {
+      "path": "ai2apps/web/static/builtin_mini_apps/search-all/META/sbom.spdx.json",
+      "old": null,
+      "new": "e89d459243fed6fe3324bfe9664e8f4690fc4974544bdc5fbdbac2ba538c1e76"
+    },
+    {
+      "path": "ai2apps/web/static/builtin_mini_apps/search-all/README.md",
+      "old": null,
+      "new": "b8564f43d44d39ffd0e9c5bfc4b5eba7647864c07be605be92b86c573d812eb7"
+    },
+    {
+      "path": "ai2apps/web/static/builtin_mini_apps/search-all/ai2apps.json",
+      "old": null,
+      "new": "0a168d25a4218e170eab06cc262770ab79c84d0dc72bbe5a209a0f8990166a6b"
+    },
+    {
+      "path": "ai2apps/web/static/builtin_mini_apps/search-all/app.yaml",
+      "old": null,
+      "new": "e1943b705c9baa3009f8824d94af812646e93924160abea9559727861757763c"
+    },
+    {
+      "path": "ai2apps/web/static/builtin_mini_apps/search-all/help/mini-chat/help.md",
+      "old": null,
+      "new": "b1e9f0f8abb968b714c4a526dc07c8e3ee5d45d836ae2ad3514e2054bb45be49"
+    },
+    {
+      "path": "ai2apps/web/static/builtin_mini_apps/search-all/web/diagnostics.js",
+      "old": null,
+      "new": "00affdbae9c1d2b02383468e9ed10e5098b3f349d3f22be04a4eedf29ef0b435"
+    },
+    {
+      "path": "ai2apps/web/static/builtin_mini_apps/search-all/web/i18n.js",
+      "old": null,
+      "new": "c159f75a362635d39c2fb4f7b7ed793b1eda025fce8801d90d2bbac1d3eb0ac4"
+    },
+    {
+      "path": "ai2apps/web/static/builtin_mini_apps/search-all/web/index.chat.js",
+      "old": null,
+      "new": "cd8dd5d1e05029efd260448d1cc8a231e64485ac3ef9ca99626e0dd5f68c0862"
+    },
+    {
+      "path": "ai2apps/web/static/builtin_mini_apps/search-all/web/index.html",
+      "old": null,
+      "new": "f94047ef566bb5bac8f9f6de1d2c1d1a58edd6a8e88204e3ffe2a0131fc6dddb"
+    },
+    {
+      "path": "ai2apps/web/static/builtin_mini_apps/search-all/web/merge.js",
+      "old": null,
+      "new": "237725c3b9d5351510d3e1750e6fa494b681ce5342bc7301343c8ad8467ab8e7"
+    },
+    {
+      "path": "ai2apps/web/static/builtin_mini_apps/search-all/web/modes.js",
+      "old": null,
+      "new": "a2864f330c3e9e389e42c8596202dfd248249e684f9b307d808f7c508da7a897"
+    },
+    {
+      "path": "ai2apps/web/static/builtin_mini_apps/search-all/web/package_mini_chat.js",
+      "old": null,
+      "new": "4429533020c0e64af99c3b27cb6e602e59c233aadf66c934bd46c31bdc70b749"
+    },
+    {
+      "path": "ai2apps/web/static/builtin_mini_apps/search-all/web/presentation.js",
+      "old": null,
+      "new": "bfbb4156b085118eab5b1b9122cbb596f69b941b9233bda8121267cf9b601109"
+    },
+    {
+      "path": "ai2apps/web/static/builtin_mini_apps/search-all/web/search.js",
+      "old": null,
+      "new": "83d269be6e9c4bca0d23aeea4e156230c5760d3b8184c7831f28d2eefcfafe98"
+    },
+    {
+      "path": "ai2apps/web/static/builtin_mini_apps/search-all/web/startup.js",
+      "old": null,
+      "new": "21ca277d91893874b5ddc60ea40af203f7f61b8299fd523aacc963b9e7fea8cc"
+    },
+    {
+      "path": "ai2apps/web/static/builtin_mini_apps/search-all/web/summary.js",
+      "old": null,
+      "new": "c8193a4d4794f5230e2e09b03062829c37e55bbb6f5ebdeafedc9772f9bb9cc2"
+    },
+    {
+      "path": "ai2apps/web/static/builtin_mini_apps/search-all/web/web_agent_mini_app_sdk.js",
+      "old": null,
+      "new": "de0be3d8079b96f03ec2d797377ebcd475fe4067717269b8912f5dbe7673366a"
+    },
+    {
+      "path": "ai2apps/web/static/builtin_mini_apps/search-all/web/workflow.js",
+      "old": null,
+      "new": "e1c3eb886279a643789d9f6f89563ae1ce2a60dba505806b416a158e13a43c33"
+    },
+    {
+      "path": "ai2apps/web/static/builtin_mini_apps/web-reader/LICENSE",
+      "old": null,
+      "new": "0f581a45a6c8adf29376d894ec05e5df519bdb484bbfb83705e0314a3e516686"
+    },
+    {
+      "path": "ai2apps/web/static/builtin_mini_apps/web-reader/META/sbom.spdx.json",
+      "old": null,
+      "new": "ab6e280e20b4258c9b407dcd946000dd552f1c58700f3e85e69170a63a91fee7"
+    },
+    {
+      "path": "ai2apps/web/static/builtin_mini_apps/web-reader/README.md",
+      "old": null,
+      "new": "4141386e90044e0f743b5fcd70cb664e189ccd8f78ba0af405fbebd718f9e150"
+    },
+    {
+      "path": "ai2apps/web/static/builtin_mini_apps/web-reader/ai2apps.json",
+      "old": null,
+      "new": "e3a331cfb5aba9399a10f320da312acd667ef2b0a5ec8b8a722a6a7434c135ed"
+    },
+    {
+      "path": "ai2apps/web/static/builtin_mini_apps/web-reader/app.yaml",
+      "old": null,
+      "new": "9f986c7b80e215b3b6daa0d64e73bc38b9a02d12811a5643b51462a570a13312"
+    },
+    {
+      "path": "ai2apps/web/static/builtin_mini_apps/web-reader/help/mini-chat/help.md",
+      "old": null,
+      "new": "b1e9f0f8abb968b714c4a526dc07c8e3ee5d45d836ae2ad3514e2054bb45be49"
+    },
+    {
+      "path": "ai2apps/web/static/builtin_mini_apps/web-reader/web/index.chat.js",
+      "old": null,
+      "new": "542c47b76ace00a5f0c6c514af5b6cebec34335691ed3448620615143dc5d917"
+    },
+    {
+      "path": "ai2apps/web/static/builtin_mini_apps/web-reader/web/index.html",
+      "old": null,
+      "new": "2a56e1a8f84f9022aa5b8760beb3ca9aa11470e51ce33f237b690d101e6aa02a"
+    },
+    {
+      "path": "ai2apps/web/static/builtin_mini_apps/web-reader/web/package_mini_chat.js",
+      "old": null,
+      "new": "4429533020c0e64af99c3b27cb6e602e59c233aadf66c934bd46c31bdc70b749"
+    },
+    {
+      "path": "ai2apps/web/static/builtin_mini_apps/web-reader/web/reader.js",
+      "old": null,
+      "new": "9449e34db081e45c1624dd8e6edf630c3c98a13039e8c0582269b08397beb04d"
+    },
+    {
+      "path": "ai2apps/web/static/builtin_mini_apps/web-reader/web/web_agent_mini_app_sdk.js",
+      "old": null,
+      "new": "0706786e6ea8c8f5e85c5c66bc412b6b4605f779524b9eab911dcbf934f9a6c2"
+    },
+    {
+      "path": "ai2apps/web/static/css/chat_artifacts.css",
+      "old": null,
+      "new": "78952516d9571c071ff8bfaafd76698c84b6fed4d2d70209cdf000c2fc5a4468"
+    },
+    {
+      "path": "ai2apps/web/static/js/agent_parameter_forms.js",
+      "old": "14cae6e28766234394d544ebb326014191858a1502f376de00ea404651cfbea5",
+      "new": "8e8c3e865a4618b84dfdbd30fd611a6be2d7d360b3e3bdda9992cb677013c6e4"
+    },
+    {
+      "path": "ai2apps/web/static/js/ai_browser.js",
+      "old": "0cf946d85b18c26c1feec9dd139b39482640b43a46c7e3e6030dca8657bca00d",
+      "new": "fae6c675939919b2bbe3a518c848acd5ff5bb2bfb54884f1563215a0ea9f7a58"
+    },
+    {
+      "path": "ai2apps/web/static/js/chat_artifacts.js",
+      "old": null,
+      "new": "2f7dc42fb4ca48d1a32277a84d5b8969667c6645acf8205716522ddd9366cd44"
+    },
+    {
+      "path": "ai2apps/web/static/js/mobile_chat.js",
+      "old": "354a12d5016a166f955c551f77292e714e9a1554a14bcb959de286e32deaeefa",
+      "new": "4c7ccc70152cabeafcf1fe7f82c65b03002400bb03cedaea9c54d0cedd9389eb"
+    },
+    {
+      "path": "ai2apps/web/static/js/studio_mini_apps.js",
+      "old": "b4a9bd68c2553c2eb7cd4ecb66a5247ec8636ca4867280abec5385c960392734",
+      "new": "5245127f0bcbedb50a871c5c2ff9bf3bbba9cb00143e0eb88d4d51c4a9d1acbe"
+    },
+    {
+      "path": "ai2apps/web/templates/chat.html",
+      "old": "0d7576f7119ebdae11121db5120fca9e25a6ffb47cf88ab87318795db3915a33",
+      "new": "3cbf406a9afebc67aa1065952556a6cdb8a10d1e63d1ea55a651456f60c5128a"
+    },
+    {
+      "path": "ai2apps/web/templates/mobile.html",
+      "old": "dfc4bb25ee2421b134ba867aa72fcbb581449347f530e3b475db413bd30787e1",
+      "new": "a97e254c0f871594a779cf44d574f1bdfa256769f17f1191f2961975ec784194"
+    },
+    {
+      "path": "ai2apps/web/templates/mobile_chat.html",
+      "old": "37834cb9d40f848c70b1794aacf9fd03102984546222faf4e9ea15e4d3a699a0",
+      "new": "07d80e79580c0b26707f3422afc5ea951861b59af3778fdc0b0937ce9e9a2d80"
+    }
+  ]
+}

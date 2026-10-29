@@ -123,14 +123,13 @@ def test_custom_sources_are_only_available_to_search_all_and_use_host_program(br
     assert [step['operation'] for step in program['steps']] == ['ai.transform']
 
 
-def test_development_package_uses_normal_manifest_loader():
-    from pathlib import Path
-    from ai2apps.extensions.development import DevelopmentPackageLoader
-    root=Path(__file__).resolve().parents[2]
-    package=DevelopmentPackageLoader(root)._load(root/'packages/ai2apps-web-reader')
-    assert package.package_id=='ai2apps.web-reader'
-    assert len(validate_web_agent(package.manifest['mini_apps'][0]))==2
-    assert 'web/web_agent_mini_app_sdk.js' in package.files
+def test_builtin_reader_uses_shipped_declaration_and_assets():
+    from ai2apps.browser.builtin_mini_apps import definitions
+    minis,resources=definitions()
+    mini=next(m for m in minis if m['id']=='ai2apps.web-reader')
+    assert len(validate_web_agent(mini))==2
+    assert 'builtin_mini_apps/web-reader/web/web_agent_mini_app_sdk.js' in resources
+
 
 
 def test_changed_package_mount_is_rejected():

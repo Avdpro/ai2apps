@@ -51,8 +51,6 @@ def install(runtime):
         async def call(arguments,context,handler=handler):return await handler(runtime,arguments,context)
         runtime.service_registry.bind_tool(name,provider_key='builtin:web-research',handler=call)
         runtime.service_registry.set_agent_visibility(name,())
-    from .search_form import install as install_form
-    install_form(runtime)
     logging.getLogger(__name__).info('Shared search workflow loaded; source=%s',__file__)
 
 def principal(runtime,context):

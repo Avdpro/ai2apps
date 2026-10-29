@@ -94,7 +94,7 @@ def install_image_service(
         "artifact_id": {"type": "string", "minLength": 1, "maxLength": 256},
     }, "required": ["prompt", "artifact_id"]}
     repository.ensure_tool(service_id=service.id, qualified_name="image.edit", display_name="Edit image",
-        description="Edit an existing image artifact from this Session using Imagine Studio's image-edit Mini-App. Requires the original artifact_id. Never use image.generate as a substitute for editing.",
+        description="Edit image content, actions, objects or local details while preserving the existing style and unchanged elements. Use for edits to an existing image, including an output of another image Tool; use image.style_transfer only to change visual style. Requires the actual source artifact_id from this Session. Never regenerate as a substitute for editing.",
         input_schema=edit_schema, output_schema={"type":"object"},
         effects=("network","billing","workspace.write","artifact.create"),
         required_capabilities=("image.edit","workspace.write","artifact.create"), timeout_ms=300_000)

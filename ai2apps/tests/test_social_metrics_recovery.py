@@ -26,7 +26,7 @@ def test_profile_bound_backend_disables_standalone_transport(runtime):
     install_browser_service(NS(backend=NS(engine='fixture-native',require_profile_binding=True)),runtime.services,runtime.service_registry)
     assert runtime.services.get_service('ai2apps.browser').status is ServiceStatus.DISABLED
     visible=runtime.tools.list_tools(ToolCallContext(caller_id='test'),include_requiring_approval=True)
-    assert not any(t.qualified_name.startswith('browser.') for t in visible)
+    assert {t.qualified_name for t in visible if t.qualified_name.startswith('browser.')} == {'browser.complete_goal'}
     assert any(t.qualified_name=='social.account' for t in visible)
 
 

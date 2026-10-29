@@ -216,14 +216,16 @@ async def test_form_reuses_tool_extra_argument_preparation(runtime,monkeypatch,o
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url='http://test') as c:
             state=(await c.get(url)).json()
             expected={'count':2,'dynamic':'declared dynamically','rows':[{'id':'a'}]}
-            assert state['values']==expected and not state['invalid'] and state['revision']==1
-            assert (await c.get(url)).json()['revision']==1
+            assert state['values']==initial and state['invalid'] and state['revision']==0
+            assert state['parameter_contract_error']['code']=='parameter_contract_mismatch'
+            assert (await c.get(url)).json()['values']==initial
             assert runtime.agents.get_run(run.id).status.value=='waiting_input'
-            assert (await c.post(url+'/submit',json={'revision':0,'values':initial})).status_code==409
-            saved=(await c.put(url,json={'revision':1,'values':{**expected,'count':0,'extra':'remove'}})).json()
-            assert 'extra' not in saved['values'] and saved['values']['count']==0
-            assert (await c.post(url+'/submit',json=saved)).status_code==422
-            saved=(await c.put(url,json={'revision':2,'values':{**expected,'provider':'another-route'}})).json()
+            rejected=await c.put(url,json={'revision':0,'values':initial})
+            assert rejected.status_code==422 and rejected.json()['detail']['original_values_preserved']
+            saved=(await c.put(url,json={'revision':0,'values':{**expected,'count':0}})).json()
+            assert saved['values']['count']==0
+            assert (await c.post(url+'/submit',json={'revision':saved['revision'],'values':saved['values']})).status_code==422
+            saved=(await c.put(url,json={'revision':1,'values':expected})).json()
             response=await c.post(url+'/submit',json=saved)
             assert response.status_code==200,response.text
             assert response.json()['result']['provider']==owner

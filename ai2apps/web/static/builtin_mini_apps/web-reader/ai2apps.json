@@ -1,0 +1,87 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/web-reader",
+    "type": "app",
+    "version": "0.1.2",
+    "displayName": "Web Reader",
+    "description": "WebAgent Mini-App with two capabilities."
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": [
+      "darwin"
+    ],
+    "architectures": [
+      "arm64"
+    ]
+  },
+  "entrypoints": [
+    {
+      "name": "main",
+      "kind": "app",
+      "path": "web/index.html"
+    }
+  ],
+  "permissions": [],
+  "dependencies": [],
+  "files": [],
+  "capabilityCatalog": {
+    "schemaVersion": "ai2apps.package-capabilities.v1",
+    "entries": [
+      {
+        "kind": "mini-app",
+        "identity": "ai2apps.web-reader",
+        "provides": [
+          "web.fetch"
+        ],
+        "tasks": [
+          "Web Reader",
+          "网页阅读器"
+        ],
+        "inputTypes": [
+          "text"
+        ],
+        "outputTypes": [
+          "file"
+        ],
+        "requirements": {
+          "capabilities": []
+        },
+        "agent": {
+          "mode": "aaat",
+          "declarationVersion": "1.0.0",
+          "exports": [
+            {
+              "name": "web.fetch",
+              "interfaceVersion": "1.0.0",
+              "inputTypes": [
+                "text"
+              ],
+              "outputTypes": [
+                "file"
+              ]
+            }
+          ]
+        },
+        "scope": "Package-owned signed AaAT declarations bind to versioned native Host SDK protocols. Requires a host supporting ai2apps.mini-app-host-exports/v1; no catalog-only execution. Native tasks and shared Output remain host-owned.",
+        "processing": "hybrid",
+        "pricing": "unknown",
+        "localizations": {
+          "en": {
+            "displayName": "Web Reader",
+            "description": "Extract links or read an article using background tasks."
+          },
+          "zh": {
+            "displayName": "网页阅读器",
+            "description": "提取网页链接或阅读文章。"
+          }
+        }
+      }
+    ]
+  },
+  "sbom": {
+    "format": "spdx-json-2.3",
+    "path": "META/sbom.spdx.json"
+  }
+}

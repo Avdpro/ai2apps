@@ -12,7 +12,7 @@ from typing import Any
 
 MAX_RECOVERIES = 3
 PREFLIGHT_CODES = frozenset(
-    {"invalid_tool_arguments", "tool_not_available", "invalid_question",
+    {"parameter_contract_mismatch", "parameter_contract_required", "invalid_tool_arguments", "tool_not_available", "invalid_question",
      "provider_incompatible", "provider_unavailable", "uncertain_execution", "invalid_app_interaction"}
 )
 READ_ONLY_CODES = frozenset(
@@ -95,6 +95,17 @@ def error_result(
         else "execute",
         "next_action": "Correct the call or choose another approach. Do not assume success.",
     }
+    if preflight and not outcome_uncertain and code in ('parameter_contract_required','parameter_contract_mismatch','invalid_app_interaction'):
+        import json
+        try:
+            detail=json.loads(message)
+            contract=detail.get('parameter_contract')
+            if isinstance(contract,dict) and len(json.dumps(contract).encode())<=128*1024:
+                result.update(parameter_contract=contract,validation_errors=detail.get('errors',[]),
+                    submitted=False,side_effects=False,original_values_preserved=True)
+                result['message']=detail.get('message','Parameter contract mismatch')[:2048]
+        except (ValueError,TypeError):
+            pass
     if outcome_uncertain:
         result["outcome_uncertain"] = True
         result["next_action"] = "Analyze the failure and use read-only status/recovery tools if available. The operation may have completed or billed. Do not submit another effectful operation in this Run. If status cannot be confirmed, ask the user and explain the uncertainty."

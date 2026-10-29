@@ -717,7 +717,11 @@ def inspect_package(path: str | Path, *, max_bytes: int | None = None) -> Inspec
             raise PackageContractError('app_definition_invalid','App definition exceeds 1 MiB')
         with zipfile.ZipFile(source) as archive:
             app_definition=yaml.safe_load(archive.read('app.yaml').decode('utf-8'))
-        try:declarations(app_definition,manifest.get('capabilityCatalog'),manifest['dependencies'])
+        try:
+            declarations(app_definition,manifest.get('capabilityCatalog'),manifest['dependencies'])
+            from .mini_app_exports import declarations as mini_declarations
+            for mini in app_definition.get('mini_apps',[]):
+                mini_declarations(mini,manifest.get('capabilityCatalog'))
         except (ValueError,KeyError,TypeError) as error:
             raise PackageContractError('app_aaat_invalid',str(error)) from error
     kind = manifest["package"]["type"]

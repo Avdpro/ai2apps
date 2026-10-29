@@ -20,16 +20,16 @@ FORM_NAMES = {
 
 FORM_SUMMARIES = {
     'ai2apps.imagine.text-to-image':{'zh':'根据文字要求生成图片。','en':'Generate an image from your instructions.'},
-    'ai2apps.imagine.image-edit':{'zh':'根据要求修改所选图片。','en':'Edit the selected image according to your instructions.'},
+    'ai2apps.imagine.image-edit':{'zh':'修改所选图片的内容、动作、物体或局部细节，保留未要求改变的风格与其余内容。','en':'Edit image content, actions, objects or local details; preserve the existing style and all unchanged elements.'},
     'ai2apps.imagine.group-photo': {'zh':'把多张人物、动物或角色图片合成到同一个场景，保留各自特征。','en':'Combine distinct people, animals or characters in one shared scene.'},
     'ai2apps.imagine.reference-creation': {'zh':'结合参考图片和文字要求，自由创作新的构图。','en':'Create a new composition from reference images and your instructions.'},
-    'ai2apps.imagine.style-transfer': {'zh':'保留图片主体和构图，转换视觉风格。','en':'Change visual style while preserving the subject and composition.'},
+    'ai2apps.imagine.style-transfer': {'zh':'仅在要求改变视觉风格时使用，保留主体、动作和构图；内容或动作修改请用修图。','en':'Change visual style while preserving content, actions and composition; use image.edit for content or action changes.'},
 }
 
 WORKFLOW_DESCRIPTIONS = {
     'ai2apps.imagine.group-photo': 'Combine two or three distinct subjects (people, animals or characters) into one shared scene. Choose this for requests such as a photo of me with this panda. Collect missing subject images with this capability in app.collect_parameters; prefill all known subject IDs, background and pose. A subject image may also provide the background.',
     'ai2apps.imagine.reference-creation': 'Create a new composition inspired by reference images and a supplied prompt. For a group photo preserving two or three subjects, prefer image.group_photo. Prefill the requested creative prompt and known reference IDs before collecting missing inputs.',
-    'ai2apps.imagine.style-transfer': 'Apply a requested visual style to one existing image while preserving its subject and composition. Prefill the source image ID and requested style.',
+    'ai2apps.imagine.style-transfer': 'Change visual style, not image content or subject actions. Use this only when the current request asks for a different visual style. Keeping an existing style while changing an action, object or local detail belongs to image.edit, even if the source came from this Tool. Prefill the source image ID and requested new style.',
 }
 
 
@@ -40,6 +40,7 @@ def agent_context(mini=None):
         'When a user refers to an earlier generated or uploaded image, carry its known artifact ID into the declared reference field before opening app.collect_parameters. Mentioning that image only in a prompt does not attach it. If some sources are missing, prefill the known sources even when fewer than minItems, then let the user supply the rest in the form. Do not discard known sources or regenerate them just because the complete input is not ready.',
         'An unresolved user identity such as me requires their own reference photo. Do not use an animal/character source as the user photo, duplicate one ID to satisfy a minimum, or assume a source is the user. Keep explicit user source choices and removals authoritative.',
     ]
+    instructions.append('Choose by the current requested change, not by the Tool that created the source: use image.edit for content, actions, objects or local changes while retaining the existing style; use image.style_transfer only for a requested change of visual style. A request to preserve the current style is not a new style-transfer request. Use the latest selected output as the source for sequential edits.')
     if mini=='ai2apps.imagine.group-photo':
         instructions.append('person_artifact_ids contains the distinct subject sources, including animals and characters, not only human portraits. For me with the panda just generated, prefill the actual panda artifact ID as one subject; ask for the missing user photo through the same form. background_artifact_id is only a scenery reference and does not replace a subject entry.')
     elif mini=='ai2apps.imagine.reference-creation':

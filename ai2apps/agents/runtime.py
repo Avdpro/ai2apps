@@ -833,7 +833,7 @@ class AgentRuntime:
                         timeout_ms=action.timeout_ms,
                     )
                 except ToolGatewayError as error:
-                    preflight = error.details.get("phase") == "prepare" and error.code in {"provider_incompatible", "provider_unavailable", "invalid_tool_arguments"}
+                    preflight = error.details.get("phase") == "prepare" and error.code in {"provider_incompatible", "provider_unavailable", "invalid_tool_arguments", "parameter_contract_mismatch", "parameter_contract_required"}
                     outcome_uncertain = has_mutating_effects(tool.effects) and not preflight
                     may_continue = recoverable(
                         error.code,

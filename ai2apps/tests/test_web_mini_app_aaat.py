@@ -9,7 +9,7 @@ from ai2apps.browser.tasks import BrowserTaskRepository
 from ai2apps.services import ToolCallContext, ToolProviderError
 
 ROOT=Path(__file__).resolve().parents[2]
-def package(name):return json.loads((ROOT/'packages'/('ai2apps-'+name)/'app.yaml').read_text())['mini_apps'][0]
+def package(name):return json.loads((ROOT/('ai2apps/docs/retired-package-sources' if name in ('search-all','web-reader') else 'packages')/('ai2apps-'+name)/'app.yaml').read_text())['mini_apps'][0]
 def setup(broker,monkeypatch,name):
     service,mounted,principal=broker;mounted.declaration=package(name);mounted.mount['app_key']=mounted.declaration['id']
     # Workload admission now verifies the persisted Session. Use a real owned

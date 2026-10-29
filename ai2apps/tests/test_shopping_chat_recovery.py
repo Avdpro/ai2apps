@@ -10,7 +10,7 @@ from ai2apps.agents import InteractionKind, RunStepStatus
 from ai2apps.agents.parameter_forms import claim_form_invocation
 from ai2apps.browser.shopping import history_progress_view
 from ai2apps.browser.aaat_controls import require_task
-from test_app_interactions import runtime
+from legacy_package_backend_fixture import runtime
 
 @pytest.mark.parametrize('name',['arbitrary.alpha','different.beta'])
 @pytest.mark.parametrize('phase',['prepare','execute'])

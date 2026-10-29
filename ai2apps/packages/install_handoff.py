@@ -10,7 +10,7 @@ from .installed_capabilities import inspect
 KEY='ai2apps.discover.install'
 SCHEMA={'type':'object','properties':{'installation_target':{'type':'object','properties':{k:{'type':'string'} for k in ('packageId','version','manifestSha256','artifactSha256')},'required':['packageId','version','manifestSha256','artifactSha256'],'additionalProperties':False},'requested_capability':{'type':'string','maxLength':120}},'required':['installation_target'],'additionalProperties':False}
 CONTEXT={'schema':'ai2apps.aaat-declaration/v1','instructions':[
-    'Use this installation handoff only after the user selects an exact Discover candidate in the current Run. Installation never authorizes executing the new capability.',
+    'Use this installation handoff for an observed exact Discover candidate in the current Run. For a unique clearly fitting candidate, present the review directly without a preliminary installation question. The user selects and approves the exact release in Discover; ambiguous alternatives require user choice before installation. Installation never authorizes executing the new capability.',
     'Keep the original task and materials in this Run. Continue in Discover for signed Package review and installation. After returning, rediscover actual Providers, review their current declaration and collect any required business parameters before invoking.',
     'Cancelled, UI-only, unverified, unavailable or changed releases are not successful business execution. Do not reinstall, switch versions or retry uncertain business effects automatically.'],
     'result_semantics':{'executed_in_app':'Only the explicit Package installation/rediscovery step completed. The original business task still needs planning and its own authorization.'}}
@@ -18,7 +18,7 @@ CONTEXT={'schema':'ai2apps.aaat-declaration/v1','instructions':[
 
 def selected(runtime,run,values):
     target=validate_target(values['installation_target'])
-    candidates=[c for step in runtime.agents.list_steps(run.id) if step.kind=='tool' and step.tool_name=='discover.packages' and step.status.value=='completed' and isinstance(step.output,dict)
+    candidates=[c for step in runtime.agents.list_steps(run.id) if step.kind=='tool' and step.tool_name in ('discover.packages','discover.package_detail') and step.status.value=='completed' and isinstance(step.output,dict)
                 for c in step.output.get('candidates',[]) if isinstance(c,dict)]
     # Bind to observed same-Run candidates; model JSON and excluded results cannot mint a target.
     if not any(c.get('installation_target')==target for c in candidates):
@@ -56,7 +56,9 @@ async def no_submit(runtime,principal,form,values,run):
 
 
 async def describe(runtime,principal,form,values,item):
-    return {'configuration_required':True}
+    return {'configuration_required':True,'handoff_only':True,
+        'continue_label':{'zh':'前往 Discover 审核安装','en':'Review installation in Discover'},
+        'handoff_message':{'zh':'请先在 Discover 审核并安装所选 Package。当前任务和参数会保留；安装完成后返回此处继续。','en':'Review and install the selected Package in Discover first. Your task and parameters are preserved; return here after installation to continue.'}}
 
 
 def install():

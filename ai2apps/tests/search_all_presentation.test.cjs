@@ -1,5 +1,5 @@
 const test=require('node:test'),assert=require('node:assert/strict');
-require('../../packages/ai2apps-search-all/web/presentation.js');
+require('../web/static/builtin_mini_apps/search-all/web/presentation.js');
 const {reviewInput,applyReview,groups,imageURL}=global.SearchAllPresentation;
 const items=[{kind:'web',title:'Original',url:'https://example.org/a',summary:'Snippet',sources:[{source:'google'}]},{kind:'post',title:'Post',content:'Full post',url:'https://x.com/a/status/1',like_count:'10',sources:[{source:'x'}]}];
 test('AI ordering and translation retain observed links, sources and post metrics',()=>{
@@ -23,7 +23,7 @@ test('ad filtering preserves identity validation and keeps all results when disa
  assert.equal(applyReview(items,review,true).length,1);assert.equal(applyReview(items,review,false).length,2);
  assert.throws(()=>applyReview(items,{items:review.items.map(({is_ad,...row})=>row)},true));
 });
-require('../../packages/ai2apps-search-all/web/diagnostics.js');
+require('../web/static/builtin_mini_apps/search-all/web/diagnostics.js');
 test('failure reasons provide actionable bilingual guidance',()=>{
  assert.match(global.SearchAllDiagnostics.explain('authentication',true),/Sign in/);
  assert.match(global.SearchAllDiagnostics.explain('provider_unavailable',false),/稍后重试/);

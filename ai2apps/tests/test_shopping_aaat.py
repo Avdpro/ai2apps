@@ -1,7 +1,7 @@
 from datetime import date,timedelta
 from types import SimpleNamespace as NS
 import pytest
-from test_aaat_execution_flow import runtime
+from legacy_package_backend_fixture import runtime
 from ai2apps.browser.shopping import replenishment_date,screen_plan
 from ai2apps.browser.shopping_aaat import report,report_markdown,cart_receipt,APP,DECLARATION
 from ai2apps.services import ToolProviderError
@@ -88,7 +88,7 @@ async def test_registered_refresh_returns_owner_report_and_source_reference(runt
     assert submitted[0]['capability']=='refresh_list'
     assert submitted[0]['request_id']=='aaat-durable'
     # A cart confirmation authorizes cart input, not permanent browser tabs.
-    monkeypatch.setattr('ai2apps.browser.shopping_aaat.cart_receipt',lambda *a:None)
+    monkeypatch.setattr('ai2apps.browser.shopping_aaat.cart_receipt',lambda *a,**kw:None)
     cart_provider=runtime.app_capability_router.providers[APP+'.shopping.prepare_cart']
     await cart_provider.handler({'profile':'default','source_tasks':['observed'],'selected':[{'id':'B000000001','quantity':2}]},ctx)
     assert submitted[-1]['capability']=='prepare_cart'

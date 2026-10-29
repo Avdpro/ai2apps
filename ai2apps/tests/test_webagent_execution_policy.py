@@ -71,7 +71,7 @@ def test_live_owner_source_declarations():
     from ai2apps.browser.shopping import cart_source
     assert compile_source(cart_source({},[])).ir['execution_policy']['visual_review']=='always'
     root=Path(__file__).resolve().parents[2]
-    document=json.loads((root/'packages/ai2apps-web-reader/app.yaml').read_text())
+    document=json.loads((root/'ai2apps/docs/retired-package-sources/ai2apps-web-reader/app.yaml').read_text())
     for entry in document['mini_apps'][0]['web_agent']['capabilities']:
         policy=compile_source(entry['source']).ir['execution_policy']
         assert policy['visual_review']==('on_recovery' if entry['id']=='article' else 'off')

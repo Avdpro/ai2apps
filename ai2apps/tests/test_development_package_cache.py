@@ -16,7 +16,7 @@ def loader(tmp_path):
     (tmp_path / 'ai2apps' / '__init__.py').touch()
     packages = tmp_path / 'packages'
     packages.mkdir()
-    source = Path(__file__).resolve().parents[2] / 'packages' / 'ai2apps-search-all'
+    source = Path(__file__).resolve().parents[2] / 'ai2apps/docs/retired-package-sources' / 'ai2apps-search-all'
     shutil.copytree(source, packages / 'search')
     return DevelopmentPackageLoader(tmp_path)
 

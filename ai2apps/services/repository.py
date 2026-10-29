@@ -861,6 +861,27 @@ class ServiceRepository:
                         (row["id"],),
                     )
 
+    def retire_unseen_tools(self, service_id: str, active_names: set[str]) -> None:
+        """An owning composition releases removed public names, retaining history.
+
+        Unlike temporarily disabling a Service, this is explicit retirement by
+        its trusted owner. A later installed provider can claim the public name
+        with a new descriptor; old invocation IDs and descriptor rows survive.
+        """
+        with self.database.transaction(write=True) as connection:
+            rows = connection.execute(
+                "SELECT id,qualified_name FROM tool_descriptors WHERE service_id=?",
+                (service_id,),
+            ).fetchall()
+            for row in rows:
+                retired_name='retired.'+row['id']
+                if row['qualified_name'] in active_names or row['qualified_name']==retired_name:
+                    continue
+                connection.execute(
+                    "UPDATE tool_descriptors SET enabled=0,qualified_name=?,revision=revision+1 WHERE id=?",
+                    (retired_name, row['id']),
+                )
+
     def remove_service(self, service_id_or_key: str) -> None:
         with self.database.transaction(write=True) as connection:
             row = connection.execute(

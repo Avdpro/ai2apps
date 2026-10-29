@@ -12,7 +12,7 @@ def allowed(method, path):
     if not path.startswith(PREFIX + '/'):
         return False
     relative = path[len(PREFIX):]
-    return bool(agent.business_target(method, relative) or method == 'GET' and (
+    return bool(agent.business_target(method, relative) or method == 'POST' and re.fullmatch(r'/files/'+agent._ID+r'/'+agent._ID+r'/gallery',relative) or method == 'GET' and (
         relative == '/models' or re.fullmatch(r'/(?:assets/' + agent._ID + r'/\d+/\d+|(?:artifacts|files)/' + agent._ID + r'/' + agent._ID + r')', relative)))
 
 
@@ -42,7 +42,7 @@ async def application(scope, receive, send):
         elif relative.startswith('/assets/'):
             response = await agent.result_image(runtime, principal, relative)
         elif relative.startswith('/files/'):
-            response = await agent.generated_file(runtime, principal, relative)
+            response = await (agent.import_generated_artifact(runtime, principal, relative) if method=='POST' else agent.generated_file(runtime, principal, relative))
         elif relative.startswith('/artifacts/'):
             response = await agent.generated_image(runtime, principal, relative)
         else:

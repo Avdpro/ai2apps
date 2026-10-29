@@ -4,7 +4,7 @@ for(const width of [390,1100])test('Progressive search, manual grounded summary 
  const browser=await chromium.launch({headless:true,channel:'chrome'});
  try{
   const page=await browser.newPage({viewport:{width,height:900}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
-  const base=path.resolve(__dirname,'../../packages/ai2apps-search-all/web');
+  const base=path.resolve(__dirname,'../web/static/builtin_mini_apps/search-all/web');
   await page.setContent(fs.readFileSync(base+'/index.html','utf8').replace(/<script[\s\S]*?<\/script>/g,''));
   await page.evaluate(()=>{
    const rows=[{title:'SQLite WAL',url:'https://sqlite.org/wal.html',snippet:'Search snippet',search_source:'bing',browser_task_id:'search-task'},{title:'Backup',url:'https://sqlite.org/backup.html',snippet:'Backup snippet',search_source:'bing',browser_task_id:'search-task'}];
@@ -15,6 +15,7 @@ for(const width of [390,1100])test('Progressive search, manual grounded summary 
   for(const name of ['i18n.js','startup.js','merge.js','presentation.js','diagnostics.js','modes.js','summary.js','search.js','workflow.js'])await page.addScriptTag({path:base+'/'+name});
   await page.waitForSelector('#app-content',{state:'visible'});await page.waitForFunction(()=>!document.getElementById('run').disabled);assert.equal(await page.locator('#notice').textContent(),'');await page.fill('#query','SQLite WAL?');await page.click('#run');
   await page.waitForFunction(()=>document.getElementById('query').value==='SQLite WAL backup checkpoint');
+  await page.selectOption('#mode','preferred');
   assert.equal(await page.evaluate(()=>window.starts.length),0);
   assert.equal(await page.locator('#source-options').isVisible(),true);
   await page.fill('#query','edited by user');await page.locator('input[name=source]').evaluateAll(nodes=>nodes.forEach(n=>n.checked=n.value==='bing'));

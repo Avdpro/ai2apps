@@ -40,6 +40,7 @@ def public_path(method,path):
     if method=='GET' and path in ('/mobile/home','/mobile/agent-chat'):return True
     if path==PREFIX+'/bootstrap' and method=='GET':return True
     if re.fullmatch(PREFIX+r'/connections/[0-9a-f-]{36}/(?:challenge|lease|revoke|nonce)',path) and method=='POST':return True
+    if method=='POST' and re.fullmatch(PREFIX+r'/files/'+_ID+r'/'+_ID+r'/gallery',path):return True
     if path.startswith(PREFIX+'/') and (business_target(method,path[len(PREFIX):]) or path==PREFIX+'/models' and method=='GET' or re.fullmatch(PREFIX+r'/(?:assets/'+_ID+r'/\d+/\d+|(?:artifacts|files)/'+_ID+r'/'+_ID+r')',path) and method=='GET'):return True
     return False
 
@@ -88,17 +89,33 @@ async def generated_file(runtime, principal, path):
     if not match:raise HTTPException(404)
     rid,aid=match.groups();authorize_agent_run(runtime,principal,rid)
     run=runtime.agents.get_run(rid);authorize_session(runtime,principal,run.session_id)
-    files=[]
-    for step in runtime.agents.list_steps(rid):
-        if step.status.value!='completed':continue
-        output=step.output or {}
-        if isinstance(output,dict):files.extend(output.get('files',[]) if isinstance(output.get('files'),list) else [])
-    expected=f'/v1/platform/sessions/{run.session_id}/artifacts/{aid}/download'
-    if not any(isinstance(f,dict) and f.get('artifact_id')==aid and f.get('url')==expected for f in files):
-        raise HTTPException(404,'File is not a recorded output of this Run')
-    artifact=runtime.workspace.get_artifact(run.session_id,aid)
+    file = recorded_artifact(runtime, principal, run, aid)
+    artifact=runtime.workspace.get_artifact(file['session_id'],aid)
     return FileResponse(runtime.workspace.artifact_path(artifact),filename=artifact.name,
         media_type=artifact.media_type,headers={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'})
+
+
+def recorded_artifact(runtime, principal, run, aid):
+    from ai2apps.agents.artifact_outputs import output_artifacts
+    from ai2apps.api.ownership import authorize_session
+    def allowed(sid):
+        try:
+            authorize_session(runtime, principal, sid)
+            return True
+        except HTTPException:
+            return False
+    files = output_artifacts(runtime.agents.list_steps(run.id), runtime.workspace, run.session_id, allow_session=allowed)
+    match = next((f for f in files if f['artifact_id'] == aid), None)
+    if match is None:raise HTTPException(404, 'File is not a recorded output of this Run')
+    return match
+
+async def import_generated_artifact(runtime, principal, path):
+    from ai2apps.api.ownership import authorize_agent_run
+    match=re.fullmatch(r'/files/('+_ID+r')/('+_ID+r')/gallery',path)
+    if not match:raise HTTPException(404)
+    rid,aid=match.groups();authorize_agent_run(runtime,principal,rid)
+    file=recorded_artifact(runtime,principal,runtime.agents.get_run(rid),aid)
+    return await dispatch(runtime,principal,'POST',f"/gallery/assets/import-artifact/{file['session_id']}/{aid}",b'{}',{'Content-Type':'application/json'})
 
 
 async def generated_image(runtime,principal,path):
@@ -125,7 +142,7 @@ async def application(scope,receive,send,runtime,device):
             from omlx.admin.routes import templates
             if path=='/mobile/home':
                 return templates.TemplateResponse(request,'mobile_agent_pair.html',{},headers={'Cache-Control':'no-store','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"})
-            return templates.TemplateResponse(request,'mobile_chat.html',{'owner_home':False,'mobile_agent_ready':True,'mobile_agent_signed':True},headers={'Cache-Control':'no-store','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'self'; img-src 'self' blob:; style-src 'self' 'unsafe-inline'; frame-ancestors 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"})
+            return templates.TemplateResponse(request,'mobile_chat.html',{'owner_home':False,'mobile_agent_ready':True,'mobile_agent_signed':True},headers={'Cache-Control':'no-store','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'self'; img-src 'self' blob:; media-src 'self' blob:; frame-src blob:; style-src 'self' 'unsafe-inline'; frame-ancestors 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"})
         if path==PREFIX+'/bootstrap':
             return JSONResponse({'protocol':'desktop-mobile-agent-v1','enabled':service.status(device)['ready'],'origin':runtime.remote.require_device(device).public_origin},headers={'Cache-Control':'no-store'})
         if request.headers.get('origin')!=runtime.remote.require_device(device).public_origin and method!='GET':raise HTTPException(403,'Agent Origin mismatch')
@@ -158,7 +175,10 @@ async def application(scope,receive,send,runtime,device):
                 if _models is None:raise HTTPException(503,'Model catalog unavailable')
                 result=await _models(principal)
                 return JSONResponse(result.model_dump(mode='json') if hasattr(result,'model_dump') else result)
-            if relative.startswith('/files/'):return await generated_file(runtime,principal,relative)
+            if relative.startswith('/files/'):
+                if method=='POST' and relative.endswith('/gallery'):return await import_generated_artifact(runtime,principal,relative)
+                if method=='GET':return await generated_file(runtime,principal,relative)
+                raise HTTPException(403)
             if relative.startswith('/artifacts/'):return await generated_image(runtime,principal,relative)
             if relative.startswith('/assets/'):return await result_image(runtime,principal,relative)
             routed=business_target(method,relative)

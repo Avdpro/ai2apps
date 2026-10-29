@@ -14,7 +14,7 @@ from ai2apps.services import ToolCallContext
 from ai2apps.chat import ChatRepository
 from ai2apps.studio import video_localization_aaat as owner
 from ai2apps.studio.capability_broker import StudioCapabilityBroker
-from test_app_interactions import runtime
+from legacy_package_backend_fixture import runtime
 from test_video_processing_aaat import video
 
 
@@ -171,5 +171,5 @@ async def test_missing_conversion_is_form_preflight_not_uncertain_execution(runt
     with pytest.raises(Exception) as error:
         await runtime.app_capability_router.invoke('video.replace_speaker',{'media_id':item.id,'action':'replace','analysis_id':'saved','target_speaker':'speaker_0','reference_id':'saved-reference','consent':True},ctx)
     assert error.value.details['phase']=='prepare'
-    assert error.value.code=='invalid_tool_arguments'
+    assert error.value.code=='parameter_contract_mismatch'
     with runtime.database.transaction() as db:assert db.execute('SELECT COUNT(*) FROM studio_background_jobs').fetchone()[0]==0

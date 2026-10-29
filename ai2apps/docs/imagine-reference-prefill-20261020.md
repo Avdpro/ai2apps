@@ -38,3 +38,15 @@ App-Dev Session `ses_d8546b9dcaf7498c9c1260ce370bc447` 中，生成 Run `run_c5f
 原生 Chat 显示素材槽“1/3，至少2个”和原熊猫文件预览，等待补充本人照片；没有把背景文字当作素材，没有补造第二张图。验收 Run 创建后没有新增 Studio 生成 Job，未提交图像生成。当前表单保持打开，1792×1024 的既有不支持提示仍保留，需要用户重选模型支持的尺寸；本轮没有静默改写尺寸。
 
 初次激活后旧交互曾因声明更新而多规划一个表单的现象，与最终新 Run 的成功记录分开；该通用顺序已修复并回归，不将旧交互的重开当作最终新流程验收。
+
+## Current-change routing (2026-10-29)
+
+The Imagine owner distinguishes image content/action/object/local edits from visual
+style conversion in both compact Tool summaries and trusted AaAT declarations.
+`image.edit` preserves unrequested properties, including an existing visual style;
+`image.style_transfer` is selected when the current request asks to change that
+style, not merely because it produced the source. Sequential work uses the actual
+latest selected artifact ID. No host-side prompt keyword classifier or tool retry
+is introduced; actual invocation still follows normal scope, version and approval
+checks. Live-model routing evidence is recorded separately from fixed-rendering
+reference validation.

@@ -74,7 +74,7 @@ async def test_missing_vision_does_not_change_model_or_claim_seen():
     await media.review(None,post)
     assert not post['media_review']['complete']
     assert post['media_review']['images'][0]['status']=='unseen'
-    assert media.model=='cloud/fixture/current' and media.reason=='current_model_has_no_declared_vision'
+    assert media.model=='cloud/fixture/current' and media.reason=='current_model_vision_unsupported'
 
 @pytest.mark.asyncio
 async def test_failed_or_unknown_model_attempt_is_not_automatically_repeated():
@@ -228,3 +228,22 @@ async def test_original_card_reads_observed_destination_and_rejects_source_or_fo
         page.destination=url;related={'relation':'quoted','observed_ref':'bound-card'}
         await social.x_original_card(page,related,'20')
         assert 'id' not in related and related['reason']=='original_card_navigation_unverified'
+
+@pytest.mark.asyncio
+async def test_managed_cloud_images_reach_visual_review_under_current_model():
+    from unittest.mock import AsyncMock
+    media=reviewer();media.model='cloud/ai2apps/future/camera';media.run.input['parameters']['owner_user_id']='local'
+    response=NS(status_code=200,json=lambda:{'items':[{'id':'future/camera','capabilities':{'imageInput':True}}]},aclose=AsyncMock())
+    media.runtime.cloud=NS(request=AsyncMock(return_value=response));media.runtime.cloud_ai_authorization_headers=lambda p:{}
+    calls=[]
+    async def decide(post,pictures):
+        calls.append(pictures);return {'images':[{'image_key':key,'description':'Observed image','usable':True} for key,_ in pictures]}
+    media.decide=decide
+    async def capture(*args,**kwargs):return {'data':picture()}
+    async def target(*args):return {'x':0,'y':0,'width':100,'height':100}
+    page=NS(context_id='ctx',call_json=target,connection=NS(command=capture))
+    post={'id':'p','images':[{'src':'https://example.com/one','ref':'one','index':0},{'src':'https://example.com/two','ref':'two','index':1}]}
+    await media.review(page,post)
+    assert len(calls)==1 and len(calls[0])==2
+    assert media.summary([post])['seen']==2 and media.summary([post])['vision_capability']['status']=='supported'
+    assert media.model=='cloud/ai2apps/future/camera'

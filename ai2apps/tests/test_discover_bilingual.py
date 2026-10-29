@@ -31,12 +31,13 @@ async def test_separate_queries_merge_exact_components_keep_sources_and_snapshot
     async def single(rt,args,ctx):
         calls.append(args)
         return result([item('excluded')]) if args['query']=='数字人' else result([item(),item(version='2.0.0'),item(identity='mini-b')])
-    args={'query':'数字人','limit':1,'capability':'arbitrary.animate'}
+    args={'query':'数字人','limit':1,'capability':'arbitrary.animate','include_history':True}
     page=await search(runtime,args,context(),single)
     assert [c['query'] for c in calls]==['数字人','虚拟人','digital avatar']
     assert all(c['capability']=='arbitrary.animate' and c['limit']==64 for c in calls)
     assert page['counts']=={'match':0,'unverified':3,'excluded':0}
-    candidate=page['candidates'][0]
+    from ai2apps.packages.bilingual_search import detail
+    candidate=detail(runtime,{'snapshot_id':page['snapshot_id'],'candidate_id':page['candidates'][0]['candidate_id']},context())['candidates'][0]
     assert candidate['matched_queries']==['虚拟人','digital avatar']
     assert len(candidate['source_matches'])==3 and candidate['source_matches'][0]['match']['status']=='excluded'
     assert candidate['agent_support']=='unverified' and not candidate['runtime_verified']
@@ -94,3 +95,58 @@ async def test_keyword_model_uses_current_owned_model_bounded_bilingual_json(run
     async def invalid(*a,**kw):return {'choices':[{'message':{'content':'{"zh":["avatar"],"en":["avatar"]}'}}]}
     runtime.model_invocations.invoke_agent_cloud_json=invalid
     assert (await keywords(runtime,'数字人',ctx))[1]['status']=='unavailable'
+
+@pytest.mark.asyncio
+async def test_later_source_page_finds_signed_release_and_preserves_filters(runtime,monkeypatch):
+    async def plan(*a):return ['原始','alternative'],{'status':'expanded'}
+    monkeypatch.setattr('ai2apps.packages.bilingual_search.keywords',plan)
+    calls=[]
+    async def single(rt,args,ctx):
+        calls.append(deepcopy(args))
+        if not args.get('cursor'):return result([item('excluded',version='0.1.0')],more='source-page-2')
+        v=item('match',version='0.2.0');v['agent_support']='declared'
+        return result([v])
+    args={'query':'原始','limit':1,'capability':'arbitrary.animate','input_type':'image','output_type':'video'}
+    page=await search(runtime,args,context(),single)
+    assert len(calls)==4 and [v.get('cursor') for v in calls]==[None,'source-page-2',None,'source-page-2']
+    assert all(all(v[k]==args[k] for k in ('capability','input_type','output_type')) for v in calls)
+    assert page['search_complete'] and not page['absence_established']
+    assert page['candidates'][0]['version']=='0.2.0'
+    assert page['candidates'][0]['agent_support']=='declared' and not page['candidates'][0]['runtime_verified']
+    assert page['candidates'][0]['matched_queries']==['原始','alternative']
+    assert all(s['pages_read']==2 and not s['truncated'] for s in page['sources'])
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('failure',['repeat','error','limit'])
+async def test_incomplete_upstream_never_establishes_absence(runtime,monkeypatch,failure):
+    async def plan(*a):return ['arbitrary'],{'status':'expanded'}
+    monkeypatch.setattr('ai2apps.packages.bilingual_search.keywords',plan)
+    monkeypatch.setattr('ai2apps.packages.bilingual_search.MAX_SOURCE_PAGES',3)
+    calls=[]
+    async def single(rt,args,ctx):
+        calls.append(args)
+        if len(calls)>1 and failure=='error':raise ValueError('private failure')
+        return result([],more='same' if failure=='repeat' else 'page-'+str(len(calls)))
+    page=await search(runtime,{'query':'arbitrary'},context(),single)
+    assert page['outcome']=='partial' and not page['search_complete'] and not page['absence_established']
+    assert page['aaat_context']['status']=='partial' and page['sources'][0]['truncated']
+    assert page['sources'][0]['error']=={'repeat':'catalog_cursor_repeated','error':'catalog_query_failed','limit':'catalog_page_limit'}[failure]
+    assert len(calls)<=3 and 'private failure' not in json.dumps(page)
+
+@pytest.mark.asyncio
+async def test_empty_fully_consumed_catalog_establishes_only_search_absence(runtime,monkeypatch):
+    async def plan(*a):return ['arbitrary'],{'status':'expanded'}
+    monkeypatch.setattr('ai2apps.packages.bilingual_search.keywords',plan)
+    async def single(*a):return result([])
+    page=await search(runtime,{'query':'arbitrary'},context(),single)
+    assert page['search_complete'] and page['absence_established'] and page['outcome']=='no_candidates'
+
+@pytest.mark.asyncio
+async def test_later_page_failure_retains_already_observed_candidate(runtime,monkeypatch):
+    async def plan(*a):return ['arbitrary'],{'status':'expanded'}
+    monkeypatch.setattr('ai2apps.packages.bilingual_search.keywords',plan)
+    async def single(rt,args,ctx):
+        if args.get('cursor'):raise RuntimeError('offline')
+        return result([item('match')],more='next')
+    page=await search(runtime,{'query':'arbitrary'},context(),single)
+    assert len(page['candidates'])==1 and page['outcome']=='partial' and not page['absence_established']

@@ -9,7 +9,7 @@ FEATURE = {'endpoint':'/v1/registry/content','query':'discovery','value':'capabi
     'schemaVersion':'ai2apps.capability-content.v1','declarationSchema':'ai2apps.package-capabilities.v1',
     'matching':'normalized-keyword-and-exact-filters','agentVerification':'publisher-declaration-only'}
 
-@lru_cache(maxsize=2)
+@lru_cache(maxsize=4)
 def validator(name):
     schema=json.loads((Path(__file__).parent/'schemas'/name).read_text())
     Draft202012Validator.check_schema(schema)
@@ -38,14 +38,15 @@ def validate_declarations(manifest):
 
 def validate_page(page):
     if len(json.dumps(page).encode())>2*1024*1024:raise ValueError('Capability page exceeds 2 MiB')
-    validator('capability-content-v1.schema.json').validate(page)
+    projected=page.get('schemaVersion')=='ai2apps.capability-query.v1'
+    validator('capability-query-v1.schema.json' if projected else 'capability-content-v1.schema.json').validate(page)
     keys=set()
     for card in page['items']:
         target=card['installationTarget'];release=card['release']
         if any(target[k]!=release[k] for k in target):raise ValueError('Capability card release binding mismatch')
         if card['cardKey'] in keys:raise ValueError('Duplicate capability card')
         keys.add(card['cardKey'])
-        if card['agent_support']=='declared' and (not isinstance(card['agent'],dict) or card['agent'].get('mode')!='aaat'):
+        if (not projected or page['projection']=='detail') and card['agent_support']=='declared' and (not isinstance(card.get('agent'),dict) or card['agent'].get('mode')!='aaat'):
             raise ValueError('Missing signed AaAT declaration')
     return deepcopy(page)
 
@@ -56,15 +57,25 @@ async def content(manager, *, local_device=False, **params):
     features=await discover() if discover else {}
     advertised=features.get('capabilityCatalog') if isinstance(features,dict) else None
     if advertised is None:
-        filters=set(params)-{'q','task','limit','cursor','content'}
+        filters=set(params)-{'q','task','limit','cursor','content','projection','release_policy'}
         if filters:raise ValueError('The Registry does not support capability/device filters')
         legacy={k:v for k,v in params.items() if k in ('q','limit','content','cursor')}
         if params.get('task'):legacy['q']=params['task']
         legacy['sort']='relevance'
         return await manager.content_catalog(**legacy)
     if not isinstance(advertised,dict) or any(advertised.get(k)!=v for k,v in FEATURE.items()):raise ValueError('Unsupported Registry capability catalog contract')
+    projection=advertised.get('queryProjections')
+    negotiated=isinstance(projection,dict) and projection.get('value')=='projections-v1'
+    requested=any(k in params for k in ('projection','tags','tag_operator','match_status','card_key'))
+    if negotiated and requested:
+        params={**params,'query_contract':'projections-v1'}
+        if not params.get('version'):params.setdefault('release_policy','latest_compatible')
+    else:
+        if any(params.get(k) for k in ('tags','tag_operator','match_status','card_key')):
+            raise ValueError('Registry query projections are unavailable; requested filters cannot be silently ignored')
+        params={k:v for k,v in params.items() if k not in ('projection','release_policy')}
     if local_device:params={**device_query(),**params}
-    page=await manager.content_catalog(**params,discovery=FEATURE['value'],sort='relevance')
+    page=await manager.content_catalog(**params,discovery=FEATURE['value'],**({} if negotiated and requested else {'sort':'relevance'}))
     try:return validate_page(page)
     except Exception as error:
         from .registry import RegistryError

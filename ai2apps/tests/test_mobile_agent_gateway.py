@@ -115,6 +115,13 @@ async def test_signed_mobile_end_to_end_real_general_form_restart_and_history(ru
             assert image.headers['content-type']=='image/png'
             assert image.content==runtime.workspace.artifact_path(runtime.workspace.get_artifact(sid,aid)).read_bytes()
             assert (await signed('GET',f'/v1/mobile/agent/artifacts/{rid}/art_unrecorded')).status_code==404
+            file=await signed('GET',f'/v1/mobile/agent/files/{rid}/{aid}')
+            assert file.status_code==200 and file.content==image.content
+            imported=await signed('POST',f'/v1/mobile/agent/files/{rid}/{aid}/gallery',{})
+            assert imported.status_code==201,imported.text
+            assert imported.json()['asset']['media_type']=='image/png'
+            assert (await signed('POST',f'/v1/mobile/agent/files/{rid}/art_unrecorded/gallery',{})).status_code==404
+            assert recovered['messages'][-1]['metadata']['artifacts'][0]['artifact_id']==aid
             # Owner recovery archives the existing image without model invocation or Chat deletion.
             from ai2apps.images.agent_recovery import recover_session_results,STUDIO
             from ai2apps.studio.repository import StudioRepository

@@ -7,7 +7,7 @@ import json
 import pytest
 from jsonschema import ValidationError, Draft202012Validator
 from test_web_agent_mini_apps import broker
-from test_app_interactions import runtime
+from legacy_package_backend_fixture import runtime
 from ai2apps.browser.travel_aaat import TravelAdapters, schema, reviewed_trip, combined_trip, DECLARATION, MINI
 from ai2apps.services import ToolCallContext, ToolProviderError
 

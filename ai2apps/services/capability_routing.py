@@ -44,6 +44,7 @@ class CapabilityProvider:
     agent_context: dict | None = None
     invocation_policy: Callable | None = None
     discovery_context: Callable | None = None
+    configuration_app_id: str | None = None
 
 
 class CapabilityRouter:
@@ -285,6 +286,16 @@ class CapabilityRouter:
             phase = 'prepare'
             try:
                 try:
+                    if provider.describe:
+                        from ai2apps.agents.parameter_contracts import resolve_contract, rejection
+                        from ai2apps.services.aaat import principal_for
+                        contract=await resolve_contract(provider,principal_for(self,context),payload)
+                        for field,rule in contract['schema'].get('properties',{}).items():
+                            if field not in payload and 'default' in rule:payload[field]=deepcopy(rule['default'])
+                        failure=rejection(contract,payload)
+                        if failure:
+                            raise CapabilityInvocationError('parameter_contract_mismatch',failure,
+                                {'phase':'prepare','submitted':False,'parameter_contract':contract})
                     prepared = await provider.prepare(deepcopy(payload), context) if provider.prepare else deepcopy(payload)
                 except ProviderIncompatible as error:
                     attempts.append({'provider':provider.id,'status':'incompatible','reason':str(error)[:500]})
@@ -307,6 +318,10 @@ class CapabilityRouter:
                 if isinstance(result,dict) and 'aaat_context' in result:
                     from .aaat import validate_result
                     validate_result(result['aaat_context'],provider,self.providers)
+            except CapabilityInvocationError as error:
+                if phase=='prepare':raise
+                attempts.append({'provider':provider.id,'status':'failed','phase':'execute'})
+                raise self.invocation_error(capability,attempts,'provider_error',str(error)) from error
             except ProviderUnavailable as error:
                 with self.database.transaction() as db:
                     db.execute('''INSERT INTO capability_provider_health(actor,installation,capability,provider,version,unavailable_until,reason)

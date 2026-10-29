@@ -51,8 +51,10 @@ async def local_operation(runtime, name, args, context):
 
 async def quick_read(runtime, args, context):
     from ai2apps.api.readaloud import QuickReadRequest
-    if not context.invocation_id: raise ToolProviderError('Quick Read requires a durable Tool invocation')
+    if not context.invocation_id or not context.session_id: raise ToolProviderError('Quick Read requires a durable Session invocation')
     principal = principal_for(runtime, context)
+    from ai2apps.api.ownership import authorize_session
+    authorize_session(runtime, principal, context.session_id)
     payload = QuickReadRequest(**args).model_dump()
     instance, _, _ = runtime.extension_manager.launch_app('ai2apps.readaloud', principal=principal)
     job = runtime.studio_jobs.submit(principal=principal, app_instance_id=instance.id,
@@ -65,7 +67,9 @@ async def quick_read(runtime, args, context):
         await asyncio.sleep(1)
         job = runtime.studio_jobs.get(job['id'], principal)
     if job['status'] != 'succeeded': raise ToolProviderError('Quick Read ' + job['id'] + ': ' + str(job.get('error') or job['status']))
-    return {'studio_job_id': job['id'], 'status': 'completed', **(job.get('result') or {})}
+    from ai2apps.studio.voice_aaat import output
+    _, file = output(runtime, principal, context.session_id, job)
+    return {'studio_job_id': job['id'], 'status': 'completed', **(job.get('result') or {}), 'files': [file]}
 
 
 async def transcribe(runtime, args, context):
@@ -78,12 +82,12 @@ async def transcribe(runtime, args, context):
     return {**result, 'status': 'completed'}
 
 
-async def detailed_transcription(runtime, args, context, host_app='ai2apps.readaloud'):
+async def detailed_transcription(runtime, args, context, host_app='ai2apps.readaloud',mini_app_id=None):
     from ai2apps.studio.capability_broker import MountedMiniApp, _declared_capabilities
     from ai2apps.studio.video_jobs import submit_package
     if not context.invocation_id: raise ToolProviderError('Detailed transcription requires a durable invocation')
     principal=principal_for(runtime,context)
-    definition,declaration=runtime.extension_manager._studio_mini_app_definition(host_app,'ai2apps.media-voice.transcription',principal)
+    definition,declaration=runtime.extension_manager._studio_mini_app_definition(host_app,mini_app_id or 'ai2apps.media-voice.transcription',principal)
     capabilities=_declared_capabilities(declaration)
     if 'audio.detailed_transcription' not in capabilities: raise ToolProviderError('Installed Mini-App does not declare detailed transcription')
     reference_input=args['audio_artifact_id'].startswith('attc_')
@@ -243,53 +247,24 @@ def install(runtime):
             'models':[{'id':m.id,'label':m.display_name,'ready':m.checkpoint_ready} for m in list_package_models(runtime) if m.model_type=='audio_stt']}
     register('voice.transcribe','ai2apps.readaloud','音频转写 / Transcribe audio','Transcribe an owner-scoped Voice audio material and publish transcript JSON to shared Voice Studio Output.',voice_form.schema,
         lambda a,c:transcribe(runtime,a,c),descriptor=transcribe_descriptor,effects=('artifact.create',),timeout_ms=900000,priority=-10,form_summary={'zh':'转写所选音频，结果保存到语音工作室共享输出区。','en':'Transcribe selected audio into shared Voice Studio Output.'})
-    detailed_schema=obj({'audio_artifact_id':{**string('音频或视频 / Audio or video'), 'x-ai2apps-asset':{'storage':'artifact','accept':'audio/*,video/*','references':True}},
-        'profile':{'enum':['compact','quality'],'default':'compact'},'language':{'type':'string','maxLength':32},
-        'word_timestamps':{'type':'boolean','default':True},'diarization':{'type':'boolean','default':True},
-        'output_format':{'enum':['json','markdown','srt'],'default':'json'}},['audio_artifact_id'])
-    async def detailed_descriptor(principal,model=None):
-        from ai2apps.studio.capability_broker import StudioCapabilityBroker
-        broker=StudioCapabilityBroker(runtime)
-        ready=[p for p in ('compact','quality') if broker._detailed_model_for_profile(p)]
-        active=deepcopy(detailed_schema)
-        if ready:active['properties']['profile']['enum']=ready
-        return {'effective_schema':active,
-            'configuration_required':not ready,
-            'install':{'appId':'ai2apps.readaloud','capability':'audio.detailed_transcription','requirements':{}},
-            'selection_required':True}
-    register('voice.detailed_transcription','ai2apps.readaloud','详细转写 / Detailed transcription',
-        'Use the installed Detailed Transcription Mini-App and durable Voice media queue. Preserve timed segments, speaker analysis and shared Preview & Output.',
-        detailed_schema,lambda a,c:detailed_transcription(runtime,a,c),mini='ai2apps.media-voice.transcription',descriptor=detailed_descriptor,effects=('artifact.create',),selection_required=True,timeout_ms=900000,field_labels=voice_labels,form_summary={'zh':'转写音频或视频，保留时间戳与说话人信息。','en':'Transcribe audio or video with timestamps and speaker analysis.'},option_labels={'profile':{'compact':{'zh':'紧凑','en':'Compact'},'quality':{'zh':'高质量','en':'High quality'}}})
-
-    from ai2apps.studio.subtitle_aaat import install as install_subtitles
-    install_subtitles(runtime, register)
-
-    from ai2apps.studio.voice_aaat import install as install_voice_processing
-    install_voice_processing(runtime, register)
-
     from ai2apps.studio.video_aaat import install as install_video_processing
     install_video_processing(runtime, register)
     from ai2apps.studio.video_aaat import install_upscale
     install_upscale(runtime, register)
-    from ai2apps.studio.video_localization_aaat import install as install_video_localization
-    install_video_localization(runtime, register)
 
-    from ai2apps.browser.shopping_aaat import install as install_shopping
-    install_shopping(runtime,register)
+    from ai2apps.browser.builtin_mini_apps import install as install_browser_minis
+    install_browser_minis(runtime, register)
+    from ai2apps.browser.goal_aaat import install as install_browser_goal
+    install_browser_goal(runtime, register)
     from ai2apps.browser.social import install as install_social
     install_social(runtime,register)
     from ai2apps.browser.travel_reader import install as install_travel_readers
     install_travel_readers(runtime)
-    from ai2apps.browser.travel_aaat import install as install_travel
-    install_travel(runtime,register)
     from ai2apps.studio.chat_generation import install as install_chat_generation
     install_chat_generation(runtime,register)
-    from ai2apps.studio.package_generation_aaat import install as install_package_generation
-    install_package_generation(runtime,register)
-    from ai2apps.studio.package_hosts import install as install_package_hosts
-    install_package_hosts(runtime)
     from ai2apps.studio.app_chat import install_tools as install_studio_chat_tools
     install_studio_chat_tools(runtime,register)
-    repo.disable_unseen_tools(service.id, active_adapter_tools)
+    repo.retire_unseen_tools(service.id, active_adapter_tools)
     import logging
     logging.getLogger(__name__).info('Built-in App AaAT adapters loaded from %s',__file__)
+    return register

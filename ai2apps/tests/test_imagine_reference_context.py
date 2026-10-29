@@ -43,7 +43,7 @@ async def test_prior_generated_source_is_prefilled_while_missing_user_photo_rema
         if len(requests)==1:
             assert not any(m.get('role')=='system' and str(m.get('content','')).startswith(PREFIX) for m in request['messages'])
         else:
-            assert len(requests)==2
+            assert len(requests)<=3
             contexts=[item for m in request['messages'] if m.get('role')=='system' and str(m.get('content','')).startswith(PREFIX)
                 for item in json.loads(m['content'][len(PREFIX):])]
             assert contexts[0]['declaration']==runtime.app_capability_router.providers['ai2apps.imagine.group-photo'].agent_context
@@ -69,5 +69,5 @@ async def test_prior_generated_source_is_prefilled_while_missing_user_photo_rema
             assert (await client.put(url,json={'revision':0,'values':removed})).status_code==200
             assert (await client.get(url)).json()['values']['person_artifact_ids']==[]
         with runtime.database.transaction() as db:assert db.execute('select count(*) from studio_background_jobs').fetchone()[0]==0
-        assert len(requests)==2
+        assert len(requests)==3
     finally:await runtime.stop_background_tasks()

@@ -214,6 +214,9 @@ class RegistryPackageManager:
         value = await self._public_json("GET", "/v1/registry")
         return value.get("discoveryCapabilities", {}) if isinstance(value, dict) else {}
 
+    async def discovery_taxonomy(self) -> Any:
+        return await self._public_json('GET', '/v1/registry/content/taxonomy')
+
     async def content_catalog(self, **params) -> Any:
         value = await self._json(
             "GET", "/v1/registry/content",

@@ -79,3 +79,26 @@ for(const provider of ['arbitrary.alpha','package.beta'])test(`numeric Schema pe
  assert.equal(await page.getByLabel('Count',{exact:true}).evaluate(el=>el.validity.stepMismatch),true);
  }finally{await browser.close();}
 });
+
+test('owner handoff-only form exposes one primary continuation without a submit or Enter bypass',async()=>{
+ const browser=await chromium.launch({headless:true,channel:'chrome'});
+ try{for(const language of ['zh','en']){
+  const page=await browser.newPage();let submits=0,handoffs=0,opens=0;
+  await page.exposeFunction('observeOpen',()=>{opens++;});
+  await page.route('https://form.fixture/**',async route=>{const p=new URL(route.request().url()).pathname;
+   if(p==='/')return route.fulfill({contentType:'text/html',body:`<html lang="${language}"><body><div id="form"></div><script>window.ai2appsShell={openHandoff:()=>window.observeOpen()};</script><script src="/widget.js"></script><script>AI2AppsParameterForms.mount(document.querySelector('#form'),{id:'run'},{id:'item'},()=>{});</script></body></html>`});
+   if(p==='/widget.js')return route.fulfill({contentType:'application/javascript',body:fs.readFileSync(path.resolve(__dirname,'../web/static/js/agent_parameter_forms.js'))});
+   if(p.endsWith('/parameters')&&route.request().method()==='GET')return route.fulfill({json:{revision:0,values:{target:'exact'},descriptor:{capability:'arbitrary.review',app_id:'arbitrary.owner',schema:{type:'object',properties:{}},fields:[{key:'target',type:'text',label:'Target'}]},models:[],missing:[],invalid:[],configuration_required:true,handoff_only:true,can_continue_in_app:true,continue_label:{zh:'前往审核',en:'Review in owner App'},handoff_message:{zh:'请先完成审核，任务会保留。',en:'Complete review first; your task is preserved.'}}});
+   if(p.endsWith('/handoff'))handoffs++;
+   if(p.endsWith('/submit'))submits++;
+   return route.fulfill({json:{revision:1,items:[]}});
+  });
+  await page.goto('https://form.fixture');const next=page.getByRole('button',{name:language==='zh'?'前往审核':'Review in owner App',exact:true});await next.waitFor();
+  assert.equal(await page.locator('button[type=submit]').count(),0);
+  assert.match(await next.getAttribute('class'),/agent-interaction-button--primary/);
+  assert.equal(await page.locator('.agent-parameter-handoff-note').textContent(),language==='zh'?'请先完成审核，任务会保留。':'Complete review first; your task is preserved.');
+  await page.getByLabel('Target',{exact:true}).press('Enter');assert.equal(submits,0);
+  await next.click();await page.waitForFunction(()=>document.body.textContent.includes('Waiting for the App')||document.body.textContent.includes('等待 App'));
+  assert.equal(handoffs,1);assert.equal(submits,0);assert.equal(opens,1);await page.close();
+ }}finally{await browser.close();}
+});

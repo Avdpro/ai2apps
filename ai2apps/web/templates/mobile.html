@@ -3,6 +3,8 @@
 {% block title %}AI2Apps Mobile{% endblock %}
 
 {% block head %}
+<link rel="stylesheet" href="{{ mobile_static('css/chat_artifacts.css') }}?v=1">
+<script src="{{ mobile_static('js/chat_artifacts.js') }}?v=1"></script>
 <link rel="stylesheet" href="{{ mobile_static('css/chat_message_feedback.css') }}?v=20261026">
 <script src="{{ mobile_static('js/chat_message_feedback.js') }}?v=20261026"></script>
 
@@ -112,7 +114,7 @@
 {% block scripts %}
 
 <script src="{{ mobile_static('js/mobile_agent_connection.js') }}?v=chat-notifications-20261023"></script>
-<script src="{{ mobile_static('js/chat_context_handoff.js') }}?v=20261024-2"></script>{% if mobile_agent_home|default(false) %}<script src="{{ mobile_static('js/aaat_result_views.js') }}?v=card-masonry-20261026"></script><script src="{{ mobile_static('js/agent_parameter_forms.js') }}?v=approval-countdown-20261027"></script><script src="{{ mobile_static('js/conversation_model_policy.js') }}"></script><script src="{{ mobile_static('js/marked.umd.js') }}"></script><script src="{{ mobile_static('js/purify.min.js') }}"></script><script src="{{ mobile_static('js/mobile_agent_chat.js') }}?v=approval-countdown-20261027"></script><script src="{{ mobile_static('js/mobile_chat.js') }}?v=default-agent-20261027"></script>{% endif %}
+<script src="{{ mobile_static('js/chat_context_handoff.js') }}?v=20261024-2"></script>{% if mobile_agent_home|default(false) %}<script src="{{ mobile_static('js/aaat_result_views.js') }}?v=card-masonry-20261026"></script><script src="{{ mobile_static('js/agent_parameter_forms.js') }}?v=approval-countdown-20261027"></script><script src="{{ mobile_static('js/conversation_model_policy.js') }}"></script><script src="{{ mobile_static('js/marked.umd.js') }}"></script><script src="{{ mobile_static('js/purify.min.js') }}"></script><script src="{{ mobile_static('js/mobile_agent_chat.js') }}?v=approval-countdown-20261027"></script><script src="{{ mobile_static('js/mobile_chat.js') }}?v=artifact-cards-20261029"></script>{% endif %}
 <script src="{{ mobile_static('js/mobile.js') }}?v=bounded-reading-20261024"></script>
 <script src="{{ mobile_static('js/mobile_chat_keyboard.js') }}?v=20261026"></script>
 {% endblock %}

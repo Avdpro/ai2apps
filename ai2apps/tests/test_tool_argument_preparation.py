@@ -6,10 +6,10 @@ def test_extra_fields_are_schema_driven_and_keep_original():
     schema={'type':'object','properties':{'prompt':{'type':'string'}},'required':['prompt'],'additionalProperties':False}
     original={'prompt':'keep me','request_id':'one','request_key':'two'}
     fixed,error=prepare_arguments(schema,original)
-    assert fixed=={'prompt':'keep me'} and error is None
+    assert fixed==original and error is not None
     assert original['request_key']=='two'
     fixed,error=prepare_arguments(schema,{'prompt':'keep me','model':'explicit-user-choice'})
-    assert error is None and fixed == {'prompt':'keep me'}
+    assert error is not None and fixed['model']=='explicit-user-choice'
 
 
 def test_declared_open_and_conditional_fields_preserved():
@@ -35,7 +35,7 @@ def test_schema_errors_recover_before_effectful_execution_with_limit():
 def test_group_photo_schema_accepts_metadata_repair():
     from ai2apps.images.mini_parameters import schema
     fixed,error=prepare_arguments(schema("ai2apps.imagine.group-photo"), {"person_artifact_ids":["art_a","art_b"],"background":"park","request_id":"call-1"})
-    assert error is None and "request_id" not in fixed
+    assert error is not None and fixed["request_id"]=="call-1"
 
 
 def test_nested_arrays_refs_and_patterns():
@@ -44,7 +44,7 @@ def test_nested_arrays_refs_and_patterns():
             'patternProperties':{'^x_':{'type':'integer'}},'additionalProperties':False}}}
     args={'items':[{'name':'A','x_option':2,'arbitrary_extra':3}], 'anything':True}
     fixed,error=prepare_arguments(schema,args)
-    assert error is None and fixed=={'items':[{'name':'A','x_option':2}]}
+    assert error is not None and fixed==args
     assert args['items'][0]['arbitrary_extra']==3
     fixed,error=prepare_arguments(schema,{'items':[{'name':3,'x_option':'wrong'}]})
     assert error and fixed['items'][0]['x_option']=='wrong'

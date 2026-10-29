@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import sqlite3
 from typing import Any
 
@@ -492,6 +493,14 @@ _SYSTEM_APP_ZH: dict[str, tuple[str, str, str]] = {
     "ai2apps.benchmark": ("基准测试", "测量模型和设备性能", "开发者工具"),
 }
 
+# Browser owns its built-in frame declarations and exact shipped resource list.
+from ai2apps.browser.builtin_mini_apps import definitions as _browser_minis
+_browser_declarations, _browser_resources = _browser_minis()
+for _manifest in _SYSTEM_APP_MANIFESTS_BASE:
+    if _manifest['id'] == 'ai2apps.ai-browser':
+        _manifest['mini_apps'] = _browser_declarations
+        _manifest['builtin_resources'] = _browser_resources
+
 SYSTEM_APP_MANIFESTS: tuple[dict[str, Any], ...] = tuple(
     {
         **manifest,
@@ -520,6 +529,7 @@ def ensure_system_apps(
         with database.transaction(write=True) as connection:
             for manifest in SYSTEM_APP_MANIFESTS:
                 package_id = str(manifest["id"])
+                digest = "sha256:" + hashlib.sha256(canonical_json(manifest).encode()).hexdigest()
                 row = connection.execute(
                     "SELECT * FROM app_definitions WHERE package_id=? "
                     "ORDER BY created_at DESC LIMIT 1",
@@ -542,14 +552,16 @@ def ensure_system_apps(
                         json.loads(row["manifest_json"]) != manifest
                         or row["display_name"] != manifest["name"]
                         or row["status"] != "enabled"
+                        or row["effective_digest"] != digest
                     ):
                         connection.execute(
                             "UPDATE app_definitions SET display_name=?,"
-                            "status='enabled',manifest_json=?,revision=revision+1,"
+                            "status='enabled',manifest_json=?,effective_digest=?,revision=revision+1,"
                             "updated_at=? WHERE id=?",
                             (
                                 manifest["name"],
                                 canonical_json(manifest),
+                                digest,
                                 now,
                                 row["id"],
                             ),
@@ -561,8 +573,8 @@ def ensure_system_apps(
                     INSERT INTO app_definitions(
                         id,package_id,package_version,display_name,instance_mode,
                         singleton_scope,source,status,manifest_schema_version,
-                        manifest_json,created_at,updated_at
-                    ) VALUES(?,?,?,?,?,?,'builtin','enabled',1,?,?,?)
+                        manifest_json,effective_digest,created_at,updated_at
+                    ) VALUES(?,?,?,?,?,?,'builtin','enabled',1,?,?,?,?)
                     """,
                     (
                         definition_id,
@@ -572,6 +584,7 @@ def ensure_system_apps(
                         mode,
                         scope,
                         canonical_json(manifest),
+                        digest,
                         now,
                         now,
                     ),

@@ -12,6 +12,9 @@ def inspect(runtime,principal,target):
     target=validate_target(target)
     binder=getattr(runtime,'package_app_exports',None)
     if binder:binder.sync()
+    mini_binder=getattr(runtime,'package_mini_exports',None)
+    if mini_binder:mini_binder.sync()
+    owned={**getattr(binder,'owned',{}),**getattr(mini_binder,'owned',{})}
     manager=runtime.registry_packages
     stored=manager._load_state().get('installed',{}).get(target['packageId'])
     unavailable={'status':'not_installed','providers':[],'callable':False}
@@ -34,7 +37,7 @@ def inspect(runtime,principal,target):
             and (p.get('mini_app_id')==entry['identity'] if entry['kind']=='mini-app' else not p.get('mini_app_id'))]
         observed.append({'export':export['name'],'interface_version':export['interfaceVersion'],
             'registered_providers':[{'id':p['id'],'version':p['version'],'enabled':p['enabled'],'status':p['status']} for p in matches],
-            'interface_verified':bool(matches) and all(p['id'] in getattr(binder,'owned',{}) for p in matches)})
+            'interface_verified':bool(matches) and all(p['id'] in owned for p in matches)})
     ready=[p for o in observed if o['interface_verified'] for p in o['registered_providers'] if p['enabled'] and p['status']=='registered']
     return {'status':'ready' if ready else 'registered_adapters_require_interface_verification' if any(o['registered_providers'] for o in observed) else 'adapter_required' if exports else 'no_aaat_declaration',
         'installation_target':target,'providers':observed,'callable':bool(ready),

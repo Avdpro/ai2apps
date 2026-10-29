@@ -518,3 +518,139 @@ toward round and delegated budgets. They never enter business model transcripts.
 After a new review the ordinary loop rechecks budgets before effectful dispatch.
 Rule updates, review and automatic capability decisions are auditable. No owner name
 or business Tool identity determines the rule.
+
+### Parameter receipts alongside owner invocation policy (2026-10-28)
+
+Presence of an owner invocation_policy does not discard a matching durable
+configure-only confirmation. Shared execution resolves the existing form receipt
+with the same Run/Provider/version/argument/cancellation/consumption guards, and
+still evaluates the owner policy. An explicit policy error remains authoritative;
+a false result means no additional owner-verified confirmation, not revocation of
+a valid submitted form. Either existing form confirmation or owner-verified
+confirmation can satisfy parameter selection. Atomic single-invocation claiming,
+normal effect authorization and unknown-outcome restrictions remain unchanged.
+Owner selection_required still determines whether a complete but unconfirmed call
+needs a form; completeness alone never changes that declaration.
+
+## Installed Package Mini-App exports
+
+For Package-hosted Mini-Apps, public capability names, input schemas, presentation
+and Agent context belong to the signed Package declaration, not a host preloaded
+catalog. The platform registers them only through an exact installed release and
+validated effective definition. A capability directory summary is never an
+executable registration or a source of a parameter form.
+
+The native binding adapter remains trusted owner code. A signed declaration may
+select a supported versioned Host SDK protocol; it cannot select/import Python
+callbacks, extend authority or override native effects/ACL/consent guards. See
+[Installed Mini-App Host SDK exports v1](package-mini-app-host-exports-v1.md) for
+validation, lifecycle, placement isolation and uncertainty rules.
+
+### Stable-context discovery and observation metrics (2026-10-29)
+
+`app.describe` without an exact capability returns bounded inventory summaries,
+with an optional text query, offset and limit. Full forms/declarations are fetched
+by exact capability/provider. Availability and selected-version guards remain in
+the owner/runtime; summaries do not authorize execution. This applies to arbitrary
+registered owners and does not recognize business names.
+
+`agent.read_tool_result` deduplicates fully covered ranges only for the same source
+SHA-256 and current Run/Session. It returns the prior read-step reference rather
+than repeating bytes; `reread=true` allows explicit recovery when old content is
+no longer in context. No stored message or prior result is rewritten. Existing
+window-pressure compaction remains; no new default early-compression threshold or
+round-count eviction was enabled.
+
+Run API `model_metrics` reports observed model/review input/output tokens, reported
+cached/uncached input, per-step elapsed time and settled Cloud Points. Unknown
+cache/charge fields remain null, not zero. Cloud request IDs deduplicate charges;
+no prices are inferred from model names or account balance changes. Owner-internal
+model calls remain separately reported and must be included explicitly in a full
+workflow acceptance comparison.
+
+## Run-local lazy Tool projection (2026-10-29)
+
+Default General Agent runs start with platform discovery/interaction readers and a frozen compact index of currently allowed tools. Exact `app.describe(capability=...)` selection loads the full callable schema and current trusted owner declarations for the next deciding model request. Explicit caller-provided tool lists retain their scoped catalog contract. A model cannot invoke a guessed alias that was not exposed in its deciding request.
+
+Within a Run, already projected tool schemas keep their order and bytes; new selected schemas append. Recovery derives this projection from durable model requests, not page memory. Revocation does not rewrite historical schemas: current tool visibility, authorization, original schema validation and current Provider/declaration version review still gate dispatch. Old model context never grants authority. Trusted declaration messages are replayed at their original trace position and new reviews append; no default early compaction or rolling history rewrite is added.
+
+Capability query uses deterministic alternative-keyword scoring, exact phrases first, stable identity tie-breaks. It does not call a model, infer business synonyms or expose absent Package capabilities. Owner display names and declared scope supply the searchable vocabulary. Discover owner may send a unique fitting exact candidate directly to the signed installation review; this does not install automatically or replace user selection, license/permission confirmation or signature validation.
+
+A trusted declaration may list `workflows[].capabilities`. Exact selection may preload those schemas and declarations for the next planning turn only when they are currently visible and belong to the same registered App/Mini-App owner; foreign-owner strings are ignored. This enables one review of a declared workflow without allowing tool results to promote instructions or grant execution rights. A caller-scoped catalog with no discovery control keeps its existing fixed allowed tool set; lazy projection cannot make such a Session unusable or expand its scope.
+
+Discover catalog phrases use upstream AND matching. If the initial bounded alternatives yield no candidate, the Discover owner may retry up to eight individual words observed in those queries under the same filter, digest and 90-second coverage guards. This deterministic fallback does not infer a business synonym, add a model call, install a Package or confer authority; a later selected exact release still follows the signed review.
+
+Rejected tool aliases can remain in the durable trace. For upstream providers that require every historical function name to have a definition, the projection may append a non-executable unavailable-alias placeholder. It has no registry handler and is rejected even if a later registration collides with its name. A rejected guess at a currently registered alias may expose its real schema to a new model decision, but never replays the rejected call. Current declaration review, ownership and execution guards still apply. Original model/tool rows are not rewritten.
+
+At a new Run boundary, prior Session tool call/result messages are projected deterministically as historical evidence text, rather than active function-call wire messages requiring all old schemas to be exposed. Current Run tool pairs retain their actual protocol and original rows. This does not compact or rewrite the stored Session history, reauthorize an old action, or replay a result; the projection stays stable throughout the Run.
+
+### 同 Session 续轮选择恢复与历史协议（2026-10-29）
+
+通用执行器可从同 Session、同 Agent 定义、输入边界之前最近50个已完成根 Run 的宿主 Tool 步骤恢复“曾选用的能力名”。不得从用户/Tool 正文推断、复制旧 schema、继承批准、参数确认、调用结果或执行权。首个模型请求冻结本 Run 的选择种子，后续保持目录前缀只追加。当前 allowlist、服务可见性、Provider 启用及 App/Mini-App 作用域过滤后，重新加载当前 schema 与声明；版本在模型决策后变化仍需重新审阅，撤销和拒绝仍按原守卫执行。失败、取消、其他 Session 或其他 Agent 的选择不参与恢复。
+
+历史调用仅在其名称存在于当前请求 schema、且调用/结果配对完整时保留原生 assistant/tool 协议结构。失效或不完整的历史组改为明确标注不可信的 `prior_operation_receipt` 数据，保留输入、实际结果及引用 ID；结果缺失必须保留 `result_not_observed`，不能视为未执行而重放。不得把含 `tool_calls/function/arguments` 的 wire JSON 拼进 assistant 自然语言，诱导模型仿写；也不得把回答中的协议文本解析为可执行调用。此投影仅用于历史；当前 Run 调用仍由原结构协议、声明审阅与授权流程执行。此机制不提前压缩有效历史。
+
+宿主已完成的参数/交互控制（app.collect_parameters、app.interact）也构成对其显式 target 的选择：在后续模型请求中可加载当前允许的功能 schema 与新鲜声明，避免表单完成后执行入口缺失。不从任意业务返回的 capability 字段推导工具，不提升取消、失败或拒绝结果；这一步不自动执行、不传递运行批准，也不允许重放 App 内已完成的业务操作。
+
+### Durable media output projection (2026-10-29)
+
+Successful Tools can return `artifact.download_url`, `files[].url`, or the legacy
+Studio `downloadUrl`, each an exact local Session artifact download path. The
+shared bounded projector validates against Workspace metadata, deduplicates up to
+64 outputs and stores only IDs/MIME/name/size/URL in assistant metadata `artifacts`.
+No remote URLs, arbitrary nested objects, paths, or model-written IDs become
+outputs. Current execution projects only caller-Session assets. Owners export
+Studio outputs to the caller Session while preserving shared Studio Output as the
+sole history. Chat history recovery may project an original source Session only
+after current principal ownership checks, with no Tool replay or generation.
+
+Desktop and signed Mobile reuse one card renderer. Playback is user initiated;
+PDF is sandboxed, text is bounded and rendered as text, unsupported documents are
+downloaded for a compatible app. Download and explicit Gallery import retain
+existing Session authorization. Mobile additionally binds the exact output to an
+authorized Run and signed request, including Gallery import; a stored reference
+never grants authority. Metadata does not add media bytes to the model context.
+
+
+### Exact parameter contracts (2026-10-29)
+
+Exact `app.describe` selection resolves current trusted Provider schemas, fields,
+model choices and constraints; inventory stays compact and performs no descriptor
+calls. Each contract carries Provider/version and a deterministic fingerprint.
+Models must obtain this contract before constructing dynamic arguments. A complete
+current native Tool schema already in the model request satisfies static review
+without another model round. A fresh
+mismatch or contract-required receipt supplies the same exact contract for the
+next bounded model decision. It grants neither execution nor confirmation.
+
+Unknown/nested/incorrect parameters are preserved, never silently pruned.
+Preflight returns `parameter_contract_mismatch` or `parameter_contract_required`
+with `submitted:false`, `side_effects:false`, validation paths and the full current
+schema. Argument values are not echoed into error prompts. Partial form drafts
+may omit required fields, but cannot invent or rename declared keys. Explicit
+schema defaults are deterministic; no inner AI semantic remapper is used.
+Cancelled, executed or uncertain operations are never retried by this mechanism.
+
+A registered typed SDK can refine presentation/options of signed Package fields
+without adding identities. A configuration host must be explicitly bound during
+trusted Provider registration, never selected by returned content. Same-Chat
+output transfers require successful output evidence, current source/target owner
+access and declared MIME compatibility; unrelated Sessions are not searched.
+
+Selected contract recovery (2026-10-29): current owner-resolved contracts include
+configuration-required state, declared setup intent and model-field identity.
+The host appends selected contracts to trusted model context, replaying matching
+receipts in place rather than repeatedly rediscovering them. Current fingerprints
+are checked before invocation; configuration/Provider changes require re-reading.
+A missing model is valid partial-form input, never an invented model ID. An
+unregistered app.interact handoff may return the registered parameter form's exact
+contract and an explicit app.collect_parameters correction; it never dispatches
+that correction automatically or grants authority. Execute/cancel/uncertainty
+boundaries remain unchanged.
+
+Image-input declaration lookup (2026-10-29): visual owners resolve the exact
+execution route with actor-bound catalog access. Managed Cloud/API Default must
+not be looked up only in the BYOK catalog. Literal supported/unsupported and
+undeclared/not_found/disabled/lookup_failed remain separate observations; missing
+or failed metadata never proves no vision. No model-name heuristic grants image
+input. Owner results report this diagnostic; General AS adds no business policy.

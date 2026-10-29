@@ -164,10 +164,10 @@ async def test_submitted_cancel_is_consumed_before_reviewing_an_updated_owner_de
     async def model(request):
         requests.append(request)
         results=[json.loads(m['content']) for m in request['messages'] if m.get('role')=='tool']
-        if len(requests)==3:
+        if len(requests)==4:
             assert results[-1]['status']=='cancelled'
             return response(text='Cancelled by the user.')
-        assert len(requests)<=2
+        assert len(requests)<=3
         return response('app.collect_parameters',{'request_id':'cancel-during-update','capability':capability,'values':{}})
     runtime.agent_runtime.bind_model_provider(model)
     await runtime.start_background_tasks(retention_interval_seconds=60)

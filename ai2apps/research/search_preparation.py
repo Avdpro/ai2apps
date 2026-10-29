@@ -78,6 +78,7 @@ def view(runtime,principal,mounted,identifier,*,scope=None):
     if task['status']=='completed':
         plan=deepcopy(task.get('result') or {})
         ids={c['id'] for c in available}
+        if not row['task_id']:ids.add('fast_api')
         # Configuration may change while planning. Never preserve an unavailable API choice.
         if isinstance(plan.get('sources'),list) and 'deepseek' not in ids:
             plan['sources']=[s for s in plan['sources'] if s!='deepseek']

@@ -17,7 +17,7 @@ def prepared(runtime,monkeypatch):
     monkeypatch.setattr(runtime.tools,'context_for_session',lambda **kwargs:replace(original_context(**kwargs),actor_user_id='local',installation_id='local'))
     actor=RequestPrincipal.legacy_local()
     thread,_=ChatRepository(runtime.database,runtime.events).create_thread(title='Shared search')
-    declaration=json.loads((Path(__file__).resolve().parents[2]/'packages/ai2apps-search-all/app.yaml').read_text())['mini_apps'][0]
+    declaration=json.loads((Path(__file__).resolve().parents[2]/'ai2apps/docs/retired-package-sources/ai2apps-search-all/app.yaml').read_text())['mini_apps'][0]
     mini=SimpleNamespace(declaration=declaration,mount={'app_instance_id':'app','app_key':'ai2apps-search-all','effective_digest':'digest','interaction_session_id':thread.session.id})
     plan={'optimized_query':'SQLite WAL checkpoint backup','sources':['google','wikipedia'],'limit':5,'x_sort':'top','xiaohongshu_sort':'general','reason':'Primary documentation'}
     calls=[]
@@ -161,12 +161,15 @@ async def test_general_agent_waits_for_search_confirmation_then_returns_shared_r
             assert 'Read original WAL body.' in request['messages'][1]['content']
             return {'choices':[{'message':{'content':json.dumps({'overview':'WAL conclusion','points':[{'text':'WAL fact','source_ids':['1']}],'limitations':''})}}]}
         tools=[m for m in request['messages'] if m.get('role')=='tool']
-        if tools and json.loads(tools[-1]['content']).get('error',{}).get('code')!='tool_declaration_required':
+        if tools and 'Read original WAL body.' in tools[-1]['content']:
             body=json.loads(tools[-1]['content'])
             assert 'Read original WAL body.' in json.dumps(body)
             assert any('Final-answer citation contract' in m.get('content','') for m in request['messages'] if m.get('role')=='system')
             return {'choices':[{'message':{'role':'assistant','content':answer},'finish_reason':'stop'}]}
-        alias=next(t['function']['name'] for t in request['tools'] if t['function']['name'].startswith('web__search_'))
+        alias=next((t['function']['name'] for t in request['tools'] if t['function']['name'].startswith('web__search_')),None)
+        if alias is None:
+            discover=next(t['function']['name'] for t in request['tools'] if t['function']['name'].startswith('app__describe'))
+            return {'choices':[{'message':{'role':'assistant','content':None,'tool_calls':[{'id':'describe','type':'function','function':{'name':discover,'arguments':json.dumps({'capability':'web.search'})}}]},'finish_reason':'tool_calls'}]}
         return {'choices':[{'message':{'role':'assistant','content':None,'tool_calls':[{'id':'search','type':'function','function':{'name':alias,'arguments':json.dumps({'query':'SQLite WAL?'})}}]},'finish_reason':'tool_calls'}]}
     runtime.agent_runtime.bind_model_provider(model)
     run,_=runtime.agents.create_run(session_id=thread.session.id,agent_key='ai2apps.general-agent',input={'model':'model','prompt':'Research SQLite WAL'})

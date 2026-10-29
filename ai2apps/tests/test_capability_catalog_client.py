@@ -120,7 +120,7 @@ def test_installed_observer_rechecks_removal_and_replacement_without_creating_pr
     state={'installed':{TARGET['packageId']:stored}}
     manager=SimpleNamespace(_load_state=lambda:state)
     effective=SimpleNamespace(upstream_digest='b'*64,manifest={})
-    extensions=SimpleNamespace(repository=SimpleNamespace(effective=lambda *a:effective),_active_app_definition=lambda key:{'status':'enabled'})
+    extensions=SimpleNamespace(_development_packages={},repository=SimpleNamespace(effective=lambda *a:effective),_active_app_definition=lambda key:{'status':'enabled'})
     monkeypatch.setattr(runtime,'registry_packages',manager);monkeypatch.setattr(runtime,'extension_manager',extensions)
     principal=RequestPrincipal.legacy_local();before=set(runtime.app_capability_router.providers)
     result=inspect(runtime,principal,TARGET)

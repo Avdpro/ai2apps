@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio,hashlib,json,time,uuid,logging
 from contextlib import nullcontext
 from .media_review import MediaLedger,image_key,prepare_image,MAX_IMAGES,MAX_BYTES
-from .visual_recovery import declared_vision
+from ai2apps.model_vision import resolve_vision
 from ai2apps.agents.json_output import parse_model_json,JsonRepairBudget,repair_json_request
 from ai2apps.task_llm import task_payload
 
@@ -69,13 +69,7 @@ class SocialMediaReview:
         self.model=inputs.get('current_model');self.goal=inputs.get('reading_goal','')
         self.ledger=MediaLedger(runtime.database,scope_key(run,inputs),run.input['parameters'].get('browser_task_id',run.id))
         self.reason=None;self.deadline=time.monotonic()+600;self.extra=[]
-        model=None
-        if self.model and self.model.startswith('cloud/'):
-            for provider in runtime.model_manager.list_cloud():
-                for item in provider.get('models',[]):
-                    if 'cloud/'+provider['id']+'/'+item['id']==self.model and item.get('enabled'):model=item
-        elif self.model:model=runtime.model_invocations.model(self.model)
-        if not model or not declared_vision(model):self.reason='current_model_has_no_declared_vision'
+        self.vision=None
     def cached(self,key):
         value=self.ledger.get(key)
         return value if value and value.get('usable') is True else None
@@ -183,6 +177,9 @@ class SocialMediaReview:
     async def review(self,page,post,*,extra=False):
         images=post.get('images',[])
         if not images:return
+        if self.vision is None:
+            self.vision=await resolve_vision(self.runtime,self.model,self.run.input['parameters']['owner_user_id'])
+            self.reason=self.vision['reason']
         callback=getattr(self,'progress',None)
         if callback:await callback(post)
         pending=[r for r in images if not self.cached(self.key(post,r))]
@@ -214,4 +211,4 @@ class SocialMediaReview:
         if callback:await callback(post)
     def summary(self,posts):
         records=[r for p in posts for r in p.get('media_review',{}).get('images',[])]
-        return {'limit':MAX_IMAGES,'default_per_post':2,'usage':self.ledger.usage(),'byte_limit':MAX_BYTES,'seen':sum(r['status']=='seen' for r in records),'unseen':sum(r['status']!='seen' for r in records),'unseen_reasons':{reason:sum(r.get('unseen_reason')==reason for r in records if r['status']!='seen') for reason in sorted({r.get('unseen_reason') or 'image_review_not_attempted' for r in records if r['status']!='seen'})},'partial_images':sum(bool(r.get('review',{}).get('partial_image')) for r in records),'complete':all(p.get('media_review',{}).get('complete',not p.get('images')) for p in posts),'model':self.model,'reason':self.reason}
+        return {'limit':MAX_IMAGES,'default_per_post':2,'usage':self.ledger.usage(),'byte_limit':MAX_BYTES,'seen':sum(r['status']=='seen' for r in records),'unseen':sum(r['status']!='seen' for r in records),'unseen_reasons':{reason:sum(r.get('unseen_reason')==reason for r in records if r['status']!='seen') for reason in sorted({r.get('unseen_reason') or 'image_review_not_attempted' for r in records if r['status']!='seen'})},'partial_images':sum(bool(r.get('review',{}).get('partial_image')) for r in records),'complete':all(p.get('media_review',{}).get('complete',not p.get('images')) for p in posts),'model':self.model,'reason':self.reason,'vision_capability':self.vision}

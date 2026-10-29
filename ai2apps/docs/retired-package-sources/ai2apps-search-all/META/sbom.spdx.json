@@ -1,0 +1,32 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "creationInfo": {
+    "created": "2026-10-28T00:00:00Z",
+    "creators": [
+      "Organization: AI2Apps"
+    ]
+  },
+  "name": "ai2apps/search-all-0.1.2",
+  "documentNamespace": "https://ai2apps.com/spdx/search-all/0.1.2",
+  "packages": [
+    {
+      "SPDXID": "SPDXRef-Package",
+      "name": "Search All",
+      "versionInfo": "0.1.2",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "copyrightText": "NOASSERTION"
+    }
+  ],
+  "relationships": [
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package"
+    }
+  ]
+}

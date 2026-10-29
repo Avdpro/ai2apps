@@ -315,7 +315,32 @@ def create_chat_router(
         if isinstance(repository, JSONResponse):
             return repository
         try:
-            return ChatContentResponse.from_record(repository.get_content(thread_id))
+            result = ChatContentResponse.from_record(repository.get_content(thread_id))
+            # Read-only historical recovery; no Tool replay or media generation.
+            from ai2apps.agents.artifact_outputs import output_artifacts
+            from ai2apps.api.ownership import authorize_agent_run, authorize_session
+            from fastapi import HTTPException
+            runtime = runtime_provider()
+            def allowed(sid):
+                try:
+                    authorize_session(runtime, principal, sid)
+                    return True
+                except HTTPException:
+                    return False
+            for message in result.messages:
+                rid = message.metadata.get('agent_run_id')
+                if message.role != MessageRole.ASSISTANT or not isinstance(rid, str):
+                    continue
+                try:
+                    authorize_agent_run(runtime, principal, rid)
+                    run = runtime.agents.get_run(rid)
+                    if run.session_id != thread_id:
+                        continue
+                    message.metadata = {**message.metadata, 'artifacts': output_artifacts(
+                        runtime.agents.list_steps(rid), runtime.workspace, thread_id, allow_session=allowed)}
+                except (HTTPException, RepositoryError):
+                    continue
+            return result
         except RepositoryError as error:
             return repository_error_response(error)
 

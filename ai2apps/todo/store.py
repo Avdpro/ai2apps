@@ -1,11 +1,17 @@
 import json
 import sqlite3
 import uuid
+import unicodedata
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
 from .models import TaskInput, emoji_key, next_due, normalize_task_state
+
+
+def normalize_name(value):
+    value = unicodedata.normalize('NFKC', value).casefold()
+    return ' '.join(''.join(c if unicodedata.category(c)[0] in ('L','N','M') and c not in '\ufe0e\ufe0f' else ' ' for c in value).split())
 
 
 def now_text():
@@ -146,6 +152,11 @@ class TodoStore:
                 ],
             }
 
+    def list_directories(self, owner):
+        with self.connect() as db:
+            return [dict(row) for row in db.execute(
+                "SELECT d.id,d.title FROM directories d LEFT JOIN directory_order o ON o.directory_id=d.id AND o.owner=d.owner WHERE d.owner=? ORDER BY COALESCE(o.position,2147483647),d.rowid", (owner,))]
+
     def directory(self, owner, title):
         title = title.strip()
         if not title or len(title) > 200:
@@ -199,7 +210,14 @@ class TodoStore:
                 raise ValueError("Directories changed; refresh before reordering")
             db.executemany("INSERT OR REPLACE INTO directory_order VALUES(?,?,?)", [(owner, id, position) for position, id in enumerate(ids)])
 
-    def save(self, owner, value, id=None, revision=None, *, creation_key=None):
+    def save(self, owner, value, id=None, revision=None, *, creation_key=None, create_inbox=False, directory_name=None):
+        if directory_name is not None:
+            directory_name = directory_name.strip()
+            if id or create_inbox or not directory_name or len(directory_name) > 200 or not normalize_name(directory_name):
+                raise ValueError('New directory requires a valid name and a new task')
+        if create_inbox:
+            if id: raise ValueError('Inbox fallback is only for new tasks')
+            value = {**value, 'directory_id': uuid.uuid5(uuid.NAMESPACE_URL, 'ai2apps.todo.inbox:' + owner).hex}
         data = TaskInput.model_validate(value).model_dump()
         data["title"] = data["title"].strip()
         if not data["title"]:
@@ -207,13 +225,25 @@ class TodoStore:
         now = datetime.now(UTC)
         due = next_due(data["schedule"], now)
         with self.connect() as db:
-            receipt_input = json.dumps(data, sort_keys=True, separators=(',', ':'))
+            receipt_input = json.dumps({'task': data, 'directory_name': directory_name} if directory_name else data, sort_keys=True, separators=(',', ':'))
             if creation_key:
                 if id: raise ValueError('Creation key cannot edit an existing task')
                 receipt = db.execute('SELECT * FROM task_creation_receipts WHERE owner=? AND request_key=?', (owner, creation_key)).fetchone()
                 if receipt:
                     if receipt['input_json'] != receipt_input: raise ValueError('Creation key belongs to different parameters')
                     return self.task(db.execute('SELECT * FROM tasks WHERE owner=? AND id=?', (owner, receipt['task_id'])).fetchone())
+            if directory_name:
+                matches = [dict(row) for row in db.execute("SELECT id,title FROM directories WHERE owner=?", (owner,))
+                    if normalize_name(row['title']) == normalize_name(directory_name)]
+                if len(matches) > 1:
+                    raise ValueError('Directory name is ambiguous; select an existing directory')
+                if matches:
+                    data['directory_id'] = matches[0]['id']
+                else:
+                    data['directory_id'] = uuid.uuid4().hex
+                    db.execute("INSERT INTO directories VALUES(?,?,?)", (data['directory_id'], owner, directory_name))
+            if create_inbox:
+                db.execute("INSERT OR IGNORE INTO directories VALUES(?,?,?)", (data['directory_id'], owner, '收件箱 / Inbox'))
             if not db.execute(
                 "SELECT 1 FROM directories WHERE id=? AND owner=?",
                 (data["directory_id"], owner),

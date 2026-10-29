@@ -54,13 +54,13 @@ async def descriptor(runtime, principal, model=None):
         'install':{'appId':APP,'capability':CAPABILITY,'requirements':{}}}
 
 
-async def execute(runtime, args, context):
+async def execute(runtime, args, context, *, mini_app_id=None):
     from ai2apps.studio.capability_broker import MountedMiniApp, _declared_capabilities
     from ai2apps.studio.video_jobs import submit_package
     if not context.invocation_id or not context.session_id:
         raise ToolProviderError('Subtitles require an owned durable Session invocation')
     principal=principal_for(runtime,context)
-    declaration_owner,declaration=runtime.extension_manager._studio_mini_app_definition(APP,MINI,principal)
+    declaration_owner,declaration=runtime.extension_manager._studio_mini_app_definition(APP,mini_app_id or MINI,principal)
     capabilities=_declared_capabilities(declaration)
     if {CAPABILITY,'audio.detailed_transcription','media.subtitle.export','llm.text'}-capabilities:
         raise ToolProviderError('Installed Mini-App does not declare subtitle translation')

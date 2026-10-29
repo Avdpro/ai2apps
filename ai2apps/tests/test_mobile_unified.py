@@ -106,3 +106,9 @@ def test_exchange_request_id_survives_service_recreation_and_never_stores_bearer
     assert 'private-handoff' not in manager.secret_backend.load(KEY)
     manager.secret_backend.store(KEY,'broken')
     with pytest.raises(RemoteTokenError):ExchangeRequests(manager).request_id(device,cid,'private-handoff')
+
+
+def test_generated_library_import_is_exact_and_owner_authorized():
+    assert gateway.allowed('POST','/v1/mobile/owner-agent/files/r/a/gallery')
+    assert not gateway.allowed('DELETE','/v1/mobile/owner-agent/files/r/a/gallery')
+    assert not gateway.allowed('POST','/v1/mobile/owner-agent/files/r/a/gallery/other')

@@ -8,7 +8,8 @@ from ai2apps.images.parameters import from_options, describe, prepare, validate_
 from ai2apps.services.capability_routing import CapabilityProvider, ProviderIncompatible
 from ai2apps.services import ToolCallContext
 from ai2apps.api.router import create_ai2apps_router
-from test_app_interactions import runtime, wait
+from test_app_interactions import wait
+from legacy_package_backend_fixture import runtime
 from test_parameter_forms import setup
 
 @pytest.fixture
@@ -117,13 +118,13 @@ async def test_agent_opens_model_form_before_execution_and_resumes(runtime,catal
     async def model(request):
         requests.append(request)
         message={'role':'assistant','content':'done'}
-        if len(requests)<=2:
+        if not calls:
             alias=next(t['function']['name'] for t in request['tools'] if t['function']['name'].startswith('image__group_photo_'))
             message={'role':'assistant','content':None,'tool_calls':[{'id':'group','type':'function','function':{'name':alias,'arguments':json.dumps({'person_artifact_ids':['a','b'],'background':'garden'})}}]}
-        return {'choices':[{'message':message,'finish_reason':'tool_calls' if len(requests)<=2 else 'stop'}],'usage':{}}
+        return {'choices':[{'message':message,'finish_reason':'tool_calls' if message.get('tool_calls') else 'stop'}],'usage':{}}
     runtime.agent_runtime.bind_model_provider(model)
     thread,_=ChatRepository(runtime.database,runtime.events).create_thread(title='Model selection')
-    run,_=runtime.agents.create_run(session_id=thread.session.id,agent_key='ai2apps.general-agent',input={'model':'test','prompt':'make a group photo'})
+    run,_=runtime.agents.create_run(session_id=thread.session.id,agent_key='ai2apps.general-agent',input={'model':'test','prompt':'make a group photo','tools':['image.group_photo']})
     app=FastAPI();app.include_router(create_ai2apps_router(runtime_provider=lambda:runtime,principal_provider=RequestPrincipal.legacy_local))
     await runtime.start_background_tasks(retention_interval_seconds=60)
     try:
@@ -173,7 +174,7 @@ async def test_agent_failure_keeps_provider_identity_parameters_and_stage(runtim
         return {'choices':[{'message':{'role':'assistant','content':None,'tool_calls':[{'id':'group','type':'function','function':{'name':alias,'arguments':json.dumps({'person_artifact_ids':['art_a','art_b'],'background':'garden'})}}]},'finish_reason':'tool_calls'}],'usage':{}}
     runtime.agent_runtime.bind_model_provider(model)
     thread,_=ChatRepository(runtime.database,runtime.events).create_thread(title='Failure detail')
-    run,_=runtime.agents.create_run(session_id=thread.session.id,agent_key='ai2apps.general-agent',input={'model':'test','prompt':'make a group photo'})
+    run,_=runtime.agents.create_run(session_id=thread.session.id,agent_key='ai2apps.general-agent',input={'model':'test','prompt':'make a group photo','tools':['image.group_photo']})
     await runtime.start_background_tasks(retention_interval_seconds=60)
     try:
         await wait(runtime,run.id,'waiting_capability')
@@ -216,7 +217,7 @@ async def test_agent_corrects_preflight_failure_then_continues(runtime,monkeypat
         return {'choices':[{'message':{'role':'assistant','content':None,'tool_calls':[{'id':'group-'+str(len(requests)),'type':'function','function':{'name':alias,'arguments':json.dumps({'person_artifact_ids':['art_a','art_b'],'background':'invalid' if len(requests)<=2 else 'garden'})}}]},'finish_reason':'tool_calls'}],'usage':{}}
     runtime.agent_runtime.bind_model_provider(model)
     thread,_=ChatRepository(runtime.database,runtime.events).create_thread(title='Correct provider arguments')
-    run,_=runtime.agents.create_run(session_id=thread.session.id,agent_key='ai2apps.general-agent',input={'model':'test','prompt':'make a group photo'})
+    run,_=runtime.agents.create_run(session_id=thread.session.id,agent_key='ai2apps.general-agent',input={'model':'test','prompt':'make a group photo','tools':['image.group_photo']})
     await runtime.start_background_tasks(retention_interval_seconds=60)
     try:
         await wait(runtime,run.id,'waiting_capability')
@@ -248,13 +249,15 @@ def test_legacy_providers_declare_user_facing_labels(runtime):
             assert FORMS[provider_id].summary==provider.summary
 
 
-def test_app_discovery_exposes_provider_labels(runtime):
+@pytest.mark.asyncio
+async def test_app_discovery_exposes_provider_labels(runtime,catalog):
     bound=runtime.service_registry.bound_tool('app.describe')
     from test_builtin_app_aaat import context
-    discovered=bound.handler({},context(runtime))
-    forms={f['provider']:f for f in discovered['forms']}
+    discovered=await bound.handler({},context(runtime))
+    assert discovered['projection']=='summary' and discovered['forms']==[]
     for identifier in ('ai2apps.images.generate','ai2apps.imagine.group-photo','ai2apps.search-all.search','ai2apps.web-reader.fetch'):
         provider=runtime.app_capability_router.providers[identifier]
+        forms={f['provider']:f for f in (await bound.handler({'capability':identifier},context(runtime)))['forms']}
         assert forms[identifier]['display_name']==provider.display_name
         assert forms[identifier]['summary']==provider.summary
 

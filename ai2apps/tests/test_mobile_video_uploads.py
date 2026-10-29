@@ -127,8 +127,8 @@ async def test_mobile_generated_file_requires_owned_recorded_success(runtime,mon
     source=tmp_path/'output.srt';source.write_text('subtitle')
     artifact=runtime.workspace.import_artifact(thread.session.id,source,name='output.srt',media_type='application/x-subrip')
     record={'artifact_id':artifact.id,'url':f'/v1/platform/sessions/{thread.session.id}/artifacts/{artifact.id}/download'}
-    monkeypatch.setattr(runtime.agents,'get_run',lambda _:NS(session_id=thread.session.id))
-    steps=[NS(status=NS(value='completed'),output={'provider':provider,'files':[record]})]
+    monkeypatch.setattr(runtime.agents,'get_run',lambda _:NS(id='run',session_id=thread.session.id))
+    steps=[NS(kind='tool',status=NS(value='completed'),output={'provider':provider,'files':[record]})]
     monkeypatch.setattr(runtime.agents,'list_steps',lambda _:steps)
     response=await generated_file(runtime,principal,'/files/run/'+artifact.id)
     assert Path(response.path)==runtime.workspace.artifact_path(artifact)

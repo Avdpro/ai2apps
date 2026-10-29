@@ -83,7 +83,7 @@ async def descriptor(runtime,principal,model=None,*,replacement=False):
         'warnings':[{'zh':'仅支持单旁白，不保留多个角色音色。请选择已就绪的语音角色或临时克隆原声；缺少模型请到Desktop配置，参数保留。','en':'Single narrator only; multiple speaker identities are not preserved. Select a ready Character or temporarily clone the original voice. Missing models require Desktop setup; parameters are retained.'}]}
 
 
-async def dub(runtime,args,context):
+async def dub(runtime,args,context,*,mini_app_id=None):
     from jsonschema import Draft202012Validator
     from .capability_broker import MountedMiniApp,_declared_capabilities,StudioCapabilityBroker
     from .video_jobs import submit_package
@@ -92,7 +92,7 @@ async def dub(runtime,args,context):
     Draft202012Validator(DUB_SCHEMA).validate(args)
     path,name,media=voice_aaat.source(runtime,principal,context.session_id,args['video_id'])
     if not media.startswith('video/'):raise ToolProviderError('Select a video material')
-    definition,declaration=runtime.extension_manager._studio_mini_app_definition(APP,DUB_MINI,principal)
+    definition,declaration=runtime.extension_manager._studio_mini_app_definition(APP,mini_app_id or DUB_MINI,principal)
     caps=_declared_capabilities(declaration)
     required={DUB,'audio.detailed_transcription','llm.text','audio.source_separation','audio.speech_generation','media.audio.extract','media.video.audio_mux'}
     if args['voice_profile_id']==ORIGINAL:required.add('audio.voice_clone')

@@ -1,8 +1,8 @@
-"""Owner form presentation coverage; all descriptors use isolated runtime data."""
+"""Historical owner form presentation coverage with explicitly loaded SDK fixtures."""
 import pytest
 from ai2apps.identity import RequestPrincipal
 from ai2apps.agents.parameter_forms import present_fields
-from test_app_interactions import runtime
+from legacy_package_backend_fixture import runtime
 
 
 def test_presentation_preserves_values_and_plain_legacy_declarations():
@@ -20,7 +20,7 @@ async def test_installed_first_party_provider_fields_have_owner_translations(run
     original=runtime.extension_manager._studio_mini_app_definition
     declarations={}
     for package in ('ai2apps-shopping-pro','ai2apps-search-all','ai2apps-web-reader'):
-        data=json.loads((Path(__file__).resolve().parents[2]/'packages'/package/'app.yaml').read_text())
+        data=json.loads((Path(__file__).resolve().parents[2]/('ai2apps/docs/retired-package-sources' if package in ('ai2apps-search-all','ai2apps-web-reader') else 'packages')/package/'app.yaml').read_text())
         for mini in data['mini_apps']:declarations[mini['id']]=mini
     monkeypatch.setattr(runtime.extension_manager,'_studio_mini_app_definition',lambda app,mini,principal:(None,declarations[mini]) if mini in declarations else original(app,mini,principal))
     checked=[]

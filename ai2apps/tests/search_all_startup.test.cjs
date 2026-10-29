@@ -4,7 +4,7 @@ function startup(){
  const get=id=>{if(!nodes.has(id))nodes.set(id,{hidden:['app-content','startup-retry'].includes(id),attrs:{},setAttribute(k,v){this.attrs[k]=v;},removeAttribute(k){delete this.attrs[k];}});return nodes.get(id);};
  const g={document:{documentElement:{lang:'zh'},getElementById:get},location:{search:'?locale=zh'},URLSearchParams,
   setTimeout:fn=>{deadline=fn;return 1;},clearTimeout(){},addEventListener:(type,fn)=>{events[type]=fn;},parent:{postMessage:(...args)=>posted.push(args)}};
- g.window=g;vm.runInNewContext(fs.readFileSync(__dirname+'/../../packages/ai2apps-search-all/web/startup.js','utf8'),g);
+ g.window=g;vm.runInNewContext(fs.readFileSync(__dirname+'/../web/static/builtin_mini_apps/search-all/web/startup.js','utf8'),g);
  return {g,get,events,posted,timeout:()=>deadline()};
 }
 test('unfinished startup keeps interactive content hidden until explicitly ready',()=>{
