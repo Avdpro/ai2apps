@@ -11,4 +11,3 @@ def enqueue_routing(c,item_id,principal,revision):
     c.execute(ROUTING_SCHEMA)
     c.execute('INSERT OR IGNORE INTO knowledge_bucket_routing(item_id,actor_user_id,installation_id,item_revision,updated_at) VALUES (?,?,?,?,?)',
               (item_id,principal.actor_user_id,principal.installation_id,revision,utc_now_text()))
-
