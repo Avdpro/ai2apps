@@ -502,6 +502,11 @@ def maybe_apply_pre_load_patches(
                 model_name,
             )
 
+    if for_vlm and model_type == "oxr":
+        from ..patches.mlx_vlm_oxr_compat import apply_mlx_vlm_oxr_compat_patch
+
+        apply_mlx_vlm_oxr_compat_patch()
+
     if for_vlm and model_type == "unlimited-ocr":
         from ..patches.mlx_vlm_unlimited_ocr_compat import (
             apply_mlx_vlm_unlimited_ocr_compat_patch,

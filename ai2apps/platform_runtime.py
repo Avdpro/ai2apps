@@ -200,6 +200,7 @@ class PlatformRuntime:
         self.knowledge = None
         self.knowledge_import_manager: KnowledgeImportManager | None = None
         self.knowledge_package_runtime: KnowledgePackageRuntime | None = None
+        self.knowledge_ocr_manager = None
         self.registry_packages: RegistryPackageManager | None = None
         self.provisioning: CapabilityProvisioner | None = None
         self.remote: RemoteAccessManager | None = None
@@ -388,6 +389,8 @@ class PlatformRuntime:
             await self.document_manager.startup()
         if self.knowledge_import_manager is not None:
             await self.knowledge_import_manager.startup()
+        if self.knowledge_ocr_manager is not None:
+            await self.knowledge_ocr_manager.startup()
         if self.knowledge_package_runtime is not None:
             await self.knowledge_package_runtime.startup()
         if self.video_tasks is not None:
@@ -539,6 +542,8 @@ class PlatformRuntime:
             await self.document_manager.shutdown()
         if self.knowledge_import_manager is not None:
             await self.knowledge_import_manager.shutdown()
+        if self.knowledge_ocr_manager is not None:
+            await self.knowledge_ocr_manager.shutdown()
         if self.knowledge_package_runtime is not None:
             await self.knowledge_package_runtime.shutdown()
         if self.studio_jobs is not None:
@@ -846,6 +851,8 @@ class PlatformRuntime:
         )
         self.worker_resources.bind_scheduler(self.worker_scheduler)
         self.model_invocations = ModelInvocationService(self)
+        from ai2apps.knowledge.ocr import KnowledgeOCRManager
+        self.knowledge_ocr_manager = KnowledgeOCRManager(self)
         install_knowledge_service(
             self.knowledge,
             self.services,

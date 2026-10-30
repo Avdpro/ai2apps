@@ -33,6 +33,7 @@
             EMAIL_NOT_VERIFIED: tr('account.error.email_not_verified'),
             EMAIL_ALREADY_REGISTERED: tr('account.error.email_already_registered'),
             INVALID_PASSWORD: tr('account.error.password_length'),
+            ACCOUNT_BROWSER_OPEN_FAILED: tr('account.currency.open_failed'),
             CURRENT_PASSWORD_INVALID: tr('account.password_change.wrong_current'),
             PASSWORD_UNCHANGED: tr('account.password_change.unchanged'),
             PASSWORD_CHANGE_UNAVAILABLE: tr('account.password_change.unavailable'),
@@ -1209,10 +1210,20 @@
                 const text = String(value || '');
                 return text.length > 18 ? text.slice(0, 8) + '…' + text.slice(-6) : text;
             },
+            openingRecharge: false,
+            async openRecharge() {
+                if (this.openingRecharge) return;
+                this.openingRecharge = true;
+                this.clearNotice();
+                try {
+                    await cloud('/account/open-recharge', { method: 'POST' });
+                } catch (error) { this.fail(error); }
+                finally { this.openingRecharge = false; }
+            },
             assetLabel(assetCode) {
                 const key = {
                     PROMO_POINTS: 'account.currency.points',
-                    USD_COMPUTE_CREDIT: 'account.currency.gas',
+                    USD_COMPUTE_CREDIT: 'account.currency.credit',
                     USD_PROVIDER_EARNINGS: 'account.currency.cash',
                 }[assetCode];
                 return key ? tr(key) : String(assetCode || '—');

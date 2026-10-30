@@ -1,0 +1,14 @@
+<details class="knowledge-ocr-panel" x-show="ocrAttentionJobs().length" x-cloak :open="ocrPanelOpen" @toggle="ocrPanelOpen = $el.open">
+    <summary><span>{{ t('knowledge.ocr.title') }}</span><small x-text="ocrAttentionJobs().length"></small></summary>
+    <div class="knowledge-ocr-jobs"><template x-for="job in ocrAttentionJobs()" :key="job.item_id"><article :class="job.status==='awaiting_consent'&&'needs-consent'">
+        <div class="knowledge-ocr-info"><strong x-text="job.title"></strong><small x-text="tr('knowledge.ocr.status.'+job.status)"></small><small x-show="job.model_label" x-text="job.model_label"></small></div>
+        <p x-show="job.status==='awaiting_consent'" x-text="tr('knowledge.ocr.consent').replace('{model}',job.model_label||job.model_id)"></p>
+        <p x-show="job.status==='blocked'">{{ t('knowledge.ocr.no_model') }}</p>
+        <p x-show="job.status==='failed'" x-text="tr(job.error==='recognition_incomplete'?'knowledge.ocr.incomplete':'knowledge.ocr.failed')"></p>
+        <div class="knowledge-ocr-actions">
+            <template x-if="job.status==='awaiting_consent'"><div><button type="button" :disabled="ocrBusyId===job.item_id" @click="decideOCR(job,true)">{{ t('knowledge.ocr.allow') }}</button><button type="button" :disabled="ocrBusyId===job.item_id" @click="decideOCR(job,false)">{{ t('knowledge.ocr.decline') }}</button></div></template>
+            <button type="button" x-show="['queued','running'].includes(job.status)" :disabled="ocrBusyId===job.item_id" @click="controlOCR(job,'cancel')">{{ t('knowledge.ocr.cancel') }}</button>
+            <button type="button" x-show="['completed','failed','blocked','skipped','cancelled'].includes(job.status)" :disabled="ocrBusyId===job.item_id" @click="controlOCR(job,'retry')">{{ t('knowledge.ocr.retry') }}</button>
+        </div>
+    </article></template></div>
+</details>

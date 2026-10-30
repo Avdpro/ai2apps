@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
+import sqlite3
 import time
 import uuid
 from collections.abc import AsyncIterator, Mapping
@@ -12,6 +14,9 @@ from contextlib import suppress
 from typing import Any
 
 from omlx.api.thinking import ThinkingParser, extract_thinking
+from omlx.api.utils import prepare_system_messages_for_template
+from .tool_output import ToolOutput
+from .prefix_cache import WorkerPrefixCache
 
 from .protocol import (
     ModelWorkerCheckpoint,
@@ -33,6 +38,31 @@ def _messages(value: Any) -> list[dict[str, Any]]:
     for index, item in enumerate(value):
         if not isinstance(item, dict) or not isinstance(item.get("role"), str):
             _error(f"messages[{index}] must contain a role")
+        item = dict(item)
+        if item.get('role') == 'assistant' and item.get('tool_calls'):
+            # OpenAI wire arguments are JSON strings; tokenizer templates
+            # consume objects. Copy the history rather than rewriting it.
+            calls = item['tool_calls']
+            if not isinstance(calls, list):
+                _error(f"messages[{index}].tool_calls must be an array")
+            normalized = []
+            for call in calls:
+                if not isinstance(call, dict) or not isinstance(call.get('function'), dict):
+                    _error(f"messages[{index}] contains an invalid tool call")
+                function = dict(call['function'])
+                arguments = function.get('arguments', {})
+                if isinstance(arguments, str):
+                    try:
+                        arguments = json.loads(arguments)
+                    except (ValueError, TypeError):
+                        _error(f"messages[{index}] tool arguments must be a JSON object")
+                if not isinstance(arguments, dict):
+                    _error(f"messages[{index}] tool arguments must be a JSON object")
+                function['arguments'] = arguments
+                normalized.append({**call, 'function': function})
+            item['tool_calls'] = normalized
+            if item.get('content') is None:
+                item['content'] = ''
         if not isinstance(item.get("content", ""), (str, list)):
             _error(f"messages[{index}].content must be text or content parts")
         result.append(dict(item))
@@ -82,7 +112,7 @@ def _generation_kwargs(
             "min_p": float(body.get("min_p", 0.0)),
             "repetition_penalty": float(body.get("repetition_penalty", 1.0)),
             "presence_penalty": float(body.get("presence_penalty", 0.0)),
-            "tools": body.get("tools"),
+            "tools": None if body.get('tool_choice') == 'none' else body.get("tools"),
             "stop": body.get("stop"),
             "seed": body.get("seed"),
         }
@@ -93,8 +123,10 @@ def _generation_kwargs(
             result["flesh_kv_policy"] = str(
                 body.get("flesh_kv_policy") or body.get("kv_cache_policy") or "session"
             )
-            result["cache_extra_keys"] = ("ai2apps-session-v1", session_id)
+            result["cache_extra_keys"] = body.get("_ai2apps_cache_keys") or ("ai2apps-session-v1", session_id)
             result["kv_cache_policy"] = result["flesh_kv_policy"]
+        if body.get("_ai2apps_cache_keys"):
+            result["cache_extra_keys"] = body["_ai2apps_cache_keys"]
         boost = (
             body.get("ai2apps_fusion_generator_engine_boost")
             or body.get("ai2apps_engine_boost")
@@ -198,6 +230,8 @@ class OmlxChatAdapter:
         self._checkpoint: ModelWorkerCheckpoint | None = None
         self._engine_key: tuple[Any, ...] | None = None
         self._lifecycle_lock = asyncio.Lock()
+        self._prefix_cache = None
+        self._prefix_cache_enabled = False
 
     async def start(self) -> None:
         # Loading is intentionally lazy so an installed Package can be healthy
@@ -212,6 +246,8 @@ class OmlxChatAdapter:
         engine, self._engine = self._engine, None
         self._checkpoint = None
         self._engine_key = None
+        self._prefix_cache = None
+        self._prefix_cache_enabled = False
         if engine is not None:
             stop = getattr(engine, "stop", None)
             if callable(stop):
@@ -323,12 +359,21 @@ class OmlxChatAdapter:
             await self._stop_engine()
             try:
                 engine = await self.create_engine(checkpoint, options)
+                cache, configured = None, False
+                if hasattr(engine, '_scheduler_config'):
+                    try:
+                        cache = WorkerPrefixCache(self.context.data_root, checkpoint)
+                        configured = cache.configure(engine)
+                    except (OSError, sqlite3.Error):
+                        logging.getLogger(__name__).warning("SSD prefix cache unavailable; continuing without reuse", exc_info=True)
                 start = getattr(engine, "start", None)
                 if callable(start):
                     result = start()
                     if hasattr(result, "__await__"):
                         await result
                 await self.configure_engine(engine, checkpoint, options)
+                self._prefix_cache_enabled = configured and cache.activate(engine)
+                self._prefix_cache = cache if self._prefix_cache_enabled else None
             except ModelWorkerError:
                 raise
             except Exception as exc:
@@ -362,6 +407,16 @@ class OmlxChatAdapter:
         if not isinstance(runtime_options, dict):
             _error("Internal model settings are invalid")
         engine, _ = await self.engine_for(model, runtime_options)
+        body.pop("_ai2apps_cache_keys", None)
+        session_id = body.get("ai2apps_session_id") or body.get("flesh_session_id")
+        if self._prefix_cache is not None and isinstance(session_id, str) and session_id:
+            try:
+                body["_ai2apps_cache_keys"] = await asyncio.to_thread(self._prefix_cache.namespace, session_id)
+            except (OSError, sqlite3.Error):
+                logging.getLogger(__name__).warning("Session cache lease unavailable; recomputing", exc_info=True)
+                body["_ai2apps_cache_keys"] = ("ai2apps-uncached-request", uuid.uuid4().hex)
+        elif self._prefix_cache is not None:
+            body["_ai2apps_cache_keys"] = ("ai2apps-anonymous-request", uuid.uuid4().hex)
         if request.operation == "chat_completions":
             return await self._chat(engine, model, body, request.request_id)
         if request.operation == "responses":
@@ -377,6 +432,15 @@ class OmlxChatAdapter:
     ):
         messages = _messages(body.get("messages"))
         reasoning = self.reasoning_contract(model)
+        generation_kwargs = self.generation_kwargs(model, body, reasoning)
+        messages = prepare_system_messages_for_template(
+            messages,
+            getattr(engine, 'tokenizer', None) or getattr(engine, '_tokenizer', None),
+            tools=generation_kwargs.get('tools'),
+            chat_template_kwargs=generation_kwargs.get('chat_template_kwargs'),
+            merge_consecutive_roles=False,
+            unsupported_mid_system_policy='strict',
+        )
         response_id = request_id if request_id.startswith("chatcmpl-") else f"chatcmpl-{request_id}"
         if body.get("stream"):
             return ModelWorkerStream(
@@ -385,20 +449,24 @@ class OmlxChatAdapter:
                 ),
                 headers={"Cache-Control": "no-cache"},
             )
-        generation_kwargs = self.generation_kwargs(model, body, reasoning)
         output = await engine.chat(messages, **generation_kwargs)
         raw_text = str(getattr(output, "text", ""))
         thinking = ""
         content = raw_text
         if reasoning and reasoning.get("format") == "think_tags":
             thinking, content = extract_thinking(raw_text)
+        tool_output = ToolOutput(engine, body.get('tools'), body.get('tool_choice'))
+        prefix = tool_output.feed(content)
+        tail, tool_calls = tool_output.finish(getattr(output, 'tool_calls', None))
+        if getattr(output, 'finish_reason', None) == 'tool_calls' and not tool_calls:
+            _error('Engine ended with tool_calls but returned no calls', code='invalid_tool_call', status=502)
+        content = prefix + tail
         message: dict[str, Any] = {
             "role": "assistant",
             "content": content,
         }
         if thinking:
             message["reasoning_content"] = thinking
-        tool_calls = getattr(output, "tool_calls", None)
         if tool_calls:
             message["tool_calls"] = tool_calls
         return {
@@ -410,7 +478,7 @@ class OmlxChatAdapter:
                 {
                     "index": 0,
                     "message": message,
-                    "finish_reason": getattr(output, "finish_reason", None) or "stop",
+                    "finish_reason": "tool_calls" if tool_calls else getattr(output, "finish_reason", None) or "stop",
                 }
             ],
             "usage": _usage(output, engine),
@@ -436,6 +504,7 @@ class OmlxChatAdapter:
             }
         )
         generation_kwargs = self.generation_kwargs(model, body, reasoning)
+        tool_output = ToolOutput(engine, body.get('tools'), body.get('tool_choice'))
         stream = engine.stream_chat(messages, **generation_kwargs)
         thinking_parser = (
             ThinkingParser(
@@ -501,6 +570,7 @@ class OmlxChatAdapter:
                 thinking_delta, content_delta = (
                     thinking_parser.feed(text) if thinking_parser else ("", text)
                 )
+                content_delta = tool_output.feed(content_delta)
                 for field, delta in (
                     ("reasoning_content", thinking_delta),
                     ("content", content_delta),
@@ -529,6 +599,7 @@ class OmlxChatAdapter:
                     await close()
         if thinking_parser:
             thinking_delta, content_delta = thinking_parser.finish()
+            content_delta = tool_output.feed(content_delta)
             for field, delta in (
                 ("reasoning_content", thinking_delta),
                 ("content", content_delta),
@@ -549,6 +620,18 @@ class OmlxChatAdapter:
                             ],
                         }
                     )
+        tail, tool_calls = tool_output.finish(getattr(final, 'tool_calls', None))
+        if getattr(final, 'finish_reason', None) == 'tool_calls' and not tool_calls:
+            _error('Engine ended with tool_calls but returned no calls', code='invalid_tool_call', status=502)
+        if tail or tool_calls:
+            delta = {}
+            if tail:
+                delta['content'] = tail
+            if tool_calls:
+                delta['tool_calls'] = [{'index': index, **call} for index, call in enumerate(tool_calls)]
+            yield _sse({'id': response_id, 'object': 'chat.completion.chunk',
+                        'created': created, 'model': model,
+                        'choices': [{'index': 0, 'delta': delta, 'finish_reason': None}]})
         yield _sse(
             {
                 "id": response_id,
@@ -559,7 +642,7 @@ class OmlxChatAdapter:
                     {
                         "index": 0,
                         "delta": {},
-                        "finish_reason": getattr(final, "finish_reason", None) or "stop",
+                        "finish_reason": "tool_calls" if tool_calls else getattr(final, "finish_reason", None) or "stop",
                     }
                 ],
             }

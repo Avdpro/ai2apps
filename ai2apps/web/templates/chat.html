@@ -12882,18 +12882,29 @@
 
         const chat = this.chatHistory.find(item => item.id === chatId);
         if (this.backendChatReady && chatId.startsWith('ses_') && chat) {
-            const synced = await this.flushBackendChatSync(chatId);
-            if (!synced && this.backendChatSyncState === 'conflict') return;
+            // Deletion must not replace durable Agent messages with a stale
+            // local snapshot. Drain an existing write, then read its revision.
+            clearTimeout(this.backendChatSyncTimers[chatId]);
+            delete this.backendChatSyncTimers[chatId];
             try {
+                await this.backendChatSyncPromises[chatId]?.catch(() => false);
+                const latest = await this.platformChatFetch(`/threads/${chatId}`);
                 await this.platformChatFetch(
-                    `/threads/${chatId}?expected_revision=${chat.backendRevision}`,
+                    `/threads/${chatId}?expected_revision=${latest.revision}`,
                     { method: 'DELETE' }
                 );
+            } catch (error) {
+                console.error('Failed to delete backend Chat thread', error);
+                alert(window.t(error?.status === 409 ? 'chat.delete_conflict' : 'chat.delete_failed'));
+                return false;
+            }
+            try {
                 const chatApp = await this.platformChatFetch('');
                 this.backendChatCollectionRevision = chatApp.collection_revision;
             } catch (error) {
-                console.error('Failed to delete backend Chat thread', error);
-                return;
+                // The delete already succeeded. A collection refresh failure
+                // must not leave the deleted row visible or invite a retry.
+                console.warn('Could not refresh Chat collection after deletion', error);
             }
         }
 
@@ -12905,7 +12916,7 @@
         this.chatHistory = this.chatHistory.filter(c => c.id !== chatId);
         this.saveChatHistory();
 
-        if (!wasCurrent) return;
+        if (!wasCurrent) return true;
 
         this.cancelPersistModelSettingsTimer();
         this.currentChatId = null;
@@ -12921,7 +12932,7 @@
 
         if (!suppressNavigation && this.chatHistory.length > 0) {
             await this.loadChat(this.chatHistory[0].id);
-            return;
+            return true;
         }
 
         const sysDefault = this.promptProfiles.find(p => p.name === 'System Default');
@@ -12937,6 +12948,7 @@
                 this.$refs.messageInput?.focus();
             }
         });
+        return true;
     },
 
     // Clear all history
@@ -12945,10 +12957,11 @@
 
         this.stopAllStreams();
         for (const chat of [...this.chatHistory]) {
-            await this.deleteChat(chat.id, {
+            const deleted = await this.deleteChat(chat.id, {
                 skipConfirm: true,
                 suppressNavigation: true,
             });
+            if (!deleted) return;
         }
         this.chatHistory = [];
         this.chatSessions = {};

@@ -1886,6 +1886,8 @@ class Scheduler:
             tuple[Any, ...], list[int]
         ] = {}
         self._session_exact_prefix_lock = threading.Lock()
+        # Optional owner-supplied index: only lengths/digests, never authority.
+        self.persistent_prefix_store = None
 
         # Mapping between our request IDs and BatchGenerator UIDs
         self.request_id_to_uid: dict[str, int] = {}
@@ -2359,6 +2361,10 @@ class Scheduler:
                         token_sequence_to_store,
                         cache_to_store,
                         model_cache_config=model_cache_config,
+                        **(
+                            {"boundary_snapshots": intermediate_snapshots}
+                            if intermediate_snapshots is not None else {}
+                        ),
                         extra_keys=extra_keys,
                         extra_key_token_start=extra_key_token_start,
                         extra_key_ranges=extra_key_ranges,
@@ -2400,6 +2406,10 @@ class Scheduler:
                             model_cache_config=(
                                 declared_exact_store.model_cache_config
                             ),
+                            **(
+                                {"boundary_snapshots": intermediate_snapshots}
+                                if intermediate_snapshots is not None else {}
+                            ),
                             extra_keys=extra_keys,
                             extra_key_token_start=extra_key_token_start,
                             extra_key_ranges=extra_key_ranges,
@@ -2440,6 +2450,15 @@ class Scheduler:
                     self._session_exact_prefix_tokens[session_lineage_key] = list(
                         lineage_tokens
                     )
+                    if self.persistent_prefix_store is not None:
+                        try:
+                            self.persistent_prefix_store.save(
+                                session_lineage_key, list(lineage_tokens)
+                            )
+                        except Exception:
+                            logger.warning(
+                                "Could not persist exact-prefix boundary index", exc_info=True
+                            )
             if block_table is None and self.paged_cache_manager is not None:
                 block_table = self.paged_cache_manager.get_block_table(request_id)
             if (
@@ -7533,6 +7552,15 @@ class Scheduler:
             if saved_tokens is not None:
                 saved_tokens = list(saved_tokens)
         prompt_tokens = request.prompt_token_ids or []
+        if not saved_tokens and self.persistent_prefix_store is not None:
+            try:
+                saved_tokens = self.persistent_prefix_store.match(
+                    lineage_key, prompt_tokens
+                )
+            except Exception:
+                logger.warning(
+                    "Could not read exact-prefix boundary index; recomputing", exc_info=True
+                )
         if not saved_tokens or len(saved_tokens) >= len(prompt_tokens):
             return False
         if prompt_tokens[: len(saved_tokens)] != saved_tokens:
@@ -10606,7 +10634,7 @@ class Scheduler:
                                     prompt_tokens_to_store,
                                     prompt_cache_to_store,
                                     prompt_model_cache_config,
-                                    _,
+                                    intermediate_snapshots,
                                 ) = prompt_boundary_store
                                 declared_exact_store = _ExactPrefixStore(
                                     request_id=f"{request.request_id}:session-prompt",
@@ -10634,7 +10662,7 @@ class Scheduler:
                                         boundary_tokens,
                                         boundary_cache,
                                         boundary_model_cache_config,
-                                        _,
+                                        intermediate_snapshots,
                                     ) = boundary_fallback
                                     boundary_cache = (
                                         self._merge_boundary_with_full_cache(

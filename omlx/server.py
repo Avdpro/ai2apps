@@ -506,6 +506,9 @@ async def verify_api_key(
     return True
 
 
+_AGENT_MODEL_SCOPE = object()  # In-process ASGI capability; never a wire header.
+
+
 async def verify_ai2apps_platform_access(
     request: HTTPConnection,
 ) -> RequestPrincipal | bool:
@@ -517,6 +520,25 @@ async def verify_ai2apps_platform_access(
     """
 
     runtime = get_ai2apps_platform_runtime()
+    agent_context = request.scope.get(_AGENT_MODEL_SCOPE)
+    if (isinstance(agent_context, ModelInvocationContext)
+            and request.scope['type'] == 'http'
+            and request.method == 'POST'
+            and request.url.path == '/v1/chat/completions'
+            and runtime is not None):
+        # Durable Agent work has no browser Cookie. Re-resolve the active
+        # Session owner on every call, including membership/revocation checks.
+        from ai2apps.identity import IdentityBindingError, IdentityRepository
+        try:
+            current = ModelInvocationContext.for_session(runtime.database, agent_context.session_id)
+            principal = (RequestPrincipal.legacy_local() if current.actor_user_id == 'local'
+                         else IdentityRepository(runtime.database).local_principal_for(current.actor_user_id))
+        except (ValueError, IdentityBindingError) as error:
+            raise HTTPException(status_code=401, detail='Agent Session identity is unavailable') from error
+        if current != agent_context:
+            raise HTTPException(status_code=401, detail='Agent Session identity changed')
+        request.state.ai2apps_principal = principal
+        return principal
     cookie_reader = (
         None
         if runtime is None
@@ -817,9 +839,19 @@ async def lifespan(app: FastAPI):
             accumulator = ChatCompletionStreamAccumulator()
             last_reported_fragments = 0
             last_reported_at = 0.0
+            async def agent_request(scope, receive, send):
+                # Only this private transport can attach the opaque scope key.
+                # HTTP headers/payloads cannot manufacture this authority.
+                if model_context is not None:
+                    scope = {**scope, _AGENT_MODEL_SCOPE: model_context}
+                await app(scope, receive, send)
+
             async with httpx.AsyncClient(
-                transport=httpx.ASGITransport(app=app),
-                base_url="http://ai2apps.internal",
+                transport=httpx.ASGITransport(app=agent_request),
+                # ASGITransport stays in process; use a loopback Host so the
+                # public-device boundary recognizes this as a local request.
+                # Authentication still passes through the normal API route.
+                base_url="http://127.0.0.1",
                 headers=headers,
             ) as client, client.stream(
                 "POST",
@@ -911,6 +943,13 @@ async def lifespan(app: FastAPI):
                         await value
             return accumulator.result()
 
+        async def _host_model_catalog():
+            from omlx.admin.routes import list_models
+            return await list_models(request=None, is_admin=True)
+
+        ai2apps_runtime.model_invocations.bind_chat_provider(
+            _invoke_agent_model, _host_model_catalog
+        )
         ai2apps_runtime.agent_runtime.bind_model_provider(_invoke_agent_model)
         ai2apps_runtime.agent_runtime.bind_context_provider(_measure_agent_context)
 

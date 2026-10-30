@@ -343,6 +343,7 @@ find "${RUNTIME_ROOT}/Python" -type d -name __pycache__ -empty -delete
 rsync -a \
   --exclude='__pycache__' --exclude='*.pyc' --exclude='tests' --exclude='.git' \
   --exclude='.build' --exclude='.pytest_cache' --exclude='.ruff_cache' \
+  --exclude='.venv' --exclude='/experiments/' \
   --exclude='/research/deepseek-v41-1017/' \
   --exclude='/research/dmoe-cleanup-audit-20261018/' \
   --exclude='/research/ssd-cleanup-20261017/' \

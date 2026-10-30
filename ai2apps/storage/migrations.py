@@ -4708,6 +4708,11 @@ MIGRATIONS = (*MIGRATIONS, Migration(version=96, name="session_tool_approval_rul
 )))
 
 
+MIGRATIONS = (*MIGRATIONS, Migration(version=97, name="knowledge_image_ocr", statements=(
+    "CREATE TABLE IF NOT EXISTS knowledge_image_ocr (\n    item_id TEXT PRIMARY KEY REFERENCES knowledge_items(id) ON DELETE CASCADE,\n    actor_user_id TEXT NOT NULL, installation_id TEXT NOT NULL,\n    item_revision INTEGER NOT NULL, asset_hash TEXT NOT NULL,\n    status TEXT NOT NULL DEFAULT 'queued' CHECK(status IN\n      ('queued','running','awaiting_consent','blocked','completed','failed','skipped','cancelled')),\n    revision INTEGER NOT NULL DEFAULT 1, attempts INTEGER NOT NULL DEFAULT 0,\n    model_id TEXT, model_label TEXT, route TEXT, selection_fingerprint TEXT,\n    consent_token TEXT, approved_fingerprint TEXT, run_token TEXT,\n    text TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '', error TEXT,\n    created_at TEXT NOT NULL, updated_at TEXT NOT NULL\n)",
+)))
+
+
 def _validate_migrations(migrations: Sequence[Migration]) -> None:
     versions = [migration.version for migration in migrations]
     expected = list(range(1, len(migrations) + 1))
@@ -4726,6 +4731,11 @@ def _pragma_user_version(connection: sqlite3.Connection) -> int:
         raise DatabaseCorruptionError("SQLite did not return PRAGMA user_version")
     return int(row[0])
 
+
+MIGRATIONS = (*MIGRATIONS, Migration(version=98, name="knowledge_auto_bucket", statements=(
+"CREATE TABLE IF NOT EXISTS knowledge_bucket_routing (\n item_id TEXT PRIMARY KEY REFERENCES knowledge_items(id), actor_user_id TEXT NOT NULL,\n installation_id TEXT NOT NULL, item_revision INTEGER NOT NULL,\n status TEXT NOT NULL DEFAULT 'pending', model_id TEXT, fingerprint TEXT,\n token TEXT, approved TEXT, run_token TEXT, error TEXT, updated_at TEXT NOT NULL\n)",
+"ALTER TABLE knowledge_import_jobs ADD COLUMN auto_bucket INTEGER NOT NULL DEFAULT 0",
+)))
 
 def apply_migrations(
     connection: sqlite3.Connection,

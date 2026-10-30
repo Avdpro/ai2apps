@@ -26,6 +26,7 @@ import shutil
 import struct
 import threading
 import time
+import math
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
@@ -1365,6 +1366,8 @@ class PagedSSDCacheManager(CacheManager):
         """
         self._cache_dir = cache_dir
         self._max_size = max_size_bytes
+        self._idle_expiry_seconds = 0.0
+        self._last_expiry_sweep = 0.0
         self._index = PagedSSDCacheIndex(max_size_bytes)
         self._incompatible_index = PagedSSDCacheIndex(max_size_bytes)
         self._hot_cache_only = hot_cache_only
@@ -2151,6 +2154,7 @@ class PagedSSDCacheManager(CacheManager):
         standard file I/O operations.
         """
         while True:
+            self.expire_idle_blocks()
             item = None
             try:
                 item = self._write_queue.get(timeout=1.0)
@@ -3457,6 +3461,38 @@ class PagedSSDCacheManager(CacheManager):
                 removed = True
 
             return removed
+
+    def configure_idle_expiry(self, seconds: float) -> None:
+        """Opt-in idle TTL for a private cache directory; upstream defaults stay off.
+
+        Expiry is cache eviction only, never cancellation of active inference.
+        Session owners additionally rotate expired namespace leases so an old
+        in-memory prefix cannot bypass the persisted cache lifetime.
+        """
+        if not math.isfinite(seconds) or seconds <= 0:
+            raise ValueError("Cache idle expiry must be finite and positive")
+        self._idle_expiry_seconds = seconds
+        self.expire_idle_blocks(force=True)
+
+    def expire_idle_blocks(self, *, force: bool = False) -> int:
+        seconds = self._idle_expiry_seconds
+        now = time.time()
+        if not seconds or (not force and now - self._last_expiry_sweep < 60):
+            return 0
+        removed = 0
+        with self._lock:
+            self._last_expiry_sweep = now
+            for index in (self._index, self._incompatible_index):
+                for snapshot in index.get_all_metadata():
+                    current = index.get(snapshot.block_hash)
+                    if current is None or now - current.last_access < seconds:
+                        continue
+                    with self._pending_write_hashes_lock:
+                        if current.block_hash in self._pending_write_hashes:
+                            continue
+                    if self.delete_block(current.block_hash):
+                        removed += 1
+        return removed
 
     def delete_block(self, block_hash: bytes) -> bool:
         """

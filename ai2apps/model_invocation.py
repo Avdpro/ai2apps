@@ -194,7 +194,44 @@ class ModelInvocationService:
 
     def __init__(self, runtime: Any) -> None:
         self.runtime = runtime
+        self._chat_provider = None
+        self._catalog_provider = None
         logging.getLogger(__name__).info('Shared App Cloud invocation loaded from %s', __file__)
+
+    def bind_chat_provider(self, provider, catalog_provider) -> None:
+        """Bind the Host's authenticated local chat transport and live model catalog.
+
+        Composition supplies callbacks; business callers never receive API keys,
+        raw Worker URLs or a way to manufacture model invocation identity.
+        """
+        self._chat_provider = provider
+        self._catalog_provider = catalog_provider
+
+    @property
+    def chat_provider_ready(self) -> bool:
+        return self._catalog_provider is not None and self._chat_provider is not None
+
+    async def chat_catalog(self) -> list[dict[str, Any]]:
+        if self._catalog_provider is None:
+            raise ModelInvocationError("model_catalog_unavailable", "Host model catalog is not ready")
+        value = await self._catalog_provider()
+        return list(value.get("models", []))
+
+    async def invoke_chat_json(self, payload: Mapping[str, Any], *,
+                               context: ModelInvocationContext) -> dict[str, Any]:
+        """One owner-authorized chat call through the existing provider boundary."""
+        model_id = str(payload.get("model") or "")
+        if model_id.startswith("cloud/"):
+            return await self.invoke_agent_cloud_json(payload, context=context)
+        if self.model(model_id) is not None:
+            response = await self.invoke_background_json(model_id, "chat_completions",
+                {**payload, "stream": False}, context=context)
+            if response.status_code >= 400:
+                raise ModelInvocationError("model_chat_failed", "Model request failed")
+            return json.loads(response.body)
+        if self._chat_provider is None:
+            raise ModelInvocationError("model_transport_unavailable", "Host model transport is not ready")
+        return await self._chat_provider(dict(payload), model_context=context)
 
     _QUEUE_TIMEOUT_SECONDS = {
         WorkloadClass.LOCAL_INTERACTIVE: 30.0,

@@ -38,7 +38,7 @@ from .models import (
     KnowledgeTag,
 )
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 DEFAULT_INSTALLATION_BUDGET_BYTES = 10 * 1024**3
 ALLOWED_KINDS = {
     "webpage",
@@ -187,7 +187,10 @@ class KnowledgeStore:
             if version == SCHEMA_VERSION:
                 return
             try:
-                connection.executescript(_SCHEMA_V1)
+                if version == 0:
+                    connection.executescript(_SCHEMA_V1)
+                from .ocr_store import OCR_SCHEMA
+                connection.execute(OCR_SCHEMA)
             except sqlite3.OperationalError as exc:
                 if "fts5" in str(exc).casefold():
                     raise KnowledgeConflictError(
@@ -666,6 +669,10 @@ class KnowledgeStore:
     ) -> KnowledgeItem:
         """Save one text representation and synchronously index it with FTS5."""
 
+        auto_bucket = bucket_id == 'auto'
+        if auto_bucket:
+            scope = KnowledgeScope.PRIVATE
+            bucket_id = None
         if kind not in ALLOWED_KINDS:
             raise ValueError(f"unsupported knowledge kind: {kind}")
         title = title.strip()
@@ -684,7 +691,7 @@ class KnowledgeStore:
         if self.database is not None:
             buckets = self.ensure_system_buckets(principal)
             if bucket_id is None:
-                default_key = (
+                default_key = "inbox" if auto_bucket else (
                     "shared"
                     if scope is KnowledgeScope.INSTALLATION
                     else self._default_bucket_key(kind)
@@ -847,6 +854,9 @@ class KnowledgeStore:
                     """,
                     (bucket_id, item_id, position, now),
                 )
+            if auto_bucket:
+                from .routing_store import enqueue_routing
+                enqueue_routing(connection, item_id, principal, 1)
             row = connection.execute(
                 _VISIBLE_ITEM_SELECT + " AND i.id = ?",
                 self._visibility_args(principal) + (item_id,),
@@ -1575,6 +1585,9 @@ class KnowledgeStore:
         filenames: Sequence[str],
         source_app_id: str | None = None,
     ) -> dict[str, object]:
+        auto_bucket = bucket_id == "auto"
+        if auto_bucket:
+            bucket_id = next(b.id for b in self.ensure_system_buckets(principal) if b.system_key == "inbox")
         names = tuple(
             (Path(name.replace("\x00", "")).name.strip() or "Untitled")[:512]
             for name in filenames
@@ -1603,6 +1616,7 @@ class KnowledgeStore:
                     now,
                 ),
             )
+            connection.execute("UPDATE knowledge_import_jobs SET auto_bucket=? WHERE id=?", (int(auto_bucket),job_id))
             connection.executemany(
                 """
                 INSERT INTO knowledge_import_job_entries(
@@ -2082,7 +2096,7 @@ class KnowledgeStore:
                         stream,
                         name=str(entry["filename"]),
                         media_type=entry["media_type"],
-                        bucket_id=str(job["bucket_id"]),
+                        bucket_id="auto" if job["auto_bucket"] else str(job["bucket_id"]),
                         source_app_id=job["source_app_id"],
                     )
                 self.update_import_entry(
@@ -2134,6 +2148,9 @@ class KnowledgeStore:
     ) -> tuple[KnowledgeItem, KnowledgeAsset]:
         """Persist a file, extract bounded text, and index it in one bucket."""
 
+        auto_bucket = bucket_id == 'auto'
+        if auto_bucket:
+            bucket_id = next(b.id for b in self.ensure_system_buckets(principal) if b.system_key == 'inbox')
         safe_name = Path(name.replace("\x00", "")).name.strip()[:512]
         if not safe_name:
             raise ValueError("a file name is required")
@@ -2218,7 +2235,7 @@ class KnowledgeStore:
                 text=text,
                 source_app_id=source_app_id,
                 source_session_id=source_session_id,
-                bucket_id=bucket_id,
+                bucket_id="auto" if auto_bucket else bucket_id,
                 parsed_chunks=parsed_chunks,
                 trusted_source_facets=trusted_source_facets,
             )
@@ -2248,6 +2265,9 @@ class KnowledgeStore:
                 row = connection.execute(
                     "SELECT * FROM knowledge_assets WHERE id=?", (asset_id,)
                 ).fetchone()
+                if item.kind == 'image':
+                    from .ocr_store import insert_image_ocr
+                    insert_image_ocr(connection, item, content_hash)
             return item, self._asset(row)
         finally:
             if temporary.exists():
@@ -2291,7 +2311,7 @@ class KnowledgeStore:
     ) -> tuple[str, str, tuple[tuple[str, dict[str, object]], ...]]:
         suffix = Path(name).suffix.casefold()
         text_suffixes = {
-            ".txt",
+            ".txt", ".log", ".ini", ".conf", ".rst", ".r", ".kt", ".env", ".bash",
             ".md",
             ".markdown",
             ".csv",

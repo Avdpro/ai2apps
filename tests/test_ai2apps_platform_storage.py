@@ -60,6 +60,9 @@ def test_database_bootstrap_creates_current_platform_schema(tmp_path):
         )
 
     assert tables == {
+        "knowledge_image_ocr",
+        "knowledge_bucket_routing",
+        "session_tool_approval_rules",
         "task_nodes",
         "system_tasks",
         "system_task_attempts",
@@ -313,6 +316,9 @@ def test_database_bootstrap_creates_current_platform_schema(tmp_path):
         (93, "studio_background_jobs"),
         (94, "system_task_service"),
         (95, "system_task_trigger_compatibility"),
+        (96, "session_tool_approval_rules"),
+        (97, "knowledge_image_ocr"),
+        (98, "knowledge_auto_bucket"),
     ]
     assert all(row[2].endswith("Z") for row in ledger)
 
@@ -939,6 +945,7 @@ def test_fastapi_lifespan_starts_and_stops_platform_runtime(tmp_path):
             assert {item["service_key"] for item in services.json()["items"]} == {
                 "ai2apps.diagnostics",
                 "ai2apps.package-app-adapters",
+                "ai2apps.package-mini-app-adapters",
                 "ai2apps.builtin-app-adapters",
                 "ai2apps.documents",
                 "ai2apps.images",

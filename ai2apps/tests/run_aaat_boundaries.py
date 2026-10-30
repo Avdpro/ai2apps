@@ -5,6 +5,8 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[2]
 TESTS = (
+    'ai2apps/tests/test_worker_tool_output.py',
+    'ai2apps/tests/test_agent_runtime_local_boundary.py',
     'ai2apps/tests/test_browser_builtin_aaat.py',
     'ai2apps/tests/test_webagent_visual_recovery.py',
     'ai2apps/tests/test_model_vision.py',

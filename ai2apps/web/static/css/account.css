@@ -230,3 +230,10 @@
 @media(max-width:640px) { .self-managed-fields { grid-template-columns:1fr; } }
 
 [data-desktop-mobile-agent] [hidden]{display:none!important}
+
+.account-point-value { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.account-recharge-button { display:grid; place-items:center; flex:0 0 44px; width:44px; height:44px; border:1px solid #d6d3d1; border-radius:50%; color:#404040; background:#fff; cursor:pointer; }
+.account-point .account-recharge-button svg { width:24px; height:24px; stroke-width:2.5; color:inherit; flex:none; }
+.account-recharge-button:hover { background:#e7e5e4; }
+.account-recharge-button:focus-visible { outline:2px solid #525252; outline-offset:3px; }
+.account-recharge-button:disabled { opacity:.45; cursor:wait; }

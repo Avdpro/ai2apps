@@ -1,0 +1,350 @@
+{
+  "baseline": "55f85f062697779c787f70dca8e460962a848f30",
+  "files": [
+    {
+      "path": "ai2apps/account_browser.py",
+      "old": null,
+      "new": "e6d88a00fe1c9e9f2f32351c85a8df25e14aaf674d4959029c238d46191d278a"
+    },
+    {
+      "path": "ai2apps/api/cloud.py",
+      "old": "f9e2d0f6b628f9fe98f700a303770211d1f637ac4df9b954f929bf29887dd3fd",
+      "new": "de2d5170c1749291c9ce4368e85f4fca4588a80ae41c9e92c59969684fabe527"
+    },
+    {
+      "path": "ai2apps/api/knowledge.py",
+      "old": "27c59c3198a492a67094635d2b2aae74dee6f81fc67b9f852c12d22ea7d79f65",
+      "new": "a62d49544d36ad44e836f0ae19d69f607fe87f6b7783adff0e81d31faa1ece55"
+    },
+    {
+      "path": "ai2apps/config.py",
+      "old": "1ac9008347613bfb19f69b0886d8132440e78fe0c7fd6e51a5d27a9199999078",
+      "new": "b06eefca269124884143bd9761dac9008f83b7ec1b11d8b90ccc8df2b0a7b1f3"
+    },
+    {
+      "path": "ai2apps/docs/knowledge-image-ocr.md",
+      "old": null,
+      "new": "40e2c3bfd3fbc1d4869089485fddc98fb91908c523127c3e991a34c7df879f81"
+    },
+    {
+      "path": "ai2apps/docs/oxr-local-runtime-package-plan-20261030.md",
+      "old": null,
+      "new": "442e6a72ebfdd0f2efa59bc691c9a25ede1d2265ae9cc623668db0ff7498572f"
+    },
+    {
+      "path": "ai2apps/docs/worker-ssd-prefix-cache.md",
+      "old": null,
+      "new": "8058f817235fea9e6cdcaa20151067878f3755bb8a1b74469dd7f20a08b23489"
+    },
+    {
+      "path": "ai2apps/knowledge/ocr.py",
+      "old": null,
+      "new": "5d5662464fc091f2e2af21ec455675a7eea74631cf6a2146fcb8f4f36f543e6e"
+    },
+    {
+      "path": "ai2apps/knowledge/ocr_store.py",
+      "old": null,
+      "new": "e1e7a578c0d0fa5bf83c4a18b77c3693c96e1a43c7586da152a22eaec821f1c2"
+    },
+    {
+      "path": "ai2apps/knowledge/routing.py",
+      "old": null,
+      "new": "86199c5e77efef0b017667b87c8a45786eaca36a4ed942eec1101a8ef5d99dee"
+    },
+    {
+      "path": "ai2apps/knowledge/routing_store.py",
+      "old": null,
+      "new": "53eea174448a2013890e2c702197577e70dab902d534126a9776744bcdf37042"
+    },
+    {
+      "path": "ai2apps/knowledge/store.py",
+      "old": "240b7721e0f90b03537697326f9c243e70428caefee449475b0a015a55ac40e5",
+      "new": "7a09beae9af740cd1ed17d8644a14923b3d5db7bc84a10817e6a670ad807f804"
+    },
+    {
+      "path": "ai2apps/model_invocation.py",
+      "old": "7a8b62cba4d3e2f7bd57a9b92728a9e9f81e9c1974e7629d34509cae95caf62c",
+      "new": "66d566b9cf979093798b2cd1df9b67546574b45bcc99de4bf321bc90d63bb318"
+    },
+    {
+      "path": "ai2apps/model_worker/omlx_chat.py",
+      "old": "2815bb01b7dde7f68794a1f19d27690585bb3de5daa36b6a4e27345e48511599",
+      "new": "959aa5b95970123da5c021075d52d41f31732f4ab420eac0ba15492c62b55529"
+    },
+    {
+      "path": "ai2apps/model_worker/prefix_cache.py",
+      "old": null,
+      "new": "4b0b48352f5b380be0621c50e57872b3b3c4124e47a2d24d68cdbd5737b6b15f"
+    },
+    {
+      "path": "ai2apps/model_worker/tool_output.py",
+      "old": null,
+      "new": "1a8a7c47a7d3cf3400d249874aa43ffcdc45f2c17e84fcc0301addfa8c1eb930"
+    },
+    {
+      "path": "ai2apps/platform_runtime.py",
+      "old": "96788fe6cfd51e9eee74f160adf400aed236e84472ec63d4842dd2993a0bf254",
+      "new": "7d3817ac2704465504833e91d49f8cd0cae25275ffa17630a3bfb97e79af9891"
+    },
+    {
+      "path": "ai2apps/storage/migrations.py",
+      "old": "8990b006fd22a77684097672d0b4ffd9d6b1022f4ae776f4923da98201c05f45",
+      "new": "06df169624d09860fb0dbd654eb52ff2ed2d795974783fa71a46c4806c1dec60"
+    },
+    {
+      "path": "ai2apps/tests/chat_delete.test.cjs",
+      "old": null,
+      "new": "805aa7e0647b2a82b354e037ace4d0952d102055ec6ab0410674917c6790c9aa"
+    },
+    {
+      "path": "ai2apps/tests/knowledge_ocr_frontend.cjs",
+      "old": null,
+      "new": "b24d73b2ca3362db01b1e1efd56d8b066742327db64babfbb0bb527ace34e18c"
+    },
+    {
+      "path": "ai2apps/tests/run_aaat_boundaries.py",
+      "old": "3e1578be57e0aef98855018eecaa778705185e3df68071d90921ce8bd21ddca2",
+      "new": "a37390a9741b88dd322f0576685b6610ec0cf644e4b58a8f95986449181eb685"
+    },
+    {
+      "path": "ai2apps/tests/test_account_recharge.py",
+      "old": null,
+      "new": "baa41097a7d16501597ba4c2c067d9ba8f5febef05ff3f4d4c25ee97a363262e"
+    },
+    {
+      "path": "ai2apps/tests/test_agent_runtime_local_boundary.py",
+      "old": null,
+      "new": "16c2474f52d659ff36f96acabd2e142c54d8042fd8013243ce5507059551de00"
+    },
+    {
+      "path": "ai2apps/tests/test_knowledge_image_ocr.py",
+      "old": null,
+      "new": "45bdd3d4a8cd2e2bad54ccc1ee3966bedb462f1176bc7642405ad763b1439cd5"
+    },
+    {
+      "path": "ai2apps/tests/test_model_chat_gateway.py",
+      "old": null,
+      "new": "5c02cb6790dd143ebe0eb2a1a59ab159990f999378d207961585ac5f60fffdc9"
+    },
+    {
+      "path": "ai2apps/tests/test_oxr_runtime_compat.py",
+      "old": null,
+      "new": "8edb51470909d99d683927ef3c18091dfd51c56525c375adf5d61dfe3a831a8d"
+    },
+    {
+      "path": "ai2apps/tests/test_system_tasks.py",
+      "old": "e13411b6e489ec42761380c3f3b1d7c57b840f3be02c8d98bbf44a20c2e3ae10",
+      "new": "7a025989f09b27569851182c9d45fed0682c76b3bfb4fa5f91ec2ce83102608f"
+    },
+    {
+      "path": "ai2apps/tests/test_worker_prefix_cache.py",
+      "old": null,
+      "new": "b9055f52cb1adb346688581a8f75d029e2da6f17b6c398d1c0c88c8432b7cc04"
+    },
+    {
+      "path": "ai2apps/tests/test_worker_tool_output.py",
+      "old": null,
+      "new": "09f823548768f5487fca5536ffbd8cbc27981651ca1d80ccfbbbe427e9c0fa7e"
+    },
+    {
+      "path": "ai2apps/web/i18n/de.json",
+      "old": "9dfde61bceef86291059a9fc709b23d2e41b36d7926e1a62ed281b91c5c28afd",
+      "new": "5ff06eeaced4c4e92a16c83b98ec7e467efa9bec520f24b821ff28dc3c546e2f"
+    },
+    {
+      "path": "ai2apps/web/i18n/en.json",
+      "old": "ea27b06cdb8df0de9527b8fccdd009406f1ce8e3f96dc3adea04e3c67a820e54",
+      "new": "a3410448945e334a33519a2cd767d6f8f07a23a61660301c7853332b8f5b2a71"
+    },
+    {
+      "path": "ai2apps/web/i18n/es.json",
+      "old": "58ef1f5c9048245f7165696c92fb21ea21db3ea6b64125b3bb2c5f085e902a3a",
+      "new": "6d1f359576efa2f5947a70158a24e13f840dfce3ac88ba8f4c2322172b59a20c"
+    },
+    {
+      "path": "ai2apps/web/i18n/fr.json",
+      "old": "8f655276d667b54fa48812ec4b78dd1ccbf17990f96cbd74f7b04dd3b3ee274d",
+      "new": "4c3510c13ea6ced3dfa48ae1235e10446cd09c584155ab02687c3976221d3366"
+    },
+    {
+      "path": "ai2apps/web/i18n/ja.json",
+      "old": "96fd305ec46659abb574f346deec779f45c70b5c2c86c2e0af5c80d30cfcff5c",
+      "new": "01cdf1ea0e416031013cef2d4a844b1d712b15aedb349c8b8ff64de9e041922a"
+    },
+    {
+      "path": "ai2apps/web/i18n/ko.json",
+      "old": "f739025b8e98d0680a89144ca574b9cd6ffe384180c2472fe5ef01da9187665c",
+      "new": "d7fade7498cf2cf1d3ade75f0df1f25ebb451803a80a337040972855792a2c34"
+    },
+    {
+      "path": "ai2apps/web/i18n/pt-BR.json",
+      "old": "4b611481e7d48a1476e3ac4e9905c18c4655ad84c44b2e695bb15f4d76120d8c",
+      "new": "2187e1f169984fb8572f63ce80bebe04f6817914876be5cb926b50fe1c4d611a"
+    },
+    {
+      "path": "ai2apps/web/i18n/ru.json",
+      "old": "f80c6f852cf7e4aea8fcc7f5602556e40d40920beaf08bf1c5c86fe9d36b73bd",
+      "new": "7df4f29004201f0f486784bf9e316b66b8f2ff64afbb41b85d620a7a4b02fff0"
+    },
+    {
+      "path": "ai2apps/web/i18n/visitor-space-keys.json",
+      "old": "101d80a9b5502eca117c7f57b1bb02b504587d1f55a42d28dcae9fc3ad5e070d",
+      "new": "d02bb08351b8ea0487dc529b8e576eeb21daac946c0f08343d7d207e37930eb9"
+    },
+    {
+      "path": "ai2apps/web/i18n/zh-TW.json",
+      "old": "3fd130bf6b87f91e2193fdd6cbc5ce866bbd6a2edbe75d2d6880898fb99ddb7a",
+      "new": "bdee53a55ac40a36e3115a5629603608ea327df9fa3b350c2f8ec5680b579a3c"
+    },
+    {
+      "path": "ai2apps/web/i18n/zh.json",
+      "old": "5d62627de3966a506f82154ee689776caf4c09d78d8905bd2a8b29c78e86a0b9",
+      "new": "e4ca6a4dafcae10a1e1c240943868df6c7550b7789b3a319132d529d7a8e0eb2"
+    },
+    {
+      "path": "ai2apps/web/static/css/account.css",
+      "old": "b97beb7d2cd7c2bbc42c47aaea93eff6c50bf876404f67ffa78e7ecde6dcb97f",
+      "new": "c2ef123e98d5b031b0c5266b84959b1f39f4e9e1a56d3e91e42af5f7dc326309"
+    },
+    {
+      "path": "ai2apps/web/static/css/knowledge.css",
+      "old": "70a794cd2c05d43f4694642b1e9dfa796b244f0a0fd38725d55f6c2fde29030e",
+      "new": "d2fb171248ae6ed20f82e100ce228d647b8a1b297e46f22a841a17542d04f9ea"
+    },
+    {
+      "path": "ai2apps/web/static/js/account.js",
+      "old": "215510bebd32bb8badab899284d97e2905e80047c9896eaba0189cbce56569ad",
+      "new": "574b673a86381667c1479cac6345e9377dc8b85ad5ddc3957fbc50519a96dc36"
+    },
+    {
+      "path": "ai2apps/web/static/js/knowledge.js",
+      "old": "0f098caa259263317ac1f65ea7b9cf28d6885fa0fdb53c9b239ae48855628373",
+      "new": "3b102cb0da1039538c80075194301b01a14b1b9cc3efb0f417010c0ff0a1584c"
+    },
+    {
+      "path": "ai2apps/web/templates/chat.html",
+      "old": "3cbf406a9afebc67aa1065952556a6cdb8a10d1e63d1ea55a651456f60c5128a",
+      "new": "4d6dff8f4b927d39bc4301dbce4982014b4ded4c82c2a29b7ff9638d4dc8ef13"
+    },
+    {
+      "path": "ai2apps/web/templates/system_apps/_knowledge_composer.html",
+      "old": null,
+      "new": "014e09f0db4809ac9384f85a923efb3eb37efdb7564ed03d82b9680d0ff4e27d"
+    },
+    {
+      "path": "ai2apps/web/templates/system_apps/_knowledge_ocr.html",
+      "old": null,
+      "new": "78870796cfb9009c34323ba644c8030ded34cc7b4250c441ad543d9c0bcd5396"
+    },
+    {
+      "path": "ai2apps/web/templates/system_apps/account.html",
+      "old": "fe9e80a3b66ee90105caba9ed910c56bba0eec642823cdf65f90a2ef522f44ff",
+      "new": "8af3ee6055c5ca79e3f01e25650a065e8ee106f452e6d87a5ec9d4d851494351"
+    },
+    {
+      "path": "ai2apps/web/templates/system_apps/knowledge.html",
+      "old": "f4482a71123cdc09e814d2969041eaa868cd9d6bc3afca699cfd181d188a2be8",
+      "new": "c956b9b756ed8e13170acf2b88dc2f1c59eaf3badc51d93178e8ee07baeea1bc"
+    },
+    {
+      "path": "ai2apps/web/templates/system_apps/knowledge_mini.html",
+      "old": "7ed9054985de5583a7f9b237509cad1515a72530ab1f36b651f17dc4625ab695",
+      "new": "5e3bfcc33569d473e4fec026086c73060c4786916a888f35fd80ea56aebfea9c"
+    },
+    {
+      "path": "apps/ai2apps-acefox/scripts/build-release-app.sh",
+      "old": "c9383574b0c3ab82cec0cd27f70a515d4891cff67319bc49d0dc4288db7bdba4",
+      "new": "6f9a877e44f0dc6fd7313e868f0b2be13f58d8231d89619d1054a95e550ef58e"
+    },
+    {
+      "path": "omlx/cache/paged_ssd_cache.py",
+      "old": "b85384cbe11ef2916823b109f7a97f63cdfa0fc72b145814699adeb863d83f4c",
+      "new": "c5b7a33777f83a45d7b20dd96914bb7b363a47de82c272c074e98ecf75006c40"
+    },
+    {
+      "path": "omlx/cache/prefix_cache.py",
+      "old": "3a03147e492afed39015bcfcf6974a3290e2c807a2c358bda430146b7d68fe7b",
+      "new": "d4c9c117b39c6fa64dd799e6abba586a5efe7790a274a97166ddf65d1ee81faa"
+    },
+    {
+      "path": "omlx/model_discovery.py",
+      "old": "d65048eef6dfc2c4d2fda2cbb030582603a55f8b4d266879fba337b405b0036a",
+      "new": "3374ee09e571962005fb7b491b5511912912a5d7903b4079d91d1e0c4738f627"
+    },
+    {
+      "path": "omlx/patches/mlx_vlm_oxr_compat/LICENSE-mlx-vlm",
+      "old": null,
+      "new": "f74c448746be3376e27dee43e2be9ec9d55f4820cd7466c603a6c7d1fd2d25b8"
+    },
+    {
+      "path": "omlx/patches/mlx_vlm_oxr_compat/NOTICE.md",
+      "old": null,
+      "new": "1b307ef6d554b0fc3c90c806566c6ab9a7b03a941ab1af433eea827644ae6e32"
+    },
+    {
+      "path": "omlx/patches/mlx_vlm_oxr_compat/__init__.py",
+      "old": null,
+      "new": "2063e83b6c5e54c18319a764c5d1ae8a2b61b3aa87b64864c33f7903e4d926b0"
+    },
+    {
+      "path": "omlx/patches/mlx_vlm_oxr_compat/vendor/mlx_vlm/models/oxr/__init__.py",
+      "old": null,
+      "new": "f515e2c106e71dbba23d7b5665e6884cd819b32a5a0c92d8f3eca2f8fbac7f20"
+    },
+    {
+      "path": "omlx/patches/mlx_vlm_oxr_compat/vendor/mlx_vlm/models/oxr/activations.py",
+      "old": null,
+      "new": "2ce04422f5670d8c3507f723d33253632e14121f45f2aa8070b08544ea92dfc9"
+    },
+    {
+      "path": "omlx/patches/mlx_vlm_oxr_compat/vendor/mlx_vlm/models/oxr/config.py",
+      "old": null,
+      "new": "a73fc5379b5c232f4ec9cea155b8442ca6bf63889b363a04e4ee23e63e327e79"
+    },
+    {
+      "path": "omlx/patches/mlx_vlm_oxr_compat/vendor/mlx_vlm/models/oxr/mlp.py",
+      "old": null,
+      "new": "e5413aa08a61ee26ab3bf70fac9aeef2ac9c13342e2a4507c2e7cc908a3273e7"
+    },
+    {
+      "path": "omlx/patches/mlx_vlm_oxr_compat/vendor/mlx_vlm/models/oxr/oxr.py",
+      "old": null,
+      "new": "e23c91d1ff774aea2eed6c3c3cb398a3922ba3a96170abf284de3acfe1d66e96"
+    },
+    {
+      "path": "omlx/patches/mlx_vlm_oxr_compat/vendor/mlx_vlm/models/oxr/processing_oxr.py",
+      "old": null,
+      "new": "1e1ddab30f47aaac6a2e9230a12d0f4bb6958e600e902f07fd3a5965ca2b83d1"
+    },
+    {
+      "path": "omlx/patches/mlx_vlm_oxr_compat/vendor/mlx_vlm/models/oxr/qwen3_config.py",
+      "old": null,
+      "new": "b24944a23dd506582d638f111afaa016a27d57bc9be3f596d547f95abc45f31b"
+    },
+    {
+      "path": "omlx/patches/mlx_vlm_oxr_compat/vendor/mlx_vlm/models/oxr/qwen3_language.py",
+      "old": null,
+      "new": "86eae398fe49950e19c182a1b0d1b7e17c5635a326ba2aadf5ff1b87e7a83152"
+    },
+    {
+      "path": "omlx/patches/mlx_vlm_oxr_compat/vendor/mlx_vlm/models/oxr/vision.py",
+      "old": null,
+      "new": "7be15464680a38bb48b13368d8ae1a81dc99b1d7d50bf63560ec9a56cb2c4722"
+    },
+    {
+      "path": "omlx/scheduler.py",
+      "old": "4b202735805d8d7f1f747d40336c618943621c669957c32176f7ae78b8ff601f",
+      "new": "8de1f59b590f61f6fd5f08a039d695ecc6307c1b150b409c1eeaf8f447312a31"
+    },
+    {
+      "path": "omlx/server.py",
+      "old": "c18add2c694579cc550e081a0d3df69d78d3421d9ef6481ac984196c1d224bfc",
+      "new": "82ebe214a98c2406a519e8e22cb99155e78d26ff576a1f7605eeaa689ab924cf"
+    },
+    {
+      "path": "omlx/utils/model_loading.py",
+      "old": "f00f1e107c91289c39b662af36dd1b640ae8adceff11975373dca86c3c031ceb",
+      "new": "1f55b2e913e4ad89ce8e0a064ffd5c8f2ea3a45ad63ea26de7245e5ba804d7d6"
+    }
+  ]
+}

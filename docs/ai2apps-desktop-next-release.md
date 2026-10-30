@@ -1,3 +1,141 @@
+### NXR-DESKTOP-RELEASE-2267-20261030
+
+- Current acceptance status (supersedes earlier pending notes below): native upload/local OCR/search/system simple-task automatic filing passed. Latest targeted Python rerun43/43 passed (exit0; sandbox emitted nonfatal Metal atexit warning), frontend OCR/consent/task-state regression passed, git diff check passed. Earlier broad suites: Host2880 passed/2 skipped, frontend1037 passed, AaAT701 passed. Candidate may proceed to source freeze/build verification; not yet signed, notarized or published2267, and source snapshot must include the final UI/appearance-test fixes before building.
+- Native Knowledge acceptance completed: user explicitly approved the configured cloud simple-task model for testing. OXR extracted the synthetic image locally; system simple-task Cloud DeepSeek classified it into 腕表情报, removed temporary Inbox membership, and native target-bucket search ORCHID2267 returned exactly the fixture with extracted text and completed filing status. No product consent policy was weakened. Final targeted regression found one obsolete appearance assertion requiring the removed App-color popover; updated it to enforce the approved REMOVE-APP-COLOR ledger contract while preserving per-user theme and semantic-control assertions. Rerun pending.
+- Knowledge task UI refinement (user requested): normal OCR/filing progress now follows individual library cards (including Mini-Entry) instead of permanent page-wide panels. Page-level panels only retain actionable OCR consent/failure/missing-model and filing consent/failure. Consent guards remain unchanged. Focused frontend regression and diff check passed. Native App-Dev55520 refreshed: no permanent panels; fixture card displays completed recognition/pending filing, and native search ORCHID2267 returns the extracted image text. Native Models privacy tab confirms work_simple/work_standard unconfigured; eligible installed text choices currently DeepSeek V4.1 Flash, GLM-5.3 Flash MTP, Qwen3.8 Flash Next. No model selected or external processing approved. Release gate remains closed pending actual local automatic-filing acceptance.
+- Knowledge OCR panel fix: 2.5-second status polls previously rebound native details.open to active-job status, collapsing manually expanded terminal results. Persist user toggle state, open on new active work, keep completion visible, and avoid replacing unchanged task objects. Focused frontend regression passed (manual collapse/expansion across unchanged polls, new active work, completion, exact consent guards); diff check passed. Refreshed fixed App-Dev55520 through native UI: synthetic fixture displays “已识别并加入检索” with local SoMark OXR, and remains expanded across subsequent polling. Read-only fixture-row check confirms dedicated_ocr/completed, 274 characters, no remote model call. Automatic filing/search acceptance still pending; do not publish yet.
+- Native acceptance pending by explicit user choice: actual App-Dev64308 uploaded synthetic desktop-2267-knowledge-fixture.png into private Inbox (item kit_ee1b5c5e6bf3411db792dcea0aa338ab), selected Automatic. No private image route was configured, so UI correctly stopped at per-image BYOK consent; user refused external processing, and the request was declined with Keep original only. Now configuring official local OXR via Discover; no remote model invocation authorized. Do not publish until native upload/OCR/search/filing acceptance completes.
+- Release regression repairs: remove unrelated knowledge translation entries accidentally appended to visitor-space-keys.json (a source-text-to-key map, not a locale catalog); actual Knowledge translations remain in locale catalogs. Update old platform-storage test snapshots for schema96–98 tables/migration names and Package Mini-App service registration. Preserve exact assertions rather than weakening guards; full frontend and storage reruns pending.
+- preflight: user requests next Desktop release. Candidate0.1.8/Build2267; anonymous production read confirms2266/10000bp. Scope: Account recharge/Credit/icons; Knowledge OCR/import/composer/automatic private-bucket routing (schema97/98); Agent in-process loopback identity and durable Chat deletion; shared Worker tool/history/system placement and SSD-prefix source changes; model-scoped OXR compatibility. Independent Package/Runtime publication remains separate and no full inference Runtime or weights may enter Desktop. Existing installed Workers require separately published Runtime upgrades; do not claim Desktop alone activates SSD-prefix improvements.
+- Acceptance: full Host/frontend/AaAT/Swift checks running; native Knowledge image-import/OCR/automatic-classification follow-up requested because ledger records native upload login-blocked and real classification only fixture-tested. Do not mark that acceptance complete without evidence. Preserve fixed Dev/App-Dev/Test and all data; no Cookie access or Cloud mutation. Reuse isolated release worktree, freeze source before signing, and supply Cloud handoff after two-origin verification.2266 Cloud is live; target-Mac end-to-end receipt is still not inferred from the manifest.
+
+### NXR-ACCOUNT-RECHARGE-ICON-20261030
+
+- implemented: Balance-card recharge buttons enlarged from32 to44px with24px
+  Lucide plus icons. Replaces text glyphs that were reduced by shared account
+  caption typography. Native App-Dev61701 refreshed; all three enlarged icons
+  visually verified. Recharge behavior unchanged; CSS/template refresh only.
+
+### NXR-KNOWLEDGE-COMPOSER-AUTO-BUCKET-20261030
+
+### NXR-ACCOUNT-RECHARGE-20261030：资产充值入口与 Credit 用词
+
+- 状态：`native_verified`。2026-10-30 修复 App-Dev 未加载新接口的激活问题：确认无活动任务后通过所属 Helper 重启 Local（64308）。原生点击加号后由 macOS 默认 Safari 打开 `https://home.ai2apps.com/account?panel=credit-purchase#credit`，实际已登录资产页显示 Credit 且购买选项展开；未创建订单或付款。6 项充值接口测试通过。原404来自启动早于接口修改的旧Local进程，无需Cloud代码修改。
+- Account 各资产数值旁增加可键盘操作、带资产名称 aria-label 的加号；调用受鉴权、同源保护
+  且限 loopback 的 Local POST，由 `/usr/bin/open` 使用系统默认浏览器打开 Cloud 登录/资产页。
+  固定 URL 保留 returnTo 和充值 panel 参数，不传递凭据，不创建订单或付款；重复点击有并发保护。
+- 用户界面的 Gas 统一为 Credit（含卡片、资产说明、兑换码提示和流水名称）；资产码和余额精度不变。
+- 文件：`ai2apps/account_browser.py`、`ai2apps/api/cloud.py`、`ai2apps/web/static/js/account.js`、
+  `ai2apps/web/static/css/account.css`、`ai2apps/web/templates/system_apps/account.html`、
+  `ai2apps/web/i18n/{en,zh}.json`、`ai2apps/tests/test_account_recharge.py`。
+- 验证：充值入口及 Account capacity 10 tests passed；Node 点击/重复提交保护/Credit 映射检查通过；
+  JavaScript 语法与定向 diff 检查通过。未激活 Dev/App-Dev、未重启实例，未声称源码激活验收完成。
+- Cloud 需求：`docs/ai2apps-cloud-account-recharge-deeplink-requirements.md`；没有修改 Cloud 代码。
+- 纳入 Build：待定。
+
+
+- implemented / regression_passed / app_dev_verified: Equal-height three-section note/web/file composer, center-only
+  scrolling, multi-file drop and image/text previews. Default automatic bucket
+  selection uses extracted text and existing private buckets; explicit selection
+  is preserved. Durable classification, per-item consent before nonprivate text
+  disclosure (including private bucket names), no implicit effectful retry.
+  Private installed network-isolated ASR handles audio/video audio tracks before
+  classification; unavailable extractors leave content pending. Migration98 adds
+  routing state and durable batch target policy. No shared Agent business rules.
+  Validation:87 relevant Python cases passed, final routing/OCR39 rerun passed,
+  frontend consent/polling and file preview/dedup/remove/cleanup checks passed;
+  mandatory AaAT boundary gate701 passed. Classification and ASR inference used
+  isolated fixtures, not live model quality acceptance. Native App-Dev verified
+  equal-height modes, default Automatic, synthetic image preview/remove; no test
+  image saved into user data. Final owning Helper Local restart at61701/schema98,
+  actual routing module path and served JS/CSS hashes match live checkout.
+  Owner documentation:ai2apps/docs/knowledge-image-ocr.md; evidence in
+  ai2apps/.build/knowledge-composer-{tests,boundaries}.log and activation JSON.
+  No Cloud/publication change; no real user content sent to a model.
+
+### NXR-KNOWLEDGE-ADD-FROM-ASK-20261030
+
+- implemented: Desktop Knowledge always displays Add knowledge, including initial
+  question mode. Composer has an Images tab with multi-image selection and explicit
+  destination bucket; Save uses the existing import/OCR/privacy-consent pipeline.
+  Note/webpage inputs do not block image submission; failed submission retains
+  selection. Native App-Dev58660 initial question mode/Add/Images/file selector/
+  bucket/privacy explanation verified after refresh. JS syntax and isolated
+  composer target/failure/success checks passed; no user image uploaded during
+  verification. Template/JS refresh only, no Runtime or Cloud change.
+
+### NXR-KNOWLEDGE-REMOVE-APP-COLOR-20261030
+
+- implemented: Removed the desktop Knowledge header App color button and its
+  appearance popover. App appearance belongs to system settings. Existing
+  semantic-search and import controls remain available. Template-only change;
+  fixed App-Dev page refreshed and native UI verified at127.0.0.1:58660:
+  App color button absent, semantic-search control retained. No rebuild required.
+
+### NXR-WORKER-SSD-PREFIX-CACHE-20261030
+
+- implemented / regression_passed / isolated_live_verified: Shared Worker enables
+  instance/model-revision-isolated SSD prefix KV reuse, including Package-created
+  VLM engines. Host-bound Session lease and safe exact-boundary index survive
+  Worker restart;24h idle expiry,20GiB per-model LRU budget, pending-write-safe
+  background idle eviction. Forward captured intermediate recurrent-state
+  snapshots through exact continuity stores so partially changed Agent prefixes
+  can reuse valid boundaries; placeholder/GDN/image/layout guards stay intact.
+  No AS business exception, model weights or authority change.
+- Validation:1062 Worker/cache/Scheduler/tool/ownership tests and701 AaAT gates
+  passed. Real Qwen3.8 fixture A/B/A:2048 cached tokens, identical-text B0;
+  restart from SSD2048; expired lease0 with correct answer retained. Read-only
+  replay of saved panda/fox Agent requests:23285 input,12288 cached after A/B/A
+  (52.8%); identical current request cold56.679s vs warm33.686s (-40.6%),
+  observed-estimate first token49.924s vs27.123s (-45.7%). Single-source-runtime
+  measurement, not signed Runtime or native Test activation. No Tool dispatched
+  during replay, no Test data/Packages changed, no publication/Cookie access.
+- Evidence:ai2apps/.build/worker-prefix-cache-20261030/ and
+  ai2apps/docs/worker-ssd-prefix-cache.md. New Runtime packaging/installation
+  remains necessary before an existing Test or production Worker gets this fix.
+
+### NXR-KNOWLEDGE-IMAGE-OCR-20261030
+
+- implemented / regression_passed / app_dev_activated / native_owner_flow_login_blocked: New Knowledge image
+  imports queue durable OCR. Owner policy selects dedicated local/privacy OCR,
+  then explicit privacy work_simple/work_standard with declared vision support.
+  Nonprivacy requires per-image/per-model one-shot consent, ordered normal
+  image_recognition/work_simple/work_standard/API default. Owner/revision/hash,
+  destination/version, cancellation, restart and no-implicit-replay guards;
+  separate OCR/description chunks indexed as untrusted source text. Full/Mini
+  shared status/consent/retry UI; explicit historical-image recognition only.
+- Validation:113 focused Python cases passed (112 batch + final OCR28 rerun),
+  and frontend consent/polling tests passed;
+  mandatory AaAT boundary gate701 passed. Isolated actual signed Runtime1.8.15 +
+  OXR0.1.0 recognized synthetic Chinese fixture via Knowledge in11.29s, FTS hit,
+  dedicated private route and no nonprivacy transport. Public-model workflow
+  is fixture-tested only; no real user image or paid API was used.
+- Standard fixed App-Dev rebuilt and launched, native title verified at51295.
+  App/Helper live source-root metadata, actual OCR module import, served JS/CSS,
+  schema97, embedded Host hash, standard verifier and deep/strict signature passed.
+  Existing App-Dev Core account is signed out; native Knowledge entry requires
+  login, so native upload acceptance is pending. Isolated real OCR acceptance
+  above is complete. Builder now excludes nested
+  .venv and ai2apps/experiments from embedded source after detecting the OXR
+  experiment environment in staging; live source-root contract is unchanged.
+  No Cloud change, production publication or Cookie access. Owner documentation:
+  ai2apps/docs/knowledge-image-ocr.md. Evidence:ai2apps/.build/knowledge-ocr-20261030/.
+
+### NXR-OXR-RUNTIME-20261030
+
+- published / local_acceptance_passed: Runtime 1.8.15 and SoMark OXR Package 0.1.0
+  published with the existing Publisher/key. Model-scoped mlx-vlm OXR backport,
+  explicit discovery and oxr-v1 capability; shared dependency pin/kernels unchanged.
+  Developer ID/notarization/staple/Gatekeeper, 280 compatibility + 168 Worker tests
+  (1 skipped), 701 AaAT gates, real Python 3.11 inference/lifecycle, existing Qwen3.5,
+  signed managed install and clean Registry download/install/inference passed.
+  Cloud/GitHub/ModelScope Runtime sources active; OXR fixed HF/MS checkpoint and
+  conditional license consent preserved. No Knowledge or fixed Dev instance changes.
+  Desktop candidate must evaluate embedding this Runtime/source delta; Package
+  publication is not a Desktop Release. Receipt: docs/ai2apps-runtime-1.8.15-oxr-release-20261030.md.
+  Limits: no independent second-Mac/cross-region acceptance; handwriting/sparse-image
+  accuracy limitations remain. Dev Cookie publication grant completed.
+
 ### NXR-DESKTOP-RELEASE-2266-20261029
 
 - Final origin verification: GitHub and immutable ModelScope full anonymous DMG/metadata downloads both match SHA-256 and exact size; Range1024–2047 returns206 with matching Content-Range/bytes. Cloud handoff is now ready for user forwarding. Cloud publication and target-Mac acceptance remain pending; production baseline is not advanced by this receipt.
@@ -12264,3 +12402,34 @@ Runtime profile、安装行为或发布流程的工作，都必须在完成该�
 ### NXR-BUILTIN-BROWSER-MINI-APPS-20261029
 
 - implemented / regression_passed / test_live_verified: Search All and Web Reader are product-owned built-in AI Browser Mini-Apps; native identity reservations revoke obsolete Package overrides and exact resource allowlists preserve mount/Session/containment checks. Built-in manifests now have stable non-null digests with sorted resource identities for versioned receipts. Browser search/read providers have priority; default fast Search All skips AI optimization while keeping source/paid consent receipts. Owner-declared browser.complete_goal is the fallback only when no available Mini-App fits; current scope is read-only exploration/search and explicit screenshot vision, reusing durable Browser Tasks/Profile/assistance/cancellation, without AS business branches. 657 mandatory AaAT regressions and 50 UI checks passed; standard fixed Test rebuilt with deep/strict signature, 15 source/asset hashes and served scripts verified, seven waiting Runs preserved; final port53315 restores the original live-case Run without another invocation. Native Test directly opens both built-ins without their Packages; real Google Run run_62e25a0a18ca445d8631decfb0fd06c2 used browser.complete_goal and current DeepSeek screenshot vision (normal logo, no Doodle in this viewport), closed Chat before child/parent completion and restored same result with one form/no repeat confirmation. Evidence: ai2apps/docs/acceptance/browser-builtins-20261029/README.md. Optional Shopping/Trip remain Packages; historical Cloud catalog retirement requires the separate handoff. No Cookie access or publication.
+### NXR-AGENT-INPROCESS-LOOPBACK-20261030
+
+- implemented / regression_passed / test_live_verified: Agent model streaming uses loopback Host for its in-process ASGI request instead of `ai2apps.internal`, which the public-device boundary correctly rejects. The real UI check additionally exposed missing Local Session identity on background requests. The private transport now carries a server-owned ModelInvocationContext through an opaque, non-wire ASGI scope key, restricted to POST completion; authentication re-resolves the active Session and current member and rejects identity/epoch drift. Cookies and API keys do not become Platform authority. Retain Session KV namespace, streaming/progress and public Host restrictions. No business routing or model-name exceptions.
+- Regression executes the actual server callback and access dependency extracted from their AST against a boundary-protected ASGI fixture, covering optional API key, Session propagation, SSE reconstruction, public/internal-name Host denial, spoofed headers, revoked Session, epoch changes and scope restriction against management APIs. 20 focused tests and mandatory AaAT gate 659 passed. Standard Test builder, strict/deep codesign and embedded server byte equality passed. Final Test port60045 / Local PID17754: native Agent using ai2apps.model.qwen38/qwen3.8-27b-nvfp4 returned 本地调用正常。, Run run_265794163ac74fab801479cb538801af completed in one model step (5013 tokens); worker and internal completion requests both HTTP200. Existing user data and failed original conversation retained. This validates local inference, not image generation. No production publication, Cookie extraction or Dev/App-Dev replacement. Evidence: ai2apps/docs/acceptance/agent-loopback-20261030.md.
+
+### NXR-CHAT-DELETE-DURABLE-REVISION-20261030
+
+- implemented / regression_passed / test_live_verified: Chat deletion no longer uploads a stale local transcript before deleting a durable Agent conversation. Cancel pending debounce, await already queued writes and GET current authorized thread revision, then DELETE with the original optimistic revision guard. Do not auto-retry concurrent conflicts. Errors show localized feedback; collection refresh failure after a successful delete cannot resurrect the local row. Clear-all stops on failure and retains remaining history. No backend authorization, ownership or deletion semantics changed.
+- 14 frontend tests (six new deletion regressions) and17 backend tests passed. Standard Test rebuild, byte equality of embedded template/localization and strict/deep signature verification passed. Native Test port61344/PID38577: explicitly selected the Agent regression conversation, confirmed deletion and verified row removal; Session ses_2df081bfaf3145b7a74969366f7abf4b is deleted/revision5. Refresh plus closing/reopening Chat with a new mount retained only the user's panda conversation. No production publication or Dev/App-Dev replacement. Evidence: ai2apps/docs/acceptance/chat-delete-20261030.md.
+
+### NXR-WORKER-TOOL-PROTOCOL-20261030
+
+- implemented / regression_passed / runtime_1.8.13_published / registry_install_verified: Shared OmlxChatAdapter normalizes raw tokenizer-selected tool protocol and engine-native structured calls into OpenAI tool_calls in streaming and nonstreaming completion paths. Existing parser grammars are reused, with exact offered-name/schema checks, malformed-envelope errors and quoted-code protection; no model-name inference or AS business branch. Runtime builder copies model_worker recursively, so installed Runtime must be upgraded; rebuilding Desktop alone does not activate this Worker fix.
+- 353 focused adapter/parser/Runtime/Worker/CUDA Package tests and686 mandatory AaAT regressions passed. Final-source real inference against existing Qwen3.8 27B NVFP4 and Qwen3.5 0.8B 4-bit weights returned correct exact function/arguments in both stream modes; no raw markup content, one call each. Shared Qwen3.6/experimental Qwen/GLM/DeepSeek/Ornith adapters inherit this fix; separate CUDA Qwen path already parses calls and its XML/JSON incremental checks passed. No model Package manifest/weight/version changes required. No Runtime publication or installed artifact mutation performed; actual Test panda Agent acceptance awaits standard signed Runtime build/install. Evidence: ai2apps/docs/acceptance/worker-tool-output-20261030/README.md.
+
+
+- Runtime 1.8.13 release in progress (2026-10-30): user authorized Dev browser session for this release; existing Publisher/key fingerprint verified. Frozen 1.8.12 baseline with only omlx_chat.py and tool_output.py updates; model Packages unchanged. Native signing, notarization and final artifact acceptance pending.
+
+- Runtime 1.8.13 candidate ready: Apple notarization 1c1a7290-2ea5-4e44-a090-a639edd98165 Accepted; staple, Gatekeeper, Publisher signature and client compatibility passed. Final artifact SHA-256 b7c60b6e3b6a7110c27e1de7751dc7b27e29410bbb4f4468a635d8fc38a46030 (380945003 bytes). Audit requires explicit installation approval solely because local_ai_auditor_not_configured; static_findings empty. Approval requested before isolated installation; no Cloud publication yet. Receipt: docs/ai2apps-runtime-1.8.13-release-2026-10-30.json.
+
+- Runtime 1.8.13 original candidate acceptance exposed a genuine historical-call input bug: Qwen tokenizer rejects OpenAI JSON-string arguments on continuation. Original candidate was NOT published. Shared Worker now converts copied history arguments into template objects with strict malformed-input rejection and nullable assistant content support. No business identity branch or authority change. 10 additional history cases added; rebuilding revision2 candidate and rerunning gates before publication.
+
+- Runtime 1.8.13 revised candidate passed approved final signed-artifact managed installation, real Qwen3.8 stream/nonstream tool calls and historical-result continuation, authentication, restart and uninstall. 363 focused and 696 AaAT cases passed; Qwen3.8/Qwen3.5 source inference passed. Published via standard Dev browser-live workflow: submission 05c2af10-dc7e-4111-ac3a-375268db1603, repository metadata 335; final SHA-256 e33fd3eb92857b21a7adb9c0c67083b62fa10f23cc2481aaea145755c4b3e472 (380144822 bytes), Apple notarization 6ea36c62-64a2-4fc8-8106-780e89ec1def Accepted. Three-source activation and fresh Registry installation acceptance in progress; original failed candidate never published.
+
+- Runtime 1.8.13 release complete: production repository metadata 337 advertises active Cloud + GitHub + immutable ModelScope (848eb8bee6019619a0819fe594dfb3fbbe428908) sources. Both mirrors passed full SHA-256/size and four 206 Range probes; Cloud independent full/piece/range validation passed before activation. A second fresh isolated instance completed real production Registry download/signature/compatibility/install, exact embedded-source hash checks, existing checkpoint cache acquisition, real Qwen3.8 stream/nonstream tool calls plus result continuation, authentication, restart and model/Runtime uninstall. Final public signed snapshot and piece hashes passed. Release receipt: docs/ai2apps-runtime-1.8.13-release-2026-10-30.json. Test Desktop data and installed Runtime untouched; no independent second-Mac acceptance. Dev browser-live authorization completed and expired.
+
+### NXR-WORKER-SYSTEM-PLACEMENT-20261030
+
+- implemented / runtime_1.8.14_published / real_test_ui_passed / production_registry_verified: Real Test Agent run on installed Runtime 1.8.13 failed after a trusted declaration was appended as a system turn. Shared Worker bypassed existing oMLX prepare_system_messages_for_template, unlike the server path. Reuse that existing tokenizer-probed preparation in both completion modes with strict authority-preserving fallback; preserve stored history, tool pairs, media and non-system boundaries. No AS business special case or model-name inference. Generic stream/nonstream and arbitrary-provider tests added. Runtime 1.8.14 candidate build underway; no reuse of expired 1.8.13 Dev Cookie authorization.
+
+- NXR-WORKER-SYSTEM-PLACEMENT-20261030 complete: 595 focused tests and 701 AaAT gates passed; source real Qwen3.8 exact failed-request replay and Qwen3.5 system-position/continuation passed. Apple notarization e6e576a3-f122-4f94-b204-1653b455884c Accepted; staple, Gatekeeper, Publisher signature and compatibility passed. Final signed isolated install plus native Test Agent run_958586f0de404569a3c39d2fb9fb8568 produced/displayed actual panda image art_b43171b0a39e4c45b1efee6208f33472 with one-time approval before publication. Published Runtime 1.8.14 submission 95e8f9f9-19ae-4188-82ad-a5df5500f796; final signed metadata 340; Cloud/GitHub/immutable ModelScope active after full SHA-256, size, Range, piece and Cloud independent validation. SHA-256 5d4d03fdb995da5e928d26737d6bc59a98d98151612c8610e77f11a4765a9c13, size 379944339. Fresh production Registry installation and lifecycle passed. Test native Discover official upgrade completed and displays local/server 1.8.14; dependency lock verified. Preserved existing data and returned UI to generated image conversation. Explicit 1.8.14 authorization resolved automatic notarization review rejection; Dev browser-live grant completed/expired. Receipt: docs/ai2apps-runtime-1.8.14-release-2026-10-30.json. No independent second-Mac acceptance.

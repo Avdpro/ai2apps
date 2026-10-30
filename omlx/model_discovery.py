@@ -60,6 +60,7 @@ VLM_MODEL_TYPES = {
     "deepseekocr",
     "deepseekocr_2",
     "unlimited_ocr",
+    "oxr",
     "dots_ocr",
     "glm_ocr",
     "minimax_m3_vl",

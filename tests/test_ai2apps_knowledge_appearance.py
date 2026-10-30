@@ -23,4 +23,8 @@ def test_knowledge_accent_is_per_user_and_shared_with_mini_entry() -> None:
     assert "localStorage.setItem(this.accentStorageKey(), color)" in script
     assert "knowledge_theme.css" in full
     assert "knowledge_theme.css" in mini
-    assert "knowledge-appearance-popover" in full
+    # Header appearance controls moved to system settings; retained per-user
+    # theme compatibility must not reintroduce the removed App-local popover.
+    assert "knowledge-appearance-popover" not in full
+    assert "knowledge-appearance-popover" not in mini
+    assert "configureSemantic()" in full

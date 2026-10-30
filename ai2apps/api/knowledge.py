@@ -14,7 +14,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, Response
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 
 from ai2apps.api.errors import platform_error_response
 from ai2apps.api.health import PlatformRuntimeProvider
@@ -39,6 +39,18 @@ from ai2apps.storage.repositories import (
     MessageRepository,
     SessionRepository,
 )
+
+
+class KnowledgeOCRDecisionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    revision: int = Field(ge=1)
+    token: str = Field(min_length=1,max_length=128)
+    allow: bool
+
+class KnowledgeOCRControlRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    revision: int = Field(ge=1)
+    action: Literal["retry","cancel"]
 
 
 class KnowledgeItemCreateRequest(BaseModel):
@@ -636,6 +648,69 @@ def create_knowledge_router(
             else {"items": list(result), "retrieval": retrieval}
         )
 
+    @router.post("/items/{item_id}/recognize")
+    async def request_image_ocr(item_id: str, request: KnowledgeOCRControlRequest,
+                                 principal: RequestPrincipal = principal_dependency):
+        selected = store()
+        if isinstance(selected, JSONResponse):return selected
+        if request.action!='retry':
+            return platform_error_response(status_code=422,code="knowledge_invalid",message="Expected retry")
+        from ai2apps.knowledge.ocr_store import KnowledgeOCRStore
+        result=guarded(lambda: KnowledgeOCRStore(selected).request(principal,item_id,item_revision=request.revision))
+        if isinstance(result,JSONResponse):return result
+        manager=getattr(platform_runtime(),"knowledge_ocr_manager",None)
+        if manager:manager.wake()
+        return {"accepted":True}
+
+    @router.get("/bucket-routing")
+    def bucket_routing(principal: RequestPrincipal = principal_dependency):
+        manager=getattr(platform_runtime(),"knowledge_ocr_manager",None)
+        return {"items": manager.bucket_router.list(principal) if manager else []}
+
+    @router.post("/bucket-routing/{item_id}/decision")
+    def bucket_routing_decision(item_id: str, body: KnowledgeOCRDecisionRequest, principal: RequestPrincipal = principal_dependency):
+        manager=getattr(platform_runtime(),"knowledge_ocr_manager",None)
+        if manager is None:return platform_error_response(status_code=503,code="unavailable",message="Knowledge unavailable")
+        result=guarded(lambda:manager.bucket_router.decide(principal,item_id,body.token,body.allow))
+        manager.wake()
+        return result if isinstance(result,JSONResponse) else {"ok":True}
+
+    @router.get("/image-ocr")
+    def image_ocr_jobs(principal: RequestPrincipal = principal_dependency):
+        selected = store()
+        if isinstance(selected, JSONResponse):return selected
+        from ai2apps.knowledge.ocr_store import KnowledgeOCRStore
+        result = guarded(lambda: KnowledgeOCRStore(selected).list(principal))
+        return result if isinstance(result, JSONResponse) else {"items": result}
+
+    @router.post("/image-ocr/{item_id}/decision")
+    async def image_ocr_decision(item_id: str, request: KnowledgeOCRDecisionRequest,
+                                 principal: RequestPrincipal = principal_dependency):
+        selected = store()
+        if isinstance(selected, JSONResponse):return selected
+        from ai2apps.knowledge.ocr_store import KnowledgeOCRStore
+        result = guarded(lambda: KnowledgeOCRStore(selected).decide(principal,item_id,
+            revision=request.revision,token=request.token,allow=request.allow))
+        if isinstance(result, JSONResponse):return result
+        manager = getattr(platform_runtime(),"knowledge_ocr_manager",None)
+        if manager:manager.wake()
+        return {"accepted": True}
+
+    @router.post("/image-ocr/{item_id}/control")
+    async def image_ocr_control(item_id: str, request: KnowledgeOCRControlRequest,
+                                principal: RequestPrincipal = principal_dependency):
+        selected = store()
+        if isinstance(selected, JSONResponse):return selected
+        from ai2apps.knowledge.ocr_store import KnowledgeOCRStore
+        result = guarded(lambda: KnowledgeOCRStore(selected).control(principal,item_id,
+            revision=request.revision,action=request.action))
+        if isinstance(result, JSONResponse):return result
+        manager = getattr(platform_runtime(),"knowledge_ocr_manager",None)
+        if manager:
+            if request.action=="cancel":manager.cancel(item_id)
+            else:manager.wake()
+        return {"accepted": True}
+
     @router.get("/spaces")
     def list_spaces(principal: RequestPrincipal = principal_dependency):
         selected = store()
@@ -1078,7 +1153,7 @@ def create_knowledge_router(
         buckets = guarded(lambda: selected.list_buckets(principal))
         if isinstance(buckets, JSONResponse):
             return buckets
-        bucket = next((item for item in buckets if item.id == request.bucket_id), None)
+        bucket = next((item for item in buckets if item.id == request.bucket_id or (request.bucket_id == "auto" and item.system_key == "inbox")), None)
         if bucket is None:
             return platform_error_response(
                 status_code=404, code="not_found", message="knowledge bucket not found"
@@ -1143,7 +1218,7 @@ def create_knowledge_router(
                         source_app_id="ai2apps.knowledge",
                         source_url=_public_web_url(str(article["url"])),
                         user_tags=request.tags,
-                        bucket_id=bucket.id,
+                        bucket_id=request.bucket_id,
                         trusted_source_facets=(
                             ("source.fetch", "managed-browser"),
                             (
@@ -1183,7 +1258,7 @@ def create_knowledge_router(
                 source_app_id="ai2apps.knowledge",
                 source_url=final_url,
                 user_tags=request.tags,
-                bucket_id=bucket.id,
+                bucket_id=request.bucket_id,
                 trusted_source_facets=source_facets,
             )
         )

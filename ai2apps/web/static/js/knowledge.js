@@ -44,18 +44,19 @@
     window.knowledgeApp = () => ({
         view: 'ask',
         buckets: [], items: [], selectedBucketId: '', contextBucketIds: [], browserBucketIds: [], browserBucketsRestored: false, query: '', kind: '',
-        loading: true, busy: false, notice: '', noticeTone: '', composerOpen: false,
+        loading: true, busy: false, notice: '', noticeTone: '', composerOpen: false, composerFiles: [], composerPreviews: [], fileDrag: false, bucketRoutingJobs: [],
         creatingBucket: false, newBucketName: '', newBucketScope: 'private',
         semanticStatus: 'unknown', semanticProbeComplete: false, configuringSemantic: false, lastRetrievalMode: 'fts5', indexStatus: null, indexPollTimer: null,
         importQueue: { active: false, total: 0, completed: 0, failed: 0, jobId: '', status: '' },
         importJobs: [], importPollTimer: null, lastFinishedImportId: '',
+        ocrJobs: [], ocrPanelOpen: false, ocrPollTimer: null, ocrBusyId: '', ocrSignature: '', ocrDestroyed: false,
         askMessages: [], askInput: '', askBusy: false, askModels: [], askModel: '', askBucketIds: [], askSessionId: '',
         actorUserId: window.AI2APPS_KNOWLEDGE_ACTOR || '', surface: 'full', consumerAppId: 'ai2apps.general-chat', consumerSessionId: '',
         pageContext: null, isBrowserSidebar: false, browserExistingItems: [], browserPageChecking: false,
         browserContextRevision: 0,
         browserCaptureMode: 'page', browserSelectionAvailable: false, browserExtractionMethod: '',
         appearanceOpen: false, accentColor: DEFAULT_ACCENT, accentPresets: ACCENT_PRESETS,
-        draft: { mode: 'note', title: '', text: '', bucketId: '', tags: '', sourceUrl: '', fetchMode: 'auto', autoAcceptCookies: true }, tr,
+        draft: { mode: 'note', title: '', text: '', bucketId: 'auto', tags: '', sourceUrl: '', fetchMode: 'auto', autoAcceptCookies: true }, tr,
         async init() {
             this.surface = this.$root?.dataset?.knowledgeSurface || 'full';
             this.consumerAppId = this.$root?.dataset?.consumerAppId || 'ai2apps.general-chat';
@@ -76,6 +77,7 @@
             window.addEventListener('ai2apps:browser-context', this._browserContextListener);
             this.consumerSessionId = new URLSearchParams(window.location.hash.slice(1)).get('ai2apps-consumer-session') || '';
             this.loadAccentColor();
+            this.watchOCR();
             if (this.isBrowserSidebar) {
                 await Promise.all([this.loadBuckets(), this.probeSemantic()]);
                 const revision = this.browserContextRevision;
@@ -471,7 +473,7 @@
                 this.buckets = (await request('/buckets')).items || [];
                 if (this.isBrowserSidebar) this.restoreBrowserBucketSelection();
                 if (!this.buckets.some(bucket => bucket.id === this.selectedBucketId)) this.selectedBucketId = this.buckets[0]?.id || '';
-                if (!this.draft.bucketId) this.draft.bucketId = this.selectedBucketId;
+                if (!this.draft.bucketId) this.draft.bucketId = 'auto';
             } catch (error) { this.fail(error); }
             this.$nextTick(() => window.lucide?.createIcons());
         },
@@ -514,8 +516,8 @@
             } catch (error) { this.fail(error); }
             finally { this.loading = false; this.$nextTick(() => window.lucide?.createIcons()); }
         },
-        async selectBucket(bucket) { this.selectedBucketId = bucket.id; this.draft.bucketId = bucket.id; await this.loadItems(); },
-        selectedBucketChanged() { this.draft.bucketId = this.selectedBucketId; return this.loadItems(); },
+        async selectBucket(bucket) { if (bucket.id !== 'auto') this.selectedBucketId = bucket.id; await this.loadItems(); },
+        selectedBucketChanged() { return this.loadItems(); },
         async createBucket() {
             if (!this.newBucketName || this.busy) return;
             this.busy = true;
@@ -540,8 +542,41 @@
                 window.parent?.postMessage({ type: 'ai2apps.knowledge.context-changed', consumerAppId: this.consumerAppId, consumerSessionId: this.consumerSessionId || null, bucketIds: Array.from(this.contextBucketIds) }, window.location.origin);
             } catch (error) { this.fail(error); }
         },
+        closeComposer() {
+            for (const preview of this.composerPreviews) if (preview.url) URL.revokeObjectURL(preview.url);
+            this.composerFiles = []; this.composerPreviews = []; this.composerOpen = false; this.fileDrag = false;
+        },
+        async addComposerFiles(files) {
+            for (const file of Array.from(files || [])) {
+                if (this.composerPreviews.some(p => p.file.name===file.name&&p.file.size===file.size&&p.file.lastModified===file.lastModified)) continue;
+                const preview = {id: crypto.randomUUID(), file, url:'', text:''};
+                if (file.type.startsWith('image/')) preview.url=URL.createObjectURL(file);
+                else if (file.size<=512000 && (file.type.startsWith('text/') || /\.(txt|md|csv|tsv|jsonl?|xml|ya?ml|toml|log|py|js|ts|css|sql|sh)$/i.test(file.name))) preview.text=(await file.text()).slice(0,1600);
+                this.composerPreviews.push(preview); this.composerFiles.push(file);
+            }
+            this.$nextTick(() => window.lucide?.createIcons());
+        },
+        removeComposerFile(id) {
+            const preview=this.composerPreviews.find(p=>p.id===id);
+            if (preview?.url) URL.revokeObjectURL(preview.url);
+            this.composerPreviews=this.composerPreviews.filter(p=>p.id!==id);
+            this.composerFiles=this.composerPreviews.map(p=>p.file);
+        },
+        formatBytes(size) { return size<1024 ? size+' B' : size<1048576 ? (size/1024).toFixed(1)+' KB' : (size/1048576).toFixed(1)+' MB'; },
+        async decideBucketRouting(job, allow) {
+            try { await request(`/bucket-routing/${encodeURIComponent(job.item_id)}/decision`,{method:'POST',body:{token:job.token,revision:job.item_revision,allow}}); await this.watchOCR(); }
+            catch(error) { this.fail(error); }
+        },
         async createItem() {
-            const bucket = this.buckets.find(item => item.id === this.draft.bucketId);
+            if (this.draft.mode === 'file') {
+                const target = this.draft.bucketId === 'auto' ? {id:'auto'} : this.buckets.find(bucket => bucket.id === this.draft.bucketId);
+                if (this.busy || !target || !this.composerFiles.length) return;
+                if (await this.importFiles(this.composerFiles, target)) {
+                    this.closeComposer();
+                }
+                return;
+            }
+            const bucket = this.draft.bucketId === 'auto' ? {id:'auto',visibility:'private'} : this.buckets.find(item => item.id === this.draft.bucketId);
             const isWeb = this.draft.mode === 'webpage';
             if (this.busy || !bucket || (isWeb ? !this.draft.sourceUrl : (!this.draft.title || !this.draft.text))) return;
             this.busy = true;
@@ -553,7 +588,7 @@
                 } });
                 else await request('/items', { method: 'POST', body: { title: this.draft.title, text: this.draft.text, scope: bucket.visibility, kind: 'note', bucket_id: bucket.id, source_app_id: 'ai2apps.knowledge', tags } });
                 this.draft = { mode: 'note', title: '', text: '', bucketId: bucket.id, tags: '', sourceUrl: '', fetchMode: 'auto', autoAcceptCookies: true }; this.composerOpen = false;
-                this.selectedBucketId = bucket.id; await this.refresh(); this.queueIndex(); this.success(tr('knowledge.success.saved'));
+                if (bucket.id !== 'auto') this.selectedBucketId = bucket.id; await this.refresh(); this.queueIndex(); this.success(tr('knowledge.success.saved'));
             } catch (error) {
                 const managedRequestId = error?.details?.managed_request_id;
                 if (error?.code === 'knowledge_web_login_required' && managedRequestId) {
@@ -652,6 +687,78 @@
             }
             this.fail(new Error(tr('knowledge.web.login_timeout')));
         },
+        destroy() { this.closeComposer(); this.ocrDestroyed = true; window.clearTimeout(this.ocrPollTimer); },
+        ocrAttentionJobs() { return this.ocrJobs.filter(job => ['awaiting_consent', 'failed', 'blocked'].includes(job.status)); },
+        routingAttentionJobs() { return this.bucketRoutingJobs.filter(job => ['awaiting_consent', 'failed'].includes(job.status)); },
+        itemProcessingLabel(record) {
+            const ocr = this.ocrJobs.find(job => job.item_id === record.item.id);
+            const routing = this.bucketRoutingJobs.find(job => job.item_id === record.item.id);
+            const labels = [];
+            if (ocr) labels.push(tr('knowledge.ocr.status.' + ocr.status));
+            if (routing) {
+                const status = {pending: 'queued', completed: 'completed', failed: 'failed'}[routing.status];
+                if (routing.status === 'awaiting_consent') labels.push(tr('knowledge.composer.routing') + ': ' + tr('knowledge.ocr.status.awaiting_consent'));
+                else if (routing.status === 'running') labels.push(tr('knowledge.composer.routing') + '…');
+                else if (status) labels.push(tr('knowledge.composer.routing') + ': ' + tr('knowledge.import.status.' + status));
+                if (routing.status === 'completed') {
+                    const names = (record.bucket_ids || []).map(id => this.buckets.find(bucket => bucket.id === id)).filter(Boolean).map(bucket => this.bucketName(bucket));
+                    if (names.length) labels.push(names.join(', '));
+                }
+            }
+            return labels.join(' · ');
+        },
+        async watchOCR() {
+            window.clearTimeout(this.ocrPollTimer);
+            if (this.ocrDestroyed) return;
+            try {
+                if (!document.hidden) {
+                    const payload = await request('/image-ocr');
+                    const routingJobs=(await request('/bucket-routing')).items || [];
+                    const routingChanged=JSON.stringify(this.bucketRoutingJobs.map(j=>[j.item_id,j.status]))!==JSON.stringify(routingJobs.map(j=>[j.item_id,j.status]));
+                    this.bucketRoutingJobs=routingJobs;
+                    if(routingChanged&&routingJobs.some(j=>j.status==='completed')) await this.refresh();
+                    const jobs = payload.items || [];
+                    const signature = jobs.map(job => `${job.item_id}:${job.status}:${job.revision}`).join('|');
+                    const changed = this.ocrSignature && signature !== this.ocrSignature;
+                    // Open for new active work, but never override a user's toggle on
+                    // an unchanged poll or hide the result when work completes.
+                    const active = job => ['queued', 'running', 'awaiting_consent'].includes(job.status);
+                    if (jobs.some(job => active(job) && !this.ocrJobs.some(previous =>
+                        previous.item_id === job.item_id && previous.status === job.status && previous.revision === job.revision))) {
+                        this.ocrPanelOpen = true;
+                    }
+                    if (JSON.stringify(this.ocrJobs) !== JSON.stringify(jobs)) this.ocrJobs = jobs;
+                    this.ocrSignature = signature;
+                    if (changed && jobs.some(job => job.status === 'completed')) await this.refresh();
+                }
+            } catch (_) { /* The original image remains available if recognition status cannot load. */ }
+            if (!this.ocrDestroyed) this.ocrPollTimer = window.setTimeout(() => this.watchOCR(), 2500);
+        },
+        async recognizeItem(item) {
+            try {
+                await request(`/items/${encodeURIComponent(item.id)}/recognize`, { method: 'POST',
+                    body: { revision: item.revision, action: 'retry' } });
+                await this.watchOCR();
+            } catch (error) { this.fail(error); }
+        },
+        async decideOCR(job, allow) {
+            this.ocrBusyId = job.item_id;
+            try {
+                await request(`/image-ocr/${encodeURIComponent(job.item_id)}/decision`, { method: 'POST',
+                    body: { revision: job.revision, token: job.consent_token, allow } });
+                await this.watchOCR();
+            } catch (error) { this.fail(error); await this.watchOCR(); }
+            finally { this.ocrBusyId = ''; }
+        },
+        async controlOCR(job, action) {
+            this.ocrBusyId = job.item_id;
+            try {
+                await request(`/image-ocr/${encodeURIComponent(job.item_id)}/control`, { method: 'POST',
+                    body: { revision: job.revision, action } });
+                await this.watchOCR();
+            } catch (error) { this.fail(error); await this.watchOCR(); }
+            finally { this.ocrBusyId = ''; }
+        },
         async importFiles(files, overrideBucket = null) {
             const selected = Array.from(files || []); const bucket = overrideBucket || this.selectedBucket;
             if (!selected.length || !bucket) return;
@@ -667,12 +774,13 @@
                 this.importQueue.status = payload.job?.status || '';
                 this.importQueue.failed = payload.job?.failed_files || 0;
                 this.importQueue.completed = (payload.job?.completed_files || 0) + this.importQueue.failed;
-                this.selectedBucketId = bucket.id;
+                if (bucket.id !== 'auto') this.selectedBucketId = bucket.id;
                 this.notice = tr('knowledge.import.queued').replace('{count}', selected.length);
                 this.noticeTone = 'success';
                 await this.loadImports();
                 this.watchImports();
-            } catch (error) { this.fail(error); this.importQueue.active = false; } finally { this.busy = false; }
+                return true;
+            } catch (error) { this.fail(error); this.importQueue.active = false; return false; } finally { this.busy = false; }
         },
         async loadImports() {
             try { this.importJobs = (await request('/imports?limit=12')).items || []; }

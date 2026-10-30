@@ -1290,6 +1290,24 @@ def create_cloud_router(
             await cloud.clear_session()
         return response
 
+    @router.post("/account/open-recharge")
+    async def open_account_recharge(
+        http_request: Request,
+        principal: RequestPrincipal = principal_dependency,
+    ):
+        # A remote caller must never open windows on the host desktop.
+        if http_request.client is None or http_request.client.host not in {"127.0.0.1", "::1"}:
+            raise HTTPException(status_code=403, detail="Local desktop access required")
+        from ai2apps.account_browser import open_recharge_page
+        try:
+            await open_recharge_page()
+        except (OSError, ValueError, TimeoutError):
+            return JSONResponse(status_code=503, content={"error": {
+                "code": "ACCOUNT_BROWSER_OPEN_FAILED",
+                "message": "Unable to open the system browser",
+            }})
+        return {"opened": True}
+
     @router.get("/levels", dependencies=core_account_only)
     async def levels():
         return await call("GET", "/v1/levels")
