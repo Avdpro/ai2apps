@@ -38,3 +38,7 @@ jobs:
 
       - name: Run unit tests
         run: python -m pytest tests/ -m "not slow and not integration"
+
+      - name: AaAT architecture and behavior boundary regressions
+        if: ${{ !cancelled() }}
+        run: python ai2apps/tests/run_aaat_boundaries.py
