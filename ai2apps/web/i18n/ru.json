@@ -2846,5 +2846,13 @@
   "knowledge.composer.auto_help": "Extract content, then let AI choose an existing private bucket. Items stay in Inbox while pending. Non-private models require your consent.",
   "knowledge.composer.routing": "Automatic filing",
   "knowledge.composer.routing_consent": "Allow {model} to read this item’s extracted text and private bucket names to choose a bucket?",
-  "knowledge.composer.routing_pending": "Files are classified after extraction; items stay in Inbox if no model is available."
+  "knowledge.composer.routing_pending": "Files are classified after extraction; items stay in Inbox if no model is available.",
+  "knowledge.composer.merge": "Combine into one knowledge record",
+  "knowledge.composer.merge_title": "For example: Weekly shopping receipts",
+  "knowledge.composer.merge_help": "Keep each original file, extract its text, and combine the results into one searchable record in selection order.",
+  "knowledge.composer.overlap": "Detect overlapping text in consecutive screenshots",
+  "knowledge.semantic.setup_title": "Semantic search needs setup",
+  "knowledge.semantic.setup_help": "Keyword search may miss related wording. Set up the embedding model and index service to index your existing knowledge.",
+  "knowledge.semantic.setup_action": "Set up semantic search",
+  "knowledge.semantic.setting_up": "Setting up…"
 }

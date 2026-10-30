@@ -44,7 +44,7 @@
     window.knowledgeApp = () => ({
         view: 'ask',
         buckets: [], items: [], selectedBucketId: '', contextBucketIds: [], browserBucketIds: [], browserBucketsRestored: false, query: '', kind: '',
-        loading: true, busy: false, notice: '', noticeTone: '', composerOpen: false, composerFiles: [], composerPreviews: [], fileDrag: false, bucketRoutingJobs: [],
+        loading: true, busy: false, notice: '', noticeTone: '', composerOpen: false, mergeFiles: false, detectOverlap: true, groupTitle: '', composerFiles: [], composerPreviews: [], fileDrag: false, bucketRoutingJobs: [],
         creatingBucket: false, newBucketName: '', newBucketScope: 'private',
         semanticStatus: 'unknown', semanticProbeComplete: false, configuringSemantic: false, lastRetrievalMode: 'fts5', indexStatus: null, indexPollTimer: null,
         importQueue: { active: false, total: 0, completed: 0, failed: 0, jobId: '', status: '' },
@@ -56,7 +56,7 @@
         browserContextRevision: 0,
         browserCaptureMode: 'page', browserSelectionAvailable: false, browserExtractionMethod: '',
         appearanceOpen: false, accentColor: DEFAULT_ACCENT, accentPresets: ACCENT_PRESETS,
-        draft: { mode: 'note', title: '', text: '', bucketId: 'auto', tags: '', sourceUrl: '', fetchMode: 'auto', autoAcceptCookies: true }, tr,
+        draft: { mode: 'file', title: '', text: '', bucketId: 'auto', tags: '', sourceUrl: '', fetchMode: 'auto', autoAcceptCookies: true }, tr,
         async init() {
             this.surface = this.$root?.dataset?.knowledgeSurface || 'full';
             this.consumerAppId = this.$root?.dataset?.consumerAppId || 'ai2apps.general-chat';
@@ -587,7 +587,7 @@
                     fetch_mode: this.draft.fetchMode, auto_accept_cookies: this.draft.autoAcceptCookies,
                 } });
                 else await request('/items', { method: 'POST', body: { title: this.draft.title, text: this.draft.text, scope: bucket.visibility, kind: 'note', bucket_id: bucket.id, source_app_id: 'ai2apps.knowledge', tags } });
-                this.draft = { mode: 'note', title: '', text: '', bucketId: bucket.id, tags: '', sourceUrl: '', fetchMode: 'auto', autoAcceptCookies: true }; this.composerOpen = false;
+                this.draft = { mode: 'file', title: '', text: '', bucketId: bucket.id, tags: '', sourceUrl: '', fetchMode: 'auto', autoAcceptCookies: true }; this.composerOpen = false;
                 if (bucket.id !== 'auto') this.selectedBucketId = bucket.id; await this.refresh(); this.queueIndex(); this.success(tr('knowledge.success.saved'));
             } catch (error) {
                 const managedRequestId = error?.details?.managed_request_id;
@@ -768,6 +768,9 @@
                 const form = new FormData();
                 selected.forEach(file => form.append('files', file, file.name));
                 form.append('bucketId', bucket.id);
+                form.append('mergeRecord',String(this.mergeFiles));
+                form.append('detectOverlap',String(this.detectOverlap));
+                if(this.mergeFiles&&this.groupTitle.trim())form.append('recordTitle',this.groupTitle.trim());
                 form.append('sourceAppId', this.surface === 'mini-entry' ? this.consumerAppId : 'ai2apps.knowledge');
                 const payload = await request('/items/import-batch', { method: 'POST', body: form });
                 this.importQueue.jobId = payload.job?.id || '';

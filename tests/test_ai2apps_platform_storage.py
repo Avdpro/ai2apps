@@ -60,6 +60,8 @@ def test_database_bootstrap_creates_current_platform_schema(tmp_path):
         )
 
     assert tables == {
+        "knowledge_record_groups",
+        "knowledge_record_attachments",
         "knowledge_image_ocr",
         "knowledge_bucket_routing",
         "session_tool_approval_rules",
@@ -319,6 +321,8 @@ def test_database_bootstrap_creates_current_platform_schema(tmp_path):
         (96, "session_tool_approval_rules"),
         (97, "knowledge_image_ocr"),
         (98, "knowledge_auto_bucket"),
+        (99, "knowledge_grouped_records"),
+        (100, "knowledge_screenshot_overlap"),
     ]
     assert all(row[2].endswith("Z") for row in ledger)
 
@@ -851,16 +855,18 @@ def test_uncommitted_write_is_absent_after_connection_crash(tmp_path):
     database.initialize()
     connection = database.connect()
     connection.execute("BEGIN IMMEDIATE")
+    uncommitted_version = PLATFORM_DATABASE_SCHEMA_VERSION + 1
     connection.execute(
-        "INSERT INTO schema_migrations(version, name, applied_at) VALUES (99, 'lost', ?)",
-        ("2025-01-01T00:00:00.000000Z",),
+        "INSERT INTO schema_migrations(version, name, applied_at) VALUES (?, 'lost', ?)",
+        (uncommitted_version, "2025-01-01T00:00:00.000000Z"),
     )
     connection.close()
 
     with database.connect() as reopened:
         assert (
             reopened.execute(
-                "SELECT COUNT(*) FROM schema_migrations WHERE version = 99"
+                "SELECT COUNT(*) FROM schema_migrations WHERE version = ?",
+                (uncommitted_version,),
             ).fetchone()[0]
             == 0
         )

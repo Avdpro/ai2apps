@@ -553,6 +553,9 @@ async def test_registry_verifies_and_caches_package_lifecycle_snapshot(tmp_path)
 @pytest.mark.parametrize("package_id,allowed", [
     ("ai2apps/runtime-omlx", True),
     ("ai2apps/runtime-cuda-torch", True),
+    ("ai2apps/runtime-knowledge-rag", True),
+    ("example/runtime-knowledge-rag", False),
+    ("ai2apps/service-knowledge-lancedb", False),
     ("example/runtime-cuda-torch", False),
 ])
 def test_registry_inference_runtime_package_identity(tmp_path, package_id, allowed):

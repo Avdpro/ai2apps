@@ -504,3 +504,14 @@ Formal integration smoke test — 2026-08-15:
 AI Browser declares Mobile Ready and a trusted mount-bound Mobile Entry. Its phone UI starts with the installed Web Mini-App library and uses single-screen library/workspace/task navigation. Switching screens hides, rather than remounts, the active Mini-App frame, preserving form input, drafts and results. Browser profiles are selected within the Mini-App. Mobile does not fetch website-Agent authoring catalogs or open a native BiDi session; installation/customization and browser login/CAPTCHA assistance stay on the computer. Nine interface languages and narrow-screen Search All / Shopping Pro layouts are provided.
 
 Execution remains the shared Local background Task system on the connected computer. The owner Mobile route inventory explicitly permits Mini-App mount/draft/provenance-bound WebAgent operations, read-only profile discovery, task status/events/cancel/resume, and existing owner-authorized interaction responses. It excludes Agent authoring, direct Task creation, profile launch/edit/delete, raw BiDi tickets and API-key configuration. The existing owner lease, App exposure policy, actor and Mini-App mount guards apply; no Cloud endpoint changes or alternate browser-control protocol are introduced. The trusted host bridge forwards the App instance header so Mini-App mounts retain their host-instance binding.
+
+
+## Knowledge 添加与问答增量（2026-10-30）
+
+移动知识库新增图片/文件优先、网页、次要笔记入口。上传复用 Knowledge 的持久化批量导入和 OCR/归类流程；网页只使用现有的 SSRF 保护静态提取，不远程控制 Mac 的登录浏览器。自动目标与明确目标桶遵循同一所有者服务。处理状态及逐条非隐私授权属于添加所必需的流程，不开放完整桌面管理面板。
+
+问答支持全部可见知识或一个可见知识桶，使用系统默认问答模型；检索结果和正文有数量/长度界限，引用只能来自本次可见检索结果。无依据时不调用模型，不暴露任意模型调用入口。当前移动对话仅在当前页面保留，没有新增多会话管理。
+
+公开边界仅新增固定的 `/v1/mobile/knowledge/{notes,web,files,ask}` POST，以及必要的导入/识别/归类状态和精确条目授权路径。端点绑定现有 Mobile 主体、App 权限和同源写入检查，不开放 `/v1/platform` 代理。调用 Knowledge 已有声明验证和处理函数，避免第二份导入/隐私规则。
+
+验收：64项相关Python测试和701项边界检查通过；390×844隔离浏览器验证添加、全部/单桶问答和引用，问答模型是fixture。固定App-Dev已重启激活；尚未宣称真实手机、真实模型、生产Tunnel端到端验收。

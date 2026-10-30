@@ -19,7 +19,7 @@ CAPABILITIES = {'audio.music_generation': 'music', 'audio.sound_effects_generati
 
 def generation_models(runtime, capability):
     task = CAPABILITIES.get(capability)
-    return tuple(sorted((m for m in list_package_models(runtime)
+    return tuple(sorted((m for m in list_package_models(runtime, model_type='audio_generation')
         if task and m.model_type == 'audio_generation'
         and 'audio_generate' in m.endpoints
         and not m.metadata.get('internal')

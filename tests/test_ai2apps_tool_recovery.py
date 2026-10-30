@@ -153,7 +153,7 @@ async def test_failure_pairs_batch_results_persists_and_allows_new_decision(
     run, _ = runtime.agents.create_run(
         session_id=session,
         agent_key="ai2apps.general-agent",
-        input={"model": "test", "prompt": "continue safely"},
+        input={"model": "test", "prompt": "continue safely", "tools": ["system.echo"]},
     )
     await runtime.start_background_tasks(retention_interval_seconds=60)
     try:
@@ -231,7 +231,7 @@ async def test_provider_failure_is_bounded_and_write_is_not_replayed(
     run, _ = runtime.agents.create_run(
         session_id=_session(runtime),
         agent_key="ai2apps.general-agent",
-        input={"model": "test", "prompt": "fail"},
+        input={"model": "test", "prompt": "fail", "tools": ["fixture.failure"]},
     )
     await runtime.start_background_tasks(retention_interval_seconds=60)
     try:
@@ -277,7 +277,7 @@ async def test_cancellation_during_tool_does_not_resume_model(tmp_path):
     run, _ = runtime.agents.create_run(
         session_id=_session(runtime),
         agent_key="ai2apps.general-agent",
-        input={"model": "test", "prompt": "wait"},
+        input={"model": "test", "prompt": "wait", "tools": ["system.echo"]},
     )
     await runtime.start_background_tasks(retention_interval_seconds=60)
     try:
@@ -397,7 +397,7 @@ async def test_restart_after_error_does_not_replay_finished_tools(tmp_path):
     run, _ = runtime.agents.create_run(
         session_id=_session(runtime),
         agent_key="ai2apps.general-agent",
-        input={"model": "test", "prompt": "resume"},
+        input={"model": "test", "prompt": "resume", "tools": ["system.echo"]},
     )
     await runtime.start_background_tasks(retention_interval_seconds=60)
     try:

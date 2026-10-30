@@ -70,7 +70,7 @@ MAX_SUBMISSION_BYTES = 25 * 1024 * 1024
 MAX_PLATFORM_RUNTIME_SUBMISSION_BYTES = 4 * 1024 * 1024 * 1024
 PLATFORM_RUNTIME_PACKAGE_ID = "ai2apps/runtime-omlx"
 PLATFORM_RUNTIME_PACKAGE_IDS = frozenset(
-    {PLATFORM_RUNTIME_PACKAGE_ID, "ai2apps/runtime-cuda-torch"}
+    {PLATFORM_RUNTIME_PACKAGE_ID, "ai2apps/runtime-cuda-torch", "ai2apps/runtime-knowledge-rag"}
 )
 ARTIFACT_PIECES_SCHEMA = "ai2apps.artifact-pieces.v1"
 ARTIFACT_PIECE_MAX_BYTES = 64 * 1024 * 1024

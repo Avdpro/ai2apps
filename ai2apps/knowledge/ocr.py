@@ -191,6 +191,10 @@ class KnowledgeOCRManager:
         while not self._closing:
             gateway=getattr(self.runtime,'model_invocations',None)
             if gateway and getattr(gateway,'chat_provider_ready',False):
+                from .groups import refresh_groups
+                if await asyncio.to_thread(refresh_groups,self.runtime.knowledge):
+                    index=getattr(self.runtime,'knowledge_package_runtime',None)
+                    if index:index.schedule_index()
                 try:await self.bucket_router.tick()
                 except Exception:logger.info('Knowledge auto bucket selection is waiting for available content/models')
                 row=await asyncio.to_thread(self.store.next)

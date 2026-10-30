@@ -562,12 +562,19 @@ def _package_model_checkpoints_ready(
     ) for dependency in required)
 
 
-def list_package_models(runtime: Any | None) -> tuple[PackageModel, ...]:
+def list_package_models(runtime: Any | None, *, model_type: str | None = None) -> tuple[PackageModel, ...]:
     if runtime is None or getattr(runtime, "services", None) is None:
         return ()
     result: list[PackageModel] = []
     for service in runtime.services.list_services():
         if service.source != "installed" or service.status is not ServiceStatus.ENABLED:
+            continue
+        # Filter declarations before resolving instances, credentials, dependencies
+        # or checkpoint readiness for unrelated model families.
+        if model_type is not None and not any(
+            row.get("model_type") == model_type
+            for row in service.config.get("models", [])
+        ):
             continue
         try:
             instance = runtime.services.get_instance_for_service(service.id)
@@ -619,6 +626,8 @@ def list_package_models(runtime: Any | None) -> tuple[PackageModel, ...]:
         checkpoints = {row["model_id"]: row for row in checkpoint_rows}
         declarations = {row["id"]: row for row in checkpoint_config.get("models", [])}
         for raw in service.config.get("models", []):
+            if model_type is not None and raw.get("model_type") != model_type:
+                continue
             raw = _effective_image_declaration(raw)
             result.append(
                 PackageModel(

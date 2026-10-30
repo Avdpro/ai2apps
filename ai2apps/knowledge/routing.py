@@ -39,6 +39,12 @@ class KnowledgeBucketRouter:
                 with self.store.transaction(write=True) as c:c.execute("UPDATE knowledge_bucket_routing SET status='failed',error='identity_changed' WHERE item_id=? AND status='pending'",(row['item_id'],))
                 continue
             if item.owner_user_id!=p.actor_user_id:continue
+            with self.store.transaction() as c:
+                group=c.execute('SELECT ready FROM knowledge_record_groups WHERE parent_id=?',(item.id,)).fetchone()
+                child=c.execute('SELECT 1 FROM knowledge_record_attachments WHERE child_id=?',(item.id,)).fetchone()
+            if group and not group['ready']:continue
+            if child and item.kind not in {'audio','video'}:continue
+
             # Media placeholders and incomplete OCR/ASR are never used to infer a bucket.
             if item.text.startswith(('Binary knowledge asset:', 'PDF knowledge asset:')) and item.kind not in {'image','audio','video'}:continue
             if item.kind in {'image','audio','video'}:
@@ -48,6 +54,7 @@ class KnowledgeBucketRouter:
                     if item.kind in {'audio','video'}:await self.transcribe(row,p,item)
                     with self.store.transaction(write=True) as c:c.execute("UPDATE knowledge_bucket_routing SET updated_at=? WHERE item_id=? AND status='pending'",(utc_now_text(),item.id))
                     continue
+            if child:continue
             await self.route(row,p,item)
             return
 
@@ -83,7 +90,7 @@ class KnowledgeBucketRouter:
             if current.revision!=item.revision:raise ValueError('changed')
             with self.store.transaction(write=True) as c:
                 now=utc_now_text()
-                changed=c.execute("UPDATE knowledge_bucket_routing SET status='pending',run_token=NULL,updated_at=? WHERE item_id=? AND run_token=? AND EXISTS(SELECT 1 FROM knowledge_items WHERE id=? AND revision=? AND deleted_at IS NULL)",(now,item.id,token,item.id,item.revision))
+                changed=c.execute("UPDATE knowledge_bucket_routing SET status=CASE WHEN EXISTS(SELECT 1 FROM knowledge_record_attachments ga WHERE ga.child_id=knowledge_bucket_routing.item_id) THEN 'completed' ELSE 'pending' END,run_token=NULL,updated_at=? WHERE item_id=? AND run_token=? AND EXISTS(SELECT 1 FROM knowledge_items WHERE id=? AND revision=? AND deleted_at IS NULL)",(now,item.id,token,item.id,item.revision))
                 if not changed.rowcount:return
                 rep=c.execute('SELECT id FROM knowledge_representations WHERE item_id=? AND ordinal=0',(item.id,)).fetchone()
                 c.execute('DELETE FROM knowledge_chunks WHERE item_id=?',(item.id,))

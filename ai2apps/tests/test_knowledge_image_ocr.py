@@ -212,7 +212,7 @@ def test_migration_from_96_preserves_existing_content_and_adds_ocr(tmp_path):
  from ai2apps.storage.migrations import MIGRATIONS,apply_migrations
  import sqlite3
  path=tmp_path/'old.sqlite3';c=sqlite3.connect(path);apply_migrations(c,MIGRATIONS[:96]);c.close()
- db=PlatformDatabase(path);assert db.initialize().schema_version==98
+ db=PlatformDatabase(path);assert db.initialize().schema_version==100
  with db.connect() as c:assert c.execute("SELECT name FROM sqlite_master WHERE name='knowledge_image_ocr'").fetchone()
 
 
@@ -339,3 +339,112 @@ def test_auto_text_file_extracts_content_before_routing(env,filename):
  item,_=env.kb.import_stream(env.p,io.BytesIO(b'Watch movement document ZX864'),name=filename,bucket_id='auto')
  assert 'ZX864' in item.text and env.kb.search(env.p,'ZX864')
  assert env.worker.bucket_router.list(env.p)[0]['status']=='pending'
+
+def grouped_job(env,files,media='text/plain',title='购物单'):
+ job=env.kb.create_import_job(env.p,bucket_id='auto',filenames=[n for n,_ in files],merge_record=True,record_title=title)
+ for n,(_,data) in enumerate(files):env.kb.stage_import_entry(env.p,job['id'],n,io.BytesIO(data),media_type=media)
+ env.kb.process_import_job(job['id'])
+ return env.kb.get_import_job(env.p,job['id'])
+
+def test_grouped_texts_are_one_searchable_record_with_ordered_originals(env):
+ from ai2apps.knowledge.groups import attachments,group_content
+ job=grouped_job(env,[('a.txt',b'Apples ZX111'),('b.txt',b'Bread ZX222')])
+ assert job['status']=='completed'
+ parent=env.kb.get_item(env.p,job['group_parent_id'])
+ assert parent.title=='购物单' and 'Apples ZX111' in parent.text and 'Bread ZX222' in parent.text
+ assert [i.id for i in env.kb.list_items(env.p)]==[parent.id]
+ assert {h.item.id for h in env.kb.search(env.p,'ZX111')}=={parent.id}
+ assert {h.item.id for h in env.kb.search(env.p,'ZX222')}=={parent.id}
+ files=attachments(env.kb,env.p,parent.id)
+ assert [f['name'] for f in files]==['a.txt','b.txt']
+ assert env.kb.asset_path(env.p,files[1]['item_id'])[1].read_bytes()==b'Bread ZX222'
+ # Internal attachments never become independent vector-search candidates.
+ assert env.kb.hydrate_semantic_hit(env.p,files[0]['item_id'],excerpt='stale vector',distance=0.1) is None
+
+def test_group_does_not_adopt_or_hide_existing_duplicate_records(env):
+ existing,_=env.kb.import_stream(env.p,io.BytesIO(b'Apples ZX111'),name='a.txt',bucket_id=env.bucket.id)
+ job=grouped_job(env,[('a.txt',b'Apples ZX111')])
+ assert {i.id for i in env.kb.list_items(env.p)}=={existing.id,job['group_parent_id']}
+ # A later ordinary import must not reuse a hidden grouped attachment.
+ ordinary,_=env.kb.import_stream(env.p,io.BytesIO(b'Apples ZX111'),name='again.txt',bucket_id=env.bucket.id)
+ assert ordinary.id==existing.id
+
+def test_group_job_recovery_is_idempotent_and_preserves_title(env):
+ job=grouped_job(env,[('a.txt',b'One'),('b.txt',b'Two')],title='My purchase')
+ env.kb.process_import_job(job['id'])
+ assert len(env.kb.list_items(env.p))==1
+ with env.kb.transaction() as c:assert c.execute('SELECT COUNT(*) FROM knowledge_record_attachments').fetchone()[0]==2
+ assert env.kb.get_item(env.p,job['group_parent_id']).title=='My purchase'
+
+def test_group_parent_delete_blocks_attachment_access(env):
+ from ai2apps.knowledge.groups import attachments
+ job=grouped_job(env,[('a.txt',b'One')]);parent=env.kb.get_item(env.p,job['group_parent_id']);child=attachments(env.kb,env.p,parent.id)[0]['item_id']
+ env.kb.delete_item(env.p,parent.id,expected_revision=parent.revision)
+ with pytest.raises(Exception):env.kb.asset_path(env.p,child)
+ assert not env.kb.list_items(env.p)
+
+def test_group_ocr_updates_parent_without_duplicate_search_hits(env):
+ from ai2apps.knowledge.groups import refresh_groups
+ job=grouped_job(env,[('receipt.png',env.raw)],media='image/png')
+ parent_id=job['group_parent_id'];row=env.store.next();assert row
+ assert env.store.transition(row,'running',run_token='ocr')
+ claimed={**row,'run_token':'ocr','revision':row['revision']+1,'model_id':'local-ocr'}
+ assert env.store.complete(env.p,claimed,text='Shopping total ZX993 128.00',description='')
+ refresh_groups(env.kb)
+ assert 'ZX993' in env.kb.get_item(env.p,parent_id).text
+ assert {h.item.id for h in env.kb.search(env.p,'ZX993')}=={parent_id}
+ with env.kb.transaction() as c:assert c.execute('SELECT ready FROM knowledge_record_groups WHERE parent_id=?',(parent_id,)).fetchone()[0]==1
+
+def test_two_receipt_images_aggregate_after_independent_ocr(env):
+ from ai2apps.knowledge.groups import refresh_groups,attachments
+ job=grouped_job(env,[('page-1.png',env.raw),('page-2.png',env.raw)],media='image/png',title='一次购物')
+ parent=job['group_parent_id'];assert len(env.kb.list_items(env.p))==1
+ assert len(attachments(env.kb,env.p,parent))==2
+ for text in ['Apples ZX551 12.00','Bread ZX552 8.00']:
+  row=env.store.next();assert row
+  env.store.transition(row,'running',run_token='receipt-run')
+  env.store.complete(env.p,{**row,'revision':row['revision']+1,'run_token':'receipt-run','model_id':'local-ocr'},text=text,description='')
+  refresh_groups(env.kb)
+ merged=env.kb.get_item(env.p,parent).text
+ assert 'ZX551' in merged and 'ZX552' in merged and merged.index('page-1.png')<merged.index('page-2.png')
+ assert {h.item.id for h in env.kb.search(env.p,'ZX552')}=={parent}
+
+def test_legacy_standalone_v2_gets_group_columns(tmp_path):
+ import sqlite3
+ from ai2apps.knowledge.store import KnowledgeStore,_SCHEMA_V1
+ from ai2apps.knowledge.ocr_store import OCR_SCHEMA
+ path=tmp_path/'legacy.sqlite'
+ with sqlite3.connect(path) as c:
+  c.executescript(_SCHEMA_V1);c.execute(OCR_SCHEMA);c.execute('PRAGMA user_version=2')
+ store=KnowledgeStore(path);store.initialize()
+ with store.transaction() as c:
+  assert c.execute('PRAGMA user_version').fetchone()[0]==4
+  assert {'merge_record','record_title','group_parent_id','auto_bucket'}<={r[1] for r in c.execute('PRAGMA table_info(knowledge_import_jobs)')}
+
+def test_group_recovery_does_not_reset_running_media_extraction(env):
+ from ai2apps.knowledge.groups import attach,attachments
+ job=grouped_job(env,[('audio.wav',b'audio-fixture')],media='audio/wav')
+ parent=job['group_parent_id'];child=env.kb.get_item(env.p,attachments(env.kb,env.p,parent)[0]['item_id'])
+ with env.kb.transaction(write=True) as c:c.execute("UPDATE knowledge_bucket_routing SET status='running',run_token='original-operation' WHERE item_id=?",(child.id,))
+ attach(env.kb,env.p,parent,child,0)
+ with env.kb.transaction() as c:
+  row=c.execute('SELECT status,run_token FROM knowledge_bucket_routing WHERE item_id=?',(child.id,)).fetchone()
+  assert row['status']=='running' and row['run_token']=='original-operation'
+
+
+def test_group_screenshot_overlap_preserves_raw_ocr_and_evidence(env):
+ from ai2apps.knowledge.groups import refresh_groups,group_content,attachments
+ overlap='第一行详细记录项目甲以及相关信息 alpha\n第二行详细记录项目乙以及相关信息 beta\n第三行详细记录项目丙以及相关信息 gamma'
+ job=grouped_job(env,[('one.png',env.raw),('two.png',env.raw)],media='image/png')
+ for text in ['独有开头\n'+overlap,overlap+'\n独有结尾']:
+  row=env.store.next();env.store.transition(row,'running',run_token='overlap')
+  env.store.complete(env.p,{**row,'revision':row['revision']+1,'run_token':'overlap','model_id':'local-ocr'},text=text,description='')
+ refresh_groups(env.kb)
+ parent=job['group_parent_id']
+ assert env.kb.get_item(env.p,parent).text.count('第一行详细')==1
+ children=attachments(env.kb,env.p,parent)
+ assert all('第一行详细' in env.kb.get_item(env.p,f['item_id']).text for f in children)
+ assert '重叠 3 行' in group_content(env.kb,env.p,parent).body.decode()
+ with env.kb.transaction(write=True) as c:c.execute('UPDATE knowledge_import_jobs SET detect_overlap=0 WHERE id=?',(job['id'],))
+ refresh_groups(env.kb)
+ assert env.kb.get_item(env.p,parent).text.count('第一行详细')==2

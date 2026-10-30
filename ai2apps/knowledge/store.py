@@ -38,7 +38,7 @@ from .models import (
     KnowledgeTag,
 )
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 4
 DEFAULT_INSTALLATION_BUDGET_BYTES = 10 * 1024**3
 ALLOWED_KINDS = {
     "webpage",
@@ -191,6 +191,14 @@ class KnowledgeStore:
                     connection.executescript(_SCHEMA_V1)
                 from .ocr_store import OCR_SCHEMA
                 connection.execute(OCR_SCHEMA)
+                from .groups import GROUP_SCHEMA
+                for statement in GROUP_SCHEMA:connection.execute(statement)
+                from .routing_store import ROUTING_SCHEMA
+                connection.execute(ROUTING_SCHEMA)
+                columns={r[1] for r in connection.execute('PRAGMA table_info(knowledge_import_jobs)')}
+                for name,definition in [('auto_bucket','INTEGER NOT NULL DEFAULT 0'),('merge_record','INTEGER NOT NULL DEFAULT 0'),('record_title','TEXT'),('group_parent_id','TEXT'),('detect_overlap','INTEGER NOT NULL DEFAULT 1')]:
+                    if name not in columns:connection.execute(f'ALTER TABLE knowledge_import_jobs ADD COLUMN {name} {definition}')
+
             except sqlite3.OperationalError as exc:
                 if "fts5" in str(exc).casefold():
                     raise KnowledgeConflictError(
@@ -666,6 +674,8 @@ class KnowledgeStore:
         trusted_source_facets: Sequence[tuple[str, str]] = (),
         parsed_chunks: Sequence[tuple[str, dict[str, object]]] = (),
         idempotency_key: str | None = None,
+        group_parent_id: str | None = None,
+        group_ordinal: int = 0,
     ) -> KnowledgeItem:
         """Save one text representation and synchronously index it with FTS5."""
 
@@ -857,6 +867,11 @@ class KnowledgeStore:
             if auto_bucket:
                 from .routing_store import enqueue_routing
                 enqueue_routing(connection, item_id, principal, 1)
+            if group_parent_id:
+                parent=connection.execute('SELECT 1 FROM knowledge_items WHERE id=? AND owner_user_id=? AND installation_id=? AND deleted_at IS NULL',(group_parent_id,principal.actor_user_id,principal.installation_id)).fetchone()
+                if not parent:raise KnowledgeConflictError('Grouped record was deleted')
+                connection.execute('INSERT OR IGNORE INTO knowledge_record_attachments(parent_id,child_id,ordinal) VALUES (?,?,?)',(group_parent_id,item_id,group_ordinal))
+                connection.execute('DELETE FROM knowledge_bucket_items WHERE item_id=?',(item_id,))
             row = connection.execute(
                 _VISIBLE_ITEM_SELECT + " AND i.id = ?",
                 self._visibility_args(principal) + (item_id,),
@@ -1046,6 +1061,7 @@ class KnowledgeStore:
             "s.actor_user_id=?",
             "s.status=?",
             "i.deleted_at IS NULL",
+            "NOT EXISTS(SELECT 1 FROM knowledge_record_attachments ga WHERE ga.child_id=i.id)",
             "(i.owner_user_id=? OR i.visibility='installation')",
         ]
         arguments: list[object] = [
@@ -1242,6 +1258,7 @@ class KnowledgeStore:
         clauses = [
             "i.installation_id = ?",
             "i.deleted_at IS NULL",
+            "NOT EXISTS(SELECT 1 FROM knowledge_record_attachments ga WHERE ga.child_id=i.id)",
             "(i.owner_user_id = ? OR i.visibility = 'installation')",
         ]
         arguments: list[object] = [
@@ -1307,6 +1324,7 @@ class KnowledgeStore:
             "i.installation_id = ?",
             "i.status = 'ready'",
             "i.deleted_at IS NULL",
+            "NOT EXISTS(SELECT 1 FROM knowledge_record_attachments ga WHERE ga.child_id=i.id)",
             "(i.owner_user_id = ? OR i.visibility = 'installation')",
         ]
         arguments: list[object] = [
@@ -1448,6 +1466,7 @@ class KnowledgeStore:
             "i.installation_id = ?",
             "i.status = 'ready'",
             "i.deleted_at IS NULL",
+            "NOT EXISTS(SELECT 1 FROM knowledge_record_attachments ga WHERE ga.child_id=i.id)",
             "(i.owner_user_id = ? OR i.visibility = 'installation')",
         ]
         arguments: list[object] = [
@@ -1568,6 +1587,7 @@ class KnowledgeStore:
                 """,
                 (now, now, new_revision, item_id),
             )
+            connection.execute("UPDATE knowledge_import_jobs SET control_state='cancelled',status='failed',completed_at=?,updated_at=? WHERE group_parent_id=? AND status IN ('queued','running')",(now,now,item_id))
             connection.execute(
                 """
                 INSERT INTO knowledge_change_log
@@ -1584,6 +1604,9 @@ class KnowledgeStore:
         bucket_id: str,
         filenames: Sequence[str],
         source_app_id: str | None = None,
+        merge_record: bool = False,
+        detect_overlap: bool = True,
+        record_title: str | None = None,
     ) -> dict[str, object]:
         auto_bucket = bucket_id == "auto"
         if auto_bucket:
@@ -1616,7 +1639,7 @@ class KnowledgeStore:
                     now,
                 ),
             )
-            connection.execute("UPDATE knowledge_import_jobs SET auto_bucket=? WHERE id=?", (int(auto_bucket),job_id))
+            connection.execute("UPDATE knowledge_import_jobs SET auto_bucket=?,merge_record=?,record_title=?,detect_overlap=? WHERE id=?", (int(auto_bucket),int(merge_record),(record_title or "").strip()[:500],int(detect_overlap),job_id))
             connection.executemany(
                 """
                 INSERT INTO knowledge_import_job_entries(
@@ -2048,6 +2071,10 @@ class KnowledgeStore:
             authentication_type="internal_job",
             client_scope="desktop",
         )
+        group_parent=None
+        if job['merge_record']:
+            from .groups import ensure_group
+            group_parent=ensure_group(self,principal,job)
         while True:
             now = utc_now_text()
             with self.transaction(write=True) as connection:
@@ -2096,9 +2123,15 @@ class KnowledgeStore:
                         stream,
                         name=str(entry["filename"]),
                         media_type=entry["media_type"],
-                        bucket_id="auto" if job["auto_bucket"] else str(job["bucket_id"]),
+                        bucket_id="auto" if job["auto_bucket"] and not group_parent else str(job["bucket_id"]),
+                        idempotency_key=("group:"+job_id+":"+str(entry["ordinal"])) if group_parent else None,
                         source_app_id=job["source_app_id"],
+                        group_parent_id=group_parent,
+                        group_ordinal=int(entry["ordinal"]),
                     )
+                if group_parent:
+                    from .groups import attach
+                    attach(self,principal,group_parent,item,int(entry['ordinal']))
                 self.update_import_entry(
                     principal,
                     job_id,
@@ -2107,6 +2140,9 @@ class KnowledgeStore:
                     item_id=item.id,
                 )
                 path.unlink(missing_ok=True)
+                if group_parent:
+                    from .groups import refresh_groups
+                    refresh_groups(self)
             except Exception as error:
                 self.update_import_entry(
                     principal,
@@ -2145,6 +2181,9 @@ class KnowledgeStore:
         source_session_id: str | None = None,
         trusted_source_facets: Sequence[tuple[str, str]] = (),
         max_bytes: int = 64 * 1024 * 1024,
+        idempotency_key: str | None = None,
+        group_parent_id: str | None = None,
+        group_ordinal: int = 0,
     ) -> tuple[KnowledgeItem, KnowledgeAsset]:
         """Persist a file, extract bounded text, and index it in one bucket."""
 
@@ -2206,6 +2245,7 @@ class KnowledgeStore:
                       AND i.installation_id=?
                       AND i.visibility=?
                       AND i.deleted_at IS NULL
+                      AND NOT EXISTS(SELECT 1 FROM knowledge_record_attachments ga WHERE ga.child_id=i.id)
                       AND (
                         i.visibility='installation'
                         OR i.owner_user_id=?
@@ -2220,7 +2260,7 @@ class KnowledgeStore:
                         principal.actor_user_id,
                     ),
                 ).fetchone()
-            if duplicate is not None:
+            if duplicate is not None and idempotency_key is None:
                 item = self.get_item(principal, str(duplicate["item_id"]))
                 self.add_item_to_bucket(principal, bucket_id, item.id)
                 return item, self._asset(duplicate)
@@ -2237,11 +2277,18 @@ class KnowledgeStore:
                 source_session_id=source_session_id,
                 bucket_id="auto" if auto_bucket else bucket_id,
                 parsed_chunks=parsed_chunks,
+                idempotency_key=idempotency_key,
+                group_parent_id=group_parent_id,
+                group_ordinal=group_ordinal,
                 trusted_source_facets=trusted_source_facets,
             )
             asset_id = _new_id("kas")
             now = utc_now_text()
             with self.transaction(write=True) as connection:
+                existing=connection.execute('SELECT * FROM knowledge_assets WHERE item_id=?',(item.id,)).fetchone()
+                if existing is not None:
+                    if existing['content_hash']!=content_hash:raise KnowledgeConflictError('Grouped attachment content changed')
+                    return item,self._asset(existing)
                 connection.execute(
                     """
                     INSERT INTO knowledge_assets(
@@ -2633,6 +2680,7 @@ _VISIBLE_ITEM_SELECT = """
     FROM knowledge_items i
     JOIN knowledge_representations r ON r.item_id = i.id AND r.ordinal = 0
     WHERE i.installation_id = ? AND i.deleted_at IS NULL
+      AND NOT EXISTS(SELECT 1 FROM knowledge_record_attachments ga JOIN knowledge_items gp ON gp.id=ga.parent_id WHERE ga.child_id=i.id AND gp.deleted_at IS NOT NULL)
       AND (i.owner_user_id = ? OR i.visibility = 'installation')
 """
 

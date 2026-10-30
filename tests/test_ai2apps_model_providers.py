@@ -447,6 +447,8 @@ def test_enabled_service_models_enter_and_leave_the_live_catalog(tmp_path):
     catalog = list_package_models(runtime)
     assert [model.id for model in catalog] == ["example.provider/image-v1"]
     assert catalog[0].public_catalog_entry()["model_type"] == "image_generation"
+    assert list_package_models(runtime, model_type="image_generation") == catalog
+    assert list_package_models(runtime, model_type="audio_generation") == ()
 
     runtime.services.set_instance_status(
         runtime.services.get_instance_for_service(service.id).id,

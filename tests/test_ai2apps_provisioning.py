@@ -891,7 +891,9 @@ def test_knowledge_semantic_retrieval_uses_generic_acpf_component_stack() -> Non
         "verify",
         "verify",
     ]
-    assert components[0]["service_key"] == "ai2apps.runtime.knowledge-rag"
+    assert components[0]["service_key"] == "ai2apps.runtime.omlx"
+    assert components[0]["package_id"] == "ai2apps/runtime-omlx"
+    assert components[0]["version"] == ">=1.8.16,<2.0.0"
     assert components[1]["service_key"] == "ai2apps.knowledge-vector.lancedb"
 
 
@@ -958,7 +960,7 @@ def test_knowledge_semantic_probe_plan_has_no_install_side_effects(
 
     assert plan is not None
     assert [step["id"] for step in plan["steps"]] == [
-        "rag-native-runtime",
+        "shared-mlx-runtime",
         "vector-service",
         "embedding-provider",
         "embedding-checkpoint",

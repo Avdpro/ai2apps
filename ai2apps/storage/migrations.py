@@ -4737,6 +4737,10 @@ MIGRATIONS = (*MIGRATIONS, Migration(version=98, name="knowledge_auto_bucket", s
 "ALTER TABLE knowledge_import_jobs ADD COLUMN auto_bucket INTEGER NOT NULL DEFAULT 0",
 )))
 
+MIGRATIONS = (*MIGRATIONS, Migration(version=99, name="knowledge_grouped_records", statements=('CREATE TABLE IF NOT EXISTS knowledge_record_groups (\n parent_id TEXT PRIMARY KEY REFERENCES knowledge_items(id) ON DELETE CASCADE,\n job_id TEXT NOT NULL UNIQUE, signature TEXT, ready INTEGER NOT NULL DEFAULT 0)', 'CREATE TABLE IF NOT EXISTS knowledge_record_attachments (\n parent_id TEXT NOT NULL REFERENCES knowledge_items(id) ON DELETE CASCADE,\n child_id TEXT NOT NULL UNIQUE REFERENCES knowledge_items(id) ON DELETE CASCADE,\n ordinal INTEGER NOT NULL, PRIMARY KEY(parent_id,ordinal))')+("ALTER TABLE knowledge_import_jobs ADD COLUMN merge_record INTEGER NOT NULL DEFAULT 0", "ALTER TABLE knowledge_import_jobs ADD COLUMN record_title TEXT", "ALTER TABLE knowledge_import_jobs ADD COLUMN group_parent_id TEXT")))
+
+MIGRATIONS = (*MIGRATIONS, Migration(version=100, name="knowledge_screenshot_overlap", statements=("ALTER TABLE knowledge_import_jobs ADD COLUMN detect_overlap INTEGER NOT NULL DEFAULT 1",)))
+
 def apply_migrations(
     connection: sqlite3.Connection,
     migrations: Sequence[Migration] = MIGRATIONS,

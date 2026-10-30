@@ -4917,5 +4917,13 @@
   "knowledge.composer.routing_consent": "允许使用 {model} 读取此条目的提取文本及私有知识桶名称，选择归属知识桶吗？",
   "knowledge.composer.routing_pending": "内容提取完成后自动归类；没有可用模型时保留在收件箱。",
   "account.currency.open_recharge": "打开资产与充值（系统浏览器）",
-  "account.currency.open_failed": "无法打开系统浏览器，请稍后重试。"
+  "account.currency.open_failed": "无法打开系统浏览器，请稍后重试。",
+  "knowledge.composer.merge": "合并为一条知识",
+  "knowledge.composer.merge_title": "例如：本周购物单",
+  "knowledge.composer.merge_help": "按选择顺序保留全部附件，分别提取文字，汇总为同一条可搜索的知识记录。",
+  "knowledge.composer.overlap": "识别连续截图的重叠内容",
+  "knowledge.semantic.setup_title": "语义检索尚未就绪",
+  "knowledge.semantic.setup_help": "当前使用关键词检索，可能漏掉同义表达。配置语义模型与索引服务后，将为已有知识自动补建索引。",
+  "knowledge.semantic.setup_action": "配置语义检索",
+  "knowledge.semantic.setting_up": "正在配置…"
 }

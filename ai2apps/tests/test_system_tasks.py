@@ -198,13 +198,13 @@ def test_v94_trigger_variants_upgrade_without_losing_tasks_or_schedules(tmp_path
     if has_trigger:db.execute("UPDATE system_tasks SET trigger='schedule' WHERE id='saved'")
     db.execute("INSERT INTO system_task_schedules(id,owner,app_id,kind,name,payload_json,next_run,updated_at) VALUES('daily','alice','test.app','test.job','Daily','{}',9999999999,1)")
     db.commit();db.close()
-    database=PlatformDatabase(path);assert database.initialize().schema_version==98
+    database=PlatformDatabase(path);assert database.initialize().schema_version==100
     runtime=NS(database=database,events=EventStore(database),notifications=EventNotificationBus())
     service=SystemTaskService(runtime);register(service)
     assert service.get('alice','saved')['trigger']==('schedule' if has_trigger else 'manual')
     assert service.snapshot('alice')['schedules'][0]['id']=='daily'
     assert service.start_schedule('alice','daily')['status']=='queued'
-    assert database.initialize().schema_version==98
+    assert database.initialize().schema_version==100
 
 
 def test_history_retention_age_count_owner_and_active(service):

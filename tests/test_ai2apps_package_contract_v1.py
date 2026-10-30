@@ -225,6 +225,10 @@ def test_incomplete_index_and_unsafe_zip_are_rejected(tmp_path):
 
 @pytest.mark.parametrize('identity,kind,limit', [
     ('ai2apps/runtime-cuda-torch', 'service', 4294967296),
+    ('ai2apps/runtime-knowledge-rag', 'service', 4294967296),
+    ('ai2apps/service-knowledge-lancedb', 'service', 1073741824),
+    ('other/runtime-knowledge-rag', 'service', 1073741824),
+    ('ai2apps/runtime-knowledge-rag', 'app', 1073741824),
     ('ai2apps/runtime-omlx', 'service', 4294967296),
     ('ai2apps/runtime-cuda-torch', 'app', 1073741824),
     ('other/runtime-cuda-torch', 'service', 1073741824),
@@ -272,6 +276,8 @@ def test_runtime_large_file_streams_and_signature_gates_zip(tmp_path, monkeypatc
     ('ai2apps/runtime-cuda-torch', 4294967296, True),
     ('ai2apps/runtime-cuda-torch', 4294967297, False),
     ('ai2apps/runtime-omlx', 4294967296, True),
+    ('ai2apps/runtime-knowledge-rag', 4294967296, True),
+    ('ai2apps/runtime-knowledge-rag', 4294967297, False),
     ('example/model-worker', 1073741824, True),
     ('example/model-worker', 1073741825, False),
 ])

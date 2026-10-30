@@ -43,7 +43,7 @@ PACKAGE_LIFECYCLE_PREFIX = b"AI2APPS-PACKAGE-LIFECYCLE-V1\n"
 KEY_PROOF_PREFIX = b"AI2APPS-PUBLISHER-KEY-PROOF-V1\n"
 MAX_ARTIFACT_BYTES = 1_073_741_824
 MAX_RUNTIME_ARTIFACT_BYTES = 4_294_967_296
-OFFICIAL_RUNTIME_PACKAGE_IDS = frozenset({"ai2apps/runtime-omlx", "ai2apps/runtime-cuda-torch"})
+OFFICIAL_RUNTIME_PACKAGE_IDS = frozenset({"ai2apps/runtime-omlx", "ai2apps/runtime-cuda-torch", "ai2apps/runtime-knowledge-rag"})
 
 def package_size_limit(package: dict[str, Any]) -> int:
     """Resource bound only; publisher authority still requires signature/registry checks."""

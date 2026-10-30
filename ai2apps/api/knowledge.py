@@ -893,6 +893,9 @@ def create_knowledge_router(
         files: Annotated[list[UploadFile], File()],
         bucket_id: Annotated[str, Form(alias="bucketId")],
         source_app_id: Annotated[str | None, Form(alias="sourceAppId")] = None,
+        merge_record: Annotated[bool, Form(alias="mergeRecord")] = False,
+        detect_overlap: Annotated[bool, Form(alias="detectOverlap")] = True,
+        record_title: Annotated[str | None, Form(alias="recordTitle",max_length=500)] = None,
         principal: RequestPrincipal = principal_dependency,
     ):
         selected = store()
@@ -910,6 +913,9 @@ def create_knowledge_router(
                 bucket_id=bucket_id,
                 filenames=[file.filename or "Untitled" for file in files],
                 source_app_id=source_app_id,
+                merge_record=merge_record,
+                detect_overlap=detect_overlap,
+                record_title=record_title,
             )
         )
         if isinstance(job, JSONResponse):
@@ -1529,6 +1535,9 @@ def create_knowledge_router(
         selected = store()
         if isinstance(selected, JSONResponse):
             return selected
+        from ai2apps.knowledge.groups import group_content
+        grouped=guarded(lambda:group_content(selected,principal,item_id,download))
+        if grouped is not None:return grouped
         result = guarded(lambda: selected.asset_path(principal, item_id))
         if isinstance(result, JSONResponse):
             return result

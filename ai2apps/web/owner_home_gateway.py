@@ -22,6 +22,12 @@ def configure(runtime_provider, models_handler, completion_handler):
 
 
 def public_allowed(method, path):
+    if method=='GET' and re.fullmatch(r'/v1/mobile/knowledge/items/[A-Za-z0-9_-]+/attachments(?:/[A-Za-z0-9_-]+)?',path):return True
+
+    if method=='POST' and path in {'/v1/mobile/knowledge/notes','/v1/mobile/knowledge/web','/v1/mobile/knowledge/files','/v1/mobile/knowledge/ask'}:return True
+    if method=='GET' and path in {'/v1/mobile/knowledge/imports','/v1/mobile/knowledge/image-ocr','/v1/mobile/knowledge/bucket-routing'}:return True
+    if method=='POST' and re.fullmatch(r'/v1/mobile/knowledge/(?:image-ocr|bucket-routing)/[A-Za-z0-9_-]+/decision',path):return True
+
     if method=='POST' and re.fullmatch(r'/v1/mobile/chat/threads/[A-Za-z0-9_-]+/manage',path):return True
     if method in ('PATCH','DELETE') and re.fullmatch(r'/v1/mobile/chat/threads/[A-Za-z0-9_-]+',path):return True
     if method=='POST' and re.fullmatch(r'/v1/mobile/chat/threads/[A-Za-z0-9_-]+/speech',path):return True

@@ -216,6 +216,40 @@ def video_upscaling_transient_bytes(payload):
     )
 
 
+def _chat_input_budget(value):
+    """Separate image transport bytes from language/vision context estimates.
+
+    Never fetch remote URLs. Image dimensions come from the encoded header,
+    never from caller-provided width/height hints. Unknown media keeps a
+    conservative context allowance; the overall context cap remains unchanged.
+    """
+    if isinstance(value, list):
+        budgets=[_chat_input_budget(v) for v in value]
+        return tuple(sum(b[n] for b in budgets) for n in range(3))
+    if isinstance(value, Mapping):
+        if value.get('type') in {'image_url','input_image'}:
+            import base64,io,math
+            from PIL import Image
+            image=value.get('image_url',value.get('url',''))
+            url=image.get('url','') if isinstance(image,Mapping) else image
+            vision=16384;buffer_bytes=0
+            if isinstance(url,str) and url.startswith('data:image/') and ',' in url:
+                header,encoded=url.split(',',1)
+                buffer_bytes=len(encoded)*3//4
+                if ';base64' in header and len(encoded)<=32*MIB:
+                    try:
+                        raw=base64.b64decode(encoded,validate=True)
+                        with Image.open(io.BytesIO(raw)) as image:
+                            width,height=image.size
+                        vision=min(131072,max(1024,math.ceil(width/16)*math.ceil(height/16)))
+                    except (ValueError,OSError,Image.DecompressionBombError):
+                        pass
+            return 0,vision,buffer_bytes
+        budgets=[_chat_input_budget(v) for v in value.values()]
+        return tuple(sum(b[n] for b in budgets) for n in range(3))
+    return len(str(value)),0,0
+
+
 def estimate_request_transient_bytes(
     operation: str,
     payload: Mapping[str, Any],
@@ -230,10 +264,10 @@ def estimate_request_transient_bytes(
             _positive_int(payload.get("max_tokens", payload.get("max_output_tokens")))
             or 2048
         )
-        serialized_chars = len(str(payload.get("messages", payload.get("input", ""))))
-        input_tokens = max(1, serialized_chars // 4)
+        text_chars,vision_tokens,image_bytes=_chat_input_budget(payload.get("messages",payload.get("input","")))
+        input_tokens = max(1, text_chars // 4) + vision_tokens
         token_budget = min(131_072, input_tokens + max_tokens)
-        return max(512 * MIB, token_budget * 256 * 1024 + safe_file_bytes * 4)
+        return max(512 * MIB, token_budget * 256 * 1024 + (safe_file_bytes + image_bytes) * 4)
     if operation in {"image_generation", "image_edit"}:
         geometry = _geometry_bytes(payload.get("size"), bytes_per_pixel=32)
         return max(1536 * MIB, geometry + safe_file_bytes * 6)

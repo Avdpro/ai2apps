@@ -266,7 +266,7 @@ assert.equal(state.availableModels.length, 2);
     assert "this.$refs.activeModelSelect.value = this.currentModel || '';" in load
 
 
-def test_chat_defaults_follow_standard_work_then_cloud_api_default():
+def test_chat_defaults_follow_explicit_chat_then_cloud_api_then_legacy_standard():
     html = CHAT_TEMPLATE.read_text()
     assignment = html.split("            const apiDefaultId =", 1)[1].split(
         "            this.reconcileCurrentModelAfterLoad", 1
@@ -280,7 +280,9 @@ def test_chat_defaults_follow_standard_work_then_cloud_api_default():
     script += "return this.preferredChatModel;}\n" + r'''
 const assert = require('node:assert/strict');
 const policy = {policy: {apiDefault: {modelId: 'provider/api'}}};
-assert.equal(preferred.call({}, {defaults: {work_standard: 'standard'}}, policy), 'standard');
+assert.equal(preferred.call({}, {defaults: {work_chat: 'explicit', work_standard: 'standard'}}, policy), 'explicit');
+assert.equal(preferred.call({}, {defaults: {work_standard: 'standard'}}, policy), 'cloud/ai2apps/provider/api');
+assert.equal(preferred.call({}, {defaults: {work_standard: 'standard'}}, {}), 'standard');
 assert.equal(preferred.call({}, {defaults: {work_standard: ''}}, policy), 'cloud/ai2apps/provider/api');
 assert.equal(preferred.call({}, {}, {}), null);
 const state = {...methods, availableModels: [{id: 'standard'}, {id: 'manual'}],
@@ -578,7 +580,9 @@ def test_chat_lifecycle_actions_call_backend_before_local_commit():
         html, "    async togglePinChat(chatId)", "    imageLimitReached()"
     )
 
-    assert "await this.flushBackendChatSync(chatId)" in delete_chat
+    assert "await this.flushBackendChatSync(chatId)" not in delete_chat
+    assert "await this.backendChatSyncPromises[chatId]?.catch(() => false)" in delete_chat
+    assert "expected_revision=${latest.revision}" in delete_chat
     assert "method: 'DELETE'" in delete_chat
     assert "method: 'PATCH'" in pin_chat
     assert "expected_revision: chat.backendRevision" in pin_chat

@@ -1,3 +1,212 @@
+### NXR-DESKTOP-RELEASE-2268-20261031
+
+- preparing: user requests next Desktop release. Candidate 0.1.8 / Build 2268.
+  Anonymous production probe confirms 2267 at 10000 basis points; this supersedes
+  historical pending-Cloud baseline notes below, without claiming target-Mac acceptance.
+  Scope: Knowledge mobile capture/grounded questions, grouped records and overlap,
+  optional semantic setup UI/shared MLX profile, multimodal resource estimation,
+  official RAG publication allowlist and audio model catalog type filtering.
+  Independent Runtime/Package publications and experimental research stay separate.
+- Isolated candidate starts at 36d074c3 (2267 receipt); live checkout and instance
+  data preserved. Production-source content comparison used instead of dirty index
+  diff. Native Swift gate passed (79 tests). Broad Python/frontend gates running.
+- Updated platform storage test expectations for schema 99 grouped-record tables
+  and schema 100 screenshot overlap; no production migration behavior changed.
+  User confirmed real phone upload/questions and grouped/overlap acceptance passed
+  on 2026-10-31; include these features in this candidate.
+  audio catalog latency remains unmeasured, so no measured speed claim is permitted.
+  No signed 2268 artifact, origin upload or Cloud rollout yet.
+- Release checks corrected obsolete Chat deletion assertions to match the already
+  accepted drain/read/delete contract, and made the crash test use schema+1 instead
+  of colliding with migration 99. 68 storage/Chat checks passed. Removed accidental
+  Knowledge locale entries from the visitor source-key map; real locale files retain
+  their translations. Initial frontend failures were missing dependencies/cwd in
+  the isolated test harness; rerun with the existing Python/Node/browser environment.
+
+### NXR-UNIFIED-MLX-KNOWLEDGE-RUNTIME-20261030
+
+- implemented / published / registry_verified: Runtime1.8.16 consolidates native
+  LanceDB/PyArrow dependencies into shared MLX layer. All 197 baseline distribution
+  versions unchanged; six vector dependencies added and included in SBOM. Old
+  separately published RAG Runtime remains immutable for legacy dependencies.
+  LanceDB0.1.1 and E5 0.1.4 now require Runtime>=1.8.16 with explicit capabilities.
+  E5 Host Python accepts3.11-3.13 and includes signed discovery/install/estimated
+  resource metadata. All three final signed packages published in dependency order.
+  Apple notarization/staple/Gatekeeper and Publisher signatures passed. Clean signed
+  installation and separate real Registry download/install acceptance passed: old
+  index retained, owner ACL/delete, actual384-dim E5 + Chinese hybrid retrieval,
+  ACPF ready, old Runtime removal, actual OXR (~10sec), restart/stop/uninstall.
+  83 relevant tests passed. Runtime Cloud/GitHub/ModelScope three sources active;
+  both mirror full size/SHA, four sample ranges and Cloud60 range/piece checks passed.
+  Signed Repository Snapshot353; macOS Knowledge ACPF source now uses shared MLX
+  profile. Fixed App Dev not restarted and its installed package state untouched;
+  source profile takes effect after normal Local restart. No Desktop release built.
+  User granted exact-version notarization/signing/publication and scoped Dev online
+  Cookie access; named release complete, that Cookie grant is now expired.
+  Limits: independent second-Mac and new cross-region/fault-injection acceptance
+  unavailable. Receipt: docs/ai2apps-unified-mlx-knowledge-runtime-release-20261030.json.
+
+### NXR-KNOWLEDGE-RAG-OFFICIAL-UPLOAD-20261030
+
+- implemented / published / registry_rag_verified: Cloud deployed exact official runtime-knowledge-rag service ID
+  support in the existing4GiB Runtime channel. Local Contract and Registry upload
+  allowlists now match;81 boundary/Registry tests passed including unknown namespace,
+  LanceDB ordinary limit, non-service and over-limit rejection. Original safety,
+  signature, review and immutable version rules retained. Signed clean installation
+  and real managed LanceDB upsert/search/delete/owner+bucket isolation passed.
+  Corrected unpublished Service Host Python requirement to >=3.11,<3.14; provider
+  stays locked to signed Python3.11 Runtime. Runtime0.1.1 then LanceDB0.1.0 published; clean Registry download, signatures,
+  dependencies, restart/stop/uninstall and real vector CRUD/ACL passed. Real E5
+  384-dimensional inference + passage indexing + hybrid Chinese query passed;
+  ACPF ready in isolated Host Python3.13 environment. Cloud/MS/GitHub full digest,
+  Range and Cloud28-piece validation passed; both immutable mirrors active and
+  signed Snapshot verified. Receipt:docs/ai2apps-knowledge-rag-packages-release-20261030.json.
+  App-Dev3.11 still conflicts with existing E5 0.1.3 >=3.12 Host metadata; no E5
+  Package publication or automatic fixed-instance migration performed.
+
+### NXR-KNOWLEDGE-RAG-PACKAGE-PUBLICATION-20261030
+
+- in_progress / blocked_cloud_contract: Prepared signed Runtime0.1.1 existing
+  notarized immutable artifact and Contract-v1 LanceDB0.1.0 with required Runtime
+  >=0.1.1,<1.0.0 and Python3.11. Publisher/key fingerprint matched current Cloud
+  publishing context. Runtime staple/Gatekeeper passed;8 Runtime unit tests passed;
+  final artifact compatibility gate passed. No publication performed: standard
+  submit preflight rejects203710397-byte RAG Runtime at25MiB ordinary submission
+  limit; large Runtime IDs currently only oMLX/CUDA. No bypass or dependent-only
+  release. Clean installation/smoke and publication acceptance remain outstanding.
+  Cloud handoff:ai2apps/docs/cloud-knowledge-rag-runtime-publication-requirements-20261030.md.
+  Evidence and signed candidates:ai2apps/.build/knowledge-rag-release/.
+
+### NXR-KNOWLEDGE-ACPF-DIALOG-STYLES-20261030
+
+- implemented: Knowledge full surface loaded ACPF JavaScript without its shared
+  capability_provisioning.css. Tier chooser consequently rendered in document
+  flow. Load the standard shared stylesheet in the owner template head, matching
+  other system Apps. No shared flow/authorization changes. Native App-Dev refreshed; actual centered sheet, dimmed/blurred
+  overlay, tier selection and footer controls verified visually. No installation
+  started. Evidence:ai2apps/.build/knowledge-acpf-dialog-fixed.png.
+
+### NXR-KNOWLEDGE-SEMANTIC-SETUP-BANNER-20261030
+
+- implemented: Desktop Knowledge shows a prominent persistent top banner when
+  semantic capability probe is optional/unavailable or indexing is degraded.
+  Explains keyword-only limitation, with direct existing ACPF ensure action.
+  Header degraded-state action also opens configuration instead of blindly
+  retrying the missing provider. Existing configure_only return acknowledgement
+  and index retry/polling reused; no installer/authorization bypass or automatic
+  installation on page load. Both Q&A and library views show the same banner.
+  UI-only HTML/CSS/i18n; JS syntax verified. Native App-Dev port60390
+  refreshed: top amber banner and configuration button verified; clicking opens
+  the existing ACPF tier chooser with LanceDB + Multilingual E5 Small. Cancelled
+  before installation/download confirmation. Screenshot:
+  ai2apps/.build/knowledge-semantic-setup-banner.png.
+
+### NXR-MOBILE-KNOWLEDGE-NATURAL-QUERY-20261030
+
+- implemented / regression_passed / app_dev_activated: Mobile Knowledge Q&A now consumes the existing
+  authorized hybrid retriever when ready. On zero hits in a nonempty visible corpus,
+  the selected Q&A model produces bounded bilingual keyword queries from the question
+  only; those queries go back through scoped authoritative retrieval. Model-proposed
+  IDs/content are never accepted as evidence. Empty scopes do not invoke the model.
+  Removed full-question substring fallback. Retrieved canonical item text (bounded)
+  preserves related fields from grouped OCR beyond a narrow lexical excerpt.
+  Root cause: full Chinese sentence passed literally to FTS, fallback required the
+  entire sentence in source; mobile never used hybrid retrieval. Embedding provider
+  is not installed/available on this App-Dev, so semantic retrieval remains degraded.
+  No automatic model Package installation or Cloud change.29 Mobile tests passed,
+  including Chinese question to English order lookup and canonical-source isolation.
+  Fixed App-Dev restarted via Helper after idle check; source-root/served resource
+  verification recorded in ai2apps/.build/mobile-natural-query-activation.log.
+  Keyword planning is fixture-tested; live phone/model answer acceptance remains.
+
+### NXR-MULTIMODAL-MEMORY-ADMISSION-20261030
+
+- implemented / regression_passed / app_dev_verified: Generic chat/responses memory estimator separates
+  inline image transport bytes from text context, using encoded image header
+  geometry for conservative vision tokens, counting decoded buffer separately.
+  Unknown/remote images retain a conservative allowance; no remote fetch, no
+  provider/App-name branches, no lowered Host safety margins or text context cap.
+  Actual App-Dev IMG_5044/5042 requests were estimated32.0/31.56GiB transient
+  because Base64 was counted as text; corrected estimates3.895GiB each. Host128GiB
+  with ~52GiB available requires19.2GiB safety plus3GiB resident: old estimate
+  rejects an idle slot; corrected estimate admits. UI confirmed OXR Host queued
+  with1/1 slot free and Worker evicted idle. 17 resource-estimator/admission tests and15 scheduler tests passed. Mandatory architecture boundary gate701 passed in272.34s. Fixed App-Dev restarted via Helper after idle
+  check, App/Helper live roots and served resources verified (port58719).
+  Both original user image tasks were retried through native Knowledge UI using
+  local OXR, completed527/900 characters; merged parent ready=1,1469 text chars,
+  two authoritative search chunks. Evidence:ai2apps/.build/multimodal-*.log and
+  multimodal-resource-live.json. No Runtime/Package publication.
+
+### NXR-KNOWLEDGE-MOBILE-PUBLIC-UPLOAD-20261030
+
+- implemented / focused_regression_passed: Fix Mobile Knowledge writes behind
+  authenticated public TLS ingress being rejected by a second Local HTTP Origin
+  comparison. Revalidate owner gateway authority, or consume the mobile session
+  state set by the verified principal provider; retain exact Local-origin checks
+  otherwise. Never trust forwarded headers or auth-type labels. Mobile error UI
+  now renders structured detail.message and validation arrays as text.
+  Evidence: actual App-Dev log POST /v1/mobile/knowledge/files 403
+  csrf_origin_mismatch;28 Mobile tests passed including proxied TLS grouped upload
+  and untrusted-origin rejection. 56 owner/self-managed/HTTP-security regressions passed (listener tests
+  require unsandboxed loopback). Fixed App-Dev restarted through Helper after idle
+  check; App/Helper source roots, live imported mobile_library path and served
+  JS hashes verified. Evidence:ai2apps/.build/knowledge-mobile-origin-*.log.
+  Physical-phone retry remains user acceptance.
+
+### NXR-KNOWLEDGE-SCREENSHOT-OVERLAP-20261030
+
+- implemented / regression_passed: Desktop/Mobile merged-file capture adds a
+  default-on, optional local OCR boundary-overlap detector. Adjacent images only,
+  multiple distinct lines and meaningful context required; numbers must agree,
+  whole-page duplicates and short repeated headers retained. Original OCR/assets
+  preserved; derived searchable text has per-chunk evidence. Desktop viewer reports
+  removed lines and raw extraction; ZIP includes both text forms. No image stitching
+  or extra model calls. Migration100 / standalone4.
+  Validation:98 focused overlap/OCR/mobile/system-task tests passed. Covers generic
+  text, invoice/header preservation, numeric differences, normalization, raw OCR,
+  indexed parent and option-off rebuild. Fixed App-Dev Local restarted via Helper after idle check; native title port55310,
+  live served Desktop/Mobile JS hashes and schema100 verified. Native merge option
+  and default-on overlap checkbox verified. App source-root metadata matches checkout.
+  Evidence:ai2apps/.build/knowledge-overlap-{tests,activation}.log and UI screenshot.
+  Synthetic before/after preview:ai2apps/.build/knowledge-overlap-demo.html; actual
+  multi-image OCR model acceptance remains for user-provided examples.
+  No shared AaAT execution/declaration/routing changes; no Cloud/Runtime publication.
+
+### NXR-KNOWLEDGE-GROUPED-FILES-20261030
+
+- implemented / regression_passed / app_dev_verified: Optional combine-as-one record in Desktop/Mobile file capture,
+  optional title, durable batch grouping and ordered original attachments. Each
+  media file retains its OCR/ASR/consent lifecycle; parent text aggregates with
+  provenance and is the only visible/searchable record. Auto filing waits for
+  extraction. Existing ungrouped imports/dedup remain independent. Migration99
+  and standalone schema3; bounded ZIP download and mobile original-file access.
+  Validation:127 related regressions passed; final focused rerun includes
+  additional media-recovery guard:74 passed. Mandatory AaAT boundary gate701 passed.
+  Two-image OCR aggregation/search, ordering, original preservation, hidden
+  attachment vector exclusion, existing dedup independence, migration, deletion,
+  authenticated mobile access and ZIP download covered with fixtures.
+  Fixed App-Dev Helper restart53900/schema99, App/Helper live source-root,
+  actual OCR module path, Desktop/Mobile served asset hashes verified. Native
+  merge checkbox defaults off; enabling reveals custom title/help. No synthetic
+  record saved to user data. Evidence:ai2apps/.build/knowledge-group-*.log and
+  activation JSON. No Cloud or Runtime publication.
+
+### NXR-MOBILE-KNOWLEDGE-CAPTURE-ASK-20261030
+
+- implemented / regression_passed / app_dev_activated: Owner Mobile Knowledge adds image/file-first capture, webpage and
+  secondary note entry; all-visible or single-bucket bounded grounded Q&A.
+  Explicit Knowledge owner endpoint composition reuses Desktop import/validation,
+  durable OCR/auto-bucket consent jobs. Mobile public exposure is a fixed narrow
+  operation list, not a Platform/admin proxy. Desktop composer now defaults to
+  Files and orders Files/Webpage/Note. Existing Gallery behavior retained.
+  Validation:64 focused Mobile/Knowledge Python cases passed; final Mobile25
+  rerun passed; mandatory AaAT boundary gate701 passed. Isolated390x844 browser
+  verified file-first composer, all/single-bucket Q&A, citations and no-evidence
+  behavior using a fixture model. Native Desktop verified Files/Webpage/Note
+  order and initial Files. App-Dev Helper restart49578, actual Mobile module
+  path and served JS/CSS hashes match checkout. No physical-phone/live-model
+  or production publication claim. Evidence:ai2apps/.build/mobile-knowledge-*.
+
 ### NXR-DESKTOP-RELEASE-2267-20261030
 
 - 2267 artifact release ready for Cloud handoff: clean source fbee5c826b0387704fdf4b739be8ef9987f6990d pushed; Developer ID signed, Apple509ea0a2-e31c-4170-9709-227cb0dd14dc Accepted/stapled/Gatekeeper verified. GH v0.1.8-build2267 and MS86094cfd60ae09be92d18ae8cacb2df6281a61f7 published; both anonymous full hashes/sizes and206Range passed. DMG268264389 bytes, SHA f9ffc11f8429f992be57b0b3601defde4714408083d269ab74b53aea5387f09c. Clean cold start/schema98, source audit and temporary2266→2267 updater passed. PyPI/Homebrew skipped. See docs/ai2apps-desktop-2267-cloud-release-handoff.md. Cloud publication and target-Mac acceptance remain pending; production baseline stays2266 until authoritative receipt.
@@ -12434,3 +12643,6 @@ Runtime profile、安装行为或发布流程的工作，都必须在完成该�
 - implemented / runtime_1.8.14_published / real_test_ui_passed / production_registry_verified: Real Test Agent run on installed Runtime 1.8.13 failed after a trusted declaration was appended as a system turn. Shared Worker bypassed existing oMLX prepare_system_messages_for_template, unlike the server path. Reuse that existing tokenizer-probed preparation in both completion modes with strict authority-preserving fallback; preserve stored history, tool pairs, media and non-system boundaries. No AS business special case or model-name inference. Generic stream/nonstream and arbitrary-provider tests added. Runtime 1.8.14 candidate build underway; no reuse of expired 1.8.13 Dev Cookie authorization.
 
 - NXR-WORKER-SYSTEM-PLACEMENT-20261030 complete: 595 focused tests and 701 AaAT gates passed; source real Qwen3.8 exact failed-request replay and Qwen3.5 system-position/continuation passed. Apple notarization e6e576a3-f122-4f94-b204-1653b455884c Accepted; staple, Gatekeeper, Publisher signature and compatibility passed. Final signed isolated install plus native Test Agent run_958586f0de404569a3c39d2fb9fb8568 produced/displayed actual panda image art_b43171b0a39e4c45b1efee6208f33472 with one-time approval before publication. Published Runtime 1.8.14 submission 95e8f9f9-19ae-4188-82ad-a5df5500f796; final signed metadata 340; Cloud/GitHub/immutable ModelScope active after full SHA-256, size, Range, piece and Cloud independent validation. SHA-256 5d4d03fdb995da5e928d26737d6bc59a98d98151612c8610e77f11a4765a9c13, size 379944339. Fresh production Registry installation and lifecycle passed. Test native Discover official upgrade completed and displays local/server 1.8.14; dependency lock verified. Preserved existing data and returned UI to generated image conversation. Explicit 1.8.14 authorization resolved automatic notarization review rejection; Dev browser-live grant completed/expired. Receipt: docs/ai2apps-runtime-1.8.14-release-2026-10-30.json. No independent second-Mac acceptance.
+
+### NXR-AUDIO-STARTUP-20261031
+- 状态：implemented_pending_live_validation。音频生成模型目录增加声明级类型过滤，在实例、凭据、依赖与权重检查前排除无关模型，减少歌曲/音效启动时重复扫描的成本。61 项回归通过；1 项既有 DeepSeek distribution ID 预期不一致失败，与改动无关。跨模型类型过滤与目录等价验证覆盖；未重启 App-Dev、未测量实机耗时、不修改签名 Package。

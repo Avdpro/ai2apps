@@ -2862,5 +2862,13 @@
   "knowledge.composer.auto_help": "先提取内容，再由 AI 选择已有的私有知识桶；处理前暂存在收件箱。没有可用模型时保留待归类，非隐私模型会先征求同意。",
   "knowledge.composer.routing": "自动归类",
   "knowledge.composer.routing_consent": "允许使用 {model} 读取此条目的提取文本及私有知识桶名称，选择归属知识桶吗？",
-  "knowledge.composer.routing_pending": "内容提取完成后自动归类；没有可用模型时保留在收件箱。"
+  "knowledge.composer.routing_pending": "内容提取完成后自动归类；没有可用模型时保留在收件箱。",
+  "knowledge.composer.merge": "合并为一条知识",
+  "knowledge.composer.merge_title": "例如：本周购物单",
+  "knowledge.composer.merge_help": "按选择顺序保留全部附件，分别提取文字，汇总为同一条可搜索的知识记录。",
+  "knowledge.composer.overlap": "识别连续截图的重叠内容",
+  "knowledge.semantic.setup_title": "语义检索尚未就绪",
+  "knowledge.semantic.setup_help": "当前使用关键词检索，可能漏掉同义表达。配置语义模型与索引服务后，将为已有知识自动补建索引。",
+  "knowledge.semantic.setup_action": "配置语义检索",
+  "knowledge.semantic.setting_up": "正在配置…"
 }

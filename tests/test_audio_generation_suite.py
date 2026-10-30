@@ -56,7 +56,7 @@ def fixture(monkeypatch,*,fail=False,song=False,english=True):
     monkeypatch.setattr(StudioCapabilityBroker, "_task_completion", completion)
     model=SimpleNamespace(id='model/music',display_name='Music',model_type='audio_generation',endpoint=None,
         checkpoint_ready=True,endpoints={'audio_generate':'/v1/audio/generations'},metadata={'audio_generation':{'task':'music','minimum_duration':1,'maximum_duration':120,'lyrics':False}})
-    monkeypatch.setattr(generation,'list_package_models',lambda runtime:(model,))
+    monkeypatch.setattr(generation,'list_package_models',lambda runtime, **filters:(model,))
     if song:
         model.metadata['audio_generation'].update(lyrics=True,workflow='ai2apps.song-generation/v1',planning_modes=['full','melody','off'],max_semantic_tokens=3000)
     if english:
