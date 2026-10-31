@@ -1,5 +1,25 @@
 ### NXR-DESKTOP-RELEASE-2268-20261031
 
+- artifact_published_pending_cloud: Apple 30d2e70c-0b3b-4edb-99a3-9de9bcf8c1f0
+  Accepted/stapled/Gatekeeper; GitHub v0.1.8-build2268 and ModelScope immutable
+  c99d4cd80338d8ea29f01720ca168b0f29be3de8 published. Both anonymous full-file
+  size/SHA-256 and exact Range206 checks passed. DMG 268276357 bytes,
+  SHA256 3fb1e8ab81edd0bb6f9830b547af18080a5fc8f9b1e1d3cdd7a31ba3126d16d1.
+  PyPI/Homebrew runs 41148341292/41148341319 skipped. Update eligibility
+  2267→2268 passed. Final anonymous production read remains 2267/10000bp.
+  Cloud and target-Mac full upgrade acceptance remain pending; no Dev Cookie used.
+  Exact inputs, scope, limitations and execution requirements:
+  docs/ai2apps-desktop-2268-cloud-release-handoff.md.
+- Candidate signed: product build cfe9647c, final release source
+  a000d0971e7288d7445829843c97bad88edf43d0 (CI-only follow-up), both pushed.
+  App 717562729 bytes; compact cloud Runtime only. Frozen-source content audit
+  and fresh-data cold start passed in 3.709s with schema 100.
+  Host 2917 passed/2 skipped; frozen functionality 90 passed; Swift 79 passed;
+  storage/Chat 68 passed; frontend 1033 plus final 8 checks passed; separate iOS
+  contract 2 passed. AaAT snapshot 699 passed, two fixture/CI gaps resolved by
+  syncing the existing CI gate (27 architecture checks passed) and testing the
+  independent Package source bindings in the full checkout (19 passed).
+  Apple submission 30d2e70c-0b3b-4edb-99a3-9de9bcf8c1f0 pending.
 - preparing: user requests next Desktop release. Candidate 0.1.8 / Build 2268.
   Anonymous production probe confirms 2267 at 10000 basis points; this supersedes
   historical pending-Cloud baseline notes below, without claiming target-Mac acceptance.
