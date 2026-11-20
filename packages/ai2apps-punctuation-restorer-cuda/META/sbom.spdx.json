@@ -1,0 +1,27 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "ai2apps-punctuation-restorer-cuda-0.1.0",
+  "documentNamespace": "https://ai2apps.com/spdx/ai2apps-punctuation-restorer-cuda/0.1.0",
+  "packages": [
+    {
+      "SPDXID": "SPDXRef-PunctuationAdapter",
+      "name": "AI2Apps punctuation adapter",
+      "versionInfo": "0.1.0",
+      "downloadLocation": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "NOASSERTION",
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "SPDXID": "SPDXRef-CTTransformer",
+      "name": "CT-Transformer ONNX INT8 external checkpoint",
+      "versionInfo": "5cccf43af83e4fc50d1d55b8410312e87709be70",
+      "downloadLocation": "https://huggingface.co/ranger810/sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8",
+      "licenseDeclared": "Apache-2.0",
+      "licenseConcluded": "Apache-2.0",
+      "copyrightText": "NOASSERTION"
+    }
+  ]
+}

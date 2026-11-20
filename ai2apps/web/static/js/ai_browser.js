@@ -99,7 +99,7 @@ function aiBrowserApp() {
             await this.refreshMiniApps();
             if(this.shellBrowserNavigation('available')){
                 const id=new URLSearchParams(location.hash.slice(1)).get('ai2apps-browser-detail');
-                if(id){const item=this.miniApps.find(item=>item.id===id);if(item){await this.openMiniApp(item,false);if(this.$nextTick)this.$nextTick(()=>this.shellBrowserNavigation('ready'));else this.shellBrowserNavigation('ready');}}
+                if(id){const item=this.miniApps.find(item=>item.id===id);if(item){await this.openMiniApp(item,false,false);if(this.$nextTick)this.$nextTick(()=>this.shellBrowserNavigation('ready'));else this.shellBrowserNavigation('ready');}}
             }
             this.onMiniAppTask=()=>{void this.refresh();};
             window.addEventListener('ai2apps:web-agent-submitted',this.onMiniAppTask);
@@ -114,14 +114,15 @@ function aiBrowserApp() {
             window.addEventListener('message',this.onMiniAppRetry);
             if(!this.mobileMode)void profilesReady.then(()=>this.connectProfileStatus()).catch(error=>this.fail(error));
             this.connectWorkspaceEvents();
+            this.stopPackageActivation=window.AI2AppsStudioPackages?.watchActivation(()=>this.refreshActivePackageMiniApp());
             this.onWorkspaceFocus=()=>{void this.refresh();void this.refreshMiniApps();};
             window.addEventListener('focus',this.onWorkspaceFocus);
             window.addEventListener('pagehide',()=>this.destroy(),{once:true});
         },
-        destroy() { window.removeEventListener?.('popstate',this.onMobileHistory);window.removeEventListener?.('message',this.onMiniAppRetry);window.removeEventListener?.('ai2apps:web-agent-submitted',this.onMiniAppTask);this.clearNotice();this.taskStream?.close();clearTimeout(this.metadataTimer);this.eventStream?.close();this.eventStream=null;window.removeEventListener?.('focus',this.onWorkspaceFocus);clearInterval(this.timer);void this.statusConnection?.close(); for(const session of this.sessions.values()) void session.connection.close(); },
+        destroy() { this.stopPackageActivation?.(); window.removeEventListener?.('popstate',this.onMobileHistory);window.removeEventListener?.('message',this.onMiniAppRetry);window.removeEventListener?.('ai2apps:web-agent-submitted',this.onMiniAppTask);this.clearNotice();this.taskStream?.close();clearTimeout(this.metadataTimer);this.eventStream?.close();this.eventStream=null;window.removeEventListener?.('focus',this.onWorkspaceFocus);clearInterval(this.timer);void this.statusConnection?.close(); for(const session of this.sessions.values()) void session.connection.close(); },
         async installMiniApps(){
             this.moreMiniApps=false;
-            try{await window.AI2AppsCapabilities.openMiniAppPackages({placement:'ai2apps.ai-browser'});await this.refreshMiniApps();}catch(error){this.fail(error);}
+            try{await window.AI2AppsStudioPackages.install('ai2apps.ai-browser',()=>this.refreshMiniApps());}catch(error){this.fail(error);}
         },
         async customizeMiniApp(){
             if(this.customMiniAppBusy||!this.customMiniAppName||!this.customMiniAppRequest)return;
@@ -135,22 +136,37 @@ function aiBrowserApp() {
                 if(window.ai2appsShell?.openEntry)await window.ai2appsShell.openEntry({appId:'ai2apps.coder'});else window.open('/apps/ai2apps.coder','_top');
             }catch(error){this.fail(error);}finally{this.customMiniAppBusy=false;}
         },
-        async refreshMiniApps(){
+        refreshMiniApps() {
+            this.packageCatalogRequest ??= this.loadMiniApps().finally(() => { this.packageCatalogRequest = null; });
+            return this.packageCatalogRequest;
+        },
+        async loadMiniApps() {
             if(!window.AI2AppsStudioMiniApps){this.miniAppsState='error';return;}
             this.miniAppsState='loading';
             try{
                 const catalog=await window.AI2AppsStudioMiniApps.list('ai2apps.ai-browser');
-                this.miniApps=catalog.items.filter(item=>['package','builtin'].includes(item.source)&&item.web_agent);
+                this.miniApps=catalog.items.filter(item=>['package','builtin'].includes(item.source)&&(item.web_agent||item.owner_service?.host==='ai2apps.ai-browser'));
                 this.miniAppsState='ready';
                 this.refreshIcons();
                 for(const [key,item] of this.frames)if(key.startsWith('mini-app:')&&
-                    !this.miniApps.some(app=>app.id===item.miniAppId&&app.provider?.digest===item.digest)){
+                    !this.miniApps.some(app=>app.id===item.miniAppId)){
                     item.frame.remove();this.frames.delete(key);
                 }
                 this.updateFrames();
             }catch(error){this.miniAppsState='error';this.fail(error,this.tr('ai_browser.workspace.load_mini_apps_failed'));}
         },
-        async openMiniApp(item,push=true){
+        async refreshActivePackageMiniApp(){
+            const id=this.view==='mini-app'&&(!this.mobileMode||this.mobileSurface==='workspace')?this.miniAppId:'';
+            await this.refreshMiniApps();
+            if(!id||this.view!=='mini-app'||this.miniAppId!==id||
+                (this.mobileMode&&this.mobileSurface!=='workspace'))return;
+            const item=this.currentMiniApp;
+            const record=this.frames.get('mini-app:'+id);
+            if(item?.source==='package'&&(!record||record.revision!==(window.AI2AppsStudioPackages?.revision(item)||''))){
+                await this.openMiniApp(item,false,false);
+            }
+        },
+        async openMiniApp(item,push=true,refreshCatalog=true){
             if(this.miniAppLoading)return;
             if(push&&this.shellBrowserNavigation('open',item.id))return;
             this.setupMobileHistory();
@@ -161,11 +177,25 @@ function aiBrowserApp() {
             }
             this.navTab='apps';this.miniAppId=item.id;this.view='mini-app';if(this.mobileMode)this.mobileSurface='workspace';
             this.updateFrames();
-            const key='mini-app:'+item.id;
-            if(this.frames.has(key)){this.updateFrames();if(this.chatOpen)await this.mountMiniAppChat();return;}
+            const id=item.id,key='mini-app:'+id;
             this.miniAppLoading=true;
             try{
+                if(refreshCatalog&&item.source==='package'){
+                    await this.refreshMiniApps();
+                    item=this.currentMiniApp;
+                    if(item?.id!==id||this.view!=='mini-app'||(this.mobileMode&&this.mobileSurface!=='workspace'))return;
+                }
+                const previous=this.frames.get(key);
+                const revision=window.AI2AppsStudioPackages?.revision(item)||'';
+                if(previous?.revision===revision)return;
                 const mount=await window.AI2AppsStudioMiniApps.mount('ai2apps.ai-browser',item.id);
+                if(!mount.content_url)throw Error('Mini-App content URL is unavailable');
+                if(this.chatBridgeMini===id){
+                    this.packageChatBridge?.dispose();
+                    this.packageChatBridge=null;
+                    this.chatBridgeMini=null;
+                }
+                previous?.frame.remove();
                 const frame=document.createElement('iframe');
                 frame.className='aib-frame aib-package-mini-app-frame';
                 frame.title=item.name||item.title||item.id;
@@ -173,7 +203,7 @@ function aiBrowserApp() {
                 // Installed Packages are opaque; trusted Development sources can load their indexed assets.
                 frame.referrerPolicy='no-referrer';frame.src=mount.content_url;
                 document.getElementById('aib-frames').append(frame);
-                this.frames.set(key,{frame,miniAppId:item.id,digest:item.provider?.digest});
+                this.frames.set(key,{frame,miniAppId:id,revision:window.AI2AppsStudioPackages?.revision(item,mount)||''});
                 this.updateFrames();
             }catch(error){this.fail(error,this.tr('ai_browser.workspace.open_mini_app_failed'));}
             finally{this.miniAppLoading=false;if(this.chatOpen)void this.mountMiniAppChat();}
@@ -190,7 +220,7 @@ function aiBrowserApp() {
                     if(item){
                         const key='mini-app:'+selected;
                         this.frames.get(key)?.frame.remove();this.frames.delete(key);
-                        await this.openMiniApp(item);
+                        await this.openMiniApp(item,true,false);
                     }
                 }
             }catch(error){this.fail(error);}

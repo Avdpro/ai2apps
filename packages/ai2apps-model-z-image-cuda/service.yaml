@@ -1,0 +1,120 @@
+schema: ai2apps.service/v1
+id: ai2apps.model.z-image-cuda
+name: Z-Image Turbo CUDA
+description: Pinned official BF16 CUDA image models; signed installation and remaining
+  quality acceptance pending.
+version: 0.1.0
+publisher:
+  id: ai2apps
+license:
+  name: Apache License 2.0
+  id: Apache-2.0
+  path: LICENSE
+runtime:
+  mode: process
+  protocol: ai2apps-model-worker/v1
+  provider: ai2apps.runtime.cuda-torch
+  adapter: src/worker_adapter.py:create_adapter
+models:
+- id: ai2apps.model.z-image-cuda/turbo
+  display_name: Z-Image Turbo CUDA BF16
+  model_type: image_generation
+  upstream_id: Tongyi-MAI/Z-Image-Turbo
+  capabilities:
+  - image_generation
+  - text_rendering
+  - multilingual
+  - local
+  - cuda
+  weights:
+    provider: huggingface
+    repo_id: Tongyi-MAI/Z-Image-Turbo
+    revision: f332072aa78be7aecdf3ee76d5c247082da564a6
+    preparation:
+      recipe: native
+  metadata:
+    family: z-image
+    implementation: diffusers-cuda
+    variant: z-image-turbo
+    device_recommendation:
+      minimum_memory_gib: 48
+      preferred_memory_gib: 64
+      quality_rank: 4
+  image_capabilities:
+    schema: ai2apps.image-capabilities/v1
+    operations:
+    - image_generation
+    inputs:
+      reference_images:
+        minimum: 0
+        maximum: 0
+    formats:
+      input:
+      - png
+      - jpeg
+      - webp
+      output:
+      - png
+      - jpeg
+      - webp
+    geometry:
+      minimum:
+        width: 256
+        height: 256
+      maximum:
+        width: 2048
+        height: 2048
+      multiple_of: 32
+      ratios:
+      - '1:1'
+      - '4:3'
+      - '3:4'
+      - '16:9'
+      - '9:16'
+      - '3:2'
+      - '2:3'
+    defaults:
+      width: 1024
+      height: 1024
+      steps: 9
+      guidance: 0.0
+      output_format: png
+    execution:
+      quantizations:
+      - bf16
+      max_concurrency_per_device: 1
+capabilities:
+- image-generation
+- z-image
+requires:
+  services:
+  - id: ai2apps.runtime.cuda-torch
+    version: '>=0.6.0,<1.0.0'
+    optional: false
+    capabilities:
+    - cuda
+    - model-worker-v1
+    - image-generation
+  python: '>=3.11,<3.14'
+permissions:
+  network:
+    outbound: false
+  model_weights:
+    huggingface_cache: read
+    reason: Read only the Host-selected pinned Z-Image checkpoint.
+  accelerator:
+    cuda: true
+    reason: Run BF16 CUDA image inference.
+compatibility:
+  os:
+  - linux
+  architectures:
+  - arm64
+  - aarch64
+health:
+  path: /health
+  startup_timeout_seconds: 180
+restart:
+  max_attempts: 2
+  base_delay_seconds: 2
+tools: []

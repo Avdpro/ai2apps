@@ -73,7 +73,7 @@
   const report=(phase,code,response,text='')=>diagnostic.record({...base,phase,code,response_path:response?.url?new URL(response.url).pathname.split('/').map(part=>part.length>32||/^[a-f0-9-]{16,}$/i.test(part)?':id':part).join('/').slice(0,500):'',redirected:!!response?.redirected,status:response?.status||0,relay_status:response?.status||0,content_type:(response?.headers.get('content-type')||'').slice(0,128),response_bytes:Math.min(33554432,new TextEncoder().encode(text).length),response_kind:kind(text),elapsed_ms:Math.min(600000,Math.round(performance.now()-started))});
   let response;
   try{
-   response=await nativeFetch(config.bridge,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({method:'request',verb:request.method,path:url.pathname+url.search,headers,body:encode(new Uint8Array(await request.arrayBuffer()))})});
+   response=await nativeFetch(config.bridge,{method:'POST',credentials:'same-origin',signal:request.signal,headers:{'Content-Type':'application/json'},body:JSON.stringify({method:'request',verb:request.method,path:url.pathname+url.search,headers,body:encode(new Uint8Array(await request.arrayBuffer()))})});
   }catch(error){report('network','mobile_gateway_network_error');throw error;}
   let text;
   try{text=await response.text();}catch(error){report('network','mobile_gateway_body_interrupted',response);throw error;}

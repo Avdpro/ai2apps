@@ -23,6 +23,7 @@ from packaging.specifiers import SpecifierSet
 from packaging.version import Version
 
 from ai2apps.cloud_client import AI2AppsCloudClient
+from ai2apps.comapps import LEGACY_PACKAGE_ID as COMAPPS_PACKAGE_ID
 from ai2apps.download_progress import DownloadProgress
 from ai2apps.extensions import ExtensionError, UnitKind
 from ai2apps.extensions.models import BundleFile, InspectedBundle
@@ -252,6 +253,9 @@ class RegistryPackageManager:
             value = json.loads(self.state_path.read_text(encoding="utf-8"))
         except (FileNotFoundError, json.JSONDecodeError, OSError):
             return {"metadataVersion": 0, "installed": {}}
+        installed = value.get("installed") if isinstance(value, dict) else None
+        if isinstance(installed, dict):
+            installed.pop(COMAPPS_PACKAGE_ID, None)
         return (
             value
             if isinstance(value, dict)
@@ -2144,6 +2148,8 @@ class RegistryPackageManager:
         expected_target: dict[str, Any] | None = None,
         progress: Callable[[dict[str, Any]], None] | None = None,
     ):
+        if f"{namespace}/{name}" == COMAPPS_PACKAGE_ID:
+            raise RegistryError("reserved_system_app", "ComApps is built into AI2Apps")
         if expected_target is not None:
             from .capability_catalog import validate_target
             try:expected_target=validate_target(expected_target,f"{namespace}/{name}",version)
@@ -2202,6 +2208,8 @@ class RegistryPackageManager:
         downloaded=None,
     ):
         package_id = f"{namespace}/{name}"
+        if package_id == COMAPPS_PACKAGE_ID:
+            raise RegistryError("reserved_system_app", "ComApps is built into AI2Apps")
         if package_id in stack:
             raise RegistryError(
                 "dependency_cycle",
@@ -2411,7 +2419,6 @@ class RegistryPackageManager:
             item = dict(stored)
             if (
                 item.get("packageType") == "app"
-                and not item.get("miniApps")
                 and self.extension_manager is not None
             ):
                 try:
@@ -2424,6 +2431,9 @@ class RegistryPackageManager:
                     mini_apps = mini_app_catalog_from_app_manifest(effective.manifest)
                     if mini_apps:
                         item["miniApps"] = mini_apps
+                    item["appNavigation"] = {
+                        "launcher": effective.manifest.get("navigation", {}).get("launcher", True)
+                    }
             discovery = catalog_discovery(item)
             if discovery is not None:
                 item["discovery"] = discovery

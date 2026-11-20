@@ -9,6 +9,7 @@ from ai2apps.browser.mini_apps import WebAgentMiniAppBroker
 from ai2apps.research import search_preparation as prep, search_workflow as workflow
 from ai2apps.services import ToolProviderError
 from test_app_interactions import runtime, wait
+from test_app_chat_durable import bind_identity
 
 @pytest.fixture
 def prepared(runtime,monkeypatch):
@@ -92,6 +93,34 @@ async def test_durable_workflow_reads_bodies_and_cites_only_read_sources(runtime
     finally:await runtime.stop_background_tasks()
 
 @pytest.mark.asyncio
+async def test_search_tool_returns_observed_links_when_all_article_reads_fail(runtime, prepared, monkeypatch):
+    from unittest.mock import AsyncMock
+
+    actor, thread, mini, state, _ = prepared
+    confirmed = prep.confirm(runtime, actor, mini, state['id'],
+        values(prepared, mode='fast', sources=['google']), scope='app:app')
+    url = 'https://sqlite.org/wal.html'
+    search = AsyncMock(return_value={'results': [
+        {'title': 'SQLite WAL', 'url': url, 'snippet': 'Unverified snippet', 'search_source': 'google'},
+    ]})
+    read = AsyncMock(side_effect=TimeoutError)
+    monkeypatch.setattr('ai2apps.research.mini_apps.WebMiniAppAdapters.search', search)
+    monkeypatch.setattr('ai2apps.research.mini_apps.WebMiniAppAdapters.fetch', read)
+    context = SimpleNamespace(actor_user_id=actor.actor_user_id, installation_id=actor.installation_id,
+        session_id=thread.session.id, trace_id=None, invocation_id=None, report_progress=AsyncMock())
+    await runtime.start_background_tasks(retention_interval_seconds=60)
+    try:
+        result = await workflow.invoke(runtime, {'confirmation_id': confirmed['confirmation_id']}, context)
+        assert result['coverage'] == 'links_only' and result['status'] == 'partial'
+        assert result['results'] == [{'title': 'SQLite WAL', 'url': url}]
+        assert result['candidate_count'] == 1
+        assert len(result['read_failures']) == 1 and result['read_failures'][0]['url'] == url
+        assert runtime.agents.get_run(result['workflow_run_id']).error['code'] == 'no_readable_sources'
+        assert read.await_count == 1
+    finally:
+        await runtime.stop_background_tasks()
+
+@pytest.mark.asyncio
 async def test_agent_parameter_form_uses_shared_preparation_and_confirmation(runtime,prepared,monkeypatch):
     import httpx
     from fastapi import FastAPI
@@ -170,7 +199,7 @@ async def test_general_agent_waits_for_search_confirmation_then_returns_shared_r
         if alias is None:
             discover=next(t['function']['name'] for t in request['tools'] if t['function']['name'].startswith('app__describe'))
             return {'choices':[{'message':{'role':'assistant','content':None,'tool_calls':[{'id':'describe','type':'function','function':{'name':discover,'arguments':json.dumps({'capability':'web.search'})}}]},'finish_reason':'tool_calls'}]}
-        return {'choices':[{'message':{'role':'assistant','content':None,'tool_calls':[{'id':'search','type':'function','function':{'name':alias,'arguments':json.dumps({'query':'SQLite WAL?'})}}]},'finish_reason':'tool_calls'}]}
+        return {'choices':[{'message':{'role':'assistant','content':None,'tool_calls':[{'id':'search','type':'function','function':{'name':alias,'arguments':json.dumps({'query':'SQLite WAL?','provider':'ai2apps.search-all.search'})}}]},'finish_reason':'tool_calls'}]}
     runtime.agent_runtime.bind_model_provider(model)
     run,_=runtime.agents.create_run(session_id=thread.session.id,agent_key='ai2apps.general-agent',input={'model':'model','prompt':'Research SQLite WAL'})
     app=FastAPI();app.include_router(create_ai2apps_router(runtime_provider=lambda:runtime,principal_provider=RequestPrincipal.legacy_local))
@@ -448,3 +477,87 @@ def test_fast_failed_page_is_replaced_from_same_confirmed_pool_without_rereading
     steps['read:3']=SimpleNamespace(output={'read':True,'text':'replacement original body'})
     assert workflow.readable_results(found,steps.get)==rows[:4]
     assert workflow.readable_results(found)==rows[:3]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('cloud_only,explicit_cloud', [(False, False), (True, False), (True, True)])
+async def test_bot_search_runs_without_parameter_form_or_unapproved_cloud(
+    runtime, prepared, bind_identity, monkeypatch, cloud_only, explicit_cloud,
+):
+    from ai2apps.messager.bots import REGISTRATION, install
+    from test_app_chat_durable import response
+    from test_bot_dialogue import job_wait
+
+    actor, _, mini, _, _ = prepared
+    install(runtime)
+    monkeypatch.setattr('ai2apps.research.search_preparation.fast_source',
+                        lambda *a: 'deepseek' if cloud_only else 'google')
+    monkeypatch.setattr('ai2apps.browser.search_api.byok_available', lambda *a: False)
+    monkeypatch.setattr('ai2apps.research.search_workflow.resolve_task_model', lambda *a: 'fixture')
+    bot = runtime.messager_bots.create('local', 'Research fixture', 'Find original sources')
+    access = runtime.messager_bot_app_access
+    catalog = access.catalog('local', bot['id'])
+    provider = runtime.app_capability_router.providers[workflow.PROVIDER]
+    access.save('local', bot['id'], catalog['revision'], catalog['review_hash'],
+                [{'app_id': access.target(provider), 'enabled': True}])
+    sid = runtime.app_chat.open(actor, REGISTRATION, {'bot_id': bot['id']}, {})
+    calls = []
+
+    async def search(self, args, context):
+        calls.append(args)
+        assert args['query'] == 'SQLite WAL official documentation'
+        assert args['sources'] == ['google']
+        assert args['limit'] == 8
+        return {'query': args['query'], 'results': [{
+            'url': 'https://sqlite.org/wal.html', 'title': 'SQLite WAL',
+            'browser_task_id': 'source', 'search_source': 'google',
+        }]}
+
+    async def read(self, args, context):
+        return {'url': args['url'], 'title': 'SQLite WAL', 'text': 'Read original WAL body.'}
+
+    async def model(request):
+        if 'Decide quickly' in request['messages'][0]['content']:
+            return response(text=json.dumps({'kind':'task', 'title':'Find original WAL facts', 'text':'Queued'}))
+        if 'tools' not in request:
+            return response(text=json.dumps({'overview':'WAL overview',
+                'points':[{'text':'WAL fact','source_ids':['1']}],'limitations':''}))
+        tool_results = [json.loads(m['content']) for m in request['messages'] if m.get('role') == 'tool']
+        if any('articles' in result for result in tool_results):
+            return response(text='WAL fact [[cite:S1]]')
+        if any('error' in result for result in tool_results):
+            raise AssertionError(tool_results[-1])
+        if not any(t['function']['name'].startswith('web__search_') for t in request['tools']):
+            return response('app.describe', {'capability': 'web.search'})
+        args = {'query': 'SQLite WAL official documentation', 'mode': 'fast', 'limit': 8,
+                'provider': workflow.PROVIDER}
+        if explicit_cloud:
+            args['sources'] = ['deepseek']
+        return response('web.search', args)
+
+    monkeypatch.setattr('ai2apps.research.mini_apps.WebMiniAppAdapters.search', search)
+    monkeypatch.setattr('ai2apps.research.mini_apps.WebMiniAppAdapters.fetch', read)
+    runtime.agent_runtime.bind_model_provider(model)
+    await runtime.start_background_tasks(retention_interval_seconds=60)
+    try:
+        source = runtime.messager_dialogue.submit(actor, bot['id'], sid, 'autonomous-search',
+                                                 'Find official WAL facts', 'fixture', [])
+        await wait(runtime, source, 'completed')
+        status = 'running' if explicit_cloud else 'completed'
+        job = await job_wait(runtime, source, status)
+        rid = job['worker_run']
+        if explicit_cloud:
+            await wait(runtime, rid, 'waiting_input')
+            assert runtime.agents.list_interactions(rid)[0].request['control'] == 'parameter_form'
+            assert not calls and not runtime.agents.list_children(rid)
+            return
+        completed = await wait(runtime, rid, 'completed')
+        assert not runtime.agents.list_interactions(rid)
+        assert len(calls) == 1
+        child, = runtime.agents.list_children(rid)
+        assert child.status.value == 'completed'
+        assert 'https://sqlite.org/wal.html' in json.dumps(completed.output)
+        assert not runtime.agents.list_interactions(child.id)
+        assert any('WAL fact' in item['content'] for item in runtime.app_chat.message_page(actor, sid)['items'])
+    finally:
+        await runtime.stop_background_tasks()

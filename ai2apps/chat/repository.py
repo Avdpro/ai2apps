@@ -768,6 +768,22 @@ class ChatRepository:
         except sqlite3.IntegrityError as exc:
             raise ResourceConflictError(str(exc)) from exc
 
+    @staticmethod
+    def _agent_owned_messages(connection, session_id):
+        """Only persisted Run bindings establish ownership, never UI metadata."""
+        rows = connection.execute(
+            """SELECT m.*, r.id AS run_id, r.status AS run_status FROM messages m JOIN agent_runs r
+               ON r.session_id=m.session_id AND r.parent_run_id IS NULL
+               AND (m.idempotency_key='agent-run:' || r.id || ':' || m.role
+                    OR (m.role='user' AND m.id=json_extract(r.input_json,'$.message_id')))
+               WHERE m.session_id=? AND m.role IN ('user','assistant')""", (session_id,)).fetchall()
+        return {(row['run_id'], row['role']): dict(row) for row in rows}
+
+    @staticmethod
+    def _message_run(metadata):
+        value = metadata.get('agent_run_id') or metadata.get('_agentRunId')
+        return value if isinstance(value, str) else None
+
     def get_content(self, session_id: str) -> ChatContentRecord:
         thread = self.get_thread(session_id)
         with self.database.transaction() as connection:
@@ -781,8 +797,15 @@ class ChatRepository:
                 """,
                 (session_id,),
             ).fetchall()
+            owned = self._agent_owned_messages(connection, session_id)
         messages: list[LegacyChatMessageInput] = []
         for row in rows:
+            row_metadata = json.loads(row['metadata_json'])
+            canonical = owned.get((self._message_run(row_metadata), row['role']))
+            if canonical and canonical['id'] != row['id']:
+                # Legacy optimistic copies are UI aliases of this exact Run.
+                # Leave history untouched; execution still reads original records.
+                continue
             content_data = json.loads(row["content_json"])
             content = (
                 content_data.get("text", "")
@@ -829,6 +852,37 @@ class ChatRepository:
                 raise ResourceConflictError('A Chat reply is still running; reload its state')
             protected = {row['id']: dict(row) for row in connection.execute(
                 "SELECT m.id,m.idempotency_key,m.metadata_json,p.content_json FROM messages m JOIN message_parts p ON p.message_id=m.id AND p.position=0 WHERE m.session_id=? AND m.idempotency_key LIKE 'chat-turn:%:assistant'", (session_id,))}
+            owned = self._agent_owned_messages(connection, session_id)
+            owned_by_id = {row['id']: row for row in owned.values()}
+            resumable_ids = {row['id'] for row in owned.values()
+                             if row['run_status'] not in ('completed', 'failed', 'cancelled')}
+            owned_parts = {identifier: [dict(part) for part in connection.execute(
+                'SELECT * FROM message_parts WHERE message_id=? ORDER BY position', (identifier,))]
+                for identifier in owned_by_id}
+            pending_inputs = {row['id'] for row in connection.execute(
+                "SELECT id FROM agent_runs WHERE session_id=? AND parent_run_id IS NULL "
+                "AND (json_extract(input_json,'$.prompt') IS NOT NULL OR json_extract(input_json,'$.content') IS NOT NULL)",
+                (session_id,))}
+            # Coalesce only exact persisted Run identities. UI text and attachment
+            # projections cannot replace runtime inputs, outputs or their keys.
+            entries, retained = [], set()
+            for message in messages:
+                run_id = self._message_run(message.metadata)
+                saved = owned_by_id.get(message.metadata.get('id')) or owned.get((run_id, message.role.value))
+                if saved:
+                    if saved['id'] not in retained:
+                        entries.append(saved)
+                        retained.add(saved['id'])
+                elif message.role is MessageRole.USER and run_id in pending_inputs:
+                    # The scheduler has not appended its authoritative input yet.
+                    # Do not race it by persisting a second optimistic copy.
+                    continue
+                else:
+                    entries.append(message)
+            # Preserve omitted records while execution can still resume. Terminal
+            # history keeps its existing explicit edit/delete truncation semantics.
+            entries.extend(row for row in sorted(owned_by_id.values(), key=lambda row: row['sequence'])
+                           if row['id'] not in retained and row['id'] in resumable_ids)
             connection.execute(
                 """
                 DELETE FROM message_parts WHERE message_id IN (
@@ -838,7 +892,19 @@ class ChatRepository:
                 (session_id,),
             )
             connection.execute("DELETE FROM messages WHERE session_id = ?", (session_id,))
-            for sequence, message in enumerate(messages, start=1):
+            for sequence, message in enumerate(entries, start=1):
+                if isinstance(message, dict):
+                    row = message
+                    columns = [key for key in row if key not in ('run_id', 'run_status')]
+                    values = {**row, 'sequence': sequence}
+                    connection.execute('INSERT INTO messages (' + ','.join(columns) + ') VALUES ('
+                                       + ','.join('?' for _ in columns) + ')',
+                                       tuple(values[key] for key in columns))
+                    for part in owned_parts[row['id']]:
+                        keys = list(part)
+                        connection.execute('INSERT INTO message_parts (' + ','.join(keys) + ') VALUES ('
+                                           + ','.join('?' for _ in keys) + ')', tuple(part[key] for key in keys))
+                    continue
                 saved = protected.get(message.metadata.get('id'))
                 message_id = saved['id'] if saved else new_entity_id(EntityIdKind.MESSAGE)
                 part_id = new_entity_id(EntityIdKind.MESSAGE_PART)
@@ -889,6 +955,6 @@ class ChatRepository:
                 app_instance_id=builtin.instance.id,
                 session_id=session_id,
                 trace_id=trace_id,
-                payload={"message_count": len(messages)},
+                payload={"message_count": len(entries)},
             )
         return self.get_content(session_id)

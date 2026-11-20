@@ -31,3 +31,5 @@
 #system-task-panel .system-task-app{display:inline-flex;align-items:center;gap:7px;vertical-align:middle;color:var(--td-text,#354052);font-weight:550}
 #system-task-panel .system-task-app-icon{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:8px;background:var(--td-tint,#f0f2f6);flex-shrink:0}
 #system-task-panel .system-task-app-icon svg{width:18px;height:18px;stroke-width:1.7}
+.agent-flow-dialog{width:min(34rem,90vw);max-height:86vh;overflow:auto;border:1px solid #ccc;border-radius:16px;padding:24px}.agent-flow-dialog::backdrop{background:#18182055}.agent-flow-dialog form,.agent-flow-dialog label:has(textarea),.agent-flow-dialog label:has(input:not([type=checkbox])){display:grid;gap:8px}.agent-flow-dialog form{gap:16px}.agent-flow-dialog textarea,.agent-flow-dialog input:not([type=checkbox]){padding:8px;border:1px solid #bbb;border-radius:8px}.agent-flow-dialog footer{display:flex;justify-content:flex-end;gap:12px}.agent-flow-dialog .flow-review{overflow-wrap:anywhere}
+.flow-result{white-space:pre-wrap;overflow-wrap:anywhere}

@@ -1,0 +1,39 @@
+{
+  "schema": "ai2apps.checkpoint-build/v1",
+  "distributionId": "dist_ai2apps_sensevoice_small_cuda_vad_df20e6b3_v1",
+  "modelId": "ai2apps.model.sensevoice-small-cuda/vad",
+  "repoId": "funasr/fsmn-vad",
+  "revision": "df20e6b30c653645fa4ff125cacfcabd1020a669",
+  "format": "pytorch",
+  "quantization": "fp32",
+  "pieceSize": 8388608,
+  "license": {
+    "id": "Apache-2.0",
+    "name": "Apache License 2.0",
+    "termsUrl": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+    "termsHash": "sha256:cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "usagePolicy": "license_terms",
+    "accessPolicy": "public",
+    "redistributionPolicy": "allowed"
+  },
+  "includePatterns": [
+    "am.mvn",
+    "config.yaml",
+    "configuration.json",
+    "model.pt"
+  ],
+  "sourceRepositories": [
+    {
+      "type": "huggingface",
+      "repoId": "funasr/fsmn-vad",
+      "revision": "df20e6b30c653645fa4ff125cacfcabd1020a669",
+      "access": "public_anonymous"
+    },
+    {
+      "type": "modelscope",
+      "repoId": "ai2apps/fsmn-vad",
+      "revision": "dce94570fbc263aa692d8867b0f47bc03f6330b3",
+      "access": "public_anonymous"
+    }
+  ]
+}

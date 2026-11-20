@@ -84,7 +84,7 @@ def test_imagine_studio_uses_studio_shell_with_builtin_mini_apps():
     assert "leftCollapsed" in template and "rightCollapsed" in template
     assert "drop:event=>handleGalleryDrop(event,slot-1)" in template
     assert "AI2AppsAssetSlot.bind" in template
-    assert "gallerySlotTarget" in script
+    assert "vs-gallery-drop-overlay" not in template
     assert "mountMiniEntry" in script and "appId: 'ai2apps.gallery'" in script
     assert "GALLERY_MINI_FALLBACK_URL" in script
     assert "AI2Apps Host did not respond|Unsupported host mount" in script
@@ -217,7 +217,8 @@ def test_imagine_studio_uses_cloud_and_local_image_models_with_capability_aware_
     template = (WEB_ROOT / "templates/system_apps/imagine_studio.html").read_text()
     script = (WEB_ROOT / "static/js/imagine_studio.js").read_text()
 
-    assert "const DEFAULT_CLOUD_MODEL = 'cloud/ai2apps/openai/gpt-image-2'" in script
+    assert "const DEFAULT_CLOUD_MODEL" not in script
+    assert "localResult.value.preferred" in script and "modelSelectionMode" in script
     assert "function managedCloudModelId(value)" in script
     assert "id: managedCloudModelId(model.id)" in script
     assert "const managedModelId = managedCloudModelId(savedModelId)" in script
@@ -709,9 +710,17 @@ def test_imagine_studio_acpf_profiles_choose_a_local_image_stack_by_device_memor
     assert {p["id"] for p in editing["profiles"]} == {
         "apple-metal-flux2-klein-4b",
         "apple-metal-flux2-klein-9b",
-        "apple-metal-qwen-image-edit-2511",
+        "apple-metal-qwen-image-edit-21",
     }
-    # Every checkpoint must have an install option for its supported operation.
+    for profile in (
+        profiles["apple-metal-qwen-image-21"],
+        next(p for p in editing["profiles"] if p["id"] == "apple-metal-qwen-image-edit-21"),
+    ):
+        components = {step["id"]: step for step in profile["stack"]["components"]}
+        assert components["runtime"]["version"] == ">=1.8.17,<2.0.0"
+        assert components["provider"]["version"] == ">=0.1.3,<1.0.0"
+        assert components["checkpoint"]["model_id"] == "ai2apps.model.qwen-image-mlx/2.1"
+    # This profile set covers macOS image checkpoints.
     import yaml
 
     offered = set()
@@ -726,6 +735,8 @@ def test_imagine_studio_acpf_profiles_choose_a_local_image_stack_by_device_memor
     expected = set()
     for path in (Path(__file__).parents[1] / "packages").glob("*/service.yaml"):
         manifest = yaml.safe_load(path.read_text())
+        if "macos" not in manifest.get("compatibility", {}).get("os", []):
+            continue
         expected.update(
             model["id"] for model in manifest.get("models", [])
             if model.get("model_type") == "image_generation"

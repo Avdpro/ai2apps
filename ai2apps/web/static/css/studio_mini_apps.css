@@ -74,6 +74,13 @@
 /* Shared Mini-App library: only cards scroll; the action menu stays at the bottom. */
 .vs-studio-sidebar>.studio-mini-library,.ra-studio-sidebar>.studio-mini-library{display:flex;flex-direction:column;overflow:visible;padding-bottom:0}
 .studio-mini-scroll{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;align-content:start}
+.is-mini-app-card{position:relative;display:block;padding:0;border:1px solid transparent;border-radius:11px}.is-mini-app-card.active{background:#fafaf9;border-color:#e7e5e4}@media(hover:hover) and (pointer:fine){.is-mini-app-card:hover{background:#fafaf9;border-color:#e7e5e4}}.is-mini-app-card .is-mini-select{width:100%;min-height:70px;border:0;background:transparent;padding:9px 29px 9px 9px;display:grid;grid-template-columns:34px minmax(0,1fr);gap:8px;align-items:center;text-align:left;color:inherit;cursor:pointer}.is-mini-app-card .is-mini-select:disabled{cursor:not-allowed}.is-mini-app-card .is-mini-select>span:last-child{min-width:0}.is-mini-app-card strong,.is-mini-app-card small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.is-mini-app-card strong{font-size:10px;line-height:1.25}.is-mini-app-card small{margin-top:4px;font-size:8px;line-height:1.35;color:#a8a29e}.is-mini-app-card em{display:block;margin-top:5px;font-size:8px;font-style:normal;color:#78716c}.vs-pipeline-icon{width:34px;height:34px;border:1px solid #e7e5e4;border-radius:9px;background:#fff;display:grid;place-items:center}.vs-pipeline-icon svg{width:15px}.is-mini-app-card.unavailable{opacity:.55}.is-mini-favorite{position:absolute;right:5px;top:8px;width:25px;height:25px;border:0;background:transparent;color:#a8a29e;display:grid;place-items:center;cursor:pointer}.is-mini-favorite[aria-pressed=true]{color:#b45309}.is-mini-favorite svg{width:13px;fill:currentColor}
+.is-mini-app-card strong{font-size:12px;line-height:1.2}
+.is-mini-app-card small{font-size:10px;line-height:1.3}
+.is-mini-app-card em{font-size:9px;line-height:1.2}
+.vs-pipeline-icon svg{width:18px;height:18px}
+.is-mini-favorite svg{width:15px;height:15px}
+.is-mini-favorite[aria-pressed=true]{color:#44403c}
 .studio-mini-more{position:relative;flex:none;margin-top:10px;padding-top:10px;border-top:1px solid #e7e5e4}
 .studio-mini-more-toggle{display:flex;align-items:center;gap:9px;width:100%;min-height:42px;padding:10px;border:1px solid #e7e5e4;border-radius:10px;background:#fafaf9;color:#44403c;font:inherit;font-size:12px;cursor:pointer}
 .studio-mini-more-toggle span{flex:1;text-align:left}.studio-mini-more svg{width:16px;height:16px;flex:none}

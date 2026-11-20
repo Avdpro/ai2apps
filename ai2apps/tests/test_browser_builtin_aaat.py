@@ -10,10 +10,10 @@ from ai2apps.services import ToolProviderError
 from test_app_interactions import runtime
 
 
-def test_fresh_install_has_both_builtin_frames_and_exact_asset_access(runtime):
+def test_fresh_install_has_builtin_frames_and_exact_asset_access(runtime):
     principal=RequestPrincipal.legacy_local();manager=runtime.extension_manager
     minis=manager.list_studio_mini_apps(HOST,principal=principal)
-    assert {m['id'] for m in minis}=={'ai2apps.search-all','ai2apps.web-reader'}
+    assert {m['id'] for m in minis}=={'ai2apps.search-all','ai2apps.web-reader','ai2apps.share-works'}
     assert all(m['source']=='builtin' and m['provider']['appId']==HOST for m in minis)
     for mini in minis:
         mount=manager.mount_studio_mini_app(HOST,mini['id'],principal=principal)
@@ -95,3 +95,26 @@ def test_builtin_manifest_identity_is_stable_across_filesystem_enumeration(monke
     monkeypatch.setattr(Path,'rglob',lambda self,*a,**kw:iter(reversed(list(original(self,*a,**kw)))))
     assert definitions()==expected
     assert expected[1]==sorted(expected[1])
+
+
+def test_share_works_is_exposed_through_curated_mobile_router(runtime):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from types import SimpleNamespace as NS
+    from ai2apps.api.ai_browser_mobile import create_ai_browser_mobile_router
+    from ai2apps.apps.system import SYSTEM_APP_MANIFESTS
+    principal=RequestPrincipal.legacy_local()
+    mount=runtime.extension_manager.mount_studio_mini_app(HOST,'ai2apps.share-works',principal=principal)
+    class Client:
+        async def account(self):return 'fixture-account'
+    runtime.share_works.cli_factory=lambda provider:Client()
+    app=FastAPI();app.include_router(create_ai_browser_mobile_router(lambda:runtime,lambda:principal))
+    with TestClient(app) as client:
+        base='/studios/'+HOST+'/mini-app-mounts/'+mount['id']+'/share-works'
+        response=client.post(base+'/check',json={'provider':'hf'})
+        assert response.status_code==200,response.text
+        assert response.json()['account']=='fixture-account'
+        assert client.get(base+'/history').json()=={'items':[]}
+        assert client.post(base+'/arbitrary-shell',json={'command':'never'}).status_code==404
+    manifest=next(item for item in SYSTEM_APP_MANIFESTS if item['id']==HOST)
+    assert 'js/share_works_host.js' in manifest['mobile']['gateway']['assets']

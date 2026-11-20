@@ -39,6 +39,7 @@ def observed_metrics(steps):
         rows.append({'step_id':step.id,'input_tokens':prompt,'cached_input_tokens':cached,
             'uncached_input_tokens':prompt-cached if prompt is not None and cached is not None else None,
             'cache_usage_reported':reported,'cache_usage_source':cache_source,
+            'cache_observation':usage.get('cacheObservation'),
             'provider_currency_cost':None,
             'output_tokens':completion,'request_id':request_id,'charged_points':str(charge) if charge is not None else None,
             'elapsed_seconds':elapsed})

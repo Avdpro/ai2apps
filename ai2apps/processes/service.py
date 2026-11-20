@@ -96,6 +96,9 @@ def install_process_service(
             environment=arguments.get("environment"),
             network_enabled=arguments.get("network", False),
             limits=arguments.get("limits"),
+            pty=arguments.get("pty", False),
+            cols=arguments.get("cols", 100),
+            rows=arguments.get("rows", 30),
         )
         await context.report_progress(
             "Sandboxed process started",
@@ -157,19 +160,20 @@ def install_process_service(
     async def process_wait(arguments, context):
         session_id, run_id = _scope(context)
         await context.report_progress("Waiting for sandboxed process")
-        record = await call(
-            manager.wait,
-            arguments["process_id"],
-            session_id=session_id,
-            run_id=run_id,
-            timeout_ms=arguments.get("timeout_ms", 30_000),
-        )
+        timed_out = False
+        try:
+            record = await manager.wait(arguments['process_id'],session_id=session_id,run_id=run_id,
+                                        timeout_ms=arguments.get('timeout_ms',30_000))
+        except ProcessServiceError as error:
+            if error.code != 'process_wait_timeout': raise ToolProviderError(f'{error.code}: {error}') from error
+            record = manager.status(arguments['process_id'],session_id=session_id,run_id=run_id)
+            timed_out = True
         await context.report_progress(
-            f"Sandboxed process finished: {record.status.value}",
-            progress=1.0,
+            f"Sandboxed process {'still running' if timed_out else 'finished'}: {record.status.value}",
+            progress=None if timed_out else 1.0,
             content={"process_id": record.id, "status": record.status.value},
         )
-        return _record(record)
+        return {**_record(record), 'wait_timed_out':timed_out}
 
     async def process_cancel(arguments, context):
         session_id, run_id = _scope(context)
@@ -226,6 +230,10 @@ def install_process_service(
                 },
             },
             "network": {"type": "boolean"},
+            "pty": {"type": "boolean"},
+            "wait_ms": {"type": "integer", "minimum":0,"maximum":10000},
+            "cols": {"type": "integer", "minimum":20,"maximum":500},
+            "rows": {"type": "integer", "minimum":5,"maximum":200},
             "limits": {
                 "type": "object",
                 "properties": limits_properties,

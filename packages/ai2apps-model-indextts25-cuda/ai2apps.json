@@ -1,0 +1,83 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/model-indextts25-cuda",
+    "type": "service",
+    "version": "0.1.0",
+    "displayName": "IndexTTS 2.5 CUDA",
+    "description": "IndexTTS 2.5 reference-voice synthesis with numeric emotion and duration control on CUDA."
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": [
+      "linux"
+    ],
+    "architectures": [
+      "arm64"
+    ]
+  },
+  "entrypoints": [
+    {
+      "name": "model-worker",
+      "kind": "service",
+      "path": "service.yaml"
+    }
+  ],
+  "permissions": [
+    {
+      "capability": "model-weights.huggingface-cache.read",
+      "reason": "Read the pinned MLX IndexTTS 2.5 checkpoint selected by the Host.",
+      "required": true
+    },
+    {
+      "capability": "accelerator.cuda",
+      "reason": "Run IndexTTS 2.5 locally on CUDA.",
+      "required": true
+    }
+  ],
+  "dependencies": [
+    {
+      "packageId": "ai2apps/runtime-cuda-torch",
+      "version": ">=0.6.0 <1.0.0",
+      "optional": false
+    }
+  ],
+  "files": [],
+  "sbom": {
+    "format": "spdx-json-2.3",
+    "path": "META/sbom.spdx.json"
+  },
+  "discovery": {
+    "kind": "model",
+    "categories": [
+      "speech"
+    ],
+    "tasks": [
+      "speech-synthesis",
+      "voice-cloning",
+      "emotion-control"
+    ]
+  },
+  "modelProfile": {
+    "sizeBytes": 3338231798,
+    "minimumMemoryBytes": 8589934592,
+    "scores": {
+      "speed": 2,
+      "capability": 4
+    },
+    "benchmark": {
+      "label": "Estimated memory; development CUDA synthesis verified, signed installation pending",
+      "device": "NVIDIA DGX Spark GB10"
+    }
+  },
+  "modelInstall": {
+    "serviceKey": "ai2apps.model.indextts25-cuda",
+    "models": [
+      {
+        "id": "ai2apps.model.indextts25-cuda/fp16",
+        "label": "IndexTTS 2.5 CUDA FP16",
+        "recommended": true
+      }
+    ]
+  }
+}

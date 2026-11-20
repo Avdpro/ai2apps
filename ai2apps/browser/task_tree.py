@@ -88,8 +88,14 @@ class TaskTreeRepository:
             # Completion is conservative: a bound browser run must prove cleanup.
             if any((context.get('created_by_run') or context.get('owned_contexts')) and context.get('cleanup', {}).get('state') not in ('verified', 'retained') for context in (json.loads(r['browser_context_json']) for r in browsers)):
                 return False
-            if any(context.get('reuse_scope') == task_id and context.get('cleanup', {}).get('state') != 'verified' for context in (json.loads(r['browser_context_json']) for r in browsers)):
-                return False
+            for browser in browsers:
+                context = json.loads(browser['browser_context_json'])
+                # A queue entry may declare reuse before it ever acquires a
+                # page. With no Run or context, it has nothing to clean up.
+                acquired = browser['run_id'] or any(context.get(key) for key in
+                    ('bidi_context', 'created_by_run', 'owned_contexts'))
+                if acquired and context.get('reuse_scope') == task_id and context.get('cleanup', {}).get('state') != 'verified':
+                    return False
             c.execute('UPDATE task_nodes SET status=?,result_json=?,updated_at=? WHERE owner=? AND id=?',
                       (status, json.dumps(result or {}), time.time(), owner, task_id))
             self.changed(c, owner, task_id, self.events)

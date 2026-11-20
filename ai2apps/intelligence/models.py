@@ -318,6 +318,7 @@ class ChannelQuestion(BaseModel):
     request_id: str = Field(min_length=16, max_length=80, pattern=r'^[a-zA-Z0-9_-]+$')
     question: str = Field(min_length=1, max_length=3000)
     article_id: str | None = Field(default=None, max_length=80)
+    model: str | None = Field(default=None, max_length=512)
 
     @field_validator('question')
     @classmethod

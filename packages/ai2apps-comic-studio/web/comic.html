@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Comic Studio</title><link rel="stylesheet" href="comic.css"><link rel="stylesheet" href="asset_slot.css"></head>
+<body><div id="startup" role="status">Starting Comic Studio… / 正在启动短漫工坊…</div><main id="app" hidden>
+<p id="notice" role="status" aria-live="polite"></p>
+<fieldset id="controls">
+<div class="row"><label><span data-t="series">Series</span><select id="series"></select></label><button id="import-series" type="button" data-t="importSeries">Import ZIP</button><button id="export-series" type="button" data-t="exportSeries">Export series</button><button id="export-all-series" type="button" data-t="exportAllSeries">Export all</button><input id="import-series-file" type="file" accept=".zip,application/zip" hidden><button id="new-series" type="button" data-t="newSeries">New series</button></div>
+<div id="workspace" hidden>
+<details id="settings"><summary data-t="settings">Series settings</summary><div class="grid">
+<label><span data-t="name">Name</span><input id="series-name" maxlength="80"></label>
+<label><span data-t="ratio">Default panel ratio</span><select id="series-ratio"><option>1:1</option><option>4:3</option><option>3:4</option><option>16:9</option><option>9:16</option></select></label>
+<label class="wide"><span data-t="style">Visual style</span><textarea id="style" maxlength="2000" rows="2"></textarea></label>
+<label class="wide"><span data-t="world">World and story rules</span><textarea id="world" maxlength="4000" rows="3"></textarea></label>
+<label><span data-t="model">Drawing model</span><select id="model"></select></label>
+<label><span data-t="date">Use today's date in scripts</span><input id="use-date" type="checkbox"></label>
+</div><p class="hint" data-t="mvp">Manual MVP: scripts use configured task models. Scheduling and news are not enabled yet.</p></details>
+<details><summary data-t="characters">Character library</summary><div class="row"><label><span data-t="sharedCharacter">Character</span><select id="shared-character"><option value="">Choose / 请选择</option></select></label><label><span data-t="sharedAppearance">Appearance</span><select id="shared-appearance" disabled><option value="">Choose a character first</option></select></label><button id="refresh-shared-character" type="button" data-t="refreshCharacters">Refresh characters</button><button id="use-shared-character" type="button" disabled data-t="addSharedCharacter">Add to series</button></div><div id="characters"></div><div class="row"><label><span data-t="characterName">Character name</span><input id="char-name" maxlength="80"></label><button id="add-character" type="button" data-t="addCharacter">Add character</button></div></details>
+<section><div class="row"><h2 data-t="episode">Episode</h2><button id="new-episode" type="button" data-t="newEpisode">New episode</button></div>
+<div class="grid"><label><span data-t="title">Episode title</span><input id="episode-title" maxlength="120"></label><label><span data-t="count">Panels</span><select id="count"><option>2</option><option>3</option><option selected>4</option><option>5</option><option>6</option></select></label>
+<label><span data-t="episodeRatio">Panel ratio for this episode</span><select id="episode-ratio"><option value="" data-t="inherit">Inherit series</option><option>1:1</option><option>4:3</option><option>3:4</option><option>16:9</option><option>9:16</option></select></label>
+<label><span data-t="previous">Previous panels as references</span><select id="previous"><option>0</option><option>1</option><option selected>2</option></select></label>
+<label class="wide"><span data-t="brief">Story idea</span><textarea id="brief" rows="3" maxlength="4000"></textarea></label></div>
+<div class="row"><button id="write" type="button" data-t="write">Draft script with AI</button><span class="hint" data-t="manual">Or write each panel directly below.</span></div>
+<p class="hint" data-t="references">Character references take priority. Remaining reference slots are used for preceding panels, up to the chosen count.</p>
+<div id="panels"></div>
+<div class="row"><button id="render" type="button" class="primary" data-t="draw">Draw episode</button><button id="compose" type="button" data-t="compose">Export existing panels</button><span id="dimensions" class="hint"></span></div>
+<p class="hint" data-t="captionNote">Captions are typeset separately. Changing text and re-exporting does not redraw images.</p>
+</section>
+<details><summary data-t="history">Episode history (latest 20)</summary><div id="history"></div></details>
+<details id="schedule-section"><summary data-t="generationMode">Generation mode</summary>
+<label><span data-t="generationMode">Generation mode</span><select id="schedule-mode"><option value="manual" selected data-t="manualMode">Manual (default)</option><option value="scheduled" data-t="scheduledMode">Scheduled generation</option></select></label>
+<div id="schedule-options" hidden><div class="grid">
+<label><span data-t="interval">Run every</span><select id="schedule-hours"><option value="1">1 h</option><option value="6">6 h</option><option value="12">12 h</option><option value="24" selected>24 h</option><option value="48">48 h</option><option value="168">168 h</option></select></label>
+<label><span data-t="batch">Episodes per run</span><select id="schedule-batch"><option selected>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select></label>
+<label class="wide"><span data-t="firstRun">First run (your device time)</span><input id="schedule-first" type="datetime-local"></label></div>
+<label><span data-t="scheduledBrief">Recurring story direction (optional)</span><textarea id="schedule-brief" maxlength="4000" rows="2"></textarea></label>
+<p class="hint" data-t="scheduleHint">Uses the current series, approved characters, drawing model, panel count and ratio. Each run drafts fresh scripts and draws the selected number of episodes. Local must remain running; missed intervals are merged into one run. Fixed intervals do not follow daylight saving changes.</p>
+<p id="schedule-budget" class="hint"></p></div>
+<div class="row"><button id="schedule-save" type="button" data-t="saveMode">Save generation mode</button><button id="schedule-refresh" type="button" data-t="refreshSchedule">Refresh schedule and results</button></div>
+<p id="schedule-status" role="status" aria-live="polite"></p>
+</details>
+</div></fieldset>
+<div class="row"><button id="cancel" type="button" hidden data-t="cancel">Cancel generation</button><button id="recover" type="button" hidden data-t="recover">Check pending submission</button><button id="retry-startup" type="button" hidden data-t="retry">Retry startup</button></div>
+<p id="job-status" role="status" aria-live="polite"></p>
+<button id="retry-export" type="button" hidden data-t="retryExport">Retry final export</button>
+</main><dialog id="import-preview"><h2 data-t="importPreview">Import series</h2><p id="import-summary"></p><div id="import-thumbnails" class="import-thumbnails"></div><p data-t="importHint">Creates copies with new image references. Scheduled generation stays off.</p><div class="row"><button id="import-cancel" type="button" data-t="cancel">Cancel</button><button id="import-confirm" type="button" class="primary" data-t="importConfirm">Import as copies</button></div></dialog><script src="asset_slot.js"></script><script src="core.js"></script><script src="automation.js"></script><script src="backup.js"></script><script src="comic.js"></script></body></html>

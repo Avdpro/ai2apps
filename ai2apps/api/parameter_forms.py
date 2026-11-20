@@ -17,6 +17,7 @@ from ai2apps.readaloud.materials import VoiceMaterials
 class DraftInput(BaseModel):
     revision: int = Field(ge=0)
     values: dict
+    parameter_contract_version: str | None = Field(default=None, max_length=64)
 
 class GalleryInput(BaseModel):
     asset_id: str = Field(min_length=1,max_length=256)
@@ -44,8 +45,22 @@ def create_parameter_forms_router(runtime_provider, principal_provider):
         from ai2apps.agents.form_continuation import selected_form
         try:form=selected_form(runtime.database,item)
         except RepositoryError as error:raise HTTPException(409,str(error)) from error
+        execution_scope=getattr(runtime.tools,'execution_scope',None)
+        if execution_scope and item.status.value=='pending':
+            context=runtime.tools.context_for_session(caller_id='parameter-form-host',session_id=run.session_id,trace_id=run.id)
+            try:execution_scope.authorize(context,'app.collect_parameters',{'capability':form.capability or form.key,'provider':form.key})
+            except Exception as error:raise HTTPException(403,'Form execution scope is no longer authorized') from error
         if pending and (item.status.value!='pending' or run.status.value!='waiting_input' or item.deadline_at<=datetime.now(UTC)):raise HTTPException(409,'Form is no longer pending')
         return runtime,run,item,form
+    async def contract_version(runtime, principal, item, form, values):
+        if not item.ui_hints.get('parameter_contract_version'):
+            return None
+        provider = runtime.app_capability_router.providers.get(form.key)
+        if not provider or not provider.describe or provider.version != form.provider_version:
+            raise HTTPException(409, 'Selected Provider changed; request a new form')
+        from ai2apps.agents.parameter_contracts import resolve_contract
+        return (await resolve_contract(provider, principal, values))['contract_version']
+
     def materials(runtime):return VoiceMaterials(runtime.database,runtime.config.paths.artifacts_path)
     def draft(runtime,item,form,principal):
         with runtime.database.transaction() as db:row=db.execute('SELECT revision,values_json FROM agent_parameter_drafts WHERE interaction_id=?',(item.id,)).fetchone()
@@ -95,6 +110,15 @@ def create_parameter_forms_router(runtime_provider, principal_provider):
         runtime,run,item,form=resolve(run_id,interaction_id,principal)
         current=draft(runtime,item,form,principal)
         extra=await form.describe(runtime,principal,form,current['values'],item) if form.describe else {}
+        install = extra.get('install')
+        inline_setup = (
+            extra.pop('inline_setup', False) is True
+            and extra.get('configuration_required') is True
+            and principal.is_core
+            and isinstance(install, dict)
+            and install.get('appId') == (form.configuration_app_id or form.app_id)
+            and bool(install.get('capability'))
+        )
         schema=extra.pop('schema',form.schema)
         # Use the same closed-schema preparation as Tool invocation, after owner
         # aliases and dynamic fields resolve. Persist the reviewed projection so
@@ -121,13 +145,15 @@ def create_parameter_forms_router(runtime_provider, principal_provider):
         choices=[{'provider':f.key,'capability':f.capability or f.key,'app_id':f.app_id,'mini_app_id':f.mini_app_id,
             'description':f.summary or descriptions.get(f.capability or f.key,''),'display_name':f.display_name} for f in alternatives(runtime,principal,form)]
         handoff=handoff_record(runtime,item)
-        return {'descriptor':{'capability':form.capability or form.key,'provider':form.key,'app_id':form.app_id,
+        version = await contract_version(runtime, principal, item, form, current['values'])
+        return {'parameter_contract_version':version,'descriptor':{'capability':form.capability or form.key,'provider':form.key,'app_id':form.app_id,
             'mini_app_id':form.mini_app_id,'display_name':form.display_name,'summary':form.summary,'fields':fields,'schema':schema},'alternatives':choices,
             'prompt_labels':form.prompt if isinstance(form.prompt,dict) else ({'zh':'确认调用参数','en':'Confirm call parameters'} if form.prompt=='填写参数 / Complete parameters' else None),
             'can_continue_in_app':form.continuation in ADAPTERS,'waiting_app':bool(handoff),
             'studio_run_id':handoff['studio_run_id'] if handoff else None,**current,
             'parameter_contract_error':json.loads(contract_error) if contract_error else None,
-            **diagnostics(schema,current['values']), 'models':[], 'configure_only':form.mode=='configure',**extra}
+            **diagnostics(schema,current['values']), 'models':[], 'configure_only':form.mode=='configure',
+            'inline_setup': inline_setup, **extra}
     @router.get('/setup')
     async def setup(run_id:str,interaction_id:str,principal=dep):
         runtime,run,item,form=resolve(run_id,interaction_id,principal)
@@ -263,7 +289,7 @@ def create_parameter_forms_router(runtime_provider, principal_provider):
             values={k:v for k,v in values.items() if k in schema.get('properties',{})}
         if len(json.dumps(values))>16384:raise HTTPException(413,'Draft too large')
         resolve(run_id,interaction_id,principal)
-        with runtime.database.transaction() as db:
+        with runtime.database.transaction(write=True) as db:
             if db.execute('SELECT 1 FROM agent_parameter_handoffs WHERE interaction_id=?',(item.id,)).fetchone():raise HTTPException(409,'Cannot switch an active App continuation')
             row=db.execute('SELECT revision FROM agent_parameter_drafts WHERE interaction_id=?',(item.id,)).fetchone()
             if (row['revision'] if row else 0)!=body.revision:raise HTTPException(409,'Draft changed; reload')
@@ -272,7 +298,7 @@ def create_parameter_forms_router(runtime_provider, principal_provider):
             db.execute('INSERT INTO agent_parameter_drafts VALUES (?,?,?) ON CONFLICT(interaction_id) DO UPDATE SET revision=excluded.revision,values_json=excluded.values_json',(item.id,body.revision+1,json.dumps(values)))
         return {'revision':body.revision+1,'values':values}
     @router.post('/handoff')
-    def begin_handoff(run_id:str,interaction_id:str,body:DraftInput,principal=dep):
+    async def begin_handoff(run_id:str,interaction_id:str,body:DraftInput,principal=dep):
         from ai2apps.agents.form_continuation import ADAPTERS, handoff_view
         runtime,run,item,form=resolve(run_id,interaction_id,principal)
         adapter=ADAPTERS.get(form.continuation)
@@ -281,14 +307,21 @@ def create_parameter_forms_router(runtime_provider, principal_provider):
         current=draft(runtime,item,form,principal)
         if body.revision!=current['revision'] or body.values!=current['values']:raise HTTPException(409,'Save current parameters first')
         if not handoff_record(runtime,item):
+            version = await contract_version(runtime, principal, item, form, current['values'])
+            if version and version != (body.parameter_contract_version or item.ui_hints.get('parameter_contract_version')):
+                raise HTTPException(409, 'Parameter contract changed; reload and review the current form')
             payload=adapter.begin(runtime,principal,run,item,form,current['values'])
-            with runtime.database.transaction() as db:
-                selected=db.execute('SELECT provider FROM agent_parameter_choices WHERE interaction_id=?',(item.id,)).fetchone()
-                if (selected['provider'] if selected else item.ui_hints.get('provider'))!=form.key:raise HTTPException(409,'Provider changed')
-                row=db.execute('SELECT revision FROM agent_parameter_drafts WHERE interaction_id=?',(item.id,)).fetchone()
-                if (row['revision'] if row else 0)!=current['revision']:raise HTTPException(409,'Draft changed')
-                db.execute('INSERT OR IGNORE INTO agent_parameter_handoffs(interaction_id,provider,payload_json,created_at) VALUES (?,?,?,?)',
-                    (item.id,form.key,json.dumps(payload),datetime.now(UTC).isoformat()))
+            if version:
+                payload = {**payload, 'parameter_contract_version': version}
+            def reserve_handoff():
+                with runtime.database.transaction(write=True) as db:
+                    selected=db.execute('SELECT provider FROM agent_parameter_choices WHERE interaction_id=?',(item.id,)).fetchone()
+                    if (selected['provider'] if selected else item.ui_hints.get('provider'))!=form.key:raise HTTPException(409,'Provider changed')
+                    row=db.execute('SELECT revision FROM agent_parameter_drafts WHERE interaction_id=?',(item.id,)).fetchone()
+                    if (row['revision'] if row else 0)!=current['revision']:raise HTTPException(409,'Draft changed')
+                    db.execute('INSERT OR IGNORE INTO agent_parameter_handoffs(interaction_id,provider,payload_json,created_at) VALUES (?,?,?,?)',
+                        (item.id,form.key,json.dumps(payload),datetime.now(UTC).isoformat()))
+            await asyncio.to_thread(reserve_handoff)
         runtime.agents.update_status_line(run.id,phase='app_handoff',text='等待 App 完成 / Waiting for App',presentation='pulse',
             content={'provider':form.key,'app_id':form.app_id,'mini_app_id':form.mini_app_id,'phase':'app'})
         return handoff_view(runtime,run_id,interaction_id)
@@ -303,7 +336,7 @@ def create_parameter_forms_router(runtime_provider, principal_provider):
             adapter=ADAPTERS.get(form.continuation)
             if not adapter:raise HTTPException(409,'App continuation adapter changed')
             linked=adapter.link(runtime,principal,run,item,form,record,body)
-            with runtime.database.transaction() as db:db.execute('UPDATE agent_parameter_handoffs SET studio_run_id=?,app_instance_id=? WHERE interaction_id=?',
+            with runtime.database.transaction(write=True) as db:db.execute('UPDATE agent_parameter_handoffs SET studio_run_id=?,app_instance_id=? WHERE interaction_id=?',
                 (linked['studio_run_id'],linked['app_instance_id'],item.id))
             return linked
     @router.post('/handoff/complete')
@@ -318,7 +351,9 @@ def create_parameter_forms_router(runtime_provider, principal_provider):
             adapter=ADAPTERS.get(form.continuation)
             if not record or not adapter:raise HTTPException(409,'No active App continuation')
             result=adapter.complete(runtime,principal,run,item,form,record)
-            payload={'status':'completed','result':{**result,'user_confirmed':True}}
+            version = json.loads(record['payload_json']).get('parameter_contract_version')
+            payload={'status':'completed','result':{**result,'user_confirmed':True,
+                **({'parameter_contract_version':version} if version else {})}}
             runtime.agents.respond_interaction(run.id,item.id,response=payload,response_id='form-app:'+item.id,app_interaction_capability=item.request['capability'])
             runtime.agent_runtime.wake()
             return payload
@@ -445,6 +480,10 @@ def create_parameter_forms_router(runtime_provider, principal_provider):
             if handoff_record(runtime,item):raise HTTPException(409,'Complete the task in the target App first')
             current=draft(runtime,item,form,principal)
             if body.revision!=current['revision'] or body.values!=current['values']:raise HTTPException(409,'Save the current draft before submitting')
+            version = await contract_version(runtime, principal, item, form, body.values)
+            expected_version = body.parameter_contract_version or item.ui_hints.get('parameter_contract_version')
+            if version and version != expected_version:
+                raise HTTPException(409, 'Parameter contract changed; reload and review the current form')
             extra=await form.describe(runtime,principal,form,body.values,item) if form.describe else {}
             if extra.get('configuration_required'):raise HTTPException(409,{'code':'configuration_required','message':'Configure this capability in its Desktop App; parameters and materials are preserved'})
             schema=extra.get('schema',form.schema)
@@ -454,13 +493,16 @@ def create_parameter_forms_router(runtime_provider, principal_provider):
             try:Draft202012Validator(schema).validate(values)
             except ValidationError as e:raise HTTPException(422,{'field':'.'.join(map(str,e.path)),'message':e.message}) from e
             validate(runtime,principal,form,values)
+            if version and version != await contract_version(runtime, principal, item, form, values):
+                raise HTTPException(409, 'Parameter defaults changed the contract; reload and review the current form')
             if form.complete:
                 result=await form.complete(runtime,principal,form,values,run)
             else:
                 result={'capability':form.capability or form.key,'provider':form.key,'arguments':values,'configure_only':True}
             resolve(run_id,interaction_id,principal)
             if draft(runtime,item,form,principal)!=current:raise HTTPException(409,'Draft changed; review and resubmit')
-            payload={'status':'completed','result':{**result,'user_confirmed':True}}
+            payload={'status':'completed','result':{**result,'user_confirmed':True,
+                **({'parameter_contract_version':version} if version else {})}}
             runtime.agents.respond_interaction(run_id,interaction_id,response=payload,response_id='form:'+interaction_id,app_interaction_capability=item.request['capability'])
             runtime.agent_runtime.wake()
             return payload

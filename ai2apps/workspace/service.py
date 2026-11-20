@@ -357,7 +357,7 @@ def install_workspace_service(
                 "required": ["artifact_id", "destination_handle"],
                 "additionalProperties": False,
             },
-            ("external_write",),
+            ("export",),
             ("artifact.export",),
             artifact_export,
         ),

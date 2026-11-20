@@ -1,0 +1,55 @@
+<details x-show="currentBot?.definition?.execution_mode === 'agent'" class="bot-settings-group"
+    x-ref="botSkillsPanel" @toggle="if($event.target.open) loadBotSkills()">
+    <summary><span class="bot-settings-heading"><i data-lucide="puzzle" aria-hidden="true"></i><span x-text="ui('技能','Skills')"></span></span></summary>
+    <div class="bot-settings-group-body bot-skills-panel">
+        <p class="messager-help" x-show="botSkills && !addedBotSkills.length"
+            x-text="ui('此 Bot 尚未添加技能。','No Skills added to this Bot.')"></p>
+        <template x-for="item in addedBotSkills" :key="item.id">
+            <div class="bot-skill-row">
+                <label class="bot-skill-choice">
+                    <input type="checkbox" :checked="item.enabled" :disabled="!!botSkillBusy || (!item.enabled && !!item.unsupported.length)"
+                        @change="saveBotSkill(item,$event.target.checked,$event.target)">
+                    <span>
+                        <strong x-text="item.name"></strong>
+                        <small x-text="item.description"></small>
+                        <small x-show="item.unsupported.length" x-text="ui('依赖原宿主的功能','Requires features from another host')"></small>
+                        <small x-show="item.enabled && item.user_invocable" x-text="'/skill '+(addedBotSkills.filter(skill=>skill.enabled&&skill.name===item.name).length>1?item.id:item.name)"></small>
+                    </span>
+                </label>
+                <button class="messager-button bot-skill-remove" type="button" :disabled="!!botSkillBusy"
+                    :aria-label="ui('移除技能：','Remove Skill: ')+item.name" @click="saveBotSkill(item,null)"
+                    x-text="ui('移除','Remove')"></button>
+            </div>
+        </template>
+        <button type="button" class="messager-button" @click="openBotSkillPicker()"
+            aria-haspopup="dialog" :disabled="!!botSkillBusy" x-text="ui('添加技能','Add Skill')"></button>
+        <dialog class="ai2apps-dialog bot-skill-picker" x-ref="botSkillPicker" aria-labelledby="messager-skill-picker-title"
+            @cancel.prevent="if(!botSkillBusy) closeBotSkillPicker()">
+            <header class="bot-skill-picker-header">
+                <h2 id="messager-skill-picker-title" x-text="ui('添加技能','Add Skills')"></h2>
+                <p x-text="ui('选择要添加到当前 Bot 的技能。','Choose Skills to add to this Bot.')"></p>
+            </header>
+            <div class="bot-skill-picker-list" role="group" :aria-label="ui('可用技能','Available Skills')" :aria-busy="botSkillPickerLoading">
+                <p x-show="botSkillPickerLoading" x-text="ui('正在加载技能…','Loading Skills…')"></p>
+                <p x-show="!botSkillPickerLoading && botSkills && !availableBotSkills.length" x-text="ui('没有其他可添加的技能。','No other Skills available to add.')"></p>
+                <template x-for="item in (botSkillPickerLoading?[]:availableBotSkills)" :key="item.id">
+                    <label class="bot-skill-choice bot-skill-option">
+                        <input type="checkbox" :value="item.id" x-model="botSkillSelection" :disabled="!!botSkillBusy">
+                        <span><strong x-text="item.name"></strong><small x-text="item.description"></small></span>
+                    </label>
+                </template>
+            </div>
+            <footer class="bot-skill-picker-footer">
+                <p class="bot-skill-picker-error" role="alert" x-show="botSkillPickerError" x-text="botSkillPickerError"></p>
+                <a class="messager-link" href="/apps/ai2apps.discover" target="_top" x-show="!botSkillBusy"
+                    x-text="ui('在 Discover 查找技能','Find Skills in Discover')"></a>
+                <div class="ai2apps-dialog-actions">
+                    <button type="button" autofocus :disabled="!!botSkillBusy" @click="closeBotSkillPicker()" x-text="ui('取消','Cancel')"></button>
+                    <button type="button" class="primary" :disabled="!!botSkillBusy || botSkillPickerLoading || !botSkillSelection.length"
+                        @click="addSelectedBotSkills()"
+                        x-text="botSkillBusy?ui('正在添加…','Adding…'):ui('添加','Add')+(botSkillSelection.length?' ('+botSkillSelection.length+')':'')"></button>
+                </div>
+            </footer>
+        </dialog>
+    </div>
+</details>

@@ -221,3 +221,6 @@ if [[ -e ${OUTPUT_APP} ]]; then
 fi
 mv "${APP}" "${OUTPUT_APP}"
 print "Built ${OUTPUT_APP}"
+
+# Prune only after the replacement App was successfully installed.
+python3 "${SCRIPT_DIR}/prune-build-history.py" archive

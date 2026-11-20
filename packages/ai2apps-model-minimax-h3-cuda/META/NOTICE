@@ -1,0 +1,3 @@
+MiniMax H3 is licensed under the MiniMax H3 Community License Agreement, Copyright © 2026 MiniMax. All Rights Reserved.
+
+CUDA checkpoint files are repackaged by Comfy-Org from MiniMax H3; this distribution selects pruned INT8 ConvRot diffusion weights, NVFP4 AWQ text encoder and the upstream VAE files. AI2Apps does not modify these checkpoint bytes.

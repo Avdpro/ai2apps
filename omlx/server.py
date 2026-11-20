@@ -77,7 +77,8 @@ from ai2apps.api.federation import create_federation_ingress_router
 from ai2apps.api.messager_peer import create_messager_peer_ingress_router
 from ai2apps.api.model_share_peer import create_model_share_peer_ingress_router
 from ai2apps.api.sharing import create_sharing_data_router
-from ai2apps.cloud_gateway import proxy_cloud_chat_completion, proxy_cloud_image_request
+from ai2apps.cloud_gateway import proxy_cloud_chat_completion
+from ai2apps.images.cloud_gateway import proxy_cloud_image_request
 from ai2apps.config import PlatformConfig
 from ai2apps.development import can_access_developer_surfaces
 from ai2apps.http_security import LocalBrowserSecurityHeadersMiddleware
@@ -530,9 +531,9 @@ async def verify_ai2apps_platform_access(
         # Session owner on every call, including membership/revocation checks.
         from ai2apps.identity import IdentityBindingError, IdentityRepository
         try:
-            current = ModelInvocationContext.for_session(runtime.database, agent_context.session_id)
+            current = await asyncio.to_thread(ModelInvocationContext.for_session, runtime.database, agent_context.session_id)
             principal = (RequestPrincipal.legacy_local() if current.actor_user_id == 'local'
-                         else IdentityRepository(runtime.database).local_principal_for(current.actor_user_id))
+                         else await asyncio.to_thread(IdentityRepository(runtime.database).local_principal_for, current.actor_user_id))
         except (ValueError, IdentityBindingError) as error:
             raise HTTPException(status_code=401, detail='Agent Session identity is unavailable') from error
         if current != agent_context:
@@ -549,7 +550,7 @@ async def verify_ai2apps_platform_access(
         None if runtime is None else getattr(runtime, "authorize_local_session", None)
     )
     if token and authorizer is not None:
-        principal = authorizer(token)
+        principal = await asyncio.to_thread(authorizer, token)
         if principal is not None:
             request.state.ai2apps_principal = principal
             return principal
@@ -584,6 +585,13 @@ async def verify_ai2apps_platform_access(
     helper_control_route = helper_control_route or (
         request.method == "POST"
         and request.url.path == "/v1/platform/client/app-dev-test-environment"
+    )
+    helper_control_route = helper_control_route or (
+        request.method == "POST" and request.url.path in {
+            "/v1/platform/credential-import/native/context",
+            "/v1/platform/credential-import/native/export",
+            "/v1/platform/credential-import/native/install",
+        }
     )
     if helper_control_route:
         return True
@@ -864,6 +872,10 @@ async def lifespan(app: FastAPI):
                     if provider_overflow(response.status_code, body):
                         from ai2apps.context_engine import ContextOverflowError
                         raise ContextOverflowError("Provider confirmed context window overflow")
+                    if response.status_code == 429:
+                        from ai2apps.fusion.provider_errors import provider_retry_headers, rate_limit_detail
+                        raise HTTPException(429, rate_limit_detail(response, body[:500]),
+                                            headers=provider_retry_headers(response))
                     raise RuntimeError(
                         "Model Runtime returned "
                         f"HTTP {response.status_code}: {body[:500]}"

@@ -1,0 +1,60 @@
+{
+  "source_commit": "1541f590c7099820f10ea012f48d2399282df69f",
+  "format": "safetensors",
+  "voices": [
+    {
+      "voice": "en-Carter_man",
+      "file": "en-Carter_man.safetensors",
+      "source_sha256": "a7bfdf1cd4939c22469bcfc6f427ae9c4467b3df46c2c14303a39c294cfc6897",
+      "sha256": "9474fe219c0ec3dd74e4446cf4c351f7790e59cebe3e86062234d1f724200a40",
+      "size": 4241512,
+      "tensor_count": 100,
+      "roundtrip_exact": true
+    },
+    {
+      "voice": "en-Davis_man",
+      "file": "en-Davis_man.safetensors",
+      "source_sha256": "67561d63bfa2153616e4c02fd967007c182593fc53738a6ad94bf5f84e8832ac",
+      "sha256": "72448f3b8080df6bef992909d0ac8c73c4bd3b104a7517466bb26f9fcfc1f375",
+      "size": 2456912,
+      "tensor_count": 100,
+      "roundtrip_exact": true
+    },
+    {
+      "voice": "en-Emma_woman",
+      "file": "en-Emma_woman.safetensors",
+      "source_sha256": "75b15c481e0d848991f1789620aa9929c583ec2c5f701f8152362cf74498bbf8",
+      "sha256": "21669b6c335bf7113871871ec27f51dff4271b18307f0e41223b8c85e6462ccc",
+      "size": 3328856,
+      "tensor_count": 100,
+      "roundtrip_exact": true
+    },
+    {
+      "voice": "en-Frank_man",
+      "file": "en-Frank_man.safetensors",
+      "source_sha256": "acaa8f1a4f46a79f8f5660cfb7a3af06ef473389319df7debc07376fdc840e47",
+      "sha256": "4a54cbd08b154a433a12060cb80d2b43b766c7bbab8cc9adcc69b8a07be43c65",
+      "size": 3345240,
+      "tensor_count": 100,
+      "roundtrip_exact": true
+    },
+    {
+      "voice": "en-Grace_woman",
+      "file": "en-Grace_woman.safetensors",
+      "source_sha256": "5f0ef02a3f3cace04cf721608b65273879466bb15fe4044e46ec6842190f6bb1",
+      "sha256": "6e60e6ce0ec9e040fdc90d3a5582f824181f74d4101383dc79562e9891521cbb",
+      "size": 2758224,
+      "tensor_count": 100,
+      "roundtrip_exact": true
+    },
+    {
+      "voice": "en-Mike_man",
+      "file": "en-Mike_man.safetensors",
+      "source_sha256": "afb64b580fbc6fab09af04572bbbd2b3906ff8ed35a28731a90b8681e47bdc89",
+      "sha256": "0d1c8bfd9d49847da8febe68822159cf64e208181f147d8dd18f5536de554e68",
+      "size": 1993536,
+      "tensor_count": 100,
+      "roundtrip_exact": true
+    }
+  ]
+}

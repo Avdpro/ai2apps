@@ -2,6 +2,8 @@
 
 Shopping Pro 拥有 history → recommend（或 refresh_list 一次刷新并推荐）→ prepare_cart 的业务流程。
 主 Agent 不根据历史记录自行估算周期或日期分档。App 与 AaAT 使用同一 Browser Task 和购物服务。
+单独查询购物历史可直接执行。未指定时使用默认浏览器分身，增量检查 1 页订单。
+用户只要已保存的订单时，使用本地缓存模式。
 
 后端以当前本地日历日、非未来的不同购买日期和正间隔中位数计算周期（不足整天向上取整），
 预计补货日为最近购买日加周期。互斥分档：overdue（小于0天）、due_today（0天）、

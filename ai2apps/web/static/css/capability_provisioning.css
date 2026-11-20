@@ -19,7 +19,134 @@
     .acpf-actions .acpf-primary:not([hidden]):not(:disabled){animation:none;box-shadow:0 0 0 3px rgba(24,24,27,.14)}
 }
 
-.acpf-mini-catalog{display:grid;gap:10px;max-height:50vh;overflow:auto}.acpf-mini-package{border:1px solid #e4e4e7;border-radius:12px;padding:14px}.acpf-mini-package p{color:#71717a;font-size:13px}.acpf-mini-package button{margin-top:6px}
+/* Studio package picker. Keep its sizing and states separate from model setup. */
+.acpf-mini-dialog {
+    --mini-bg: var(--bg-primary, #fff);
+    --mini-fg: var(--text-primary, #18181b);
+    --mini-muted: var(--text-secondary, #52525b);
+    --mini-line: var(--border-normal, #e4e4e7);
+    box-sizing: border-box;
+    width: min(620px, calc(100% - 32px));
+    max-height: min(720px, calc(100dvh - 32px));
+    margin: auto;
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid var(--mini-line);
+    border-radius: 20px;
+    background: var(--mini-bg);
+    color: var(--mini-fg);
+    box-shadow: 0 24px 70px #0004;
+    font: inherit;
+}
+.acpf-mini-dialog[open] { display: flex; flex-direction: column; }
+.acpf-mini-dialog::backdrop { background: #15151966; backdrop-filter: blur(2px); }
+.acpf-mini-dialog.acpf-mini-obscured,
+.acpf-mini-dialog.acpf-mini-obscured::backdrop { visibility: hidden; }
+.acpf-package-run {
+    box-sizing: border-box;
+    width: min(560px, calc(100% - 32px));
+    max-height: calc(100dvh - 32px);
+    padding: 0;
+    border: 0;
+    border-radius: 22px;
+    background: transparent;
+    overflow: hidden;
+}
+.acpf-package-run::backdrop { background: #15151966; backdrop-filter: blur(2px); }
+.acpf-package-run > .acpf-overlay { position: static; display: block; padding: 0; background: none; backdrop-filter: none; }
+.acpf-package-run .acpf-run-sheet {
+    box-sizing: border-box;
+    width: 100%;
+    height: auto;
+    max-height: calc(100dvh - 32px);
+    box-shadow: none;
+}
+.acpf-package-run .acpf-status,
+.acpf-package-run .acpf-error { overflow-wrap: anywhere; }
+.acpf-package-run .acpf-actions { flex-wrap: wrap; }
+.acpf-package-run .acpf-error.is-notice { background: #fffbeb; border-color: #fde68a; color: #78350f; }
+.acpf-mini-header { padding: 24px 24px 16px; border-bottom: 1px solid var(--mini-line); }
+.acpf-mini-header h2 { margin: 0; font-size: 22px; font-weight: 700; line-height: 1.25; }
+.acpf-mini-header p { margin: 5px 0 0; color: var(--mini-muted); font-size: 13px; }
+.acpf-mini-body { padding: 0 24px; overflow-y: auto; overscroll-behavior: contain; min-height: 0; }
+.acpf-mini-package {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0 16px;
+    padding: 16px 0;
+    overflow-wrap: anywhere;
+}
+.acpf-mini-icon {
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    border: 1px solid var(--mini-line);
+    border-radius: 10px;
+}
+.acpf-mini-icon svg { width: 20px; height: 20px; }
+.acpf-mini-package + .acpf-mini-package { border-top: 1px solid var(--mini-line); }
+.acpf-mini-package h3 { margin: 0; font-size: 15px; font-weight: 650; }
+.acpf-mini-package small { display: block; margin-top: 5px; }
+.acpf-mini-package p, .acpf-mini-package small { color: var(--mini-muted); font-size: 13px; line-height: 1.45; }
+.acpf-mini-package p { margin: 4px 0 0; }
+.acpf-mini-dialog .acpf-mini-problem {
+    margin: 12px 0;
+    padding: 8px 10px;
+    color: var(--danger-color, #b42318);
+    border: 1px solid currentColor;
+    border-radius: 8px;
+    font-size: 13px;
+    overflow-wrap: anywhere;
+}
+.acpf-mini-status { margin: 0; padding: 24px 0; font-size: 14px; color: var(--mini-muted); }
+.acpf-mini-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 12px 24px;
+    border-top: 1px solid var(--mini-line);
+}
+.acpf-mini-dialog button {
+    min-height: 38px;
+    padding: 7px 13px;
+    border: 1px solid var(--mini-line);
+    border-radius: 9px;
+    background: var(--mini-bg);
+    color: var(--mini-fg);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 650;
+    cursor: pointer;
+}
+.acpf-mini-dialog .acpf-mini-install { min-width: 84px; background: var(--mini-fg); color: var(--mini-bg); }
+.acpf-mini-dialog button:enabled:hover { filter: brightness(.87); }
+.acpf-mini-dialog button:focus-visible { outline: 2px solid #2563eb; outline-offset: 3px; }
+.acpf-mini-dialog button:disabled { opacity: .55; cursor: default; }
+.acpf-mini-dialog [hidden] { display: none !important; }
+@media (max-width: 600px) {
+    .acpf-package-run {
+        width: 100%;
+        max-width: none;
+        margin: auto 0 0;
+        border-radius: 22px 22px 0 0;
+    }
+    .acpf-package-run .acpf-actions button { min-height: 44px; }
+    .acpf-mini-dialog {
+        width: 100%;
+        max-width: none;
+        max-height: min(80dvh, 680px);
+        margin: auto 0 0;
+        border-radius: 18px 18px 0 0;
+    }
+    .acpf-mini-header, .acpf-mini-body, .acpf-mini-footer { padding-inline: 16px; }
+    .acpf-mini-footer { padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+    .acpf-mini-package { column-gap: 10px; }
+    .acpf-mini-icon { width: 34px; height: 34px; }
+    .acpf-mini-dialog button { min-height: 44px; }
+}
 
 .acpf-sheet>label{display:block;margin:16px 0 7px;font-weight:600}.acpf-sheet>input,.acpf-sheet>textarea{box-sizing:border-box;width:100%;padding:11px;border:1px solid #d6d3d1;border-radius:9px;font:inherit}.acpf-sheet>textarea{resize:vertical}
 
@@ -29,3 +156,10 @@
 .acpf-inline .acpf-run-scroll{max-height:320px}.acpf-inline .acpf-actions{flex-wrap:wrap}
 .acpf-inline .acpf-chat-profiles{display:flex;gap:8px;margin-top:12px}.acpf-chat-profiles select{min-width:0;flex:1;padding:8px}
 .acpf-inline .acpf-status,.acpf-inline .acpf-error{font-size:13px}.acpf-inline .acpf-heading p{font-size:12px}
+
+/* License consent is a state of the current provisioning card, including in chat. */
+.acpf-showing-license > .acpf-run-sheet{display:none!important}
+.acpf-showing-license > .acpf-license-overlay{padding:0}
+.acpf-overlay .acpf-license-options > label,.acpf-overlay label.acpf-license-confirm{display:flex;flex-direction:row;align-items:flex-start;justify-content:flex-start;text-align:left;gap:10px}
+.acpf-overlay .acpf-license-options input[type=radio],.acpf-overlay .acpf-license-confirm input[type=checkbox]{display:block;width:16px;height:16px;min-width:16px;max-width:16px;flex:0 0 16px;margin:2px 0 0;padding:0;box-sizing:border-box}
+.acpf-overlay .acpf-license-options label > span,.acpf-overlay .acpf-license-confirm > span{display:block;min-width:0;flex:1;overflow-wrap:anywhere}

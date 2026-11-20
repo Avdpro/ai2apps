@@ -1,0 +1,21 @@
+{
+  "status": "checkpoint_layout_blocked_not_publishable",
+  "source_hashes": {
+    "LICENSE": "0f581a45a6c8adf29376d894ec05e5df519bdb484bbfb83705e0314a3e516686",
+    "ai2apps.json": "c1e87fbbd9ec301571f1a11e194efaeba91e4694b00a4f16175e1e28e9e0ba44",
+    "service.yaml": "b174d3c47dc65c002252b4eba49db4411ba2f91116cf8bcd9b187908676777e1",
+    "README.md": "9785a33a98976513d0aa9d48fb506c298aa48a49dbcde63d9b50736d3ebd8256",
+    "META/CHECKPOINT-TERMS.txt": "849f3956f8250751e27c51991f598f5179b082384e5d1c0df046be88880c00e1",
+    "META/sbom.spdx.json": "18c7635d72a9a5ea08fb1a45756921b19b30be81c4dd039b28300e221ff19235",
+    "META/checkpoint-distribution-default.json": "5b4f93fb654f86f80c9205569257f05b175cfbb734d2898b851451635fca752b",
+    "META/checkpoint-distribution-custom.json": "ac90181527793273f194572a6a6b5941456673ca63d0962cd6a08bcaa477c9c4",
+    "META/NOTICE.md": "0c45c02cf01c8f7cb0927f43bfcb85e28d941bc9ee438113ebdbb871f80cbd06",
+    "META/source-lock.json": "e76d25e40437c72a8922dae7ab3c667003509b38e14221201c935d91b0c3f511",
+    "src/worker_adapter.py": "e58969bdb30a2c1643fcb642db645c9b6787f453ffbeee745df202beb9518727",
+    "META/licenses/GEMMA-USE-POLICY.txt": "c612bc3fd218dfb033a4bdd23f445b9f92c51a28d417fc2d854228c2c8f02373",
+    "META/licenses/GEMMA-TERMS.txt": "c3529a802ded8315476e026663425c5e7f3b6b9c7f9d3d3ff93e1ea56c28f996",
+    "META/licenses/LTX-2-LICENSE.txt": "e28ef68d90e17b06308e4c5cba5c9a967b70c3d67f87ddc3dfc46a312cb6a134"
+  },
+  "signed_installation_passed": false,
+  "checkpoint_layout_audit": "spark/artifacts/sol-checkpoint-layout-comparison-r1.json"
+}

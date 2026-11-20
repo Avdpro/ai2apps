@@ -247,6 +247,9 @@ class InteractiveArchive:
                     "invalid_agent_invocation", "invocation_ui must be an object"
                 )
         else:
+            from ai2apps.packages.hook_contract import validate_app as validate_hook_contract
+            try:validate_hook_contract(manifest)
+            except (ValueError,TypeError,KeyError) as error:raise ExtensionError('invalid_event_hooks',str(error)) from error
             navigation = manifest.get("navigation")
             if navigation is not None and (
                 not isinstance(navigation, dict)
@@ -402,7 +405,12 @@ class InteractiveArchive:
                     if any(p.get("studio") == "ai2apps.ai-browser" for p in placements):
                         try:
                             from ai2apps.browser.mini_apps import validate_web_agent
-                            validate_web_agent(item)
+                            owner_service=item.get('owner_service')
+                            if owner_service is not None:
+                                from ai2apps.studio.owner_services import validate_owner_service
+                                validate_owner_service(owner_service, manifest.get('id'), placements)
+                            if item.get('web_agent') is not None or owner_service is None:
+                                validate_web_agent(item)
                         except (ValueError, TypeError) as error:
                             raise ExtensionError("invalid_web_agent_mini_app", str(error)) from error
             open_entry = manifest.get("open_entry")

@@ -1,0 +1,27 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "ai2apps-model-sam21-cuda-0.1.0",
+  "documentNamespace": "https://ai2apps.com/spdx/ai2apps-model-sam21-cuda/0.1.0",
+  "packages": [
+    {
+      "name": "ai2apps-model-sam21-cuda",
+      "SPDXID": "SPDXRef-AI2AppsSAM21MLX",
+      "versionInfo": "0.1.0",
+      "downloadLocation": "NOASSERTION",
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "name": "Meta SAM 2",
+      "SPDXID": "SPDXRef-MetaSAM2",
+      "downloadLocation": "https://github.com/facebookresearch/sam2",
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "copyrightText": "Copyright (c) Meta Platforms, Inc. and affiliates",
+      "versionInfo": "2b90b9f5ceec907a1c18123530e92e794ad901a4"
+    }
+  ]
+}

@@ -11,6 +11,7 @@ struct HelperControlRequest: Codable, Sendable {
     let actorUserID: String
     let browserProfileKey: String?
     let initialURL: String?
+    let credentialImportTicket: String?
     let confirmInstanceID: String?
 
     enum CodingKeys: String, CodingKey {
@@ -21,6 +22,7 @@ struct HelperControlRequest: Codable, Sendable {
         case actorUserID = "actor_user_id"
         case browserProfileKey = "browser_profile_key"
         case initialURL = "initial_url"
+        case credentialImportTicket = "credential_import_ticket"
         case confirmInstanceID = "confirm_instance_id"
     }
 }
@@ -29,22 +31,26 @@ struct HelperControlResult: Codable, Sendable {
     let status: String
     let profileID: String?
     let processID: Int32?
+    let credentialImport: String?
     let automation: HelperBrowserAutomation?
 
     init(
         status: String,
         profileID: String? = nil,
         processID: Int32? = nil,
+        credentialImport: String? = nil,
         automation: HelperBrowserAutomation? = nil
     ) {
         self.status = status
         self.profileID = profileID
         self.processID = processID
+        self.credentialImport = credentialImport
         self.automation = automation
     }
 
     enum CodingKeys: String, CodingKey {
         case status
+        case credentialImport = "credential_import"
         case profileID = "profile_id"
         case processID = "pid"
         case automation
@@ -257,6 +263,7 @@ final class HelperControlServer: @unchecked Sendable {
                   "browser.renew",
                   "browser.pause",
                   "browser.resume",
+                  "credential.import",
                   "local.restart",
                   "instance.reset",
               ].contains(request.operation),

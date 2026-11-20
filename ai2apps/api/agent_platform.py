@@ -1377,9 +1377,15 @@ def create_agent_platform_router(
             )
 
     def _compile_prompt(request: AgentFromChatRequest, scope: list[str]) -> str:
+        from ai2apps.capabilities.effects import EFFECTS
+
         return (
             "Compile the user's browser task into one constrained Agent Source JSON object. "
             "Return JSON only; never HTML, Markdown, JavaScript, CSS, selectors, or code. "
+            "If declaring capability_exports, use only these platform effects and declare every actual effect: "
+            f"{', '.join(sorted(EFFECTS))}. Never invent effect names. "
+            "Use unclassified only for an effect the vocabulary does not cover. "
+            "Also declare all known effects that apply, including special or sensitive effects. "
             "Allowed operations are open, page_access, inspect, extract_list, read_results, ai.classify, "
             "ai.extract, ai.transform, assign, condition, agent.call, approval, click, delete, input, hover, scroll, complete. "
             "Prefer deterministic operations. Use an ai.* operation only for semantic judgment; "

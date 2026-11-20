@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 def validate_emoji(value: str) -> str:
@@ -40,12 +40,24 @@ def extract_ai_emoji(text: str, excluded: list[str]) -> str:
 class Schedule(BaseModel):
     model_config = ConfigDict(extra="forbid")
     auto_execute: bool = True
-    frequency: Literal["off", "hourly", "daily", "weekly", "monthly"] = "off"
+    frequency: Literal["off", "once", "hourly", "daily", "weekly", "monthly"] = Field(default="off",description="off means no repeating or timed schedule; a caller may still launch once immediately. once means one future execution at once_at, never an unspecified immediate run.")
     hour: int = Field(default=9, ge=0, le=23)
     minute: int = Field(default=0, ge=0, le=59)
     weekday: int = Field(default=0, ge=0, le=6)
     day: int = Field(default=1, ge=1, le=31)
     timezone: str = "Asia/Shanghai"
+    once_at: str = Field(default="",max_length=80)
+
+    @model_validator(mode="after")
+    def valid_once(self):
+        if self.frequency == "once":
+            try:stamp=datetime.fromisoformat(self.once_at.replace("Z","+00:00"))
+            except ValueError as exc:raise ValueError("A scheduled-once task needs an ISO timestamp") from exc
+            if stamp.tzinfo is None:raise ValueError("Scheduled-once time needs an explicit timezone offset")
+            self.once_at=stamp.astimezone(UTC).isoformat()
+        elif self.once_at:
+            raise ValueError("once_at is only supported for scheduled-once tasks")
+        return self
 
     @field_validator("timezone")
     @classmethod
@@ -55,6 +67,31 @@ class Schedule(BaseModel):
         except (ValueError, ZoneInfoNotFoundError) as error:
             raise ValueError("Unknown time zone") from error
         return value
+
+
+def resolve_schedule(
+    changes: dict, *, reference: datetime, timezone: str = "UTC", previous: dict | None = None,
+) -> Schedule:
+    """Resolve a reviewed schedule patch using the request instant and prior plan."""
+    patch = dict(changes)
+    delay = patch.pop("delay_minutes", None)
+    values = {**(previous or {"timezone": timezone}), **patch}
+    if delay is not None:
+        if type(delay) is not int or not 1 <= delay <= 525600:
+            raise ValueError("delay_minutes must be an integer from 1 to 525600")
+        if patch.get("frequency", "once") != "once" or patch.get("once_at"):
+            raise ValueError("Choose either a relative delay or an explicit schedule")
+        if reference.utcoffset() is None:
+            raise ValueError("Relative scheduling requires an aware request time")
+        values.update(frequency="once", once_at=(reference + timedelta(minutes=delay)).isoformat())
+    elif "frequency" in patch and patch["frequency"] != "once" and "once_at" not in patch:
+        values["once_at"] = ""
+    return Schedule.model_validate(values)
+
+
+def upcoming_schedule_time(schedule: dict) -> str | None:
+    due = next_due(schedule, datetime.now(UTC))
+    return due.isoformat() if due else None
 
 
 class CodexBinding(BaseModel):
@@ -91,7 +128,7 @@ class TaskInput(BaseModel):
     status: Literal["not_started", "in_progress", "awaiting_acceptance", "completed", "paused"] = "not_started"
     progress: int = Field(default=0, ge=0, le=100, strict=True)
     completed: bool = False
-    executor: Literal["internal", "codex", "claude", "codex_desktop"] = "internal"
+    executor: Literal["internal", "managed", "codex", "claude", "codex_desktop"] = "internal"
     model: str = Field(default="", max_length=300)
     working_directory: str = Field(default="", max_length=4096)
     schedule: Schedule = Field(default_factory=Schedule)
@@ -107,6 +144,9 @@ def next_due(schedule: dict, after: datetime) -> datetime | None:
     s = Schedule.model_validate(schedule)
     if s.frequency == "off":
         return None
+    if s.frequency == "once":
+        stamp=datetime.fromisoformat(s.once_at)
+        return stamp if stamp>after else None
     zone = ZoneInfo(s.timezone)
     local = after.astimezone(zone)
     if s.frequency == "hourly":
@@ -140,6 +180,7 @@ def next_due(schedule: dict, after: datetime) -> datetime | None:
 
 def latest_due(schedule: dict, now: datetime) -> datetime:
     s = Schedule.model_validate(schedule)
+    if s.frequency == "once":return datetime.fromisoformat(s.once_at)
     lookback = {"hourly": 2, "daily": 49, "weekly": 24 * 8, "monthly": 24 * 63}[
         s.frequency
     ]

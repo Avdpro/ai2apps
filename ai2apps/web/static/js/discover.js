@@ -414,7 +414,7 @@
                 // Native content queries already filter/search before paginating, including host/category text.
                 if (this.tab === 'discover' && this.nativeContent) return source.filter(item=>this.showExcluded||item.matchStatus!=='excluded');
                 const query = this.query.trim().toLowerCase();
-                return source.filter(item => this.matchesType(item) && this.matchesModelCategory(item) && this.matchesModelTask(item) && this.matchesMiniAppCategory(item) &&
+                return source.filter(item => (this.isMiniApp(item) || item.appNavigation?.launcher !== false) && this.matchesType(item) && this.matchesModelCategory(item) && this.matchesModelTask(item) && this.matchesMiniAppCategory(item) &&
                     (!query || (item.displayName + ' ' + item.packageId + ' ' + (item.componentId || '') + ' ' + item.description + ' ' + item.publisherName).toLowerCase().includes(query)));
             },
             get installedPackageCount() { return new Set(this.installed.map(item => item.packageId)).size; },
@@ -552,6 +552,7 @@
                     const declared=capabilities?.capabilityCatalog;
                     this.capabilityContent=declared?.schemaVersion==='ai2apps.capability-content.v1'
                         && declared.endpoint==='/v1/registry/content' && declared.query==='discovery' && declared.value==='capabilities-v1'
+                        && declared.queryProjections?.value==='projections-v1'
                         && !['model','service'].includes(this.type);
                     this.nativeContent = this.capabilityContent || capability?.schemaVersion === 'ai2apps.content-catalog.v1'
                         && capability?.endpoint === '/v1/registry/content'
@@ -626,14 +627,20 @@
                     content: ['app', 'mini-app'].includes(this.type) ? this.type : 'all',
                     sort: this.query.trim() ? 'relevance' : 'recommended'});
                 if (this.type === 'agent') params.set('type', 'agent');
-                if(this.capabilityContent)params.delete('sort');
+                if (this.capabilityContent) {
+                    params.delete('sort');
+                    params.set('release_policy', 'latest_compatible');
+                }
                 if (this.query.trim()) params.set('q', this.query.trim());
                 if (this.miniAppCategory) params.set('mini_app_category', this.miniAppCategory);
                 if (append && this.nextCursor) params.set('cursor', this.nextCursor);
                 try {
                     const page = await request((this.capabilityContent?'/catalog/capabilities-content?':'/catalog/content?') + params.toString());
                     if (key !== this.catalogKey()) return;
-                    if (page.schemaVersion !== (this.capabilityContent?'ai2apps.capability-content.v1':'ai2apps.content-catalog.v1') || !Array.isArray(page.items) || !page.catalogSnapshot) {
+                    const validContract = this.capabilityContent
+                        ? page.schemaVersion === 'ai2apps.capability-query.v1' && page.projection === 'detail' && page.releasePolicy === 'latest_compatible'
+                        : page.schemaVersion === 'ai2apps.content-catalog.v1';
+                    if (!validContract || !Array.isArray(page.items) || !page.catalogSnapshot) {
                         throw new Error('Invalid content catalog response');
                     }
                     if (append && this.catalogSnapshot && this.catalogSnapshot !== page.catalogSnapshot) {
@@ -702,6 +709,7 @@
             },
             async setTab(tab) {
                 this.tab = tab; this.clearMessage(); this.query = ''; this.type = ''; this.modelCategory = ''; this.modelTask = ''; this.miniAppCategory = '';
+                if (tab === 'skills') return;
                 if (tab === 'publish') await this.reload();
                 else await this.loadCatalog();
                 redraw();
@@ -741,7 +749,7 @@
                 if (this.type === 'mini-app') return this.isMiniApp(item);
                 if (this.type === 'service') return item.packageType === 'service' && !this.isModel(item);
                 if (this.type === 'app') return item.packageType === 'app' && !this.isMiniApp(item)
-                    && (this.tab === 'installed' || item.appNavigation?.launcher !== false);
+                    && item.appNavigation?.launcher !== false;
                 return item.packageType === this.type && !this.isMiniApp(item);
             },
             matchesModelCategory(item) {

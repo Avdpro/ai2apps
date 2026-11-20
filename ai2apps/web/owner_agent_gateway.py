@@ -40,11 +40,11 @@ async def application(scope, receive, send):
             value = await _models(principal)
             response = JSONResponse(value.model_dump(mode='json') if hasattr(value, 'model_dump') else value)
         elif relative.startswith('/assets/'):
-            response = await agent.result_image(runtime, principal, relative)
+            response = await agent.result_image(runtime, principal, relative,preview=request.query_params.get('preview')=='mobile')
         elif relative.startswith('/files/'):
-            response = await (agent.import_generated_artifact(runtime, principal, relative) if method=='POST' else agent.generated_file(runtime, principal, relative))
+            response = await (agent.import_generated_artifact(runtime, principal, relative) if method=='POST' else agent.generated_file(runtime, principal, relative,preview=request.query_params.get('preview')=='mobile'))
         elif relative.startswith('/artifacts/'):
-            response = await agent.generated_image(runtime, principal, relative)
+            response = await agent.generated_image(runtime, principal, relative,preview=request.query_params.get('preview')=='mobile')
         else:
             response = await agent.dispatch(runtime, principal, method, agent.business_target(method, relative), body,
                 {k:request.headers[k] for k in ('content-type','idempotency-key') if k in request.headers},

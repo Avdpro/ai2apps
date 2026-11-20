@@ -103,7 +103,7 @@ def test_gpt_image_edit_capability_and_explicit_denial():
     assert 'image_edit' not in caps({'id':'dall-e-3','capabilities':{}})
 
 @pytest.mark.asyncio
-async def test_agent_opens_model_form_before_execution_and_resumes(runtime,catalog,monkeypatch):
+async def test_agent_opens_model_form_before_execution_and_resumes(runtime,catalog,monkeypatch,tmp_path):
     import json
     from ai2apps.chat import ChatRepository
     monkeypatch.setattr('ai2apps.images.service._default_image_model',lambda store:'missing')
@@ -120,10 +120,15 @@ async def test_agent_opens_model_form_before_execution_and_resumes(runtime,catal
         message={'role':'assistant','content':'done'}
         if not calls:
             alias=next(t['function']['name'] for t in request['tools'] if t['function']['name'].startswith('image__group_photo_'))
-            message={'role':'assistant','content':None,'tool_calls':[{'id':'group','type':'function','function':{'name':alias,'arguments':json.dumps({'person_artifact_ids':['a','b'],'background':'garden'})}}]}
+            message={'role':'assistant','content':None,'tool_calls':[{'id':'group','type':'function','function':{'name':alias,'arguments':json.dumps({'person_artifact_ids':refs,'background':'garden'})}}]}
         return {'choices':[{'message':message,'finish_reason':'tool_calls' if message.get('tool_calls') else 'stop'}],'usage':{}}
     runtime.agent_runtime.bind_model_provider(model)
     thread,_=ChatRepository(runtime.database,runtime.events).create_thread(title='Model selection')
+    from PIL import Image
+    refs=[]
+    for color in ('red','blue'):
+        path=tmp_path/(color+'.png');Image.new('RGB',(32,24),color).save(path)
+        refs.append(runtime.workspace.import_artifact(thread.session.id,path,name=path.name,media_type='image/png').id)
     run,_=runtime.agents.create_run(session_id=thread.session.id,agent_key='ai2apps.general-agent',input={'model':'test','prompt':'make a group photo','tools':['image.group_photo']})
     app=FastAPI();app.include_router(create_ai2apps_router(runtime_provider=lambda:runtime,principal_provider=RequestPrincipal.legacy_local))
     await runtime.start_background_tasks(retention_interval_seconds=60)
@@ -139,7 +144,11 @@ async def test_agent_opens_model_form_before_execution_and_resumes(runtime,catal
             assert 'model' in state['missing'] and state['warnings']
             values={**state['values'],'model':'custom'}
             assert (await client.put(url,json={'revision':0,'values':values})).status_code==200
-            response=await client.post(url+'/submit',json={'revision':1,'values':values})
+            # Changing the model changes its exact parameter contract. Review
+            # the current descriptor just as the form UI does before submit.
+            reviewed=(await client.get(url)).json()
+            response=await client.post(url+'/submit',json={'revision':1,'values':values,
+                'parameter_contract_version':reviewed['parameter_contract_version']})
             assert response.status_code==200,response.text
         await wait(runtime,run.id,'waiting_capability')
         approval=next(i for i in runtime.agents.list_interactions(run.id) if i.status.value=='pending')
@@ -161,26 +170,37 @@ async def test_legacy_default_matches_same_cloud_model_only(runtime,catalog,monk
     assert d['selection_required'] and d['model'] is None
 
 @pytest.mark.asyncio
-async def test_agent_failure_keeps_provider_identity_parameters_and_stage(runtime,monkeypatch):
+@pytest.mark.parametrize('mini,capability,arguments', [
+    ('group-photo','image.group_photo',{'person_artifact_ids':['art_a','art_b'],'background':'garden'}),
+    ('extract-items','image.extract_items',{'artifact_id':'art_item','target':'top'}),
+    ('try-on','image.try_on',{'person_artifact_id':'art_person','item_artifact_id':'art_item'}),
+    ('product-poster','image.product_photo',{'artifact_id':'art_worn','scene':'stone'}),
+])
+async def test_agent_failure_keeps_provider_identity_parameters_and_stage(runtime,monkeypatch,mini,capability,arguments):
     import json
     from ai2apps.chat import ChatRepository
     original_context=runtime.tools.context_for_session
     monkeypatch.setattr(runtime.tools,'context_for_session',lambda **kwargs:replace(original_context(**kwargs),actor_user_id='local',installation_id='local'))
-    provider=runtime.app_capability_router.providers['ai2apps.imagine.group-photo']
+    provider=runtime.app_capability_router.providers['ai2apps.imagine.'+mini]
     async def reject(values,context):raise ProviderIncompatible('Reference roles conflict')
     runtime.app_capability_router.providers[provider.id]=replace(provider,describe=None,prepare=reject)
     async def model(request):
-        alias=next(t['function']['name'] for t in request['tools'] if t['function']['name'].startswith('image__group_photo_'))
-        return {'choices':[{'message':{'role':'assistant','content':None,'tool_calls':[{'id':'group','type':'function','function':{'name':alias,'arguments':json.dumps({'person_artifact_ids':['art_a','art_b'],'background':'garden'})}}]},'finish_reason':'tool_calls'}],'usage':{}}
+        errors=[json.loads(m['content']).get('error',{}) for m in request['messages'] if m.get('role')=='tool']
+        if any(error.get('code')=='provider_incompatible' for error in errors):
+            return {'choices':[{'message':{'role':'assistant','content':'Reference roles conflict; no image was submitted.'},'finish_reason':'stop'}],'usage':{}}
+        alias=next(t['function']['name'] for t in request['tools'] if t['function']['name'].startswith(capability.replace('.', '__')+'_'))
+        return {'choices':[{'message':{'role':'assistant','content':None,'tool_calls':[{'id':'group','type':'function','function':{'name':alias,'arguments':json.dumps(arguments)}}]},'finish_reason':'tool_calls'}],'usage':{}}
     runtime.agent_runtime.bind_model_provider(model)
     thread,_=ChatRepository(runtime.database,runtime.events).create_thread(title='Failure detail')
-    run,_=runtime.agents.create_run(session_id=thread.session.id,agent_key='ai2apps.general-agent',input={'model':'test','prompt':'make a group photo','tools':['image.group_photo']})
+    run,_=runtime.agents.create_run(session_id=thread.session.id,agent_key='ai2apps.general-agent',input={'model':'test','prompt':'make a group photo','tools':[capability]})
     await runtime.start_background_tasks(retention_interval_seconds=60)
     try:
         await wait(runtime,run.id,'waiting_capability')
         approval=next(i for i in runtime.agents.list_interactions(run.id) if i.status.value=='pending')
         runtime.agents.respond_interaction(run.id,approval.id,response={'decision':'approve','scope':'run'},response_id='approve-failure-test')
-        await wait(runtime,run.id,'failed')
+        result=await wait(runtime,run.id,'failed')
+        assert result.error['code']=='image_result_unavailable'
+        assert 'Reference roles conflict' in result.output['content']
         with runtime.database.transaction() as db:
             row=db.execute("SELECT input_json,error_json FROM run_steps WHERE run_id=? AND kind='tool' AND json_extract(error_json,'$.code')='provider_incompatible'",(run.id,)).fetchone()
         error=json.loads(row['error_json'])
@@ -188,21 +208,28 @@ async def test_agent_failure_keeps_provider_identity_parameters_and_stage(runtim
         assert error['details']['mini_app_id']==provider.mini_app_id
         assert error['details']['app_id']==provider.app_id
         assert error['details']['phase']=='prepare'
-        assert json.loads(row['input_json'])['person_artifact_ids']==['art_a','art_b']
+        assert json.loads(row['input_json'])=={**arguments,'provider':provider.id}
         assert 'Reference roles conflict' in error['message']
     finally:await runtime.stop_background_tasks()
 
 @pytest.mark.asyncio
-async def test_agent_corrects_preflight_failure_then_continues(runtime,monkeypatch):
+@pytest.mark.parametrize('mini,capability,arguments', [
+    ('group-photo','image.group_photo',{'person_artifact_ids':['art_a','art_b']}),
+    ('extract-items','image.extract_items',{'artifact_id':'art_item'}),
+    ('try-on','image.try_on',{'person_artifact_id':'art_person','item_artifact_id':'art_item'}),
+    ('product-poster','image.product_photo',{'artifact_id':'art_worn'}),
+])
+async def test_agent_corrects_preflight_failure_then_continues(runtime,monkeypatch,mini,capability,arguments):
     import json
     from ai2apps.chat import ChatRepository
     original_context=runtime.tools.context_for_session
     monkeypatch.setattr(runtime.tools,'context_for_session',lambda **kwargs:replace(original_context(**kwargs),actor_user_id='local',installation_id='local'))
-    provider=runtime.app_capability_router.providers['ai2apps.imagine.group-photo']
+    provider=runtime.app_capability_router.providers['ai2apps.imagine.'+mini]
     prepared=[];executed=[];requests=[]
+    field='background' if mini=='group-photo' else 'prompt'
     async def prepare(values,context):
-        prepared.append(values['background'])
-        if values['background']=='invalid':raise ProviderIncompatible('Use a valid background description')
+        prepared.append(values[field])
+        if values[field]=='invalid':raise ProviderIncompatible('Use a valid background description')
         return values
     async def handler(values,context):executed.append(values);return {'ok':True}
     runtime.app_capability_router.providers[provider.id]=replace(provider,describe=None,prepare=prepare,handler=handler)
@@ -213,11 +240,11 @@ async def test_agent_corrects_preflight_failure_then_continues(runtime,monkeypat
             failures=[json.loads(m['content']) for m in request['messages'] if m.get('role')=='tool']
             assert failures[-1]['error']['phase']=='prepare'
             assert failures[-1]['error']['details']['provider']==provider.id
-        alias=next(t['function']['name'] for t in request['tools'] if t['function']['name'].startswith('image__group_photo_'))
-        return {'choices':[{'message':{'role':'assistant','content':None,'tool_calls':[{'id':'group-'+str(len(requests)),'type':'function','function':{'name':alias,'arguments':json.dumps({'person_artifact_ids':['art_a','art_b'],'background':'invalid' if len(requests)<=2 else 'garden'})}}]},'finish_reason':'tool_calls'}],'usage':{}}
+        alias=next(t['function']['name'] for t in request['tools'] if t['function']['name'].startswith(capability.replace('.', '__')+'_'))
+        return {'choices':[{'message':{'role':'assistant','content':None,'tool_calls':[{'id':'group-'+str(len(requests)),'type':'function','function':{'name':alias,'arguments':json.dumps({**arguments,field:'invalid' if len(requests)<=2 else 'garden'})}}]},'finish_reason':'tool_calls'}],'usage':{}}
     runtime.agent_runtime.bind_model_provider(model)
     thread,_=ChatRepository(runtime.database,runtime.events).create_thread(title='Correct provider arguments')
-    run,_=runtime.agents.create_run(session_id=thread.session.id,agent_key='ai2apps.general-agent',input={'model':'test','prompt':'make a group photo','tools':['image.group_photo']})
+    run,_=runtime.agents.create_run(session_id=thread.session.id,agent_key='ai2apps.general-agent',input={'model':'test','prompt':'make a group photo','tools':[capability]})
     await runtime.start_background_tasks(retention_interval_seconds=60)
     try:
         await wait(runtime,run.id,'waiting_capability')
@@ -225,7 +252,7 @@ async def test_agent_corrects_preflight_failure_then_continues(runtime,monkeypat
         runtime.agents.respond_interaction(run.id,approval.id,response={'decision':'approve','scope':'run'},response_id='approve-recovery-test')
         await wait(runtime,run.id,'completed')
         assert prepared==['invalid','garden']
-        assert len(executed)==1 and executed[0]['background']=='garden'
+        assert len(executed)==1 and executed[0][field]=='garden'
         assert len(requests)==4
     finally:await runtime.stop_background_tasks()
 
@@ -290,3 +317,17 @@ async def test_search_all_confirmation_and_failed_workflow_do_not_fall_back_to_h
     with pytest.raises(CapabilityInvocationError):await router.invoke('web.search',arguments,context)
     assert 'http' not in calls
     if submitted:assert calls==['submitted-mini']
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('selected',['fixed','custom'])
+async def test_ordinary_request_resolves_declared_defaults_without_parameter_form(runtime,catalog,monkeypatch,selected):
+    monkeypatch.setattr('ai2apps.images.service._default_image_model',lambda store:selected)
+    principal=RequestPrincipal.legacy_local()
+    descriptor=await describe(runtime,principal)
+    values=await prepare(runtime,principal,{'prompt':'Requested illustration'})
+    assert values['model']==selected and values['prompt']=='Requested illustration'
+    for key in ('size','quality','format'):
+        assert values[key]==descriptor['effective_schema']['properties'][key]['default']
+    assert not descriptor.get('selection_required')
+    # Defaults never fabricate a required source for an editing request.
+    with pytest.raises(ProviderIncompatible):await prepare(runtime,principal,{'prompt':'Edit the referenced subject'},True)

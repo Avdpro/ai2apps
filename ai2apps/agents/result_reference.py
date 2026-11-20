@@ -21,13 +21,61 @@ def result_text(output: object) -> str:
     return json.dumps(output, ensure_ascii=False, sort_keys=True)
 
 
+def parameter_preview(value, *, step_id, reader_alias, source="input", path=""):
+    """Stable data-only projection; execution and durable records stay untouched."""
+    if isinstance(value, str):
+        data_url = value.startswith("data:") and "," in value[:256]
+        # Ordinary result text already has the whole-result paging contract.
+        if source == "output" and not data_url:
+            return value
+        if len(value.encode("utf-8")) <= (256 if data_url else 8192):
+            return value
+        return {
+            "type": "ai2apps.tool-value-reference/v1",
+            "source": source, "step_id": step_id, "path": path,
+            "sha256": hashlib.sha256(value.encode("utf-8")).hexdigest(),
+            "total_characters": len(value),
+            "total_bytes": len(value.encode("utf-8")),
+            "preview": value.split(",", 1)[0] if data_url else value[:512],
+            "read_with": {"tool": reader_alias, "arguments": {
+                "step_id": step_id, "source": source, "path": path,
+                "offset": 0, "limit": 4096}},
+            "notice": "Omitted original value, not an executable argument. Read the original before copying or changing it.",
+        }
+    if isinstance(value, dict):
+        return {key: parameter_preview(item, step_id=step_id, reader_alias=reader_alias,
+            source=source, path=path+"/"+str(key).replace("~", "~0").replace("/", "~1"))
+            for key, item in value.items()}
+    if isinstance(value, list):
+        return [parameter_preview(item, step_id=step_id, reader_alias=reader_alias,
+            source=source, path=path+"/"+str(index)) for index, item in enumerate(value)]
+    return value
+
+
 def result_preview(step, *, reader_alias: str | None, app_preview=None) -> str:
     text = result_text(step.output)
     encoded = text.encode("utf-8")
+    has_inline_data = False
+    if reader_alias is not None:
+        projected = parameter_preview(step.output, step_id=step.id,
+                                      reader_alias=reader_alias, source="output")
+        # Keep the existing whole-result paging contract for larger structures.
+        # Small projected structures retain every short field and exact identifier.
+        has_inline_data = projected != step.output
+        projected_text = result_text(projected)
+        if projected != step.output and len(projected_text.encode("utf-8")) <= PREVIEW_THRESHOLD_BYTES:
+            # Existing owner projections continue to accompany the reference.
+            if isinstance(projected, dict) and app_preview and len(result_text(app_preview).encode("utf-8")) <= 16384:
+                projected["app_context"] = app_preview
+            return result_text(projected)
     if reader_alias is None or len(encoded) <= PREVIEW_THRESHOLD_BYTES:
         return text
     head = text[:min(HEAD_CHARS, len(text)//3)]
     tail = text[-min(TAIL_CHARS, len(text)//6):]
+    if has_inline_data:
+        # Never include an encoded payload in a head/tail preview. Whole-result
+        # reads retain original JSON offsets, starting at zero in this case.
+        head = tail = ""
     preview = {
             "type": "ai2apps.tool-result-reference/v1",
             "step_id": step.id,
@@ -68,7 +116,7 @@ def install_result_reader(agents, services, registry, *, service_id, provider_ke
         qualified_name=RESULT_READER,
         display_name="Read Tool result",
         description=(
-            "Read a bounded fragment of a completed Tool result in the current Agent Run. "
+            "Read a bounded fragment of an original Tool input or completed result. Stable Task references also remain readable in later Runs of the same Task Session. "
             "Use the step_id from its preview. Offsets count Unicode characters in the stored JSON text. "
             "Already-read ranges return an existing read reference instead of duplicating text. "
             "Set reread=true only when the earlier content is no longer available after context compaction."
@@ -77,6 +125,8 @@ def install_result_reader(agents, services, registry, *, service_id, provider_ke
             "type": "object",
             "properties": {
                 "step_id": {"type": "string", "minLength": 1},
+                "source": {"type": "string", "enum": ["input", "output"], "default": "output"},
+                "path": {"type": "string", "description": "Exact JSON Pointer from a value reference; omitted reads the full stored JSON."},
                 "offset": {"type": "integer", "minimum": 0, "default": 0},
                 "reread": {"type": "boolean", "default": False},
                 "limit": {
@@ -108,13 +158,38 @@ def install_result_reader(agents, services, registry, *, service_id, provider_ke
         step = next(
             (s for s in agents.list_steps(run.id) if s.id == arguments["step_id"]), None
         )
+        if step is None and hasattr(agents, 'database'):
+            from .context_history import enabled
+            with agents.database.transaction() as connection:
+                source_run = connection.execute(
+                    "SELECT r.id FROM run_steps s JOIN agent_runs r ON r.id=s.run_id "
+                    "WHERE s.id=? AND r.session_id=? AND r.status IN ('completed','failed')",
+                    (arguments["step_id"], context.session_id),
+                ).fetchone() if enabled(connection, context.session_id) else None
+            if source_run:
+                step = next((s for s in agents.list_steps(source_run['id']) if s.id == arguments['step_id']), None)
         if (
             step is None
             or step.kind != "tool"
-            or step.status is not RunStepStatus.COMPLETED
+            or (arguments.get("source", "output") == "output" and step.status is not RunStepStatus.COMPLETED)
+            or (arguments.get("source", "output") == "input" and step.status not in {RunStepStatus.COMPLETED, RunStepStatus.FAILED})
         ):
             raise ToolProviderError("Tool result is not available in this Run")
-        text = result_text(step.output)
+        source = arguments.get("source", "output")
+        if source not in {"input", "output"}:
+            raise ToolProviderError("Invalid Tool source")
+        value = step.input if source == "input" else step.output
+        path = arguments.get("path")
+        if path is not None:
+            if path and not path.startswith("/"):
+                raise ToolProviderError("Invalid value path")
+            try:
+                for part in path.split("/")[1:] if path else ():
+                    key = part.replace("~1", "/").replace("~0", "~")
+                    value = value[int(key)] if isinstance(value, list) and key.isdecimal() else value[key]
+            except (KeyError, IndexError, TypeError, ValueError) as error:
+                raise ToolProviderError("Tool value is not available") from error
+        text = value if path is not None and isinstance(value, str) else result_text(value)
         offset = arguments.get("offset", 0)
         limit = arguments.get("limit", 4096)
         if offset > len(text):
@@ -125,15 +200,16 @@ def install_result_reader(agents, services, registry, *, service_id, provider_ke
             for previous in reversed(agents.list_steps(run.id)):
                 if previous.kind!='tool' or previous.tool_name!=RESULT_READER or previous.status is not RunStepStatus.COMPLETED:continue
                 value=previous.output or {}
-                if (value.get('step_id')==step.id and value.get('sha256')==sha
+                if (value.get('source', 'output')==source and value.get('path')==path
+                    and value.get('step_id')==step.id and value.get('sha256')==sha
                     and isinstance(value.get('content'),str) and type(value.get('offset')) is int
                     and value['offset']<=offset and value['offset']+len(value['content'])>=end):
-                    return {'step_id':step.id,'sha256':sha,'offset':offset,
+                    return {'step_id':step.id,'source':source,'path':path,'sha256':sha,'offset':offset,
                         'next_offset':end if end<len(text) else None,'total_characters':len(text),
                         'already_read':True,'previous_read_step_id':previous.id,
                         'notice':'Reuse the previous read. If compacted away, request this source with reread=true.'}
         return {
-            "step_id": step.id,
+            "step_id": step.id, "source": source, "path": path,
             "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
             "offset": offset,
             "next_offset": end if end < len(text) else None,

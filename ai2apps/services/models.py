@@ -153,6 +153,10 @@ class ToolCallContext:
     trace_id: str | None = None
     invocation_id: str | None = None
     progress_reporter: ToolProgressReporter | None = None
+    # Host-only exact binding for the new read-only channel entry point.
+    pinned_provider: tuple[str, str, str] | None = None
+    pinned_parameter_contract: str | None = None
+    agent_provider_binding: tuple[str, str, str, str | None] | None = None
 
     @classmethod
     def from_principal(
@@ -248,12 +252,27 @@ class ToolGatewayError(RuntimeError):
         *,
         retryable: bool = False,
         details: dict[str, Any] | None = None,
+        invocation_id: str | None = None,
     ) -> None:
         self.code = code
         self.retryable = retryable
         self.details = details or {}
+        self.invocation_id = invocation_id
         super().__init__(message)
 
 
 class ToolProviderError(RuntimeError):
     """A bound provider returned a stable execution failure."""
+
+
+class ToolAuthorizationError(ToolProviderError, PermissionError):
+    """Trusted host admission rejected a call before business execution.
+
+    A declaration or error message cannot grant permission. This exception only
+    preserves the reason and proven submission phase of the existing denial.
+    """
+    def __init__(self, code: str, message: str):
+        self.code = code
+        self.retryable = False
+        self.details = {'phase': 'prepare', 'submitted': False, 'side_effects': False}
+        super().__init__(message)

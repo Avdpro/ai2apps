@@ -44,6 +44,12 @@ class PublicDeviceBoundary:
         known = manager is not None and any(
             urlsplit(item.public_origin).netloc.lower() == host.lower()
             for item in manager.repository.list())
+        if known and scope['type'] == 'http' and method in {'GET', 'HEAD'} and re.fullmatch(r'/v1/public/video-input/[A-Za-z0-9_-]{40,64}', path):
+            device = next(item for item in manager.repository.list() if urlsplit(item.public_origin).netloc.lower() == host.lower())
+            connector = manager.frpc.status()
+            if connector.get('running') and connector.get('deviceId') == device.device_id:
+                from ai2apps.video.temporary_input import serve
+                return await serve(scope, receive, send, device_id=device.device_id)
         from ai2apps.web.mobile_agent_gateway import public_path as agent_public, application as agent_application
         if known and scope['type']=='http' and agent_public(method,path):
             device=next(item for item in manager.repository.list() if urlsplit(item.public_origin).netloc.lower()==host.lower())
@@ -130,7 +136,7 @@ class PublicDeviceBoundary:
                 from ai2apps.web.owner_agent_gateway import allowed as owner_agent_allowed, application as owner_agent_application
                 if owner_agent_allowed(method, path):
                     return await leased_response(owner_agent_application,scope,receive,send,manager.owner_home,record)
-                if (method=='POST' and re.fullmatch(r'/v1/mobile/chat/threads/[A-Za-z0-9_-]+/(?:speech|manage)',path)) or (method in ('PATCH','DELETE') and re.fullmatch(r'/v1/mobile/chat/threads/[A-Za-z0-9_-]+',path)):
+                if (method=='GET' and re.fullmatch(r'/v1/mobile/chat/threads/[A-Za-z0-9_-]+/(?:images/[A-Za-z0-9_-]+/\d+|files/[A-Za-z0-9_-]+/[A-Za-z0-9_-]+|attachments/[A-Za-z0-9_-]+)',path)) or (method=='POST' and re.fullmatch(r'/v1/mobile/chat/threads/[A-Za-z0-9_-]+/(?:speech|manage)',path)) or (method in ('PATCH','DELETE') and re.fullmatch(r'/v1/mobile/chat/threads/[A-Za-z0-9_-]+',path)):
                     from ai2apps.web.owner_home_gateway import speech_application
                     return await leased_response(speech_application,scope,receive,send,manager.owner_home,record)
                 return await leased_response(target,scope,receive,send,manager.owner_home,record)

@@ -1,0 +1,122 @@
+schema: ai2apps.service/v1
+id: ai2apps.model.vibevoice-cuda
+name: VibeVoice Realtime 0.5B CUDA
+description: Official VibeVoice CUDA speech synthesis with six fixed safe voice presets
+  and pinned tokenizer assets.
+version: 0.1.0
+publisher:
+  id: ai2apps
+license:
+  name: MIT License
+  id: MIT
+  path: META/licenses/MIT.txt
+attribution:
+  notice: META/NOTICE.md
+  original_model: https://huggingface.co/microsoft/VibeVoice-Realtime-0.5B
+  source: https://github.com/microsoft/VibeVoice/tree/1541f590c7099820f10ea012f48d2399282df69f
+runtime:
+  mode: process
+  protocol: ai2apps-model-worker/v1
+  provider: ai2apps.runtime.cuda-torch
+  adapter: src/worker_adapter.py:create_adapter
+models:
+- id: ai2apps.model.vibevoice-cuda/realtime-bf16
+  display_name: VibeVoice Realtime 0.5B CUDA BF16
+  model_type: audio_tts
+  upstream_id: microsoft/VibeVoice-Realtime-0.5B
+  capabilities:
+  - speech_generation
+  - named_voices
+  - long_form
+  metadata:
+    family: vibevoice
+    variant: realtime
+    long_form: true
+    max_duration_minutes: 10
+    multi_speaker: false
+    precision: bfloat16
+  weights:
+    provider: huggingface
+    repo_id: microsoft/VibeVoice-Realtime-0.5B
+    revision: 6bce5f06044837fe6d2c5d7a71a84f0416bd57e4
+    preparation:
+      recipe: native
+  audio_capabilities:
+    schema: ai2apps.audio-capabilities/v1
+    operations:
+    - audio_speech
+    languages:
+    - en
+    formats:
+      input: []
+      output:
+      - wav
+      - pcm
+      - mp3
+      - m4a
+      - aac
+      - flac
+      - ogg
+      - opus
+      - webm
+    streaming:
+      mode: unsupported
+      formats: []
+    tts:
+      named_voices:
+        mode: native
+        voices:
+        - en-Carter_man
+        - en-Davis_man
+        - en-Emma_woman
+        - en-Frank_man
+        - en-Grace_woman
+        - en-Mike_man
+      speed:
+        mode: unsupported
+      emotion:
+        mode: unsupported
+        values: []
+      instructions:
+        mode: unsupported
+      voice_profiles:
+        mode: unsupported
+      long_form:
+        mode: native
+        max_duration_minutes: 10
+      multi_speaker:
+        mode: unsupported
+capabilities: []
+requires:
+  services:
+  - id: ai2apps.runtime.cuda-torch
+    version: '>=0.6.0,<1.0.0'
+    optional: false
+    capabilities:
+    - cuda
+    - model-worker-v1
+    - audio-tts
+    - vibevoice
+  python: '>=3.12,<3.13'
+permissions:
+  network:
+    outbound: false
+  model_weights:
+    huggingface_cache: read
+    reason: Read only the Host-selected pinned VibeVoice checkpoint.
+  accelerator:
+    cuda: true
+    reason: Run official VibeVoice speech generation on CUDA.
+compatibility:
+  os:
+  - linux
+  architectures:
+  - arm64
+  - aarch64
+health:
+  path: /health
+  startup_timeout_seconds: 45
+restart:
+  max_attempts: 2
+  base_delay_seconds: 1
+tools: []

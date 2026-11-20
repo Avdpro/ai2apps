@@ -490,6 +490,7 @@ class CapabilityRepository:
         now = utc_now_text()
         revoked_ids: list[str] = []
         with self.database.transaction(write=True) as connection:
+            connection.execute("DELETE FROM tool_risk_preferences")
             rows = connection.execute(
                 """SELECT * FROM grant_leases WHERE revoked_at IS NULL
                    AND (expires_at IS NULL OR expires_at > ?)""",

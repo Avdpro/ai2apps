@@ -3,10 +3,13 @@ const source=fs.readFileSync(path.join(__dirname,'../web/static/js/asset_slot.js
 function element(){const handlers={};return {handlers,hidden:false,disabled:false,files:[],value:'',classList:{add(){},remove(){},toggle(){}},dataset:{},attrs:{},addEventListener(t,fn){handlers[t]=fn},setAttribute(k,v){this.attrs[k]=v},removeAttribute(k){delete this[k]},contains(x){return x===this},click(){this.clicked=(this.clicked||0)+1}};}
 function fixture(){const root=element(),input=element(),image=element(),empty=element(),filled=element(),clear=element();root.querySelector=s=>s.startsWith('input')?input:s==='img'||s==='video'?image:s==='button'?clear:s==='[data-slot-filled]'?filled:empty;const ctx={window:{}};vm.createContext(ctx);vm.runInContext(source,ctx);return {root,input,image,empty,filled,clear,bind:ctx.window.AI2AppsAssetSlot.bind};}
 test('canonical Asset Slot source and Package vendored copy are identical',()=>{
- for(const [kind,name] of [['js','asset_slot.js'],['css','asset_slot.css']])assert.equal(fs.readFileSync(path.join(__dirname,'../web/static',kind,name),'utf8'),fs.readFileSync(path.join(__dirname,'../../packages/ai2apps-frozen-time/web',name),'utf8'));
+ for(const pkg of ['ai2apps-frozen-time','paused-development/ai2apps-comic-translation'])
+  for(const [kind,name] of [['js','asset_slot.js'],['css','asset_slot.css']])assert.equal(fs.readFileSync(path.join(__dirname,'../web/static',kind,name),'utf8'),fs.readFileSync(path.join(__dirname,'../../packages',pkg,'web',name),'utf8'));
 });
 test('Imagine image inputs use standard slots; adjustment Canvas and batch pickers remain specialized',()=>{
- const template=fs.readFileSync(path.join(__dirname,'../web/templates/system_apps/imagine_studio.html'),'utf8');
+ const main=fs.readFileSync(path.join(__dirname,'../web/templates/system_apps/imagine_studio.html'),'utf8');
+ assert.ok(main.includes('include "system_apps/_imagine_reference_slots.html"'));
+ const template=main+'\n'+fs.readFileSync(path.join(__dirname,'../web/templates/system_apps/_imagine_reference_slots.html'),'utf8');
  const singleInputs=template.split('\n').filter(line=>line.includes('type="file"')&&!line.includes(' multiple'));
  assert.equal(singleInputs.length,2,'common Mini-App slots and adjustment source only');
  for(const line of singleInputs)assert.ok(line.includes('AI2AppsAssetSlot.bind'));

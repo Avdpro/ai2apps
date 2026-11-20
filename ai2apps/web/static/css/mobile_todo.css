@@ -86,3 +86,11 @@ html:not([lang^="zh"]) .list-actions>button{font-size:12px;white-space:normal;li
 .mobile-execution-fields input,.mobile-execution-fields select{width:100%;box-sizing:border-box;min-width:0}
 .mobile-chatgpt-link{display:inline-block;margin:12px 12px 12px 0;padding:12px 16px;border:1px solid #d4d4d4;border-radius:14px;color:inherit;text-decoration:none;background:#fff}
 #todo-execution>small{display:block;color:#777;line-height:1.5}
+
+/* Keep status inside the card, leaving hierarchy connectors and custom colors intact. */
+.task-row .task{position:relative}
+.task-active-marker{position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:3px;background:#2563eb;pointer-events:none}
+.task-row .task-progress{display:inline-flex;align-items:center;gap:6px}
+.task-progress-track{display:block;width:28px;height:6px;flex:none;border-radius:4px;overflow:hidden;background:#94a3b833}
+.task-progress-track>span{display:block;height:100%;border-radius:inherit;background:#94a3b8}
+.task-row[data-project-status="in_progress"]:not(.context-only) .task-progress-track>span{background:#2563eb}

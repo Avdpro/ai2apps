@@ -296,7 +296,9 @@ def create_client_router(
         response_model=ClientBootstrapResponse,
         summary="Bootstrap an AI2Apps desktop client",
     )
-    async def client_bootstrap(request: Request) -> ClientBootstrapResponse:
+    def client_bootstrap(request: Request) -> ClientBootstrapResponse:
+        # FastAPI runs this synchronous endpoint in its worker pool. Identity
+        # reads and device discovery must not occupy the ASGI event loop.
         runtime = runtime_provider() if runtime_provider is not None else None
         security_identity = None if runtime is None else runtime.security_identity
         installation_id = (
@@ -399,7 +401,7 @@ def create_client_router(
     @router.post("/client/app-dev-test-environment", include_in_schema=False)
     async def open_app_dev_test_environment(body: BrowserAgentLaunchRequest, request: Request):
         _require_helper_authorization(request)
-        if current_supervised_instance_id(fallback="") != "app-dev" or os.environ.get("AI2APPS_ALLOW_DEVELOPMENT_RUNTIME") != "1":
+        if current_supervised_instance_id(fallback="") not in {"app-dev", "miniapp-dev"} or os.environ.get("AI2APPS_ALLOW_DEVELOPMENT_RUNTIME") != "1":
             raise HTTPException(status_code=403, detail="App-Dev only")
         target = urlsplit(body.initial_url or "")
         if target.scheme != "http" or target.hostname != "127.0.0.1" or not target.port or target.path != "/" or not target.fragment or target.username or target.password:

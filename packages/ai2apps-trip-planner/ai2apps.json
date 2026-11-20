@@ -3,7 +3,7 @@
   "package": {
     "id": "ai2apps/trip-planner",
     "type": "app",
-    "version": "0.1.1",
+    "version": "0.1.2",
     "displayName": "Trip Planner",
     "description": "Plan a trip and compare observed flight, hotel and sightseeing options."
   },
@@ -97,7 +97,7 @@
             }
           ]
         },
-        "scope": "Requires a Desktop host implementing these declared AaAT exports. UI bridge edits drafts only; execution uses host-owned durable tasks and shared output.",
+        "scope": "Package-owned signed AaAT declarations bind to versioned native Host SDK protocols. Requires a host supporting ai2apps.mini-app-host-exports/v1; no catalog-only execution. Native tasks and shared Output remain host-owned.",
         "processing": "hybrid",
         "pricing": "unknown",
         "localizations": {
@@ -112,5 +112,9 @@
         }
       }
     ]
+  },
+  "sbom": {
+    "format": "spdx-json-2.3",
+    "path": "META/sbom.spdx.json"
   }
 }

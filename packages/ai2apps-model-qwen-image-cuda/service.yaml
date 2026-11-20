@@ -1,0 +1,189 @@
+schema: ai2apps.service/v1
+id: ai2apps.model.qwen-image-cuda
+name: Qwen Image CUDA
+description: Pinned official BF16 CUDA image models; signed installation and remaining
+  quality acceptance pending.
+version: 0.1.0
+publisher:
+  id: ai2apps
+license:
+  name: Apache License 2.0
+  id: Apache-2.0
+  path: LICENSE
+runtime:
+  mode: process
+  protocol: ai2apps-model-worker/v1
+  provider: ai2apps.runtime.cuda-torch
+  adapter: src/worker_adapter.py:create_qwen_adapter
+models:
+- id: ai2apps.model.qwen-image-cuda/2512
+  display_name: Qwen Image 2512 CUDA BF16
+  model_type: image_generation
+  upstream_id: Qwen/Qwen-Image-2512
+  capabilities:
+  - image_generation
+  - text_rendering
+  - multilingual
+  - local
+  - cuda
+  weights:
+    provider: huggingface
+    repo_id: Qwen/Qwen-Image-2512
+    revision: 25468b98e3276ca6700de15c6628e51b7de54a26
+    preparation:
+      recipe: native
+  metadata:
+    family: qwen-image
+    implementation: diffusers-cuda
+    variant: qwen-image-2512
+    device_recommendation:
+      minimum_memory_gib: 96
+      preferred_memory_gib: 128
+      quality_rank: 4
+  image_capabilities:
+    schema: ai2apps.image-capabilities/v1
+    operations:
+    - image_generation
+    inputs:
+      reference_images:
+        minimum: 0
+        maximum: 0
+    formats:
+      input:
+      - png
+      - jpeg
+      - webp
+      output:
+      - png
+      - jpeg
+      - webp
+    geometry:
+      minimum:
+        width: 256
+        height: 256
+      maximum:
+        width: 2048
+        height: 2048
+      multiple_of: 16
+      ratios:
+      - '1:1'
+      - '4:3'
+      - '3:4'
+      - '16:9'
+      - '9:16'
+      - '3:2'
+      - '2:3'
+    defaults:
+      width: 1328
+      height: 1328
+      steps: 20
+      guidance: 4.0
+      output_format: png
+    execution:
+      quantizations:
+      - bf16
+      max_concurrency_per_device: 1
+- id: ai2apps.model.qwen-image-cuda/edit-2511
+  display_name: Qwen Image Edit 2511 CUDA BF16
+  model_type: image_generation
+  upstream_id: Qwen/Qwen-Image-Edit-2511
+  capabilities:
+  - image_edit
+  - multi_reference
+  - character_consistency
+  - local
+  - cuda
+  weights:
+    provider: huggingface
+    repo_id: Qwen/Qwen-Image-Edit-2511
+    revision: 6f3ccc0b56e431dc6a0c2b2039706d7d26f22cb9
+    preparation:
+      recipe: native
+  metadata:
+    family: qwen-image
+    implementation: diffusers-cuda
+    variant: qwen-edit-2511
+    device_recommendation:
+      minimum_memory_gib: 96
+      preferred_memory_gib: 128
+      quality_rank: 4
+  image_capabilities:
+    schema: ai2apps.image-capabilities/v1
+    operations:
+    - image_edit
+    inputs:
+      reference_images:
+        minimum: 1
+        maximum: 3
+    formats:
+      input:
+      - png
+      - jpeg
+      - webp
+      output:
+      - png
+      - jpeg
+      - webp
+    geometry:
+      minimum:
+        width: 256
+        height: 256
+      maximum:
+        width: 2048
+        height: 2048
+      multiple_of: 16
+      ratios:
+      - '1:1'
+      - '4:3'
+      - '3:4'
+      - '16:9'
+      - '9:16'
+      - '3:2'
+      - '2:3'
+    defaults:
+      width: 1024
+      height: 1024
+      steps: 30
+      guidance: 2.5
+      output_format: png
+    execution:
+      quantizations:
+      - bf16
+      max_concurrency_per_device: 1
+capabilities:
+- image-generation
+- image-edit
+- qwen-image
+requires:
+  services:
+  - id: ai2apps.runtime.cuda-torch
+    version: '>=0.6.0,<1.0.0'
+    optional: false
+    capabilities:
+    - cuda
+    - model-worker-v1
+    - image-generation
+    - image-edit
+  python: '>=3.11,<3.14'
+permissions:
+  network:
+    outbound: false
+  model_weights:
+    huggingface_cache: read
+    reason: Read only Host-selected pinned Qwen Image checkpoints.
+  accelerator:
+    cuda: true
+    reason: Run BF16 CUDA image inference.
+compatibility:
+  os:
+  - linux
+  architectures:
+  - arm64
+  - aarch64
+health:
+  path: /health
+  startup_timeout_seconds: 180
+restart:
+  max_attempts: 2
+  base_delay_seconds: 2
+tools: []

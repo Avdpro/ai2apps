@@ -7,7 +7,8 @@ from ai2apps.studio.image_jobs import checkpoint
 from ai2apps.model_invocation import ModelInvocationContext
 
 
-def submit(runtime, principal, app_instance_id, studio_id, mini_app_id, kind, payload, *, files=None, run_id=None, key=None):
+def submit(runtime, principal, app_instance_id, studio_id, mini_app_id, kind, payload, *, files=None,
+           run_id=None, key=None, run_spec=None):
     jobs=runtime.studio_jobs
     key=key or kind+'-'+(run_id or uuid.uuid4().hex)
     fingerprint=hashlib.sha256(json.dumps([payload,app_instance_id,mini_app_id],sort_keys=True).encode()+b''.join(k.encode()+hashlib.sha256(v).digest() for k,v in sorted((files or {}).items()))).hexdigest()
@@ -21,7 +22,7 @@ def submit(runtime, principal, app_instance_id, studio_id, mini_app_id, kind, pa
         for name,data in (files or {}).items():
             if Path(name).name!=name:raise ValueError('Invalid input name')
             checkpoint(root/name,data,{})
-        return jobs.submit(principal=principal,app_instance_id=app_instance_id,studio_id=studio_id,mini_app_id=mini_app_id,kind=kind,key=key,run_id=run_id,payload={**payload,'input_root':str(root),'fingerprint':fingerprint})
+        return jobs.submit(principal=principal,app_instance_id=app_instance_id,studio_id=studio_id,mini_app_id=mini_app_id,kind=kind,key=key,run_id=run_id,run_spec=run_spec,payload={**payload,'input_root':str(root),'fingerprint':fingerprint})
     except BaseException:shutil.rmtree(root,ignore_errors=True);raise
 
 
@@ -50,6 +51,9 @@ async def execute(manager,job,principal,payload):
     if job['kind']=='cloud-image':
         from ai2apps.studio.image_jobs import generate_image
         return await generate_image(runtime,principal,job,payload['body'],'imagine-run-'+job['run_id'])
+    if job['kind']=='image-workflow':
+        from ai2apps.studio.image_workflow import execute as execute_images
+        return await execute_images(manager,job,principal,payload)
     if job['kind']=='image-upscale':
         destination=directory/'upscaled.png';source=root/'image'/'output'
         await runtime.model_invocations.invoke_background_to_file(payload['model'],'image_upscaling',{'parameters':payload['parameters']},destination,files={'image':('input',source,payload['media_type'])},request_id=job['id'],cancel_requested=lambda:manager.get(job['id'],principal)['status']=='cancelled',context=context)

@@ -9,6 +9,7 @@ from typing import Any
 
 from jsonschema import Draft202012Validator
 
+from ai2apps.capabilities.effects import validate_effect_names
 from ai2apps.core import (
     EntityIdKind,
     ResourceConflictError,
@@ -482,6 +483,11 @@ class ServiceRepository:
         Draft202012Validator.check_schema(output_schema)
         if timeout_ms <= 0:
             raise ValueError("timeout_ms must be positive")
+        if isinstance(effects, (str, bytes)):
+            raise ValueError('effects must be an array of effect names')
+        effects = tuple(effects)
+        if any(not isinstance(value, str) or not value for value in effects):
+            raise ValueError('effects must contain non-empty strings')
         effects_value = tuple(sorted(set(effects)))
         supplied_retry_policy = retry_policy or {}
         unknown_retry_fields = set(supplied_retry_policy) - {
@@ -545,6 +551,10 @@ class ServiceRepository:
                     "SELECT * FROM tool_descriptors WHERE qualified_name = ?",
                     (qualified_name,),
                 ).fetchone()
+                # Existing owner descriptors may retain old names while migrating.
+                # New descriptors and newly added effects use the platform vocabulary.
+                previous = json.loads(row["effects_json"]) if row and row["service_id"] == service_id else ()
+                validate_effect_names(effects_value, existing=previous)
                 if row is None:
                     connection.execute(
                         """

@@ -3,22 +3,82 @@
   "package": {
     "id": "ai2apps/model-fish-s2-pro",
     "type": "service",
-    "version": "0.1.1",
-    "displayName": "Fish Audio S2 Pro",
-    "description": "Local MLX Fish S2 Pro speech synthesis, voice cloning, expression control, and multi-speaker dialogue."
+    "version": "0.2.0",
+    "displayName": "Fish Audio Drama 3 4-bit",
+    "description": "Fish Audio Drama 3 4-bit: local speech and reference cloning. Built with Fish Audio. Replaces Fish S2 Pro as the general TTS engine."
   },
   "compatibility": {
     "ai2apps": ">=0.1.0 <2.0.0",
-    "platforms": ["darwin"],
-    "architectures": ["arm64"],
+    "platforms": [
+      "darwin"
+    ],
+    "architectures": [
+      "arm64"
+    ],
     "minimumOsVersion": "26.2"
   },
-  "entrypoints": [{"name": "model-worker", "kind": "service", "path": "service.yaml"}],
-  "permissions": [
-    {"capability": "model-weights.huggingface-cache.read", "reason": "Read the pinned Fish S2 Pro MLX checkpoint selected by the Host.", "required": true},
-    {"capability": "accelerator.metal", "reason": "Run local Fish speech synthesis with MLX.", "required": true}
+  "entrypoints": [
+    {
+      "name": "model-worker",
+      "kind": "service",
+      "path": "service.yaml"
+    }
   ],
-  "dependencies": [{"packageId": "ai2apps/runtime-omlx", "version": ">=1.3.9 <2.0.0", "optional": false}],
+  "permissions": [
+    {
+      "capability": "model-weights.huggingface-cache.read",
+      "reason": "Read pinned checkpoints selected by the Host.",
+      "required": true
+    },
+    {
+      "capability": "accelerator.metal",
+      "reason": "Run local MLX synthesis.",
+      "required": true
+    }
+  ],
+  "dependencies": [
+    {
+      "packageId": "ai2apps/runtime-omlx",
+      "version": ">=1.8.20 <2.0.0",
+      "optional": false
+    }
+  ],
   "files": [],
-  "sbom": {"format": "spdx-json-2.3", "path": "META/sbom.spdx.json"}
+  "sbom": {
+    "format": "spdx-json-2.3",
+    "path": "META/sbom.spdx.json"
+  },
+  "discovery": {
+    "kind": "model",
+    "categories": [
+      "speech"
+    ],
+    "tasks": [
+      "speech-synthesis",
+      "voice-cloning",
+      "emotion-control"
+    ]
+  },
+  "modelProfile": {
+    "sizeBytes": 23781114058,
+    "minimumMemoryBytes": 34359738368,
+    "scores": {
+      "speed": 4,
+      "capability": 5
+    },
+    "benchmark": {
+      "label": "4 zh/en clone samples: median warm RTF 0.417; quality from user listening, 2026-11-19",
+      "device": "Apple M5 Max"
+    }
+  },
+  "modelInstall": {
+    "serviceKey": "ai2apps.model.fish-s2-pro",
+    "models": [
+      {
+        "id": "ai2apps.model.fish-s2-pro/bf16",
+        "label": "Fish Audio Drama 3 4-bit",
+        "recommended": true
+      }
+    ]
+  }
 }

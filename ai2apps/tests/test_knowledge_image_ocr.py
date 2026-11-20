@@ -448,3 +448,24 @@ def test_group_screenshot_overlap_preserves_raw_ocr_and_evidence(env):
  with env.kb.transaction(write=True) as c:c.execute('UPDATE knowledge_import_jobs SET detect_overlap=0 WHERE id=?',(job['id'],))
  refresh_groups(env.kb)
  assert env.kb.get_item(env.p,parent).text.count('第一行详细')==2
+
+
+def test_legacy_package_cannot_claim_dedicated_ocr(tmp_path):
+ import zipfile
+ from ai2apps.knowledge.ocr import KnowledgeOCRManager
+ archive=tmp_path/'legacy.zip'
+ with zipfile.ZipFile(archive,'w') as z:z.writestr('service.yaml','id: arbitrary.embedding')
+ worker=KnowledgeOCRManager.__new__(KnowledgeOCRManager);worker._package_ocr_ids={}
+ package=SimpleNamespace(package_digest='sha256:legacy',archive_path=archive)
+ assert worker.package_ocr_ids(package)==set()
+
+
+@pytest.mark.asyncio
+async def test_non_image_package_does_not_block_ocr_selection():
+ async def catalog():return [{'id':'arbitrary/embedding','model_type':'embedding','package_service':'arbitrary.embedding'},vision('private-vision')]
+ def active(_):raise AssertionError('non-image package must not be inspected')
+ worker=KnowledgeOCRManager.__new__(KnowledgeOCRManager);worker._package_ocr_ids={}
+ worker.runtime=SimpleNamespace(model_invocations=SimpleNamespace(chat_catalog=catalog),
+  model_manager=SimpleNamespace(default_models=lambda _: {'work_simple':'private-vision'},cloud_default_policy=lambda:{},list_cloud=lambda:[]),
+  registry_packages=SimpleNamespace(installed=lambda:[]),package_repository=SimpleNamespace(active=active))
+ assert (await worker.selection()).model_id=='private-vision'

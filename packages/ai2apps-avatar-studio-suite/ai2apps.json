@@ -3,7 +3,7 @@
   "package": {
     "id": "ai2apps/avatar-studio-suite",
     "type": "app",
-    "version": "0.1.4",
+    "version": "0.1.5",
     "displayName": "Avatar Studio Suite",
     "description": "Local talking portrait Mini-App."
   },
@@ -72,7 +72,7 @@
             }
           ]
         },
-        "scope": "Requires a Desktop host implementing these declared AaAT exports. UI bridge edits drafts only; execution uses host-owned durable tasks and shared output.",
+        "scope": "Package-owned signed AaAT declarations bind to versioned native Host SDK protocols. Requires a host supporting ai2apps.mini-app-host-exports/v1; no catalog-only execution. Native tasks and shared Output remain host-owned.",
         "processing": "local",
         "pricing": "unknown",
         "localizations": {

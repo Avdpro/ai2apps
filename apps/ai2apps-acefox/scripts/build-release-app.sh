@@ -89,6 +89,9 @@ ICON_CONTRACT=standard
 if [[ ${INSTANCE_ID} == test && ${PRODUCT_IDENTIFIER} == com.ai2apps.desktop.test && \
       ${APP_DISPLAY_NAME} == AI2Apps-test ]]; then
   ICON_CONTRACT=test
+elif [[ ${INSTANCE_ID} == miniapp-dev && ${PRODUCT_IDENTIFIER} == com.ai2apps.desktop.miniappdev && \
+        ${APP_DISPLAY_NAME} == AI2Apps-MiniApp ]]; then
+  ICON_CONTRACT=app-dev
 elif [[ ${INSTANCE_ID} == app-dev && ${PRODUCT_IDENTIFIER} == com.ai2apps.desktop.appdev && \
         ${APP_DISPLAY_NAME} == AI2Apps-App-Dev ]]; then
   ICON_CONTRACT=app-dev
@@ -108,6 +111,9 @@ case ${ICON_CONTRACT} in
     ;;
   app-dev)
     APP_ICON_UPPER_COLOR='#E2D5F8'
+    if [[ ${INSTANCE_ID} == miniapp-dev ]]; then
+      APP_ICON_UPPER_COLOR='#CDEED6'
+    fi
     MENUBAR_ICON_BADGE=app-dev
     [[ ${DEVELOPMENT_BUILD} == 1 && ${ALLOW_INSTANCE_DATA_RESET} == 1 ]] || \
       fail "the fixed App-Dev identity must be a resettable Development Bundle"
@@ -343,7 +349,9 @@ find "${RUNTIME_ROOT}/Python" -type d -name __pycache__ -empty -delete
 rsync -a \
   --exclude='__pycache__' --exclude='*.pyc' --exclude='tests' --exclude='.git' \
   --exclude='.build' --exclude='.pytest_cache' --exclude='.ruff_cache' \
-  --exclude='.venv' --exclude='/experiments/' \
+  --exclude='.venv' --exclude='/experiments/' --exclude='/artifacts/' \
+  --exclude='/web/templates/system_apps/_comfyui*.html' \
+  --exclude='/web/static/js/studio_comfyui.js' --exclude='/web/static/css/studio_comfyui.css' \
   --exclude='/research/deepseek-v41-1017/' \
   --exclude='/research/dmoe-cleanup-audit-20261018/' \
   --exclude='/research/ssd-cleanup-20261017/' \
@@ -466,6 +474,12 @@ fi
 /usr/libexec/PlistBuddy -c "Add :AI2AppsDisableRemoteServer bool true" "${SHELL_INFO}"
 /usr/libexec/PlistBuddy -c "Add :AI2AppsIconContract string ${ICON_CONTRACT}" "${SHELL_INFO}"
 set_localized_bundle_name "${SHELL_APP}" "AI2Apps"
+if [[ ${INSTANCE_ID} == miniapp-dev ]]; then
+  /usr/bin/sed -i '' 's/^Name=.*/Name=AI2Apps-MiniApp/' "${SHELL_APP}/Contents/Resources/application.ini"
+  /usr/libexec/PlistBuddy -c "Set :CFBundleName ${APP_DISPLAY_NAME}" "${SHELL_INFO}"
+  /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName ${APP_DISPLAY_NAME}" "${SHELL_INFO}"
+  set_localized_bundle_name "${SHELL_APP}" "${APP_DISPLAY_NAME}"
+fi
 if [[ ${SANDBOX_MODE} == 1 ]]; then
   /usr/libexec/PlistBuddy -c "Add :AI2AppsStorageMode string app-group" "${SHELL_INFO}"
   /usr/libexec/PlistBuddy -c "Add :AI2AppsApplicationGroupIdentifier string ${APPLICATION_GROUP_IDENTIFIER}" "${SHELL_INFO}"
@@ -487,6 +501,15 @@ if [[ ${DEVELOPMENT_BUILD} == 1 ]]; then
 fi
 if [[ -n ${DEVELOPMENT_SOURCE_ROOT} ]]; then
   /usr/libexec/PlistBuddy -c "Add :AI2AppsDevelopmentSourceRoot string ${DEVELOPMENT_SOURCE_ROOT}" "${HELPER_APP}/Contents/Info.plist"
+fi
+
+# Give MiniApp its own physical browser bundle and icon resource identity.
+# Keep the fixed launcher contract through a relative compatibility link.
+if [[ ${INSTANCE_ID} == miniapp-dev ]]; then
+  cp "${SHELL_APP}/Contents/Resources/firefox.icns" "${SHELL_APP}/Contents/Resources/miniapp.icns"
+  /usr/libexec/PlistBuddy -c 'Set :CFBundleIconFile miniapp.icns' "${SHELL_INFO}"
+  mv "${SHELL_APP}" "${APP}/Contents/Applications/AI2Apps-MiniApp.app"
+  ln -s AI2Apps-MiniApp.app "${APP}/Contents/Applications/AI2Apps.app"
 fi
 
 APP="${APP}" SIGN_IDENTITY="${SIGN_IDENTITY}" \

@@ -57,6 +57,22 @@ class NotificationProducer:
         """Trusted owner guard: recheck queued references before sending/retrying."""
         self._delivery_guards.append(guard)
 
+    def cancel_pending(self,event_ids,*,expected_owner_id,connection=None):
+        """Trusted owners may withdraw their exact locally queued events.
+
+        No network call or credential lookup is needed, including while offline.
+        This cannot retract events that have already reached the server.
+        """
+        def cancel(db):
+            count=0
+            for event_id in set(event_ids):
+                count+=db.execute("""UPDATE notification_producer_outbox SET state='cancelled',error_code='owner_cancelled'
+                    WHERE event_id=? AND json_extract(identity_json,'$.owner_id')=?
+                    AND state IN ('queued','retry','authorization_required','credentials_required')""",(event_id,expected_owner_id)).rowcount
+            return count
+        if connection is not None:return cancel(connection)
+        with self.database.transaction(write=True) as db:return cancel(db)
+
     def identity(self):
         repo = self.remote.identity_repository
         installation = repo.get_installation() if repo else None

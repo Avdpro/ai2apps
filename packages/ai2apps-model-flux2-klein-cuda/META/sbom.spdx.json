@@ -1,0 +1,36 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "ai2apps.model.flux2-klein-cuda-0.1.0",
+  "documentNamespace": "https://ai2apps.com/spdx/ai2apps.model.flux2-klein-cuda/0.1.0",
+  "creationInfo": {
+    "created": "2026-10-09T00:00:00Z",
+    "creators": [
+      "Organization: AI2Apps"
+    ]
+  },
+  "packages": [
+    {
+      "name": "ai2apps-model-flux2-klein-cuda",
+      "SPDXID": "SPDXRef-Package",
+      "versionInfo": "0.1.0",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "name": "FLUX.2-klein-4B",
+      "SPDXID": "SPDXRef-Flux2Klein4B",
+      "versionInfo": "e7b7dc27f91deacad38e78976d1f2b499d76a294",
+      "downloadLocation": "https://huggingface.co/black-forest-labs/FLUX.2-klein-4B",
+      "filesAnalyzed": false,
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "copyrightText": "NOASSERTION"
+    }
+  ],
+  "relationships": []
+}

@@ -1,0 +1,67 @@
+[
+  {
+    "source": "spark/cuda_detailed_adapter.py",
+    "target": "src/cuda_detailed_adapter.py",
+    "sha256": "17299508e9fed35dd3e22c890916f64e6b3aa5c13952c4c7e1e8d2d081f2a0ef"
+  },
+  {
+    "source": "spark/cuda_detailed_engine.py",
+    "target": "src/cuda_detailed_engine.py",
+    "sha256": "245aa2233aa86c89b30f981bcadacb0afd56190e72711833011e06873e388579"
+  },
+  {
+    "source": "spark/cuda_detailed_process.py",
+    "target": "src/cuda_detailed_process.py",
+    "sha256": "3a965cdf4a2c43a228b61df062e160f9154c6a1e718ef3ca9227a7853b672d04"
+  },
+  {
+    "source": "packages/omlx-model-detailed-transcription/src/mlx_whisperx/__init__.py",
+    "target": "src/mlx_whisperx/__init__.py",
+    "sha256": "e9dc9901b6cf7193cd906edadd0ec5e6161f87762a48933e33374e73a1048b2f"
+  },
+  {
+    "source": "packages/omlx-model-detailed-transcription/src/mlx_whisperx/aligners.py",
+    "target": "src/mlx_whisperx/aligners.py",
+    "sha256": "331c395b40801ee610feb89d82d0dda58ffc80fd2941007bc55d44495484ba6e"
+  },
+  {
+    "source": "packages/omlx-model-detailed-transcription/src/mlx_whisperx/assignment.py",
+    "target": "src/mlx_whisperx/assignment.py",
+    "sha256": "7850d772e05baa7b7e53128f72aab08c00c7c5bd2166600c0b5de05c4a5b2d71"
+  },
+  {
+    "source": "packages/omlx-model-detailed-transcription/src/mlx_whisperx/audio.py",
+    "target": "src/mlx_whisperx/audio.py",
+    "sha256": "0cea0b4f24bc5693f993a6305fa2c58315f0f4b58f876d7d5146adb4eb9f26c2"
+  },
+  {
+    "source": "packages/omlx-model-detailed-transcription/src/mlx_whisperx/backends.py",
+    "target": "src/mlx_whisperx/backends.py",
+    "sha256": "b681deb6379547426ebdc08c11a3d2c65997ce5521791d2c3c0af22f6dd9d635"
+  },
+  {
+    "source": "packages/omlx-model-detailed-transcription/src/mlx_whisperx/ctc.py",
+    "target": "src/mlx_whisperx/ctc.py",
+    "sha256": "8a0e5b801173a8274abcff07f8f90bbe0889f41b8b65eeed843847605e65f725"
+  },
+  {
+    "source": "packages/omlx-model-detailed-transcription/src/mlx_whisperx/pipeline.py",
+    "target": "src/mlx_whisperx/pipeline.py",
+    "sha256": "abad23a69cdb6c215457d3c6a3e1d5ef0504dcded2ea8b285b8f1c4c2c130c5c"
+  },
+  {
+    "source": "packages/omlx-model-detailed-transcription/src/mlx_whisperx/schema.py",
+    "target": "src/mlx_whisperx/schema.py",
+    "sha256": "9351acfdc514fbff28e4b45b6aa319ca9d8fcd59b75d6c180c4163cce0983e50"
+  },
+  {
+    "source": "packages/omlx-model-detailed-transcription/src/mlx_whisperx/service.py",
+    "target": "src/mlx_whisperx/service.py",
+    "sha256": "d515fe01182fcfe4aed12b395a9fc7af49d6ed4a00bbb59f26e4543c65a8f092"
+  },
+  {
+    "source": "packages/omlx-model-detailed-transcription/src/mlx_whisperx/vad.py",
+    "target": "src/mlx_whisperx/vad.py",
+    "sha256": "09c4e75704a05e8e8cf26ce910904ef8ed8358cf3670f46e97d7193fbd768f52"
+  }
+]

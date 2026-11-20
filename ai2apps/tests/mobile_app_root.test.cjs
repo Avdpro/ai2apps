@@ -7,7 +7,7 @@ function fixture(){
  vm.createContext(c);
  vm.runInContext(source.slice(source.indexOf('    function appHistoryDepth('),source.indexOf('    function framedUrl(')),c);
  vm.runInContext(source.slice(source.indexOf('    async function openApp('),source.indexOf('    async function closeApp(')),c);
- const start=source.indexOf("    window.addEventListener('popstate',");vm.runInContext(source.slice(start,source.indexOf('    async function boot()',start)),c);
+ const start=source.indexOf("    window.addEventListener('popstate',");vm.runInContext(source.slice(start,source.indexOf('    let bootFlight =',start)),c);
  return {c,stack,requests,flush:()=>new Promise(r=>setImmediate(r))};
 }
 test('100 App switches retain only Home and current App',async()=>{

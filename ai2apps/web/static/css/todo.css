@@ -292,3 +292,13 @@ html.dark .todo-row[data-highlight-color="lavender"]{--row-highlight:#3b3050}
 
 .todo-file a.todo-file-preview{flex:0 0 80px;width:80px;height:64px;display:flex;align-items:center;justify-content:center;background:var(--td-tint);border-radius:6px;overflow:hidden}
 .todo-file-preview img{display:block;max-width:100%;max-height:100%;object-fit:contain}
+
+/* Status accents are independent of the user's row highlight and tree gutter. */
+.todo-row{position:relative}
+.todo-row .check{position:relative}
+.todo-active-marker{position:absolute;left:-7px;top:50%;transform:translateY(-50%);height:24px;width:3px;border-radius:3px;background:#2563eb;pointer-events:none}
+.todo-row .todo-progress-value{display:inline-flex;align-items:center;gap:6px}
+.todo-row-progress-track{display:block;width:28px;height:6px;flex:none;border-radius:4px;overflow:hidden;background:#94a3b833}
+.todo-row-progress-track>span{display:block;height:100%;border-radius:inherit;background:#94a3b8}
+.todo-row[data-project-status="in_progress"]:not(.context-only) .todo-row-progress-track>span{background:#2563eb}
+html.dark .todo-active-marker,html.dark .todo-row[data-project-status="in_progress"]:not(.context-only) .todo-row-progress-track>span{background:#60a5fa}

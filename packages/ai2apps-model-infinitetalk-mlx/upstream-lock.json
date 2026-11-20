@@ -1,0 +1,837 @@
+{
+  "sources": {
+    "musetalk": {
+      "commit": "c6eb30ebd1ed4d043983209813370153de9346bf",
+      "origin": "https://github.com/xocialize/musetalk-mlx.git"
+    },
+    "flashhead": {
+      "commit": "9bc03de06bb0de82cd6bc477804512ae06144bf2",
+      "origin": "https://github.com/Soul-AILab/SoulX-FlashHead.git"
+    },
+    "avtr": {
+      "commit": "eb1e5a89ed7bec3debe712b090efd676b3a420bd",
+      "origin": "https://github.com/avaturn-live/avtr-1.git"
+    },
+    "exomni": {
+      "commit": "57581cf9bc20fa1271aec6628f73cf42bb48e3a1",
+      "origin": "https://github.com/LOGO-CUHKSZ/Ex-Omni-2D-Code.git"
+    },
+    "infinitetalk": {
+      "commit": "50aa0a94184315407a991ae804d9b58d6d311ba8",
+      "origin": "https://github.com/MeiGen-AI/InfiniteTalk.git"
+    },
+    "mlx-audio": {
+      "origin": "https://github.com/Blaizzy/mlx-audio.git",
+      "commit": "cd605ecfcc266ccf6ea3077586c373101be982c6",
+      "role": "Existing Runtime-pinned dependency; not a Runtime upgrade"
+    }
+  },
+  "weights": {
+    "mlx-community/MuseTalk-1.5-q4": {
+      "revision": "ff57bd4b785b3813f43be689390c3d7494258a35",
+      "files": [
+        {
+          "path": ".gitattributes",
+          "size": 1519
+        },
+        {
+          "path": "README.md",
+          "size": 1992
+        },
+        {
+          "path": "config.json",
+          "size": 227
+        },
+        {
+          "path": "unet.safetensors",
+          "size": 1325610215
+        },
+        {
+          "path": "vae.safetensors",
+          "size": 167335279
+        },
+        {
+          "path": "whisper_encoder.safetensors",
+          "size": 16423174
+        }
+      ]
+    },
+    "Soul-AILab/SoulX-FlashHead-1_3B": {
+      "revision": "59119b6c681230c3eeee157e224ae1941746711e",
+      "files": [
+        {
+          "path": ".gitattributes",
+          "size": 1876
+        },
+        {
+          "path": "Model_Lite/config.json",
+          "size": 357
+        },
+        {
+          "path": "Model_Lite/diffusion_pytorch_model.safetensors",
+          "size": 6107542048
+        },
+        {
+          "path": "Model_Pro/config.json",
+          "size": 353
+        },
+        {
+          "path": "Model_Pro/diffusion_pytorch_model.safetensors",
+          "size": 6030864656
+        },
+        {
+          "path": "README.md",
+          "size": 8325
+        },
+        {
+          "path": "VAE_LTX/config.json",
+          "size": 501
+        },
+        {
+          "path": "VAE_LTX/diffusion_pytorch_model.safetensors",
+          "size": 1676798532
+        },
+        {
+          "path": "VAE_Wan/Wan2.1_VAE.pth",
+          "size": 507609880
+        },
+        {
+          "path": "assets/chengdu.mp4",
+          "size": 2170506
+        },
+        {
+          "path": "assets/einstein.mp4",
+          "size": 5901287
+        },
+        {
+          "path": "assets/flashhead_logo.png",
+          "size": 317280
+        },
+        {
+          "path": "assets/qitiandasheng.mp4",
+          "size": 1682357
+        },
+        {
+          "path": "assets/soul_event_link.png",
+          "size": 111017
+        },
+        {
+          "path": "assets/soul_group.png",
+          "size": 80379
+        },
+        {
+          "path": "assets/wechat_group.png",
+          "size": 354447
+        },
+        {
+          "path": "config.json",
+          "size": 99
+        },
+        {
+          "path": "model_index.json",
+          "size": 77
+        }
+      ]
+    },
+    "avaturn-live/avtr-1": {
+      "revision": "4c9bd5550f2617d0409ac602f75378502f675731",
+      "files": [
+        {
+          "path": ".gitattributes",
+          "size": 1602
+        },
+        {
+          "path": "LICENSE",
+          "size": 19910
+        },
+        {
+          "path": "README.md",
+          "size": 7861
+        },
+        {
+          "path": "THIRD-PARTY-NOTICES.md",
+          "size": 6780
+        },
+        {
+          "path": "avatars_artifacts/backgrounds/aloe_window.png",
+          "size": 569205
+        },
+        {
+          "path": "avatars_artifacts/backgrounds/beige_sofa.png",
+          "size": 687092
+        },
+        {
+          "path": "avatars_artifacts/backgrounds/bright_loft.png",
+          "size": 3754534
+        },
+        {
+          "path": "avatars_artifacts/backgrounds/framed_art.png",
+          "size": 595127
+        },
+        {
+          "path": "avatars_artifacts/backgrounds/jungle_window.png",
+          "size": 1268025
+        },
+        {
+          "path": "avatars_artifacts/backgrounds/lounge_chairs.png",
+          "size": 937262
+        },
+        {
+          "path": "avatars_artifacts/backgrounds/minimal_office.png",
+          "size": 774090
+        },
+        {
+          "path": "avatars_artifacts/backgrounds/plain_white.png",
+          "size": 31411
+        },
+        {
+          "path": "avatars_artifacts/backgrounds/study_desk.png",
+          "size": 752203
+        },
+        {
+          "path": "avatars_artifacts/backgrounds/sunlit_bedroom.png",
+          "size": 952816
+        },
+        {
+          "path": "avatars_artifacts/pasteback_mask.png",
+          "size": 39373
+        },
+        {
+          "path": "avatars_artifacts/reference_frames/arnold.png",
+          "size": 1203143
+        },
+        {
+          "path": "avatars_artifacts/reference_frames/ben.png",
+          "size": 1501222
+        },
+        {
+          "path": "avatars_artifacts/reference_frames/camila.png",
+          "size": 1274624
+        },
+        {
+          "path": "avatars_artifacts/reference_frames/caroline.png",
+          "size": 896415
+        },
+        {
+          "path": "avatars_artifacts/reference_frames/clara.png",
+          "size": 2089851
+        },
+        {
+          "path": "avatars_artifacts/reference_frames/elena.png",
+          "size": 2016739
+        },
+        {
+          "path": "avatars_artifacts/reference_frames/gordon.png",
+          "size": 1153912
+        },
+        {
+          "path": "avatars_artifacts/reference_frames/jack.png",
+          "size": 1309067
+        },
+        {
+          "path": "avatars_artifacts/reference_frames/john.png",
+          "size": 1155630
+        },
+        {
+          "path": "avatars_artifacts/reference_frames/kate.png",
+          "size": 1933197
+        },
+        {
+          "path": "avatars_artifacts/reference_frames/marcus.png",
+          "size": 1366825
+        },
+        {
+          "path": "avatars_artifacts/reference_frames/maria.png",
+          "size": 965463
+        },
+        {
+          "path": "avatars_artifacts/reference_frames/may.png",
+          "size": 1183077
+        },
+        {
+          "path": "avatars_artifacts/reference_frames/ming.png",
+          "size": 1148671
+        },
+        {
+          "path": "avatars_artifacts/reference_frames/mozart.png",
+          "size": 1937885
+        },
+        {
+          "path": "avatars_artifacts/reference_frames/oliver.png",
+          "size": 1413940
+        },
+        {
+          "path": "avatars_artifacts/reference_frames/olivia.png",
+          "size": 699596
+        },
+        {
+          "path": "avatars_artifacts/reference_frames/trevor.png",
+          "size": 1644271
+        },
+        {
+          "path": "build_artifacts/avtr1.scripted.pt",
+          "size": 612501988
+        },
+        {
+          "path": "build_artifacts/hubert-lbs-avtr1.onnx",
+          "size": 1262266208
+        },
+        {
+          "path": "build_artifacts/modnet.onnx",
+          "size": 25971348
+        },
+        {
+          "path": "renderer_runtime_artifacts/libgrid_sample_3d_plugin.so",
+          "size": 1820592
+        }
+      ]
+    },
+    "lemonade666/Ex-Omni-2D": {
+      "revision": "97f0957f4a8780e8f35e1c04848303a8b947a3f4",
+      "files": [
+        {
+          "path": ".gitattributes",
+          "size": 1519
+        },
+        {
+          "path": "README.md",
+          "size": 1406
+        },
+        {
+          "path": "added_tokens.json",
+          "size": 811
+        },
+        {
+          "path": "chat_template.jinja",
+          "size": 4168
+        },
+        {
+          "path": "config.json",
+          "size": 2572
+        },
+        {
+          "path": "generation_config.json",
+          "size": 153
+        },
+        {
+          "path": "merges.txt",
+          "size": 1671853
+        },
+        {
+          "path": "model-00001-of-00005.safetensors",
+          "size": 4902257696
+        },
+        {
+          "path": "model-00002-of-00005.safetensors",
+          "size": 4915960368
+        },
+        {
+          "path": "model-00003-of-00005.safetensors",
+          "size": 4983068496
+        },
+        {
+          "path": "model-00004-of-00005.safetensors",
+          "size": 4998410752
+        },
+        {
+          "path": "model-00005-of-00005.safetensors",
+          "size": 2556679176
+        },
+        {
+          "path": "model.safetensors.index.json",
+          "size": 260863
+        },
+        {
+          "path": "special_tokens_map.json",
+          "size": 613
+        },
+        {
+          "path": "tokenizer_config.json",
+          "size": 6145
+        },
+        {
+          "path": "video_generator/teacher.safetensors",
+          "size": 359735512
+        },
+        {
+          "path": "vocab.json",
+          "size": 3383407
+        }
+      ]
+    },
+    "facebook/wav2vec2-base-960h": {
+      "revision": "22aad52d435eb6dbaf354bdad9b0da84ce7d6156"
+    },
+    "MeiGen-AI/InfiniteTalk": {
+      "revision": "d59847ebdacf19245bfca3fb23311c0cada8378a",
+      "files": [
+        {
+          "path": ".gitattributes",
+          "size": 1572
+        },
+        {
+          "path": "README.md",
+          "size": 2781
+        },
+        {
+          "path": "assets/logo2.jpg",
+          "size": 161790
+        },
+        {
+          "path": "comfyui/infinitetalk_multi.safetensors",
+          "size": 2712714688
+        },
+        {
+          "path": "comfyui/infinitetalk_single.safetensors",
+          "size": 2712714688
+        },
+        {
+          "path": "multi/infinitetalk.safetensors",
+          "size": 9947889040
+        },
+        {
+          "path": "quant_models/infinitetalk_multi_fp8.json",
+          "size": 49337
+        },
+        {
+          "path": "quant_models/infinitetalk_multi_fp8.safetensors",
+          "size": 19499692400
+        },
+        {
+          "path": "quant_models/infinitetalk_multi_fp8_lora.json",
+          "size": 49337
+        },
+        {
+          "path": "quant_models/infinitetalk_multi_fp8_lora.safetensors",
+          "size": 19499692400
+        },
+        {
+          "path": "quant_models/infinitetalk_multi_int8.json",
+          "size": 43883
+        },
+        {
+          "path": "quant_models/infinitetalk_multi_int8.safetensors",
+          "size": 19499689368
+        },
+        {
+          "path": "quant_models/infinitetalk_multi_int8_lora.json",
+          "size": 43883
+        },
+        {
+          "path": "quant_models/infinitetalk_multi_int8_lora.safetensors",
+          "size": 19499689368
+        },
+        {
+          "path": "quant_models/infinitetalk_single_fp8.json",
+          "size": 49337
+        },
+        {
+          "path": "quant_models/infinitetalk_single_fp8.safetensors",
+          "size": 19499692400
+        },
+        {
+          "path": "quant_models/infinitetalk_single_int8.json",
+          "size": 43883
+        },
+        {
+          "path": "quant_models/infinitetalk_single_int8.safetensors",
+          "size": 19499689368
+        },
+        {
+          "path": "quant_models/infinitetalk_single_int8_lora.json",
+          "size": 43883
+        },
+        {
+          "path": "quant_models/infinitetalk_single_int8_lora.safetensors",
+          "size": 19499689368
+        },
+        {
+          "path": "quant_models/quant.json",
+          "size": 0
+        },
+        {
+          "path": "quant_models/t5_fp8.safetensors",
+          "size": 6733349304
+        },
+        {
+          "path": "quant_models/t5_map_fp8.json",
+          "size": 12506
+        },
+        {
+          "path": "single/infinitetalk.safetensors",
+          "size": 9948708152
+        }
+      ]
+    },
+    "Wan-AI/Wan2.1-I2V-14B-480P": {
+      "revision": "6b73f84e66371cdfe870c72acd6826e1d61cf279",
+      "files": [
+        {
+          "path": ".gitattributes",
+          "size": 2249
+        },
+        {
+          "path": "LICENSE.txt",
+          "size": 11357
+        },
+        {
+          "path": "README.md",
+          "size": 16029
+        },
+        {
+          "path": "Wan2.1_VAE.pth",
+          "size": 507609880
+        },
+        {
+          "path": "assets/comp_effic.png",
+          "size": 1793594
+        },
+        {
+          "path": "assets/data_for_diff_stage.jpg",
+          "size": 528268
+        },
+        {
+          "path": "assets/i2v_res.png",
+          "size": 891681
+        },
+        {
+          "path": "assets/logo.png",
+          "size": 56322
+        },
+        {
+          "path": "assets/t2v_res.jpg",
+          "size": 301030
+        },
+        {
+          "path": "assets/vben_1.3b_vs_sota.png",
+          "size": 515765
+        },
+        {
+          "path": "assets/vben_vs_sota.png",
+          "size": 1552119
+        },
+        {
+          "path": "assets/video_dit_arch.jpg",
+          "size": 643369
+        },
+        {
+          "path": "assets/video_vae_res.jpg",
+          "size": 212586
+        },
+        {
+          "path": "config.json",
+          "size": 250
+        },
+        {
+          "path": "diffusion_pytorch_model-00001-of-00007.safetensors",
+          "size": 9847223624
+        },
+        {
+          "path": "diffusion_pytorch_model-00002-of-00007.safetensors",
+          "size": 9797021016
+        },
+        {
+          "path": "diffusion_pytorch_model-00003-of-00007.safetensors",
+          "size": 9797041744
+        },
+        {
+          "path": "diffusion_pytorch_model-00004-of-00007.safetensors",
+          "size": 9692142864
+        },
+        {
+          "path": "diffusion_pytorch_model-00005-of-00007.safetensors",
+          "size": 9692142864
+        },
+        {
+          "path": "diffusion_pytorch_model-00006-of-00007.safetensors",
+          "size": 9692142864
+        },
+        {
+          "path": "diffusion_pytorch_model-00007-of-00007.safetensors",
+          "size": 7061933536
+        },
+        {
+          "path": "diffusion_pytorch_model.safetensors.index.json",
+          "size": 116451
+        },
+        {
+          "path": "examples/i2v_input.JPG",
+          "size": 250628
+        },
+        {
+          "path": "google/umt5-xxl/special_tokens_map.json",
+          "size": 6623
+        },
+        {
+          "path": "google/umt5-xxl/spiece.model",
+          "size": 4548313
+        },
+        {
+          "path": "google/umt5-xxl/tokenizer.json",
+          "size": 16837417
+        },
+        {
+          "path": "google/umt5-xxl/tokenizer_config.json",
+          "size": 61728
+        },
+        {
+          "path": "models_clip_open-clip-xlm-roberta-large-vit-huge-14.pth",
+          "size": 4772359047
+        },
+        {
+          "path": "models_t5_umt5-xxl-enc-bf16.pth",
+          "size": 11361920418
+        },
+        {
+          "path": "xlm-roberta-large/sentencepiece.bpe.model",
+          "size": 5069051
+        },
+        {
+          "path": "xlm-roberta-large/special_tokens_map.json",
+          "size": 280
+        },
+        {
+          "path": "xlm-roberta-large/tokenizer.json",
+          "size": 17082660
+        },
+        {
+          "path": "xlm-roberta-large/tokenizer_config.json",
+          "size": 418
+        }
+      ]
+    },
+    "Wan-AI/Wan2.1-T2V-1.3B": {
+      "revision": "37ec512624d61f7aa208f7ea8140a131f93afc9a",
+      "files": [
+        {
+          "path": ".gitattributes",
+          "size": 2232
+        },
+        {
+          "path": "LICENSE.txt",
+          "size": 11357
+        },
+        {
+          "path": "README.md",
+          "size": 16913
+        },
+        {
+          "path": "Wan2.1_VAE.pth",
+          "size": 507609880
+        },
+        {
+          "path": "assets/.DS_Store",
+          "size": 6148
+        },
+        {
+          "path": "assets/comp_effic.png",
+          "size": 1793594
+        },
+        {
+          "path": "assets/data_for_diff_stage.jpg",
+          "size": 528268
+        },
+        {
+          "path": "assets/i2v_res.png",
+          "size": 891681
+        },
+        {
+          "path": "assets/logo.png",
+          "size": 56322
+        },
+        {
+          "path": "assets/t2v_res.jpg",
+          "size": 301030
+        },
+        {
+          "path": "assets/vben_1.3b_vs_sota.png",
+          "size": 515765
+        },
+        {
+          "path": "assets/vben_vs_sota.png",
+          "size": 1552119
+        },
+        {
+          "path": "assets/video_dit_arch.jpg",
+          "size": 643369
+        },
+        {
+          "path": "assets/video_vae_res.jpg",
+          "size": 212586
+        },
+        {
+          "path": "config.json",
+          "size": 249
+        },
+        {
+          "path": "diffusion_pytorch_model.safetensors",
+          "size": 5676070424
+        },
+        {
+          "path": "examples/i2v_input.JPG",
+          "size": 250628
+        },
+        {
+          "path": "google/umt5-xxl/special_tokens_map.json",
+          "size": 6623
+        },
+        {
+          "path": "google/umt5-xxl/spiece.model",
+          "size": 4548313
+        },
+        {
+          "path": "google/umt5-xxl/tokenizer.json",
+          "size": 16837417
+        },
+        {
+          "path": "google/umt5-xxl/tokenizer_config.json",
+          "size": 61728
+        },
+        {
+          "path": "models_t5_umt5-xxl-enc-bf16.pth",
+          "size": 11361920418
+        }
+      ]
+    },
+    "OmniAvatar/OmniAvatar-1.3B": {
+      "revision": "5e1fb8803d9200848fe021952e0fd8f11e997bf6",
+      "files": [
+        {
+          "path": ".gitattributes",
+          "size": 1519
+        },
+        {
+          "path": "README.md",
+          "size": 6457
+        },
+        {
+          "path": "config.json",
+          "size": 765
+        },
+        {
+          "path": "pytorch_model.pt",
+          "size": 354748280
+        }
+      ]
+    },
+    "Qwen/Qwen3-TTS-12Hz-0.6B-Base": {
+      "revision": "5d83992436eae1d760afd27aff78a71d676296fc",
+      "files": [
+        {
+          "path": ".gitattributes",
+          "size": 1519
+        },
+        {
+          "path": "README.md",
+          "size": 3640
+        },
+        {
+          "path": "config.json",
+          "size": 4494
+        },
+        {
+          "path": "generation_config.json",
+          "size": 245
+        },
+        {
+          "path": "merges.txt",
+          "size": 1671839
+        },
+        {
+          "path": "model.safetensors",
+          "size": 1829344272
+        },
+        {
+          "path": "preprocessor_config.json",
+          "size": 127
+        },
+        {
+          "path": "speech_tokenizer/config.json",
+          "size": 2336
+        },
+        {
+          "path": "speech_tokenizer/configuration.json",
+          "size": 76
+        },
+        {
+          "path": "speech_tokenizer/model.safetensors",
+          "size": 682293092
+        },
+        {
+          "path": "speech_tokenizer/preprocessor_config.json",
+          "size": 234
+        },
+        {
+          "path": "tokenizer_config.json",
+          "size": 7344
+        },
+        {
+          "path": "vocab.json",
+          "size": 2776833
+        }
+      ]
+    },
+    "Qwen/Qwen3-TTS-Tokenizer-12Hz": {
+      "revision": "7dd38ad4e9bad454aae9cd937d0cd577604fe229",
+      "files": [
+        {
+          "path": ".gitattributes",
+          "size": 1519
+        },
+        {
+          "path": "README.md",
+          "size": 3482
+        },
+        {
+          "path": "config.json",
+          "size": 2336
+        },
+        {
+          "path": "configuration.json",
+          "size": 76
+        },
+        {
+          "path": "model.safetensors",
+          "size": 682293092
+        },
+        {
+          "path": "preprocessor_config.json",
+          "size": 234
+        }
+      ]
+    },
+    "TencentGameMate/chinese-wav2vec2-base": {
+      "revision": "5f7a6cfdfc5440ec78748f79a9dd66f077c2b463",
+      "files": [
+        {
+          "path": ".gitattributes",
+          "size": 1227
+        },
+        {
+          "path": "README.md",
+          "size": 1923
+        },
+        {
+          "path": "chinese-wav2vec2-base-fairseq-ckpt.pt",
+          "size": 1140632401
+        },
+        {
+          "path": "config.json",
+          "size": 1951
+        },
+        {
+          "path": "model.safetensors",
+          "size": 380204696
+        },
+        {
+          "path": "preprocessor_config.json",
+          "size": 160
+        },
+        {
+          "path": "pytorch_model.bin",
+          "size": 380261837
+        }
+      ]
+    }
+  }
+}

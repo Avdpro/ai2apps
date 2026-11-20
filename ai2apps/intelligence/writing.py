@@ -5,7 +5,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator
 from . import service
 
-KINDS = {'short_post':'短 Post','long_article':'长文','video_script':'视频稿','podcast':'播客稿','newsletter':'简报'}
+KINDS = {'short_post':'短 Post','long_post':'长 Post','long_article':'长文','video_script':'视频稿','podcast':'播客稿','newsletter':'简报'}
 
 
 class CreateDraft(BaseModel):
@@ -65,6 +65,10 @@ class Manuscript(BaseModel):
     evidence_ids: list[int] = Field(min_length=1, max_length=20)
 
 
+class ManuscriptCitationError(ValueError):
+    pass
+
+
 def select_evidence(channel, articles, body):
     articles = [a for a in articles if a['channel_id']==channel['id']]
     label = channel['name']
@@ -90,14 +94,21 @@ def select_evidence(channel, articles, body):
     return {'scope':body.scope,'scope_id':body.scope_id,'label':label,'total_articles':len(articles),'evidence':evidence}
 
 
-async def compose(runtime, request, principal, channel_id, draft, guidance):
+async def compose(runtime, request, principal, channel_id, draft, guidance, *,
+                  constraints="", validate_content=None, on_progress=None,
+                  output_language=None, consumer_app_id="ai2apps.intelligence",
+                  manuscript_model=Manuscript, stage="editorial"):
     allowed={e['evidence_id'] for e in draft['evidence']}
     def validate(value):
-        result=Manuscript.model_validate(value)
+        result=manuscript_model.model_validate(value)
         refs=set(result.evidence_ids)
         inline={int(n) for n in re.findall(r'\[(\d+)\]',result.content)}
-        if not result.title.strip() or not result.content.strip() or len(refs)!=len(result.evidence_ids) or not refs.issubset(allowed) or not inline or not inline.issubset(refs):
-            raise ValueError('Use unique supplied evidence IDs and [number] citations in the manuscript')
+        if not result.title.strip() or not result.content.strip():
+            raise ValueError('Manuscript title and body must not be blank')
+        if len(refs)!=len(result.evidence_ids) or not refs.issubset(allowed) or not inline or not inline.issubset(refs):
+            raise ManuscriptCitationError('Use unique supplied evidence IDs and [number] citations in the manuscript')
+        if validate_content:
+            validate_content(result)
         return result
     result=await service.model_json(runtime,request,principal,channel_id,
         'Write or revise a complete publication-ready manuscript in the requested output language for the selected format. '
@@ -106,15 +117,16 @@ async def compose(runtime, request, principal, channel_id, draft, guidance):
         'Use ONLY the provided frozen evidence for factual claims; distinguish opinion and suggested shots from facts. '
         'Do not invent quotes, tests, experiences, prices or unverified facts. If guidance asks for unsupported facts, '
         'explain the gap in note and keep the manuscript grounded. Use original prose, not long copies of source articles. '
-        'short_post should be concise; long_article needs a coherent narrative and headings; video_script needs '
+        'short_post should be concise; long_post uses plain-text paragraphs; long_article needs a coherent narrative and headings; video_script needs '
         'an opening hook, spoken narration, shot suggestions and closing; podcast uses spoken segments; newsletter uses concise sections. '
         'Follow user length guidance where feasible. On revision return the WHOLE updated manuscript, not a diff. '
         'Use plain text with paragraphs, numbered [evidence_id] citations, no HTML. '
-        'note briefly explains the approach or changes in this turn. Schema: '+json.dumps(Manuscript.model_json_schema()),
+        'note briefly explains the approach or changes in this turn. '+constraints+' Schema: '+json.dumps(manuscript_model.model_json_schema()),
         {'format':KINDS[draft['kind']], 'scope':draft['scope_label'], 'user_guidance':guidance,
          'initial_guidance':draft['guidance'],'current_manuscript':draft.get('current'),
          'recent_conversation':[{'guidance':t['guidance'],'note':t['note']} for t in draft.get('turns',[])[-8:]],
-         'evidence':draft['evidence']},validate)
+         'evidence':draft['evidence'], **({'channel': {'output_language': output_language}} if output_language else {})},
+        validate, on_progress=on_progress, consumer_app_id=consumer_app_id, stage=stage)
     return result.model_dump()
 
 

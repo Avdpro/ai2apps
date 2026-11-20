@@ -44,11 +44,35 @@ def image_result(result, output_format="png"):
     return data, media_type
 
 
+def image_usage_receipt(result):
+    """Keep only reported usage and settlement fields, never the provider payload."""
+    usage = result.get('usage')
+    values = {k: usage[k] for k in ('total_tokens', 'input_tokens', 'output_tokens',
+                                     'totalTokens', 'inputTokens', 'outputTokens', 'imageInputTokens', 'imageOutputTokens')
+              if result.get('usageEstimated') is not True and isinstance(usage, dict)
+              and type(usage.get(k)) is int and usage[k] >= 0}
+    receipt = {'usage': values} if values else {}
+    request = result.get('requestId')
+    if isinstance(request, str) and 0 < len(request) <= 256:
+        receipt['requestId'] = request
+        points = result.get('points')
+        if isinstance(points, dict) and type(points.get('charged')) in (str, int, float):
+            receipt['points'] = {'charged': points['charged']}
+    return receipt
+
+
 async def generate_image(runtime, principal, job, payload, request_id):
     source = payload.get('source', 'local')
     body = {key: value for key, value in payload.items() if key not in ('source','prompts')}
+    if body.get('background') is None:
+        body.pop('background', None)
+    if body.get('background') == 'transparent':
+        from ai2apps.images.background import validate_background
+        if source == 'local':
+            raise ValueError('Selected local model does not declare native transparent background support')
+        validate_background('transparent', body.get('outputFormat','png'), ['transparent'])
     if source != 'local':
-        from ai2apps.cloud_gateway import request_cloud_image
+        from ai2apps.images.cloud_gateway import request_cloud_image
         # Reuse the existing authorized Cloud/BYOK contract; no new Cloud API.
         body['idempotencyKey'] = request_id
         result = await request_cloud_image(body, edit=bool(body.get('imageDataUrls')), base_path=runtime.config.paths.base_path,
@@ -71,7 +95,12 @@ async def generate_image(runtime, principal, job, payload, request_id):
             await invocations.cancel_request(model.id, request_id)
             raise
     content, media_type = image_result(result, body.get('outputFormat', 'png'))
-    return content, {'media_type': media_type, 'model': body['model'], 'prompt': body['prompt'], 'size': (result.get('image') or {}).get('size') or body.get('size'), 'format': media_type.split('/')[1]}
+    if body.get('background') == 'transparent':
+        from ai2apps.images.background import validate_alpha
+        validate_alpha(content)
+    receipt = image_usage_receipt(result)
+    return content, {'media_type': media_type, 'model': body['model'], 'prompt': body['prompt'], 'size': (result.get('image') or {}).get('size') or body.get('size'), 'format': media_type.split('/')[1],
+                     **({'usage_receipt': receipt} if receipt else {})}
 
 
 async def render_image_job(manager, job, principal, payload):

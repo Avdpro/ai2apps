@@ -1,5 +1,6 @@
 """Exercise the actual server-bound Agent callback without loading MLX engines."""
 import ast
+import asyncio
 import inspect
 import json
 from pathlib import Path
@@ -34,7 +35,7 @@ async def test_server_agent_callback_uses_local_route_and_preserves_auth(api_key
     current = [context]
     monkeypatch.setattr(ModelInvocationContext, 'for_session', lambda *a: current[0])
     runtime = SimpleNamespace(database=object())
-    namespace = dict(app=app, _server_state=SimpleNamespace(api_key=api_key),
+    namespace = dict(app=app, asyncio=asyncio, _server_state=SimpleNamespace(api_key=api_key),
                      ChatCompletionStreamAccumulator=ChatCompletionStreamAccumulator,
                      json=json, time=time, inspect=inspect,
                      _AGENT_MODEL_SCOPE=object(), ModelInvocationContext=ModelInvocationContext,

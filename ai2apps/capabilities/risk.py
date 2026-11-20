@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from .effects import effect_profile
+
 _SENSITIVE_FRAGMENTS = (
     "password", "passwd", "secret", "token", "api_key", "apikey",
     "authorization", "cookie", "credential", "private_key",
@@ -39,29 +41,15 @@ def sanitize_value(value: Any, *, key: str = "") -> Any:
 
 
 def operation_class(effects: tuple[str, ...]) -> str:
-    values = {value.lower() for value in effects}
-    if values & {"destructive", "delete", "purchase", "payment"}:
-        return "destructive"
-    if values & {"external", "network", "export", "upload", "send", "publish"}:
-        return "external"
-    if values & {
-        "write", "write-host", "execute", "process", "clipboard",
-        "host-control", "privileged", "credential",
-    }:
-        return "write"
-    return "read"
+    order = ('read', 'write', 'external', 'destructive', 'unknown')
+    return max((effect_profile(value).operation for value in effects),
+               key=order.index, default='read')
 
 
 def risk_level(effects: tuple[str, ...]) -> str:
-    category = operation_class(effects)
-    values = {value.lower() for value in effects}
-    if category == "destructive" or values & {"privileged", "credential"}:
-        return "critical"
-    if values & {"network", "send", "publish", "execute", "process", "host-control"}:
-        return "high"
-    if category in {"write", "external"}:
-        return "medium"
-    return "low"
+    order = ('low', 'medium', 'high', 'critical', 'unknown')
+    return max((effect_profile(value).risk for value in effects),
+               key=order.index, default='low')
 
 
 def resource_selector(arguments: dict[str, Any]) -> dict[str, Any]:
@@ -81,12 +69,12 @@ def approval_countdown_seconds(effects: tuple[str, ...]) -> int | None:
     Unknown effects and effects requiring explicit human confirmation fail closed.
     Network alone is not a read declaration.
     """
-    values=set(effects)
-    safe={'read','read-host','external_read','network','artifact.create','artifact.read'}
-    meaningful=safe-{'network'}
-    if 'network' in values and ('external_read' not in values or not values<={'read','external_read','network'}):
-        return None
-    return 60 if values and values<=safe and values & meaningful else None
+    values = set(effects)
+    if 'network' in values:
+        if 'external_read' not in values or not values <= {'read', 'external_read', 'network'}:
+            return None
+        values.remove('network')
+    return 60 if values and all(effect_profile(value).countdown for value in values) else None
 
 
 def action_preview(
@@ -107,7 +95,7 @@ def action_preview(
         "approval_countdown_seconds": approval_countdown_seconds(effects),
         "operation_class": category,
         "risk_level": risk_level(effects),
-        "reversible": category not in {"destructive", "external"},
+        "reversible": category in {"read", "write"} and not any(effect_profile(value).confirm_once for value in effects),
         "summary": summary,
         "arguments": safe_arguments,
         "resource_selector": resource_selector(arguments),

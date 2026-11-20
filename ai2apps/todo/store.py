@@ -28,17 +28,149 @@ class TodoStore:
                 CREATE TABLE IF NOT EXISTS directory_order(owner TEXT NOT NULL, directory_id TEXT NOT NULL, position INTEGER NOT NULL, PRIMARY KEY(owner,directory_id));
                 CREATE TABLE IF NOT EXISTS emoji_history(owner TEXT NOT NULL, task_id TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(owner,task_id));
                 CREATE TABLE IF NOT EXISTS directories(id TEXT PRIMARY KEY, owner TEXT NOT NULL, title TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS linked_directories(owner TEXT NOT NULL, source TEXT NOT NULL, directory_id TEXT NOT NULL, PRIMARY KEY(owner,source));
                 CREATE TABLE IF NOT EXISTS tasks(id TEXT PRIMARY KEY, owner TEXT NOT NULL, data TEXT NOT NULL, revision INTEGER NOT NULL, next_due TEXT, created_at TEXT NOT NULL);
                 CREATE INDEX IF NOT EXISTS task_owner ON tasks(owner);
                 CREATE TABLE IF NOT EXISTS task_creation_receipts(owner TEXT NOT NULL, request_key TEXT NOT NULL, input_json TEXT NOT NULL, task_id TEXT NOT NULL, PRIMARY KEY(owner,request_key));
                 CREATE TABLE IF NOT EXISTS attachments(id TEXT PRIMARY KEY, owner TEXT NOT NULL, task_id TEXT NOT NULL, name TEXT NOT NULL, size INTEGER NOT NULL);
                 CREATE TABLE IF NOT EXISTS runs(id TEXT PRIMARY KEY, owner TEXT NOT NULL, task_id TEXT NOT NULL, status TEXT NOT NULL, data TEXT NOT NULL);
                 CREATE INDEX IF NOT EXISTS run_owner ON runs(owner,task_id);
+                CREATE TABLE IF NOT EXISTS task_execution_lanes(owner TEXT NOT NULL, task_id TEXT NOT NULL UNIQUE, lane TEXT NOT NULL, PRIMARY KEY(owner,task_id));
+                CREATE INDEX IF NOT EXISTS execution_lane_tasks ON task_execution_lanes(owner,lane);
+                CREATE TABLE IF NOT EXISTS execution_lane_fairness(owner TEXT,lane TEXT,burst INTEGER NOT NULL,PRIMARY KEY(owner,lane));
+                CREATE TABLE IF NOT EXISTS task_system_schedules(owner TEXT NOT NULL,task_id TEXT NOT NULL,PRIMARY KEY(owner,task_id));
+                CREATE TABLE IF NOT EXISTS task_execution_bindings(owner TEXT NOT NULL,task_id TEXT PRIMARY KEY,registration TEXT NOT NULL,binding_json TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS run_creation_receipts(owner TEXT NOT NULL,request_key TEXT NOT NULL,task_id TEXT NOT NULL,run_id TEXT NOT NULL,PRIMARY KEY(owner,request_key));
+                CREATE TABLE IF NOT EXISTS execution_plan_receipts(owner TEXT NOT NULL,request_key TEXT NOT NULL,signature TEXT NOT NULL,result_json TEXT NOT NULL,PRIMARY KEY(owner,request_key));
+                CREATE TABLE IF NOT EXISTS schedule_disable_receipts(owner TEXT NOT NULL,request_key TEXT NOT NULL,task_id TEXT NOT NULL,expected_revision INTEGER NOT NULL,result_json TEXT NOT NULL,PRIMARY KEY(owner,request_key));
             """)
 
         from .activity import install
         with self.connect() as db:
             install(db)
+
+    def execution_binding(self, owner, task_id):
+        with self.connect() as db:
+            row=db.execute('SELECT registration,binding_json FROM task_execution_bindings WHERE owner=? AND task_id=?',(owner,task_id)).fetchone()
+        return {'registration':row['registration'],'binding':json.loads(row['binding_json'])} if row else None
+
+    def launch_receipt(self, owner, request_key):
+        with self.connect() as db:
+            row=db.execute('SELECT run_id,task_id FROM run_creation_receipts WHERE owner=? AND request_key=?',(owner,request_key)).fetchone()
+        return dict(row) if row else None
+
+    def bind_execution_lane(self, owner, task_id, lane, *, expected_lane=None):
+        """Trusted owner adapters assign a serial lane; this grants no execution rights."""
+        if lane is not None and (not isinstance(lane, str) or not 1 <= len(lane) <= 160):
+            raise ValueError("Invalid execution lane")
+        with self.connect() as db:
+            task = self.task(db.execute("SELECT * FROM tasks WHERE owner=? AND id=?", (owner, task_id)).fetchone())
+            current = db.execute("SELECT lane FROM task_execution_lanes WHERE owner=? AND task_id=?", (owner, task_id)).fetchone()
+            if lane is None and (not expected_lane or not current or current[0] != expected_lane):
+                raise ValueError("Task assignment changed")
+            if (current[0] if current else None) == lane:
+                return
+            if db.execute('SELECT 1 FROM task_execution_bindings WHERE owner=? AND task_id=?',(owner,task_id)).fetchone():
+                raise ValueError('Task execution owner controls this assignment')
+            if lane is not None and (task.get("deleted_at") or task.get("archived_at")):
+                raise ValueError("Restore this project before assigning it")
+            if db.execute("SELECT 1 FROM runs WHERE owner=? AND task_id=? AND status IN ('queued','running','planning','waiting_input','waiting_capability')", (owner, task_id)).fetchone():
+                raise ValueError("Finish or cancel the active run before changing its assignment")
+            if current and lane is not None:
+                raise ValueError("Remove the existing assignment first")
+            db.execute("DELETE FROM task_execution_lanes WHERE owner=? AND task_id=?", (owner, task_id))
+            if lane is not None:
+                db.execute("INSERT INTO task_execution_lanes VALUES(?,?,?)", (owner, task_id, lane))
+
+    def update_execution_plan(self,owner,task_id,revision,registration,changes,binding,request_key):
+        """Trusted owner CAS update. Existing Run snapshots/bindings are immutable."""
+        if set(changes)-{'title','description','model','schedule','executor'} or changes.get('executor','managed')!='managed':raise ValueError('Unsupported plan change')
+        signature=json.dumps([task_id,revision,registration,changes,binding],sort_keys=True,separators=(',',':'))
+        with self.connect() as db:
+            receipt=db.execute('SELECT * FROM execution_plan_receipts WHERE owner=? AND request_key=?',(owner,request_key)).fetchone()
+            if receipt:
+                if receipt['signature']!=signature:raise ValueError('Plan request belongs to different input')
+                return json.loads(receipt['result_json'])
+            row=db.execute('SELECT * FROM tasks WHERE owner=? AND id=?',(owner,task_id)).fetchone()
+            current=db.execute('SELECT registration FROM task_execution_bindings WHERE owner=? AND task_id=?',(owner,task_id)).fetchone()
+            if not row or not current or current['registration']!=registration:raise PermissionError('Managed plan owner mismatch')
+            if row['revision']!=revision:raise ValueError('Plan changed; review again')
+            data=json.loads(row['data'])
+            if data.get('deleted_at') or data.get('archived_at'):raise ValueError('Plan unavailable')
+            data.update(changes);data={**data,**TaskInput.model_validate({k:v for k,v in data.items() if k in TaskInput.model_fields}).model_dump()}
+            data['updated_at']=datetime.now(UTC).isoformat()
+            due=next_due(data['schedule'],datetime.now(UTC));due=due.isoformat() if due else None
+            db.execute('UPDATE tasks SET data=?,revision=revision+1,next_due=? WHERE owner=? AND id=?',(json.dumps(data),due,owner,task_id))
+            db.execute('UPDATE task_execution_bindings SET binding_json=? WHERE owner=? AND task_id=?',(json.dumps(binding),owner,task_id))
+            result={'task_id':task_id,'title':data['title'],'revision':revision+1,'next_due':due,'active_runs_changed':False}
+            db.execute('INSERT INTO execution_plan_receipts VALUES(?,?,?,?)',(owner,request_key,signature,json.dumps(result)))
+            return result
+
+    def disable_schedule(self, owner, task_id, revision, request_key):
+        """Disable future slots atomically with an idempotent owner receipt.
+
+        Already admitted Runs retain their execution owner and are not cancelled.
+        Re-enabling a trusted task requires its owner's separate review.
+        """
+        with self.connect() as db:
+            receipt=db.execute('SELECT * FROM schedule_disable_receipts WHERE owner=? AND request_key=?',(owner,request_key)).fetchone()
+            if receipt:
+                if receipt['task_id']!=task_id or receipt['expected_revision']!=revision:raise ValueError('Schedule request belongs to different input')
+                return json.loads(receipt['result_json'])
+            task=self.task(db.execute('SELECT * FROM tasks WHERE owner=? AND id=?',(owner,task_id)).fetchone())
+            if task['revision']!=revision:raise ValueError('Task changed; review its schedule again')
+            if task.get('deleted_at') or task.get('archived_at'):raise ValueError('Restore this project before changing its schedule')
+            if task['schedule']['frequency']=='off':raise ValueError('This task has no active schedule')
+            data=json.loads(db.execute('SELECT data FROM tasks WHERE id=?',(task_id,)).fetchone()[0])
+            data['schedule']={**data['schedule'],'frequency':'off','once_at':''}
+            data['updated_at']=datetime.now(UTC).isoformat()
+            db.execute('UPDATE tasks SET data=?,revision=revision+1,next_due=NULL WHERE owner=? AND id=?',(json.dumps(data),owner,task_id))
+            result={'task_id':task_id,'title':task['title'],'revision':revision+1,'schedule':data['schedule'],'next_due':None,'active_runs_cancelled':False}
+            db.execute('INSERT INTO schedule_disable_receipts VALUES(?,?,?,?,?)',(owner,request_key,task_id,revision,json.dumps(result)))
+            return result
+
+    @staticmethod
+    def _lane_run_receipt(run_id, status, run_data):
+        if not run_id:
+            return None
+        data = json.loads(run_data)
+        error = data.get('error')
+        if isinstance(error, dict):
+            error = {key: str(error[key])[:300] for key in ('code', 'message') if error.get(key)}
+        elif isinstance(error, str) and error:
+            error = {'message': error[:300]}
+        else:
+            error = None
+        return {'id': run_id, 'status': status, 'queued': bool(data.get('todo_queued')),
+                'started_at': data.get('started_at'), 'finished_at': data.get('finished_at'),
+                'error': error, 'message': str(data.get('log') or '')[-1000:]}
+
+    def execution_lane_tasks(self, owner, lane, limit=50):
+        """Bounded projection of tasks and their actual execution receipts."""
+        with self.connect() as db:
+            rows = db.execute("""SELECT t.*, r.id AS run_id,r.status AS run_status,r.data AS run_data,
+                f.id AS finished_id,f.status AS finished_status,f.data AS finished_data,
+                EXISTS(SELECT 1 FROM task_execution_bindings b WHERE b.owner=t.owner AND b.task_id=t.id) AS managed
+                FROM task_execution_lanes l JOIN tasks t ON t.id=l.task_id AND t.owner=l.owner
+                LEFT JOIN runs r ON r.id=(SELECT id FROM runs WHERE task_id=t.id AND owner=t.owner ORDER BY rowid DESC LIMIT 1)
+                LEFT JOIN runs f ON json_extract(t.data,'$.schedule.frequency') <> 'off'
+                    AND r.status NOT IN ('completed','failed','cancelled','interrupted','timed_out')
+                    AND f.id=(SELECT id FROM runs WHERE task_id=t.id AND owner=t.owner
+                        AND status IN ('completed','failed','cancelled','interrupted','timed_out')
+                        ORDER BY rowid DESC LIMIT 1)
+                WHERE l.owner=? AND l.lane=? AND json_extract(t.data,'$.deleted_at') IS NULL
+                ORDER BY CASE WHEN r.status IN ('running','planning','waiting_input','waiting_capability') THEN 0 WHEN r.status='queued' THEN 1
+                    WHEN json_extract(t.data,'$.archived_at') IS NULL AND json_extract(t.data,'$.schedule.frequency') <> 'off' THEN 2 ELSE 3 END,
+                    t.rowid DESC LIMIT ?""", (owner, lane, limit + 1)).fetchall()
+        items = []
+        for row in rows[:limit]:
+            task = self.task(row)
+            items.append({**{k: task[k] for k in ('id','title','status','progress','next_due','archived_at','updated_at')},
+                'scheduled': (task.get('schedule') or {}).get('frequency', 'off') != 'off',
+                'managed': bool(row['managed']),
+                'run': self._lane_run_receipt(row['run_id'], row['run_status'], row['run_data']),
+                'previous_finished_run': self._lane_run_receipt(row['finished_id'], row['finished_status'], row['finished_data'])})
+        return {'items': items, 'has_more': len(rows) > limit}
 
     def activity(self, owner, **options):
         from .activity import query
@@ -117,14 +249,16 @@ class TodoStore:
 
     def snapshot(self, owner):
         with self.connect() as db:
+            directories = [dict(row) for row in db.execute(
+                "SELECT d.id,d.title FROM directories d LEFT JOIN directory_order o ON o.directory_id=d.id AND o.owner=d.owner WHERE d.owner=? ORDER BY COALESCE(o.position,2147483647),d.rowid",
+                (owner,))]
+            linked = {row["directory_id"]: row["source"] for row in db.execute(
+                "SELECT directory_id,source FROM linked_directories WHERE owner=?", (owner,))}
+            for directory in directories:
+                if directory["id"] in linked:
+                    directory["system_source"] = linked[directory["id"]]
             return {
-                "directories": [
-                    dict(r)
-                    for r in db.execute(
-                        "SELECT d.id,d.title FROM directories d LEFT JOIN directory_order o ON o.directory_id=d.id AND o.owner=d.owner WHERE d.owner=? ORDER BY COALESCE(o.position,2147483647),d.rowid",
-                        (owner,),
-                    )
-                ],
+                "directories": directories,
                 "tasks": [
                     self.task(r)
                     for r in db.execute(
@@ -165,6 +299,48 @@ class TodoStore:
         with self.connect() as db:
             db.execute("INSERT INTO directories VALUES(?,?,?)", (id, owner, title))
         return {"id": id, "title": title}
+
+    def linked_directory(self, owner, source, title, aliases):
+        """Resolve a stable directory for an app, adopting an existing named directory."""
+        with self.connect() as db:
+            linked = db.execute("""SELECT d.id FROM linked_directories l JOIN directories d
+                ON d.id=l.directory_id AND d.owner=l.owner WHERE l.owner=? AND l.source=?""",
+                (owner, source)).fetchone()
+            if linked:
+                return linked["id"]
+            names = {normalize_name(name) for name in (title, *aliases)}
+            existing = next((row["id"] for row in db.execute(
+                "SELECT id,title FROM directories WHERE owner=? ORDER BY rowid", (owner,))
+                if normalize_name(row["title"]) in names), None)
+            directory_id = existing or uuid.uuid4().hex
+            if existing is None:
+                db.execute("INSERT INTO directories VALUES(?,?,?)", (directory_id, owner, title))
+            db.execute("INSERT OR REPLACE INTO linked_directories VALUES(?,?,?)",
+                       (owner, source, directory_id))
+            return directory_id
+
+    def open_task_ids(self, owner, ids):
+        if not ids:
+            return set()
+        with self.connect() as db:
+            rows = db.execute("""SELECT * FROM tasks WHERE owner=? AND id IN
+                (SELECT value FROM json_each(?))""", (owner, json.dumps(list(ids))))
+            return {task["id"] for task in map(self.task, rows)
+                    if not (task["completed"] or task["archived_at"] or task["deleted_at"])}
+
+    def linked_task(self, owner, request_key, value):
+        with self.connect() as db:
+            receipt = db.execute("""SELECT t.* FROM task_creation_receipts r JOIN tasks t
+                ON t.owner=r.owner AND t.id=r.task_id WHERE r.owner=? AND r.request_key=?""",
+                (owner, request_key)).fetchone()
+        if receipt:
+            return self.task(receipt)
+        return self.save(owner, value, creation_key=request_key)
+
+    def complete_linked_task(self, owner, task):
+        fields = {key: task[key] for key in TaskInput.model_fields}
+        fields["status"] = "completed"
+        return self.save(owner, fields, task["id"], task["revision"])
 
     def rename_directory(self, owner, id, title, expected_title):
         title = title.strip()
@@ -210,7 +386,14 @@ class TodoStore:
                 raise ValueError("Directories changed; refresh before reordering")
             db.executemany("INSERT OR REPLACE INTO directory_order VALUES(?,?,?)", [(owner, id, position) for position, id in enumerate(ids)])
 
-    def save(self, owner, value, id=None, revision=None, *, creation_key=None, create_inbox=False, directory_name=None):
+    def save(self, owner, value, id=None, revision=None, *, creation_key=None, create_inbox=False, directory_name=None, execution_binding=None, execution_lane=None):
+        if execution_binding is not None:
+            if id or not creation_key or not execution_lane or set(execution_binding) != {'registration','binding'}:
+                raise ValueError('Trusted execution bindings require idempotent task creation and a lane')
+            if not isinstance(execution_binding['registration'],str) or not isinstance(execution_binding['binding'],dict):
+                raise ValueError('Invalid execution binding')
+        elif execution_lane is not None:
+            raise ValueError('Execution lane requires a trusted binding')
         if directory_name is not None:
             directory_name = directory_name.strip()
             if id or create_inbox or not directory_name or len(directory_name) > 200 or not normalize_name(directory_name):
@@ -219,6 +402,7 @@ class TodoStore:
             if id: raise ValueError('Inbox fallback is only for new tasks')
             value = {**value, 'directory_id': uuid.uuid5(uuid.NAMESPACE_URL, 'ai2apps.todo.inbox:' + owner).hex}
         data = TaskInput.model_validate(value).model_dump()
+        if execution_binding is not None and data["executor"]!="managed":raise ValueError("Trusted execution bindings require the managed executor")
         data["title"] = data["title"].strip()
         if not data["title"]:
             raise ValueError("Title required")
@@ -226,6 +410,8 @@ class TodoStore:
         due = next_due(data["schedule"], now)
         with self.connect() as db:
             receipt_input = json.dumps({'task': data, 'directory_name': directory_name} if directory_name else data, sort_keys=True, separators=(',', ':'))
+            if execution_binding is not None:
+                receipt_input=json.dumps({'task':json.loads(receipt_input),'execution_binding':execution_binding,'lane':execution_lane},sort_keys=True,separators=(',',':'))
             if creation_key:
                 if id: raise ValueError('Creation key cannot edit an existing task')
                 receipt = db.execute('SELECT * FROM task_creation_receipts WHERE owner=? AND request_key=?', (owner, creation_key)).fetchone()
@@ -322,6 +508,9 @@ class TodoStore:
                     old["created_at"] if old else now.isoformat(),
                 ),
             )
+            if execution_binding is not None:
+                db.execute('INSERT INTO task_execution_bindings VALUES(?,?,?,?)',(owner,id,execution_binding['registration'],json.dumps(execution_binding['binding'])))
+                db.execute('INSERT INTO task_execution_lanes VALUES(?,?,?)',(owner,id,execution_lane))
             if creation_key:
                 db.execute('INSERT INTO task_creation_receipts VALUES(?,?,?,?)', (owner, creation_key, receipt_input, id))
             return self.task(
@@ -428,7 +617,8 @@ class TodoStore:
                     data.pop("archive_batch", None)
                 data["updated_at"] = now.isoformat()
                 data["update_time_estimated"] = False
-                due = None if data.get("archived_at") or data.get("deleted_at") else next_due(data["schedule"], now)
+                managed=db.execute('SELECT 1 FROM task_execution_bindings WHERE owner=? AND task_id=?',(owner,task_id)).fetchone()
+                due = None if managed or data.get("archived_at") or data.get("deleted_at") else next_due(data["schedule"], now)
                 db.execute("UPDATE tasks SET data=?,revision=revision+1,next_due=? WHERE owner=? AND id=?", (json.dumps(data), due.isoformat() if due else None, owner, task_id))
 
     def add_attachment(self, owner, task_id, name, content):

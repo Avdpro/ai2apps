@@ -3,22 +3,81 @@
   "package": {
     "id": "ai2apps/model-qwen3-asr-0-6b-cuda",
     "type": "service",
-    "version": "0.1.3",
+    "version": "0.1.4",
     "displayName": "Qwen3 ASR 0.6B CUDA",
     "description": "Isolated CUDA Transformers Worker for multilingual speech recognition."
   },
   "compatibility": {
     "ai2apps": ">=0.1.0 <2.0.0",
-    "platforms": ["linux"],
-    "architectures": ["arm64"],
+    "platforms": [
+      "linux"
+    ],
+    "architectures": [
+      "arm64"
+    ],
     "minimumOsVersion": "24.4"
   },
-  "entrypoints": [{"name": "model-worker", "kind": "service", "path": "service.yaml"}],
-  "permissions": [
-    {"capability": "model-weights.huggingface-cache.read", "reason": "Read only the Host-selected pinned Qwen3-ASR checkpoint.", "required": true},
-    {"capability": "accelerator.cuda", "reason": "Run Qwen3-ASR locally on the NVIDIA GPU.", "required": true}
+  "entrypoints": [
+    {
+      "name": "model-worker",
+      "kind": "service",
+      "path": "service.yaml"
+    }
   ],
-  "dependencies": [{"packageId": "ai2apps/runtime-cuda-torch", "version": ">=0.2.0 <1.0.0", "optional": false}],
+  "permissions": [
+    {
+      "capability": "model-weights.huggingface-cache.read",
+      "reason": "Read only the Host-selected pinned Qwen3-ASR checkpoint.",
+      "required": true
+    },
+    {
+      "capability": "accelerator.cuda",
+      "reason": "Run Qwen3-ASR locally on the NVIDIA GPU.",
+      "required": true
+    }
+  ],
+  "dependencies": [
+    {
+      "packageId": "ai2apps/runtime-cuda-torch",
+      "version": ">=0.4.0 <1.0.0",
+      "optional": false
+    }
+  ],
   "files": [],
-  "sbom": {"format": "spdx-json-2.3", "path": "META/sbom.spdx.json"}
+  "sbom": {
+    "format": "spdx-json-2.3",
+    "path": "META/sbom.spdx.json"
+  },
+  "discovery": {
+    "kind": "model",
+    "categories": [
+      "speech"
+    ],
+    "tasks": [
+      "speech-recognition",
+      "language-detection"
+    ]
+  },
+  "modelInstall": {
+    "serviceKey": "ai2apps.model.qwen3-asr-0.6b-cuda",
+    "models": [
+      {
+        "id": "ai2apps.model.qwen3-asr-0.6b-cuda/qwen3-asr-0.6b",
+        "label": "Qwen3 ASR 0.6B CUDA",
+        "recommended": true
+      }
+    ]
+  },
+  "modelProfile": {
+    "sizeBytes": 1576361789,
+    "minimumMemoryBytes": 4294967296,
+    "scores": {
+      "speed": 5,
+      "capability": 4
+    },
+    "benchmark": {
+      "label": "Inherited 0.1.3 memory and score estimates; Spark warm 5.3s audio: 0.25-0.34s. Short samples only.",
+      "device": "DGX Spark GB10"
+    }
+  }
 }

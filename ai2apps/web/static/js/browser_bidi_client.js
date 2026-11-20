@@ -1155,8 +1155,29 @@ setReadablility();
   }
   return !readableArticle();
  };
- const safeCookie=/^(?:deny(?: all)?|reject(?: all)?(?: (?:non[- ]essential|optional))?(?: cookies)?|decline(?: all)?|only necessary|necessary only|reject optional cookies|拒绝(?:所有|全部)?|仅必要|只允许必要|关闭|close|not now|稍后|以后再说)$/i;
- const rejectCookie=/^(?:deny(?: all)?|reject(?: all)?(?: (?:non[- ]essential|optional))?(?: cookies)?|decline(?: all)?|only necessary|necessary only|拒绝(?:所有|全部)?|仅必要|只允许必要)$/i;
+ const safeCookie=/^(?:deny(?: all)?|reject(?: all)?(?: (?:non[- ]essential|optional))?(?: cookies)?|decline(?: all)?|(?:accept|allow)(?: only)? (?:strictly )?(?:necessary|essential)(?: cookies)?(?: only)?|only (?:necessary|essential)(?: cookies)?|(?:necessary|essential)(?: cookies)? only|reject optional cookies|拒绝(?:所有|全部)?|仅必要|只允许必要|仅(?:接受|允许)必要(?:的)?(?: ?Cookie)?|关闭|close|not now|稍后|以后再说)$/i;
+ const rejectCookie=/^(?:deny(?: all)?|reject(?: all)?(?: (?:non[- ]essential|optional))?(?: cookies)?|decline(?: all)?|(?:accept|allow)(?: only)? (?:strictly )?(?:necessary|essential)(?: cookies)?(?: only)?|only (?:necessary|essential)(?: cookies)?|(?:necessary|essential)(?: cookies)? only|拒绝(?:所有|全部)?|仅必要|只允许必要|仅(?:接受|允许)必要(?:的)?(?: ?Cookie)?)$/i;
+ const readablePastConsent=panel=>{
+  if(!readOnly||consentFrame)return false;
+  const r=panel.getBoundingClientRect?.();if(!r)return false;
+  const w=Math.max(0,Math.min(innerWidth,r.right)-Math.max(0,r.left)),h=Math.max(0,Math.min(innerHeight,r.bottom)-Math.max(0,r.top));
+  if(w*h>innerWidth*innerHeight*.35||(r.left<innerWidth/2&&r.right>innerWidth/2&&r.top<innerHeight/2&&r.bottom>innerHeight/2))return false;
+  for(let n=panel;n&&n!==document.body;n=n.parentElement){
+   if(n.matches?.('[aria-modal=true],dialog[open]'))return false;
+   const b=n.getBoundingClientRect(),style=getComputedStyle(n);
+   if(/^(fixed|absolute)$/.test(style.position)&&b.width>=innerWidth*.6&&b.height>=innerHeight*.5&&b.left<innerWidth/2&&b.right>innerWidth/2&&b.top<innerHeight/2&&b.bottom>innerHeight/2)return false;
+  }
+  let chars=0,hits=0;
+  for(const n of document.querySelectorAll('p,h1,h2,h3')){
+   if(panel.contains(n)||n.closest('nav,header,footer,aside,form,[role=dialog],[aria-modal=true]')||!visible(n))continue;
+   const text=(n.innerText||'').trim();if(text.length<12)continue;
+   const b=n.getBoundingClientRect(),x=(Math.max(0,b.left)+Math.min(innerWidth,b.right))/2,y=(Math.max(0,b.top)+Math.min(innerHeight,b.bottom))/2;
+   const hit=document.elementFromPoint(x,y);
+   if(hit&&(hit===n||n.contains(hit))){chars+=text.length;hits++;}
+   if(chars>=160&&hits>=2)return true;
+  }
+  return false;
+ };
  const safeClose=/^(?:close|dismiss|dismiss sign-in info[.]?|close sign-in (?:dialog|info)[.]?|no thanks|not now|maybe later|关闭|暂不|不用了|稍后|以后再说)$/i;
  function control(panel,pattern,allowIconClose=false){
   for(const node of panel.querySelectorAll('button,[role=button],a')){
@@ -1178,21 +1199,21 @@ setReadablility();
  const panels=[...document.querySelectorAll(selector)].filter(node=>{
   if(!visible(node)||!/cookies?|privacy preferences|consent preferences|隐私偏好|隐私设置/i.test(node.innerText||''))return false;
   if(node.matches('#CybotCookiebotDialog,#onetrust-banner-sdk,#onetrust-consent-sdk,.qc-cmp2-container,[id*=cookie i],[class*=cookie-banner i],[class*=consent-banner i]'))return true;
-  return [...node.querySelectorAll('button,[role=button]')].some(n=>visible(n)&&/^(accept(?: all)?(?: cookies)?|allow(?: all)?(?: cookies)?|reject(?: all)?(?: (?:non[- ]essential|optional))?(?: cookies)?|decline(?: all)?|manage(?: cookie)? preferences|cookie settings|接受(?:全部|所有)?(?: ?Cookie)?|允许(?:全部|所有)?(?: ?Cookie)?|拒绝(?:全部|所有)?|Cookie 设置|管理偏好)$/i.test(name(n)));
+  return [...node.querySelectorAll('button,[role=button]')].some(n=>visible(n)&&(rejectCookie.test(name(n))||/^(accept(?: all)?(?: cookies)?|allow(?: all)?(?: cookies)?|reject(?: all)?(?: (?:non[- ]essential|optional))?(?: cookies)?|decline(?: all)?|manage(?: cookie)? preferences|cookie settings|接受(?:全部|所有)?(?: ?Cookie)?|允许(?:全部|所有)?(?: ?Cookie)?|拒绝(?:全部|所有)?|Cookie 设置|管理偏好)$/i.test(name(n))));
  });
  if(consentFrame&&/cookies?|privacy preferences|consent|Cookie|隐私/i.test(document.body?.innerText||''))panels.push(document.body);
  for(const panel of panels){const candidate=control(panel,rejectCookie)||(!consentFrame&&control(panel,safeCookie));if(candidate)return {...candidate,reason:'cookie_consent'};}
- if(panels.length)return {classification:'needs_user',reason:'cookie_consent',assistance_kind:'legal_consent'};
+ if(panels.some(panel=>!readablePastConsent(panel)))return {classification:'needs_user',reason:'cookie_consent',assistance_kind:'legal_consent'};
  for(const frame of document.querySelectorAll('iframe')){
   if(!visible(frame))continue;
   const label=[frame.title,frame.id,frame.name,frame.getAttribute('src')].join(' ');
   const r=frame.getBoundingClientRect(),x=Math.max(0,r.left),y=Math.max(0,r.top),w=Math.min(innerWidth,r.right)-x,h=Math.min(innerHeight,r.bottom)-y;
   if(w<180||h<100||document.elementFromPoint(x+w/2,y+h/2)!==frame)continue;
   if(/captcha|challenge|turnstile/i.test(label)&&blocksReading(frame))return {classification:'needs_user',reason:'captcha',assistance_kind:'captcha',frame:true};
-  if(/consent|cookie|privacy-manager|sourcepoint/i.test(label))return {classification:'needs_user',reason:'cookie_consent',assistance_kind:'legal_consent',frame:true,frame_index:[...document.querySelectorAll('iframe')].indexOf(frame),frame_viewport:{x:r.left+frame.clientLeft*(r.width/frame.offsetWidth),y:r.top+frame.clientTop*(r.height/frame.offsetHeight),scale_x:r.width/frame.offsetWidth,scale_y:r.height/frame.offsetHeight}};
+  if(/consent|cookie|privacy-manager|sourcepoint/i.test(label)&&!readablePastConsent(frame))return {classification:'needs_user',reason:'cookie_consent',assistance_kind:'legal_consent',frame:true,frame_index:[...document.querySelectorAll('iframe')].indexOf(frame),frame_viewport:{x:r.left+frame.clientLeft*(r.width/frame.offsetWidth),y:r.top+frame.clientTop*(r.height/frame.offsetHeight),scale_x:r.width/frame.offsetWidth,scale_y:r.height/frame.offsetHeight}};
  }
  for(const panel of document.querySelectorAll('[role=dialog],[aria-modal=true],dialog[open],[id*=newsletter i],[class*=newsletter i]')){
-  if(!visible(panel))continue;
+  if(!visible(panel)||panels.includes(panel)&&readablePastConsent(panel))continue;
   const text=panel.innerText||'';
   if(/captcha|verify you are human|验证码|机器人验证/i.test(text)&&blocksReading(panel))return {classification:'needs_user',reason:'captcha',assistance_kind:'captcha'};
   if(/subscribe to (?:continue|read)|purchase to continue|订阅后继续|付费墙/i.test(text))return {classification:'restricted',reason:'paywall'};

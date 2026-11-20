@@ -28,17 +28,25 @@ class StudioBackgroundJobs:
         self.closing = False
         self.wake = asyncio.Event()
 
-    def submit(self, *, principal, app_instance_id, studio_id, mini_app_id, kind, key, payload, run_id=None):
+    def submit(self, *, principal, app_instance_id, studio_id, mini_app_id, kind, key, payload,
+               run_id=None, run_spec=None):
         encoded = json.dumps(payload, sort_keys=True, separators=(',', ':'))
         now = utc_now_text()
         with self.database.transaction(write=True) as db:
             previous = db.execute('SELECT * FROM studio_background_jobs WHERE actor_id=? AND installation_id=? AND studio_id=? AND idempotency_key=?',
                                   (principal.actor_user_id, principal.installation_id, studio_id, key)).fetchone()
             if previous:
-                if previous['request_json'] != encoded or previous['kind'] != kind or previous['mini_app_id'] != mini_app_id or previous['app_instance_id'] != app_instance_id or previous['run_id'] != run_id:
+                if (previous['request_json'] != encoded or previous['kind'] != kind
+                        or previous['mini_app_id'] != mini_app_id or previous['app_instance_id'] != app_instance_id
+                        or (run_spec is None and previous['run_id'] != run_id)):
                     raise ValueError('Idempotency key already used for a different request')
                 return self.public(previous)
             identifier = 'stjob_' + uuid.uuid4().hex
+            if run_spec is not None:
+                run_id = StudioRepository(self.database).insert_run(
+                    db, actor_id=principal.actor_user_id, installation_id=principal.installation_id,
+                    app_instance_id=app_instance_id, studio_id=studio_id, mini_app_id=mini_app_id, **run_spec,
+                )
             if kind == 'quick-read':
                 self._snapshot_voice(identifier, principal, payload)
             db.execute('''INSERT INTO studio_background_jobs
@@ -185,6 +193,8 @@ class StudioBackgroundJobs:
             self._update(job['id'], 'succeeded', result=result)
             # Output is now durable in the Studio-owned workspace.
             shutil.rmtree(directory, ignore_errors=True)
+            if job['kind'] in ('image-workflow', 'skill-image'):
+                self._clear_image_workflow_inputs(job)
             if job['kind'] == 'video-upscale':
                 shutil.rmtree(self.runtime.config.paths.artifacts_path / 'video-upscaling-jobs' / job['run_id'], ignore_errors=True)
             if job['kind'] in ('video-media', 'video-package', 'voice-media'):
@@ -204,6 +214,12 @@ class StudioBackgroundJobs:
                 except Exception:
                     pass
 
+    def _clear_image_workflow_inputs(self, job):
+        import re
+        source = Path(json.loads(job['request_json']).get('input_root', ''))
+        if re.fullmatch(r'input-[0-9a-f]{32}', source.name) and source.resolve().parent == self.root.resolve():
+            shutil.rmtree(source, ignore_errors=True)
+
     @staticmethod
     def scope(job):
         return {key: job[key] for key in ('actor_id', 'installation_id', 'app_instance_id', 'studio_id')}
@@ -214,7 +230,10 @@ class StudioBackgroundJobs:
         principal = RequestPrincipal(**identity)
         if getattr(self.runtime, 'extension_manager', None) is not None:
             self.runtime.extension_manager.require_instance_access(job['app_instance_id'], principal)
-        if job['kind'] in ('voice-preview','cloud-image','image-upscale','image-adjust','frozen-time'):
+        if job['kind'] == 'skill-image':
+            from ai2apps.studio.skill_workflow import execute
+            return await execute(self, job, principal, payload)
+        if job['kind'] in ('voice-preview','cloud-image','image-upscale','image-adjust','frozen-time','image-workflow'):
             from ai2apps.studio.extended_jobs import execute
             return await execute(self,job,principal,payload)
         if job['kind'] == 'video-upscale':
@@ -288,6 +307,8 @@ class StudioBackgroundJobs:
 
     def publish(self, job, directory, *, output_key=None, complete=True):
         metadata = json.loads((directory / 'result.json').read_text())
+        if job['kind'] == 'image-workflow' and metadata.get('imageWorkflowPrivate'):
+            return {'assetIds': metadata['imageWorkflowAssets']}
         if job['kind'] == 'voice-preview':
             from ai2apps.studio.extended_jobs import publish_voice
             return publish_voice(self,job,directory)
@@ -327,6 +348,7 @@ class StudioBackgroundJobs:
         for attachment in metadata.get('attachments', []):
             if attachment != 'preview': raise ValueError('Invalid media attachment')
             self.publish(job, directory / attachment, output_key=job['id'] + '-preview', complete=False)
+        usage_receipt = metadata.pop('usage_receipt', None)
         output_key = output_key or job['id']
         from ai2apps.storage.repositories import SessionRepository
         from ai2apps.core import SessionKind, SessionRetention, SessionVisibility
@@ -356,7 +378,9 @@ class StudioBackgroundJobs:
                 metadata={'taskId': output_key, 'miniAppId': job['mini_app_id'], 'modelId': metadata.get('model'), 'size': metadata.get('size'), 'format': metadata.get('format'), 'prompt': metadata.get('prompt'), 'workspaceSessionId': session.id, 'workspaceArtifactId': artifact.id}, **self.scope(job))
         if complete:
             repository.update_run(job['run_id'], status='succeeded', progress=100, detail='Completed', **self.scope(job))
-        return {'downloadUrl': url, 'runId': job['run_id']}
+        return {'downloadUrl': url, 'runId': job['run_id'],
+                **({'usage_receipt': usage_receipt} if usage_receipt else {}),
+                **({'assetIds': metadata['imageWorkflowAssets']} if 'imageWorkflowAssets' in metadata else {})}
 
     def retry(self, identifier, principal):
         job = self.get(identifier, principal)
@@ -381,6 +405,8 @@ class StudioBackgroundJobs:
         if job['run_id']:
             StudioRepository(self.database).update_run(job['run_id'], status='cancelled', progress=100, detail='Cancelled', **self.scope(job))
         shutil.rmtree(self.root / job['id'], ignore_errors=True)
+        if job['kind'] == 'skill-image':
+            self._clear_image_workflow_inputs(job)
 
     def stop_after_current(self, identifier, principal):
         job = self.get(identifier, principal)

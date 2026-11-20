@@ -1,0 +1,27 @@
+{
+  "repo_id": "microsoft/VibeVoice-Realtime-0.5B",
+  "revision": "6bce5f06044837fe6d2c5d7a71a84f0416bd57e4",
+  "files": [
+    {
+      "name": "README.md",
+      "size": 10160,
+      "sha256": "c409631105ca563f0b34e439494ab395dc8ded6bf55d26d5b87e155dd698c8dc"
+    },
+    {
+      "name": "config.json",
+      "size": 2117,
+      "sha256": "caee2691e790b04054bbe14a753b40149fa7c0c16fadb58d9adf5412343dcf57"
+    },
+    {
+      "name": "model.safetensors",
+      "size": 2035332888,
+      "sha256": "7758b150b8139deb48ac1ff6f181f745c8fedd5511232fd974b3eb217d83b514"
+    },
+    {
+      "name": "preprocessor_config.json",
+      "size": 360,
+      "sha256": "ebf514b5d30a012e5ae00d9a19d01e735e35b27768c3926d980815db8fa742e5"
+    }
+  ],
+  "scope": "verified original weights only; official execution not yet accepted"
+}

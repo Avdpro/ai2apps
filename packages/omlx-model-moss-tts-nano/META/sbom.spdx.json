@@ -1,0 +1,25 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "ai2apps.model.moss-tts-nano-0.1.0",
+  "documentNamespace": "https://ai2apps.com/spdx/ai2apps.model.moss-tts-nano/0.1.0",
+  "packages": [
+    {
+      "name": "mlx-community/MOSS-TTS-Nano-100M",
+      "SPDXID": "SPDXRef-Model0",
+      "versionInfo": "229a9c51bb0ffff6fd0dbe53b5bf0c441e438a79",
+      "downloadLocation": "https://huggingface.co/mlx-community/MOSS-TTS-Nano-100M",
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0"
+    },
+    {
+      "name": "OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano",
+      "SPDXID": "SPDXRef-Model1",
+      "versionInfo": "6aa02b01e445cc585582cf0ba480bc3ea6c8dd68",
+      "downloadLocation": "https://huggingface.co/OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano",
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0"
+    }
+  ]
+}

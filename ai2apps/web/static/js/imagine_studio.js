@@ -13,7 +13,6 @@
     const ADJUSTMENT_LOCK_KEY = 'ai2apps.imagine-studio.adjustment-lock.v1';
     const ADJUSTMENT_SELECTED_PRESET_KEY = 'ai2apps.imagine-studio.adjustment-selected-preset.v1';
     const GALLERY_MINI_FALLBACK_URL = (window.AI2APPS_MOBILE_SURFACE ? '/mobile' : '/admin') + '/app-content/ai2apps.gallery?surface=mini';
-    const DEFAULT_CLOUD_MODEL = 'cloud/ai2apps/openai/gpt-image-2';
     const STYLE_TRANSFER_INSTRUCTION = 'Restyle the source image in the selected visual style. Preserve the main subject, identity, pose, composition, geometry, and important content unless the additional instructions explicitly request a change. Change the visual rendering, materials, lighting, color treatment, and texture to match the target style.';
     const GROUP_PHOTO_INSTRUCTION = 'Create one natural, coherent group photograph containing every subject (people, animals or characters) from the subject reference images exactly once. Preserve each person\'s recognizable identity, facial features, apparent age, skin tone, hairstyle, and body characteristics. Keep the subjects distinct: do not merge identities, duplicate anyone, omit anyone, or introduce extra people. Use the final reference image only as the background when a background image is supplied. Make lighting, scale, perspective, shadows, eye lines, anatomy, and contact between people physically consistent.';
     const GOOGLE_FLASH_MODEL = 'google/gemini-3.1-flash-image';
@@ -29,7 +28,7 @@
         presets: ['1024x1024', '1536x1024', '1024x1536'],
     };
     const TRANSLATIONS = {
-        zh: { mobileBack: '返回', mobileOutput: '输出',
+        zh: { chooseDrawingModel: '请选择绘图模型', useDefaultDrawingModel: '使用默认绘图模型', drawingDefaultHint: '默认继承 Cloud 绘图 API-Default；明确选择的模型优先。', mobileBack: '返回', mobileOutput: '输出',
             productStudioName: '商品摄影棚', productStudioSummary: '为商品打造布景、灯光与展示构图', productStudioDescription: '以商品照片为参考生成展示图；Logo、标签与外形需人工核对，不保证像素级保真。', productStudioAction: '拍摄商品图', productStudioRun: '商品摄影', productStudioPlaceholder: '可选：需要保留的细节、道具或禁止出现的元素。',
             stickerName: '表情包工坊', stickerSummary: '把人物或宠物变成专属表情贴纸', stickerDescription: '上传参考照片，选择表情，生成独立白底贴纸。支持整组生成与单张重做。', stickerAction: '制作表情', stickerRun: '表情贴纸', stickerPlaceholder: '可选：希望保留的配饰、服装或其他细节。',
             samplingSteps: '采样步数', redrawStrength: '重绘强度', zImageHint: 'Z-Image Turbo 默认 8 步。图生图是重绘而非指令编辑；请描述目标画面。强度越高，原图变化越大。', localEditRun: '本地图片编辑', localGenerateRun: '本地图片生成',
@@ -37,7 +36,7 @@
             appName: '创意画坊', appSubtitle: 'Imagine Studio · AI 视觉创作台', cloudGenerate: 'Cloud 生成', localGenerate: '本地生成', configureLocal: '配置本地模型', installMoreModels: '安装更多模型', noModelsAvailable: '暂无可用模型', configuringLocal: '正在配置…', localConfigured: '本地绘图模型已配置', localAlreadyReady: '本地绘图模型已可用', refresh: '刷新', assets: '素材', installed: '已安装', specializedPipeline: '规划中的 Mini-Apps', coming: '即将推出', workspaceNav: 'Imagine Studio 工作区导航', pipelineAssets: 'Mini-Apps 与素材', pipelineList: 'Mini-App 列表', galleryAssets: 'Gallery 素材', pipelineWebUI: '当前 Mini-App 创作界面', renderWorkspace: '渲染工作区',
             characterDesign: '角色设计', characterDesignSummary: '角色设定与多视图一致性', productPhoto: '商品摄影', productPhotoSummary: '布景、灯光与品牌模板', comicStoryboard: '漫画分镜', comicStoryboardSummary: '角色连续性与分镜排版', coderNote: '可在 Coder 中创建和扩展 Mini-App。',
             openGallery: '打开完整 Gallery', loadingGallery: '正在载入素材库…', retry: '重试', galleryHelp: '将图片拖到中间工作区的指定 Slot。', currentPipeline: 'CURRENT MINI-APP', builtInPipeline: 'AI2Apps 官方 Mini-App', cloudReady: 'Cloud 就绪', create: 'CREATE', modelReady: '模型就绪',
-            referenceAlt: '参考素材', primaryImage: '主图片', referenceImage: '参考图', required: '必选', optional: '可选', cloudDisclosure: '生成时会将提示词和所选图片发送至 AI2Apps Cloud；每次发送图片前都会请求确认。', localDisclosure: '提示词和所选图片只由本机已安装的 AI2Apps 模型处理。', prompt: '提示词', model: '模型', modelHint: '可选择 Cloud 或已安装的本地绘图模型', canvasSize: '画面尺寸', sourceImage: '原图', matchedRatio: '已匹配原图比例', flexibleSize: 'Cloud 灵活尺寸 · 最高 4K', localSize: '本地模型尺寸 · 按模型能力', fixedSize: '固定尺寸 · 1:1 / 3:2 / 2:3', googleFixedSize: 'Google 当前真实 1K 输出尺寸', quality: '质量', width: '宽度', height: '高度', multipleOf: 'px · 必须是 {value} 的倍数', swapSize: '交换宽高', experimentalSize: '当前尺寸属于 2K+ 实验性输出，生成更慢且点数消耗可能更高。', advanced: '高级设置', visualStyle: '视觉风格', unspecified: '不指定', photorealistic: '写实摄影', illustration: '精致插画', anime: '动画风格', ink: '水墨画', product: '商业产品图', outputFormat: '输出格式', cloudSubmitHint: '通过 AI2Apps Cloud 生成；完成后可下载或加入 Gallery 当前目录', localSubmitHint: '使用本机模型生成；完成后可下载或加入 Gallery 当前目录', generating: '正在生成…', startGenerate: '开始生成', output: 'OUTPUT', results: '生成结果', clearHistory: '清空生成历史', dragToGallery: '拖到 Gallery', waiting: '等待生成', waitingHint: '生成的图片会显示在这里', addedGallery: '已加入 Gallery', addGallery: '加入 Gallery', download: '下载', generationHistory: '生成记录', resultCount: '{count} 个结果', cloudGenerating: 'Cloud 生成中', localGenerating: '本地生成中', noResults: '还没有结果', noResultsHint: '从左侧选择 Pipeline 开始创作', completed: '已完成', failed: '失败', remove: '移除', deleteHistory: '删除历史', dropIntoSlot: '放入图片 Slot', dropIntoSlotHint: '拖到指定 Slot 可控制素材顺序', autoSize: 'Auto · 根据提示词选择', customSize: '自定义尺寸…',
+            referenceAlt: '参考素材', primaryImage: '主图片', referenceImage: '参考图', required: '必选', optional: '可选', cloudDisclosure: '生成时会将提示词和所选图片发送至 AI2Apps Cloud；每次发送图片前都会请求确认。', localDisclosure: '提示词和所选图片只由本机已安装的 AI2Apps 模型处理。', prompt: '提示词', model: '模型', modelHint: '可选择 Cloud 或已安装的本地绘图模型', canvasSize: '画面尺寸', sourceImage: '原图', matchedRatio: '已匹配原图比例', providerValidatedSize: '自定义尺寸由所选服务校验；本机未声明其精确尺寸能力', flexibleSize: '灵活尺寸 · 按模型能力', localSize: '本地模型尺寸 · 按模型能力', fixedSize: '固定尺寸 · 1:1 / 3:2 / 2:3', googleFixedSize: 'Google 当前真实 1K 输出尺寸', quality: '质量', keepDenoiserResident: '保持 DiT 常驻', denoiserResidentHint: '连续请求可跳过加载。模型占用内存，空闲 {seconds} 秒后自动释放。', width: '宽度', height: '高度', multipleOf: 'px · 必须是 {value} 的倍数', swapSize: '交换宽高', experimentalSize: '当前尺寸属于 2K+ 实验性输出，生成更慢且点数消耗可能更高。', advanced: '高级设置', visualStyle: '视觉风格', unspecified: '不指定', photorealistic: '写实摄影', illustration: '精致插画', anime: '动画风格', ink: '水墨画', product: '商业产品图', outputFormat: '输出格式', cloudSubmitHint: '通过 AI2Apps Cloud 生成；完成后可下载或加入 Gallery 当前目录', localSubmitHint: '使用本机模型生成；完成后可下载或加入 Gallery 当前目录', generating: '正在生成…', startGenerate: '开始生成', output: 'OUTPUT', results: '生成结果', clearHistory: '清空生成历史', dragToGallery: '拖到 Gallery', waiting: '等待生成', waitingHint: '生成的图片会显示在这里', addedGallery: '已加入 Gallery', addGallery: '加入 Gallery', download: '下载', generationHistory: '生成记录', resultCount: '{count} 个结果', cloudGenerating: 'Cloud 生成中', localGenerating: '本地生成中', noResults: '还没有结果', noResultsHint: '从左侧选择 Pipeline 开始创作', completed: '已完成', failed: '失败', remove: '移除', deleteHistory: '删除历史', autoSize: 'Auto · 根据提示词选择', customSize: '自定义尺寸…',
             textImageName: '文生图', textImageSummary: '从文字生成完整画面', textImageDescription: '文字描述、构图与风格控制', textImageAction: '生成文生图', textImageRun: 'Cloud 图片生成', textImagePlaceholder: '描述主体、环境、构图、光线、色彩与风格，例如：\n雨后的东京小巷，电影感广角镜头，霓虹灯倒映在路面，细腻写实摄影。',
             editName: '图片编辑', editSummary: '按提示修改一张图片', editDescription: '保留原图结构并执行定向修改', editAction: '编辑图片', editRun: 'Cloud 图片编辑', editPlaceholder: '描述需要修改的内容，例如：\n保留人物与构图，将背景改成日落海岸，并统一暖金色光线。',
             styleTransferName: '更换图片风格', styleTransferSummary: '将一张图片转换为另一种视觉风格', styleTransferDescription: '优先使用 OpenAI，在保留主体与构图的同时重绘视觉风格', styleTransferAction: '更换图片风格', styleTransferRun: 'Cloud 图片风格转换', styleTransferPlaceholder: '可选：补充需要保留或改变的细节，例如：\n保留人物面部和服装轮廓，背景可以更具绘画感。',
@@ -46,7 +45,7 @@
             groupPhotoPerson: '人物 {number}', groupPhotoBackgroundImage: '背景图', groupPhotoBackground: '背景描述', groupPhotoBackgroundPlaceholder: '没有背景图时必填，例如：傍晚的海边草坪，远处有暖色灯串。', groupPhotoAtmosphere: '气氛', groupPhotoAtmospherePlaceholder: '例如：温暖、亲密、自然抓拍、轻松欢乐。', groupPhotoPose: '姿势与互动', groupPhotoPosePlaceholder: '例如：三人并肩站立，中间人物挽着两侧人物，大家看向镜头。', groupPhotoRequirements: '至少添加 2 张人物图；背景图与背景描述任选其一。最多支持 3 人。', groupPhotoNeedPeople: '请至少添加 2 张人物图片。', groupPhotoNeedBackground: '请添加背景图，或填写背景描述。',
             requestFailed: '请求失败 ({status})', cannotRead: '无法读取 {name}', cannotReadDimensions: '无法读取图片尺寸。', resultNotDraggable: '生成结果不是可拖拽的图片数据。', invalidSize: '请输入有效的宽度和高度。', maxEdge: '宽和高均不能超过 {max}px。', alignedSize: '宽和高必须是 {value} 的倍数。', minPixels: '总像素不能少于 {value}。', maxPixels: '总像素不能超过 {value}。', maxAspect: '长短边比例不能超过 {value}:1。', onlyFixed: '当前 Cloud 版本只支持三个固定尺寸。', sourceAspectUnsupported: '原图比例超过 Cloud 支持的 {value}:1，已改用 Auto 尺寸。', invalidSlot: '图片 Slot 只接受 PNG、JPEG 或 WebP。', uploadConfirm: '本次生成会将提示词和 {count} 张所选图片上传到 AI2Apps Cloud 图像模型处理。是否继续？', noCloudImage: 'Cloud 模型没有返回可用图片。', historySaveFailed: '图片已生成，但本地历史保存失败：{error}', missingInstance: '缺少 App Instance，无法保存生成历史。', deleteOneConfirm: '从 Imagine Studio 历史中永久删除这张图片？', clearAllConfirm: '永久清空 Imagine Studio 的全部生成历史？此操作不可恢复。', invalidHistoryUrl: '历史图片地址无效。', dragFailed: '无法拖拽这张图片：{error}', galleryNoAsset: 'Gallery 没有返回资产 ID。', addedToGallery: '已加入 Gallery · {name}', downloadStarted: '下载已开始，请在浏览器下载列表中查看。', miniNoUrl: 'Gallery Mini Entry 未返回可用地址。', miniLoadFailed: '无法载入 Gallery Mini Entry。', currentGalleryOnly: '只接受当前 Gallery 中的图片素材。', readGalleryFailed: '无法读取 Gallery 素材 ({status})', appImageOnly: 'Imagine Studio 的素材 Slot 只接受图片。',
         },
-        en: { mobileBack: 'Back', mobileOutput: 'Output',
+        en: { chooseDrawingModel: 'Choose a drawing model', useDefaultDrawingModel: 'Use default drawing model', drawingDefaultHint: 'Inherits the Cloud drawing API-Default unless a model is explicitly selected.', mobileBack: 'Back', mobileOutput: 'Output',
             productStudioName: 'Product Photo Studio', productStudioSummary: 'Stage, light and compose product photographs', productStudioDescription: 'Generate product scenes from a photo. Review logos, labels and geometry; pixel-exact preservation is not guaranteed.', productStudioAction: 'Create product photo', productStudioRun: 'Product photography', productStudioPlaceholder: 'Optional: details to preserve, props or elements to avoid.',
             stickerName: 'Sticker Workshop', stickerSummary: 'Personal stickers from people or pets', stickerDescription: 'Create separate white-background stickers from a reference photo, one at a time or as a set.', stickerAction: 'Create sticker', stickerRun: 'Sticker', stickerPlaceholder: 'Optional: accessories, clothing or details to preserve.',
             samplingSteps: 'Sampling steps', redrawStrength: 'Redraw strength', zImageHint: 'Z-Image Turbo defaults to 8 steps. Img2Img redraws rather than follows edit instructions: describe the desired image. Higher strength changes more of the source.', localEditRun: 'Local image edit', localGenerateRun: 'Local image generation',
@@ -54,7 +53,7 @@
             appName: 'Imagine Studio', appSubtitle: 'AI visual creation studio', cloudGenerate: 'Cloud generation', localGenerate: 'Local generation', configureLocal: 'Configure local model', installMoreModels: 'Install more models', noModelsAvailable: 'No available models', configuringLocal: 'Configuring…', localConfigured: 'Local image model configured', localAlreadyReady: 'A local image model is already ready', refresh: 'Refresh', assets: 'Assets', installed: 'Installed', specializedPipeline: 'Planned Mini-Apps', coming: 'COMING SOON', workspaceNav: 'Imagine Studio workspace navigation', pipelineAssets: 'Mini-Apps and assets', pipelineList: 'Mini-App list', galleryAssets: 'Gallery assets', pipelineWebUI: 'Current Mini-App workspace', renderWorkspace: 'Render workspace',
             characterDesign: 'Character Design', characterDesignSummary: 'Consistent character sheets and multi-view design', productPhoto: 'Product Photography', productPhotoSummary: 'Sets, lighting, and brand templates', comicStoryboard: 'Comic Storyboards', comicStoryboardSummary: 'Character continuity and panel layouts', coderNote: 'Create and extend Mini-Apps in Coder.',
             openGallery: 'Open full Gallery', loadingGallery: 'Loading asset library…', retry: 'Retry', galleryHelp: 'Drag an image into a specific Slot in the workspace.', currentPipeline: 'CURRENT MINI-APP', builtInPipeline: 'Official AI2Apps Mini-App', cloudReady: 'Cloud ready', create: 'CREATE', modelReady: 'Model ready',
-            referenceAlt: 'Reference asset', primaryImage: 'Primary image', referenceImage: 'Reference', required: 'Required', optional: 'Optional', cloudDisclosure: 'Your prompt and selected images are sent to AI2Apps Cloud for generation. You will be asked to confirm before images are uploaded.', localDisclosure: 'Your prompt and selected images are processed only by the installed AI2Apps model on this device.', prompt: 'Prompt', model: 'Model', modelHint: 'Choose an AI2Apps Cloud model or an installed local image model', canvasSize: 'Canvas size', sourceImage: 'Source', matchedRatio: 'source aspect ratio matched', flexibleSize: 'Flexible Cloud sizes · up to 4K', localSize: 'Local model sizes · capability-aware', fixedSize: 'Fixed sizes · 1:1 / 3:2 / 2:3', googleFixedSize: 'Current Google 1K output dimensions', quality: 'Quality', width: 'Width', height: 'Height', multipleOf: 'px · must be a multiple of {value}', swapSize: 'Swap width and height', experimentalSize: 'This is an experimental 2K+ output. It may generate more slowly and use more points.', advanced: 'Advanced settings', visualStyle: 'Visual style', unspecified: 'Unspecified', photorealistic: 'Photorealistic', illustration: 'Refined illustration', anime: 'Animation', ink: 'Ink wash', product: 'Commercial product', outputFormat: 'Output format', cloudSubmitHint: 'Generate with AI2Apps Cloud, then download or add to the current Gallery folder', localSubmitHint: 'Generate on this device, then download or add to the current Gallery folder', generating: 'Generating…', startGenerate: 'Generate', output: 'OUTPUT', results: 'Results', clearHistory: 'Clear generation history', dragToGallery: 'Drag to Gallery', waiting: 'Ready to create', waitingHint: 'Generated images will appear here', addedGallery: 'Added to Gallery', addGallery: 'Add to Gallery', download: 'Download', generationHistory: 'Generation history', resultCount: '{count} results', cloudGenerating: 'Generating in Cloud', localGenerating: 'Generating locally', noResults: 'No results yet', noResultsHint: 'Choose a Mini-App to start creating', completed: 'Completed', failed: 'Failed', remove: 'Remove', deleteHistory: 'Delete history', dropIntoSlot: 'Drop into an image Slot', dropIntoSlotHint: 'Drop on a specific Slot to control asset order', autoSize: 'Auto · choose from prompt', customSize: 'Custom size…',
+            referenceAlt: 'Reference asset', primaryImage: 'Primary image', referenceImage: 'Reference', required: 'Required', optional: 'Optional', cloudDisclosure: 'Your prompt and selected images are sent to AI2Apps Cloud for generation. You will be asked to confirm before images are uploaded.', localDisclosure: 'Your prompt and selected images are processed only by the installed AI2Apps model on this device.', prompt: 'Prompt', model: 'Model', modelHint: 'Choose an AI2Apps Cloud model or an installed local image model', canvasSize: 'Canvas size', sourceImage: 'Source', matchedRatio: 'source aspect ratio matched', providerValidatedSize: 'Custom size is validated by the selected provider; exact model limits are not declared locally', flexibleSize: 'Flexible sizes · model-specific limits', localSize: 'Local model sizes · capability-aware', fixedSize: 'Fixed sizes · 1:1 / 3:2 / 2:3', googleFixedSize: 'Current Google 1K output dimensions', quality: 'Quality', keepDenoiserResident: 'Keep DiT loaded', denoiserResidentHint: 'Skip reloading between requests. Weights stay in memory and are released after {seconds} seconds idle.', width: 'Width', height: 'Height', multipleOf: 'px · must be a multiple of {value}', swapSize: 'Swap width and height', experimentalSize: 'This is an experimental 2K+ output. It may generate more slowly and use more points.', advanced: 'Advanced settings', visualStyle: 'Visual style', unspecified: 'Unspecified', photorealistic: 'Photorealistic', illustration: 'Refined illustration', anime: 'Animation', ink: 'Ink wash', product: 'Commercial product', outputFormat: 'Output format', cloudSubmitHint: 'Generate with AI2Apps Cloud, then download or add to the current Gallery folder', localSubmitHint: 'Generate on this device, then download or add to the current Gallery folder', generating: 'Generating…', startGenerate: 'Generate', output: 'OUTPUT', results: 'Results', clearHistory: 'Clear generation history', dragToGallery: 'Drag to Gallery', waiting: 'Ready to create', waitingHint: 'Generated images will appear here', addedGallery: 'Added to Gallery', addGallery: 'Add to Gallery', download: 'Download', generationHistory: 'Generation history', resultCount: '{count} results', cloudGenerating: 'Generating in Cloud', localGenerating: 'Generating locally', noResults: 'No results yet', noResultsHint: 'Choose a Mini-App to start creating', completed: 'Completed', failed: 'Failed', remove: 'Remove', deleteHistory: 'Delete history', autoSize: 'Auto · choose from prompt', customSize: 'Custom size…',
             textImageName: 'Text to Image', textImageSummary: 'Create a complete image from text', textImageDescription: 'Prompt, composition, and style controls', textImageAction: 'Create from text', textImageRun: 'Cloud image generation', textImagePlaceholder: 'Describe the subject, setting, composition, lighting, colors, and style. For example:\nA rain-soaked Tokyo alley, cinematic wide-angle view, neon reflections, detailed realistic photography.',
             editName: 'Image Edit', editSummary: 'Modify one image with a prompt', editDescription: 'Preserve the source structure while making targeted changes', editAction: 'Edit image', editRun: 'Cloud image edit', editPlaceholder: 'Describe the changes. For example:\nKeep the person and composition, replace the background with a sunset coast, and use warm golden lighting.',
             styleTransferName: 'Change Image Style', styleTransferSummary: 'Transform one image into another visual style', styleTransferDescription: 'Prefer OpenAI and restyle the image while preserving its subject and composition', styleTransferAction: 'Change image style', styleTransferRun: 'Cloud image style transfer', styleTransferPlaceholder: 'Optional: describe details to preserve or change. For example:\nKeep the face and clothing silhouette; make the background more painterly.',
@@ -83,11 +82,11 @@
         { id: 'ai2apps.imagine.image-edit', legacyId: 'image-edit', adapter: 'image-edit', version: '1.0.0', status: 'ready', source: 'official', category: 'edit', mode: 'edit', icon: 'scan-search', needsImages: true, requiresImage: true, maxImages: 1, prefix: 'edit' },
         { id: 'ai2apps.imagine.adjust-image', legacyId: 'adjust-image', adapter: 'adjust-image', version: '1.0.0', status: 'ready', source: 'official', category: 'edit', mode: 'adjust', icon: 'sliders-horizontal', needsImages: true, requiresImage: true, maxImages: 1, prefix: 'adjust' },
         { id: 'ai2apps.imagine.style-transfer', legacyId: 'style-transfer', adapter: 'style-transfer', version: '1.0.0', status: 'ready', source: 'official', category: 'edit', mode: 'style-transfer', icon: 'wand-sparkles', needsImages: true, requiresImage: true, maxImages: 1, prefix: 'styleTransfer' },
-        { id: 'ai2apps.imagine.reference-creation', legacyId: 'reference-create', adapter: 'reference-creation', version: '1.0.0', status: 'ready', source: 'official', category: 'create', mode: 'reference', icon: 'images', needsImages: true, requiresImage: true, maxImages: 4, prefix: 'reference' },
+        { id: 'ai2apps.imagine.reference-creation', legacyId: 'reference-create', adapter: 'reference-creation', version: '1.0.0', status: 'ready', source: 'official', category: 'create', mode: 'reference', icon: 'images', needsImages: true, requiresImage: true, maxImages: 16, prefix: 'reference' },
         { id: 'ai2apps.imagine.sticker-workshop', legacyId: 'sticker-workshop', adapter: 'sticker-workshop', version: '1.0.0', status: 'ready', source: 'official', category: 'create', mode: 'sticker', icon: 'smile', needsImages: true, requiresImage: true, maxImages: 1, prefix: 'sticker' },
         { id: 'ai2apps.imagine.group-photo', legacyId: 'group-photo', adapter: 'group-photo', version: '1.0.0', status: 'ready', source: 'official', category: 'create', mode: 'group-photo', icon: 'users-round', needsImages: true, requiresImage: true, maxImages: 4, personSlots: 3, backgroundSlot: 3, prefix: 'groupPhoto' },
         { id: 'ai2apps.imagine.product-poster', legacyId: 'product-poster', adapter: 'product-poster', version: '1.0.0', status: 'ready', source: 'official', category: 'create', mode: 'product-photo', icon: 'shopping-bag', needsImages: true, requiresImage: true, maxImages: 1, prefix: 'productStudio' },
-        { id: 'ai2apps.imagine.character-design', adapter: 'character-design', version: 'Planned', status: 'unavailable', source: 'official', category: 'project', mode: 'project', icon: 'user-round-cog', needsImages: true, requiresImage: false, maxImages: 4, prefix: 'characterDesign' },
+        { id: 'ai2apps.imagine.character-design', legacyId: 'character-design', adapter: 'character-design', version: '1.0.0', status: 'ready', source: 'official', category: 'project', mode: 'project', icon: 'user-round-cog', needsImages: true, requiresImage: false, maxImages: 4, prefix: 'characterDesign' },
         { id: 'ai2apps.imagine.comic-storyboard', adapter: 'comic-storyboard', version: 'Planned', status: 'unavailable', source: 'official', category: 'project', mode: 'project', icon: 'panels-top-left', needsImages: true, requiresImage: false, maxImages: 4, prefix: 'comicStoryboard' },
     ];
     // Shared UI strings: keep workflow instructions separate from display text.
@@ -231,6 +230,10 @@
         portraitBackground: 'Background color', portraitWhite: 'White', portraitBlue: 'Blue', portraitRed: 'Red', portraitGray: 'Light gray', portraitFraming: 'Framing', portraitHead: 'Head and shoulders', portraitHalf: 'Half body', portraitFull: 'Full body', portraitRatio: 'Aspect ratio / size', portraitIdNotice: 'Photo-ID styling only; compliance with passport, visa or official ID rules is not guaranteed. Check dimensions and requirements before use. Visual style is not applied in this mode.',
         portraitCoverTitle: 'Cover title (optional)', portraitCoverTitleHint: 'Leave blank for a cover portrait with copy space and no text.', portraitCoverMood: 'Cover style', portraitMinimal: 'Minimal fashion', portraitBold: 'Bold color', portraitClassic: 'Classic monochrome', portraitCoverNotice: 'AI-generated title text may be inaccurate. Review it, or leave blank and add typography later.', portraitScene: 'Lifestyle scene', portraitCafe: 'Street café', portraitPark: 'Outdoor park', portraitHome: 'Cozy interior', portraitBeach: 'Beach', portraitLight: 'Lighting', portraitDaylight: 'Soft daylight', portraitGolden: 'Golden hour', portraitStudioLight: 'Soft studio lighting', portraitPose: 'Pose and mood (optional)', portraitPoseHint: 'For example: a natural smile, relaxed standing pose, looking at the camera.',
     });
+    if (!window.AI2APPS_MOBILE_SURFACE) MINI_APP_DEFS.push({
+        id: 'ai2apps.comfyui', version: '0.1.0', status: 'ready', source: 'official',
+        category: 'create', mode: 'comfyui', icon: 'workflow', needsImages: false, maxImages: 0,
+    });
     MINI_APP_DEFS.splice(MINI_APP_DEFS.findIndex(item => item.prefix === 'groupPhoto'), 0, {
         id: 'ai2apps.imagine.portrait', legacyId: 'portrait', adapter: 'portrait', version: '1.0.0', status: 'ready', source: 'official', category: 'create', mode: 'portrait', icon: 'contact-round', needsImages: true, requiresImage: true, maxImages: 2, prefix: 'portrait',
     });
@@ -367,8 +370,11 @@
     function galleryHostUnavailable(error) {
         return /AI2Apps Host did not respond|Unsupported host mount/i.test(String(error?.message || error || ''));
     }
-    function localizedMiniApps(locale) {
-        return MINI_APP_DEFS.map(item => ({ ...item, name: translate(locale, `${item.prefix}Name`) || item.id, summary: translate(locale, `${item.prefix}Summary`), description: translate(locale, `${item.prefix}Description`) || translate(locale, `${item.prefix}Summary`), actionTitle: translate(locale, `${item.prefix}Action`) || translate(locale, `${item.prefix}Name`), runLabel: translate(locale, `${item.prefix}Run`) || translate(locale, `${item.prefix}Name`), placeholder: translate(locale, `${item.prefix}Placeholder`) }));
+    function localizedMiniApps(locale, includePrototype = false) {
+        return MINI_APP_DEFS.filter(item => item.mode !== 'comfyui' || includePrototype).map(item => item.mode === 'comfyui' ? {
+            ...item, name: 'ComfyUI',
+            summary: locale.startsWith('zh') ? '运行导入的工作流预设' : 'Run imported workflow presets',
+        } : ({ ...item, name: translate(locale, `${item.prefix}Name`) || item.id, summary: translate(locale, `${item.prefix}Summary`), description: translate(locale, `${item.prefix}Description`) || translate(locale, `${item.prefix}Summary`), actionTitle: translate(locale, `${item.prefix}Action`) || translate(locale, `${item.prefix}Name`), runLabel: translate(locale, `${item.prefix}Run`) || translate(locale, `${item.prefix}Name`), placeholder: translate(locale, `${item.prefix}Placeholder`) }));
     }
     const LEGACY_STYLE_IDS = { illustration: 'digital-painting', ink: 'ink-wash', product: 'photorealistic' };
 
@@ -460,12 +466,19 @@
             locale,
         };
     }
+    function skillMiniApp(item) {
+        return {id: item.id, name: item.title, description: item.description, source: 'skill', mode: 'skill',
+            version: item.revision.slice(0, 12), icon: 'workflow', status: 'ready', category: 'installed',
+            needsImages: false, requiresImage: false, maxImages: 0, summary: item.description, form: item};
+    }
     Object.assign(TRANSLATIONS.zh, {frozenPreview:'交互预览'});
-    Object.assign(TRANSLATIONS.en, {frozenPreview:'Interactive preview'});
-    window.imagineStudioApp = function () { return {
-        locale: normalizedLocale(document.documentElement.lang), miniApps: localizedMiniApps(document.documentElement.lang), miniAppId: (window.AI2APPS_MOBILE_SURFACE || window.innerWidth <= 760) ? '' : 'ai2apps.imagine.text-to-image', leftView: 'mini-apps', prompt: '',
+    Object.assign(TRANSLATIONS.zh, {settingStyle:'场景风格（可选）'});
+    Object.assign(TRANSLATIONS.en, {settingStyle:'Setting style (optional)',frozenPreview:'Interactive preview'});
+    window.imagineStudioApp = function () { return Object.defineProperties({
+        comfyPrototypeEnabled: false, locale: normalizedLocale(document.documentElement.lang), miniApps: localizedMiniApps(document.documentElement.lang), miniAppId: (window.AI2APPS_MOBILE_SURFACE || window.innerWidth <= 760) ? '' : 'ai2apps.imagine.text-to-image', leftView: 'mini-apps', prompt: '',
         groupBackgroundDescription: '', groupAtmosphere: '', groupPose: '',
-        productScene: 'white', productLight: 'soft', productComposition: 'center', productSceneDescription: '', productUseStyle: false,
+        workflowContract: null,
+        productScene: 'white', productLight: 'soft', productComposition: 'center', productSceneDescription: '', productUseStyle: false, productSettingStyle: '',
         get isProductPhotoMode() { return this.currentMiniApp.mode === 'product-photo'; },
         portraitMode: 'id', portraitClothing: 'keep', portraitBackground: 'white', portraitFraming: 'head', portraitCoverMood: 'minimal', portraitCoverTitle: '', portraitScene: 'cafe', portraitLight: 'daylight', portraitPose: '',
         get isPortraitMode() { return this.currentMiniApp.mode === 'portrait'; },
@@ -489,19 +502,20 @@
             this.tryOnPoseText=String(draft.tryOnPoseText||'').slice(0,2000);this.tryOnBackgroundText=String(draft.tryOnBackgroundText||'').slice(0,2000);
         },
         tryOnPrompt() {
-            const action={wear:'Dress or accessorize the person with the referenced item in its appropriate wearing position. Replace only the corresponding original garment or accessory; preserve unrelated clothing.',use:'Show the person naturally using the referenced object according to its ordinary function, with physically plausible interaction.',hold:'Show the person holding the referenced object naturally, with anatomically correct hands and believable grip. Do not turn the object into clothing.'}[this.tryOnInteraction];
-            const pose=this.tryOnPose==='custom'?this.tryOnPoseText.trim():{keep:'Preserve the original pose as closely as possible; make only the minimal limb changes required for the requested interaction.',stand:'Relaxed natural standing pose.',sit:'Natural seated pose.',walk:'Natural walking pose suitable for showing the item.'}[this.tryOnPose];
-            const background=this.tryOnBackground==='custom'?this.tryOnBackgroundText.trim():{keep:'Preserve the background and camera perspective of image 1.',white:'A clean white photography studio.',street:'A realistic city street.',park:'A green outdoor park.',room:'A tasteful lived-in interior.'}[this.tryOnBackground];
-            return ['Create ONE realistic image of exactly the person from image 1 interacting with the item from image 2. Image 1 is the ONLY identity reference: preserve recognizable face, apparent age, skin tone, hair and natural body proportions. Image 2 is ITEM ONLY: do not copy its model, face, body, pose or background. Preserve the item design, color, shape, material, pattern and existing markings; do not invent a substitute or duplicate it. Preserve unrelated details. Match scale, perspective, lighting, shadows, contact and occlusion; no extra people, limbs, fingers, captions or watermarks.',action,'Pose: '+pose,'Background: '+background,this.prompt.trim()].filter(Boolean).join('\n\n');
+            const s=this.workflowContract?.try_on;if(!s)return '';
+            return [s.base,s.interaction[this.tryOnInteraction],
+                'Pose: '+(this.tryOnPose==='custom'?this.tryOnPoseText.trim():s.pose[this.tryOnPose]),
+                'Background: '+(this.tryOnBackground==='custom'?this.tryOnBackgroundText.trim():s.background[this.tryOnBackground]),this.prompt.trim()].filter(Boolean).join('\n\n');
         },
-        get extractOptions() { return [['outfit','extractOutfit','the complete worn outfit, including clothing, shoes and worn accessories, arranged together as separate items'],['clothes','extractClothes','all clothing, excluding shoes and accessories'],['top','extractTop','the upper-body garment'],['pants','extractPants','the pants or trousers'],['skirt','extractSkirt','the skirt'],['dress','extractDress','the dress'],['shoes','extractShoes','the shoes as a matching pair when visible'],['bag','extractBag','the bag'],['custom','extractCustom','']]; },
+        get extractOptions() { return [['outfit','extractOutfit'],['clothes','extractClothes'],['top','extractTop'],['pants','extractPants'],['skirt','extractSkirt'],['dress','extractDress'],['shoes','extractShoes'],['bag','extractBag'],['custom','extractCustom']]; },
         get extractReady() { return Boolean(this.referenceFiles[0]) && (this.extractTarget !== 'custom' || Boolean(this.extractCustom.trim())); },
         restoreExtractDraft(draft) { this.extractTarget = this.extractOptions.some(([id]) => id === draft.extractTarget) ? draft.extractTarget : 'outfit'; this.extractCustom = String(draft.extractCustom || '').slice(0,2000); },
         extractPrompt() {
-            const target = this.extractTarget === 'custom' ? this.extractCustom.trim() : this.extractOptions.find(([id]) => id === this.extractTarget)?.[2];
-            return ['Create ONE clean object-reference image by extracting the specified target from input image 1.', 'Target: '+target+'.', 'Use the source as the authoritative reference. Preserve the visible item design, silhouette, proportions, colors, material, seams, patterns and existing markings as closely as possible. Remove the wearer, face, body, hands, mannequin and original background. Show the complete item unobstructed on a seamless pure white background, centered with generous margins, realistic lighting and only a subtle contact shadow. For multiple requested garments, use a neat flat-lay arrangement in a single image, no duplicates or panel grid. Do not add props, labels, captions or watermarks. Do not invent a different product or substitute an unrelated object. If reconstruction of hidden parts is necessary, keep it minimal and consistent with visible evidence.', this.prompt.trim()].filter(Boolean).join('\n\n');
+            const s=this.workflowContract?.extract;if(!s)return '';
+            const target=this.extractTarget==='custom'?this.extractCustom.trim():s.targets[this.extractTarget];
+            return [s.base,'Target: '+target+'.',s.rules,this.prompt.trim()].filter(Boolean).join('\n\n');
         },
-        get referenceSlotCount() { return this.isPortraitMode ? (this.portraitClothing === 'custom' ? 2 : 1) : this.currentMiniApp.maxImages; },
+        get referenceSlotCount() { if(this.currentMiniApp.mode==='reference')return Math.min(16,this.selectedModel?.referenceLimits?.maximum||4); return this.isPortraitMode ? (this.portraitClothing === 'custom' ? 2 : 1) : this.currentMiniApp.maxImages; },
         portraitThemeId: '', portraitThemeScene: '0', portraitThemeOutfit: '0', portraitThemeAction: '0',
         portraitThemeSceneText: '', portraitThemeActionText: '', portraitGreeting: '',
         get portraitThemes() { return PORTRAIT_THEMES[this.portraitMode] || []; },
@@ -556,22 +570,22 @@
                 this.portraitMode !== 'id' ? this.selectedStyle?.prompt || '' : '', this.prompt.trim()].filter(Boolean).join('\n\n');
         },
         get productScenes() { return [
-            {id:'white', labelKey: 'productSceneWhite', prompt:'Seamless pure white studio background, subtle natural contact shadow.'},
-            {id:'stone', labelKey: 'productSceneStone', prompt:'Minimal neutral stone podium with a refined studio backdrop.'},
-            {id:'desk', labelKey: 'productSceneLifestyle', prompt:'Tasteful natural wood tabletop in a clean interior, restrained supporting props.'},
-            {id:'nature', labelKey: 'productSceneOutdoors', prompt:'Natural outdoor setting with soft greenery in the distance and realistic scale.'},
-            {id:'festival', labelKey: 'productSceneGift', prompt:'Elegant gift-giving scene with subtle ribbons and warm festive accents, no text.'},
-            {id:'custom', labelKey: 'productSceneCustom', prompt:''},
+            {id:'white', labelKey: 'productSceneWhite'},
+            {id:'stone', labelKey: 'productSceneStone'},
+            {id:'desk', labelKey: 'productSceneLifestyle'},
+            {id:'nature', labelKey: 'productSceneOutdoors'},
+            {id:'festival', labelKey: 'productSceneGift'},
+            {id:'custom', labelKey: 'productSceneCustom'},
         ]; },
         get productLights() { return [
-            {id:'soft', labelKey: 'productLightSoftbox', prompt:'Large softbox lighting, controlled reflections and soft shadows.'},
-            {id:'window', labelKey: 'productLightWindow', prompt:'Natural diffused window light and realistic gentle shadows.'},
-            {id:'dramatic', labelKey: 'productLightRim', prompt:'Dramatic but readable rim lighting, preserve accurate product colors and material.'},
+            {id:'soft', labelKey: 'productLightSoftbox'},
+            {id:'window', labelKey: 'productLightWindow'},
+            {id:'dramatic', labelKey: 'productLightRim'},
         ]; },
         get productCompositions() { return [
-            {id:'center', labelKey: 'productCompositionCenter', prompt:'Center the entire product with generous margins; preserve its original viewing angle.'},
-            {id:'left', labelKey: 'productCompositionLeft', prompt:'Place the entire product on the left, leave uncluttered negative space on the right for later typesetting.'},
-            {id:'right', labelKey: 'productCompositionRight', prompt:'Place the entire product on the right, leave uncluttered negative space on the left for later typesetting.'},
+            {id:'center', labelKey: 'productCompositionCenter'},
+            {id:'left', labelKey: 'productCompositionLeft'},
+            {id:'right', labelKey: 'productCompositionRight'},
         ]; },
         get productPhotoReady() { return this.productScene !== 'custom' || Boolean(this.productSceneDescription.trim()); },
         restoreProductDraft(draft) {
@@ -579,27 +593,131 @@
                 this[field] = choices.some(item => item.id === draft[field]) ? draft[field] : choices[0].id;
             }
             this.productSceneDescription = String(draft.productSceneDescription || '').slice(0,2000);
-            this.productUseStyle = draft.productUseStyle === true;
+            this.productUseStyle = draft.productUseStyle === true;this.productSettingStyle=String(draft.productSettingStyle||'').slice(0,4000);
         },
         productPhotoPrompt() {
-            const choose = (items, id) => (items.find(item => item.id === id) || items[0]).prompt;
-            return ['Create ONE professional product photograph using the supplied image as the authoritative product reference. Preserve the exact product identity, silhouette, proportions, visible parts, packaging, original colors, material, logos and existing readable label text. Keep the original product viewing angle; do not invent hidden surfaces or new branding. Do not add people, duplicate products, prices, slogans or watermarks. Change the setting and lighting, not the product design. Maintain realistic contact shadows, perspective, reflections and scale.',
-                choose(this.productScenes,this.productScene), this.productSceneDescription.trim(), choose(this.productLights,this.productLight), choose(this.productCompositions,this.productComposition),
-                this.productUseStyle && this.selectedStyle ? 'Apply the following style only to the setting, not the product: '+this.selectedStyle.prompt : '', this.prompt.trim()
-            ].filter(Boolean).join('\n\n');
+            const s=this.workflowContract?.product;if(!s)return '';
+            return [s.base,this.productScene==='custom'?'':s.scene[this.productScene],this.productSceneDescription.trim(),s.light[this.productLight],s.composition[this.productComposition],
+                (this.productSettingStyle.trim() || (this.productUseStyle&&this.selectedStyle?this.selectedStyle.prompt:''))?'Apply the following style only to the setting, not the product: '+(this.productSettingStyle.trim() || this.selectedStyle.prompt):'',this.prompt.trim()].filter(Boolean).join('\n\n');
         },
-        stickerEmotion: 'happy', stickerBatchBusy: false, stickerBatchStop: false, stickerBatchDone: 0,
+        stickerEmotion: 'happy', stickerFraming: 'half', stickerFacing: 'center', stickerBackground: 'white',
+        stickerCatalog: [], stickerPacks: [], stickerPackId: '', stickerPackName: '',
+        stickerPackDescription: '', stickerPackBusy: false, stickerAssetsLoading: false,
+        stickerAssetsLoaded: false, stickerBatchBusy: false, stickerBatchStop: false, stickerBatchDone: 0,
         get isStickerMode() { return this.currentMiniApp.mode === 'sticker'; },
-        get stickerEmotions() { return [
+        get stickerEmotions() { return this.stickerCatalog.length ? this.stickerCatalog : [
             { id: 'happy', icon: '😄', labelKey: 'stickerHappy', instruction: 'Laughing joyfully, cheerful expressive eyes.' },
             { id: 'love', icon: '🥰', labelKey: 'stickerLove', instruction: 'Express affection with hearts, a warm loving expression.' },
             { id: 'wow', icon: '😮', labelKey: 'stickerSurprised', instruction: 'Amazed and surprised, wide eyes and open mouth.' },
             { id: 'sad', icon: '🥺', labelKey: 'stickerPleading', instruction: 'An adorable pleading expression with teary eyes.' },
         ]; },
-        stickerLabel(item) { return this.tr(item.labelKey); },
+        stickerLabel(item) { return item?.labels?.[this.locale] || this.tr(item?.labelKey); },
+        stickerText(zh, en) { return this.locale === 'zh' ? zh : en; },
+        get selectedStickerPack() { return this.stickerPacks.find(pack => pack.id === this.stickerPackId); },
+        async loadStickerAssets() {
+            if (this.stickerAssetsLoading) return;
+            this.stickerAssetsLoaded = true;
+            this.stickerAssetsLoading = true;
+            try {
+                const [catalog, gallery] = await Promise.allSettled([
+                    fetch(this.$root.dataset.stickerCatalogUrl).then(responsePayload),
+                    fetch(`${GALLERY_API}/assets?kind=sticker-pack&limit=500`, {cache: 'no-store'}).then(responsePayload),
+                ]);
+                if (catalog.status === 'fulfilled') {
+                    this.stickerCatalog = catalog.value.map(([id, zh, en, instruction]) => ({id, labels: {zh, en}, instruction}));
+                    if (!this.stickerCatalog.some(item => item.id === this.stickerEmotion)) this.stickerEmotion = 'happy';
+                }
+                if (gallery.status === 'fulfilled') {
+                    this.stickerPacks = gallery.value.items.filter(pack => pack.metadata?.schema === 'ai2apps.sticker-pack/v1');
+                }
+                if (catalog.status === 'rejected') throw catalog.reason;
+                if (gallery.status === 'rejected') throw gallery.reason;
+            } catch (error) { this.fail(error); }
+            finally { this.stickerAssetsLoading = false; }
+        },
+        async createStickerPack() {
+            if (!this.referenceFiles[0] || !this.stickerPackName.trim() || this.stickerPackBusy) return;
+            this.stickerPackBusy = true;
+            try {
+                const primaryId = this.referenceAssets[0]?.assetId;
+                const extraFiles = Array.from(this.$refs.stickerExtraReferences?.files || []);
+                if (extraFiles.length > 3) throw new Error(this.stickerText('最多再选 3 张参考图。', 'Choose up to 3 additional reference images.'));
+                const referenceIds = primaryId ? [primaryId] : [];
+                const files = primaryId ? extraFiles : [this.referenceFiles[0], ...extraFiles];
+                for (const file of files) {
+                    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || file.size > 9 * 1024 * 1024) {
+                        throw new Error(this.stickerText('参考图须为 9 MiB 以内的 PNG、JPEG 或 WebP。', 'Use PNG, JPEG or WebP references up to 9 MiB.'));
+                    }
+                }
+                for (const file of files) {
+                    const form = new FormData();
+                    form.append('file', file);
+                    const imported = await responsePayload(await fetch(`${GALLERY_API}/assets/import`, {method: 'POST', body: form}));
+                    referenceIds.push(imported.asset.id);
+                }
+                const pack = await responsePayload(await fetch(`${GALLERY_API}/sticker-packs`, {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({name: this.stickerPackName, description: this.stickerPackDescription, reference_ids: referenceIds}),
+                }));
+                this.stickerPackName = '';
+                this.stickerPackDescription = '';
+                if (this.$refs.stickerExtraReferences) this.$refs.stickerExtraReferences.value = '';
+                this.stickerPackId = pack.id;
+                this.scheduleDraftSave();
+                await this.refreshStickerGallery();
+            } catch (error) { this.fail(error); }
+            finally { this.stickerPackBusy = false; }
+        },
+        async loadStickerReference() {
+            const ref = this.selectedStickerPack?.metadata.character.references[0];
+            if (!ref) return;
+            try {
+                const asset = await responsePayload(await fetch(`${GALLERY_API}/assets/${encodeURIComponent(ref.id)}`, {cache: 'no-store'}));
+                if (asset.status !== 'active' || asset.content_hash !== ref.content_hash) {
+                    throw new Error(this.stickerText('角色参考图已更改或不可用。', 'The character reference changed or is unavailable.'));
+                }
+                await this.materializeAssetReference({assetId: ref.id}, 0);
+            } catch (error) { this.fail(error); }
+        },
+        async refreshStickerGallery() {
+            this.$refs.galleryMini?.contentWindow?.postMessage({type: 'ai2apps.gallery.refresh'}, window.location.origin);
+            await this.loadStickerAssets();
+        },
+        get stickerOutputVariant() {
+            const run = this.selectedRun;
+            const artifact = this.activeArtifact;
+            if (run?.miniAppId !== 'ai2apps.imagine.sticker-workshop' || artifact?.kind !== 'image') return null;
+            const input = run.input || {};
+            const index = input.stickerBatch ? Number(artifact.metadata?.taskId?.match(/-([0-3])$/)?.[1] ?? -1) : -1;
+            const state = input.stickerBatch ? ['happy', 'love', 'wow', 'sad'][index] : input.stickerEmotion;
+            return state ? {state, framing: input.stickerFraming || 'half', facing: input.stickerFacing || 'center', background: input.stickerBackground || 'white'} : null;
+        },
+        async saveStickerOutput() {
+            const variant = this.stickerOutputVariant;
+            const pack = this.selectedStickerPack;
+            const artifact = this.activeArtifact;
+            if (!variant || !pack || this.stickerPackBusy || artifact.adding) return;
+            this.stickerPackBusy = true;
+            try {
+                if (!artifact.galleryAssetId) await this.addArtifactToGallery(artifact);
+                if (!artifact.galleryAssetId) return;
+                const label = this.stickerLabel(this.stickerEmotions.find(item => item.id === variant.state));
+                await responsePayload(await fetch(`${GALLERY_API}/sticker-packs/${encodeURIComponent(pack.id)}/stickers`, {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({...variant, description: label, asset_id: artifact.galleryAssetId}),
+                }));
+                await this.refreshStickerGallery();
+                this.success(this.stickerText('已加入表情包', 'Added to sticker pack'));
+            } catch (error) { this.fail(error); }
+            finally { this.stickerPackBusy = false; }
+        },
         stickerPrompt(emotionId = this.stickerEmotion) {
             const emotion = this.stickerEmotions.find(item => item.id === emotionId) || this.stickerEmotions[0];
-            return ['Create ONE expressive die-cut chat sticker of the main person or pet in the reference image. Preserve recognizable identity, hairstyle or fur markings and distinctive accessories. Only one subject, not a grid or collage. Cute clean illustration, bold contours, white sticker border, plain pure white background, generous margins, entire subject within the canvas. No letters, words, watermark or captions.', emotion.instruction, this.selectedStyle?.prompt || '', this.prompt.trim()].filter(Boolean).join('\n\n');
+            const framing = this.stickerFraming === 'full' ? 'Full body from head to feet.' : 'Waist-up view with the entire head and gestures visible.';
+            const facing = {left: 'Face toward the left edge of the image.', right: 'Face toward the right edge of the image.', center: 'Face forward toward the viewer.'};
+            const character = this.selectedStickerPack?.metadata.character;
+            const description = character?.references[0]?.id === this.referenceAssets[0]?.assetId ? character?.description : '';
+            return ['Create one expressive die-cut sticker of the subject in the reference image. Preserve recognizable identity, hairstyle or fur markings and distinctive accessories. Show one subject with clean bold contours, a white sticker border, ' + (this.stickerBackground === 'transparent' ? 'a true transparent alpha background (no white fill or checkerboard)' : 'a plain white background') + ' and generous margins. No text or watermark.', framing, facing[this.stickerFacing], emotion.instruction, description, this.characterReuseGuide?.(), this.selectedStyle?.prompt || '', this.prompt.trim()].filter(Boolean).join('\n\n');
         },
         get activeStickerBatch() { return this.runs.find(run => run.miniAppId==='ai2apps.imagine.sticker-workshop' && run.input?.stickerBatch && this.isActiveRun(run)); },
         async stopStickerBatch() {
@@ -615,9 +733,9 @@
             const model=this.selectedModel;
             if (model.source!=='local' && !window.confirm(this.tr('stickerSetConfirm'))) return;
             const reference=this.referenceFiles[0];
-            const prompts=this.stickerEmotions.map(emotion=>this.stickerPrompt(emotion.id));
+            const prompts=['happy', 'love', 'wow', 'sad'].map(state=>this.stickerPrompt(state));
             const payload={model:model.id,source:model.source,prompt:prompts[0],prompts,size:this.requestedSize,
-                quality:this.quality,outputFormat:this.format,...this.zImageParameters(),...this.localEditParameters(model,true)};
+                quality:this.quality,outputFormat:this.format,...this.stickerImageParameters(),...this.zImageParameters(),...this.localEditParameters(model,true),...this.localResidencyParameters()};
             const input={...this.draftPayload(),stickerBatch:true,submittedPrompts:prompts};
             this.stickerBatchBusy=true;this.stickerBatchStop=false;let run=null,accepted=false;
             try {
@@ -633,25 +751,80 @@
                 this.fail(error);
             } finally {this.stickerBatchBusy=false;this.icons();}
         },
-        modelId: DEFAULT_CLOUD_MODEL, models: [], size: '1024x1024', customWidth: 2048, customHeight: 1152,
+        appStateController:null,appStateRestoring:false,
+        modelId: '', defaultModelId: '', modelSelectionMode: 'default', models: [], size: '1024x1024', customWidth: 2048, customHeight: 1152,
         sizeCapability: structuredClone(LEGACY_SIZE_CAPABILITY), flexibleSizes: false, pricingVersion: '',
-        quality: 'auto', format: 'png', style: '', pendingStyle: '', styleDialogOpen: false, styleCategoryId: '', stylePreferenceLoaded: false,
+        quality: 'auto', format: 'png', style: '', pendingStyle: '', styleDialogOpen: false, styleDialogTarget: 'image', styleCategoryId: '', stylePreferenceLoaded: false,
         adjustState: window.ImagineAdjustEngine?.state?.() || { values: {}, rotation: 0, flipX: false, flipY: false, cropRatio: 'original' }, adjustHistory: [], adjustHistoryIndex: -1, adjustBitmap: null, adjustRenderFrame: 0, adjustmentExporting: false,
         adjustmentLocked: false, adjustmentPresets: [], selectedAdjustmentPresetId: '', adjustmentPresetName: '', adjustmentPresetDialogOpen: false,
         adjustmentBatchOpen: false, adjustmentBatchSource: 'files', adjustmentBatchFiles: [], adjustmentBatchOutputMode: 'save-as', adjustmentBatchOutputDirectory: '', adjustmentBatchBusy: false, adjustmentBatchDone: 0, adjustmentBatchTotal: 0,
         parameterHandoff: null, parameterHandoffDraftId: '', parameterHandoffReady: false, pendingParameterIntent: null, parameterHandoffLoading: false,
         referenceFiles: [], referencePreviews: [], referenceDimensions: [], referenceAssets: [], runs: [], selectedRunId: '', selectedArtifactId: '', generating: false, refreshing: false, configuringLocal: false, currentRunController: null, outputPollTimer: null, outputRefreshing: false, outputRecoveryDone: false,
-        packageCatalogLoading: false, packageCatalogError: '',
+        packageCatalogLoading: false, packageCatalogRequest: null, packageCatalogError: '',
         notice: '', noticeTone: 'error', noticeTimer: null, clientEnvironment: 'browser', galleryMiniUrl: '', galleryMiniMountId: '', galleryMiniLoading: false, galleryMiniError: '', galleryMessageHandler: null, hostContextHandler: null,
         chatController: null, chatMiniUrl: '', packageChatBridge: null,
-        galleryActiveCollectionId: 'recent', galleryActiveCollectionName: 'Recent', galleryDragActive: false, gallerySlotTarget: null,
+        galleryActiveCollectionId: 'recent', galleryActiveCollectionName: 'Recent',
         favoriteMiniApps: [], recentMiniApps: [], leftCollapsed: false, rightCollapsed: false, mobileSurface: 'library', mobileReturnSurface: 'library', mobileViewport: !!window.AI2APPS_MOBILE_SURFACE || window.innerWidth <= 760, draftTimer: null,
-        packageMiniAppId: '', packageMiniAppUrl: '', packageMiniAppMountId: '', packageMiniAppLoading: false, packageMiniAppError: '', packageMiniAppReadiness: {}, packageMiniAppSetupBusy: false,
+        skillAppId: '', skillValues: {}, skillModels: [], skillModelId: '', skillSize: '', skillTaskModel: '',
+        skillAssets: [], skillRunKey: '', skillRunId: '', skillBusy: false, skillError: '',
+        skillLabel(en, zh) { return this.locale.startsWith('zh') ? zh : en; },
+        get skillModel() { return this.skillModels.find(model => model.id === this.skillModelId); },
+        selectSkillModel() { this.skillSize = this.skillModel?.size?.default || ''; },
+        async openSkillForm(item) {
+            if (this.skillAppId === item.id) return;
+            this.skillAppId = item.id;
+            this.skillValues = Object.fromEntries(item.form.parameters.map(field => [
+                field.key, field.type === 'boolean' && field.default !== null ? (field.default ? 'on' : 'off') : field.default ?? '',
+            ]));
+            this.skillModels = []; this.skillModelId = ''; this.skillTaskModel = ''; this.skillError = ''; this.skillAssets = [];
+            this.skillRunKey = ''; this.skillRunId = '';
+            const options = {credentials: 'same-origin', headers: this.historyHeaders(), cache: 'no-store'};
+            try {
+                const data = await responsePayload(await fetch(STUDIO_API + '/skill-mini-apps/' + item.id + '/models', options));
+                if (this.skillAppId !== item.id) return;
+                this.skillModels = data.items;
+                this.skillTaskModel = data.task_model;
+                this.skillModelId = data.items.find(model => model.id === data.preferred)?.id || '';
+                this.selectSkillModel();
+                if (item.form.parameters.some(field => field.type === 'image')) {
+                    const gallery = await responsePayload(await fetch(GALLERY_API + '/assets?kind=image&limit=100', options));
+                    if (this.skillAppId === item.id) this.skillAssets = (gallery.items || []).filter(asset =>
+                        ['image/png', 'image/jpeg', 'image/webp'].includes(asset.media_type));
+                }
+            } catch (error) {
+                if (this.skillAppId === item.id) { this.skillError = error.message; this.skillAppId = ''; }
+            }
+        },
+        async runSkillForm() {
+            if (this.skillBusy || !this.skillTaskModel || !this.skillModel) return;
+            const item = this.currentMiniApp;
+            this.skillBusy = true; this.skillError = '';
+            this.skillRunKey ||= crypto.randomUUID();
+            try {
+                const values = Object.fromEntries(item.form.parameters.map(field => {
+                    const value = this.skillValues[field.key];
+                    return [field.key, value === '' ? null
+                        : field.type === 'number' ? Number(value)
+                        : field.type === 'boolean' ? value === 'on' : value];
+                }));
+                const job = await responsePayload(await fetch(STUDIO_API + '/skill-mini-apps/' + item.id + '/runs', {
+                    method: 'POST', credentials: 'same-origin', headers: {...this.historyHeaders(), 'Content-Type': 'application/json'},
+                    body: JSON.stringify({values, key: this.skillRunKey, model: this.skillModelId, size: this.skillSize}),
+                }));
+                if (this.currentMiniApp.id === item.id) {
+                    this.skillRunId = job.run_id;
+                    this.skillRunKey = '';
+                    await this.refreshRuns(true);
+                }
+            } catch (error) { if (this.currentMiniApp.id === item.id) this.skillError = error.message; }
+            finally { this.skillBusy = false; }
+        },
+        packageMiniAppId: '', packageMiniAppUrl: '', packageMiniAppMountId: '', packageMiniAppRevision: '', packageMiniAppLoading: false, packageMiniAppError: '', packageMiniAppReadiness: {}, packageMiniAppSetupBusy: false,
 
         get hasActiveMiniApp() { return Boolean(this.miniAppId && this.miniApps.some(item => item.id === this.miniAppId)); },
         get currentMiniApp() { return this.miniApps.find(item => item.id === this.miniAppId) || (this.mobileViewport ? {id:'',name:'',mode:'',status:'inactive',maxImages:0,needsImages:false,requiresImage:false} : this.miniApps[0]); },
         get currentMiniAppReady() { return this.hasActiveMiniApp && (this.currentMiniApp?.source !== 'package' || this.packageMiniAppReadiness[this.currentMiniApp.id] === true); },
-        get miniAppChatEnabled() { return !window.AI2APPS_MOBILE_SURFACE && Boolean(window.AI2AppsMiniAppChat && this.currentMiniApp && (this.currentMiniApp.source !== 'package' || this.currentMiniApp.chat?.enabled === true)); },
+        get miniAppChatEnabled() { return !window.AI2APPS_MOBILE_SURFACE && Boolean(window.AI2AppsMiniAppChat && this.currentMiniApp && this.currentMiniApp.mode !== 'comfyui' && (this.currentMiniApp.source !== 'package' || this.currentMiniApp.chat?.enabled === true)); },
         get isAdjustMode() { return this.currentMiniApp.mode === 'adjust'; },
         get isStyleTransferMode() { return this.currentMiniApp.mode === 'style-transfer'; },
         get isGroupPhotoMode() { return this.currentMiniApp.mode === 'group-photo'; },
@@ -662,19 +835,22 @@
         get filteredMiniApps() {
             return [...this.miniApps].sort((a, b) => (a.status === 'ready' ? 0 : 1) - (b.status === 'ready' ? 0 : 1));
         },
-        get requiredOperation() { if(this.isUpscaleMode) return 'image_upscaling'; return this.currentMiniApp.mode === 'generate' ? 'image_generation' : 'image_edit'; },
+        get requiredOperation() { if(this.isUpscaleMode) return 'image_upscaling'; return (this.isCharacterMode ? !this.referenceFiles.some(Boolean) : this.currentMiniApp.mode === 'generate') ? 'image_generation' : 'image_edit'; },
         get compatibleModels() {
             const minimum = this.isTryOnMode || this.isGroupPhotoMode || (this.isPortraitMode && this.portraitClothing === 'custom') ? 2 : 1;
             const models = this.models.filter(model => model.operations.includes(this.requiredOperation) && (this.requiredOperation !== 'image_edit' || (model.referenceLimits?.maximum ?? 4) >= minimum));
             if (!this.prefersOpenAIModel) return models;
             return [...models].sort((left, right) => Number(!this.isOpenAIModel(left)) - Number(!this.isOpenAIModel(right)));
         },
-        get selectedModel() { const selected=this.compatibleModels.find(model => model.id === this.modelId);return selected || ((this.parameterHandoff || this.parameterHandoffDraftId) ? null : this.compatibleModels[0]) || null; },
+        get selectedModel() { const selected=this.compatibleModels.find(model => model.id === this.modelId);return selected || (this.isUpscaleMode && !this.parameterHandoff && !this.parameterHandoffDraftId ? this.compatibleModels[0] : null) || null; },
         get hasLocalModels() { return this.compatibleModels.some(model => model.source === 'local'); },
         get usingLocalModel() { return this.selectedModel?.source === 'local'; },
+        keepDenoiserResident: false,
         zImageSteps: 8, zImageRedraw: 75,
         zImageBaseSteps: 30, zImageBaseGuidance: 4, zImageBaseNegativePrompt: '',
         get usingZImageBase() { return this.usingLocalModel && /z-image-base-mlx/.test(this.selectedModel?.id || ''); },
+        get denoiserIdleSeconds() { return this.usingLocalModel ? this.selectedModel?.denoiserIdleSeconds || 0 : 0; },
+        localResidencyParameters() { return this.denoiserIdleSeconds && this.keepDenoiserResident ? { keep_dit_resident: true } : {}; },
         localEditParameters(model, editing) {
             // Reference KV caching changes Klein edit conditioning, not just speed.
             // Fixed-seed A/B on 2026-09-11 preserved source geometry only without it.
@@ -697,8 +873,15 @@
         get generationModeLabel() { if(this.isUpscaleMode) return this.tr('upscaleRun'); return this.tr(this.isAdjustMode ? 'localAdjustments' : (this.usingLocalModel ? 'localGenerate' : 'cloudGenerate')); },
         get submitHint() { if(this.isUpscaleMode) return this.tr('upscaleHint'); return this.tr(this.isAdjustMode ? 'adjustmentSubmitHint' : (this.usingLocalModel ? 'localSubmitHint' : 'cloudSubmitHint')); },
         get usingGoogleImageModel() { return String(this.selectedModel?.id || '').endsWith(GOOGLE_FLASH_MODEL); },
-        get modelSizeHint() { return this.tr(this.usingLocalModel ? 'localSize' : (this.flexibleSizes ? 'flexibleSize' : (this.usingGoogleImageModel ? 'googleFixedSize' : 'fixedSize'))); },
-        get formatOptions() { return this.selectedModel?.formats?.length ? this.selectedModel.formats : ['png']; },
+        get modelSizeHint() { if (this.sizeCapability.validation === 'provider') return this.tr('providerValidatedSize'); return this.tr(this.usingLocalModel ? 'localSize' : (this.flexibleSizes ? 'flexibleSize' : (this.usingGoogleImageModel ? 'googleFixedSize' : 'fixedSize'))); },
+        get stickerBackgroundError() {
+            if (!this.isStickerMode || this.stickerBackground !== 'transparent') return '';
+            if (!this.selectedModel?.backgrounds?.includes('transparent')) return this.stickerText('当前模型未声明支持透明背景，请选择支持的模型。', 'This model does not declare transparent background support. Choose a supported model.');
+            if (!['png','webp'].includes(this.format)) return this.stickerText('透明背景需要 PNG 或 WebP。', 'Transparent background requires PNG or WebP.');
+            return '';
+        },
+        stickerImageParameters() { return this.isStickerMode && this.stickerBackground === 'transparent' ? {background:'transparent'} : {}; },
+        get formatOptions() { const formats=this.selectedModel?.formats?.length ? this.selectedModel.formats : ['png']; return this.isStickerMode && this.stickerBackground === 'transparent' ? formats.filter(f=>['png','webp'].includes(f)) : formats; },
         get sizeOptions() {
             const values = [...(this.sizeCapability.presets || [])];
             if (this.sizeCapability.auto) values.unshift('auto');
@@ -711,7 +894,7 @@
             const dimensions = this.parseSize(this.requestedSize); if (!dimensions) return false;
             return dimensions.width * dimensions.height > Number(this.sizeCapability.experimentalAbovePixels || Number.MAX_SAFE_INTEGER);
         },
-        get canGenerate() { if(this.isUpscaleMode) return Boolean(this.selectedModel?.operations.includes('image_upscaling') && this.referenceFiles[0] && Number.isInteger(Number(this.upscaleSeed)) && this.upscaleSeed>=0 && this.upscaleSeed<=4294967295 && this.upscalePrompt.length<=2048); const hasInstruction = this.isTryOnMode ? this.tryOnReady : this.isExtractMode ? this.extractReady : this.isStyleTransferMode ? Boolean(this.selectedStyle) : (this.isGroupPhotoMode ? this.groupPhotoReady : (this.isPortraitMode ? this.portraitReady : (this.isStickerMode || (this.isProductPhotoMode ? this.productPhotoReady : Boolean(this.submissionPrompt.trim()))))); return this.currentMiniApp.status === 'ready' && Boolean(this.selectedModel) && hasInstruction && this.submissionPromptValid && !this.sizeError && (!this.currentMiniApp.requiresImage || this.referenceFiles.some(Boolean)); },
+        get canGenerate() { if(this.appStateRestoring||this.parameterHandoffLoading||this.stickerBackgroundError)return false; if(this.isUpscaleMode) return Boolean(this.selectedModel?.operations.includes('image_upscaling') && this.referenceFiles[0] && Number.isInteger(Number(this.upscaleSeed)) && this.upscaleSeed>=0 && this.upscaleSeed<=4294967295 && this.upscalePrompt.length<=2048); const hasInstruction = this.isTryOnMode ? this.tryOnReady : this.isExtractMode ? this.extractReady : this.isStyleTransferMode ? Boolean(this.selectedStyle) : (this.isGroupPhotoMode ? this.groupPhotoReady : (this.isPortraitMode ? this.portraitReady : (this.isStickerMode || (this.isProductPhotoMode ? this.productPhotoReady : Boolean(this.submissionPrompt.trim()))))); return this.currentMiniApp.status === 'ready' && Boolean(this.selectedModel) && hasInstruction && this.submissionPromptValid && !this.sizeError && (!this.currentMiniApp.requiresImage || this.referenceFiles.some(Boolean)); },
         get selectedRun() { return this.runs.find(item => item.id === this.selectedRunId) || this.runs[0] || null; },
         get activeArtifact() { const items = this.selectedRun?.artifacts || []; return items.find(item => item.id === this.selectedArtifactId) || items.find(item => item.final) || items[0] || null; },
         get qualityOptions() { return this.selectedModel?.qualities?.length ? this.selectedModel.qualities : ['auto']; },
@@ -744,8 +927,23 @@
         },
         async ensureSelectedMiniAppFrame() {
             const item = this.currentMiniApp;
-            if (item?.source === 'package' && (!this.packageMiniAppUrl || this.packageMiniAppId !== item.id)) {
+            if (item?.source === 'skill') await this.openSkillForm(item);
+            if (item?.source === 'package') await this.ensurePackageMiniAppFrame(item);
+        },
+        async ensurePackageMiniAppFrame(item) {
+            const revision = window.AI2AppsStudioPackages?.revision(item);
+            if (!this.packageMiniAppUrl || this.packageMiniAppId !== item.id ||
+                this.packageMiniAppRevision !== (revision || '')) {
                 await this.mountPackageMiniApp(item);
+            }
+        },
+        async refreshActivePackageMiniApp() {
+            const item = this.currentMiniApp;
+            await this.refreshPackageMiniApps();
+            if (item?.source === 'package' && this.miniAppId === item.id &&
+                (!this.mobileViewport || this.mobileSurface === 'create')) {
+                const updated = this.miniApps.find(candidate => candidate.id === item.id && candidate.source === 'package');
+                if (updated) await this.ensurePackageMiniAppFrame(updated);
             }
         },
         async init() {
@@ -758,18 +956,20 @@
             await this.initializeMiniAppFrames();
             this.galleryMessageHandler = event => this.handleGalleryMessage(event);
             this.hostContextHandler = event => { this.setLocale(event.detail?.locale); const intent=event.detail?.appInteraction;if(intent&&!intent.returning){this.pendingParameterIntent=intent;if(this.parameterHandoffReady)this.openParameterHandoff(intent).catch(error=>this.fail(error));} };
+            this.stopPackageActivation = window.AI2AppsStudioPackages?.watchActivation(() => this.refreshActivePackageMiniApp());
             window.addEventListener('message', this.galleryMessageHandler);
             window.addEventListener('ai2apps:host-context', this.hostContextHandler);
             window.addEventListener('ai2apps:studio-output', async event => {
                 if (event.detail?.studioId !== APP_ID) return;
                 await this.refreshRuns();
-                const run = this.runs.find(item => item.id === event.detail.runId);
-                if (run) this.selectRun(run);
+                const run = this.runs.find(item => item.id === (event.detail.runId || event.detail.result?.runId));
+                if (run && !event.detail.preserveSelection) this.selectRun(run);
             });
             window.addEventListener('beforeunload', () => this.cleanup(), { once: true });
             this.$watch('modelId', () => this.applySelectedModelCapability());
             await this.refresh();
-            const draft = !this.hasActiveMiniApp || this.currentMiniApp?.source === 'package' ? {} : await this.loadDraft(this.miniAppId);
+            const usesBuiltinDraft = this.hasActiveMiniApp && !['package', 'skill'].includes(this.currentMiniApp?.source);
+            const draft = usesBuiltinDraft ? await this.loadDraft(this.miniAppId) : {};
             if (this.prefersOpenAIModel && !draft?.modelId) { this.preferOpenAIEditingModel(); this.applySelectedModelCapability(); }
             if (this.selectedAdjustmentPresetId) this.selectAdjustmentPreset();
             if(this.outputPollTimer)clearInterval(this.outputPollTimer);
@@ -789,25 +989,27 @@
             if (this.leftView === 'assets') this.mountGalleryMini();
             if (this.leftView === 'chat') this.mountMiniAppChat();
             await this.openShellMiniApp?.();
+            this.appStateController=window.AI2AppsImagineState?.mount(this)||null;
             this.parameterHandoffReady=true;
             if(this.pendingParameterIntent)await this.openParameterHandoff(this.pendingParameterIntent).catch(error=>this.fail(error));
             window.ai2appsShell?.ready?.();
         },
-        cleanup() { if(this.outputPollTimer)clearInterval(this.outputPollTimer); if (this.draftTimer) clearTimeout(this.draftTimer); if (this.noticeTimer) clearTimeout(this.noticeTimer); if (this.adjustRenderFrame) cancelAnimationFrame(this.adjustRenderFrame); this.chatController?.dispose(); this.packageChatBridge?.dispose(); disposeRenderableImage(this.adjustBitmap); if (this.galleryMessageHandler) window.removeEventListener('message', this.galleryMessageHandler); if (this.hostContextHandler) window.removeEventListener('ai2apps:host-context', this.hostContextHandler); this.referencePreviews.forEach(url => { if (url) URL.revokeObjectURL(url); }); },
+        cleanup() { this.appStateController?.dispose(); if(this.outputPollTimer)clearInterval(this.outputPollTimer); if (this.draftTimer) clearTimeout(this.draftTimer); if (this.noticeTimer) clearTimeout(this.noticeTimer); if (this.adjustRenderFrame) cancelAnimationFrame(this.adjustRenderFrame); this.chatController?.dispose(); this.packageChatBridge?.dispose(); disposeRenderableImage(this.adjustBitmap); if (this.galleryMessageHandler) window.removeEventListener('message', this.galleryMessageHandler); this.stopPackageActivation?.(); if (this.hostContextHandler) window.removeEventListener('ai2apps:host-context', this.hostContextHandler); this.referencePreviews.forEach(url => { if (url) URL.revokeObjectURL(url); }); },
         tr(key, values) {
             const byokKey = { cloudGenerate: 'byokGenerate', cloudGenerating: 'byokGenerating', cloudDisclosure: 'byokDisclosure', cloudSubmitHint: 'byokSubmitHint', uploadConfirm: 'byokUploadConfirm' }[key];
             return translate(this.locale, byokKey && this.selectedModel?.source === 'byok' ? byokKey : key, values);
         },
         localizedName(item) { return item?.name?.[this.locale === 'zh' ? 'CN' : 'EN'] || item?.name?.EN || ''; },
-        openStyleDialog() {
-            this.pendingStyle = this.style;
-            const selectedCategory = this.styleCategories.find(category => category.styles.some(item => item.id === this.style));
+        openStyleDialog(target = 'image') {
+            this.styleDialogTarget = target === 'character' ? 'character' : 'image';
+            this.pendingStyle = this.styleDialogTarget === 'character' ? (this.characterAppearance?.style_id || '') : this.style;
+            const selectedCategory = this.styleCategories.find(category => category.styles.some(item => item.id === this.pendingStyle));
             this.styleCategoryId = selectedCategory?.id || this.styleCategories[0]?.id || '';
             this.styleDialogOpen = true; this.icons();
         },
-        closeStyleDialog() { this.styleDialogOpen = false; this.pendingStyle = this.style; this.icons(); },
-        chooseStyle(styleId) { if (this.isStyleTransferMode && !styleId) return; this.pendingStyle = styleId; this.icons(); },
-        applyStyle() { if (this.isStyleTransferMode && !this.pendingStyle) return; this.style = this.pendingStyle; this.styleDialogOpen = false; this.persistStylePreference(); this.scheduleDraftSave(); this.icons(); },
+        closeStyleDialog() { this.styleDialogTarget = 'image'; this.styleDialogOpen = false; this.pendingStyle = this.style; this.icons(); },
+        chooseStyle(styleId) { if (this.styleDialogTarget !== 'character' && this.isStyleTransferMode && !styleId) return; this.pendingStyle = styleId; this.icons(); },
+        applyStyle() { if(this.styleDialogTarget === 'character') { const a=this.characterAppearance; if(a){a.style_id=this.pendingStyle; a.style=this.pendingSelectedStyle?.prompt || '';} this.styleDialogTarget='image';this.styleDialogOpen=false;this.icons();return; } if (this.isStyleTransferMode && !this.pendingStyle) return; this.style = this.pendingStyle; this.styleDialogOpen = false; this.persistStylePreference(); this.scheduleDraftSave(); this.icons(); },
         persistAdjustmentPreferences() {
             localStorage.setItem(ADJUSTMENT_PRESETS_KEY, JSON.stringify(this.adjustmentPresets));
             localStorage.setItem(ADJUSTMENT_LOCK_KEY, this.adjustmentLocked ? '1' : '0');
@@ -952,7 +1154,7 @@
             try {await this.submitAdjustment([{file:this.referenceFiles[0],name:'adjusted.png',mediaType:'image/png'}],window.ImagineAdjustEngine.clone(this.adjustState),retryOf);}
             catch(error){this.fail(error);}finally{this.adjustmentExporting=false;this.icons();}
         },
-        setLocale(value) { const locale = normalizedLocale(value); if (locale === this.locale) return; const installed = this.miniApps.filter(item => item.source === 'package').map(item => packageMiniApp(item, locale)); this.locale = locale; this.miniApps = [...localizedMiniApps(locale), ...installed]; document.documentElement.lang = locale; document.title = 'Imagine Studio - AI2Apps'; this.icons(); },
+        setLocale(value) { const locale = normalizedLocale(value); if (locale === this.locale) return; const installed = this.miniApps.filter(item => item.source === 'package').map(item => packageMiniApp(item, locale)); this.locale = locale; this.miniApps = [...localizedMiniApps(locale, this.comfyPrototypeEnabled), ...installed, ...this.miniApps.filter(item => item.source === 'skill')]; document.documentElement.lang = locale; document.title = 'Imagine Studio - AI2Apps'; this.icons(); },
         icons() { this.$nextTick(() => window.lucide?.createIcons()); },
         dismissNotice() { if (this.noticeTimer) clearTimeout(this.noticeTimer); this.noticeTimer = null; this.notice = ''; },
         showNotice(message, tone = 'error', timeoutMs = null) {
@@ -1014,7 +1216,7 @@
             if (name === 'update_current_draft') {
                 if (this.generating || this.stickerBatchBusy) throw new Error(this.tr('waitGeneration'));
                 if (typeof args.prompt === 'string') this.prompt = args.prompt.slice(0, 32000);
-                if (typeof args.modelId === 'string' && this.models.some(item => item.id === args.modelId)) this.modelId = args.modelId;
+                if (typeof args.modelId === 'string' && this.models.some(item => item.id === args.modelId)) { this.modelId = args.modelId; this.modelSelectionMode = 'explicit'; }
                 if (typeof args.size === 'string' && this.sizeOptions.some(item => item.value === args.size)) this.size = args.size;
                 if (typeof args.quality === 'string' && this.qualityOptions.includes(args.quality)) this.quality = args.quality;
                 if (typeof args.format === 'string' && this.formatOptions.includes(args.format)) this.format = args.format;
@@ -1082,7 +1284,7 @@
         miniAppName(id) { return this.miniApps.find(item => item.id === id)?.name || id || '' },
         formatTime(value) { if (!value) return '—'; try { return new Intl.DateTimeFormat(this.locale, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(value)); } catch (_) { return value; } },
         isActiveRun(run) { return ['queued', 'running'].includes(run?.status); },
-        canRetryRun(run) { return ['failed', 'cancelled', 'expired', 'waiting_input'].includes(run?.status); },
+        canRetryRun(run) { return run?.miniAppId !== 'ai2apps.comfyui' && ['failed', 'cancelled', 'expired', 'waiting_input'].includes(run?.status); },
         runTaskMenu(event,run) { window.AI2AppsStudioTaskMenu.open(event,{disabled:!['draft','succeeded','failed','cancelled','expired'].includes(run.status),onDelete:()=>this.deleteHistoryRun(run)}); },
         async deleteHistoryRun(run) {
             try {
@@ -1094,10 +1296,10 @@
         },
         selectRun(run) { this.selectedRunId = run?.id || ''; this.selectedArtifactId = run?.artifacts?.[0]?.id || ''; this.icons(); },
         selectArtifact(artifact) { this.selectedArtifactId = artifact?.id || ''; this.icons(); },
-        draftPayload() { return { parameterHandoffInteractionId: this.parameterHandoffDraftId, upscaleSeed: this.upscaleSeed, upscalePrompt: this.upscalePrompt, ...this.tryOnDraft(), extractTarget: this.extractTarget, extractCustom: this.extractCustom, promptOverride: this.promptIsEdited ? this.promptOverride : null, ...this.portraitDraft(), productScene: this.productScene, productLight: this.productLight, productComposition: this.productComposition, productSceneDescription: this.productSceneDescription, productUseStyle: this.productUseStyle, stickerEmotion: this.stickerEmotion, zImageBaseSteps: this.zImageBaseSteps, zImageBaseGuidance: this.zImageBaseGuidance, zImageBaseNegativePrompt: this.zImageBaseNegativePrompt, zImageSteps: this.zImageSteps, zImageRedraw: this.zImageRedraw, prompt: this.prompt, groupBackgroundDescription: this.groupBackgroundDescription, groupAtmosphere: this.groupAtmosphere, groupPose: this.groupPose, modelId: this.modelId, size: this.size, customWidth: this.customWidth, customHeight: this.customHeight, quality: this.quality, format: this.format, style: this.style, adjustmentState: window.ImagineAdjustEngine?.clone?.(this.adjustState), adjustmentLocked: this.adjustmentLocked, adjustmentPresets: this.adjustmentPresets, selectedAdjustmentPresetId: this.selectedAdjustmentPresetId, assetReferences: this.referenceAssets.slice(0, this.currentMiniApp.maxImages) }; },
-        applyDraft(draft, restoreStyle = false) { if (!draft || typeof draft !== 'object') return; this.parameterHandoffDraftId=draft.parameterHandoffInteractionId||''; this.promptOverride = draft.promptOverride && typeof draft.promptOverride.key === 'string' && typeof draft.promptOverride.text === 'string' ? { key: draft.promptOverride.key, text: draft.promptOverride.text.slice(0, 32000) } : null; this.upscaleSeed = Number(draft.upscaleSeed) || 0; this.upscalePrompt = String(draft.upscalePrompt || "").slice(0,2048); this.restoreTryOnDraft(draft); this.restoreExtractDraft(draft); this.restoreProductDraft(draft); this.restorePortraitDraft(draft); this.stickerEmotion = this.stickerEmotions.some(item => item.id === draft.stickerEmotion) ? draft.stickerEmotion : 'happy'; this.zImageBaseSteps = Number(draft.zImageBaseSteps) || 30; this.zImageBaseGuidance = Number(draft.zImageBaseGuidance) || 4; this.zImageBaseNegativePrompt = String(draft.zImageBaseNegativePrompt || '').slice(0, 8192); this.zImageSteps = Number(draft.zImageSteps) || 8; this.zImageRedraw = Number(draft.zImageRedraw) || 75; this.prompt = String(draft.prompt || ''); this.groupBackgroundDescription = String(draft.groupBackgroundDescription || ''); this.groupAtmosphere = String(draft.groupAtmosphere || ''); this.groupPose = String(draft.groupPose || ''); const savedModelId = String(draft.modelId || this.modelId); const managedModelId = managedCloudModelId(savedModelId); this.modelId = this.models.some(model => model.source === 'cloud' && model.id === managedModelId) ? managedModelId : savedModelId; this.size = String(draft.size || this.size); this.customWidth = Number(draft.customWidth || this.customWidth); this.customHeight = Number(draft.customHeight || this.customHeight); this.quality = String(draft.quality || 'auto'); this.format = String(draft.format || 'png'); if (restoreStyle || !this.stylePreferenceLoaded) { const savedStyle = String(draft.style || ''); this.style = LEGACY_STYLE_IDS[savedStyle] || savedStyle; this.persistStylePreference(); } if (draft.adjustmentState && window.ImagineAdjustEngine) { this.adjustState = window.ImagineAdjustEngine.clone(draft.adjustmentState); this.adjustHistory = [window.ImagineAdjustEngine.clone(this.adjustState)]; this.adjustHistoryIndex = 0; } if (Array.isArray(draft.adjustmentPresets)) this.adjustmentPresets = draft.adjustmentPresets.filter(item => item?.id && item?.name && item?.state); if (typeof draft.adjustmentLocked === 'boolean') this.adjustmentLocked = draft.adjustmentLocked; if (typeof draft.selectedAdjustmentPresetId === 'string') this.selectedAdjustmentPresetId = this.adjustmentPresets.some(item => item.id === draft.selectedAdjustmentPresetId) ? draft.selectedAdjustmentPresetId : ''; this.referenceAssets = Array.isArray(draft.assetReferences) ? draft.assetReferences : []; this.reconcileSelectedModel(); },
-        scheduleDraftSave() { if (this.draftTimer) clearTimeout(this.draftTimer); this.draftTimer = setTimeout(() => this.saveDraft().catch(error => this.fail(error)), 500); },
-        async saveDraft() { if (!this.appInstanceId() || this.currentMiniApp.status !== 'ready') return; await responsePayload(await fetch(`${STUDIO_API}/drafts/${encodeURIComponent(this.miniAppId)}`, { method: 'PUT', credentials: 'same-origin', headers: { ...this.historyHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify({ draft: this.draftPayload() }) })); },
+        draftPayload() { return { characterDesignTarget: this.isCharacterMode ? this.characterDesignTarget : null, characterReference: this.characterReference || null, modelSelectionMode: this.modelSelectionMode, parameterHandoffInteractionId: this.parameterHandoffDraftId, upscaleSeed: this.upscaleSeed, upscalePrompt: this.upscalePrompt, ...this.tryOnDraft(), extractTarget: this.extractTarget, extractCustom: this.extractCustom, promptOverride: this.promptIsEdited ? this.promptOverride : null, ...this.portraitDraft(), productScene: this.productScene, productLight: this.productLight, productComposition: this.productComposition, productSceneDescription: this.productSceneDescription, productUseStyle: this.productUseStyle, productSettingStyle: this.productSettingStyle, stickerEmotion: this.stickerEmotion, stickerFraming: this.stickerFraming, stickerFacing: this.stickerFacing, stickerBackground: this.stickerBackground, stickerPackId: this.stickerPackId, zImageBaseSteps: this.zImageBaseSteps, zImageBaseGuidance: this.zImageBaseGuidance, zImageBaseNegativePrompt: this.zImageBaseNegativePrompt, zImageSteps: this.zImageSteps, zImageRedraw: this.zImageRedraw, prompt: this.prompt, groupBackgroundDescription: this.groupBackgroundDescription, groupAtmosphere: this.groupAtmosphere, groupPose: this.groupPose, modelId: this.modelId, size: this.size, customWidth: this.customWidth, customHeight: this.customHeight, quality: this.quality, format: this.format, style: this.style, adjustmentState: window.ImagineAdjustEngine?.clone?.(this.adjustState), adjustmentLocked: this.adjustmentLocked, adjustmentPresets: this.adjustmentPresets, selectedAdjustmentPresetId: this.selectedAdjustmentPresetId, assetReferences: this.referenceAssets.slice(0, this.currentMiniApp.maxImages) }; },
+        applyDraft(draft, restoreStyle = false) { if (!draft || typeof draft !== 'object') return; this.parameterHandoffDraftId=draft.parameterHandoffInteractionId||''; this.characterReference=draft.characterReference&&typeof draft.characterReference.definitionImageId==='string'?{...draft.characterReference,summary:String(draft.characterReference.summary||'').slice(0,6000)}:null; this.promptOverride = draft.promptOverride && typeof draft.promptOverride.key === 'string' && typeof draft.promptOverride.text === 'string' ? { key: draft.promptOverride.key, text: draft.promptOverride.text.slice(0, 32000) } : null; this.upscaleSeed = Number(draft.upscaleSeed) || 0; this.upscalePrompt = String(draft.upscalePrompt || "").slice(0,2048); this.restoreTryOnDraft(draft); this.restoreExtractDraft(draft); this.restoreProductDraft(draft); this.restorePortraitDraft(draft); this.stickerEmotion = /^[a-z]{1,24}$/.test(draft.stickerEmotion || '') ? draft.stickerEmotion : 'happy'; this.stickerFraming = draft.stickerFraming === 'full' ? 'full' : 'half'; this.stickerFacing = ['left', 'right'].includes(draft.stickerFacing) ? draft.stickerFacing : 'center'; this.stickerBackground = draft.stickerBackground === 'transparent' ? 'transparent' : 'white'; this.stickerPackId = draft.stickerPackId || ''; this.zImageBaseSteps = Number(draft.zImageBaseSteps) || 30; this.zImageBaseGuidance = Number(draft.zImageBaseGuidance) || 4; this.zImageBaseNegativePrompt = String(draft.zImageBaseNegativePrompt || '').slice(0, 8192); this.zImageSteps = Number(draft.zImageSteps) || 8; this.zImageRedraw = Number(draft.zImageRedraw) || 75; this.prompt = String(draft.prompt || ''); this.groupBackgroundDescription = String(draft.groupBackgroundDescription || ''); this.groupAtmosphere = String(draft.groupAtmosphere || ''); this.groupPose = String(draft.groupPose || ''); this.modelSelectionMode = draft.modelSelectionMode === 'default' || !draft.modelId ? 'default' : 'explicit'; const savedModelId = String(this.modelSelectionMode === 'default' ? this.defaultModelId : (draft.modelId || this.modelId)); const managedModelId = managedCloudModelId(savedModelId); this.modelId = this.models.some(model => model.source === 'cloud' && model.id === managedModelId) ? managedModelId : savedModelId; this.size = String(draft.size || this.size); this.customWidth = Number(draft.customWidth || this.customWidth); this.customHeight = Number(draft.customHeight || this.customHeight); this.quality = String(draft.quality || 'auto'); this.format = String(draft.format || 'png'); if (restoreStyle || !this.stylePreferenceLoaded) { const savedStyle = String(draft.style || ''); this.style = LEGACY_STYLE_IDS[savedStyle] || savedStyle; this.persistStylePreference(); } if (draft.adjustmentState && window.ImagineAdjustEngine) { this.adjustState = window.ImagineAdjustEngine.clone(draft.adjustmentState); this.adjustHistory = [window.ImagineAdjustEngine.clone(this.adjustState)]; this.adjustHistoryIndex = 0; } if (Array.isArray(draft.adjustmentPresets)) this.adjustmentPresets = draft.adjustmentPresets.filter(item => item?.id && item?.name && item?.state); if (typeof draft.adjustmentLocked === 'boolean') this.adjustmentLocked = draft.adjustmentLocked; if (typeof draft.selectedAdjustmentPresetId === 'string') this.selectedAdjustmentPresetId = this.adjustmentPresets.some(item => item.id === draft.selectedAdjustmentPresetId) ? draft.selectedAdjustmentPresetId : ''; this.referenceAssets = Array.isArray(draft.assetReferences) ? draft.assetReferences : []; this.reconcileSelectedModel(); },
+        scheduleDraftSave() { if(this.appStateRestoring)return; if (this.draftTimer) clearTimeout(this.draftTimer); this.draftTimer = setTimeout(() => this.saveDraft().catch(error => this.fail(error)), 500); },
+        async saveDraft() { if(this.appStateRestoring)return; if (!this.appInstanceId() || this.currentMiniApp.status !== 'ready' || this.currentMiniApp.mode === 'comfyui') return; await responsePayload(await fetch(`${STUDIO_API}/drafts/${encodeURIComponent(this.miniAppId)}`, { method: 'PUT', credentials: 'same-origin', headers: { ...this.historyHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify({ draft: this.draftPayload() }) })); },
         async loadDraft(miniAppId) {
             if (!this.appInstanceId()) return {};
             this.restoringPrompt = true;
@@ -1136,6 +1338,7 @@
                 const followingLatest=this.selectedRunId===this.runs[0]?.id;const previousLatest=this.runs[0]?.id;
                 this.runs=payload.items||[];
                 if(selectLatest===true||(followingLatest&&previousLatest!==this.runs[0]?.id)||!this.runs.some(item=>item.id===this.selectedRunId))this.selectRun(this.runs[0]||null);
+                if(this.collectCharacterRuns)await this.collectCharacterRuns();
             } finally {this.outputRefreshing=false;}
         },
         async waitForRun(runId) {
@@ -1149,6 +1352,7 @@
             }
         },
         async monitorActiveRun() { await this.refreshRuns(); },
+        canonicalHandoffModelId(value) { return managedCloudModelId(value); },
         async openParameterHandoff(intent) {
             if(this.parameterHandoffLoading||this.parameterHandoff?.interaction_id===intent.interactionId)return;
             this.parameterHandoffLoading=true;
@@ -1158,21 +1362,13 @@
                 if(handoff.target.app_id!==APP_ID||!handoff.parameters?.values||handoff.status!=='pending')return;
                 const mini=this.miniApps.find(m=>m.id===handoff.target.mini_app_id);
                 if(!mini||mini.status!=='ready')throw Error('The requested Mini-App is not ready');
-                await this.selectMiniApp(mini.id);
+                if(this.miniAppId!==mini.id)await this.selectMiniApp(mini.id);
                 this.parameterHandoff={...handoff,url:base+'/parameters/handoff'};
                 if(this.parameterHandoffDraftId===handoff.interaction_id)return;
-                const values=handoff.parameters.values;
-                this.referenceFiles=[];this.referencePreviews.forEach(url=>{if(url)URL.revokeObjectURL(url);});this.referencePreviews=[];this.referenceAssets=[];this.referenceDimensions=[];
-                for(const ref of handoff.parameters.references||[])await this.materializeAssetReference({workspaceArtifactId:ref.artifact_id,workspaceSessionId:ref.session_id,name:ref.name},ref.slot,true);
-                this.prompt=values.prompt||'';this.groupBackgroundDescription=values.background||'';
-                this.groupAtmosphere=values.atmosphere||this.groupAtmosphere;this.groupPose=values.pose||this.groupPose;
-                if(values.model){const requested=this.compatibleModels.find(model=>model.id===values.model||model.id===managedCloudModelId(values.model));this.modelId=requested?.id||'';if(!requested)this.fail(Error('Transferred model is unavailable; choose a compatible model in this App.'));}
-                await this.$nextTick();
-                this.applySelectedModelCapability();
-                if(values.size)this.size=values.size;if(values.quality)this.quality=values.quality;if(values.format)this.format=values.format;
-                if(values.style)this.style=values.style;
-                this.parameterHandoffDraftId=handoff.interaction_id;this.mobileSurface='create';await this.$nextTick();await this.saveDraft();this.syncSubmissionPrompt();
-            }finally{this.parameterHandoffLoading=false;}
+                if(!this.appStateController)throw Error('App-State is unavailable; reload this App before continuing');
+                await this.appStateController.continueHandoff(handoff);
+                this.mobileSurface='create';await this.$nextTick();await this.saveDraft();this.syncSubmissionPrompt();
+            }catch(error){if(this.parameterHandoffDraftId!==intent.interactionId)this.parameterHandoff=null;throw error;}finally{this.parameterHandoffLoading=false;}
         },
         async finishParameterHandoff() {
             const handoff=this.parameterHandoff;if(!handoff)return;
@@ -1197,7 +1393,7 @@
             this.miniAppId = run.miniAppId; this.applyDraft(run.input, true); this.mobileSurface = 'create'; if (this.isAdjustMode) await this.exportAdjustment(run.id); else await this.generate(run.id); },
         async refresh() {
             this.refreshing = true;
-            try { await Promise.all([this.loadModelCatalog(), this.refreshRuns(true)]); this.icons(); }
+            try { await Promise.all([this.loadModelCatalog(), this.refreshRuns(true), this.refreshPackageMiniApps()]); this.icons(); }
             catch (error) { this.fail(error); }
             finally { this.refreshing = false; }
         },
@@ -1211,13 +1407,16 @@
                 presets: Array.isArray(capability.presets) ? capability.presets.filter(value => this.parseSize(value)) : LEGACY_SIZE_CAPABILITY.presets,
             };
         },
-        localSizeCapability(capabilities) {
+        localSizeCapability(capabilities, modelId) {
             const geometry = capabilities?.geometry || {}, defaults = capabilities?.defaults || {};
             const minimum = geometry.minimum || { width: 256, height: 256 }, maximum = geometry.maximum || { width: 2048, height: 2048 };
             const multiple = Number(geometry.multiple_of || 1), defaultSize = `${Number(defaults.width || 1024)}x${Number(defaults.height || 1024)}`;
             const ratioValues = (geometry.ratios || ['1:1']).map(value => String(value).split(':').map(Number)).filter(value => value.length === 2 && value.every(Number.isFinite));
             const maxAspectRatio = Math.max(1, ...ratioValues.map(([a, b]) => Math.max(a, b) / Math.min(a, b)));
             const common = ['1024x1024', '1344x768', '768x1344', '1216x832', '832x1216', defaultSize];
+            if (modelId === 'ai2apps.model.minimax-h3-image/default') {
+                common.unshift('512x512', '672x512', '512x672', '896x512', '512x896');
+            }
             const capability = {
                 mode: 'bounded-custom', default: defaultSize, auto: false,
                 width: { min: Number(minimum.width), max: Number(maximum.width), multipleOf: multiple },
@@ -1235,10 +1434,12 @@
                 fetch(CLOUD_MODELS_API, { credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' } }).then(responsePayload),
                 fetch(LOCAL_MODELS_API, { credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' } }).then(responsePayload),
             ]);
+            if (localResult.status === 'fulfilled' && localResult.value.workflowContract?.version === 1) this.workflowContract=localResult.value.workflowContract;
             if (cloudResult.status === 'fulfilled') {
                 cloudModels = (cloudResult.value.items || []).filter(model => model?.capabilities?.imageGeneration).map(model => ({
                     id: managedCloudModelId(model.id), label: model.identity?.displayName || model.displayName || model.id, source: 'cloud',
                     operations: ['image_generation', ...(model.capabilities?.imageEdit ? ['image_edit'] : [])],
+                    backgrounds: model.imageOptions?.background || [],
                     formats: Array.isArray(model.imageOptions?.outputFormat) && model.imageOptions.outputFormat.length ? model.imageOptions.outputFormat : ['png', 'jpeg', 'webp'],
                     qualities: Array.isArray(model.imageOptions?.quality) && model.imageOptions.quality.length ? model.imageOptions.quality : ['auto'],
                     sizeCapability: this.cloudSizeCapability(model), pricingVersion: String(model.pricingVersion || ''),
@@ -1249,32 +1450,36 @@
                 byokModels = (localResult.value.data || []).filter(model => model?.source_type === 'byok' && !model.is_hidden).map(model => ({
                     id: model.id, label: model.display_name || model.id, source: 'byok',
                     operations: model.capabilities || [], referenceLimits: model.referenceLimits,
-                    formats: model.imageOptions?.outputFormat || ['png'], qualities: model.imageOptions?.quality || ['auto'],
+                    backgrounds: model.imageOptions?.background || [], formats: model.imageOptions?.outputFormat || ['png'], qualities: model.imageOptions?.quality || ['auto'],
                     sizeCapability: this.cloudSizeCapability(model), pricingVersion: '',
                 }));
                 localModels = (localResult.value.data || []).filter(model => (model?.model_type === 'image_generation' || model?.capabilities?.includes('image_upscaling')) && model?.source_type === 'package' && model?.checkpoint_ready !== false && !model?.is_hidden).map(model => ({
                     id: model.id, label: model.identity?.displayName || model.display_name || model.id, source: 'local',
                     operations: Array.isArray(model.image_capabilities?.operations) ? model.image_capabilities.operations : (model.capabilities || []).filter(value => ['image_generation', 'image_edit', 'image_upscaling'].includes(value)),
+                    denoiserIdleSeconds: model.image_capabilities?.execution?.denoiser_idle_seconds,
                     referenceLimits: model.image_capabilities?.inputs?.reference_images || { minimum: 1, maximum: 1 },
-                    formats: model.image_capabilities?.formats?.output || ['png'], qualities: ['auto', 'low', 'medium', 'high'], sizeCapability: this.localSizeCapability(model.image_capabilities), pricingVersion: '',
+                    formats: model.image_capabilities?.formats?.output || ['png'], qualities: ['auto', 'low', 'medium', 'high'], sizeCapability: this.localSizeCapability(model.image_capabilities, model.id), pricingVersion: '',
                 }));
             }
             const preferredModelId = this.modelId;
+            this.defaultModelId = localResult.status === 'fulfilled' ? String(localResult.value.preferred || '') : '';
             this.models = [...byokModels, ...cloudModels, ...localModels];
             this.modelId = '';
             await this.$nextTick();
-            this.modelId = this.compatibleModels.some(model => model.id === preferredModelId) ? preferredModelId : (this.compatibleModels[0]?.id || '');
+            this.modelId = this.modelSelectionMode === 'explicit' ? preferredModelId : this.defaultModelId;
+            this.reconcileSelectedModel();
             await this.$nextTick();
             this.applySelectedModelCapability();
         },
         reconcileSelectedModel() {
-            if (!this.compatibleModels.some(model => model.id === this.modelId)) this.modelId = this.parameterHandoffDraftId ? '' : (this.compatibleModels[0]?.id || '');
+            if (!this.compatibleModels.some(model => model.id === this.modelId)) this.modelId = this.parameterHandoffDraftId ? '' : (this.isUpscaleMode ? (this.compatibleModels[0]?.id || '') : (this.modelSelectionMode === 'default' && this.compatibleModels.some(model => model.id === this.defaultModelId) ? this.defaultModelId : ''));
             this.applySelectedModelCapability();
         },
         isOpenAIModel(model) { return /(^|\/)openai\//.test(String(model?.id || '')); },
-        preferOpenAIEditingModel() { if (!this.prefersOpenAIModel) return; const preferred = this.compatibleModels.find(model => this.isOpenAIModel(model)); if (preferred) this.modelId = preferred.id; },
+        preferOpenAIEditingModel() { this.reconcileSelectedModel(); },
         preferOpenAIStyleModel() { this.preferOpenAIEditingModel(); },
         applySelectedModelCapability() {
+            if(this.appStateRestoring)return;
             const model = this.selectedModel; if (!model) return;
             this.sizeCapability = JSON.parse(JSON.stringify(model.sizeCapability || LEGACY_SIZE_CAPABILITY));
             this.flexibleSizes = model.source === 'local' || this.sizeCapability.mode === 'bounded-custom';
@@ -1300,11 +1505,13 @@
             this.success(this.tr(result?.outcome === 'configured' ? 'localConfigured' : 'localAlreadyReady'));
         },
         onModelSelect(select) {
+            if (select.value === '__default__') { this.modelSelectionMode = 'default'; this.modelId = this.defaultModelId; this.reconcileSelectedModel(); this.scheduleDraftSave(); return; }
             if (select.value === '__install_more__') {
                 select.value = this.modelId || '';
                 void this.configureLocalModel(true);
                 return;
             }
+            this.modelSelectionMode = 'explicit';
             this.modelId = select.value;
             this.scheduleDraftSave();
         },
@@ -1333,6 +1540,18 @@
             if (Math.max(width, height) > Number(capability.maxAspectRatio) * Math.min(width, height)) return 'ratio';
             return '';
         },
+        comfySizeError(value, model) {
+            const capability = model.sizeCapability;
+            const dimensions = this.parseSize(value);
+            if (!dimensions || (capability.mode === 'fixed' && !capability.presets.includes(value))
+                || dimensions.width < capability.width.min || dimensions.height < capability.height.min
+                || this.validateCatalogSize(value, capability)) {
+                return this.locale.startsWith('zh')
+                    ? '原工作流尺寸或当前输入超出所选模型的支持范围，请选择支持的尺寸。'
+                    : 'This size is unsupported by the selected model. Choose a supported size.';
+            }
+            return '';
+        },
         validateSize(value) {
             if (value === 'auto' && this.sizeCapability.auto) return '';
             const dimensions = this.parseSize(value); if (!dimensions) return this.tr('invalidSize');
@@ -1354,9 +1573,11 @@
             }
             const dimensions = this.parseSize(value); if (!dimensions) return value;
             const longestEdge = Math.max(dimensions.width, dimensions.height);
-            const tier = longestEdge >= 3000 ? '4K' : longestEdge >= 1800 ? '2K' : '1K';
             const divisor = (a, b) => b ? divisor(b, a % b) : a, common = divisor(dimensions.width, dimensions.height);
-            return `${dimensions.width}×${dimensions.height} · ${dimensions.width / common}:${dimensions.height / common} · ${tier}`;
+            const label = `${dimensions.width}×${dimensions.height} · ${dimensions.width / common}:${dimensions.height / common}`;
+            if (longestEdge < 1024) return label;
+            const tier = longestEdge >= 3000 ? '4K' : longestEdge >= 1800 ? '2K' : '1K';
+            return `${label} · ${tier}`;
         },
         swapCustomSize() { [this.customWidth, this.customHeight] = [this.customHeight, this.customWidth]; this.icons(); },
         referenceSlotStyle(index) {
@@ -1380,16 +1601,103 @@
             return index < 2 ? this.tr('required') : this.tr('optional');
         },
         showLeftView(view) { this.leftView = view === 'assets' ? 'assets' : (view === 'chat' && this.miniAppChatEnabled ? 'chat' : 'mini-apps'); if (this.leftView === 'assets' && !this.galleryMiniUrl) this.mountGalleryMini(); if (this.leftView === 'chat') this.mountMiniAppChat(); this.persistPreferences(); this.icons(); },
-        async selectMiniApp(id) { if (this.mobileViewport && id && id === this.miniAppId) { await this.ensureSelectedMiniAppFrame(); this.mobileSurface = 'create'; this.icons(); return; } if (this.generating || this.stickerBatchBusy) return; const selected = this.miniApps.find(item => item.id === id); if (!selected || selected.status !== 'ready') return; if (!this.packageMiniAppId) await this.saveDraft().catch(() => {}); disposeRenderableImage(this.adjustBitmap); this.adjustBitmap = null; this.miniAppId = id; if (this.leftView !== 'chat') this.leftView = 'mini-apps'; this.recentMiniApps = [id, ...this.recentMiniApps.filter(value => value !== id)].slice(0, 8); if (selected.source === 'package') { await this.mountPackageMiniApp(selected); if (!this.miniAppChatEnabled && this.leftView === 'chat') this.leftView = 'mini-apps'; this.persistPreferences(); this.mobileSurface = 'create'; return; } this.packageChatBridge?.dispose(); this.packageChatBridge = null; this.packageMiniAppId = ''; this.packageMiniAppUrl = ''; this.packageMiniAppError = ''; this.referenceFiles = []; this.referencePreviews.forEach(url => { if (url) URL.revokeObjectURL(url); }); this.referencePreviews = []; this.referenceDimensions = []; this.referenceAssets = []; const draft = await this.loadDraft(id); this.trimReferences(); this.reconcileSelectedModel(); if (this.prefersOpenAIModel && !draft?.modelId) { this.preferOpenAIEditingModel(); this.applySelectedModelCapability(); } if (['edit', 'style-transfer', 'group-photo'].includes(this.currentMiniApp.mode) && this.referenceDimensions[0]) this.matchEditAspect(this.referenceDimensions[0]); if(this.leftView==='chat')void this.mountMiniAppChat();else this.chatController?.changed(); this.persistPreferences(); this.mobileSurface = 'create'; this.icons(); },
+        async selectMiniApp(id) {
+            if (this.appStateRestoring) return;
+            const previousId = this.miniAppId;
+            if (this.generating || this.stickerBatchBusy || this.skillBusy) {
+                if (this.mobileViewport && id && id === previousId) {
+                    this.mobileSurface = 'create';
+                    this.icons();
+                }
+                return;
+            }
+            let selected = this.miniApps.find(item => item.id === id);
+            if (selected?.source === 'package') {
+                await this.refreshPackageMiniApps();
+                if (this.miniAppId !== previousId || this.appStateRestoring ||
+                    this.generating || this.stickerBatchBusy || this.skillBusy) return;
+                selected = this.miniApps.find(item => item.id === id);
+            }
+            if (!selected || selected.status !== 'ready') return;
+            if (this.mobileViewport && id === this.miniAppId) {
+                await this.ensureSelectedMiniAppFrame();
+                this.mobileSurface = 'create';
+                this.icons();
+                return;
+            }
+            if (!this.packageMiniAppId && this.currentMiniApp.source !== 'skill') await this.saveDraft().catch(() => {});
+            disposeRenderableImage(this.adjustBitmap);
+            this.adjustBitmap = null;
+            this.miniAppId = id;
+            if (this.leftView !== 'chat') this.leftView = 'mini-apps';
+            this.recentMiniApps = [id, ...this.recentMiniApps.filter(value => value !== id)].slice(0, 8);
+            if (selected.source === 'package') {
+                await this.ensurePackageMiniAppFrame(selected);
+                if (!this.miniAppChatEnabled && this.leftView === 'chat') this.leftView = 'mini-apps';
+                this.persistPreferences();
+                this.mobileSurface = 'create';
+                return;
+            }
+            this.packageChatBridge?.dispose();
+            this.packageChatBridge = null;
+            this.packageMiniAppId = '';
+            this.packageMiniAppUrl = '';
+            this.packageMiniAppError = '';
+            if (selected.source === 'skill') {
+                await this.openSkillForm(selected);
+                this.persistPreferences();
+                this.mobileSurface = 'create';
+                this.icons();
+                return;
+            }
+            this.referenceFiles = [];
+            this.referencePreviews.forEach(url => { if (url) URL.revokeObjectURL(url); });
+            this.referencePreviews = [];
+            this.referenceDimensions = [];
+            this.referenceAssets = [];
+            const draft = await this.loadDraft(id);
+            this.trimReferences();
+            this.reconcileSelectedModel();
+            if (this.prefersOpenAIModel && !draft?.modelId) {
+                this.preferOpenAIEditingModel();
+                this.applySelectedModelCapability();
+            }
+            if (['edit', 'style-transfer', 'group-photo'].includes(this.currentMiniApp.mode) && this.referenceDimensions[0]) {
+                this.matchEditAspect(this.referenceDimensions[0]);
+            }
+            if (!this.miniAppChatEnabled && this.leftView === 'chat') this.leftView = 'mini-apps';
+            if (this.leftView === 'chat') void this.mountMiniAppChat();
+            else this.chatController?.changed();
+            this.persistPreferences();
+            this.mobileSurface = 'create';
+            this.icons();
+        },
         async refreshPackageMiniApps() {
-            if (this.packageCatalogLoading) return;
+            if (!this.packageCatalogRequest) {
+                this.packageCatalogRequest = this.loadPackageMiniApps().finally(() => {
+                    this.packageCatalogRequest = null;
+                });
+            }
+            return this.packageCatalogRequest;
+        },
+        async loadPackageMiniApps() {
             this.packageCatalogLoading = true;
+            let skills = this.miniApps.filter(item => item.source === 'skill');
+            try {
+                const data = await responsePayload(await fetch(STUDIO_API + '/skill-mini-apps', {
+                    credentials: 'same-origin', headers: this.historyHeaders(), cache: 'no-store',
+                }));
+                skills = (data.items || []).map(skillMiniApp);
+            } catch (_) { /* Keep existing forms if the catalog is briefly unavailable. */ }
             this.packageCatalogError = '';
             try {
                 if (!window.AI2AppsStudioMiniApps?.list) throw new Error('Mini-App SDK did not load');
                 const catalog = await window.AI2AppsStudioMiniApps.list(APP_ID);
                 if (!Array.isArray(catalog?.items)) throw new Error('Invalid Mini-App catalog response');
-                this.miniApps = [...this.miniApps.filter(item => item.source !== 'package'), ...catalog.items.filter(item => item.source === 'package').map(item => packageMiniApp(item, this.locale))];
+                this.comfyPrototypeEnabled = Boolean(window.AI2AppsComfyUI && catalog.items.some(item =>
+                    item.source === 'official' && item.id === 'ai2apps.comfyui'));
+                this.miniApps = [...localizedMiniApps(this.locale, this.comfyPrototypeEnabled),
+                    ...catalog.items.filter(item => item.source === 'package').map(item => packageMiniApp(item, this.locale)), ...skills];
                 await this.refreshAllPackageMiniAppReadiness();
             } catch (error) {
                 this.packageCatalogError = (this.locale.startsWith('zh')
@@ -1435,12 +1743,15 @@
         },
         async mountPackageMiniApp(item) {
             if (!item?.id || this.packageMiniAppLoading) return;
+            this.packageChatBridge?.dispose();
+            this.packageChatBridge = null;
             this.packageMiniAppId = item.id; this.packageMiniAppUrl = ''; this.packageMiniAppError = ''; this.packageMiniAppLoading = true;
             this.packageMiniAppReadiness = { ...this.packageMiniAppReadiness, [item.id]: false };
             try {
                 const mount = await window.AI2AppsStudioMiniApps.mount(APP_ID, item.id, { placement: 'inline' });
                 this.packageMiniAppMountId = mount.id || ''; this.packageMiniAppUrl = mount.content_url || '';
                 if (!this.packageMiniAppUrl) throw new Error(this.tr('miniAppUrlMissing'));
+                this.packageMiniAppRevision = window.AI2AppsStudioPackages?.revision(item, mount) || '';
                 await this.refreshPackageMiniAppReadiness(item, this.packageMiniAppMountId);
                 if (item.chat?.enabled === true) await new Promise(resolve => this.$nextTick(() => {
                     this.packageChatBridge?.dispose();
@@ -1450,7 +1761,7 @@
             } catch (error) { this.packageMiniAppError = error?.message || String(error); }
             finally { this.packageMiniAppLoading = false; if(this.leftView==='chat')void this.mountMiniAppChat();else this.chatController?.changed(); this.icons(); }
         },
-        async installMiniApps() { try { const result=await window.AI2AppsCapabilities.openMiniAppPackages({placement:APP_ID}); if(result.installed){await this.refreshPackageMiniApps(); this.icons();} } catch(error){this.fail(error);} },
+        async installMiniApps() { try { await window.AI2AppsStudioPackages.install(APP_ID, () => this.refreshPackageMiniApps()); } catch(error){this.fail(error);} },
         async openCoder() { try { await window.AI2AppsCapabilities.openMiniAppCustomization({placement:APP_ID}); } catch(error){this.fail(error);} },
         trimReferences() {
             const limit = this.referenceSlotCount;
@@ -1535,7 +1846,9 @@
         editSubmissionPrompt(text) { this.promptOverride = { key: this.promptCompositionKey, text: String(text) }; this.scheduleDraftSave(); },
         resetSubmissionPrompt() { this.promptOverride = null; this.scheduleDraftSave(); },
         syncSubmissionPrompt() { if (!this.restoringPrompt && this.promptOverride && !this.promptIsEdited) this.resetSubmissionPrompt(); },
-        composedPrompt() {
+        composedPrompt() { return [this.baseComposedPrompt(),this.isStickerMode?'':this.characterReuseGuide?.()].filter(Boolean).join('\n\n'); },
+        baseComposedPrompt() {
+            if (this.isCharacterMode) return this.characterDesignPrompt();
             if (this.isTryOnMode) return this.tryOnPrompt();
             if (this.isExtractMode) return this.extractPrompt();
             if (this.isPortraitMode) return this.portraitPrompt();
@@ -1580,8 +1893,9 @@
             if(this.isUpscaleMode) return this.upscaleImage(retryOf);
             if (this.stickerBatchBusy && !options.stickerBatch) return;
             if (!this.canGenerate || this.generating) return;
+            if(this.isCharacterMode && !await this.prepareCharacterRender())return;
             const references = this.referenceFiles.slice(0, this.referenceSlotCount).filter(Boolean);
-            const editing = this.currentMiniApp.mode !== 'generate';
+            const editing = this.isCharacterMode ? references.length > 0 : this.currentMiniApp.mode !== 'generate';
             const selectedModel = this.selectedModel;
             if (!selectedModel) return;
             if (editing && selectedModel.referenceLimits && (references.length < selectedModel.referenceLimits.minimum || references.length > selectedModel.referenceLimits.maximum)) {
@@ -1592,7 +1906,7 @@
             this.generating = true; this.dismissNotice();
             const requestedSize = this.requestedSize;
             const submittedPrompt = this.submissionPrompt;
-            const parameters={model:selectedModel.id,prompt:submittedPrompt,size:requestedSize,quality:this.quality,outputFormat:this.format,n:1,...this.zImageParameters(),...this.localEditParameters(selectedModel, editing)};
+            const parameters={model:selectedModel.id,prompt:submittedPrompt,size:requestedSize,quality:this.quality,outputFormat:this.format,...this.stickerImageParameters(),n:1,...this.zImageParameters(),...this.localEditParameters(selectedModel, editing),...this.localResidencyParameters()};
             const input = { ...this.draftPayload(), submittedPrompt, prompt: this.prompt.trim(), size: requestedSize, modelLabel: selectedModel.label, assetReferences: this.referenceAssets.slice(0, this.currentMiniApp.maxImages) };
             let run = null;
             let serverManaged = false;
@@ -1730,15 +2044,11 @@
             return new File([blob], artifact.name || 'output.png', {type: blob.type});
         },
         handleWorkspaceDrag(event) {
-            if (this.mobileViewport && !this.hasActiveMiniApp) return;
-            event.preventDefault(); this.galleryDragActive = true;
+            if (this.currentMiniApp?.source === 'package' || (this.mobileViewport && !this.hasActiveMiniApp)) return;
+            event.preventDefault();
         },
-        handleDragLeave(event) { if (!event.currentTarget.contains(event.relatedTarget)) { this.galleryDragActive = false; this.gallerySlotTarget = null; } },
-        enterGallerySlot(index) { this.galleryDragActive = false; this.gallerySlotTarget = index; },
-        leaveGallerySlot(event, index) { if (this.gallerySlotTarget === index && !event.currentTarget.contains(event.relatedTarget)) this.gallerySlotTarget = null; },
         async handleGalleryDrop(event, imageSlot = null) {
-            if (this.mobileViewport && !this.hasActiveMiniApp) return;
-            this.galleryDragActive = false; this.gallerySlotTarget = null;
+            if (this.currentMiniApp?.source === 'package' || (this.mobileViewport && !this.hasActiveMiniApp)) return;
             if (this.generating || this.stickerBatchBusy || this.adjustmentExporting) return;
             try {
                 let file = await this.droppedOutputFile(event.dataTransfer) || event.dataTransfer?.files?.[0] || null;
@@ -1757,5 +2067,5 @@
                 const target = imageSlot !== null ? Number(imageSlot) : (empty ?? 0); await this.setReference(Math.min(target, limit - 1), file, assetReference); this.persistPreferences();
             } catch (error) { this.fail(error); }
         },
-    }; };
+    }, Object.getOwnPropertyDescriptors(window.ImagineCharacters?.() || {})); };
 })();

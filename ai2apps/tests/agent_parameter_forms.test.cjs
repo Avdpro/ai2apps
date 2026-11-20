@@ -14,7 +14,7 @@ test('draft writes serialize revisions and snapshot edits',async()=>{
 });
 test('install saves then creates an owner-bound configuration card without switching Apps',async()=>{
  const calls=[];const ctx=setup();ctx.window.ai2appsShell={openSetup:()=>assert.fail('stay in Chat')};ctx.window.AI2AppsCapabilities={runSession(){}};
- const f=Object.create(ctx.window.FormView.prototype);Object.assign(f,{url:'/form',state:{install:{appId:'fixture.owner'}},save:async()=>calls.push('save'),request:async(url,options)=>{calls.push([url,options.method]);return {session:{id:'configured'}};},showSetup:async session=>calls.push(session.id)});await f.install();assert.equal(calls[0],'save');assert.deepEqual(calls[1],['/form/setup/session','POST']);assert.equal(calls[2],'configured');
+ const f=Object.create(ctx.window.FormView.prototype);Object.assign(f,{root:{isConnected:true},url:'/form',state:{install:{appId:'fixture.owner'}},save:async()=>calls.push('save'),request:async(url,options)=>{calls.push([url,options.method]);return {session:{id:'configured'}};},showSetup:async session=>calls.push(session.id)});await f.install();assert.equal(calls[0],'save');assert.deepEqual(calls[1],['/form/setup/session','POST']);assert.equal(calls[2],'configured');
 });
 test('Mobile keeps draft and explains Desktop setup; re-opening Chat does not run ACPF',async()=>{
  const ctx=setup();ctx.window.AI2APPS_MOBILE_SURFACE=true;ctx.window.AI2AppsCapabilities={ensure:()=>assert.fail(),resume:()=>assert.fail()};ctx.window.ai2appsShell={openSetup:()=>assert.fail()};
@@ -143,4 +143,17 @@ test('file picker retains the busy guard without disabling the input or uploadin
  Object.assign(f,{inputs:[input],busy:false,cancelAutoSubmit(){cancelled++;},perform(){assert.fail('opening a picker must not enter the upload lock');}});
  const button=f.filePickerButton('Upload material',input);button.onclick();assert.equal(clicked,1);assert.equal(f.busy,false);
  f.busy=true;button.onclick();assert.equal(clicked,1);assert.equal(cancelled,2);
+});
+
+test('owner opt-in resumes only complete configured parameters, never required rights confirmation',async()=>{
+ for(const scenario of ['ready','no-opt-in','missing','configuration','affirmative','hidden']){
+  const calls=[],ctx=setup();ctx.document.hidden=scenario==='hidden';
+  const schema={type:'object',properties:{material:{type:'string'},consent:{const:true}},required:['material',...(scenario==='affirmative'?['consent']:[])]};
+  const f=Object.create(ctx.window.FormView.prototype);
+  Object.assign(f,{root:{isConnected:true},state:{auto_continue_after_setup:scenario!=='no-opt-in',configure_only:true,configuration_required:scenario==='configuration',descriptor:{schema},missing:scenario==='missing'?['material']:[],invalid:[],revision:4,parameter_contract_version:'current-contract'},values:{material:'owned-material',consent:true},submitButton:{disabled:false},inputs:[],errorNode:{},url:'/original-run/form',save:async()=>calls.push('save'),request:async(url,options)=>calls.push([url,JSON.parse(options.body)]),onDone:async()=>calls.push('done')});
+  await f.continueAfterSetup();await f.continueAfterSetup();
+  if(scenario==='ready'){
+   assert.equal(calls[0],'save');assert.equal(calls[1][0],'/original-run/form/submit');assert.equal(calls[1][1].parameter_contract_version,'current-contract');assert.equal(calls[1][1].values.material,'owned-material');assert.equal(calls[2],'done');assert.equal(calls.length,3);
+  }else assert.deepEqual(calls,[]);
+ }
 });

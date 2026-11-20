@@ -1,0 +1,87 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/model-meridian-mlx",
+    "type": "service",
+    "version": "0.1.2",
+    "displayName": "Meridian H3 8-bit MLX",
+    "description": "Frozen-scene camera-video refinement with 73\u2013243 frames; requires the H3 FL2VA 8-bit Package."
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": [
+      "darwin"
+    ],
+    "architectures": [
+      "arm64"
+    ],
+    "minimumOsVersion": "26.2"
+  },
+  "entrypoints": [
+    {
+      "name": "model-worker",
+      "kind": "service",
+      "path": "service.yaml"
+    }
+  ],
+  "permissions": [
+    {
+      "capability": "model-weights.huggingface-cache.read",
+      "reason": "Read pinned Meridian weights.",
+      "required": true
+    },
+    {
+      "capability": "accelerator.metal",
+      "reason": "Local video inference.",
+      "required": true
+    }
+  ],
+  "dependencies": [
+    {
+      "packageId": "ai2apps/runtime-omlx",
+      "version": ">=1.8.11 <2.0.0",
+      "optional": false
+    },
+    {
+      "packageId": "ai2apps/model-minimax-h3",
+      "version": ">=0.11.0 <0.11.1",
+      "optional": false
+    }
+  ],
+  "files": [],
+  "sbom": {
+    "format": "spdx-json-2.3",
+    "path": "META/sbom.spdx.json"
+  },
+  "discovery": {
+    "kind": "model",
+    "categories": [
+      "video"
+    ],
+    "tasks": [
+      "video-generation"
+    ]
+  },
+  "modelProfile": {
+    "sizeBytes": 5418732075,
+    "minimumMemoryBytes": 103079215104,
+    "scores": {
+      "speed": 2,
+      "capability": 4
+    },
+    "benchmark": {
+      "label": "Experimental port validated on 128 GiB; conservative minimum",
+      "device": "Apple Silicon"
+    }
+  },
+  "modelInstall": {
+    "serviceKey": "ai2apps.model.meridian-mlx",
+    "models": [
+      {
+        "id": "ai2apps.model.meridian-mlx/h3-8bit",
+        "label": "Meridian H3 8-bit MLX",
+        "recommended": true
+      }
+    ]
+  }
+}

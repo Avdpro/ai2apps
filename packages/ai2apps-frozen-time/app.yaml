@@ -1,7 +1,7 @@
 schema: ai2apps.app/v1
 id: ai2apps.frozen-time
 name: Frozen Time
-version: 0.1.2
+version: 0.1.3
 description: Local camera motion from a still image.
 publisher:
   id: ai2apps
@@ -24,10 +24,11 @@ mini_apps:
 - schema: ai2apps.mini-app/v1
   id: ai2apps.imagine.frozen-time
   name: Frozen Time
-  version: 0.1.2
+  version: 0.1.3
   kind: clip
   icon: orbit
-  description: Turn a still photo into a camera journey, interactive HTML or Live Photo.
+  description: Turn a still photo into a camera journey, interactive HTML or Live
+    Photo.
   catalog:
     categories:
     - image
@@ -77,8 +78,9 @@ mini_apps:
   chat:
     schema: ai2apps.mini-app-chat/v1
     enabled: true
-    system_prompt: Read and edit only declared current UI fields. Execute functions through the registered owner
-      AaAT, never through a UI run button. Preserve task, model, material and shared output ownership.
+    system_prompt: Read and edit only declared current UI fields. Execute functions
+      through the registered owner AaAT, never through a UI run button. Preserve task,
+      model, material and shared output ownership.
     context:
       transport: studio-bridge
       maxBytes: 40000
@@ -117,3 +119,154 @@ mini_apps:
             maxLength: 8000
         additionalProperties: false
       confirmation: never
+  aaat:
+    schema: ai2apps.mini-app-host-exports/v1
+    exports:
+    - name: image.frozen_time
+      host: ai2apps.imagine-studio
+      inputSchema:
+        type: object
+        additionalProperties: false
+        required:
+        - image_id
+        - trajectory
+        properties:
+          image_id:
+            type: string
+            minLength: 1
+            maxLength: 256
+            x-ai2apps-asset:
+              storage: artifact
+              accept: image/*
+              references: true
+          trajectory:
+            type: object
+          depth:
+            enum:
+            - da
+            - vggt
+            default: vggt
+          output:
+            enum:
+            - html
+            - mp4
+            - live-photo
+            default: mp4
+          long_edge:
+            enum:
+            - 512
+            - 768
+            default: 768
+          reference_speedup:
+            type: boolean
+            default: true
+          seed:
+            type: integer
+            minimum: -1
+            maximum: 4294967295
+            default: -1
+          audio_id:
+            type: string
+            minLength: 1
+            maxLength: 256
+            x-ai2apps-asset:
+              storage: artifact
+              accept: audio/*
+              references: true
+      fields:
+      - key: image_id
+        label:
+          zh: 图片
+          en: Image
+        type: asset
+        storage: artifact
+        accept: image/*
+        references: true
+        multiple: false
+        minItems: 0
+        maxItems: 1
+      - key: trajectory
+        label:
+          zh: 镜头帧计划
+          en: Camera frame plan
+        type: json
+      - key: depth
+        label:
+          zh: 几何模型
+          en: Geometry model
+        type: select
+        options:
+        - value: da
+          label: da
+        - value: vggt
+          label: vggt
+        default: vggt
+      - key: output
+        label:
+          zh: 输出格式
+          en: Output format
+        type: select
+        options:
+        - value: html
+          label: html
+        - value: mp4
+          label: mp4
+        - value: live-photo
+          label: live-photo
+        default: mp4
+      - key: long_edge
+        label:
+          zh: 分辨率长边
+          en: Long edge
+        type: select
+        options:
+        - value: 512
+          label: '512'
+        - value: 768
+          label: '768'
+        default: 768
+      - key: reference_speedup
+        label:
+          zh: 参考视频提速
+          en: Reference speedup
+        type: boolean
+        default: true
+      - key: seed
+        label:
+          zh: 随机种子
+          en: Seed
+        type: number
+        default: -1
+      - key: audio_id
+        label:
+          zh: MP4 音轨
+          en: MP4 soundtrack
+        type: asset
+        storage: artifact
+        accept: audio/*
+        references: true
+        multiple: false
+        minItems: 0
+        maxItems: 1
+      displayName:
+        zh: 静止时间
+        en: Frozen Time
+      summary:
+        zh: 使用当前镜头轨迹生成静止时间，结果进入共享输出。
+        en: Generate Frozen Time with the current camera plan and shared Output.
+      agentContext:
+        schema: ai2apps.aaat-declaration/v1
+        instructions:
+        - Use actual current Mini-App draft/model/material IDs. Never invent models
+          or raw paths. Reuse the original durable Studio task and host shared Output;
+          page closure is not cancellation. Missing models require Desktop configuration
+          with inputs preserved. Unknown submission outcomes must not be replayed.
+        result_semantics:
+          artifact: Actual owner-published media or output references; UI snapshots
+            are not generated artifacts.
+          shared_output: Only a completed published owner task proves an output exists.
+            Output references belong to the original Studio host.
+      selectionRequired: false
+      sdk: studio.camera-motion/v1
+      options: {}
+      interfaceVersion: 1.0.0

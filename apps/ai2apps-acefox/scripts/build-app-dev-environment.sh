@@ -79,3 +79,6 @@ fi
 mv "${STAGED_APP}" "${OUTPUT_APP}"
 print "Built fixed App development environment ${OUTPUT_APP}"
 print "Instance data: ~/Library/Application Support/AI2Apps/instances/${INSTANCE_ID}"
+
+# Prune only after the replacement App was successfully installed.
+python3 "${SCRIPT_DIR}/prune-build-history.py" archive

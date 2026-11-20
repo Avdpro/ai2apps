@@ -2,13 +2,57 @@
   "spdxVersion": "SPDX-2.3",
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
-  "name": "ai2apps.model.qwen-image-mlx-0.1.2",
-  "documentNamespace": "https://ai2apps.com/spdx/ai2apps.model.qwen-image-mlx/0.1.2",
-  "creationInfo": {"created": "2026-08-25T00:00:00Z", "creators": ["Organization: AI2Apps"]},
+  "name": "ai2apps.model.qwen-image-mlx-0.1.3",
+  "documentNamespace": "https://ai2apps.com/spdx/ai2apps.model.qwen-image-mlx/0.1.3",
+  "creationInfo": {
+    "created": "2026-08-25T00:00:00Z",
+    "creators": [
+      "Organization: AI2Apps"
+    ]
+  },
   "packages": [
-    {"name": "ai2apps-model-qwen-image-mlx", "SPDXID": "SPDXRef-Package", "versionInfo": "0.1.2", "downloadLocation": "NOASSERTION", "filesAnalyzed": false, "licenseConcluded": "Apache-2.0", "licenseDeclared": "Apache-2.0", "copyrightText": "NOASSERTION"},
-    {"name": "mflux", "SPDXID": "SPDXRef-Mflux", "versionInfo": "0.19.0", "downloadLocation": "https://pypi.org/project/mflux/0.19.0/", "filesAnalyzed": false, "licenseConcluded": "MIT", "licenseDeclared": "MIT", "copyrightText": "NOASSERTION", "checksums": [{"algorithm": "SHA256", "checksumValue": "3214044d36dc9e3a371f40ac5206f4449974ad57bc7bd3763385c8ed5abf5e47"}]},
-    {"name": "Qwen-Image-2512", "SPDXID": "SPDXRef-QwenImage2512", "versionInfo": "25468b98e3276ca6700de15c6628e51b7de54a26", "downloadLocation": "https://huggingface.co/Qwen/Qwen-Image-2512", "filesAnalyzed": false, "licenseConcluded": "Apache-2.0", "licenseDeclared": "Apache-2.0", "copyrightText": "NOASSERTION"},
-    {"name": "Qwen-Image-Edit-2511", "SPDXID": "SPDXRef-QwenImageEdit2511", "versionInfo": "6f3ccc0b56e431dc6a0c2b2039706d7d26f22cb9", "downloadLocation": "https://huggingface.co/Qwen/Qwen-Image-Edit-2511", "filesAnalyzed": false, "licenseConcluded": "Apache-2.0", "licenseDeclared": "Apache-2.0", "copyrightText": "NOASSERTION"}
+    {
+      "name": "ai2apps-model-qwen-image-mlx",
+      "SPDXID": "SPDXRef-Package",
+      "versionInfo": "0.1.3",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "name": "mflux",
+      "SPDXID": "SPDXRef-Mflux",
+      "versionInfo": "0.24.0",
+      "downloadLocation": "https://pypi.org/project/mflux/0.24.0/",
+      "filesAnalyzed": false,
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "copyrightText": "NOASSERTION",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "682368f04a1b2b0871144a8d57b7f7866e84dd0fd2bc3a765d1d57918e21237e"
+        }
+      ]
+    },
+    {
+      "name": "Qwen-Image-2.1",
+      "SPDXID": "SPDXRef-QwenImage21",
+      "versionInfo": "d26bb61231c349cf6b7896fa83353113880e1ba3",
+      "downloadLocation": "https://huggingface.co/Qwen/Qwen-Image-2.1",
+      "filesAnalyzed": false,
+      "licenseConcluded": "LicenseRef-Qwen-Research",
+      "licenseDeclared": "LicenseRef-Qwen-Research",
+      "copyrightText": "NOASSERTION"
+    }
+  ],
+  "hasExtractedLicensingInfos": [
+    {
+      "licenseId": "LicenseRef-Qwen-Research",
+      "name": "Qwen Research License Agreement",
+      "extractedText": "Qwen RESEARCH LICENSE AGREEMENT\n\nQwen RESEARCH LICENSE AGREEMENT Release Date: September 20, 2026\n\nBy clicking to agree or by using or distributing any portion or element of the Qwen Materials, you will be deemed to have recognized and accepted the content of this Agreement, which is effective immediately.\n\n1. Definitions\n    a. This Qwen RESEARCH LICENSE AGREEMENT (this \"Agreement\") shall mean the terms and conditions for use, reproduction, distribution and modification of the Materials as defined by this Agreement.\n    b. \"We\" (or \"Us\") shall mean Hangzhou Tongyi Laboratory Technology Co., Ltd.\n    c. \"You\" (or \"Your\") shall mean a natural person or legal entity exercising the rights granted by this Agreement and/or using the Materials for any purpose and in any field of use.\n    d. \"Third Parties\" shall mean individuals or legal entities that are not under common control with us or you.\n    e. \"Qwen\" shall mean the large language models, diffusion models, and software and algorithms, consisting of trained model weights, parameters (including optimizer states), machine-learning model code, inference-enabling code, training-enabling code, fine-tuning enabling code and other elements of the foregoing distributed by us.\n    f. \"Materials\" shall mean, collectively, our proprietary Qwen and Documentation (and any portion thereof) made available under this Agreement.\n    g. \"Source\" form shall mean the preferred form for making modifications, including but not limited to model source code, documentation source, and configuration files.\n    h. \"Object\" form shall mean any form resulting from mechanical transformation or translation of a Source form, including but not limited to compiled object code, generated documentation, and conversions to other media types.\n    i. \"Non-Commercial\" shall mean for research or evaluation purposes only.\n\n2. Grant of Rights\n    a. You are granted a non-exclusive, worldwide, non-transferable and royalty-free limited license under our intellectual property or other rights owned by us embodied in the Materials to use, reproduce, distribute, copy, create derivative works of, and make modifications to the Materials FOR NON-COMMERCIAL PURPOSES ONLY. \n    b. You shall not use the Materials for any commercial purpose without obtaining a separate commercial license from us. If you wish to use the Materials commercially, you shall request a license from us at model-business@notice.qwencloud.com.\n\n3. Redistribution\nSubject to Section 2 (Grant of Rights), you may distribute copies or make the Materials, or derivative works thereof, available as part of a product or service that contains any of them, with or without modifications, and in Source or Object form, provided that you meet the following conditions:\n    a. You shall give any other recipients of the Materials or derivative works a copy of this Agreement;\n    b. You shall cause any modified files to carry prominent notices stating that you changed the files;\n    c. You shall retain in all copies of the Materials that you distribute the following attribution notices within a \"Notice\" text file distributed as a part of such copies: \"Qwen is licensed under the Qwen RESEARCH LICENSE AGREEMENT, Copyright (c) 2026 Hangzhou Tongyi Laboratory Technology Co., Ltd. All Rights Reserved.\"; and\n    d. You may add your own copyright statement to your modifications and may provide additional or different license terms and conditions for use, reproduction, or distribution of your modifications, or for any such derivative works as a whole, provided your use, reproduction, and distribution of the work otherwise complies with the terms and conditions of this Agreement.\n\n4. Rules of use\n    a. The Materials may be subject to export controls or restrictions in China, the United States or other countries or regions. You shall comply with applicable laws and regulations in your use of the Materials.\n    b. If you use the Materials or any outputs or results therefrom to create, train, fine-tune, or improve an AI model that is distributed or made available, you shall prominently display “Built with Qwen” or “Improved using Qwen” in the related product documentation.\n    c. You shall not use \"Qwen\" as the primary name or identifier of any derivative works or products; reasonable descriptive use (e.g., \"fine-tuned from Qwen Image\") is permitted.\n\n5. Intellectual Property\n    a. We retain ownership of all intellectual property rights in and to the Materials and derivatives made by or for us. Conditioned upon compliance with the terms and conditions of this Agreement, with respect to any derivative works and modifications of the Materials that are made by you, you are and will be the owner of such derivative works and modifications.\n    b. No trademark license is granted to use the trade names, trademarks, service marks, or product names of us, except as required to fulfill notice requirements under this Agreement or as required for reasonable and customary use in describing and redistributing the Materials.\n    c. If you commence a lawsuit or other proceedings (including a cross-claim or counterclaim in a lawsuit) against us or any entity alleging that the Materials or any output therefrom, or any part of the foregoing, infringe any intellectual property or other right owned or licensable by you, then all licenses granted to you under this Agreement shall terminate as of the date such lawsuit or other proceeding is commenced or brought.\n\n6. Disclaimer of Warranty and Limitation of Liability\n    a. We are not obligated to support, update, provide training for, or develop any further version of the Qwen Materials or to grant any license thereto.\n    b. THE MATERIALS ARE PROVIDED \"AS IS\" WITHOUT ANY EXPRESS OR IMPLIED WARRANTY OF ANY KIND INCLUDING WARRANTIES OF MERCHANTABILITY, NONINFRINGEMENT, OR FITNESS FOR A PARTICULAR PURPOSE. WE MAKE NO WARRANTY AND ASSUME NO RESPONSIBILITY FOR THE SAFETY OR STABILITY OF THE MATERIALS AND ANY OUTPUT THEREFROM.\n    c. IN NO EVENT SHALL WE BE LIABLE TO YOU FOR ANY DAMAGES, INCLUDING, BUT NOT LIMITED TO ANY DIRECT, OR INDIRECT, SPECIAL OR CONSEQUENTIAL DAMAGES ARISING FROM YOUR USE OR INABILITY TO USE THE MATERIALS OR ANY OUTPUT OF IT, NO MATTER HOW IT’S CAUSED.\n    d. You will defend, indemnify and hold harmless us from and against any claim by any third party arising out of or related to your use or distribution of the Materials.\n\n7. Survival and Termination.\n    a. The term of this Agreement shall commence upon your acceptance of this Agreement or access to the Materials and will continue in full force and effect until terminated in accordance with the terms and conditions herein.\n    b. We may terminate this Agreement if you breach any of the terms or conditions of this Agreement. Upon termination of this Agreement, you must delete and cease use of the Materials. Sections 6 and 8 shall survive the termination of this Agreement.\n\n8. Governing Law and Jurisdiction.\n    a. This Agreement and any dispute arising out of or relating to it will be governed by the laws of China, without regard to conflict of law principles, and the UN Convention on Contracts for the International Sale of Goods does not apply to this Agreement.\n    b. The People's Courts in Hangzhou City shall have exclusive jurisdiction over any dispute arising out of this Agreement.\n\n9. Other Terms and Conditions.\n    a. Any arrangements, understandings, or agreements regarding the Material not stated herein are separate from and independent of the terms and conditions of this Agreement. You shall request a separate license from us, if you use the Materials in ways not expressly agreed to in this Agreement. \n    b. We shall not be bound by any additional or different terms or conditions communicated by you unless expressly agreed.\n"
+    }
   ]
 }

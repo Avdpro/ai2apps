@@ -25,6 +25,8 @@ _SYSTEM_COLLECTIONS = (
     ("personal", "Personal", "manual"),
     ("trash", "Trash", "created_desc"),
 )
+CHARACTER_MIME = "application/vnd.ai2apps.character+json"
+STICKER_PACK_MIME = "application/vnd.ai2apps.sticker-pack+json"
 
 
 class GalleryError(ValueError):
@@ -84,7 +86,18 @@ class GalleryRepository:
         value = dict(row)
         if "metadata_json" in value:
             value["metadata"] = json.loads(value.pop("metadata_json") or "{}")
+            value["description"] = value["metadata"].get("description", "")
+        if value.get("media_type") == CHARACTER_MIME:
+            value["kind"] = "character"
+        if value.get("media_type") == STICKER_PACK_MIME:
+            value["kind"] = "sticker-pack"
         return value
+
+    @staticmethod
+    def validate_description(description: str) -> str:
+        if not isinstance(description, str) or len(description) > 4000 or "\x00" in description:
+            raise GalleryError("gallery_description_invalid", "Description must be text of at most 4000 characters without NUL.")
+        return description
 
     def _append_event(
         self,
@@ -295,10 +308,13 @@ class GalleryRepository:
         source_app_id: str | None = None,
         source_ref: str | None = None,
         metadata: dict[str, Any] | None = None,
+        description: str | None = None,
         max_bytes: int | None = None,
         _adopt_path: Path | None = None,
     ) -> tuple[dict[str, Any], bool]:
         safe_name = self._safe_name(name)
+        if description is not None:
+            metadata = {**(metadata or {}), "description": self.validate_description(description)}
         effective_media_type = (
             (media_type or "").split(";", 1)[0].strip().lower()
             or mimetypes.guess_type(safe_name)[0]
@@ -489,7 +505,7 @@ class GalleryRepository:
         limit: int = 200,
     ) -> tuple[dict[str, Any], ...]:
         if kind is not None and kind not in {
-            "image", "video", "audio", "web", "document", "file"
+            "image", "video", "audio", "web", "document", "file", "sticker-pack", "character"
         }:
             raise GalleryError("gallery_kind_invalid", "Unsupported asset kind.")
         limit = max(1, min(limit, 500))
@@ -519,13 +535,24 @@ class GalleryRepository:
                         if collection["sort_mode"] == "created_desc"
                         else " ORDER BY i.position,i.added_at,i.asset_id"
                     )
-            if kind:
+            if kind == "character":
+                filters.append("a.media_type=?")
+                values.append(CHARACTER_MIME)
+            elif kind == "sticker-pack":
+                filters.append("a.media_type=?")
+                values.append(STICKER_PACK_MIME)
+            elif kind:
                 filters.append("a.kind=?")
                 values.append(kind)
+                if kind == "file":
+                    filters.append("a.media_type<>?")
+                    values.append(STICKER_PACK_MIME)
+                    filters.append("a.media_type<>?")
+                    values.append(CHARACTER_MIME)
             if search and search.strip():
-                filters.append("a.name LIKE ? ESCAPE '\\'")
+                filters.append("(a.name LIKE ? ESCAPE '\\' OR COALESCE(json_extract(a.metadata_json, '$.description'), '') LIKE ? ESCAPE '\\')")
                 escaped = search.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-                values.append(f"%{escaped}%")
+                values.extend([f"%{escaped}%", f"%{escaped}%"])
             if filters:
                 query += " AND " + " AND ".join(filters)
             rows = connection.execute(query + order + " LIMIT ?", (*values, limit)).fetchall()
@@ -538,20 +565,30 @@ class GalleryRepository:
     def rename_asset(
         self, owner_user_id: str, asset_id: str, name: str
     ) -> dict[str, Any]:
-        safe_name = self._safe_name(name)
+        return self.update_asset(owner_user_id, asset_id, name=name)
+
+    def update_asset(self, owner_user_id: str, asset_id: str, *, name: str | None = None,
+                     description: str | None = None) -> dict[str, Any]:
+        safe_name = self._safe_name(name) if name is not None else None
+        if description is not None:
+            self.validate_description(description)
         now = utc_now_text()
         with self.database.transaction(write=True) as connection:
-            self._asset_row(connection, owner_user_id, asset_id)
+            current = self._asset_row(connection, owner_user_id, asset_id)
+            metadata = json.loads(current["metadata_json"] or "{}")
+            if description is not None:
+                metadata["description"] = description
             connection.execute(
-                "UPDATE gallery_assets SET name=?,updated_at=? WHERE id=?",
-                (safe_name, now, asset_id),
+                "UPDATE gallery_assets SET name=?,metadata_json=?,updated_at=? WHERE id=?",
+                (safe_name if safe_name is not None else current["name"], canonical_json(metadata), now, asset_id),
             )
             self._append_event(
                 connection,
-                event_type="gallery.asset.renamed",
+                event_type="gallery.asset.renamed" if description is None else "gallery.asset.updated",
                 subject_id=asset_id,
                 owner_user_id=owner_user_id,
-                payload={"name": safe_name},
+                payload={**({"name": safe_name} if safe_name is not None else {}),
+                         **({"description": description} if description is not None else {})},
             )
             row = self._asset_row(connection, owner_user_id, asset_id)
         return self._decode(row)

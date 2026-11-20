@@ -78,71 +78,27 @@ def data_url(color="red"):
     return "data:image/png;base64," + base64.b64encode(raw.getvalue()).decode()
 
 
-def test_manifest_locks_real_2512_and_2511_checkpoints():
+def test_release_advertises_only_pinned_qwen_21():
     manifest = yaml.safe_load((PACKAGE / "service.yaml").read_text())
-    assert manifest["version"] == "0.1.2"
-    assert manifest["requires"]["services"][0]["version"] == ">=1.5.1,<2.0.0"
-    assert [model["upstream_id"] for model in manifest["models"]] == [
-        "Qwen/Qwen-Image-2512",
-        "Qwen/Qwen-Image-Edit-2511",
-    ]
-    assert [model["weights"]["revision"] for model in manifest["models"]] == [
-        "25468b98e3276ca6700de15c6628e51b7de54a26",
-        "6f3ccc0b56e431dc6a0c2b2039706d7d26f22cb9",
-    ]
-    assert [
-        model["metadata"]["modelscope"]["revision"] for model in manifest["models"]
-    ] == [
-        "ee3f7563eefa997af5a07dbe54a57e5babd3768b",
-        "f8403bcb7b827dab45d845cb71415ec9276e61d6",
-    ]
-    for model in manifest["models"]:
-        assert model["metadata"]["modelscope"]["preferred"] is True
-        assert "transformer/*" in model["metadata"]["modelscope"]["allow_patterns"]
-        assert "scheduler/*" in model["metadata"]["modelscope"]["allow_patterns"]
-        validate_image_capabilities(model["image_capabilities"])
-    optimized = (PACKAGE / "src" / "optimized_pipeline.py").read_text()
-    assert "class OptimizedQwenImage(" in optimized
-    assert "class OptimizedQwenImageEdit(" in optimized
-    assert "if guidance != 1.0:" in optimized
-    assert (
-        manifest["models"][0]["image_capabilities"]["execution"][
-            "single_pass_guidance_one"
-        ]
-        is True
-    )
-
-
-def test_distribution_build_specs_match_package_source_lock():
-    manifest = yaml.safe_load((PACKAGE / "service.yaml").read_text())
+    package = json.loads((PACKAGE / "ai2apps.json").read_text())
     lock = json.loads((PACKAGE / "META/source-lock.json").read_text())
-    models = {model["metadata"]["variant"]: model for model in manifest["models"]}
-    specs = {
-        "2512": json.loads(
-            (PACKAGE / "META/checkpoint-distribution-2512.json").read_text()
-        ),
-        "edit-2511": json.loads(
-            (PACKAGE / "META/checkpoint-distribution-edit-2511.json").read_text()
-        ),
-    }
+    spec = json.loads((PACKAGE / "META/checkpoint-distribution-21.json").read_text())
 
-    for variant, spec in specs.items():
-        model = models[variant]
-        source_lock = lock["models"][variant]
-        assert spec["schema"] == "ai2apps.checkpoint-build/v1"
-        assert spec["modelId"] == model["id"]
-        assert spec["repoId"] == model["weights"]["repo_id"]
-        assert spec["revision"] == source_lock["revision"]
-        modelscope = next(
-            source
-            for source in spec["sourceRepositories"]
-            if source["type"] == "modelscope"
-        )
-        assert modelscope["revision"] == source_lock["modelscope_revision"]
-        assert model["metadata"]["modelscope"]["revision"] == modelscope["revision"]
-        assert spec["license"]["termsHash"] == (
-            "sha256:" + hashlib.sha256((PACKAGE / "LICENSE").read_bytes()).hexdigest()
-        )
+    assert manifest["version"] == package["package"]["version"] == "0.1.3"
+    assert manifest["requires"]["services"][0]["version"] == ">=1.8.17,<2.0.0"
+    assert package["dependencies"][0]["version"] == ">=1.8.17 <2.0.0"
+    (model,) = manifest["models"]
+    (advertised,) = package["modelInstall"]["models"]
+    assert model["id"] == advertised["id"] == spec["modelId"] == MODULE.QWEN_IMAGE_21_ID
+    assert model["upstream_id"] == spec["repoId"] == MODULE.QWEN_IMAGE_21
+    assert model["weights"]["revision"] == lock["models"]["2.1"]["revision"] == spec["revision"]
+    assert model["weights"]["distribution_id"] == spec["distributionId"]
+    modelscope = next(item for item in spec["sourceRepositories"] if item["type"] == "modelscope")
+    assert model["metadata"]["modelscope"]["revision"] == modelscope["revision"]
+    assert model["metadata"]["modelscope"]["allow_patterns"] == spec["includePatterns"]
+    capabilities = validate_image_capabilities(model["image_capabilities"])
+    assert capabilities["operations"] == ["image_generation", "image_edit"]
+    assert capabilities["geometry"]["multiple_of"] == 32
 
 
 def test_generation_returns_openai_and_ai2apps_shapes(tmp_path):
@@ -239,3 +195,58 @@ def test_derived_checkpoint_is_revision_kind_and_quantization_scoped(tmp_path):
     )
     assert MODULE._derived_checkpoint_complete(root, 8)
     assert not MODULE._derived_checkpoint_complete(root, 4)
+
+
+def test_qwen_21_shares_pipeline_and_preserves_alpha(tmp_path):
+    root = checkpoint(tmp_path / "qwen21")
+    (root / "tokenizer").rename(root / "processor")
+    checkpoint_info = SimpleNamespace(path=root, revision=MODULE.QWEN_IMAGE_21_REVISION)
+    ctx = SimpleNamespace(checkpoint_for={MODULE.QWEN_IMAGE_21_ID: checkpoint_info}.get)
+    loads = []
+    calls = []
+
+    def generate(**kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(image=Image.new("RGBA", (256, 256), (255, 0, 0, 0)))
+
+    def factory(**kwargs):
+        loads.append(kwargs)
+        return SimpleNamespace(generate_image=generate)
+
+    adapter = MODULE.QwenImageAdapter(ctx, pipeline_factory=factory)
+
+    async def run():
+        payload = {"model": MODULE.QWEN_IMAGE_21, "prompt": "test", "size": "256x256"}
+        generation = await adapter.invoke(request(tmp_path, "image_generation", payload))
+        await adapter.invoke(request(
+            tmp_path, "image_edit",
+            dict(payload, model=MODULE.QWEN_IMAGE_21_ID, imageDataUrls=[data_url()]),
+        ))
+        return generation
+
+    result = asyncio.run(run())
+    assert len(loads) == 1
+    assert calls[0]["num_inference_steps"] == 40
+    assert calls[0]["guidance"] == 1.0
+    assert Path(calls[1]["image_paths"][0]).name == "reference-0.png"
+    with Image.open(io.BytesIO(base64.b64decode(result["data"][0]["b64_json"]))) as output:
+        assert output.mode == "RGBA" and output.getpixel((0, 0))[3] == 0
+
+    checkpoint_info.revision = "a" * 40
+    with pytest.raises(ModelWorkerError, match="checkpoint revision"):
+        adapter._checkpoint(MODULE.QWEN_IMAGE_21_ID)
+    with pytest.raises(ValueError, match="divisible by 32"):
+        adapter._parameters({"prompt": "test", "size": "272x256"}, edit=False, unified=True)
+
+
+def test_qwen_21_distribution_requires_installing_user_consent():
+    spec = json.loads((PACKAGE / "META/checkpoint-distribution-21.json").read_text())
+    assert spec["modelId"] == MODULE.QWEN_IMAGE_21_ID
+    assert spec["revision"] == MODULE.QWEN_IMAGE_21_REVISION
+    terms = spec["license"]
+    assert terms["termsHash"] == "sha256:" + hashlib.sha256(terms["termsText"].encode()).hexdigest()
+    assert terms["usagePolicy"] == "non_commercial"
+    assert terms["downloadConsent"]["required"] is True
+    assert terms["downloadConsent"]["acceptanceOptions"] == [
+        "accepted_license_terms", "obtained_separate_license",
+    ]

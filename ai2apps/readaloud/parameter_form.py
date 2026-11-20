@@ -42,12 +42,20 @@ async def describe(runtime,principal,form,values,item):
         'submit_label':{'zh': '开始转写', 'en': 'Transcribe'},
         'install':{'appId':'ai2apps.readaloud','capability':'audio.speech_recognition','actionId':'parameter-form:'+item.id,'requirements':{'operations':['speech_recognition']},'intent':{'returnTo':'/apps/ai2apps.general-chat','resumeToken':item.id,'completionPolicy':'configure_only'}}}
 
-async def complete(runtime,principal,form,values,run):
+async def complete(runtime,principal,form,values,run,*,conversation_audio=False):
     if values.get('model') and not any(m.id==values['model'] and m.model_type=='audio_stt' and m.checkpoint_ready for m in list_package_models(runtime)):
         raise HTTPException(422,{'field':'model','message':'Select an installed speech recognition model'})
-    asset,path=materials(runtime).asset_path(principal.actor_user_id,values['audio'])
+    identifier = values['audio']
+    if conversation_audio and identifier.startswith(('attc_', 'art_', 'gala_')):
+        from ai2apps.studio.voice_aaat import source
+        path,name,media_type=source(runtime,principal,run.session_id,identifier,audio_only=True)
+        if path.stat().st_size > 64 * 1024 * 1024:
+            raise HTTPException(422,{'field':'audio','message':'Select audio under 64 MiB'})
+    else:
+        asset,path=materials(runtime).asset_path(principal.actor_user_id,identifier)
+        name,media_type=asset['name'],asset['media_type']
     try:
-        wav=await asyncio.to_thread(decode_audio_to_wav,path.read_bytes(),input_format=infer_audio_format(asset['name'],asset['media_type']),sample_rate=16000,max_duration_seconds=600)
+        wav=await asyncio.to_thread(decode_audio_to_wav,path.read_bytes(),input_format=infer_audio_format(name,media_type),sample_rate=16000,max_duration_seconds=600)
         data={'response_format':'json','stream':'false'}
         if values['language']!='auto':data['language']=values['language']
         response=await runtime.model_invocations.invoke_foreground_multipart(values['model'],'audio_transcription',data=data,files={'file':('audio.wav',wav,'audio/wav')},context=ModelInvocationContext.for_session(runtime.database,run.session_id))

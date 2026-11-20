@@ -1,0 +1,2304 @@
+{
+  "tools": [
+    {
+      "name": "agent.ask_user",
+      "service": "ai2apps.agent-runtime",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": []
+    },
+    {
+      "name": "agent.current_time",
+      "service": "ai2apps.agent-runtime",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": []
+    },
+    {
+      "name": "agent.delegate",
+      "service": "ai2apps.agent-runtime",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": []
+    },
+    {
+      "name": "agent.read_context_checkpoint",
+      "service": "ai2apps.agent-runtime",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": []
+    },
+    {
+      "name": "agent.read_plan",
+      "service": "ai2apps.agent-runtime",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": []
+    },
+    {
+      "name": "agent.read_session_memory",
+      "service": "ai2apps.agent-runtime",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": []
+    },
+    {
+      "name": "agent.read_tool_result",
+      "service": "ai2apps.agent-runtime",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": []
+    },
+    {
+      "name": "agent.update_plan",
+      "service": "ai2apps.agent-runtime",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": []
+    },
+    {
+      "name": "ai2apps.search-workflow.read",
+      "service": "ai2apps.web-research",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": false,
+      "owners": []
+    },
+    {
+      "name": "ai2apps.search-workflow.search",
+      "service": "ai2apps.web-research",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": false,
+      "owners": []
+    },
+    {
+      "name": "app.collect_parameters",
+      "service": "ai2apps.agent-runtime",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": []
+    },
+    {
+      "name": "app.describe",
+      "service": "ai2apps.agent-runtime",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": []
+    },
+    {
+      "name": "app.interact",
+      "service": "ai2apps.agent-runtime",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": []
+    },
+    {
+      "name": "appdev.changes",
+      "service": "ai2apps.app-development",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": []
+    },
+    {
+      "name": "appdev.child.changes",
+      "service": "ai2apps.app-development",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": false,
+      "owners": []
+    },
+    {
+      "name": "appdev.child.command",
+      "service": "ai2apps.app-development",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": false,
+      "owners": []
+    },
+    {
+      "name": "appdev.child.command_status",
+      "service": "ai2apps.app-development",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": false,
+      "owners": []
+    },
+    {
+      "name": "appdev.child.edit",
+      "service": "ai2apps.app-development",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": false,
+      "owners": []
+    },
+    {
+      "name": "appdev.child.inspect",
+      "service": "ai2apps.app-development",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": false,
+      "owners": []
+    },
+    {
+      "name": "appdev.child.list",
+      "service": "ai2apps.app-development",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": false,
+      "owners": []
+    },
+    {
+      "name": "appdev.child.read",
+      "service": "ai2apps.app-development",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": false,
+      "owners": []
+    },
+    {
+      "name": "appdev.child.search",
+      "service": "ai2apps.app-development",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": false,
+      "owners": []
+    },
+    {
+      "name": "appdev.child.validate",
+      "service": "ai2apps.app-development",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": false,
+      "owners": []
+    },
+    {
+      "name": "appdev.child.write",
+      "service": "ai2apps.app-development",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": false,
+      "owners": []
+    },
+    {
+      "name": "appdev.command",
+      "service": "ai2apps.app-development",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": []
+    },
+    {
+      "name": "appdev.command_status",
+      "service": "ai2apps.app-development",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": []
+    },
+    {
+      "name": "appdev.edit",
+      "service": "ai2apps.app-development",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": []
+    },
+    {
+      "name": "appdev.inspect",
+      "service": "ai2apps.app-development",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": []
+    },
+    {
+      "name": "appdev.list",
+      "service": "ai2apps.app-development",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": []
+    },
+    {
+      "name": "appdev.preview",
+      "service": "ai2apps.app-development",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": []
+    },
+    {
+      "name": "appdev.read",
+      "service": "ai2apps.app-development",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": []
+    },
+    {
+      "name": "appdev.search",
+      "service": "ai2apps.app-development",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": []
+    },
+    {
+      "name": "appdev.subagent_cancel",
+      "service": "ai2apps.app-development",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": false,
+      "owners": []
+    },
+    {
+      "name": "appdev.subagent_followup",
+      "service": "ai2apps.app-development",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": false,
+      "owners": []
+    },
+    {
+      "name": "appdev.subagent_merge",
+      "service": "ai2apps.app-development",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": false,
+      "owners": []
+    },
+    {
+      "name": "appdev.subagent_start",
+      "service": "ai2apps.app-development",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": false,
+      "owners": []
+    },
+    {
+      "name": "appdev.subagent_status",
+      "service": "ai2apps.app-development",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": false,
+      "owners": []
+    },
+    {
+      "name": "appdev.subagent_wait",
+      "service": "ai2apps.app-development",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": false,
+      "owners": []
+    },
+    {
+      "name": "appdev.validate",
+      "service": "ai2apps.app-development",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": []
+    },
+    {
+      "name": "appdev.write",
+      "service": "ai2apps.app-development",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": []
+    },
+    {
+      "name": "artifact.create",
+      "service": "ai2apps.workspace",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.harness"
+      ]
+    },
+    {
+      "name": "artifact.export",
+      "service": "ai2apps.workspace",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.harness"
+      ]
+    },
+    {
+      "name": "artifact.list",
+      "service": "ai2apps.workspace",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.harness"
+      ]
+    },
+    {
+      "name": "artifact.materialize",
+      "service": "ai2apps.harness.materials",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.harness"
+      ]
+    },
+    {
+      "name": "artifact.pack",
+      "service": "ai2apps.harness.materials",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.harness"
+      ]
+    },
+    {
+      "name": "artifact.preview",
+      "service": "ai2apps.workspace",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.harness"
+      ]
+    },
+    {
+      "name": "artifact.unpack",
+      "service": "ai2apps.harness.materials",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.harness"
+      ]
+    },
+    {
+      "name": "attachment.list",
+      "service": "ai2apps.documents",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.harness"
+      ]
+    },
+    {
+      "name": "attachment.status",
+      "service": "ai2apps.documents",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.harness"
+      ]
+    },
+    {
+      "name": "browser.click",
+      "service": "ai2apps.browser",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": []
+    },
+    {
+      "name": "browser.clipboard",
+      "service": "ai2apps.browser",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": []
+    },
+    {
+      "name": "browser.complete_goal",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.ai-browser"
+      ]
+    },
+    {
+      "name": "browser.downloads",
+      "service": "ai2apps.browser",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": []
+    },
+    {
+      "name": "browser.hover",
+      "service": "ai2apps.browser",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": []
+    },
+    {
+      "name": "browser.key",
+      "service": "ai2apps.browser",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": []
+    },
+    {
+      "name": "browser.navigate",
+      "service": "ai2apps.browser",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": []
+    },
+    {
+      "name": "browser.observe",
+      "service": "ai2apps.browser",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": []
+    },
+    {
+      "name": "browser.open",
+      "service": "ai2apps.browser",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": []
+    },
+    {
+      "name": "browser.pointer_move",
+      "service": "ai2apps.browser",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": []
+    },
+    {
+      "name": "browser.read_article",
+      "service": "ai2apps.browser",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": []
+    },
+    {
+      "name": "browser.screenshot",
+      "service": "ai2apps.browser",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": []
+    },
+    {
+      "name": "browser.scroll",
+      "service": "ai2apps.browser",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": []
+    },
+    {
+      "name": "browser.snapshot",
+      "service": "ai2apps.browser",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": []
+    },
+    {
+      "name": "browser.status",
+      "service": "ai2apps.browser",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": []
+    },
+    {
+      "name": "browser.tab_close",
+      "service": "ai2apps.browser",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": []
+    },
+    {
+      "name": "browser.tab_open",
+      "service": "ai2apps.browser",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": []
+    },
+    {
+      "name": "browser.tab_switch",
+      "service": "ai2apps.browser",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": []
+    },
+    {
+      "name": "browser.tabs",
+      "service": "ai2apps.browser",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": []
+    },
+    {
+      "name": "browser.type",
+      "service": "ai2apps.browser",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": []
+    },
+    {
+      "name": "browser.upload",
+      "service": "ai2apps.browser",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": []
+    },
+    {
+      "name": "browser.wait",
+      "service": "ai2apps.browser",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": []
+    },
+    {
+      "name": "capability.describe",
+      "service": "ai2apps.images",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": []
+    },
+    {
+      "name": "discover.package_detail",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.discover"
+      ]
+    },
+    {
+      "name": "discover.packages",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.discover"
+      ]
+    },
+    {
+      "name": "discover.taxonomy",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.discover"
+      ]
+    },
+    {
+      "name": "doc_studio.export",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.doc-studio"
+      ]
+    },
+    {
+      "name": "doc_studio.generate",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.doc-studio"
+      ]
+    },
+    {
+      "name": "doc_studio.list_projects",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.doc-studio"
+      ]
+    },
+    {
+      "name": "doc_studio.translate",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.doc-studio"
+      ]
+    },
+    {
+      "name": "doc_studio.translation_status",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.doc-studio"
+      ]
+    },
+    {
+      "name": "document.create_pdf",
+      "service": "ai2apps.documents",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": []
+    },
+    {
+      "name": "document.import_artifact",
+      "service": "ai2apps.harness.materials",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.harness"
+      ]
+    },
+    {
+      "name": "document.info",
+      "service": "ai2apps.documents",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.harness"
+      ]
+    },
+    {
+      "name": "document.preview",
+      "service": "ai2apps.documents",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": []
+    },
+    {
+      "name": "document.read",
+      "service": "ai2apps.documents",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.harness"
+      ]
+    },
+    {
+      "name": "document.search",
+      "service": "ai2apps.documents",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.harness"
+      ]
+    },
+    {
+      "name": "gallery.get",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.gallery"
+      ]
+    },
+    {
+      "name": "gallery.import_materials",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.gallery"
+      ]
+    },
+    {
+      "name": "gallery.save_material",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.gallery"
+      ]
+    },
+    {
+      "name": "gallery.search",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.gallery"
+      ]
+    },
+    {
+      "name": "host.directory.copy",
+      "service": "ai2apps.harness.local-files",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.harness"
+      ]
+    },
+    {
+      "name": "host.directory.export",
+      "service": "ai2apps.harness.local-files",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.harness"
+      ]
+    },
+    {
+      "name": "host.directory.import",
+      "service": "ai2apps.harness.local-directories",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.harness"
+      ]
+    },
+    {
+      "name": "host.directory.inspect",
+      "service": "ai2apps.harness.local-files",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.harness"
+      ]
+    },
+    {
+      "name": "host.directory.list",
+      "service": "ai2apps.harness.local-directories",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.harness"
+      ]
+    },
+    {
+      "name": "host.directory.mkdir",
+      "service": "ai2apps.harness.local-files",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.harness"
+      ]
+    },
+    {
+      "name": "host.directory.move",
+      "service": "ai2apps.harness.local-files",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.harness"
+      ]
+    },
+    {
+      "name": "host.directory.reveal",
+      "service": "ai2apps.harness.local-files",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.harness"
+      ]
+    },
+    {
+      "name": "image.edit",
+      "service": "ai2apps.images",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.imagine-studio"
+      ]
+    },
+    {
+      "name": "image.generate",
+      "service": "ai2apps.images",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.imagine-studio",
+        "ai2apps.imagine-studio"
+      ]
+    },
+    {
+      "name": "image.group_photo",
+      "service": "ai2apps.images",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.imagine-studio"
+      ]
+    },
+    {
+      "name": "image.reference_creation",
+      "service": "ai2apps.images",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.imagine-studio"
+      ]
+    },
+    {
+      "name": "image.style_transfer",
+      "service": "ai2apps.images",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.imagine-studio"
+      ]
+    },
+    {
+      "name": "intelligence.channels",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.intelligence"
+      ]
+    },
+    {
+      "name": "intelligence.event_details",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.intelligence"
+      ]
+    },
+    {
+      "name": "intelligence.export_html",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.intelligence"
+      ]
+    },
+    {
+      "name": "intelligence.import_materials",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.intelligence"
+      ]
+    },
+    {
+      "name": "intelligence.news",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.intelligence"
+      ]
+    },
+    {
+      "name": "intelligence.read",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.intelligence"
+      ]
+    },
+    {
+      "name": "intelligence.refresh",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.intelligence"
+      ]
+    },
+    {
+      "name": "intelligence.research",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.intelligence"
+      ]
+    },
+    {
+      "name": "intelligence.search",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.intelligence"
+      ]
+    },
+    {
+      "name": "knowledge.add_text",
+      "service": "ai2apps.knowledge-service",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.knowledge"
+      ]
+    },
+    {
+      "name": "knowledge.delete",
+      "service": "ai2apps.knowledge-service",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": []
+    },
+    {
+      "name": "knowledge.get",
+      "service": "ai2apps.knowledge-service",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.knowledge"
+      ]
+    },
+    {
+      "name": "knowledge.search",
+      "service": "ai2apps.knowledge-service",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.knowledge"
+      ]
+    },
+    {
+      "name": "mail.draft_reply",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.mail"
+      ]
+    },
+    {
+      "name": "mail.read_message",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.mail"
+      ]
+    },
+    {
+      "name": "mail.search",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.mail"
+      ]
+    },
+    {
+      "name": "messager.bot.configure",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.messager"
+      ]
+    },
+    {
+      "name": "messager.bot.consult",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.messager"
+      ]
+    },
+    {
+      "name": "messager.bot.delegate",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.messager"
+      ]
+    },
+    {
+      "name": "messager.bot.directory",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.messager"
+      ]
+    },
+    {
+      "name": "messager.collaboration.details",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.messager"
+      ]
+    },
+    {
+      "name": "messager.collaboration.propose",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.messager"
+      ]
+    },
+    {
+      "name": "messager.event_details",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.messager"
+      ]
+    },
+    {
+      "name": "messager.history.attach",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.messager"
+      ]
+    },
+    {
+      "name": "messager.history.get",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.messager"
+      ]
+    },
+    {
+      "name": "messager.history.search",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.messager"
+      ]
+    },
+    {
+      "name": "messager.memory.return",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.messager"
+      ]
+    },
+    {
+      "name": "messager.notice.create",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.messager"
+      ]
+    },
+    {
+      "name": "messager.task.propose",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.messager"
+      ]
+    },
+    {
+      "name": "process.cancel",
+      "service": "ai2apps.process",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.harness"
+      ]
+    },
+    {
+      "name": "process.logs",
+      "service": "ai2apps.process",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.harness"
+      ]
+    },
+    {
+      "name": "process.start",
+      "service": "ai2apps.process",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.harness"
+      ]
+    },
+    {
+      "name": "process.status",
+      "service": "ai2apps.process",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.harness"
+      ]
+    },
+    {
+      "name": "process.wait",
+      "service": "ai2apps.process",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.harness"
+      ]
+    },
+    {
+      "name": "process.write_stdin",
+      "service": "ai2apps.process",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": []
+    },
+    {
+      "name": "resource.read",
+      "service": "ai2apps.workspace",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.harness"
+      ]
+    },
+    {
+      "name": "share.cancel",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.ai-browser"
+      ]
+    },
+    {
+      "name": "share.destinations",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.ai-browser"
+      ]
+    },
+    {
+      "name": "share.history",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.ai-browser"
+      ]
+    },
+    {
+      "name": "share.prepare",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.ai-browser"
+      ]
+    },
+    {
+      "name": "share.publish",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.ai-browser"
+      ]
+    },
+    {
+      "name": "share.social_prepare",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.ai-browser"
+      ]
+    },
+    {
+      "name": "share.social_status",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.ai-browser"
+      ]
+    },
+    {
+      "name": "share.verify",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.ai-browser"
+      ]
+    },
+    {
+      "name": "share.x_publish",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.ai-browser"
+      ]
+    },
+    {
+      "name": "social.account",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.ai-browser"
+      ]
+    },
+    {
+      "name": "sticker.generate",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.imagine-studio"
+      ]
+    },
+    {
+      "name": "sticker.lookup",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.imagine-studio"
+      ]
+    },
+    {
+      "name": "studio.ui",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.imagine-studio",
+        "ai2apps.video-studio",
+        "ai2apps.readaloud",
+        "ai2apps.ai-browser",
+        "ai2apps.doc-studio"
+      ]
+    },
+    {
+      "name": "system.echo",
+      "service": "ai2apps.diagnostics",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": []
+    },
+    {
+      "name": "todo.children",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.todo"
+      ]
+    },
+    {
+      "name": "todo.create",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.todo"
+      ]
+    },
+    {
+      "name": "todo.get",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.todo"
+      ]
+    },
+    {
+      "name": "todo.inbox.create",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.todo"
+      ]
+    },
+    {
+      "name": "todo.project_stats",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.todo"
+      ]
+    },
+    {
+      "name": "todo.resolve_directory",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.todo"
+      ]
+    },
+    {
+      "name": "todo.resolve_project",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.todo"
+      ]
+    },
+    {
+      "name": "todo.search",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.todo"
+      ]
+    },
+    {
+      "name": "todo.ui",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.todo"
+      ]
+    },
+    {
+      "name": "todo.update",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.todo"
+      ]
+    },
+    {
+      "name": "video.event_details",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.video-studio"
+      ]
+    },
+    {
+      "name": "video.generate",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.video-studio"
+      ]
+    },
+    {
+      "name": "video.process",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.video-studio"
+      ]
+    },
+    {
+      "name": "video.upscale",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.video-studio"
+      ]
+    },
+    {
+      "name": "voice.event_details",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.readaloud"
+      ]
+    },
+    {
+      "name": "voice.quick_read",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.readaloud"
+      ]
+    },
+    {
+      "name": "voice.render_project",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.readaloud",
+        "ai2apps.readaloud"
+      ]
+    },
+    {
+      "name": "voice.transcribe",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.readaloud"
+      ]
+    },
+    {
+      "name": "web.fetch",
+      "service": "ai2apps.web-research",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.web-research",
+        "ai2apps.ai-browser"
+      ]
+    },
+    {
+      "name": "web.read_pdf",
+      "service": "ai2apps.builtin-app-adapters",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.ai-browser"
+      ]
+    },
+    {
+      "name": "web.search",
+      "service": "ai2apps.web-research",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.web-research",
+        "ai2apps.ai-browser"
+      ]
+    },
+    {
+      "name": "workspace.apply_patch",
+      "service": "ai2apps.workspace",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.harness"
+      ]
+    },
+    {
+      "name": "workspace.glob",
+      "service": "ai2apps.workspace",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.harness"
+      ]
+    },
+    {
+      "name": "workspace.list",
+      "service": "ai2apps.workspace",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.harness"
+      ]
+    },
+    {
+      "name": "workspace.read",
+      "service": "ai2apps.workspace",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.harness"
+      ]
+    },
+    {
+      "name": "workspace.search",
+      "service": "ai2apps.workspace",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.harness"
+      ]
+    },
+    {
+      "name": "workspace.stat",
+      "service": "ai2apps.workspace",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.harness"
+      ]
+    },
+    {
+      "name": "workspace.write",
+      "service": "ai2apps.workspace",
+      "enabled": true,
+      "bound": true,
+      "app_chat_visible": true,
+      "owners": [
+        "ai2apps.harness"
+      ]
+    }
+  ],
+  "providers": [
+    {
+      "capability": "image.generate",
+      "app": "ai2apps.imagine-studio",
+      "version": "1"
+    },
+    {
+      "capability": "image.generate",
+      "app": "ai2apps.imagine-studio",
+      "version": "1.0.0"
+    },
+    {
+      "capability": "image.edit",
+      "app": "ai2apps.imagine-studio",
+      "version": "1.0.0"
+    },
+    {
+      "capability": "image.group_photo",
+      "app": "ai2apps.imagine-studio",
+      "version": "1.0.0"
+    },
+    {
+      "capability": "image.style_transfer",
+      "app": "ai2apps.imagine-studio",
+      "version": "1.0.0"
+    },
+    {
+      "capability": "image.reference_creation",
+      "app": "ai2apps.imagine-studio",
+      "version": "1.0.0"
+    },
+    {
+      "capability": "web.search",
+      "app": "ai2apps.web-research",
+      "version": "1"
+    },
+    {
+      "capability": "web.fetch",
+      "app": "ai2apps.web-research",
+      "version": "1"
+    },
+    {
+      "capability": "intelligence.event_details",
+      "app": "ai2apps.intelligence",
+      "version": "1"
+    },
+    {
+      "capability": "video.event_details",
+      "app": "ai2apps.video-studio",
+      "version": "1"
+    },
+    {
+      "capability": "voice.event_details",
+      "app": "ai2apps.readaloud",
+      "version": "1"
+    },
+    {
+      "capability": "messager.event_details",
+      "app": "ai2apps.messager",
+      "version": "1"
+    },
+    {
+      "capability": "discover.packages",
+      "app": "ai2apps.discover",
+      "version": "7"
+    },
+    {
+      "capability": "discover.taxonomy",
+      "app": "ai2apps.discover",
+      "version": "1"
+    },
+    {
+      "capability": "discover.package_detail",
+      "app": "ai2apps.discover",
+      "version": "2"
+    },
+    {
+      "capability": "todo.search",
+      "app": "ai2apps.todo",
+      "version": "2"
+    },
+    {
+      "capability": "todo.resolve_directory",
+      "app": "ai2apps.todo",
+      "version": "2"
+    },
+    {
+      "capability": "todo.get",
+      "app": "ai2apps.todo",
+      "version": "1"
+    },
+    {
+      "capability": "todo.create",
+      "app": "ai2apps.todo",
+      "version": "3"
+    },
+    {
+      "capability": "todo.resolve_project",
+      "app": "ai2apps.todo",
+      "version": "1"
+    },
+    {
+      "capability": "todo.project_stats",
+      "app": "ai2apps.todo",
+      "version": "1"
+    },
+    {
+      "capability": "todo.children",
+      "app": "ai2apps.todo",
+      "version": "1"
+    },
+    {
+      "capability": "todo.update",
+      "app": "ai2apps.todo",
+      "version": "1"
+    },
+    {
+      "capability": "todo.ui",
+      "app": "ai2apps.todo",
+      "version": "1"
+    },
+    {
+      "capability": "gallery.search",
+      "app": "ai2apps.gallery",
+      "version": "1"
+    },
+    {
+      "capability": "gallery.get",
+      "app": "ai2apps.gallery",
+      "version": "1"
+    },
+    {
+      "capability": "gallery.import_materials",
+      "app": "ai2apps.gallery",
+      "version": "1"
+    },
+    {
+      "capability": "gallery.save_material",
+      "app": "ai2apps.gallery",
+      "version": "1"
+    },
+    {
+      "capability": "sticker.lookup",
+      "app": "ai2apps.imagine-studio",
+      "version": "1"
+    },
+    {
+      "capability": "sticker.generate",
+      "app": "ai2apps.imagine-studio",
+      "version": "1"
+    },
+    {
+      "capability": "intelligence.export_html",
+      "app": "ai2apps.intelligence",
+      "version": "1"
+    },
+    {
+      "capability": "intelligence.import_materials",
+      "app": "ai2apps.intelligence",
+      "version": "1"
+    },
+    {
+      "capability": "intelligence.channels",
+      "app": "ai2apps.intelligence",
+      "version": "1"
+    },
+    {
+      "capability": "intelligence.search",
+      "app": "ai2apps.intelligence",
+      "version": "1"
+    },
+    {
+      "capability": "intelligence.read",
+      "app": "ai2apps.intelligence",
+      "version": "1"
+    },
+    {
+      "capability": "intelligence.news",
+      "app": "ai2apps.intelligence",
+      "version": "1"
+    },
+    {
+      "capability": "intelligence.refresh",
+      "app": "ai2apps.intelligence",
+      "version": "1"
+    },
+    {
+      "capability": "intelligence.research",
+      "app": "ai2apps.intelligence",
+      "version": "1"
+    },
+    {
+      "capability": "mail.search",
+      "app": "ai2apps.mail",
+      "version": "1"
+    },
+    {
+      "capability": "mail.read_message",
+      "app": "ai2apps.mail",
+      "version": "1"
+    },
+    {
+      "capability": "mail.draft_reply",
+      "app": "ai2apps.mail",
+      "version": "1"
+    },
+    {
+      "capability": "knowledge.search",
+      "app": "ai2apps.knowledge",
+      "version": "1"
+    },
+    {
+      "capability": "knowledge.get",
+      "app": "ai2apps.knowledge",
+      "version": "1"
+    },
+    {
+      "capability": "knowledge.add_text",
+      "app": "ai2apps.knowledge",
+      "version": "1"
+    },
+    {
+      "capability": "voice.quick_read",
+      "app": "ai2apps.readaloud",
+      "version": "1"
+    },
+    {
+      "capability": "voice.transcribe",
+      "app": "ai2apps.readaloud",
+      "version": "1"
+    },
+    {
+      "capability": "video.process",
+      "app": "ai2apps.video-studio",
+      "version": "1"
+    },
+    {
+      "capability": "video.upscale",
+      "app": "ai2apps.video-studio",
+      "version": "1"
+    },
+    {
+      "capability": "web.search",
+      "app": "ai2apps.ai-browser",
+      "version": "0.1.2"
+    },
+    {
+      "capability": "web.fetch",
+      "app": "ai2apps.ai-browser",
+      "version": "0.1.2"
+    },
+    {
+      "capability": "share.destinations",
+      "app": "ai2apps.ai-browser",
+      "version": "0.1.2"
+    },
+    {
+      "capability": "share.prepare",
+      "app": "ai2apps.ai-browser",
+      "version": "0.1.2"
+    },
+    {
+      "capability": "share.publish",
+      "app": "ai2apps.ai-browser",
+      "version": "0.1.2"
+    },
+    {
+      "capability": "share.history",
+      "app": "ai2apps.ai-browser",
+      "version": "0.1.2"
+    },
+    {
+      "capability": "share.verify",
+      "app": "ai2apps.ai-browser",
+      "version": "0.1.2"
+    },
+    {
+      "capability": "share.cancel",
+      "app": "ai2apps.ai-browser",
+      "version": "0.1.2"
+    },
+    {
+      "capability": "share.social_prepare",
+      "app": "ai2apps.ai-browser",
+      "version": "0.1.2"
+    },
+    {
+      "capability": "share.x_publish",
+      "app": "ai2apps.ai-browser",
+      "version": "0.1.2"
+    },
+    {
+      "capability": "share.social_status",
+      "app": "ai2apps.ai-browser",
+      "version": "0.1.2"
+    },
+    {
+      "capability": "web.read_pdf",
+      "app": "ai2apps.ai-browser",
+      "version": "1"
+    },
+    {
+      "capability": "browser.complete_goal",
+      "app": "ai2apps.ai-browser",
+      "version": "1"
+    },
+    {
+      "capability": "social.account",
+      "app": "ai2apps.ai-browser",
+      "version": "1"
+    },
+    {
+      "capability": "video.generate",
+      "app": "ai2apps.video-studio",
+      "version": "1"
+    },
+    {
+      "capability": "voice.render_project",
+      "app": "ai2apps.readaloud",
+      "version": "1"
+    },
+    {
+      "capability": "voice.render_project",
+      "app": "ai2apps.readaloud",
+      "version": "1"
+    },
+    {
+      "capability": "studio.ui",
+      "app": "ai2apps.imagine-studio",
+      "version": "1"
+    },
+    {
+      "capability": "studio.ui",
+      "app": "ai2apps.video-studio",
+      "version": "1"
+    },
+    {
+      "capability": "studio.ui",
+      "app": "ai2apps.readaloud",
+      "version": "1"
+    },
+    {
+      "capability": "studio.ui",
+      "app": "ai2apps.ai-browser",
+      "version": "1"
+    },
+    {
+      "capability": "studio.ui",
+      "app": "ai2apps.doc-studio",
+      "version": "1"
+    },
+    {
+      "capability": "doc_studio.list_projects",
+      "app": "ai2apps.doc-studio",
+      "version": "1"
+    },
+    {
+      "capability": "doc_studio.generate",
+      "app": "ai2apps.doc-studio",
+      "version": "1"
+    },
+    {
+      "capability": "doc_studio.export",
+      "app": "ai2apps.doc-studio",
+      "version": "1"
+    },
+    {
+      "capability": "doc_studio.translate",
+      "app": "ai2apps.doc-studio",
+      "version": "1"
+    },
+    {
+      "capability": "doc_studio.translation_status",
+      "app": "ai2apps.doc-studio",
+      "version": "1"
+    },
+    {
+      "capability": "process.start",
+      "app": "ai2apps.harness",
+      "version": "2"
+    },
+    {
+      "capability": "process.status",
+      "app": "ai2apps.harness",
+      "version": "2"
+    },
+    {
+      "capability": "process.wait",
+      "app": "ai2apps.harness",
+      "version": "2"
+    },
+    {
+      "capability": "process.logs",
+      "app": "ai2apps.harness",
+      "version": "1"
+    },
+    {
+      "capability": "process.cancel",
+      "app": "ai2apps.harness",
+      "version": "1"
+    },
+    {
+      "capability": "workspace.list",
+      "app": "ai2apps.harness",
+      "version": "1"
+    },
+    {
+      "capability": "workspace.stat",
+      "app": "ai2apps.harness",
+      "version": "1"
+    },
+    {
+      "capability": "workspace.read",
+      "app": "ai2apps.harness",
+      "version": "1"
+    },
+    {
+      "capability": "workspace.search",
+      "app": "ai2apps.harness",
+      "version": "1"
+    },
+    {
+      "capability": "workspace.glob",
+      "app": "ai2apps.harness",
+      "version": "1"
+    },
+    {
+      "capability": "workspace.write",
+      "app": "ai2apps.harness",
+      "version": "1"
+    },
+    {
+      "capability": "workspace.apply_patch",
+      "app": "ai2apps.harness",
+      "version": "1"
+    },
+    {
+      "capability": "resource.read",
+      "app": "ai2apps.harness",
+      "version": "1"
+    },
+    {
+      "capability": "artifact.create",
+      "app": "ai2apps.harness",
+      "version": "1"
+    },
+    {
+      "capability": "artifact.list",
+      "app": "ai2apps.harness",
+      "version": "1"
+    },
+    {
+      "capability": "artifact.preview",
+      "app": "ai2apps.harness",
+      "version": "1"
+    },
+    {
+      "capability": "artifact.export",
+      "app": "ai2apps.harness",
+      "version": "1"
+    },
+    {
+      "capability": "attachment.list",
+      "app": "ai2apps.harness",
+      "version": "1"
+    },
+    {
+      "capability": "attachment.status",
+      "app": "ai2apps.harness",
+      "version": "1"
+    },
+    {
+      "capability": "document.info",
+      "app": "ai2apps.harness",
+      "version": "1"
+    },
+    {
+      "capability": "document.read",
+      "app": "ai2apps.harness",
+      "version": "1"
+    },
+    {
+      "capability": "document.search",
+      "app": "ai2apps.harness",
+      "version": "1"
+    },
+    {
+      "capability": "host.directory.list",
+      "app": "ai2apps.harness",
+      "version": "1"
+    },
+    {
+      "capability": "host.directory.import",
+      "app": "ai2apps.harness",
+      "version": "1"
+    },
+    {
+      "capability": "host.directory.inspect",
+      "app": "ai2apps.harness",
+      "version": "1"
+    },
+    {
+      "capability": "host.directory.mkdir",
+      "app": "ai2apps.harness",
+      "version": "1"
+    },
+    {
+      "capability": "host.directory.export",
+      "app": "ai2apps.harness",
+      "version": "1"
+    },
+    {
+      "capability": "host.directory.copy",
+      "app": "ai2apps.harness",
+      "version": "1"
+    },
+    {
+      "capability": "host.directory.move",
+      "app": "ai2apps.harness",
+      "version": "1"
+    },
+    {
+      "capability": "host.directory.reveal",
+      "app": "ai2apps.harness",
+      "version": "1"
+    },
+    {
+      "capability": "artifact.materialize",
+      "app": "ai2apps.harness",
+      "version": "1"
+    },
+    {
+      "capability": "artifact.pack",
+      "app": "ai2apps.harness",
+      "version": "1"
+    },
+    {
+      "capability": "artifact.unpack",
+      "app": "ai2apps.harness",
+      "version": "1"
+    },
+    {
+      "capability": "document.import_artifact",
+      "app": "ai2apps.harness",
+      "version": "1"
+    },
+    {
+      "capability": "todo.inbox.create",
+      "app": "ai2apps.todo",
+      "version": "1"
+    },
+    {
+      "capability": "messager.notice.create",
+      "app": "ai2apps.messager",
+      "version": "1"
+    },
+    {
+      "capability": "messager.task.propose",
+      "app": "ai2apps.messager",
+      "version": "5"
+    },
+    {
+      "capability": "messager.bot.configure",
+      "app": "ai2apps.messager",
+      "version": "1"
+    },
+    {
+      "capability": "messager.bot.directory",
+      "app": "ai2apps.messager",
+      "version": "3"
+    },
+    {
+      "capability": "messager.bot.consult",
+      "app": "ai2apps.messager",
+      "version": "2"
+    },
+    {
+      "capability": "messager.bot.delegate",
+      "app": "ai2apps.messager",
+      "version": "4"
+    },
+    {
+      "capability": "messager.collaboration.propose",
+      "app": "ai2apps.messager",
+      "version": "2"
+    },
+    {
+      "capability": "messager.collaboration.details",
+      "app": "ai2apps.messager",
+      "version": "1"
+    },
+    {
+      "capability": "messager.memory.return",
+      "app": "ai2apps.messager",
+      "version": "2"
+    },
+    {
+      "capability": "messager.history.search",
+      "app": "ai2apps.messager",
+      "version": "1"
+    },
+    {
+      "capability": "messager.history.get",
+      "app": "ai2apps.messager",
+      "version": "1"
+    },
+    {
+      "capability": "messager.history.attach",
+      "app": "ai2apps.messager",
+      "version": "1"
+    }
+  ],
+  "schema": "ai2apps.harness-audit/v1",
+  "date": "2026-11-18",
+  "upstream_commit": "ca33fd6843b205e279c7ccb6cb73a472c78f5760",
+  "scope": "isolated core runtime; no installed Package/MCP configuration"
+}

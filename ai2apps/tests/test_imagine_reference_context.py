@@ -16,11 +16,16 @@ from test_aaat_execution_flow import new_run,response
 
 def test_all_image_providers_publish_owner_reference_semantics(runtime):
     from ai2apps.agents.parameter_forms import FORMS
+    checked=[]
     for provider in runtime.app_capability_router.providers.values():
-        if provider.app_id not in {'ai2apps.images','ai2apps.imagine-studio'}:continue
+        # Sticker lookup/generation shares the Studio owner but returns a
+        # materials list; the single-image artifact contract belongs to image.*.
+        if provider.app_id not in {'ai2apps.images','ai2apps.imagine-studio'} or not provider.capability.startswith('image.'):continue
+        checked.append(provider.id)
         assert provider.agent_context['schema']=='ai2apps.aaat-declaration/v1'
         assert provider.agent_context==FORMS[provider.id].agent_context
         assert provider.agent_context['result_semantics']['artifact']
+    assert checked
 
 
 @pytest.mark.asyncio

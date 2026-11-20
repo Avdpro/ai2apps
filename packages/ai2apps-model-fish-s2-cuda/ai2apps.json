@@ -1,0 +1,82 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/model-fish-s2-cuda",
+    "type": "service",
+    "version": "0.1.0",
+    "displayName": "Fish Audio S2 Pro CUDA",
+    "description": "CUDA Fish S2 Pro reference cloning, expressive speech and up to five speakers. Built with Fish Audio."
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": [
+      "linux"
+    ],
+    "architectures": [
+      "arm64"
+    ]
+  },
+  "entrypoints": [
+    {
+      "name": "model-worker",
+      "kind": "service",
+      "path": "service.yaml"
+    }
+  ],
+  "permissions": [
+    {
+      "capability": "model-weights.huggingface-cache.read",
+      "reason": "Use fixed Host-selected Fish S2 Pro checkpoints for CUDA speech synthesis.",
+      "required": true
+    },
+    {
+      "capability": "accelerator.cuda",
+      "reason": "Use fixed Host-selected Fish S2 Pro checkpoints for CUDA speech synthesis.",
+      "required": true
+    }
+  ],
+  "dependencies": [
+    {
+      "packageId": "ai2apps/runtime-cuda-torch",
+      "version": ">=0.6.0 <1.0.0",
+      "optional": false
+    }
+  ],
+  "files": [],
+  "sbom": {
+    "format": "spdx-json-2.3",
+    "path": "META/sbom.spdx.json"
+  },
+  "modelInstall": {
+    "serviceKey": "ai2apps.model.fish-s2-cuda",
+    "models": [
+      {
+        "id": "ai2apps.model.fish-s2-cuda/bf16",
+        "label": "S2 Pro BF16",
+        "recommended": true
+      }
+    ]
+  },
+  "modelProfile": {
+    "sizeBytes": 11008083526,
+    "minimumMemoryBytes": 34359738368,
+    "scores": {
+      "speed": 4,
+      "capability": 4
+    },
+    "benchmark": {
+      "label": "Provisional scores and conservative memory estimate; fixed CUDA inference evidence retained",
+      "device": "NVIDIA DGX Spark GB10"
+    }
+  },
+  "discovery": {
+    "kind": "model",
+    "categories": [
+      "speech"
+    ],
+    "tasks": [
+      "text-to-speech",
+      "voice-cloning"
+    ]
+  }
+}

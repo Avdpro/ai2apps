@@ -1,0 +1,45 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "ai2apps-model-avtr1-cuda-0.1.0",
+  "documentNamespace": "https://ai2apps.com/spdx/ai2apps-model-avtr1-cuda/0.1.0",
+  "creationInfo": {
+    "creators": [
+      "Organization: AI2Apps"
+    ],
+    "created": "2026-10-01T00:00:00Z"
+  },
+  "packages": [
+    {
+      "name": "ai2apps-model-avtr1-mlx",
+      "SPDXID": "SPDXRef-Component0",
+      "versionInfo": "0.1.0",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "name": "AVTR-1",
+      "SPDXID": "SPDXRef-Component1",
+      "versionInfo": "eb1e5a89ed7bec3debe712b090efd676b3a420bd",
+      "downloadLocation": "https://github.com/avaturn-live/avtr-1",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "name": "MLX LivePortrait helpers",
+      "SPDXID": "SPDXRef-Component2",
+      "versionInfo": "source-checkout",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "copyrightText": "NOASSERTION"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "family": "vggt",
+  "repositoryName": "VGGT-Omega-1B-512-MLX",
+  "source": "https://huggingface.co/facebook/VGGT-Omega",
+  "sourceCodeRevision": "48b23c8ce72c9a8fcf987f0d7f43d8e4870759f6",
+  "weightFile": "vggt.safetensors",
+  "size": 4576404204,
+  "sha256": "97185812d97772a3c24d44a326c0c378ed622c474dd5256cf19334150b0b148e",
+  "licenseId": "LicenseRef-FAIR-Noncommercial-Research",
+  "licenseSha256": "27696e51930daf5d24222e2d9d65339f529153e853de0e2eb457133a1a6f5239",
+  "precision": "float32",
+  "singleImageOnly": true
+}

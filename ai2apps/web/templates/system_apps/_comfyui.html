@@ -1,0 +1,283 @@
+<link rel="stylesheet" href="{{ static('css/studio_comfyui.css') }}?v=canvas-benchmark-5">
+<script src="{{ static('js/studio_comfyui.js') }}?v=canvas-benchmark-5"></script>
+<section class="vs-create comfy-form"
+         x-data="AI2AppsComfyUI(() => historyHeaders(), () => refreshRuns(), () => models,
+             (size, model) => comfySizeError(size, model))"
+         x-effect="if (currentMiniApp.id === 'ai2apps.comfyui') $nextTick(() => open())"
+         x-show="currentMiniApp.id === 'ai2apps.comfyui'" x-cloak aria-label="ComfyUI">
+    <p x-text="label('Import a ComfyUI Canvas or API workflow to inspect and map it.', '导入 ComfyUI 画布或 API 工作流，检查接线与映射。')"></p>
+    <details>
+        <summary x-text="label('App Dev benchmark', 'App Dev 基准测试')"></summary>
+        <button type="button" class="vs-button" :disabled="busy" @click="benchmark()"
+                x-text="label('Run public cases with Standard tasks and Codex', '用 Standard tasks 和 Codex 重跑公开案例')"></button>
+    </details>
+    <label><span x-text="label('Preset', '预设')"></span>
+        <select :value="selected" @change="select($event.target.value)" :disabled="busy || !presets.length">
+            <option value="" x-text="label('Choose a preset', '选择预设')"></option>
+            <template x-for="item in presets" :key="item.id">
+                <option :value="item.id" x-text="item.name" :selected="selected === item.id"></option>
+            </template>
+        </select>
+    </label>
+    <label><span x-text="label('Import workflow JSON', '导入工作流 JSON')"></span>
+        <input type="file" accept=".json,application/json" :disabled="busy" @change="importFile($event)">
+    </label>
+    <label x-show="diagnostics.length"><span x-text="label('Diagnostic drafts', '诊断草稿')"></span>
+        <select :disabled="busy" @change="loadDiagnostic($event.target.value); $event.target.value = ''">
+            <option value="" x-text="label('Open a diagnostic draft', '打开诊断草稿')"></option>
+            <template x-for="item in diagnostics" :key="item.id">
+                <option :value="item.id" x-text="item.name"></option>
+            </template>
+        </select>
+    </label>
+    <template x-if="preset && mapping?.runnable === false">
+        <section class="comfy-form">
+            <label><span x-text="label('Draft name', '草稿名称')"></span>
+                <input type="text" maxlength="120" x-model.trim="preset.name" :disabled="busy">
+            </label>
+            <label x-show="mapping.outputs.length > 1">
+                <span x-text="label('Active output', '活动输出')"></span>
+                <select :value="preset.output" @change="changeOutput($event)" :disabled="busy">
+                    <template x-for="output in mapping.outputs" :key="output.id">
+                        <option :value="output.id" :selected="preset.output === output.id" x-text="output.label"></option>
+                    </template>
+                </select>
+            </label>
+            <div role="status">
+                <strong x-text="label('Execution blockers', '执行阻断项')"></strong>
+                <ul><template x-for="(blocker, index) in mapping.blockers" :key="index"><li x-text="blocker"></li></template></ul>
+            </div>
+            <button type="button" class="vs-button" :disabled="busy || !preset.name.trim()"
+                    @click="saveDiagnostic()" x-text="label('Save diagnostic draft', '保存诊断草稿')"></button>
+        </section>
+    </template>
+    <template x-if="mapping && preset">
+        <details>
+            <summary x-text="label('Active wiring and inputs', '活动接线和输入')"></summary>
+            <p x-text="label('Selected output: ', '所选输出：') + (mapping.outputs.find(item => item.id === mapping.output)?.label || '—')"></p>
+            <ul>
+                <template x-for="item in mapping.mediaInputs || []" :key="item.id"><li x-text="item.id + ' · ' + item.kind + (item.ports.length ? ' → ' + item.ports.join(', ') : '')"></li></template>
+                <template x-for="item in mapping.inactiveNodes || []" :key="'inactive-' + item.id">
+                    <li x-text="item.id + ' · ' + item.type + ' · ' + label('inactive or bypassed', '停用或绕过')"></li>
+                </template>
+                <template x-for="(wire, index) in mapping.links || []" :key="'wire-' + index">
+                    <li x-text="wire.from + ':' + wire.slot + ' → ' + wire.to + '.' + wire.port"></li>
+                </template>
+            </ul>
+        </details>
+    </template>
+    <template x-if="preset && mapping?.runnable !== false">
+        <form class="comfy-form" @submit.prevent="run()">
+            <fieldset :disabled="busy">
+                <legend x-text="preset.name"></legend>
+                <template x-if="editing">
+                    <div class="comfy-form">
+                        <label><span x-text="label('Preset name', '预设名称')"></span>
+                            <input type="text" maxlength="120" required x-model.trim="preset.name">
+                        </label>
+                        <label x-show="mapping.outputs.length > 1">
+                            <span x-text="label('Source output branch', '原工作流输出分支')"></span>
+                            <select :value="preset.output" @change="changeOutput($event)">
+                                <template x-for="output in mapping.outputs" :key="output.id">
+                                    <option :value="output.id" x-text="output.label" :selected="preset.output === output.id"></option>
+                                </template>
+                            </select>
+                        </label>
+                    </div>
+                </template>
+                <label><span x-text="label('Execution model', '执行模型')"></span>
+                    <select :value="preset.model" @change="chooseModel($event.target.value)" required>
+                        <option value="" x-text="label('Choose a model', '选择模型')"></option>
+                        <template x-for="item in executionModels" :key="item.id">
+                            <option :value="item.id" :selected="preset.model === item.id"
+                                    x-text="item.label + ' · ' + (item.source === 'local' ? label('Local', '本地') : 'API')"></option>
+                        </template>
+                    </select>
+                </label>
+                <p x-show="preset.model && !model" role="status"
+                   x-text="label('This preset’s model is unavailable. Choose another model and save the preset.', '此预设的模型当前不可用。请选择其他模型并保存预设。')"></p>
+                <template x-if="editing">
+                    <div class="comfy-form">
+                        <details>
+                            <summary x-text="label('Manual form arrangement', '手动编排表单')"></summary>
+                            <div class="comfy-form">
+                                <label class="comfy-inline"><input type="checkbox" x-model="preset.layout.size_first">
+                                    <span x-text="label('Show size before prompt', '把尺寸放在提示词前面')"></span>
+                                </label>
+                                <label><span x-text="label('Prompt field label', '提示词字段名称')"></span>
+                                    <input type="text" maxlength="120" x-model.trim="preset.prompt_label">
+                                </label>
+                                <label><span x-text="label('Prompt field help', '提示词填写说明')"></span>
+                                    <input type="text" maxlength="500" x-model.trim="preset.layout.prompt_help">
+                                </label>
+                                <label><span x-text="label('Size field label', '尺寸字段名称')"></span>
+                                    <input type="text" maxlength="120" x-model.trim="preset.size_label">
+                                </label>
+                                <label><span x-text="label('Size field help', '尺寸填写说明')"></span>
+                                    <input type="text" maxlength="500" x-model.trim="preset.layout.size_help">
+                                </label>
+                                <template x-for="(choice, index) in preset.layout.size_choices" :key="index">
+                                    <div class="comfy-inline">
+                                        <label><span x-text="label('Choice label', '选项名称')"></span>
+                                            <input type="text" maxlength="80" x-model.trim="choice.label">
+                                        </label>
+                                        <label><span x-text="label('Dimensions', '宽高')"></span>
+                                            <input type="text" placeholder="1024x1024" maxlength="11" x-model.trim="choice.size">
+                                        </label>
+                                        <button type="button" class="vs-button" @click="preset.layout.size_choices.splice(index, 1)"
+                                                x-text="label('Remove', '移除')"></button>
+                                    </div>
+                                </template>
+                                <button type="button" class="vs-button" :disabled="preset.layout.size_choices.length >= 8"
+                                        @click="preset.layout.size_choices.push({label: '', size: preset.size})"
+                                        x-text="label('Add a named size', '添加尺寸选项')"></button>
+                            </div>
+                        </details>
+                        <details>
+                            <summary x-text="label('AI-assisted arrangement', 'AI 辅助编排')"></summary>
+                            <div class="comfy-form">
+                                <label><span x-text="label('Arrangement assistant', '编排助手')"></span>
+                                    <select x-model="assistant">
+                                        <option value="system" x-text="label('System AI', '系统 AI')"></option>
+                                        <option value="codex" x-show="codexAvailable" :disabled="!codexAvailable">Codex</option>
+                                    </select>
+                                </label>
+                                <label><span x-text="label('What should change?', '你想怎么改？')"></span>
+                                    <textarea rows="3" maxlength="4000" x-model="instruction"></textarea>
+                                </label>
+                                <button type="button" class="vs-button" :disabled="!instruction.trim() || !model || !preset.prompt.trim()"
+                                        @click="propose()" x-text="label('Propose changes', '生成编排建议')"></button>
+                                <template x-if="proposal">
+                                    <div class="comfy-form">
+                                        <template x-for="comparison in [proposal.diff]">
+                                            {% include "system_apps/_comfyui_diff.html" %}
+                                        </template>
+                                        <p x-show="proposal.invalidSizes.length" role="alert"
+                                           x-text="label('Unsupported proposed sizes: ', '建议中包含不支持的尺寸：') + proposal.invalidSizes.join(', ')"></p>
+                                        <ul x-show="proposal.unmapped.length">
+                                            <template x-for="(item, index) in proposal.unmapped" :key="index">
+                                                <li x-text="label('Unmapped request: ', '无法映射的要求：') + item"></li>
+                                            </template>
+                                        </ul>
+                                        <div class="comfy-inline">
+                                            <button type="button" class="vs-button"
+                                                    :disabled="proposal.invalidSizes.length || proposal.key !== JSON.stringify(preset)"
+                                                    @click="applyProposal()" x-text="label('Apply to draft', '应用到草稿')"></button>
+                                            <button type="button" class="vs-button" @click="proposal = null"
+                                                    x-text="label('Discard proposal', '舍弃建议')"></button>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </details>
+                        <details x-show="versions.length">
+                            <summary x-text="label('Version history', '版本历史')"></summary>
+                            <ul>
+                                <template x-for="item in versions" :key="item.version">
+                                    <li class="comfy-inline">
+                                        <span x-text="'v' + item.version + ' · ' + item.name"></span>
+                                        <small x-show="item.saved_at" x-text="item.saved_at ? new Date(item.saved_at).toLocaleString() : ''"></small>
+                                        <span x-show="item.version === baseVersion" x-text="label('Current', '当前版本')"></span>
+                                        <button type="button" class="vs-button" x-show="item.version !== baseVersion"
+                                                @click="restoreVersion(item.version)" x-text="label('Restore to draft', '恢复为草稿')"></button>
+                                    </li>
+                                </template>
+                            </ul>
+                        </details>
+                    </div>
+                </template>
+                <template x-for="field in fields" :key="field">
+                    <div class="comfy-field">
+                        <template x-if="field === 'prompt'">
+                            <label><span x-text="preset.prompt_label || label('Positive prompt', '正向提示词')"></span>
+                                <small x-show="preset.layout.prompt_help" x-text="preset.layout.prompt_help"></small>
+                                <textarea rows="4" maxlength="32000" required x-model="preset.prompt"></textarea>
+                            </label>
+                        </template>
+                        <template x-if="field === 'size'">
+                            <label><span x-text="preset.size_label || label('Image size', '图片尺寸')"></span>
+                                <small x-show="preset.layout.size_help" x-text="preset.layout.size_help"></small>
+                                <template x-if="preset.layout.size_choices.length">
+                                    <select required :value="preset.size" @change="preset.size = $event.target.value">
+                                        <option value="" x-text="label('Choose a size', '选择尺寸')"></option>
+                                        <template x-for="(choice, index) in preset.layout.size_choices" :key="index">
+                                            <option :value="choice.size" :selected="preset.size === choice.size"
+                                                    x-text="choice.label + ' · ' + choice.size"></option>
+                                        </template>
+                                    </select>
+                                </template>
+                                <template x-if="!preset.layout.size_choices.length">
+                                    <input type="text" required pattern="[1-9][0-9]{0,4}x[1-9][0-9]{0,4}"
+                                           placeholder="1024x1024" x-model.trim="preset.size">
+                                </template>
+                            </label>
+                        </template>
+                        <div class="comfy-inline" x-show="field === 'size' && model && !preset.layout.size_choices.length">
+                            <template x-for="size in model?.sizeCapability?.presets || []" :key="size">
+                                <button type="button" class="vs-button" @click="preset.size = size" x-text="size"></button>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+                <p x-show="sizeError || layoutError" role="status" x-text="layoutError || sizeError"></p>
+                <details :open="editing">
+                    <summary x-text="label('Workflow mapping', '工作流映射')"></summary>
+                    <p x-text="label('The positive prompt and image size are mapped. The selected AI2Apps model generates one image using its own inference settings.', '已映射正向提示词和图片尺寸。所选 AI2Apps 模型使用自己的推理设置生成一张图。')"></p>
+                    <p x-show="mapping.omitted.length || mapping.unusedNodes.length"
+                       x-text="label('The following parameters and nodes are not used:', '以下参数和节点不会用于生成：')"></p>
+                    <ul>
+                        <template x-for="item in mapping.omitted" :key="item.node + '.' + item.parameter">
+                            <li x-text="item.type + ' · ' + item.node + '.' + item.parameter
+                                + (item.role === 'negative-prompt' ? ' (' + label('negative prompt', '负向提示词') + ')' : '')
+                                + ' = ' + item.value"></li>
+                        </template>
+                        <template x-for="node in mapping.unusedNodes" :key="'unused-' + node.id">
+                            <li x-text="node.type + ' · ' + node.id + ' · ' + label('outside the selected branch', '不在选中的分支内')"></li>
+                        </template>
+                    </ul>
+                </details>
+                <label class="comfy-inline" x-show="editing || !preset.accepted_mapping">
+                    <input type="checkbox" x-model="preset.accepted_mapping">
+                    <span x-text="label('I accept the mapping and the selected model’s inference settings.', '我接受此映射及所选模型的推理设置。')"></span>
+                </label>
+                <ul x-show="assistantWarnings.length">
+                    <template x-for="(item, index) in assistantWarnings" :key="index">
+                        <li x-text="label('Unmapped request: ', '无法映射的要求：') + item"></li>
+                    </template>
+                </ul>
+                <template x-if="editing && previewReady">
+                    <div>
+                        <h3 x-text="label('Preview draft changes', '预览草稿改动')"></h3>
+                        <template x-for="comparison in [preview.diff]">
+                            {% include "system_apps/_comfyui_diff.html" %}
+                        </template>
+                    </div>
+                </template>
+                <p x-show="editing && testRunning" role="status"
+                   x-text="label('Test is running. Check shared Output for the result.', '试跑进行中，可在共享输出查看结果。')"></p>
+                <p x-show="editing && testReady" role="status"
+                   x-text="label('Test succeeded. Review the image in Output before saving.', '试跑成功，请在共享输出确认图片后保存。')"></p>
+                <p x-show="editing && test && !testRunning && test.status !== 'succeeded'" role="alert"
+                   x-text="test?.error || label('Test did not succeed.', '试跑未成功。')"></p>
+                <div class="comfy-inline">
+                    <button type="button" class="vs-button" x-show="editing" :disabled="!ready" @click="review()"
+                            x-text="label('Preview changes', '预览改动')"></button>
+                    <button type="submit" class="vs-button" :disabled="!ready || (editing && (!previewReady || testRunning))"
+                            x-text="editing ? label('Test run', '试跑') : label('Run', '运行')"></button>
+                    <button type="button" class="vs-button" x-show="editing && testRunning"
+                            @click="perform(() => checkTest())" x-text="label('Check test status', '检查试跑状态')"></button>
+                    <button type="button" class="vs-button" x-show="editing" :disabled="!previewReady || !testReady"
+                            @click="save()" x-text="label('Save new version', '保存新版本')"></button>
+                    <button type="button" class="vs-button" x-show="editing" @click="discardEdits()"
+                            x-text="label('Discard draft', '舍弃草稿')"></button>
+                    <button type="button" class="vs-button" x-show="!editing" @click="beginEdit()"
+                            x-text="label('Edit preset', '编辑预设')"></button>
+                </div>
+            </fieldset>
+        </form>
+    </template>
+    <p x-show="busy" role="status" x-text="label('Working…', '正在处理…')"></p>
+    <p x-show="status" role="status" x-text="status"></p>
+    <p x-show="error" role="alert" x-text="error"></p>
+    <button x-show="!loaded && error" type="button" class="vs-button" @click="open()" x-text="label('Reload presets', '重新加载预设')"></button>
+</section>

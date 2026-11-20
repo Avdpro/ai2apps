@@ -2,7 +2,7 @@ schema: ai2apps.service/v1
 id: ai2apps.model.qwen3-asr-0.6b-cuda
 name: Qwen3 ASR 0.6B CUDA
 description: Isolated CUDA Transformers Worker for multilingual speech recognition.
-version: 0.1.3
+version: 0.1.4
 
 publisher: {id: ai2apps}
 
@@ -44,7 +44,7 @@ capabilities: []
 requires:
   services:
     - id: ai2apps.runtime.cuda-torch
-      version: ">=0.2.0,<1.0.0"
+      version: ">=0.4.0,<1.0.0"
       optional: false
       capabilities: [cuda, torch, transformers, model-worker-v1, audio-stt]
   python: ">=3.12,<3.13"

@@ -1,0 +1,36 @@
+{
+  "schema": "ai2apps.checkpoint-build/v1",
+  "distributionId": "dist_ai2apps_musetalk_bisenet_768606b8_v1",
+  "modelId": "ai2apps.model.musetalk-cuda/parser",
+  "repoId": "vivym/face-parsing-bisenet",
+  "revision": "768606b84908769d31ddd78b2e1105319839edfa",
+  "format": "pytorch",
+  "quantization": "fp32",
+  "pieceSize": 8388608,
+  "license": {
+    "id": "MIT",
+    "name": "MIT License",
+    "termsUrl": "https://raw.githubusercontent.com/zllrunning/face-parsing.PyTorch/d2e684cf1588b46145635e8fe7bcc29544e5537e/LICENSE",
+    "termsHash": "sha256:28bce57c2f234bdaa1619d066248ebe182904902bd09897dc95adf8c951ea826",
+    "usagePolicy": "license_terms",
+    "accessPolicy": "public",
+    "redistributionPolicy": "allowed"
+  },
+  "includePatterns": [
+    "79999_iter.pth"
+  ],
+  "sourceRepositories": [
+    {
+      "type": "huggingface",
+      "repoId": "vivym/face-parsing-bisenet",
+      "revision": "768606b84908769d31ddd78b2e1105319839edfa",
+      "access": "public_anonymous"
+    },
+    {
+      "type": "modelscope",
+      "repoId": "aile1997/face-parse-bisenet",
+      "revision": "23c99e91cf4e858bfbde2c60b09f90be1bc102c4",
+      "access": "public_anonymous"
+    }
+  ]
+}

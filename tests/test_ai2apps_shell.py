@@ -30,6 +30,7 @@ MEMBER_PRINCIPAL = RequestPrincipal(
 
 def test_system_app_catalog_covers_legacy_omlx_surfaces():
     assert {app["id"] for app in admin_routes.SYSTEM_APPS} == {
+        "ai2apps.doc-studio",
         "ai2apps.dashboard",
         "ai2apps.account",
         "ai2apps.sharing",
@@ -40,6 +41,8 @@ def test_system_app_catalog_covers_legacy_omlx_surfaces():
         "ai2apps.general-chat",
         "ai2apps.ai-browser",
         "ai2apps.messager",
+        "ai2apps.comapps",
+        "ai2apps.mail",
         "ai2apps.gallery",
         "ai2apps.knowledge",
         "ai2apps.readaloud",
@@ -1044,10 +1047,13 @@ def test_member_shell_exposes_only_member_apps_and_no_system_control():
 
     context = templates.TemplateResponse.call_args.args[2]
     assert {app["id"] for app in context["system_apps"]} == {
+        "ai2apps.doc-studio",
         "ai2apps.account",
         "ai2apps.general-chat",
         "ai2apps.ai-browser",
         "ai2apps.messager",
+        "ai2apps.comapps",
+        "ai2apps.mail",
         "ai2apps.gallery",
         "ai2apps.knowledge",
         "ai2apps.readaloud",

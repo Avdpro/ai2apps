@@ -27,6 +27,7 @@ def setup(runtime,tmp_path,monkeypatch):
     caps={owner.DUB,owner.REPLACE,owner.voice_aaat.REPLACE,owner.voice_aaat.TRANSCRIBE,owner.voice_aaat.DIARIZE,'audio.voice_conversion','audio.source_separation','audio.speech_generation','audio.voice_clone','llm.text','media.audio.extract','media.video.audio_mux'}
     monkeypatch.setattr(runtime.extension_manager,'_studio_mini_app_definition',lambda app,mini,principal:({'package_id':'fixture.suite'},{'id':mini,'version':'1','requirements':{'capabilities':sorted(caps)}}))
     monkeypatch.setattr(owner.voice_aaat,'readiness',lambda _:({'dialogue_background'},{'timbre_fast'},True))
+    monkeypatch.setattr('ai2apps.task_llm.resolve_task_model',lambda *a,**kw:'fixture.task-model')
     monkeypatch.setattr(owner,'catalog',lambda *a:([{'id':'character','name':'Owned','ready':True}],[{'id':'clone','name':'Declared','ready':True}],True))
     monkeypatch.setattr(StudioCapabilityBroker,'_character_profile_and_model',lambda self,id,**kw: ({},None) if id=='character' else (_ for _ in ()).throw(ValueError('Not owned')))
     # Real host launch creates the scope needed by submit_package; provider can use that host.
@@ -95,7 +96,7 @@ async def test_preflight_consent_model_scope_and_missing_configuration(runtime,t
     assert voice['options'][-1]['label']['zh']=='临时克隆原声'
     monkeypatch.setattr(owner,'catalog',lambda *a:([],[],False))
     d=await owner.descriptor(runtime,RequestPrincipal.legacy_local())
-    assert d['configuration_required'] and d['install']['appId']==owner.APP
+    assert d['configuration_required'] and d['install'] is None
     assert d['effective_schema']['properties']['video_id']['x-ai2apps-asset']['references']
     with pytest.raises(Exception):await runtime.app_capability_router.invoke('video.dub',args,ctx)
     with runtime.database.transaction() as db:assert db.execute('SELECT COUNT(*) FROM studio_background_jobs').fetchone()[0]==0
@@ -165,11 +166,14 @@ async def test_missing_conversion_is_form_preflight_not_uncertain_execution(runt
     monkeypatch.setattr(owner.voice_aaat,'readiness',lambda _:({'dialogue_background'},set(),True))
     descriptor=await owner.descriptor(runtime,RequestPrincipal.legacy_local(),replacement=True)
     assert not descriptor['configuration_required']  # Analysis needs no converter.
-    assert descriptor['effective_schema']['properties']['action']['enum']==['analyze']
-    assert descriptor['install']['capability']==owner.REPLACE
+    assert descriptor['effective_schema']['properties']['action']['enum']==['analyze','replace']
+    assert descriptor['install']['capability']=='audio.detailed_transcription'
     assert len(descriptor['warnings'])==2
+    replacement=await owner.descriptor(runtime,RequestPrincipal.legacy_local(),model='replace',replacement=True)
+    assert replacement['configuration_required']
+    assert replacement['missing_requirements']==['voice_conversion']
     with pytest.raises(Exception) as error:
         await runtime.app_capability_router.invoke('video.replace_speaker',{'media_id':item.id,'action':'replace','analysis_id':'saved','target_speaker':'speaker_0','reference_id':'saved-reference','consent':True},ctx)
     assert error.value.details['phase']=='prepare'
-    assert error.value.code=='parameter_contract_mismatch'
+    assert error.value.code=='provider_error'
     with runtime.database.transaction() as db:assert db.execute('SELECT COUNT(*) FROM studio_background_jobs').fetchone()[0]==0

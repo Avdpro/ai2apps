@@ -24,7 +24,7 @@ def test_scope_boundaries_and_empty_evidence():
 
 @pytest.mark.asyncio
 async def test_writing_checks_citations_and_reuses_current_manuscript(monkeypatch):
-    async def model(*args):
+    async def model(*args, **kwargs):
         data,validate=args[-2:]
         assert data['user_guidance']=='修改开头' and data['current_manuscript']['content']=='原稿 [1]'
         for content,ids in [('no citations',[1]),('bad [2]',[1]),('bad [2]',[2]),('ok [1]',[1,1])]:

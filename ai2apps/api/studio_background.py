@@ -21,14 +21,16 @@ class LocalImageInput(BaseModel):
     size: str = Field(default='1024x1024', max_length=40)
     quality: str = Field(default='standard', max_length=40)
     outputFormat: Literal['png', 'jpeg', 'jpg', 'webp'] = 'png'
+    background: Literal['auto', 'opaque', 'transparent'] | None = None
     n: Literal[1] = 1
     num_inference_steps: int | None = Field(default=None, ge=1, le=50)
     guidance: float | None = Field(default=None, ge=0, le=20)
     negative_prompt: str | None = Field(default=None, max_length=8192)
+    keep_dit_resident: bool | None = Field(default=None, strict=True)
 
 
 class LocalImageEditInput(LocalImageInput):
-    imageDataUrls: list[str] = Field(min_length=1, max_length=4)
+    imageDataUrls: list[str] = Field(min_length=1, max_length=16)
     strength: float | None = Field(default=None, ge=0, le=1)
     use_kv_cache: Literal[False] | None = None
 
@@ -39,8 +41,10 @@ class StickerBatchInput(LocalImageEditInput):
 
 
 def validate_image_references(payload):
-    from ai2apps.cloud_gateway import _decode_image_data_url
+    from ai2apps.images.cloud_gateway import _decode_image_data_url
     from ai2apps.api.imagine_studio import _matches_image_media_type
+    if len(payload.get('imageDataUrls',[]))>16:
+        raise HTTPException(422,'At most 16 reference images are supported')
     total = 0
     for value in payload.get('imageDataUrls', []):
         if len(value) > 12 * 1024 * 1024:
@@ -130,6 +134,10 @@ def create_studio_background_router(runtime_provider, principal_provider):
         cloud_batch = body.kind == 'sticker-batch' and payload['source'] != 'local'
         if not cloud_batch and (not model or model.model_type != expected or not model.checkpoint_ready):
             raise HTTPException(409, 'Selected model is not ready')
+        if payload.get('keep_dit_resident'):
+            execution = ((getattr(model, 'image_capabilities', None) or {}).get('execution') or {})
+            if cloud_batch or not execution.get('denoiser_idle_seconds'):
+                raise HTTPException(422, 'Selected local model does not support denoiser residency')
         if not cloud_batch and body.kind in ('local-image-edit', 'sticker-batch'):
             capabilities = getattr(model, 'image_capabilities', None) or {}
             if 'image_edit' not in capabilities.get('operations', getattr(model, 'capabilities', ())):

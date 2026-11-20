@@ -1,0 +1,27 @@
+/* Asset Slot v1: explicitly scoped, independent of Studio and Package styles. */
+[data-asset-slot="image"]{box-sizing:border-box;position:relative!important;display:grid!important;grid-template-columns:minmax(0,1fr)!important;grid-template-rows:minmax(0,1fr)!important;place-items:center!important;width:100%!important;height:220px!important;min-height:0!important;max-height:none!important;aspect-ratio:auto!important;padding:0!important;overflow:hidden!important;border:1px dashed #d6d3d1!important;border-radius:13px!important;background:#fafaf9!important;cursor:pointer;color:#57534e}
+[data-asset-slot="image"]:hover{border-color:#78716c!important}
+[data-asset-slot="image"]:focus-visible{outline:2px solid #8256ff;outline-offset:3px}
+[data-asset-slot="image"][aria-disabled="true"]{opacity:.6;cursor:default}
+[data-asset-slot="image"]>input[type="file"]{position:absolute!important;width:1px!important;height:1px!important;opacity:0!important;padding:0!important;pointer-events:none}
+[data-asset-slot="image"]>img{position:absolute!important;inset:0;display:block;min-width:0!important;min-height:0!important;width:100%!important;height:100%!important;max-width:none!important;max-height:none!important;border-radius:0!important;object-fit:contain!important;background:#f4f4f5!important}
+[data-asset-slot="image"]>span{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;margin:0!important;color:#78716c;font-size:12px;text-align:center}
+[data-asset-slot="image"]>span svg{width:22px;height:22px}
+[data-asset-slot="image"]>button{position:absolute!important;right:8px!important;top:8px!important;display:grid;place-items:center;width:30px!important;height:30px!important;padding:0!important;margin:0!important;border:0!important;border-radius:8px!important;background:#18181bd9!important;color:white!important;font:18px system-ui;cursor:pointer}
+[data-asset-slot="image"]>button svg{width:14px;height:14px}
+[data-asset-slot="image"].asset-slot-target{border:2px solid #8256ff!important;box-shadow:0 0 0 3px #8256ff25}
+[data-asset-slot="image"]>[hidden]{display:none!important}
+[data-asset-slot="video"],[data-asset-slot="audio"]{box-sizing:border-box;position:relative;display:grid;place-items:center;width:100%;height:220px;min-height:0;padding:0;overflow:hidden;border:1px dashed #d6d3d1;border-radius:13px;background:#fafaf9;color:#57534e;cursor:pointer}
+[data-asset-slot="video"]:hover,[data-asset-slot="audio"]:hover{border-color:#78716c}
+[data-asset-slot="video"]:focus-visible,[data-asset-slot="audio"]:focus-visible{outline:2px solid #8256ff;outline-offset:3px}
+[data-asset-slot="video"][aria-disabled="true"],[data-asset-slot="audio"][aria-disabled="true"]{opacity:.6;cursor:default}
+[data-asset-slot="video"]>input[type="file"],[data-asset-slot="audio"]>input[type="file"]{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+[data-asset-slot="video"]>video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#18181b;pointer-events:none}
+[data-asset-slot="video"]>[data-slot-empty],[data-asset-slot="audio"]>[data-slot-empty]{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;text-align:center;padding:14px;color:#78716c;font-size:12px}
+[data-asset-slot="video"]>[data-slot-empty] svg,[data-asset-slot="audio"]>[data-slot-empty] svg{width:24px;height:24px}
+[data-asset-slot] >[data-slot-filled]{position:absolute;left:8px;right:46px;bottom:8px;z-index:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-radius:6px;background:#18181bd9;color:#fff;padding:6px 8px;font-size:10px;pointer-events:none}
+[data-asset-slot="audio"]>[data-slot-filled]{left:12px;right:46px;bottom:auto;top:50%;transform:translateY(-50%);font-size:12px}
+[data-asset-slot="video"]>button,[data-asset-slot="audio"]>button{position:absolute;right:8px;top:8px;z-index:2;display:grid;place-items:center;width:30px;height:30px;padding:0;border:0;border-radius:8px;background:#18181bd9;color:#fff;cursor:pointer}
+[data-asset-slot="video"]>button svg,[data-asset-slot="audio"]>button svg{width:14px;height:14px}
+[data-asset-slot="video"].asset-slot-target,[data-asset-slot="audio"].asset-slot-target{border:2px solid #8256ff;box-shadow:0 0 0 3px #8256ff25}
+[data-asset-slot="video"]>[hidden],[data-asset-slot="audio"]>[hidden],[data-asset-slot="image"]>[data-slot-filled][hidden]{display:none!important}

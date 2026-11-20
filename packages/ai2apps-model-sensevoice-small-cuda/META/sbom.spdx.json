@@ -1,0 +1,36 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "ai2apps-model-sensevoice-small-cuda-0.1.0",
+  "documentNamespace": "https://ai2apps.com/spdx/ai2apps-model-sensevoice-small-cuda/0.1.0",
+  "packages": [
+    {
+      "name": "AI2Apps SenseVoice CUDA adapter",
+      "SPDXID": "SPDXRef-Adapter",
+      "versionInfo": "0.1.0",
+      "downloadLocation": "NOASSERTION",
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "name": "SenseVoiceSmall checkpoint (external)",
+      "SPDXID": "SPDXRef-SenseVoice",
+      "versionInfo": "3847d57b6bdf2dd8875cb1508d2af43d80a16bf7",
+      "downloadLocation": "https://huggingface.co/FunAudioLLM/SenseVoiceSmall",
+      "licenseDeclared": "LicenseRef-FunASR-Model-1.1",
+      "licenseConcluded": "NOASSERTION",
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "name": "FSMN VAD checkpoint (external)",
+      "SPDXID": "SPDXRef-FSMN",
+      "versionInfo": "df20e6b30c653645fa4ff125cacfcabd1020a669",
+      "downloadLocation": "https://huggingface.co/funasr/fsmn-vad",
+      "licenseDeclared": "Apache-2.0",
+      "licenseConcluded": "Apache-2.0",
+      "copyrightText": "NOASSERTION"
+    }
+  ]
+}

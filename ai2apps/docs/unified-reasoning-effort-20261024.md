@@ -27,3 +27,9 @@ DeepSeek V4 的 BYOK 目录声明原生 `thinking` 协议，`low` 发为 `thinki
 - AaAT 完整边界门禁 302 项通过，最终增量架构检查 27 项通过；检查策略没有改动。
 - 较大回归集另有 7 个不经过本次行为的失败：两个旧会话权限 fixture、三个模型页/翻译断言、一个 GPT Image 能力集合断言、一个旧 SSD distribution ID 断言。未借本次改动修改这些独立断言或业务路径。
 - App-Dev 和 Dev 均在空闲确认后通过各自标准 Helper 重启。最终 App-Dev PID 69258 / 54672，Dev PID 69255 / 54633；App/Helper 元数据源码根、运行中的搜索工作流导入路径及提供的共享静态资源均对应当前 checkout，健康检查 200。没有 App/Runtime/Package 构建或生产发布。
+
+## Messager Bot Profile
+
+桌面与 Mobile 共用 Bot 的对话模型与思考档位修订。默认「跟随模型」不发送 `reasoning_effort`；仅列出当前模型与调用渠道能发送的不同档位。切换模型时恢复默认。已接纳的对话和由它排入的 Task 保留原档位；已有定时计划仍用审阅过的模型，新一轮启动时只读取同一模型的 Bot 档位。
+
+显式开启思考时，对话判定留出推理 token 的空间。执行 Task 的工具循环只把当前 Run 内模型返回的推理字段送回同一个模型，不加入用户可见的消息或下一轮对话历史。部分渠道（例如 [DeepSeek 的工具调用协议](https://api-docs.deepseek.com/guides/thinking_mode/#tool-calls)）要求这一步才能继续执行。

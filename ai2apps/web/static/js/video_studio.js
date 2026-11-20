@@ -17,6 +17,7 @@
         Object.freeze({ id: 'ai2apps.video.composer', mode: 'composer', key: 'video_studio.mini_app.composer', icon: 'panels-top-left' }),
         Object.freeze({ id: 'ai2apps.video.extract-audio', mode: 'x2a', key: 'video_studio.mini_app.x2a', icon: 'audio-lines' }),
         Object.freeze({ id: 'ai2apps.video.upscaling', mode: 'upscale', key: 'video_studio.mini_app.upscale', icon: 'scan-search' }),
+        ...(!window.AI2APPS_MOBILE_SURFACE ? [{id: 'ai2apps.comfyui', mode: 'comfyui', icon: 'workflow', version: '0.1.0'}] : []),
     ]);
     const COMPOSER_CLIP_COLORS = Object.freeze(['#2563eb', '#7c3aed', '#db2777', '#ea580c', '#059669', '#0891b2', '#4f46e5', '#65a30d']);
     const COMPOSER_MIN_SPEED = .25;
@@ -54,6 +55,10 @@
     }
 
     function localizedMiniApp(miniApp) {
+        if (miniApp.mode === 'comfyui') return {
+            ...miniApp, name: 'ComfyUI',
+            summary: document.documentElement.lang.startsWith('zh') ? '图像工作流原型' : 'Image workflow prototype',
+        };
         if (miniApp.source === 'package') {
             const localized = window.AI2AppsStudioMiniApps?.localize(miniApp, document.documentElement.lang) || miniApp;
             return {
@@ -74,10 +79,10 @@
 
     function emptyMiniAppDraft(mode) {
         return {
-            mode, modelId: '', prompt: '', resolution: '512x512', duration: 5,
+            mode, modelId: '', prompt: '', resolution: '512x512', byokRatio: '16:9', duration: 5,
             preset: 'strict', steps: 20, seed: 42, label: '', batchText: '',
             firstFile: null, lastFile: null, firstPreview: '', lastPreview: '',
-            referenceImages: [], referenceVideos: [], referenceAudios: [], referenceOrder: [],
+            referenceImages: [], referenceVideos: [], referenceAudios: [], referenceOrder: [], referenceVideoUrl: '', seedanceTaskType: 'reference',
             extractAsset: null, extractOutputName: '',
         };
     }
@@ -109,13 +114,13 @@
         mobileViewport: !!window.AI2APPS_MOBILE_SURFACE || window.innerWidth <= 760,
         mobileActiveMiniAppId:'',
         get hasActiveMiniApp(){return !this.mobileViewport || !!this.mobileActiveMiniAppId;},
-        dismissed: [], pollTimer: null, mode: 't2v', prompt: '', resolution: '512x512', duration: 5,
+        dismissed: [], pollTimer: null, mode: 't2v', prompt: '', resolution: '512x512', byokRatio: '16:9', duration: 5,
         preset: 'strict', steps: 20, seed: 42, label: '', firstFile: null, lastFile: null,
-        firstPreview: '', lastPreview: '', referenceImages: [], referenceVideos: [], referenceAudios: [], referenceOrder: [],
+        firstPreview: '', lastPreview: '', referenceImages: [], referenceVideos: [], referenceAudios: [], referenceOrder: [], referenceVideoUrl: '', seedanceTaskType: 'reference',
         referencePreviews: {image: '', video: ''}, extractPreview: '', upscalingPreview: '',
         batchText: '', joinedVideoUrl: '', clientEnvironment: 'browser', leftView: 'mini-apps', leftCollapsed: false, rightCollapsed: false,
         miniAppDrafts: {}, resizeHandler: null, responsiveNarrow: false, responsiveMobile: false,
-        packageMiniApps: [], packageMiniAppId: '', packageMiniAppUrl: '', packageMiniAppMountId: '', packageMiniAppLoading: false, packageMiniAppError: '', packageMiniAppReadiness: {}, packageMiniAppSetupBusy: false,
+        packageMiniApps: [], packageMiniAppId: '', packageMiniAppUrl: '', packageMiniAppMountId: '', packageMiniAppRevision: '', packageMiniAppLoading: false, packageMiniAppError: '', packageMiniAppReadiness: {}, packageMiniAppSetupBusy: false,
         packageOutputUrl: '', packageOutputRunId: '', packageOutputMiniAppId: '', packageOutputResult: null, packageOutputItems: [], packageOutputHandler: null,
         galleryMiniUrl: '', galleryMiniMountId: '', galleryMiniLoading: false, galleryMiniError: '', galleryDragActive: false, gallerySlotTarget: '',
         chatController: null, chatMiniUrl: '', packageChatBridge: null,
@@ -123,14 +128,19 @@
         extractAsset: null, extractOutputName: '', extractImporting: false, extractSubmitting: false, localAudioSources: {}, addingAudioToGallery: false, audioGalleryAdded: false,
         composerProject: newComposerProject(), composerSources: [], composerDocumentPath: '', composerDocumentSaving: false, composerRuns: [], selectedComposerRunId: '', composerSelectedClipId: '', composerSelectedClipIds: [], composerSelectedKeyframeId: '', composerSelectedTrackId: '', composerTrackMenuOpen: false, composerTrackMenuStep: 'type', composerTrackInsertSide: 'after', composerItemMenuOpen: false, composerDropTrackId: '', composerScale: 42, composerPlayhead: 0, composerPlayheadSnapped: false, composerPlaying: false, composerRaf: 0, composerHistory: [], composerFuture: [], composerEditSnapshot: null, composerImporting: false, composerMaskImporting: false, composerPersonMaskBusy: false, composerMaskModels: [], composerFreezeBusy: false, composerClipOutputBusy: false, composerRendering: false, composerSaveTimer: 0, composerCropWheelTimer: 0, composerCropWheelEditing: false, composerChatText: '', composerChatLog: [], composerChatBusy: false, composerChatModels: [], composerChatModelId: '', composerKeyHandler: null, composerHoverTip: { text: '', left: 0, top: 0 }, addingComposerToGallery: false, composerGalleryAdded: false,
         tr,
-        get miniApps() { return [...MINI_APPS, ...this.packageMiniApps].map(localizedMiniApp); },
+        comfyPrototypeEnabled: false,
+        get miniApps() {
+            return [...MINI_APPS.filter(item => item.mode !== 'comfyui' || this.comfyPrototypeEnabled),
+                ...this.packageMiniApps].map(localizedMiniApp);
+        },
         get selectedProvider() { return this.providers.find(item => item.id === this.modelId) || null; },
+        get selectedByokProvider() { return this.selectedProvider?.sourceType === 'byok' ? this.selectedProvider : null; },
         get currentMiniApp() { if(this.mobileViewport)return this.miniApps.find(item=>item.id===this.mobileActiveMiniAppId)||{id:'',name:'',mode:'',status:'inactive'}; return this.packageMiniAppId ? (this.miniApps.find(item => item.id === this.packageMiniAppId) || this.miniAppForMode(this.mode)) : this.miniAppForMode(this.mode); },
-        get miniAppChatEnabled() { return !window.AI2APPS_MOBILE_SURFACE && Boolean(window.AI2AppsMiniAppChat && this.currentMiniApp && (this.currentMiniApp.source !== 'package' || this.currentMiniApp.chat?.enabled === true)); },
+        get miniAppChatEnabled() { return !window.AI2APPS_MOBILE_SURFACE && Boolean(window.AI2AppsMiniAppChat && this.currentMiniApp && this.currentMiniApp.mode !== 'comfyui' && (this.currentMiniApp.source !== 'package' || this.currentMiniApp.chat?.enabled === true)); },
         get isAudioExtractor() { return !this.packageMiniAppId && this.mode === 'x2a'; },
         get isComposer() { return !this.packageMiniAppId && this.mode === 'composer'; },
         get isUpscaler() { return !this.packageMiniAppId && this.mode === 'upscale'; },
-        get isLocalVideoTool() { return this.isAudioExtractor || this.isComposer || this.isUpscaler; },
+        get isLocalVideoTool() { return this.mode === 'comfyui' || this.isAudioExtractor || this.isComposer || this.isUpscaler; },
         get selectedUpscalingModel() { return this.upscalingModels.find(item => item.id === this.upscalingModelId) || null; },
         get activeUpscalingRun() { return this.upscalingRuns.find(run => run.id === this.selectedUpscalingRunId) || this.upscalingRuns[0] || null; },
         get activeUpscalingArtifact() { return this.activeUpscalingRun?.artifacts?.find(item => item.kind === 'video' && item.final) || null; },
@@ -138,12 +148,14 @@
         get modeProviders() {
             const wantsReference = this.mode === 'r2v';
             if (this.isLocalVideoTool) return [];
-            return this.providers.filter(item => Boolean(item.capabilities?.includes('reference_to_video')) === wantsReference);
+            return this.providers.filter(item => item.sourceType === 'byok'
+                ? item.capabilities?.includes(({ t2v: 'text_to_video', i2v: 'image_to_video', r2v: 'reference_to_video' })[this.mode])
+                : Boolean(item.capabilities?.includes('reference_to_video')) === wantsReference);
         },
         get caps() { return this.selectedProvider?.videoCapabilities || {}; },
-        get resolutions() { return this.caps.geometry?.resolutions || ['512x512']; },
+        get resolutions() { return this.selectedByokProvider?.resolutionOptions?.map(item => item.value) || this.caps.geometry?.resolutions || ['512x512']; },
         get presets() { return this.caps.presets?.length ? this.caps.presets : [{ id: 'strict', display_name: 'Strict' }]; },
-        get durationStep() { return .5; },
+        get durationStep() { return this.selectedByokProvider ? 1 : .5; },
         get durationMin() {
             const raw = Number(this.caps.duration?.minimum_seconds ?? 1);
             return Math.ceil((raw - Number.EPSILON) / this.durationStep) * this.durationStep;
@@ -162,7 +174,7 @@
                 && !this.upscalingRuns.some(run => !terminal.has(run.status)));
             if (!this.prompt.trim()) return false;
             if (this.mode === 'i2v') return Boolean(this.firstFile);
-            if (this.mode === 'r2v') return Boolean(this.referenceImages.length || this.referenceVideos.length);
+            if (this.mode === 'r2v') return Boolean(this.referenceImages.length || this.referenceVideos.length || this.referenceAudios.length || this.referenceVideoUrl.trim());
             return true;
         },
         get needsConfiguration() { return !this.isLocalVideoTool && (!this.selectedProvider?.ready || !this.modeProviders.some(item => item.id === this.modelId)); },
@@ -302,7 +314,7 @@
         get activeComposerArtifact() { return this.activeComposerRun?.artifacts?.find(item => item.kind === 'video' && item.final) || null; },
 
         favoriteMiniApps: [],
-        async installMiniApps() { try { const result=await window.AI2AppsCapabilities.openMiniAppPackages({placement:APP_ID}); if(result.installed){await this.refreshPackageMiniApps(); this.icons();} } catch(error){this.fail(error);} },
+        async installMiniApps() { try { await window.AI2AppsStudioPackages.install(APP_ID, async () => { await this.refreshPackageMiniApps(); this.icons(); }); } catch(error){this.fail(error);} },
         async openCoder() { try { await window.AI2AppsCapabilities.openMiniAppCustomization({placement:APP_ID}); } catch(error){this.fail(error);} },
         isFavorite(id) { return this.favoriteMiniApps.includes(id); },
         toggleFavorite(id) { this.favoriteMiniApps = this.isFavorite(id) ? this.favoriteMiniApps.filter(value => value !== id) : [...this.favoriteMiniApps, id]; try { localStorage.setItem('ai2apps.video-studio.favorites', JSON.stringify(this.favoriteMiniApps)); } catch (_) {} },
@@ -313,6 +325,8 @@
             if(!this.mobileViewport)this.restoreShellState();
             const restoredModelId = this.modelId;
             await this.refreshPackageMiniApps();
+            this.stopPackageActivation = window.AI2AppsStudioPackages?.watchActivation(() => this.refreshActivePackageMiniApp());
+            if (!this.comfyPrototypeEnabled && this.mode === 'comfyui') this.mode = 't2v';
             const pendingPackageMiniAppId = window.AI2AppsStudioMiniApps?.pendingSetup(APP_ID)?.miniAppId;
             const pendingPackageMiniApp = this.packageMiniApps.find(item => item.id === pendingPackageMiniAppId);
             if (!this.mobileViewport && pendingPackageMiniApp) await this.mountPackageMiniApp(pendingPackageMiniApp);
@@ -362,6 +376,7 @@
             window.addEventListener('beforeunload', () => this.cleanup(), { once: true });
         },
         cleanup() {
+            this.stopPackageActivation?.();
             if (this.pollTimer) clearInterval(this.pollTimer);
             if (this.composerRaf) cancelAnimationFrame(this.composerRaf);
             if (this.composerSaveTimer) clearTimeout(this.composerSaveTimer);
@@ -438,9 +453,11 @@
             }
             const context = {
                 mode: this.mode, prompt: this.prompt, modelId: this.modelId,
-                resolution: this.resolution, duration: this.duration, preset: this.preset,
+                resolution: this.resolution, byokRatio: this.byokRatio, duration: this.duration, preset: this.preset,
                 steps: this.steps, seed: this.seed, label: this.label,
                 ready: this.currentMiniAppReady, canRun: this.canPrimaryAction,
+                resolutionOptions: this.selectedByokProvider?.resolutionOptions || null,
+                resolutionSemantics: this.selectedByokProvider?.resolutionSemantics || 'pixels',
                 inputs: {
                     firstFrame: this.firstFile?.name || null, lastFrame: this.lastFile?.name || null,
                     referenceImages: this.referenceImages.map(file => file.name),
@@ -456,7 +473,7 @@
                     ? { outputName: { type: 'string', maxLength: 255 } }
                     : {
                         prompt: { type: 'string', maxLength: 8000 }, modelId: { type: 'string' },
-                        resolution: { type: 'string' }, duration: { type: 'number', minimum: .5, maximum: 60 },
+                        resolution: { type: 'string' }, byokRatio: { type: 'string', enum: this.caps.geometry?.ratios || [] }, duration: { type: 'number', minimum: .5, maximum: 60 },
                         preset: { type: 'string' }, steps: { type: 'integer', minimum: 1, maximum: 60 },
                         seed: { type: 'integer', minimum: 0, maximum: 2147483647 }, label: { type: 'string', maxLength: 120 },
                     };
@@ -491,6 +508,7 @@
                     if (typeof args.prompt === 'string') this.prompt = args.prompt.slice(0, 8000);
                     if (typeof args.modelId === 'string' && this.providers.some(item => item.id === args.modelId)) this.modelId = args.modelId;
                     if (typeof args.resolution === 'string' && this.resolutions.includes(args.resolution)) this.resolution = args.resolution;
+                    if (typeof args.byokRatio === 'string' && this.caps.geometry?.ratios?.includes(args.byokRatio)) this.byokRatio = args.byokRatio;
                     if (Number.isFinite(args.duration)) this.duration = Math.max(.5, Math.min(60, Number(args.duration)));
                     if (typeof args.preset === 'string' && this.presets.some(item => item.id === args.preset)) this.preset = args.preset;
                     if (Number.isInteger(args.steps)) this.steps = Math.max(1, Math.min(60, args.steps));
@@ -530,12 +548,18 @@
             this.icons();
         },
         async selectMiniApp(miniAppId) {
-            const miniApp = this.miniApps.find(item => item.id === miniAppId);
+            const selection = this.miniAppSelection = (this.miniAppSelection || 0) + 1;
+            let miniApp = this.miniApps.find(item => item.id === miniAppId);
+            if (miniApp?.source === 'package') {
+                await this.refreshPackageMiniApps();
+                if (selection !== this.miniAppSelection) return;
+                miniApp = this.miniApps.find(item => item.id === miniAppId);
+            }
             if (!miniApp) return;
             const firstMobileSelection=this.mobileViewport&&!this.hasActiveMiniApp;
             if(this.mobileViewport)this.mobileActiveMiniAppId=miniAppId;
             if (miniApp.source === 'package') {
-                await this.mountPackageMiniApp(miniApp);
+                await this.ensurePackageMiniAppFrame(miniApp);
                 this.leftView = this.miniAppChatEnabled && this.leftView === 'chat' ? 'chat' : 'mini-apps';
                 if (window.matchMedia('(max-width: 1000px)').matches) this.leftCollapsed = true;
                 return;
@@ -544,7 +568,7 @@
             this.packageMiniAppId = ''; this.packageMiniAppUrl = ''; this.packageMiniAppError = '';
             if(firstMobileSelection && miniApp.mode===this.mode)this.restoreMiniAppDraft(miniApp.mode);
             await this.switchMode(miniApp.mode);
-            if (this.leftView !== 'chat') this.leftView = 'mini-apps';
+            if (this.leftView !== 'chat' || !this.miniAppChatEnabled) this.leftView = 'mini-apps';
             if(this.leftView==='chat')void this.mountMiniAppChat();else this.chatController?.changed();
             if (window.matchMedia('(max-width: 1000px)').matches) this.leftCollapsed = true;
             this.persistShellState();
@@ -554,9 +578,11 @@
         miniAppReady(miniApp) {
             if (miniApp?.source === 'package') return this.packageMiniAppReadiness[miniApp.id] === true;
             if (miniApp?.mode === 'upscale') return this.upscalingModels.some(item => item.ready);
-            if (['x2a', 'composer'].includes(miniApp?.mode)) return true;
+            if (['x2a', 'composer', 'comfyui'].includes(miniApp?.mode)) return true;
             const wantsReference = miniApp?.mode === 'r2v';
-            return this.providers.some(item => item.ready && Boolean(item.capabilities?.includes('reference_to_video')) === wantsReference);
+            return this.providers.some(item => item.ready && (item.sourceType === 'byok'
+                ? item.capabilities?.includes(({ t2v: 'text_to_video', i2v: 'image_to_video', r2v: 'reference_to_video' })[miniApp?.mode])
+                : Boolean(item.capabilities?.includes('reference_to_video')) === wantsReference));
         },
         async refreshAllPackageMiniAppReadiness() {
             try { this.packageMiniAppReadiness = await window.AI2AppsStudioMiniApps?.readiness(APP_ID) || {}; }
@@ -595,24 +621,45 @@
             } catch (error) { this.fail(error); }
             finally { this.packageMiniAppSetupBusy = false; this.icons(); }
         },
-        async refreshPackageMiniApps() {
+        refreshPackageMiniApps() {
+            this.packageCatalogRequest ??= this.loadPackageMiniApps().finally(() => { this.packageCatalogRequest = null; });
+            return this.packageCatalogRequest;
+        },
+        async loadPackageMiniApps() {
             try {
                 const catalog = await window.AI2AppsStudioMiniApps?.list(APP_ID);
-                this.packageMiniApps = (catalog?.items || []).filter(item => item.source === 'package');
+                const items = catalog?.items || [];
+                this.comfyPrototypeEnabled = items.some(item => item.source === 'official' && item.id === 'ai2apps.comfyui');
+                this.packageMiniApps = items.filter(item => item.source === 'package');
                 await this.refreshAllPackageMiniAppReadiness();
-            } catch (_) { this.packageMiniApps = []; }
+            } catch (_) { /* Keep the last known catalog if refresh fails. */ }
+        },
+
+        async ensurePackageMiniAppFrame(item) {
+            const revision = window.AI2AppsStudioPackages?.revision(item) || '';
+            if (!this.packageMiniAppUrl || this.packageMiniAppId !== item.id || this.packageMiniAppRevision !== revision) {
+                await this.mountPackageMiniApp(item);
+            }
+        },
+        async refreshActivePackageMiniApp() {
+            const id = this.currentMiniApp?.source === 'package' ? this.currentMiniApp.id : '';
+            await this.refreshPackageMiniApps();
+            if (!id || this.currentMiniApp?.id !== id ||
+                (this.mobileViewport && this.$root?.dataset?.smPage !== 'create')) return;
+            await this.ensurePackageMiniAppFrame(this.currentMiniApp);
         },
         async mountPackageMiniApp(miniApp) {
             if (!miniApp?.id || this.packageMiniAppLoading) return;
             this.packageMiniAppId = miniApp.id; this.packageMiniAppUrl = ''; this.packageMiniAppError = ''; this.packageMiniAppLoading = true;
+            this.packageChatBridge?.dispose(); this.packageChatBridge = null;
             this.packageMiniAppReadiness = { ...this.packageMiniAppReadiness, [miniApp.id]: false };
             try {
                 const mount = await window.AI2AppsStudioMiniApps.mount(APP_ID, miniApp.id, { placement: 'inline' });
                 this.packageMiniAppMountId = mount.id || ''; this.packageMiniAppUrl = mount.content_url || '';
                 if (!this.packageMiniAppUrl) throw new Error('Mini-App content URL is unavailable');
+                this.packageMiniAppRevision = window.AI2AppsStudioPackages?.revision(miniApp, mount) || '';
                 await this.refreshPackageMiniAppReadiness(miniApp, mount.id);
                 if (miniApp.chat?.enabled === true) await new Promise(resolve => this.$nextTick(() => {
-                    this.packageChatBridge?.dispose();
                     this.packageChatBridge = window.AI2AppsMiniAppChat.createPackageBridge(() => this.$refs.packageMiniApp, miniApp.chat);
                     resolve();
                 }));
@@ -665,13 +712,14 @@
         },
         captureMiniAppDraft(mode = this.mode) {
             return {
-                mode, modelId: this.modelId, prompt: this.prompt, resolution: this.resolution,
+                mode, modelId: this.modelId, prompt: this.prompt, resolution: this.resolution, byokRatio: this.byokRatio,
                 duration: this.duration, preset: this.preset, steps: this.steps, seed: this.seed,
                 label: this.label, batchText: this.batchText,
                 firstFile: this.firstFile, lastFile: this.lastFile,
                 firstPreview: this.firstPreview, lastPreview: this.lastPreview,
                 referenceImages: [...this.referenceImages], referenceVideos: [...this.referenceVideos],
                 referenceAudios: [...this.referenceAudios], referenceOrder: this.referenceOrder.map(item => ({ ...item })),
+                referenceVideoUrl: this.referenceVideoUrl, seedanceTaskType: this.seedanceTaskType,
                 extractAsset: this.extractAsset ? { ...this.extractAsset } : null,
                 extractOutputName: this.extractOutputName,
             };
@@ -679,13 +727,15 @@
         saveCurrentMiniAppDraft() { this.miniAppDrafts[this.mode] = this.captureMiniAppDraft(this.mode); },
         restoreMiniAppDraft(mode) {
             const draft = this.miniAppDrafts[mode] || emptyMiniAppDraft(mode);
-            for (const key of ['modelId', 'prompt', 'resolution', 'duration', 'preset', 'steps', 'seed', 'label', 'batchText', 'firstFile', 'lastFile', 'firstPreview', 'lastPreview']) {
+            for (const key of ['modelId', 'prompt', 'resolution', 'byokRatio', 'duration', 'preset', 'steps', 'seed', 'label', 'batchText', 'firstFile', 'lastFile', 'firstPreview', 'lastPreview']) {
                 this[key] = draft[key];
             }
             this.referenceImages = [...draft.referenceImages];
             this.referenceVideos = [...draft.referenceVideos];
             this.referenceAudios = [...draft.referenceAudios];
             this.referenceOrder = draft.referenceOrder.map(item => ({ ...item }));
+            this.referenceVideoUrl = draft.referenceVideoUrl || '';
+            this.seedanceTaskType = draft.seedanceTaskType || 'reference';
             this.refreshReferencePreview('image'); this.refreshReferencePreview('video');
             this.extractAsset = draft.extractAsset ? { ...draft.extractAsset } : null;
             this.extractOutputName = draft.extractOutputName || '';
@@ -1056,7 +1106,7 @@
                 this.packageRuns = (runs.items || []).filter(run => !['ai2apps.video.extract-audio', 'ai2apps.video.composer', 'ai2apps.video.upscaling'].includes(run.miniAppId));
                 void this.loadUpscalingModels().catch(() => {});
                 let selectedProviderChanged = false;
-                if (!this.isLocalVideoTool && !this.modeProviders.some(item => item.id === this.modelId && item.ready)) {
+                if (!this.isLocalVideoTool && !this.modeProviders.some(item => item.id === this.modelId)) {
                     const probe = await window.AI2AppsCapabilities?.probe(this.capabilityRequest('probe', ''));
                     const recommendedId = probe?.provider?.modelId || probe?.plan?.stack?.checkpoint?.model_id || '';
                     this.modelId = preferredProviderId(this.modeProviders, recommendedId);
@@ -1136,6 +1186,9 @@
             this.saveCurrentMiniAppDraft();
             this.persistShellState();
         },
+        openByokModelSettings() {
+            window.ai2appsShell?.openEntry?.({ appId: 'ai2apps.models' });
+        },
         setImage(which, event) {
             const file = event.target.files?.[0] || null;
             if (!file) return;
@@ -1197,7 +1250,7 @@
                 await this.loadUpscalingModels();
             } else if (mode === 'composer') {
                 await this.loadComposerProject(); await this.loadComposerMaskModels(); await this.loadComposerChatModels();
-            } else if (!this.modeProviders.some(item => item.id === this.modelId)) {
+            } else if (mode !== 'comfyui' && !this.modeProviders.some(item => item.id === this.modelId)) {
                 this.modelId = this.modeProviders.find(item => item.ready)?.id || this.modeProviders[0]?.id || '';
             }
             this.syncDefaults(false);
@@ -3259,7 +3312,7 @@
 
         provisioningDraft(action) {
             return {
-                action, mode: this.mode, modelId: this.modelId, prompt: this.prompt, resolution: this.resolution,
+                action, mode: this.mode, modelId: this.modelId, prompt: this.prompt, resolution: this.resolution, byokRatio: this.byokRatio,
                 duration: this.duration, preset: this.preset, steps: this.steps,
                 seed: this.seed, label: this.label, batchText: this.batchText,
             };
@@ -3267,7 +3320,7 @@
         applyProvisioningDraft(value) {
             if (!value) return null;
             this.saveCurrentMiniAppDraft();
-            for (const key of ['mode', 'modelId', 'prompt', 'resolution', 'duration', 'preset', 'steps', 'seed', 'label', 'batchText']) {
+            for (const key of ['mode', 'modelId', 'prompt', 'resolution', 'byokRatio', 'duration', 'preset', 'steps', 'seed', 'label', 'batchText']) {
                 if (value[key] !== undefined) this[key] = value[key];
             }
             this.saveCurrentMiniAppDraft();
@@ -3410,14 +3463,19 @@
                     if (kind === 'video') content.push({ type: 'video_url', role: 'reference_video', video_url: { url: `multipart://reference_video_${index}` } });
                     if (kind === 'audio') content.push({ type: 'audio_url', role: 'reference_audio', audio_url: { url: `multipart://reference_audio_${index}` } });
                 });
+                if (this.selectedByokProvider?.byokProvider === 'volcengine')
+                    this.referenceVideoUrl.split(/\s+/).map(value => value.trim()).filter(Boolean).forEach(url =>
+                        content.push({ type: 'video_url', role: 'reference_video', video_url: { url } }));
             }
             return {
                 model: overrides.model || this.modelId, content,
                 resolution: overrides.resolution || this.resolution,
-                ratio: this.resolutionRatio(overrides.resolution || this.resolution),
+                ratio: overrides.ratio || (this.selectedByokProvider?.resolutionSemantics === 'tier-and-ratio' ? this.byokRatio : this.resolutionRatio(overrides.resolution || this.resolution)),
                 framespersecond: Number(this.caps.defaults?.framespersecond || 24),
                 duration: Number(overrides.duration ?? this.duration), preset: overrides.preset || this.preset,
                 seed: Number(overrides.seed ?? this.seed), steps: Number(overrides.steps ?? this.steps),
+                ...(this.mode === 'r2v' && this.selectedByokProvider?.byokProvider === 'volcengine'
+                    ? { omni_reference_task_type: this.seedanceTaskType } : {}),
                 metadata: {
                     label: String(overrides.label ?? this.label).trim(), prompt,
                     mode: overrides.mode || this.mode,
@@ -3442,9 +3500,23 @@
         },
         async generate() {
             if (!this.canPrimaryAction || this.submitting) return;
+            if (this.mode === 'r2v' && this.selectedByokProvider?.byokProvider === 'volcengine') {
+                const urls = this.referenceVideoUrl.split(/\s+/).map(value => value.trim()).filter(Boolean);
+                if (urls.length + this.referenceVideos.length > 3 || urls.some(value => !/^https:\/\/[^\s]+$/i.test(value))
+                    || (['edit', 'extend'].includes(this.seedanceTaskType) && !urls.length && !this.referenceVideos.length)) {
+                    this.fail(new Error('Seedance 参考视频最多 3 个公网 HTTPS 地址；编辑和延长至少需要 1 个参考视频。'));
+                    return;
+                }
+            }
+            if (this.selectedByokProvider && !this.selectedByokProvider.ready) {
+                this.openByokModelSettings();
+                return;
+            }
             this.submitting = true; this.clearNotice();
             try {
-                const capability = await this.ensureVideoCapability('configure-generation');
+                const capability = this.selectedByokProvider
+                    ? { modelId: this.modelId, configured: false }
+                    : await this.ensureVideoCapability('configure-generation');
                 if (capability.configured) {
                     this.success(tr('video_studio.success.configured'));
                     return;
@@ -3552,7 +3624,24 @@
                 return !closest || distance < closest.distance ? { value: candidate, distance } : closest;
             }, null)?.value || '1:1';
         },
-        resolutionLabel(value) { return `${value} · ${this.resolutionRatio(value)}`; },
+        resolutionLabel(value) {
+            const declared = this.selectedByokProvider?.resolutionOptions?.find(item => item.value === value);
+            if (declared) return declared.label;
+            if (this.selectedByokProvider) {
+                const tier = this.selectedByokProvider.byokProvider === 'minimax' ? ({
+                    '854x480': '480P', '480x854': '480P',
+                    '1366x768': '768P', '768x1366': '768P',
+                    '2048x1152': '2K', '1152x2048': '2K',
+                }[value] || value) : ({
+                    '854x480': '480p', '480x854': '480p',
+                    '1280x720': '720p', '720x1280': '720p',
+                    '1920x1080': '1080p', '1080x1920': '1080p',
+                    '3840x2160': '4K', '2160x3840': '4K',
+                }[value] || value);
+                return `${tier} · ${this.resolutionRatio(value)}`;
+            }
+            return `${value} · ${this.resolutionRatio(value)}`;
+        },
         presetLabel(item) { return item.display_name || ({ strict: tr('video_studio.preset.strict'), fast: tr('video_studio.preset.fast'), fast_max: tr('video_studio.preset.fast_max') }[item.id] || item.id); },
         isActive(task) { return !terminal.has(task.status); },
         isTerminalStatus(status) { return terminal.has(status); },

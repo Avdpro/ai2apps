@@ -64,3 +64,13 @@ Mobile App API 可能运行在仅挂载自身路由的独立 ASGI 容器中，�
 业务接口须先完成原有 Owner、App、资源、mount 和 capability 校验。principal 必须来自已认证依赖；Mini-App 的 consumer_app_id 和 app_instance_id 来自宿主验证后的声明和 mount，不能取自请求正文。调用保留 actor、Installation、membership epoch、计费和 Session 身份；Cloud 身份变化仍由服务层拒绝。后台 durable Task 继续按持久记录的 actor 解析身份。Package 模型沿用共享前台/后台调用入口，不因本次 Cloud 路由修复改变调度。
 
 已迁移：情报中心编辑/稿件、Todo Emoji、Studio Mini-App 文本/翻译/缩写、Agent 展示与编译、访客 HTML AI 编辑。普通 Owner Chat/Studio 网关已有专用模型入口，不向 Mobile 通用 App API 扩张任意模型路由或认证白名单。
+
+## Messager Dev 手机测试入口（2026-11-04）
+
+Messager 通过现有可信 host App Gateway 声明专用 Mobile 模板、资源清单及 `/v1/platform/messager-mobile` owner API。不新增 Cloud App 白名单或公网通配代理；设备启用开关仍由 `/v1/platform/remote/mobile-apps/ai2apps.messager` 管理。本轮只在 Dev 打开，App-Dev 与生产开关不复制。
+
+手机入口采用 Bot 列表/对话详情导航，支持 Bot 头像与工作圈、真实未读、首条未读定位、50条分页、到底已读、对话模型选择、附件上传、生成图片/音视频预览及下载、任务状态/停止/选择续接、站内提醒。对话和任务仍调用原 Messager/App Chat 服务，稳定 request_id 去重，原权限冻结和串行调度保留。上传只接受文件，不接收本机路径；附件/生成物下载必须属于所选 Bot 的主会话。模型目录仅返回既有 Mobile 安全投影及非秘密默认模型ID。
+
+本轮不在手机复制桌面的审批和参数表单：出现等待确认/参数时，明确提示在桌面 Messager 处理，手机可继续对话。好友通信、Bot管理、语音录入/朗读和 Gallery 操作尚未纳入专用 Mobile 页面。新 owner adapter 仅接受已验证核心 Owner 的 owner_home_lease/owner-home principal，不改为 desktop 身份，不使用桌面Cookie，不以输入参数授予授权。已有 mount、App enabled、租约及同设备校验继续由通用网关逐请求执行。
+
+手机尺寸隔离浏览器验证和真实 iPhone 验证分别记录；本轮不把模拟器结果当作真实手机联调完成。

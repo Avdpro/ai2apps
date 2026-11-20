@@ -69,6 +69,7 @@ class ContentPart(BaseModel):
     type: str  # "text", "image_url", "input_audio", or "file"
     text: Optional[str] = None
     image_url: Optional[ImageURL] = None
+    video_url: Optional[Dict[str, Any]] = None
     input_audio: Optional[InputAudio] = None
     file: Optional[FileContent] = None
 
@@ -229,6 +230,10 @@ class ResponseFormat(BaseModel):
     - "json_object": Forces valid JSON output
     - "json_schema": Forces JSON matching a specific schema
     """
+
+    # Let the enclosing Union retain unsupported raw dictionaries for the
+    # selected backend to reject, instead of silently dropping caller intent.
+    model_config = {"extra": "forbid"}
 
     type: str = "text"  # "text", "json_object", "json_schema"
     json_schema: Optional[ResponseFormatJsonSchema] = None

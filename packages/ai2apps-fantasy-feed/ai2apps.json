@@ -1,0 +1,91 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/fantasy-feed",
+    "type": "app",
+    "version": "0.1.0",
+    "displayName": "Fantasy Feed",
+    "description": "Create fictional chat screenshots and animated clips."
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": [
+      "darwin"
+    ],
+    "architectures": [
+      "arm64"
+    ]
+  },
+  "entrypoints": [
+    {
+      "name": "main",
+      "kind": "app",
+      "path": "web/index.html"
+    }
+  ],
+  "permissions": [],
+  "dependencies": [],
+  "files": [],
+  "sbom": {
+    "format": "spdx-json-2.3",
+    "path": "META/sbom.spdx.json"
+  },
+  "capabilityCatalog": {
+    "schemaVersion": "ai2apps.package-capabilities.v1",
+    "entries": [
+      {
+        "kind": "mini-app",
+        "identity": "ai2apps.imagine.fantasy-feed",
+        "provides": [
+          "media.fictional_conversation"
+        ],
+        "tasks": [
+          "Fictional chat",
+          "幻想信息流",
+          "微信对话截图",
+          "聊天视频"
+        ],
+        "inputTypes": [
+          "text"
+        ],
+        "outputTypes": [
+          "image",
+          "video"
+        ],
+        "requirements": {
+          "capabilities": []
+        },
+        "agent": {
+          "mode": "aaat",
+          "declarationVersion": "1.0.0",
+          "exports": [
+            {
+              "name": "media.fictional_conversation",
+              "interfaceVersion": "1.0.0",
+              "inputTypes": [
+                "text"
+              ],
+              "outputTypes": [
+                "image",
+                "video"
+              ]
+            }
+          ]
+        },
+        "scope": "Creates fictional conversation media using the local actor-owned participant library.",
+        "processing": "local",
+        "pricing": "unknown",
+        "localizations": {
+          "en": {
+            "displayName": "Fantasy Feed",
+            "description": "Generate fictional chat screenshots and clips."
+          },
+          "zh": {
+            "displayName": "幻想信息流",
+            "description": "生成虚构对话截图和视频。"
+          }
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,1 @@
+from ai2apps.model_worker.haru_realtime import create_adapter

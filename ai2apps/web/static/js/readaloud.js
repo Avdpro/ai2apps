@@ -141,7 +141,7 @@
         get hasActiveMiniApp(){return !this.mobileViewport || !!this.mobileActiveMiniAppId;},
         expandedLineId: '', lineEditing: false, pendingLineRemoval: null, busy: false, notice: '', noticeTone: '', noticeTimer: null, leftView: 'mini-apps', pipelineMode: 'quick', tab: 'script',
         miniAppDefinitions: [], runs: [], selectedRunId: '', selectedArtifactId: '', runTimer: null, draftTimer: null,
-        packageMiniAppId: '', packageMiniAppUrl: '', packageMiniAppMountId: '', packageMiniAppLoading: false, packageMiniAppError: '', packageMiniAppReadiness: {}, packageMiniAppSetupBusy: false,
+        packageMiniAppId: '', packageMiniAppUrl: '', packageMiniAppMountId: '', packageMiniAppRevision: '', packageMiniAppLoading: false, packageMiniAppError: '', packageMiniAppReadiness: {}, packageMiniAppSetupBusy: false,
         leftCollapsed: false, rightCollapsed: false, mobilePanel: 'create',
         audioPlaying: false, audioPosition: 0, audioDuration: 0, previewAudioBlob: null, previewAudioBlobUrl: '',
         quickForm: { text: '', voice: '', speed: 1, asrVerification: true, asrModelId: '' }, configuringQuickAsr: false, configuringProjectAsr: false, quickGenerating: false, quickAudioUrl: '', quickDownloadUrl: '', quickDownloadFormat: 'wav', quickAudioTitle: '', quickStatus: 'idle', quickTasks: [], selectedQuickTaskId: '',
@@ -392,7 +392,7 @@
         get emotions() { return ['neutral', 'happy', 'sad', 'angry', 'calm', 'excited', 'whisper'].map(id => ({ id, name: tr(`readaloud.emotion.${id}`) })); },
 
         favoriteMiniApps: [],
-        async installMiniApps() { try { const result=await window.AI2AppsCapabilities.openMiniAppPackages({placement:APP_ID}); if(result.installed){this.miniAppDefinitions=(await request('/mini-apps')).items||[];await this.refreshAllPackageMiniAppReadiness(); this.icons();} } catch(error){this.fail(error);} },
+        async installMiniApps() { try { await window.AI2AppsStudioPackages.install(APP_ID, async () => { await this.refreshPackageMiniApps(); this.icons(); }); } catch(error){this.fail(error);} },
         async openCoder() { try { await window.AI2AppsCapabilities.openMiniAppCustomization({placement:APP_ID}); } catch(error){this.fail(error);} },
         isFavorite(id) { return this.favoriteMiniApps.includes(id); },
         toggleFavorite(id) { this.favoriteMiniApps = this.isFavorite(id) ? this.favoriteMiniApps.filter(value => value !== id) : [...this.favoriteMiniApps, id]; try { localStorage.setItem('ai2apps.readaloud.favorites', JSON.stringify(this.favoriteMiniApps)); } catch (_) {} },
@@ -416,8 +416,8 @@
             window.addEventListener('ai2apps:studio-output', event => { if (event.detail?.studioId === APP_ID) { this.refreshOutputs(event.detail.preserveSelection ? '' : event.detail.result?.tracks?.[0]?.downloadUrl || event.detail.result?.downloadUrl || '').catch(error => this.fail(error)); this.rightCollapsed = false; } });
             window.addEventListener('resize', () => this.applyResponsiveLayout());
             this.applyResponsiveLayout();
-            try { this.miniAppDefinitions = (await request('/mini-apps')).items || []; } catch (_) {}
-            this.refreshAllPackageMiniAppReadiness().catch(error => this.fail(error));
+            await this.refreshPackageMiniApps();
+            this.stopPackageActivation = window.AI2AppsStudioPackages?.watchActivation(() => this.refreshActivePackageMiniApp());
             const pendingMiniApp = window.AI2AppsStudioMiniApps?.pendingSetup(APP_ID)?.miniAppId;
             const rememberedId = this.mobileViewport ? null : pendingMiniApp || localStorage.getItem('ai2apps.readaloud.active-mini-app');
             const rememberedMiniApp = rememberedId === 'ai2apps.audio.ensemble-drama' ? 'ai2apps.audio.audiobook' : rememberedId;
@@ -460,7 +460,7 @@
             }
             if(!this.mobileViewport)await this.openShellMiniApp?.();
         },
-        cleanup() { clearInterval(this.backgroundJobTimer);this.backgroundJobTimer=null; this.linePlayer?.pause(); clearTimeout(this.dialogueTimer); clearTimeout(this.runTimer); clearTimeout(this.draftTimer); this.chatController?.dispose(); this.packageChatBridge?.dispose(); this.quickTasks.forEach(task => { if (task.url) URL.revokeObjectURL(task.url); }); const urls = new Set(this.previewHistory.filter(item => item.local).map(item => item.url)); if (this.trainingAudioUrl?.startsWith('blob:')) urls.add(this.trainingAudioUrl); urls.forEach(url => URL.revokeObjectURL(url)); this.trainingStream?.getTracks().forEach(track => track.stop()); },
+        cleanup() { this.stopPackageActivation?.(); clearInterval(this.backgroundJobTimer);this.backgroundJobTimer=null; this.linePlayer?.pause(); clearTimeout(this.dialogueTimer); clearTimeout(this.runTimer); clearTimeout(this.draftTimer); this.chatController?.dispose(); this.packageChatBridge?.dispose(); this.quickTasks.forEach(task => { if (task.url) URL.revokeObjectURL(task.url); }); const urls = new Set(this.previewHistory.filter(item => item.local).map(item => item.url)); if (this.trainingAudioUrl?.startsWith('blob:')) urls.add(this.trainingAudioUrl); urls.forEach(url => URL.revokeObjectURL(url)); this.trainingStream?.getTracks().forEach(track => track.stop()); },
         icons() { this.$nextTick(() => window.lucide?.createIcons()); },
         dismissNotice() { clearTimeout(this.noticeTimer); this.noticeTimer = null; this.notice = ''; },
         showNotice(text, tone) {
@@ -612,9 +612,51 @@
             catch (error) { this.startupError = error?.message || String(error); this.fail(error); }
             finally { this.starting = false; }
         },
-        async activateMiniApp(id) { if(this.mobileViewport)return this.activateMobileMiniApp(id); const item = this.miniApps.find(value => value.id === id); if (!item) return; if (!this.packageMiniAppId) await this.saveDraft(); if(this.mobileViewport)this.mobileActiveMiniAppId=id; localStorage.setItem('ai2apps.readaloud.active-mini-app', item.id); if (this.leftView !== 'chat') this.leftView = 'mini-apps'; if (item.source === 'package') { await this.mountPackageMiniApp(item); if (!this.miniAppChatEnabled && this.leftView === 'chat') this.leftView = 'mini-apps'; return; } this.packageChatBridge?.dispose(); this.packageChatBridge = null; this.packageMiniAppId = ''; this.packageMiniAppUrl = ''; this.packageMiniAppError = ''; this.resetProjectDraft(); this.pipelineMode = item.mode; if (item.mode === 'drama') this.tab = 'script'; if (item.mode === 'voice') this.showVoiceForm = false; await this.loadDraft(item.id); await this.restoreProject(); if(this.leftView==='chat')void this.mountMiniAppChat();else this.chatController?.changed(); this.emitBridge('mini-app.ready', { miniAppId: item.id, version: item.version }); this.icons(); },
+        async activateMiniApp(id) {
+            if (this.mobileViewport) return this.activateMobileMiniApp(id);
+            let item = this.miniApps.find(value => value.id === id);
+            if (item?.source === 'package') {
+                await this.refreshPackageMiniApps();
+                item = this.miniApps.find(value => value.id === id);
+            }
+            if (!item) return;
+            if (!this.packageMiniAppId) await this.saveDraft();
+            localStorage.setItem('ai2apps.readaloud.active-mini-app', item.id);
+            if (this.leftView !== 'chat') this.leftView = 'mini-apps';
+            if (item.source === 'package') {
+                await this.ensurePackageMiniAppFrame(item);
+                if (!this.miniAppChatEnabled && this.leftView === 'chat') this.leftView = 'mini-apps';
+                return;
+            }
+            this.packageChatBridge?.dispose();
+            this.packageChatBridge = null;
+            this.packageMiniAppId = ''; this.packageMiniAppUrl = ''; this.packageMiniAppError = '';
+            this.resetProjectDraft();
+            this.pipelineMode = item.mode;
+            if (item.mode === 'drama') this.tab = 'script';
+            if (item.mode === 'voice') this.showVoiceForm = false;
+            await this.loadDraft(item.id);
+            await this.restoreProject();
+            if (this.leftView === 'chat') void this.mountMiniAppChat();
+            else this.chatController?.changed();
+            this.emitBridge('mini-app.ready', { miniAppId: item.id, version: item.version });
+            this.icons();
+        },
         async activateMobileMiniApp(id) {
-            const item=this.miniApps.find(value=>value.id===id);if(!item)return;
+            let item = this.miniApps.find(value => value.id === id);
+            if (item?.source === 'package') {
+                await this.refreshPackageMiniApps();
+                item = this.miniApps.find(value => value.id === id);
+            }
+            if (!item) return;
+            if (item.source === 'package' && this.packageMiniAppId === id) {
+                this.mobileActiveMiniAppId = id;
+                this.showMobileMiniAppShell?.();
+                await this.ensurePackageMiniAppFrame(item);
+                this.mobileWorkspaceReady = true;
+                this.icons();
+                return;
+            }
             if(this.mobileWorkspaceReady && !this.packageMiniAppId)await this.saveDraft();
             this.mobileWorkspaceReady=false;
             this.mobileActiveMiniAppId=id;
@@ -678,19 +720,42 @@
             } catch (error) { this.fail(error); }
             finally { this.packageMiniAppSetupBusy = false; this.icons(); }
         },
+        refreshPackageMiniApps() {
+            this.packageCatalogRequest ??= this.loadPackageMiniApps().finally(() => { this.packageCatalogRequest = null; });
+            return this.packageCatalogRequest;
+        },
+        async loadPackageMiniApps() {
+            try { this.miniAppDefinitions = (await request('/mini-apps', {cache: 'no-store'})).items || []; }
+            catch (_) { return; }
+            this.refreshAllPackageMiniAppReadiness().catch(error => this.fail(error));
+        },
+        async ensurePackageMiniAppFrame(item) {
+            const revision = window.AI2AppsStudioPackages?.revision(item) || '';
+            if (!this.packageMiniAppUrl || this.packageMiniAppId !== item.id || this.packageMiniAppRevision !== revision) {
+                await this.mountPackageMiniApp(item);
+            }
+        },
+        async refreshActivePackageMiniApp() {
+            const id = this.currentMiniApp?.source === 'package' ? this.currentMiniApp.id : '';
+            await this.refreshPackageMiniApps();
+            if (!id || this.currentMiniApp?.id !== id ||
+                (this.mobileViewport && this.$root?.dataset?.smPage !== 'create')) return;
+            await this.ensurePackageMiniAppFrame(this.currentMiniApp);
+        },
         async mountPackageMiniApp(item) {
             if (!item?.id || this.packageMiniAppLoading) return;
             this.packageMiniAppId = item.id; this.packageMiniAppUrl = ''; this.packageMiniAppError = ''; this.packageMiniAppLoading = true;
+            this.packageChatBridge?.dispose(); this.packageChatBridge = null;
             this.packageMiniAppReadiness = { ...this.packageMiniAppReadiness, [item.id]: false };
             try {
                 const mount = await window.AI2AppsStudioMiniApps.mount(APP_ID, item.id, { placement: 'inline' });
                 this.packageMiniAppMountId = mount.id || ''; this.packageMiniAppUrl = mount.content_url || '';
                 if (!this.packageMiniAppUrl) throw new Error('Mini-App content URL is unavailable');
+                this.packageMiniAppRevision = window.AI2AppsStudioPackages?.revision(item, mount) || '';
                 // Readiness updates the sidebar; it must not hold the iframe open.
                 this.refreshPackageMiniAppReadiness(item, mount.id).catch(() => {});
 
                 if (item.chat?.enabled === true) await new Promise(resolve => this.$nextTick(() => {
-                    this.packageChatBridge?.dispose();
                     this.packageChatBridge = window.AI2AppsMiniAppChat.createPackageBridge(() => this.$refs.packageMiniApp, item.chat);
                     resolve();
                 }));

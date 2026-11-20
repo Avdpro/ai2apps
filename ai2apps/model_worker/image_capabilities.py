@@ -155,4 +155,8 @@ def validate_image_capabilities(value: Any) -> dict[str, Any]:
             maximum=64,
         ),
     }
+    if "denoiser_idle_seconds" in execution:
+        normalized["execution"]["denoiser_idle_seconds"] = _positive_int(
+            execution["denoiser_idle_seconds"], field="image_capabilities.execution.denoiser_idle_seconds"
+        )
     return normalized

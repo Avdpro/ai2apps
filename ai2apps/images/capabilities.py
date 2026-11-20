@@ -6,3 +6,8 @@ MINI_APP_CAPABILITIES = {
 
 from .mini_parameters import WORKFLOWS
 MINI_APP_CAPABILITIES.update(WORKFLOWS)
+
+# Image-owned producers with specialized contracts rather than image.* forms.
+STICKER_GENERATE_CAPABILITY = 'sticker.generate'
+COMIC_TRANSLATION_CAPABILITY = 'comic.translation'
+IMAGE_RESULT_CAPABILITIES = tuple(dict.fromkeys((*MINI_APP_CAPABILITIES.values(), STICKER_GENERATE_CAPABILITY)))

@@ -1,0 +1,81 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/model-musetalk-cuda",
+    "type": "service",
+    "version": "0.1.0",
+    "displayName": "MuseTalk CUDA",
+    "description": "Template-video lip sync with driving audio and automatic face preparation. Development candidate; release acceptance pending."
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": [
+      "linux"
+    ],
+    "architectures": [
+      "arm64"
+    ]
+  },
+  "entrypoints": [
+    {
+      "name": "model-worker",
+      "kind": "service",
+      "path": "service.yaml"
+    }
+  ],
+  "permissions": [
+    {
+      "capability": "model-weights.huggingface-cache.read",
+      "reason": "Read the five Host-selected fixed MuseTalk checkpoint snapshots.",
+      "required": true
+    },
+    {
+      "capability": "accelerator.cuda",
+      "reason": "Run MuseTalk lip-sync inference locally.",
+      "required": true
+    }
+  ],
+  "dependencies": [
+    {
+      "packageId": "ai2apps/runtime-cuda-torch",
+      "version": ">=0.6.0 <1.0.0",
+      "optional": false
+    }
+  ],
+  "files": [],
+  "sbom": {
+    "format": "spdx-json-2.3",
+    "path": "META/sbom.spdx.json"
+  },
+  "discovery": {
+    "kind": "model",
+    "categories": [
+      "video"
+    ],
+    "tasks": [
+      "lip-sync"
+    ]
+  },
+  "modelInstall": {
+    "serviceKey": "ai2apps.model.musetalk-cuda",
+    "models": [
+      {
+        "id": "ai2apps.model.musetalk-cuda/default",
+        "label": "MuseTalk 1.5",
+        "recommended": true
+      }
+    ]
+  },
+  "modelProfile": {
+    "sizeBytes": 3939490192,
+    "minimumMemoryBytes": 17179869184,
+    "scores": {
+      "speed": 3,
+      "capability": 3
+    },
+    "benchmark": {
+      "label": "Estimated memory/scores; verified checkpoint bytes exclude Runtime; signed install pending",
+      "device": "NVIDIA DGX Spark GB10"
+    }
+  }
+}

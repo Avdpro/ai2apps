@@ -1,0 +1,142 @@
+schema: ai2apps.service/v1
+id: ai2apps.model.cosyvoice3-cuda
+name: CosyVoice 3 CUDA
+description: Official FP32 CosyVoice 3 CUDA speech synthesis with cloning, instructions
+  and native speed control.
+version: 0.1.0
+publisher:
+  id: ai2apps
+license:
+  name: Apache License 2.0
+  id: Apache-2.0
+  path: META/licenses/Apache-2.0.txt
+attribution:
+  notice: META/NOTICE.md
+  source: https://github.com/FunAudioLLM/CosyVoice
+runtime:
+  mode: process
+  protocol: ai2apps-model-worker/v1
+  provider: ai2apps.runtime.cuda-torch
+  adapter: src/worker_adapter.py:create_adapter
+models:
+- id: ai2apps.model.cosyvoice3-cuda/original-fp32
+  display_name: CosyVoice 3 Official FP32
+  model_type: audio_tts
+  upstream_id: FunAudioLLM/Fun-CosyVoice3-0.5B-2512
+  capabilities:
+  - speech_generation
+  - reference_voice
+  - voice_cloning
+  - voice_instructions
+  - emotion
+  metadata:
+    family: cosyvoice3
+    variant: original-fp32
+    reference_audio_required: true
+  weights:
+    provider: huggingface
+    repo_id: FunAudioLLM/Fun-CosyVoice3-0.5B-2512
+    revision: 29e01c4e8d000f4bcd70751be16fa94bf3d85a18
+    preparation:
+      recipe: native
+    distribution_id: dist_ai2apps_cosyvoice3_original_29e01c4e_v1
+  audio_capabilities:
+    schema: ai2apps.audio-capabilities/v1
+    operations:
+    - audio_speech
+    languages:
+    - auto
+    - zh
+    - en
+    - ja
+    - ko
+    - de
+    - fr
+    - ru
+    - it
+    - es
+    formats:
+      input:
+      - wav
+      - pcm
+      - mp3
+      - m4a
+      - aac
+      - flac
+      - ogg
+      - opus
+      - webm
+      output:
+      - wav
+      - pcm
+      - mp3
+      - m4a
+      - aac
+      - flac
+      - ogg
+      - opus
+      - webm
+    streaming:
+      mode: unsupported
+      formats: []
+    tts:
+      named_voices:
+        mode: unsupported
+        voices: []
+      speed:
+        mode: native
+        minimum: 0.5
+        maximum: 2.0
+      emotion:
+        mode: native
+        values:
+        - neutral
+        - happy
+        - sad
+        - angry
+        - calm
+        - excited
+        - surprised
+      instructions:
+        mode: native
+      voice_profiles:
+        mode: native
+        reference_audio: true
+        reference_transcript: optional
+        transcript_effect: higher_fidelity
+      multi_speaker:
+        mode: unsupported
+capabilities: []
+requires:
+  services:
+  - id: ai2apps.runtime.cuda-torch
+    version: '>=0.6.0,<1.0.0'
+    optional: false
+    capabilities:
+    - cuda
+    - model-worker-v1
+    - audio-tts
+    - cosyvoice3
+  python: '>=3.12,<3.13'
+permissions:
+  network:
+    outbound: false
+  model_weights:
+    huggingface_cache: read
+    reason: Read only Host-selected pinned CosyVoice 3 checkpoints.
+  accelerator:
+    cuda: true
+    reason: Run original CosyVoice synthesis on CUDA.
+compatibility:
+  os:
+  - linux
+  architectures:
+  - arm64
+  - aarch64
+health:
+  path: /health
+  startup_timeout_seconds: 90
+restart:
+  max_attempts: 2
+  base_delay_seconds: 1
+tools: []

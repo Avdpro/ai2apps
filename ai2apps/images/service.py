@@ -11,7 +11,7 @@ import uuid
 from collections.abc import Callable
 from typing import Any
 
-from ai2apps.cloud_gateway import request_cloud_image
+from ai2apps.images.cloud_gateway import request_cloud_image
 from ai2apps.model_manager import ModelManagerStore
 from ai2apps.services import (
     ServiceInstanceStatus,
@@ -26,17 +26,23 @@ from ai2apps.images.parameters import base_schema
 
 _DATA_URL = re.compile(r"^data:(image/(?:png|jpeg|webp));base64,(.+)$", re.DOTALL)
 
+IMAGE_OUTPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "artifact": {
+            "type": "object",
+            "properties": {
+                "id": {"type": "string", "x-ai2apps-asset": {"storage": "artifact"}},
+            },
+        },
+    },
+}
+
 
 def _default_image_model(store: ModelManagerStore) -> str:
-    configured = store.resolve_default_model("image_generation")
-    if configured:
-        return configured
-    for model in store.enabled_cloud_models():
-        text = f"{model.get('id', '')} {model.get('name', '')}".lower()
-        if any(token in text for token in ("gpt-image", "dall-e", "imagen", "flux")):
-            return str(model["gateway_id"])
-    # The managed route still validates account/session/catalog server-side.
-    return "cloud/ai2apps/openai/gpt-image-2"
+    # User/session preferences and explicit system routes precede Cloud policy.
+    # Missing policy is a selection requirement, never a hardcoded paid route.
+    return store.resolve_default_model("image_generation") or ""
 
 
 def install_image_service(
@@ -74,8 +80,8 @@ def install_image_service(
         input_schema={**base_schema(),
             'properties':{**base_schema()['properties'],
                 'provider':{'type':'string'},'parameters':{'type':'object'}}},
-        output_schema={"type": "object"},
-        effects=("network", "billing", "workspace.write", "artifact.create"),
+        output_schema=IMAGE_OUTPUT_SCHEMA,
+        effects=("network", "ai.usage", "workspace.write", "artifact.create"),
         required_capabilities=("image.generate", "workspace.write", "artifact.create"),
         timeout_ms=300_000,
     )
@@ -84,6 +90,8 @@ def install_image_service(
     from ai2apps.images.agent_providers import mini_app_handler, principal_for
     runtime = runtime_provider() if runtime_provider else None
     router = CapabilityRouter(repository.database)
+    from .result_policy import install as install_result_policy
+    install_result_policy(router)
     if runtime is not None:
         runtime.app_capability_router = router
 
@@ -95,8 +103,8 @@ def install_image_service(
     }, "required": ["prompt", "artifact_id"]}
     repository.ensure_tool(service_id=service.id, qualified_name="image.edit", display_name="Edit image",
         description="Edit image content, actions, objects or local details while preserving the existing style and unchanged elements. Use for edits to an existing image, including an output of another image Tool; use image.style_transfer only to change visual style. Requires the actual source artifact_id from this Session. Never regenerate as a substitute for editing.",
-        input_schema=edit_schema, output_schema={"type":"object"},
-        effects=("network","billing","workspace.write","artifact.create"),
+        input_schema=edit_schema, output_schema=IMAGE_OUTPUT_SCHEMA,
+        effects=("network","ai.usage","workspace.write","artifact.create"),
         required_capabilities=("image.edit","workspace.write","artifact.create"), timeout_ms=300_000)
 
     async def generate(arguments: dict[str, Any], context: ToolCallContext):
@@ -112,6 +120,8 @@ def install_image_service(
             else None
         ) or ModelManagerStore(base_path)
         model = arguments.get('model') or _default_image_model(model_manager)
+        if not model:
+            raise ToolProviderError('No drawing default is available. Select a drawing model before generation.')
         request_fingerprint = hashlib.sha256(
             json.dumps(arguments, sort_keys=True, separators=(",", ":")).encode("utf-8")
         ).hexdigest()[:16]
@@ -258,12 +268,16 @@ def install_image_service(
             return await describe(runtime_provider(), principal, edit, model)
         async def preflight(arguments, context):
             active = runtime_provider()
-            return await prepare(active, principal_for(active,context), arguments, edit)
+            values=await prepare(active, principal_for(active,context), arguments, edit)
+            from .agent_providers import preflight_references
+            preflight_references(workspace,context,[values['artifact_id']] if edit else [])
+            return values
         return descriptor, preflight
     descriptor, preflight = parameter_callbacks(False)
     from .mini_parameters import agent_context
     router.register(CapabilityProvider("ai2apps.images.generate", "image.generate", "ai2apps.imagine-studio" if runtime_provider else "ai2apps.images", generate, mini_app_id="ai2apps.imagine.text-to-image" if runtime_provider else None, priority=50 if runtime_provider else 100, describe=descriptor if runtime_provider else None, prepare=preflight if runtime_provider else None,
         agent_context=agent_context(),
+        component_identity={'id':'ai2apps.imagine.text-to-image','name':{'zh':'文生图','en':'Text to image'},'icon':'image'},
         display_name={'zh': '内置图像服务', 'en': 'Built-in image service'},
         summary={'zh': '通过 Imagine Studio 任务生成图片，并返回当前会话。', 'en': 'Generate through an Imagine Studio job and return the image to this session.'}))
     if runtime_provider is not None:
@@ -274,7 +288,10 @@ def install_image_service(
                 return await mini_parameters.describe(runtime_provider(),principal,mini,model)
             async def preflight(arguments,context):
                 active=runtime_provider()
-                return await mini_parameters.prepare(active,principal_for(active,context),mini,arguments)
+                values=await mini_parameters.prepare(active,principal_for(active,context),mini,arguments)
+                from .agent_providers import preflight_references
+                preflight_references(workspace,context,mini_parameters.reference_ids(mini,values))
+                return values
             return descriptor,preflight
         for mini_id, capability in MINI_APP_CAPABILITIES.items():
             workflow=mini_id in mini_parameters.WORKFLOWS
@@ -287,13 +304,13 @@ def install_image_service(
                 mini_app_id=mini_id, priority=100, version="1.0.0",
                 describe=descriptor,prepare=preflight,
                 related_capabilities=('image.reference_creation',) if capability=='image.group_photo' else ('image.group_photo',) if capability=='image.reference_creation' else (),
-                switch_values=switch_values,continuation=continuation_key,display_name=mini_parameters.FORM_NAMES.get(mini_id),summary=mini_parameters.FORM_SUMMARIES.get(mini_id),agent_context=mini_parameters.agent_context(mini_id)))
+                switch_values=switch_values,continuation=continuation_key,component_identity={'id':mini_id,'name':mini_parameters.FORM_NAMES.get(mini_id),'icon':'images'},display_name=mini_parameters.FORM_NAMES.get(mini_id),summary=mini_parameters.FORM_SUMMARIES.get(mini_id),agent_context=mini_parameters.agent_context(mini_id)))
             if workflow:
                 input_schema=mini_parameters.schema(mini_id)
                 input_schema['properties']['provider']={'type':'string'}
                 repository.ensure_tool(service_id=service.id,qualified_name=capability,display_name=mini_id.rsplit('.',1)[-1],
                     description=mini_parameters.WORKFLOW_DESCRIPTIONS[mini_id]+' Run the Imagine Studio '+mini_id+' Mini-App. Reference IDs must be real image artifacts in this Session; never invent IDs. Returns a durable image artifact.',
-                    input_schema=input_schema,output_schema={'type':'object'},effects=('network','billing','workspace.write','artifact.create'),
+                    input_schema=input_schema,output_schema=IMAGE_OUTPUT_SCHEMA,effects=('network','ai.usage','workspace.write','artifact.create'),
                     required_capabilities=('image.edit','workspace.write','artifact.create'),timeout_ms=300000)
                 async def route(arguments,context,cap=capability):return await router.invoke(cap,arguments,context)
                 registry.bind_tool(capability,provider_key=instance.provider_key,handler=route)

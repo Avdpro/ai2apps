@@ -1,8 +1,8 @@
 # Trip Planner AaAT owner contract
 
-The trusted adapter is `browser/travel_aaat.py`, registered by the first-party
-composition in `services/builtin_apps.py`. App: `ai2apps.ai-browser`; Mini-App:
-`ai2apps.trip-planner`. Merely adding JSON to a Package is not the export mechanism.
+The Trip Planner Package declares its exports for the AI Browser placement of
+`ai2apps.trip-planner`. The native `browser.travel-research/v1` SDK binds those
+exports to `browser/travel_aaat.py`.
 
 | Capability | Inputs and scope | Existing Mini-App execution |
 | --- | --- | --- |
@@ -20,8 +20,10 @@ native Mobile Agent transport rollout beyond the host's existing support.
 ## Workflow and authority
 
 The Agent discovers independent capabilities through the normal catalog and loads
-the selected trusted AaAT declaration. Flight/hotel/guide forms review missing
-criteria before research. A cached refinement can run directly when the user's
+the selected trusted AaAT declaration. Flight and hotel queries run directly
+when the task, context and defaults supply the required criteria. Ask only
+about unresolved required fields. The guide retains its review form.
+A cached refinement can run directly when the user's
 request and source references are already present. Clarification returns ambiguous;
 a requery proposal returns resolved with `requires_review`, not live availability.
 The Agent reviews changed criteria with the user, then invokes only the affected

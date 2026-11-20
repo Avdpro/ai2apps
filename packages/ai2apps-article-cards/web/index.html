@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>文章卡片</title>
+  <link rel="stylesheet" href="cards.css">
+  <script defer src="locale.js"></script>
+  <script defer src="layout.js"></script>
+  <script defer src="cards.js"></script>
+</head>
+<body>
+<main>
+  <div class="workspace">
+    <section class="settings" aria-label="文章与模板">
+      <div class="panel">
+        <label for="article">文章正文</label>
+        <textarea id="article" rows="8" maxlength="30000" placeholder="粘贴文章，保留原来的段落和空行"></textarea>
+        <div class="actions">
+          <label>画幅<select id="ratio"><option value="3:4">3:4 · 960 × 1280</option><option value="9:16">9:16 · 720 × 1280</option></select></label>
+          <button id="paginate" class="primary">自动分页</button>
+        </div>
+      </div>
+      <section class="panel" aria-label="封面设置">
+        <label>封面<select id="cover-mode"><option value="none">不加封面</option><option value="template">模板大标题</option><option value="ai">AI 生成封面</option></select></label>
+        <div id="cover-options" class="cover-options" hidden>
+          <label>封面标题<textarea id="cover-title" rows="2" maxlength="120" placeholder="输入要在封面上显示的标题"></textarea></label>
+          <div id="cover-ai" class="cover-options" hidden>
+            <label>画面风格<textarea id="cover-style" rows="2" maxlength="1000" placeholder="例如：暖色手账、留白、纸张纹理"></textarea></label>
+            <label>参考图片（可选）<input id="cover-references" type="file" multiple accept="image/png,image/jpeg,image/webp"></label>
+            <label>生图模型<select id="cover-model"></select></label>
+            <div class="actions">
+              <button id="cover-generate" class="primary">生成 AI 封面</button>
+              <button id="cover-cancel" hidden>取消生成</button>
+              <button id="cover-recover" hidden>查询生成结果</button>
+            </div>
+            <p id="cover-status" role="status" aria-live="polite"></p>
+          </div>
+        </div>
+      </section>
+      <div class="panel">
+        <label for="template">图片模板</label>
+        <select id="template"></select>
+        <details>
+          <summary>编辑模板</summary>
+          <div class="fields">
+            <label>底色<input id="paper" type="color"></label>
+            <label>边框色<input id="border" type="color"></label>
+            <label>文字色<input id="ink" type="color"></label>
+            <label>字号<input id="font" type="number" min="28" max="72" step="2"></label>
+            <label>文字区左边距 (%)<input id="left" type="number" min="4" max="35"></label>
+            <label>文字区右边距 (%)<input id="right" type="number" min="4" max="35"></label>
+            <label>文字区上边距 (%)<input id="top" type="number" min="4" max="35"></label>
+            <label>文字区下边距 (%)<input id="bottom" type="number" min="4" max="35"></label>
+            <label>贴纸 X (%)<input id="stickerX" type="number" min="8" max="92"></label>
+            <label>贴纸 Y (%)<input id="stickerY" type="number" min="6" max="96"></label>
+            <label>页码 X (%)<input id="numberX" type="number" min="8" max="92"></label>
+            <label>页码 Y (%)<input id="numberY" type="number" min="6" max="96"></label>
+          </div>
+          <label class="check"><input id="number" type="checkbox"> 显示页码</label>
+          <label class="check"><input id="stickers" type="checkbox"> 显示贴纸</label>
+          <label>底图排版<select id="background-mode">
+            <option value="fixed">整页底图（适合固定画幅）</option>
+            <option value="slice">九宫格底图（适合跨画幅）</option>
+          </select></label>
+          <details id="ai-background">
+            <summary>AI 生成底图</summary>
+            <label>画面风格（可选）<input id="background-style" maxlength="500" placeholder="留空沿用当前模板配色"></label>
+            <label>生图模型<select id="background-model"></select></label>
+            <div class="actions">
+              <button id="background-generate" class="primary">生成并预览</button>
+              <button id="background-cancel" hidden>取消生成</button>
+              <button id="background-recover" hidden>查询生成结果</button>
+              <button id="background-undo" hidden>恢复上一张底图</button>
+            </div>
+            <p id="background-status" role="status" aria-live="polite"></p>
+          </details>
+          <label>上传底图（PNG / JPEG / WebP）<input id="background" type="file" accept="image/png,image/jpeg,image/webp"></label>
+          <div class="fields" id="slice-fields">
+            <label>左切片 (%)<input id="sliceLeft" type="number" min="1" max="45"></label>
+            <label>右切片 (%)<input id="sliceRight" type="number" min="1" max="45"></label>
+            <label>上切片 (%)<input id="sliceTop" type="number" min="1" max="45"></label>
+            <label>下切片 (%)<input id="sliceBottom" type="number" min="1" max="45"></label>
+            <label>边框宽度 (%)<input id="frame" type="number" min="3" max="24"></label>
+          </div>
+          <label class="check"><input id="guides" type="checkbox"> 预览辅助线</label>
+          <button id="remove-background">恢复纯色底图</button>
+          <div class="actions">
+            <label>模板名称<input id="name" maxlength="32" placeholder="给模板起个名字"></label>
+            <button id="save">保存模板</button>
+          </div>
+        </details>
+      </div>
+    </section>
+    <section class="panel preview" aria-label="分页预览和编辑">
+      <div class="pager">
+        <button id="prev" aria-label="上一页">‹</button>
+        <label class="page-control">页面 <select id="page" aria-label="选择页面"></select></label>
+        <button id="next" aria-label="下一页">›</button>
+      </div>
+      <div class="stage"><canvas id="preview" aria-label="文章卡片预览"></canvas></div>
+      <div id="edit" hidden>
+        <label>本页正文<textarea id="page-text" rows="5" maxlength="30000"></textarea></label>
+        <div class="actions page-actions">
+          <label>本页贴纸<select id="sticker"></select></label>
+          <button id="split" title="在正文光标处拆页">在光标处拆页</button>
+          <button id="merge">与下一页合并</button>
+        </div>
+      </div>
+      <div class="actions export-actions">
+        <button id="png" disabled>导出当前页 PNG</button>
+        <button id="zip" class="primary" disabled>导出整篇 ZIP</button>
+      </div>
+    </section>
+  </div>
+  <p id="status" role="status" aria-live="polite"></p>
+</main>
+</body>
+</html>

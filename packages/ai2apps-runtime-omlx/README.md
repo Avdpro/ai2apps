@@ -1,5 +1,19 @@
 # AI2Apps oMLX Runtime
 
+Version 1.8.18 adds `audio-duplex-v1`: authenticated Worker-only WebSocket
+`/v1/audio/realtime`, bounded continuous PCM sessions, signed model capability
+validation, playback epochs, request status/cancellation, and the experimental
+Haru MLX backend. New model type `audio_realtime` also requires a compatible
+Host/Desktop; upgrading Runtime alone does not add Bot voice UI. Runtime has
+no default voice or model weights, no direct browser media access, and no
+reliable live text/Tool-result injection in this protocol version.
+
+Version 1.8.11 adds authenticated `POST /v1/images/depth`, gated by
+`depth-estimation-v1`. Requests use `ai2apps.depth-estimation/v1`, an explicit
+declared depth model, one image upload, and optional bounded input size. Numeric
+depth artifacts use NPZ (no pickle). Model implementations/checkpoints remain
+in separate Packages; native dependencies are unchanged from 1.8.10.
+
 Official `inference_provider` Service Package for macOS arm64. It owns CPython,
 MLX/oMLX, the Model Worker framework, Cached-MoE implementations, and all
 native inference libraries. Version 1.6 adds the dedicated

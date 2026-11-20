@@ -31,14 +31,34 @@ mount, Session, Profile and current declaration checks remain enforced.
 
 `web.search` prefers built-in Search All, defaulting to fast mode. Search source
 selection and paid-route consent retain the same preparation/confirmation receipts.
-`web.fetch` prefers built-in Web Reader. HTTP alternatives are not screenshot
+`web.fetch` prefers built-in Web Reader for reading text from a single known final page.
+Use `browser.complete_goal` to navigate from an observed entry URL, filter a site,
+open detail pages, or expand controls. When Search All finds links but verifies
+no article bodies, its Tool result reports partial coverage and returns candidate
+URLs for further investigation. Those links carry no factual evidence by themselves.
+HTTP alternatives are not screenshot
 readers and should not silently replace browser tasks.
 
-`browser.complete_goal` exposes the existing durable browser queue for a goal and
-starting URL. Its owner declaration requires using a suitable available Mini-App
-first. The initial supported scope is read-only browsing/search, preserving login,
-CAPTCHA, consent, cancellation, uncertain-action and Profile guards. `visual=true`
-adds a native BiDi screenshot observation through the declared vision route; text
-extraction alone cannot satisfy this flag. The fallback cannot bypass a denied or
-cancelled Mini-App call. Functional Mini-Chat scope stays limited to its selected
-Mini-App and does not gain the host's general goal capability.
+`browser.complete_goal` uses the existing durable browser queue to investigate
+from a public starting URL. Choose it for navigation from a landing page to
+evidence, including site search, opening detail pages and expanding sections.
+Search All finds a starting URL. Web Reader reads a known final page. When a
+read returns a timeout or yields insufficient evidence, the Bot can investigate
+from a reliable starting URL. A specialized Mini-App remains appropriate when it
+covers the whole task.
+
+The initial navigation has a 10-second budget from the native BiDi request
+until the main document is interactive and has a rendered body. Browser startup,
+blocker handling, article extraction, and model calls use separate budgets.
+Web Reader reports which phase timed out. If a page opens but yields no
+article body, its observed URL can be handed to website investigation when the
+remaining work requires interaction. Normal access checks still apply.
+
+If website investigation reaches its action limit, it stops taking actions and
+summarizes the available in-scope observations. The result identifies partial
+coverage and names any requested facts that the observations did not establish.
+
+The scope is read-only. Login, CAPTCHA, consent, cancellation, uncertain-action
+and Profile guards still apply. `visual=true` adds a native BiDi screenshot
+observation through the declared vision route. Functional Mini-Chat scope stays
+limited to its selected Mini-App.

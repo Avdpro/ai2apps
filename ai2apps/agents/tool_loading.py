@@ -1,20 +1,21 @@
 """Append-only Run catalogs with scoped Session selection recovery, never authority."""
 import copy
 import re
+from .control_tools import CLOCK
 
 UNAVAILABLE = 'Unavailable historical alias; never invoke. Inspect the Tool index for a registered capability.'
 
 INDEX_PREFIX = 'Available Tool index (summaries only; select with app.describe(capability=...)): '
 BOOTSTRAP = frozenset({'app.describe', 'app.collect_parameters', 'app.interact',
     'agent.ask_user', 'agent.read_tool_result', 'agent.read_context_checkpoint',
-    'agent.read_session_memory'})
+    'agent.read_session_memory', CLOCK})
 
 
-def project_catalog(tools, definitions, steps, *, explicit=False, selected=()):
+def project_catalog(tools, definitions, steps, *, explicit=False, selected=(), seed=()):
     """Restore the exact prior schema prefix, adding only explicitly inspected tools."""
     by_name = {t.qualified_name: d for t, d in zip(sorted(tools, key=lambda t:t.qualified_name), definitions)}
     prior = definitions if explicit else next((s.input.get('tools', []) for s in reversed(steps)
-        if s.kind == 'model' and isinstance(s.input, dict) and s.input.get('tools')), [])
+        if s.kind == 'model' and isinstance(s.input, dict) and s.input.get('tools')), list(seed))
     result = copy.deepcopy(prior)
     known = {d['function']['name'] for d in result}
     selected = set(selected) | set(BOOTSTRAP)
@@ -52,6 +53,27 @@ def project_catalog(tools, definitions, steps, *, explicit=False, selected=()):
             result.append(definition)
             known.add(alias)
     return result
+
+
+def session_catalog(repository, context, definitions, selected):
+    """Reuse only prior ordering, replacing every schema from the current catalog.
+
+    Session selection and live visibility checks happen before this function.
+    Neither old schemas nor old permission decisions can enter the new Run.
+    """
+    with repository.database.transaction() as db:
+        row = db.execute("""SELECT json_extract(s.input_json,'$.tools') AS tools_json FROM run_steps s JOIN agent_runs r ON r.id=s.run_id
+            WHERE r.session_id=? AND r.agent_definition_id=? AND r.parent_run_id IS NULL
+            AND r.status='completed' AND r.created_at<? AND s.kind='model' AND s.status='completed'
+            ORDER BY r.created_at DESC,r.id DESC,s.sequence DESC LIMIT 1""",
+            (context.run.session_id,context.run.agent_definition_id,
+             context.run.created_at.isoformat(timespec='microseconds').replace('+00:00','Z'))).fetchone()
+    if not row or not row['tools_json']:return []
+    import json
+    current={d['function']['name']:d for d in definitions}
+    allowed=set(selected)
+    return [copy.deepcopy(current[name]) for old in json.loads(row['tools_json'])
+            if (name:=old.get('function',{}).get('name')) in current and name in allowed]
 
 
 def index_message(tools, steps):

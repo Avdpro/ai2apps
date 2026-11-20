@@ -1,0 +1,17 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "ai2apps.model.zonos3-mini-0.1.0",
+  "documentNamespace": "https://ai2apps.com/spdx/ai2apps.model.zonos3-mini/0.1.0",
+  "packages": [
+    {
+      "name": "mlx-community/ZONOS3-Mini",
+      "SPDXID": "SPDXRef-Model0",
+      "versionInfo": "c3b1320037be83fdbe57586bd6678573de1789f4",
+      "downloadLocation": "https://huggingface.co/mlx-community/ZONOS3-Mini",
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0"
+    }
+  ]
+}

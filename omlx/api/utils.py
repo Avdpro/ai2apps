@@ -230,6 +230,8 @@ def _extract_multimodal_content_list(content: list) -> list:
                             },
                         }
                     )
+            elif item_type == "video_url":
+                parts.append({"type": "video_url", "video_url": item.get("video_url")})
             elif item_type == "input_audio":
                 # OpenAI audio format: pass through for engine-side decoding
                 input_audio = item.get("input_audio")
@@ -1227,7 +1229,7 @@ def extract_multimodal_content(
         elif isinstance(content, list):
             # Preserve image_url and input_audio parts for VLM processing
             multimodal_parts = _extract_multimodal_content_list(content)
-            multimodal_types = {"image_url", "input_audio"}
+            multimodal_types = {"image_url", "input_audio", "video_url"}
             has_multimodal = any(
                 p.get("type") in multimodal_types for p in multimodal_parts
             )

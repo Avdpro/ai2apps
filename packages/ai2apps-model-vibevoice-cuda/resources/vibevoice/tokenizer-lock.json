@@ -1,0 +1,42 @@
+{
+  "repo_id": "Qwen/Qwen2.5-0.5B",
+  "revision": "060db6499f32faf8b98477b0a26969ef7d8b9987",
+  "provenance": "Dependency named by pinned VibeVoice preprocessor; revision frozen for CUDA preparation, not claimed to be an already-installed Mac tokenizer snapshot",
+  "files": [
+    {
+      "name": "LICENSE",
+      "size": 11343,
+      "sha256": "832dd9e00a68dd83b3c3fb9f5588dad7dcf337a0db50f7d9483f310cd292e92e"
+    },
+    {
+      "name": "README.md",
+      "size": 3850,
+      "sha256": "3c93cbc9f60417337fcbf093da872007586b9d886b0f0187f21aec35b869616a"
+    },
+    {
+      "name": "config.json",
+      "size": 681,
+      "sha256": "479dcf0c5286339e41ad3992cd08ae88a467c4187587936248e2b7c96283484b"
+    },
+    {
+      "name": "merges.txt",
+      "size": 1671839,
+      "sha256": "599bab54075088774b1733fde865d5bd747cbcc7a547c5bc12610e874e26f5e3"
+    },
+    {
+      "name": "tokenizer.json",
+      "size": 7031645,
+      "sha256": "c0382117ea329cdf097041132f6d735924b697924d6f6fc3945713e96ce87539"
+    },
+    {
+      "name": "tokenizer_config.json",
+      "size": 7228,
+      "sha256": "c91efca15ceff6e9ee9424db58a6f59cd41294e550a86cbd07e3c1fb500b34f9"
+    },
+    {
+      "name": "vocab.json",
+      "size": 2776833,
+      "sha256": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910"
+    }
+  ]
+}

@@ -75,6 +75,26 @@
     "path": "/v1/platform/imagine-studio/results/chunks"
   },
   {
+    "module": "studio_mini_apps",
+    "method": "GET",
+    "path": "/v1/platform/studios/{studio_id}/mini-app-mounts/{mount_id}/comic-translation/models"
+  },
+  {
+    "module": "studio_mini_apps",
+    "method": "POST",
+    "path": "/v1/platform/studios/{studio_id}/mini-app-mounts/{mount_id}/comic-translation/image/{action}"
+  },
+  {
+    "module": "studio_mini_apps",
+    "method": "POST",
+    "path": "/v1/platform/studios/{studio_id}/mini-app-mounts/{mount_id}/comic-translation/translate"
+  },
+  {
+    "module": "studio_mini_apps",
+    "method": "POST",
+    "path": "/v1/platform/studios/{studio_id}/mini-app-mounts/{mount_id}/comic-translation/export/{format}"
+  },
+  {
     "module": "imagine_studio",
     "method": "POST",
     "path": "/v1/platform/imagine-studio/batch-output/chunks"
@@ -637,6 +657,16 @@
   {
     "module": "gallery",
     "method": "POST",
+    "path": "/v1/platform/gallery/sticker-packs"
+  },
+  {
+    "module": "gallery",
+    "method": "POST",
+    "path": "/v1/platform/gallery/sticker-packs/{pack_id}/stickers"
+  },
+  {
+    "module": "gallery",
+    "method": "POST",
     "path": "/v1/platform/gallery/assets/import-artifact/{session_id}/{artifact_id}"
   },
   {
@@ -868,5 +898,100 @@
     "module": "studio_mini_apps",
     "method": "POST",
     "path": "/v1/platform/studios/{studio_id}/mini-app-mounts/{mount_id}/notifications"
+  },
+  {
+    "module": "share_works",
+    "method": "POST",
+    "path": "/v1/platform/studios/{studio_id}/mini-app-mounts/{mount_id}/share-works/check"
+  },
+  {
+    "module": "share_works",
+    "method": "POST",
+    "path": "/v1/platform/studios/{studio_id}/mini-app-mounts/{mount_id}/share-works/prepare"
+  },
+  {
+    "module": "share_works",
+    "method": "POST",
+    "path": "/v1/platform/studios/{studio_id}/mini-app-mounts/{mount_id}/share-works/publish"
+  },
+  {
+    "module": "share_works",
+    "method": "GET",
+    "path": "/v1/platform/studios/{studio_id}/mini-app-mounts/{mount_id}/share-works/history"
+  },
+  {
+    "module": "share_works",
+    "method": "GET",
+    "path": "/v1/platform/studios/{studio_id}/mini-app-mounts/{mount_id}/share-works/publications/{request_id}"
+  },
+  {
+    "module": "share_works",
+    "method": "POST",
+    "path": "/v1/platform/studios/{studio_id}/mini-app-mounts/{mount_id}/share-works/publications/{request_id}/cancel"
+  },
+  {
+    "module": "share_works",
+    "method": "POST",
+    "path": "/v1/platform/studios/{studio_id}/mini-app-mounts/{mount_id}/share-works/publications/{request_id}/verify"
+  },
+  {
+    "module": "share_works",
+    "method": "GET",
+    "path": "/v1/platform/studios/{studio_id}/mini-app-mounts/{mount_id}/share-works/snapshots/{snapshot_id}/preview"
+  },
+  {
+    "module": "share_works",
+    "method": "GET",
+    "path": "/v1/platform/studios/{studio_id}/mini-app-mounts/{mount_id}/share-works/preferences"
+  },
+  {
+    "module": "app_state",
+    "method": "GET",
+    "path": "/v1/platform/app-state/instances/{instance}/contract"
+  },
+  {
+    "module": "app_state",
+    "method": "POST",
+    "path": "/v1/platform/app-state/instances/{instance}/validate"
+  },
+  {
+    "module": "app_state",
+    "method": "GET",
+    "path": "/v1/platform/app-state/instances/{instance}/presets"
+  },
+  {
+    "module": "app_state",
+    "method": "POST",
+    "path": "/v1/platform/app-state/instances/{instance}/presets"
+  },
+  {
+    "module": "app_state",
+    "method": "POST",
+    "path": "/v1/platform/app-state/instances/{instance}/applications"
+  },
+  {
+    "module": "app_state",
+    "method": "POST",
+    "path": "/v1/platform/app-state/instances/{instance}/applications/{ref}/complete"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/platform/app-shortcuts/bots",
+    "module": "app_shortcuts"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/platform/app-shortcuts/bots/{bot}/launch",
+    "module": "app_shortcuts"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/platform/app-shortcuts/launches/{ref}",
+    "module": "app_shortcuts"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/platform/app-shortcuts/launches/{ref}/claim",
+    "module": "app_shortcuts"
   }
 ]

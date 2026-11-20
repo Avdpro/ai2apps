@@ -1,0 +1,1 @@
+Uses SoMark OXR 1.0 by SoMark Team. Original BF16 weights are downloaded from fixed upstream revisions. OXR is licensed under Apache 2.0 with additional commercial thresholds, online attribution and competing hosted API restrictions. See LICENSE-OXR. Model code in Runtime derives from mlx-vlm under MIT. No upstream endorsement is implied.

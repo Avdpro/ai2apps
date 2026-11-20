@@ -10,7 +10,7 @@ from urllib.parse import urlsplit
 
 from ai2apps.browser.invocation import WebAgentInvocation
 from ai2apps.browser.tasks import BrowserTaskRepository
-from .store import IntelligenceStore
+from .store import ChannelRefreshBusy, IntelligenceStore
 from .models import Candidate, Page
 from . import service, site_agents, entity_categories, post_filter, knowledge_sync, topics, entities, social
 from . import notifications as channel_notifications
@@ -65,9 +65,9 @@ class IntelligenceCollector:
                 if run_id:
                     active_run=self.store.get('runs',owner,run_id)
                     if request_key and active_run.get('request_key')!=request_key:
-                        raise ValueError('此频道已有其他刷新任务，请等待完成后重试')
+                        raise ChannelRefreshBusy('此频道已有其他刷新任务，请等待完成后重试')
                     return active_run
-                raise ValueError('此频道已排队更新')
+                raise ChannelRefreshBusy('此频道已排队更新')
         session_id = self.execution_session(owner)
         run = self.store.claim(owner, channel_id, scheduled, background_session=session_id, source_id=source_id, request_key=request_key)
         channel = self.store.get('channels', owner, channel_id)
@@ -98,6 +98,27 @@ class IntelligenceCollector:
         with self.store.connect() as db:
             db.execute("UPDATE collection_jobs SET data=json_set(data,'$.system_task_id',?) WHERE run_id=? AND owner=?",(task['id'],run_id,owner))
         return task
+
+    def settle_inactive_system_job(self, job, task_id):
+        """Release a running collection whose owning System Task has ended."""
+        from ai2apps.system_tasks.service import TERMINAL
+
+        owner, run_id = job['owner'], job['run_id']
+        try:
+            task = self.runtime.system_tasks.get(owner, task_id)
+        except KeyError:
+            task = None
+        if task is not None and task['status'] not in TERMINAL:
+            return
+        if run_id in self.active:
+            return
+        with suppress(KeyError):
+            for agent_run in self.tree.cancel(owner, 'collection:'+run_id):
+                self.runtime.agent_runtime.cancel(agent_run)
+        self.store.fail_finalization(owner,run_id,
+            '后台更新已中断，请重新更新；本轮已保存的情报仍可查看',
+            timeout_seconds=None, reason='system_task_ended')
+        self.changed(owner,run_id)
 
     def sync_system_schedules(self,owner):
         system=self.runtime.system_tasks
@@ -267,9 +288,13 @@ class IntelligenceCollector:
             while not self.stop.is_set():
                 try:
                     from . import projections
-                    projections.flush(self)
+                    await asyncio.to_thread(projections.flush, self)
                     with self.store.connect() as db:
-                        jobs = [dict(r) for r in db.execute("SELECT j.*, r.status AS run_status FROM collection_jobs j JOIN runs r ON r.id=j.run_id WHERE r.status IN ('running','completed') AND COALESCE(json_extract(j.data,'$.ready'),1)=1")]
+                        jobs = [dict(r) for r in db.execute("""SELECT j.*, r.status AS run_status
+                            FROM collection_jobs j JOIN runs r ON r.id=j.run_id
+                            WHERE r.status IN ('running','completed')
+                            AND (COALESCE(json_extract(j.data,'$.ready'),1)=1
+                                 OR (r.status='running' AND json_extract(j.data,'$.system_task_id') IS NOT NULL))""")]
                         schedules = [dict(r) for r in db.execute('SELECT * FROM collection_schedules')]
                     for job in jobs:
                         if job['run_status'] == 'completed':
@@ -282,7 +307,10 @@ class IntelligenceCollector:
                         system=getattr(self.runtime,'system_tasks',None)
                         if system is not None:
                             data=json.loads(job['data'])
-                            if not data.get('system_task_id'):
+                            task_id=data.get('system_task_id')
+                            if task_id and job['run_status']=='running':
+                                self.settle_inactive_system_job(job,task_id)
+                            elif not task_id:
                                 channel=self.store.get('channels',job['owner'],self.store.get('runs',job['owner'],job['run_id'])['channel_id'])
                                 self.register_system_job(job['owner'],job['run_id'],channel)
                             continue
@@ -295,9 +323,9 @@ class IntelligenceCollector:
                         from ai2apps.identity import IdentityRepository
                         for schedule in schedules:
                             try:
-                                principal = IdentityRepository(self.runtime.database).local_principal_for(schedule['owner'])
+                                principal = await asyncio.to_thread(IdentityRepository(self.runtime.database).local_principal_for, schedule['owner'])
                                 if getattr(self.runtime,'system_tasks',None) is not None:
-                                    self.sync_system_schedules(schedule['owner'])
+                                    await asyncio.to_thread(self.sync_system_schedules, schedule['owner'])
                                     continue
                                 for channel in self.store.snapshot(schedule['owner'])['channels']:
                                     now = time.time();interval = channel.get('interval_hours', 0)*3600

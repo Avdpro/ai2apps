@@ -148,3 +148,32 @@ test('notification SDK sends only through the bound host channel',async()=>{
  port.onmessage({data:{id:sent[0].id,value:{event_id:'stable-business-id',status:'queued'}}});
  assert.equal((await result).status,'queued');
 });
+
+test('AI Browser preserves an open editor on catalog refresh and replaces its frame and chat bridge on re-entry',async()=>{
+ let revision='first',mounts=0,disposed=0;
+ const item=()=>({id:'fixture.reader',source:'package',name:'Fixture',web_agent:{},provider:{digest:revision}});
+ const window={t:key=>key,addEventListener(){}};
+ const context={window,crypto:{randomUUID:()=> 'id'},Map,URL,URLSearchParams,console,document:{
+  createElement:()=>({style:{},remove(){this.removed=true;}}),
+  getElementById:()=>({append(){},classList:{toggle(){}}}),
+ }};
+ vm.createContext(context);
+ for(const file of ['studio_mini_apps.js','ai_browser.js'])vm.runInContext(fs.readFileSync(root+file,'utf8'),context);
+ window.AI2AppsStudioMiniApps={list:async()=>({items:[item()]}),mount:async()=>{
+  mounts++;return {content_url:'/package/'+revision,effective_digest:revision};
+ }};
+ const app=context.aiBrowserApp();
+ await app.openMiniApp(item());
+ const frame=app.frames.get('mini-app:fixture.reader').frame;
+ app.chatBridgeMini=item().id;
+ app.packageChatBridge={dispose(){disposed++;}};
+ revision='second';
+ await app.refreshMiniApps();
+ assert.equal(frame.removed,undefined);
+ await app.refreshActivePackageMiniApp();
+ await app.openMiniApp(item());
+ assert.equal(frame.removed,true);
+ assert.equal(disposed,1);
+ assert.equal(mounts,2);
+ assert.equal(app.frames.get('mini-app:fixture.reader').frame.src,'/package/second');
+});

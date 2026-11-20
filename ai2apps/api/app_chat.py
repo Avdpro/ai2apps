@@ -1,10 +1,11 @@
 """Fixed scoped Chat API; no client-selected Tool grants or executable hooks."""
-from fastapi import APIRouter,Depends,HTTPException
+from fastapi import APIRouter,Depends,HTTPException,Query
 from pydantic import BaseModel,Field,ConfigDict
 from ai2apps.api.identity import resolve_request_principal
 
 class Strict(BaseModel):model_config=ConfigDict(extra='forbid')
 class Open(Strict):
+    include_messages:bool=True
     registration:str=Field(min_length=1,max_length=200)
     scope:dict=Field(default_factory=dict)
     ui:dict=Field(default_factory=dict)
@@ -15,6 +16,7 @@ class Turn(Strict):
     request_id:str=Field(min_length=8,max_length=128)
     text:str=Field(min_length=1,max_length=16000)
     model:str=Field(min_length=1,max_length=300)
+    attachments:list[str]=Field(default_factory=list,max_length=8)
 class Ack(Strict):
     mount:str=Field(min_length=8,max_length=128)
     revision:int=Field(ge=1)
@@ -35,14 +37,19 @@ def create_app_chat_router(runtime_provider,principal_provider=resolve_request_p
     @router.post('/sessions')
     def open_session(body:Open,p=principal):
         s=service();sid=call(s.open,p,body.registration,body.scope,body.ui)
-        return call(s.snapshot,p,sid)
+        return call(s.snapshot,p,sid,body.include_messages)
     @router.get('/sessions/{sid}')
     def snapshot(sid:str,p=principal):return call(service().snapshot,p,sid)
+    @router.get('/sessions/{sid}/state')
+    def state(sid:str,p=principal):return call(service().snapshot,p,sid,False)
+    @router.get('/sessions/{sid}/messages')
+    def messages(sid:str,limit:int=Query(50,ge=1,le=50),before:int|None=Query(None,ge=1),after:int|None=Query(None,ge=0),p=principal):
+        return call(service().message_page,p,sid,limit,before,after)
     @router.put('/sessions/{sid}/ui')
     def ui(sid:str,body:Heartbeat,p=principal):return call(service().heartbeat,p,sid,body.mount,body.ui)
     @router.post('/sessions/{sid}/turns',status_code=202)
     def turn(sid:str,body:Turn,p=principal):
-        rid=call(service().submit,p,sid,body.request_id,body.text,body.model)
+        rid=call(lambda: service().submit(p,sid,body.request_id,body.text,body.model,attachments=body.attachments))
         return {'run_id':rid}
     @router.post('/sessions/{sid}/ui/{command_id}')
     def ack(sid:str,command_id:str,body:Ack,p=principal):

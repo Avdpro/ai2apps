@@ -104,7 +104,7 @@ async def test_cloud_batch_reuses_existing_api_with_stable_per_image_keys(tmp_pa
     received=[]
     async def cloud(payload,**options):
         received.append((payload,options));return {'image':{'dataUrl':REFERENCE}}
-    monkeypatch.setattr('ai2apps.cloud_gateway.request_cloud_image',cloud)
+    monkeypatch.setattr('ai2apps.images.cloud_gateway.request_cloud_image',cloud)
     await manager.startup()
     try:
         await wait_status(manager,job['id'],'succeeded')

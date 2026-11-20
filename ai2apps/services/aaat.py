@@ -51,6 +51,12 @@ class AgentResultPolicy:
     finalize: Callable
     preview: Callable | None = None
     capabilities: tuple[str, ...] = ()
+    failure_receipt: Callable | None = None
+    # Trusted owner checks required deliverables after the model finishes.
+    # A failed check retains verified partial output without claiming success.
+    completion_check: Callable | None = None
+    # Trusted owner selects owned image artifacts for the next ordinary model turn.
+    visual_inputs: Callable | None = None
 
 
 class InvocationPolicyError(ValueError):

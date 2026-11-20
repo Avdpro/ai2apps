@@ -1,0 +1,239 @@
+schema: ai2apps.service/v1
+id: ai2apps.model.musetalk-cuda
+name: MuseTalk CUDA
+description: Template-video lip sync with driving audio and automatic face preparation.
+  Development source; distribution publication and signed installation pending.
+version: 0.1.0
+publisher:
+  id: ai2apps
+license:
+  name: MIT License
+  id: MIT
+  path: META/licenses/MuseTalk-checkpoint-LICENSE.txt
+attribution:
+  notice: META/NOTICE.md
+  upstream: https://github.com/TMElyralab/MuseTalk
+runtime:
+  mode: process
+  protocol: ai2apps-model-worker/v1
+  provider: ai2apps.runtime.cuda-torch
+  adapter: src/worker_adapter.py:create_adapter
+models:
+- id: ai2apps.model.musetalk-cuda/default
+  display_name: MuseTalk CUDA
+  model_type: video_generation
+  upstream_id: ai2apps.model.musetalk-cuda/default
+  capabilities:
+  - video_generation
+  - lip_sync
+  - preserve_audio
+  weights:
+    provider: huggingface
+    repo_id: TMElyralab/MuseTalk
+    revision: 2bcb936e2fddb4d86db4c62fd45b387d0c061571
+    preparation:
+      recipe: native
+  metadata:
+    family: musetalk
+    upstream_repo: TMElyralab/MuseTalk
+    internal: false
+    modelscope:
+      repo_id: AI-ModelScope/MuseTalk
+      revision: 85beef24bd9d472f66e557aef37f4032b263776e
+      preferred: true
+      allow_patterns:
+      - musetalkV15/musetalk.json
+      - musetalkV15/unet.pth
+    required_model_ids:
+    - ai2apps.model.musetalk-cuda/vae
+    - ai2apps.model.musetalk-cuda/whisper
+    - ai2apps.model.musetalk-cuda/detector
+    - ai2apps.model.musetalk-cuda/parser
+  video_capabilities:
+    schema: ai2apps.video-capabilities/v1
+    operations:
+    - video_generation
+    content_combinations:
+    - id: template_video_driving_audio
+      required:
+      - type: video_url
+        role: source_video
+        min: 1
+        max: 1
+      - type: audio_url
+        role: driving_audio
+        min: 1
+        max: 1
+      optional: []
+    formats:
+      image_input: []
+      audio_input:
+      - wav
+      video_input:
+      - mp4
+      video_output:
+      - mp4
+      video_codecs:
+      - h264
+      audio_codecs:
+      - aac
+    geometry:
+      resolutions:
+      - source
+      ratios:
+      - source
+      framespersecond:
+      - 25
+      alpha: false
+    duration:
+      mode: driving_audio
+      minimum_seconds: 0.2
+      maximum_seconds: null
+    audio:
+      modes:
+      - preserve_driving_audio
+      default_mode: preserve_driving_audio
+      generated_audio: false
+    presets:
+    - id: default
+      display_name: MuseTalk
+      cancellable: true
+      resumable: unsupported
+    defaults:
+      resolution: source
+      ratio: source
+      framespersecond: 25
+      preset: default
+      seed: 42
+      output_format: mp4
+      audio_output_mode: preserve_driving_audio
+    execution:
+      asynchronous: true
+      streaming_preview: false
+      progress: unsupported
+      max_concurrency_per_device: 1
+- id: ai2apps.model.musetalk-cuda/vae
+  display_name: MuseTalk VAE
+  model_type: component
+  upstream_id: ai2apps.model.musetalk-cuda/vae
+  capabilities:
+  - checkpoint_component
+  weights:
+    provider: huggingface
+    repo_id: stabilityai/sd-vae-ft-mse
+    revision: 31f26fdeee1355a5c34592e401dd41e45d25a493
+    preparation:
+      recipe: native
+  metadata:
+    family: musetalk
+    upstream_repo: stabilityai/sd-vae-ft-mse
+    internal: true
+    modelscope:
+      repo_id: stabilityai/sd-vae-ft-mse
+      revision: 79efec79e87756556b473a8991162904c8633521
+      preferred: true
+      allow_patterns:
+      - config.json
+      - diffusion_pytorch_model.safetensors
+- id: ai2apps.model.musetalk-cuda/whisper
+  display_name: MuseTalk audio encoder
+  model_type: component
+  upstream_id: ai2apps.model.musetalk-cuda/whisper
+  capabilities:
+  - checkpoint_component
+  weights:
+    provider: huggingface
+    repo_id: openai/whisper-tiny
+    revision: 169d4a4341b33bc18d8881c4b69c2e104e1cc0af
+    preparation:
+      recipe: native
+  metadata:
+    family: musetalk
+    upstream_repo: openai/whisper-tiny
+    internal: true
+    modelscope:
+      repo_id: openai-mirror/whisper-tiny
+      revision: 689008f4159ef574fdce4c0b245c5c008f33374e
+      preferred: true
+      allow_patterns:
+      - config.json
+      - model.safetensors
+      - preprocessor_config.json
+- id: ai2apps.model.musetalk-cuda/detector
+  display_name: MuseTalk face detector
+  model_type: component
+  upstream_id: ai2apps.model.musetalk-cuda/detector
+  capabilities:
+  - checkpoint_component
+  weights:
+    provider: huggingface
+    repo_id: opencv/face_detection_yunet
+    revision: 3cc26e7f1014a5ee5d74a42acee58bafc9d0a310
+    preparation:
+      recipe: native
+  metadata:
+    family: musetalk
+    upstream_repo: opencv/face_detection_yunet
+    internal: true
+    modelscope:
+      repo_id: FlynnDu/novaber-privacy-redaction-yunet
+      revision: b300dcfedffa3e02facc8e7d7b99fc3d116e8b41
+      preferred: true
+      allow_patterns:
+      - face_detection_yunet_2023mar.onnx
+- id: ai2apps.model.musetalk-cuda/parser
+  display_name: MuseTalk face parser
+  model_type: component
+  upstream_id: ai2apps.model.musetalk-cuda/parser
+  capabilities:
+  - checkpoint_component
+  weights:
+    provider: huggingface
+    repo_id: vivym/face-parsing-bisenet
+    revision: 768606b84908769d31ddd78b2e1105319839edfa
+    preparation:
+      recipe: native
+  metadata:
+    family: musetalk
+    upstream_repo: vivym/face-parsing-bisenet
+    internal: true
+    modelscope:
+      repo_id: aile1997/face-parse-bisenet
+      revision: 23c99e91cf4e858bfbde2c60b09f90be1bc102c4
+      preferred: true
+      allow_patterns:
+      - 79999_iter.pth
+capabilities:
+- video-generation
+requires:
+  services:
+  - id: ai2apps.runtime.cuda-torch
+    version: '>=0.6.0,<1.0.0'
+    optional: false
+    capabilities:
+    - cuda
+    - model-worker-v1
+    - framework-profiles-v1
+    - musetalk
+  python: '>=3.12,<3.13'
+permissions:
+  network:
+    outbound: false
+  model_weights:
+    huggingface_cache: read
+    reason: Read only the five Host-selected pinned MuseTalk snapshots.
+  accelerator:
+    cuda: true
+    reason: Run MuseTalk inference locally.
+compatibility:
+  os:
+  - linux
+  architectures:
+  - arm64
+health:
+  path: /health
+  startup_timeout_seconds: 120
+restart:
+  max_attempts: 2
+  base_delay_seconds: 1
+tools: []

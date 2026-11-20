@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Comic Translation</title><link rel="stylesheet" href="comic.css"><link rel="stylesheet" href="asset_slot.css"></head>
+<body>
+<main>
+  <fieldset id="settings" disabled>
+    <ol id="pages" class="pages" aria-label="Comic pages"></ol>
+    <template id="asset-slot">
+      <div data-asset-slot="image">
+        <input type="file" accept="image/png,image/jpeg,image/webp" multiple tabindex="-1">
+        <img alt="" draggable="false" hidden>
+        <span data-slot-empty>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+            <path d="M13 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7M18 2v8m-4-4h8M3 16l5-5 5 5 3-3 5 5"/>
+          </svg>
+          <span></span>
+        </span>
+        <span data-slot-filled hidden></span>
+        <button type="button" hidden>×</button>
+      </div>
+    </template>
+    <div class="tools">
+      <label><span data-zh="翻译模型">Translation model</span><select id="model"></select></label>
+      <label><span data-zh="目标语言">Target language</span>
+        <select id="language"><option value="en">English</option><option value="zh">简体中文</option><option value="ja">日本語</option><option value="ko">한국어</option><option value="es">Español</option><option value="fr">Français</option></select>
+      </label>
+      <label><span data-zh="原文方向">Source layout</span><select id="direction"><option value="auto" data-zh="自动判断">Automatic</option><option value="vertical" data-zh="竖排（右到左）">Vertical (right to left)</option><option value="horizontal" data-zh="横排">Horizontal</option></select></label>
+      <button type="button" id="models" data-zh="刷新模型">Refresh models</button>
+    </div>
+    <details id="profiles">
+      <summary id="profile-summary" data-zh="译名 Profile">Translation profile</summary>
+      <div class="tools">
+        <label><span data-zh="使用 Profile">Use profile</span><select id="profile-select"></select></label>
+        <label><span data-zh="Profile 名称">Profile name</span><input id="profile-name" type="text" maxlength="80"></label>
+        <button id="profile-save" type="button" data-zh="保存 Profile">Save profile</button>
+      </div>
+      <div id="profile-terms"></div>
+      <button id="profile-add" type="button" data-zh="添加译名">Add term</button>
+      <p id="profile-status" role="status"></p>
+    </details>
+    <div class="tools">
+      <label><input id="auto-crop" type="checkbox" checked> <span data-zh="自动裁出漫画页">Auto-crop comic page</span></label>
+      <label><input id="context" type="checkbox" checked> <span data-zh="参考前后页对白">Use neighboring page dialogue</span></label>
+    </div>
+    <div id="ocr-setup" class="tools" hidden>
+      <span id="ocr-setup-message" role="status"></span>
+      <button id="install-ocr" type="button" data-zh="安装识别模型">Install OCR model</button>
+    </div>
+    <div class="tools">
+      <button id="detect" type="button" data-zh="批量检测气泡">Detect bubbles</button>
+      <button id="recognize" type="button" data-zh="批量识别原文">Recognize text</button>
+      <button id="translate" type="button" class="primary" data-zh="批量翻译">Translate batch</button>
+    </div>
+    <section id="editor" hidden>
+      <div class="tools">
+        <label><span data-zh="当前页">Current page</span><select id="page"></select></label>
+        <button id="crop" type="button" data-zh="切换裁切">Toggle crop</button>
+        <button id="add-box" type="button" data-zh="手动添加文字框">Add text box</button>
+        <button id="preview" type="button" data-zh="预览译文">Preview translation</button>
+      </div>
+      <p id="crop-status" role="status" hidden></p>
+      <div id="stage"><img id="page-image" alt="Comic page" data-alt-zh="漫画页" draggable="false"><div id="boxes"></div></div>
+      <details id="dialogue">
+        <summary id="dialogue-label"></summary>
+        <div id="regions"></div>
+      </details>
+    </section>
+    <div class="tools">
+      <button id="png" type="button" data-zh="输出全部 PNG">Export all PNGs</button>
+      <button id="html" type="button" data-zh="输出单个阅读 HTML">Export one reader HTML</button>
+    </div>
+  </fieldset>
+  <section id="task-status">
+    <div id="batch-progress" hidden>
+      <div class="progress-caption">
+        <label for="progress-bar" data-zh="整体进度">Overall progress</label>
+        <span id="progress-count"></span>
+      </div>
+      <progress id="progress-bar"></progress>
+    </div>
+    <p id="status" role="status" aria-live="polite"></p>
+    <button id="stop" type="button" hidden data-zh="完成当前请求后停止">Stop after current request</button>
+    <p id="error" role="alert"></p>
+  </section>
+</main>
+<script src="asset_slot.js"></script><script src="layout.js"></script><script src="reader.js"></script><script src="profiles.js"></script><script src="comic.js"></script>
+</body></html>

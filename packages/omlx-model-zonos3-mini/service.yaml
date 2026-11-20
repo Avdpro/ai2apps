@@ -1,0 +1,129 @@
+schema: ai2apps.service/v1
+id: ai2apps.model.zonos3-mini
+name: ZONOS3 Mini (Experimental)
+description: 'ZONOS3 Mini (Experimental): local speech and reference cloning. Experimental
+  quality; emotion control is not enabled.'
+version: 0.1.0
+publisher:
+  id: ai2apps
+license:
+  name: Apache License 2.0
+  id: Apache-2.0
+  path: META/licenses/LICENSE.txt
+attribution:
+  notice: META/NOTICE.md
+  source: https://huggingface.co/mlx-community/ZONOS3-Mini
+runtime:
+  mode: process
+  protocol: ai2apps-model-worker/v1
+  provider: ai2apps.runtime.omlx
+  adapter: src/worker_adapter.py:create_adapter
+models:
+- id: ai2apps.model.zonos3-mini/default
+  display_name: ZONOS3 Mini (Experimental)
+  model_type: audio_tts
+  upstream_id: mlx-community/ZONOS3-Mini
+  capabilities:
+  - speech_generation
+  - reference_voice
+  - voice_cloning
+  metadata:
+    family: zonos3
+    experimental: true
+    quantization: bf16
+    license_use: permissive
+  weights:
+    provider: huggingface
+    repo_id: mlx-community/ZONOS3-Mini
+    revision: c3b1320037be83fdbe57586bd6678573de1789f4
+    distribution_id: dist_ai2apps_zonos3_mini_c3b13200_v1
+    preparation:
+      recipe: native
+  audio_capabilities:
+    schema: ai2apps.audio-capabilities/v1
+    operations:
+    - audio_speech
+    languages:
+    - auto
+    - zh
+    - en
+    formats:
+      input:
+      - wav
+      - pcm
+      - mp3
+      - m4a
+      - aac
+      - flac
+      - ogg
+      - opus
+      - webm
+      output:
+      - wav
+      - pcm
+      - mp3
+      - m4a
+      - aac
+      - flac
+      - ogg
+      - opus
+      - webm
+    streaming:
+      mode: unsupported
+      formats: []
+    tts:
+      named_voices:
+        mode: unsupported
+        voices: []
+      speed:
+        mode: native
+        minimum: 0.5
+        maximum: 2.0
+      emotion:
+        mode: unsupported
+        values: []
+      instructions:
+        mode: unsupported
+      voice_profiles:
+        mode: native
+        reference_audio: true
+        reference_transcript: optional
+        transcript_effect: higher_fidelity
+      multi_speaker:
+        mode: unsupported
+capabilities: []
+requires:
+  services:
+  - id: ai2apps.runtime.omlx
+    version: '>=1.8.20,<2.0.0'
+    optional: false
+    capabilities:
+    - mlx
+    - model-worker-v1
+    - audio-tts
+    - audio-processing
+    - audio-codecs
+    - zonos3
+  python: '>=3.11,<3.14'
+permissions:
+  network:
+    outbound: false
+  model_weights:
+    huggingface_cache: read
+    reason: Read only Host-selected pinned checkpoints.
+  accelerator:
+    metal: true
+    reason: Run local MLX speech synthesis.
+compatibility:
+  os:
+  - macos
+  architectures:
+  - arm64
+  minimum_os_version: '26.2'
+health:
+  path: /health
+  startup_timeout_seconds: 120
+restart:
+  max_attempts: 2
+  base_delay_seconds: 1
+tools: []

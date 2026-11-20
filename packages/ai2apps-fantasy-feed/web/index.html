@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fantasy Feed</title>
+  <link rel="stylesheet" href="feed.css">
+  <script defer src="render.js"></script>
+  <script defer src="feed.js"></script>
+</head>
+<body>
+<main>
+  <form id="editor">
+    <fieldset>
+      <legend data-zh="会话设置">Conversation settings</legend>
+      <div class="grid">
+        <label><span data-zh="聊天样式">Chat style</span><select id="theme"><option value="wechat" data-zh="微信">WeChat</option><option value="whatsapp">WhatsApp</option><option value="telegram">Telegram</option><option value="imessage">iMessage</option></select></label>
+        <label><span data-zh="画幅">Aspect ratio</span><select id="ratio"><option>9:16</option><option>3:4</option><option>16:9</option></select></label>
+        <label><span data-zh="聊天标题">Conversation title</span><input id="title" maxlength="40"></label>
+        <label><span data-zh="对话开始时间">Conversation start</span><input id="start" type="datetime-local" required></label>
+        <label><span data-zh="截图日期（可选）">Screenshot date (optional)</span><input id="capture-date" type="date" aria-describedby="capture-date-hint"><small id="capture-date-hint" data-zh="用于计算昨天、星期几；留空时使用最后一条消息的日期。">Used for relative dates. Defaults to the last message date.</small></label>
+        <label><span data-zh="状态栏样式">Status bar style</span><select id="status-os"><option value="ios">iOS</option><option value="samsung" data-zh="安卓 · 三星 One UI">Android · Samsung One UI</option></select></label>
+        <label><span data-zh="状态栏时间">Status bar clock</span><input id="clock" type="time" aria-describedby="clock-hint"><small id="clock-hint" data-zh="留空使用本机当前时间。">Leave blank to use the current local time.</small></label>
+        <label><span data-zh="电池电量（%）">Battery level (%)</span><input id="battery" type="number" min="0" max="100" step="1" value="60" required></label>
+        <label><span data-zh="底部文字">Footer text</span><input id="footer-text" maxlength="40"></label>
+        <label id="composer-mode-field"><span data-zh="微信输入栏">WeChat input bar</span><select id="composer-mode"><option value="text" data-zh="文字输入">Text input</option><option value="voice" data-zh="按住说话">Hold to talk</option></select></label>
+        <label><span data-zh="动画间隔（秒）">Animation interval (seconds)</span><input id="delay" type="number" min="0.5" max="3" step="0.5" value="1.5" required></label>
+      </div>
+    </fieldset>
+    <fieldset>
+      <legend data-zh="参与者档案">Participant profiles</legend>
+      <p class="hint" data-zh="保存常用昵称和头像，下次可选用。选用后也可以在当前会话里单独修改。">Save frequently used names and avatars. Once applied, they can be edited separately in the current conversation.</p>
+      <div id="profile-library" class="stack"></div>
+      <p id="profile-status" class="hint" role="status" aria-live="polite"></p>
+    </fieldset>
+    <fieldset>
+      <legend data-zh="参与者">Participants</legend>
+      <div id="participants" class="stack"></div>
+      <button id="add-person" type="button" data-zh="添加参与者">Add participant</button>
+    </fieldset>
+    <fieldset>
+      <legend data-zh="消息时间线">Message timeline</legend>
+      <p class="hint" data-zh="第一条从会话开始时间起算，其余按距上一条的秒数累加。动画使用上方统一间隔。">The first offset starts from the conversation start. Later offsets are added to the preceding message time. Playback uses the animation interval above.</p>
+      <ol id="messages" class="stack"></ol>
+      <button id="add-message" type="button" data-zh="添加消息">Add message</button>
+    </fieldset>
+    <div class="actions">
+      <button id="play" type="button" data-zh="播放预览">Play preview</button>
+      <button id="png" type="button" data-zh="生成 PNG">Create PNG</button>
+      <button id="mp4" class="primary" type="button" data-zh="生成 MP4">Create MP4</button>
+    </div>
+    <p id="status" role="status" aria-live="polite"></p>
+  </form>
+  <section class="stage" aria-label="Conversation preview" data-label-zh="对话预览">
+    <canvas id="preview" role="img" aria-label="Simulated conversation" data-label-zh="模拟对话"></canvas>
+    <div class="scrubber">
+      <label><span data-zh="预览到第几条消息">Preview through message</span><input id="scrub" type="range" min="0" value="0"></label>
+      <output id="position" for="scrub"></output>
+    </div>
+  </section>
+</main>
+</body>
+</html>

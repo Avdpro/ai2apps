@@ -55,3 +55,17 @@
 /* Own image gestures without blocking native video/audio controls. */
 .gallery-preview-media.image{touch-action:none;user-select:none;-webkit-user-select:none;overflow:hidden}
 .gallery-preview-media.image>img{touch-action:none;-webkit-user-drag:none}
+.gallery-description{position:absolute;z-index:5;top:10px;left:78px;max-width:calc(100% - 156px);color:#eee;background:#222e;border:1px solid #ffffff30;border-radius:8px;padding:8px 12px;font-size:13px}.gallery-description summary{cursor:pointer}.gallery-description textarea{display:block;width:360px;max-width:100%;height:120px;box-sizing:border-box;margin:8px 0;color:#eee;background:#161616;border:1px solid #666;border-radius:5px;padding:8px;resize:vertical}.gallery-description button{color:#eee;background:#333;border:1px solid #666;border-radius:5px;padding:5px 12px;cursor:pointer}
+
+/* Character documents share the Output/Gallery read-only viewer. */
+.character-document-container { width:100%; height:100%; overflow:auto; }
+.character-document-preview { background:#fff; color:#202124; padding:20px; text-align:left; width:100%; box-sizing:border-box; }
+.character-document-images { display:grid; gap:16px; }
+.character-document-images figure { margin:0; }
+.character-document-images img { display:block; width:100%; height:auto; max-height:none; object-fit:contain; }
+.character-document-images figcaption { overflow-wrap:anywhere; font-size:12px; color:#666; }
+.character-document-preview dl { margin:20px 0 0; }
+.character-document-preview dl>div { margin:0 0 14px; }
+.character-document-preview dt { font-weight:600; font-size:13px; }
+.character-document-preview dd { margin:4px 0 0; white-space:pre-wrap; overflow-wrap:anywhere; }
+.character-output-document { width:100%; max-height:65vh; overflow:auto; }

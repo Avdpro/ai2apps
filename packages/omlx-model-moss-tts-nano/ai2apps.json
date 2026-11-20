@@ -1,0 +1,83 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/model-moss-tts-nano",
+    "type": "service",
+    "version": "0.1.0",
+    "displayName": "MOSS TTS Nano (Experimental)",
+    "description": "MOSS TTS Nano (Experimental): local speech and reference cloning. Experimental quality; emotion control is not enabled."
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": [
+      "darwin"
+    ],
+    "architectures": [
+      "arm64"
+    ],
+    "minimumOsVersion": "26.2"
+  },
+  "entrypoints": [
+    {
+      "name": "model-worker",
+      "kind": "service",
+      "path": "service.yaml"
+    }
+  ],
+  "permissions": [
+    {
+      "capability": "model-weights.huggingface-cache.read",
+      "reason": "Read pinned checkpoints selected by the Host.",
+      "required": true
+    },
+    {
+      "capability": "accelerator.metal",
+      "reason": "Run local MLX synthesis.",
+      "required": true
+    }
+  ],
+  "dependencies": [
+    {
+      "packageId": "ai2apps/runtime-omlx",
+      "version": ">=1.8.20 <2.0.0",
+      "optional": false
+    }
+  ],
+  "files": [],
+  "sbom": {
+    "format": "spdx-json-2.3",
+    "path": "META/sbom.spdx.json"
+  },
+  "discovery": {
+    "kind": "model",
+    "categories": [
+      "speech"
+    ],
+    "tasks": [
+      "speech-synthesis",
+      "voice-cloning"
+    ]
+  },
+  "modelProfile": {
+    "sizeBytes": 373415843,
+    "minimumMemoryBytes": 4294967296,
+    "scores": {
+      "speed": 5,
+      "capability": 3
+    },
+    "benchmark": {
+      "label": "4 zh/en clone samples: median warm RTF 0.128; quality from user listening, 2026-11-19",
+      "device": "Apple M5 Max"
+    }
+  },
+  "modelInstall": {
+    "serviceKey": "ai2apps.model.moss-tts-nano",
+    "models": [
+      {
+        "id": "ai2apps.model.moss-tts-nano/100m",
+        "label": "MOSS TTS Nano (Experimental)",
+        "recommended": true
+      }
+    ]
+  }
+}

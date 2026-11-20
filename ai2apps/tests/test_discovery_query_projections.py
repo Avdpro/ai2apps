@@ -128,3 +128,18 @@ def test_usage_reported_zero_unreported_and_historic_unknown_are_distinct():
     normalized=_openai_usage({'inputTokens':100,'outputTokens':2,'cachedInputTokens':0,
         'cacheUsageReported':False,'cacheUsageSource':'upstream-not-reported','providerCurrencyCost':None})
     assert normalized['cacheUsageReported'] is False and normalized['providerCurrencyCost'] is None
+
+
+@pytest.mark.parametrize('hit,integrity,reported,expected',[(75,'valid',True,75),(0,'valid',True,0),(None,'unreported',False,None),(101,'conflict',True,None)])
+def test_cloud_cache_observation_preserved_without_inventing_zero(hit,integrity,reported,expected):
+    from ai2apps.cloud_gateway import _openai_usage
+    observation={'schemaVersion':'ai2apps.cache-observation.v1','inputTokens':100,
+        'hitTokens':hit,'missTokens':100-hit if hit is not None else None,
+        'integrity':integrity,'source':'native','hitSource':'upstream','missSource':'upstream'}
+    normalized=_openai_usage({'inputTokens':100,'outputTokens':2,'cachedInputTokens':0,
+        'cacheObservation':{**observation,'private_diagnostic':'never propagate'},'cacheUsageReported':reported})
+    assert normalized['cacheObservation']==observation
+    assert normalized.get('prompt_tokens_details',{}).get('cached_tokens')==expected
+    metrics=observed_metrics([model_step(1,normalized,{'requestId':'fixture'})])
+    assert metrics['cached_input_tokens']==expected
+    assert metrics['rows'][0]['cache_observation']==observation

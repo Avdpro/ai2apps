@@ -10,10 +10,11 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-MAX_RECOVERIES = 3
+from ai2apps.capabilities.effects import has_mutating_effects as has_mutating_effects
+
 PREFLIGHT_CODES = frozenset(
-    {"parameter_contract_mismatch", "parameter_contract_required", "invalid_tool_arguments", "tool_not_available", "invalid_question",
-     "provider_incompatible", "provider_unavailable", "uncertain_execution", "invalid_app_interaction"}
+    {"parameter_contract_mismatch", "parameter_contract_required", "invalid_tool_arguments", "invalid_tool_input", "tool_not_available", "invalid_question",
+     "provider_incompatible", "provider_unavailable", "provider_selection_required", "provider_binding_changed", "uncertain_execution", "invalid_app_interaction", "repeated_tool_error"}
 )
 READ_ONLY_CODES = frozenset(
     {
@@ -27,20 +28,6 @@ READ_ONLY_CODES = frozenset(
         "tool_not_found",
     }
 )
-
-
-def has_mutating_effects(effects: Iterable[str]) -> bool:
-    """Network transport plus an explicit external_read is a read-only operation.
-
-    Bare network, billing, writes and unknown effect declarations remain
-    conservative: a transport error can hide their completion.
-    """
-    values=set(effects)
-    if values <= {'read'}:
-        return False
-    if 'external_read' in values and values <= {'read','external_read','network'}:
-        return False
-    return bool(values)
 
 
 def model_visible(error: Mapping[str, Any] | None) -> bool:
@@ -64,7 +51,9 @@ def recoverable(
 ) -> bool:
     if enabled and preflight and code == 'tool_declaration_required':
         return True  # preparation is bounded by Run steps, not the failure allowance
-    if not enabled or prior_errors >= MAX_RECOVERIES:
+    # Ordinary failures settle as model-visible results; Run step/time/token
+    # budgets bound execution. A task-wide error counter is not a stop reason.
+    if not enabled:
         return False
     if preflight:
         return code in PREFLIGHT_CODES
@@ -99,6 +88,9 @@ def error_result(
         import json
         try:
             detail=json.loads(message)
+            if detail.get('rejection_kind') == 'unsupported_interaction':
+                result.update(rejection_kind='unsupported_interaction', submitted=False, side_effects=False)
+                result['message']=detail.get('message','Unsupported interaction')[:2048]
             contract=detail.get('parameter_contract')
             if isinstance(contract,dict) and len(json.dumps(contract).encode())<=128*1024:
                 result.update(parameter_contract=contract,validation_errors=detail.get('errors',[]),
@@ -108,9 +100,14 @@ def error_result(
             pass
     if outcome_uncertain:
         result["outcome_uncertain"] = True
-        result["next_action"] = "Analyze the failure and use read-only status/recovery tools if available. The operation may have completed or billed. Do not submit another effectful operation in this Run. If status cannot be confirmed, ask the user and explain the uncertainty."
+        result["next_action"] = "Use an available read-only status tool for the original operation or its returned job reference. The operation may have completed or billed. Do not submit another effectful operation in this Run. If status cannot be confirmed, ask the user and explain the uncertainty."
     elif preflight:
         result["next_action"] = "No operation was submitted. Analyze the rejection, correct arguments, select a compatible enabled provider, or collect genuinely missing parameters. Request a new call only after correcting the cause."
+        if code == "provider_selection_required":
+            result["next_action"] = "Use an exact Provider ID from the candidates and preserve the original arguments. No operation was submitted."
+        if code == "tool_not_available":
+            result["submitted"] = False
+            result["next_action"] = "Use the exact function name specified in the message or select an available tool from the current definitions."
     if code == "invalid_tool_input":
         result["recoverable_input_error"] = True  # legacy durable records/readers
     return result

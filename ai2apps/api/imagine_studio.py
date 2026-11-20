@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import binascii
 import json
+import logging
 import os
 import tempfile
 import time
@@ -23,6 +25,7 @@ from fastapi import (
     Header,
     HTTPException,
     Query,
+    Request,
     UploadFile,
 )
 from fastapi.responses import FileResponse, Response
@@ -31,14 +34,18 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from ai2apps.api.health import PlatformRuntimeProvider
 from ai2apps.api.identity import PrincipalProvider, resolve_request_principal
 from ai2apps.api.ownership import authorize_app_instance
-from ai2apps.cloud_gateway import request_cloud_image
+from ai2apps.images.cloud_gateway import request_cloud_image
 from ai2apps.gallery import GalleryRepository
 from ai2apps.identity import RequestPrincipal
+from ai2apps.http_security import enforce_same_origin_cookie_request
+from ai2apps.skills.library import SkillLibrary, principal_owner
+from ai2apps.skills.mini_apps import RunInput as SkillRunInput, SkillMiniApps, resolve_values
 from ai2apps.model_capabilities import cloud_model_capabilities
 from ai2apps.model_providers import list_package_models
 from ai2apps.model_invocation import ModelInvocationContext
 from ai2apps.images import ImagineStudioHistoryError, ImagineStudioHistoryRepository
 from ai2apps.images.history import MAX_HISTORY_ITEMS, MAX_IMAGE_BYTES
+from ai2apps.studio.development import comfyui_prototype_enabled
 from ai2apps.studio import (
     StudioMiniAppRegistry,
     StudioRepository,
@@ -62,9 +69,16 @@ MINI_APPS = (
 MINI_APPS += ({"id": "ai2apps.imagine.try-on", "version": "1.0.0", "kind": "clip", "category": "create", "icon": "shirt", "source": "official", "entry": {"kind": "host-adapter", "adapter": "try-on"}, "inputs": ["image", "text"], "outputs": ["image"]},)
 MINI_APPS += ({"id": "ai2apps.imagine.upscale-image", "version": "1.0.0", "kind": "clip", "category": "edit", "icon": "scan", "source": "official", "entry": {"kind": "host-adapter", "adapter": "upscale-image"}, "inputs": ["image"], "outputs": ["image"]},)
 from ai2apps.images.capabilities import MINI_APP_CAPABILITIES
+from ai2apps.images import comic_translation
+from ai2apps.images.character_design import DescriptionInput as CharacterDescriptionInput, ExportInput as CharacterExportInput, RemoveImageInput as CharacterRemoveImageInput
 for _mini_app in MINI_APPS:
     if _mini_app["id"] in MINI_APP_CAPABILITIES:
         _mini_app["agentCapabilities"] = [MINI_APP_CAPABILITIES[_mini_app["id"]]]
+if comfyui_prototype_enabled():
+    from ai2apps.experiments.comfyui_studio import declaration as comfyui_declaration
+
+    MINI_APPS += (comfyui_declaration(STUDIO_ID),)
+MINI_APPS += ({"id": "ai2apps.imagine.character-design", "version": "1.0.0", "kind": "project", "category": "project", "icon": "user-round-cog", "source": "official", "entry": {"kind": "host-adapter", "adapter": "character-design"}, "inputs": ["image", "text"], "outputs": ["image"]},)
 MINI_APP_BY_ID = {item["id"]: item for item in MINI_APPS}
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
 
@@ -99,6 +113,12 @@ class StudioDraftRequest(BaseModel):
     draft: dict[str, Any] = Field(default_factory=dict)
 
 
+class ComicTranslationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    language: Literal["zh", "en", "ja", "ko", "es", "fr"]
+    texts: list[Annotated[str, Field(min_length=1, max_length=1500)]] = Field(min_length=1, max_length=32)
+
+
 class StudioRunCreateRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -123,7 +143,8 @@ class StudioRunExecuteRequest(BaseModel):
     size: str = Field(min_length=1, max_length=40)
     quality: str = Field(default="auto", max_length=40)
     output_format: str = Field(default="png", alias="outputFormat", max_length=20)
-    image_data_urls: list[str] = Field(default_factory=list, alias="imageDataUrls", max_length=4)
+    background: Literal['auto', 'opaque', 'transparent'] | None = None
+    image_data_urls: list[str] = Field(default_factory=list, alias="imageDataUrls", max_length=16)
 
 
 class ArtifactGalleryRequest(BaseModel):
@@ -170,6 +191,7 @@ def create_imagine_studio_router(
     runtime_provider: PlatformRuntimeProvider,
     principal_provider: PrincipalProvider = resolve_request_principal,
 ) -> APIRouter:
+    logging.getLogger(__name__).info("Comic Translation loaded from %s", comic_translation.__file__)
     router = APIRouter(prefix="/imagine-studio", tags=["platform-imagine-studio"])
     principal_dependency = Depends(principal_provider)
     chunk_uploads: dict[tuple[str, str, str, str], dict[str, Any]] = {}
@@ -276,28 +298,53 @@ def create_imagine_studio_router(
             })
         store = getattr(runtime_provider(), "model_manager", None)
         for model in store.enabled_cloud_models() if store is not None else []:
-            capabilities = cloud_model_capabilities(model)
-            if model.get("protocol") != "openai" or "image_generation" not in capabilities:
+            from ai2apps.images.byok_capabilities import byok_contract
+            contract = byok_contract(model)
+            if model.get("protocol") != "openai" or "image_generation" not in contract["capabilities"]:
                 continue
-            model_id = str(model["id"])
-            gpt_image = model_id.startswith("gpt-image-") or model_id == "chatgpt-image-latest"
-            operations = ["image_generation"]
-            if gpt_image or "image_edit" in capabilities:
-                operations.append("image_edit")
             data.append({
                 "id": model["gateway_id"],
-                "display_name": f"(BYOK) {model['provider_name']} · {model.get('name') or model_id}",
+                "display_name": f"(BYOK) {model['provider_name']} · {model.get('name') or model['id']}",
                 "model_type": "image_generation", "source_type": "byok",
-                "capabilities": operations, "checkpoint_ready": True, "is_hidden": False,
-                "imageOptions": {
-                    "outputFormat": ["png", "jpeg", "webp"] if gpt_image else ["png"],
-                    "quality": ["auto", "low", "medium", "high"] if gpt_image else ["standard"],
-                    "size": {"mode": "fixed", "default": "1024x1024", "auto": False,
-                             "presets": ["1024x1024", "1536x1024", "1024x1536"] if gpt_image else ["1024x1024"]},
-                },
-                "referenceLimits": {"minimum": 1, "maximum": 4},
+                "checkpoint_ready": True, "is_hidden": False, **contract,
             })
-        return {"data": data}
+        from ai2apps.images.service import _default_image_model
+        from ai2apps.images.commerce_workflows import contract
+        return {"data": data, "preferred": _default_image_model(store) if store else "", "workflowContract": contract()}
+
+    def character_call(call):
+        from ai2apps.gallery.repository import GalleryError
+        from ai2apps.core import ResourceNotFoundError
+        try: return call()
+        except GalleryError as error: raise HTTPException(422, {'code':error.code,'message':str(error)}) from error
+        except ResourceNotFoundError as error: raise HTTPException(404,'Character resource unavailable') from error
+
+    @router.post('/characters/describe')
+    async def describe_character(body: CharacterDescriptionInput, app_instance_id: str = Header(alias='X-AI2Apps-App-Instance'), principal: RequestPrincipal = principal_dependency):
+        studio(principal,app_instance_id)
+        from ai2apps.images.character_design import describe
+        from ai2apps.gallery.repository import GalleryError
+        try: return await describe(runtime_provider(),principal,app_instance_id,body)
+        except GalleryError as error: raise HTTPException(422,{'code':error.code,'message':str(error)}) from error
+
+    @router.post('/characters/runs/{run_id}/collect')
+    def collect_character_images(run_id: str, app_instance_id: str = Header(alias='X-AI2Apps-App-Instance'), principal: RequestPrincipal = principal_dependency):
+        studio(principal,app_instance_id)
+        from ai2apps.images.character_design import collect
+        return character_call(lambda: collect(runtime_provider(),principal,scoped_kwargs(principal,app_instance_id),run_id))
+
+    @router.delete('/characters/{character_id}/appearances/{appearance_id}/images/{artifact_id}')
+    def remove_character_image(character_id: str, appearance_id: str, artifact_id: str, body: CharacterRemoveImageInput, app_instance_id: str = Header(alias='X-AI2Apps-App-Instance'), principal: RequestPrincipal = principal_dependency):
+        studio(principal,app_instance_id)
+        from ai2apps.images.character_design import store
+        return character_call(lambda: {k:v for k,v in store(runtime_provider(),principal.actor_user_id).remove_generated(
+            character_id,appearance_id,artifact_id,revision=body.revision).items() if k!='history'})
+
+    @router.post('/characters/{character_id}/export', status_code=201)
+    def export_character(character_id: str, body: CharacterExportInput, app_instance_id: str = Header(alias='X-AI2Apps-App-Instance'), principal: RequestPrincipal = principal_dependency):
+        studio(principal,app_instance_id)
+        from ai2apps.images.character_design import export_settings
+        return character_call(lambda: export_settings(runtime_provider(),principal,scoped_kwargs(principal,app_instance_id),character_id,body))
 
     @router.get("/mini-apps")
     def list_mini_apps(principal: RequestPrincipal = principal_dependency):
@@ -356,6 +403,7 @@ def create_imagine_studio_router(
     ):
         repository = studio(principal, app_instance_id)
         legacy_to_mini = {
+            "character-design": "ai2apps.imagine.character-design",
             "text-image": "ai2apps.imagine.text-to-image",
             "image-edit": "ai2apps.imagine.image-edit",
             "style-transfer": "ai2apps.imagine.style-transfer",
@@ -421,7 +469,7 @@ def create_imagine_studio_router(
         principal: RequestPrincipal = principal_dependency,
     ):
         definition = MINI_APP_BY_ID.get(request.mini_app_id)
-        if definition is None:
+        if definition is None or request.mini_app_id == "ai2apps.comfyui":
             raise HTTPException(status_code=404, detail="Imagine Mini-App was not found")
         try:
             return studio(principal, app_instance_id).create_run(
@@ -435,6 +483,103 @@ def create_imagine_studio_router(
             )
         except StudioRepositoryError as error:
             return studio_error(error)
+
+    @router.get("/skill-mini-apps")
+    def skill_mini_apps(
+        app_instance_id: str = Header(alias="X-AI2Apps-App-Instance"),
+        principal: RequestPrincipal = principal_dependency,
+    ):
+        studio(principal, app_instance_id)
+        runtime = runtime_provider()
+        store = SkillMiniApps(SkillLibrary(runtime.config.paths.base_path / "platform" / "skills"))
+        return {"items": store.list(principal_owner(principal), STUDIO_ID)}
+
+    @router.post("/skill-mini-apps/{mini_app_id}/runs", status_code=202)
+    async def run_skill_mini_app(
+        mini_app_id: str, request: Request, body: SkillRunInput,
+        app_instance_id: str = Header(alias="X-AI2Apps-App-Instance"),
+        principal: RequestPrincipal = principal_dependency,
+    ):
+        from ai2apps.gallery import GalleryError
+        from ai2apps.images.parameters import validate_size
+        from ai2apps.studio.extended_jobs import submit
+        from ai2apps.studio.image_workflow import model_catalog
+        from ai2apps.task_llm import resolve_task_model
+
+        enforce_same_origin_cookie_request(request)
+        studio(principal, app_instance_id)
+        runtime = runtime_provider()
+        if not getattr(runtime, "studio_jobs", None):
+            raise HTTPException(503, "Studio task service is not ready")
+        if not resolve_task_model(runtime, "standard", "privacy"):
+            raise HTTPException(409, "Set a Standard task model in the Privacy profile")
+        store = SkillMiniApps(SkillLibrary(runtime.config.paths.base_path / "platform" / "skills"))
+        try:
+            config, _ = store.get(principal_owner(principal), mini_app_id, STUDIO_ID)
+        except LookupError as error:
+            raise HTTPException(404, str(error)) from error
+        try:
+            values, assets = resolve_values(config, body.values)
+            if len(json.dumps(values, ensure_ascii=False).encode()) > 16000:
+                raise ValueError("Parameter values exceed 16 KiB")
+            catalog = await model_catalog(runtime, principal)
+            model = next((item for item in catalog["items"]
+                          if item["id"] == body.model and item["ready"]), None)
+            if not model or "png" not in model["formats"] or len(assets) > model["referenceLimit"]:
+                raise ValueError("Select an available image model that supports these inputs and PNG output")
+            validate_size(body.size, model["size"])
+            gallery = GalleryRepository(runtime.database, runtime.config.paths.artifacts_path / "gallery")
+            files, images = {}, []
+            for field in config["parameters"]:
+                key = field["key"]
+                if key not in assets:
+                    continue
+                asset, path = gallery.asset_path(principal.actor_user_id, assets[key])
+                mime = asset["media_type"]
+                if asset["status"] != "active" or path.stat().st_size > 8 * 1024 * 1024:
+                    raise ValueError("Choose an active Gallery image no larger than 8 MiB")
+                content = path.read_bytes()
+                if not _matches_image_media_type(content, mime):
+                    raise ValueError("Choose a PNG, JPEG, or WebP image from Gallery")
+                files[key] = content
+                images.append({"key": key, "label": field["label"], "mime": mime})
+            if not hasattr(runtime, "_skill_mini_submission_lock"):
+                runtime._skill_mini_submission_lock = asyncio.Lock()
+            async with runtime._skill_mini_submission_lock:
+                return submit(runtime, principal, app_instance_id, STUDIO_ID, mini_app_id, "skill-image", {
+                    "revision": config["revision"], "values": values, "images": images,
+                    "drawing": {"model": body.model, "size": body.size, "source": model["source"],
+                                "quality": model["qualities"][0], "outputFormat": "png"},
+                }, files=files, key="skill-image-" + mini_app_id + "-" + body.key,
+                    run_spec={"mini_app_version": config["revision"], "placement": STUDIO_ID,
+                              "title": config["title"], "input_data": {
+                                  "skillRevision": config["revision"], "size": body.size,
+                                  "modelId": body.model, "modelLabel": model["label"],
+                              }})
+        except (ValueError, GalleryError, FileNotFoundError) as error:
+            raise HTTPException(422, str(error)) from error
+
+    @router.get("/skill-mini-apps/{mini_app_id}/models")
+    async def skill_mini_app_models(
+        mini_app_id: str,
+        app_instance_id: str = Header(alias="X-AI2Apps-App-Instance"),
+        principal: RequestPrincipal = principal_dependency,
+    ):
+        from ai2apps.images.service import _default_image_model
+        from ai2apps.studio.image_workflow import model_catalog
+        from ai2apps.task_llm import resolve_task_model
+
+        studio(principal, app_instance_id)
+        runtime = runtime_provider()
+        store = SkillMiniApps(SkillLibrary(runtime.config.paths.base_path / "platform" / "skills"))
+        try:
+            store.get(principal_owner(principal), mini_app_id, STUDIO_ID)
+        except LookupError as error:
+            raise HTTPException(404, str(error)) from error
+        model = resolve_task_model(runtime, "standard", "privacy")
+        catalog = await model_catalog(runtime, principal)
+        return {"items": [item for item in catalog["items"] if item["ready"] and "png" in item["formats"]],
+                "preferred": _default_image_model(runtime.model_manager), "task_model": model}
 
     @router.patch("/runs/{run_id}")
     async def update_run(
@@ -624,6 +769,7 @@ def create_imagine_studio_router(
             "ai2apps.imagine.portrait": "portrait",
             "ai2apps.imagine.extract-items": "extract-items",
             "ai2apps.imagine.try-on": "try-on",
+            "ai2apps.imagine.character-design": "character-design",
             "ai2apps.imagine.text-to-image": "text-image",
             "ai2apps.imagine.image-edit": "image-edit",
             "ai2apps.imagine.style-transfer": "style-transfer",
@@ -659,6 +805,9 @@ def create_imagine_studio_router(
                 if expected_media_type != media_type:
                     raise ValueError("Cloud image format does not match its Data URL MIME")
                 data = base64.b64decode(encoded, validate=True)
+                if request.background == 'transparent':
+                    from ai2apps.images.background import validate_alpha
+                    validate_alpha(data)
                 extension = "jpg" if media_type == "image/jpeg" else media_type.split("/", 1)[1]
                 filename = f"imagine-{run_id[-8:]}.{extension}"
                 record = history_repository.create(
@@ -726,6 +875,52 @@ def create_imagine_studio_router(
 
         background_tasks.add_task(generate_in_background)
         return repository.get_run(run_id, **scope)
+
+    @router.post("/comic-translation/ocr/{action}")
+    async def comic_image(
+        action: Literal["detect", "recognize"],
+        file: Annotated[UploadFile, File()],
+        app_instance_id: str = Header(alias="X-AI2Apps-App-Instance"),
+        principal: RequestPrincipal = principal_dependency,
+    ):
+        studio(principal, app_instance_id)
+        data = await file.read(comic_translation.MAX_IMAGE + 1)
+        if len(data) > comic_translation.MAX_IMAGE:
+            raise HTTPException(413, "The image exceeds 16 MiB.")
+        try:
+            image = await asyncio.to_thread(comic_translation.load_image, data)
+            if action == "detect":
+                return {"regions": await asyncio.to_thread(comic_translation.detect, image)}
+            context = comic_translation.context_for(principal, app_instance_id)
+            return {"text": await comic_translation.recognize(runtime_provider(), context, image)}
+        except LookupError as error:
+            raise HTTPException(409, str(error)) from error
+        except (OSError, ValueError) as error:
+            raise HTTPException(422, str(error)) from error
+        except TimeoutError as error:
+            raise HTTPException(504, "OXR timed out.") from error
+        except comic_translation.ModelInvocationError as error:
+            raise HTTPException(502, {"code": error.code, "message": str(error)}) from error
+
+    @router.post("/comic-translation/translate")
+    async def translate_comic(
+        body: ComicTranslationRequest,
+        app_instance_id: str = Header(alias="X-AI2Apps-App-Instance"),
+        principal: RequestPrincipal = principal_dependency,
+    ):
+        studio(principal, app_instance_id)
+        context = comic_translation.context_for(principal, app_instance_id)
+        try:
+            return {"translations": await comic_translation.translate(
+                runtime_provider(), context, body.texts, body.language)}
+        except LookupError as error:
+            raise HTTPException(409, str(error)) from error
+        except ValueError as error:
+            raise HTTPException(422, str(error)) from error
+        except TimeoutError as error:
+            raise HTTPException(504, "Translation timed out.") from error
+        except comic_translation.ModelInvocationError as error:
+            raise HTTPException(502, {"code": error.code, "message": str(error)}) from error
 
     @router.get("/results")
     def list_results(
@@ -929,8 +1124,19 @@ def create_imagine_studio_router(
             if not owned:
                 raise HTTPException(404, 'Output session not found')
             record = runtime.workspace.get_artifact(workspace_session, workspace_id)
-            if record.media_type not in {'image/png','image/jpeg','image/webp'}:
-                raise HTTPException(415, 'Only image output can be added to Gallery')
+            if record.media_type == 'application/json':
+                path = runtime.workspace.artifact_path(record)
+                if path.stat().st_size > 70*1024*1024:
+                    raise HTTPException(413, 'Character settings are too large')
+                try:
+                    document = json.loads(path.read_text())
+                    valid = isinstance(document, dict) and document.get('schema') == 'ai2apps.character-appearance/v1'
+                except (ValueError, UnicodeError):
+                    valid = False
+                if not valid:
+                    raise HTTPException(415, 'Only character appearance JSON output can be added to Gallery')
+            elif record.media_type not in {'image/png','image/jpeg','image/webp'}:
+                raise HTTPException(415, 'Only image or character settings output can be added to Gallery')
             selected = ({'filename': record.name, 'mediaType': record.media_type}, runtime.workspace.artifact_path(record))
         elif frozen:
             if artifact['name'] not in {'output.mp4', 'LivePhoto.jpg', 'LivePhoto.mov'}:
@@ -958,7 +1164,7 @@ def create_imagine_studio_router(
                 media_type=record["mediaType"], collection_id=request.collection_id,
                 source_app_id=APP_ID, source_ref=artifact["uri"],
                 metadata={"artifact_id": artifact_id, "artifact_run_id": artifact["runId"]},
-                max_bytes=1024*1024*1024 if frozen and artifact['kind']=='video' else MAX_IMAGE_BYTES,
+                max_bytes=1024*1024*1024 if frozen and artifact['kind']=='video' else 70*1024*1024 if record['mediaType']=='application/json' else MAX_IMAGE_BYTES,
             )
         return {"asset": asset, "created": created}
 
@@ -983,4 +1189,9 @@ def create_imagine_studio_router(
     from ai2apps.api.imagine_frozen_time import create_frozen_router
     frozen_router, active_frozen = create_frozen_router(runtime_provider, principal_dependency, studio, scoped_kwargs, studio_error)
     router.include_router(frozen_router)
+    if comfyui_prototype_enabled():
+        from ai2apps.experiments.comfyui_studio.routes import register
+
+        register(router, runtime_provider, principal_dependency, studio, scoped_kwargs,
+                 studio_error, execute_run, StudioRunExecuteRequest, STUDIO_ID)
     return router

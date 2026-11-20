@@ -1,0 +1,15 @@
+{
+  "schema": "ai2apps.package-source-preparation/v1",
+  "status": "development_source",
+  "source_hashes": {
+    "LICENSE": "4624115317f7f6c3a06224228f5f6e90e2e363ac941f52fd9002a0fab167e6e5",
+    "META/NOTICE.md": "fd3d732f0e5341998b82ee52049c51f298849e3f7225b8d649c1763e8d2b7c05",
+    "META/checkpoint-distribution.json": "4ce169b5dcf6d414322a3621de65e351768e7ae176afcd66cb1aa9538f75e926",
+    "META/sbom.spdx.json": "ce78ed9355e0e59266ff6c02349e2bb3f351ce8a3267b16690929dd6792b03b8",
+    "ai2apps.json": "24424d7b1ef7f467f63575afe10ca69bce4b7c684ebe2821df38bb44ee7c171b",
+    "service.yaml": "879380c12856e4c489ce263e6245b924af07ed78e1768e9764749cb349b974b8",
+    "src/worker_adapter.py": "c44f92265ee5cdb8d07b6f2c139ed7f36b3d198d045451992e630483421a1f53"
+  },
+  "distributionId": "dist_ai2apps_liveportrait_cuda_f8dd1b0c_v1",
+  "signed_installation_passed": false
+}

@@ -1,9 +1,10 @@
 """Full scheduler/API tests; model choices and external publication are fixtures."""
 import json
+import asyncio
 from types import SimpleNamespace
 import httpx
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from ai2apps.chat import ChatRepository
 from ai2apps.identity import IdentityRepository
 from ai2apps.api.router import create_ai2apps_router
@@ -40,6 +41,72 @@ def new_run(runtime,tools,prompt='Complete the fixture task'):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("cancel", [False, True])
+async def test_model_rate_limit_retries_only_the_original_step(runtime, cancel):
+    calls = []
+
+    async def model(request):
+        calls.append(request)
+        if len(calls) == 1:
+            raise HTTPException(429, {"code": "rate_limit_exceeded"},
+                                headers={"Retry-After": "1", "X-Request-ID": "attempt-1"})
+        return response(text="Recovered in the original run.")
+
+    runtime.agent_runtime.bind_model_provider(model)
+    run = new_run(runtime, [])
+    await runtime.agent_runtime.start()
+    try:
+        async with asyncio.timeout(3):
+            while runtime.agents.get_status_line(run.id).phase != "model_retry_wait":
+                await asyncio.sleep(.01)
+        snapshot = runtime.agents.get_status_line(run.id).progress_snapshot()
+        assert snapshot["model_recovery"]["attempt"] == 1
+        assert snapshot["model_recovery"]["retry_at"]
+        if cancel:
+            runtime.agent_runtime.cancel(run.id)
+        result = await wait(runtime, run.id, "cancelled" if cancel else "completed")
+        await runtime.agent_runtime.wait_for_idle()
+        events = runtime.events.list_after(subject_id=run.id, limit=100)
+        limit, = [e for e in events if e.type == "agent.model.invocation.rate_limited"]
+        assert limit.payload["provider_request_id"] == "attempt-1"
+        if cancel:
+            assert len(calls) == 1
+        else:
+            assert result.output["content"] == "Recovered in the original run."
+            assert len(calls) == 2 and calls[0] == calls[1]
+            assert sum(s.kind == "model" for s in runtime.agents.list_steps(run.id)) == 1
+    finally:
+        await runtime.agent_runtime.stop()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("code,streamed", [("insufficient_quota", False), ("rate_limit_exceeded", True)])
+async def test_rate_limit_does_not_repeat_quota_or_partial_output(runtime, code, streamed):
+    calls = []
+
+    async def model(request, report):
+        calls.append(request)
+        if streamed:
+            await report({"phase": "model_streaming", "text": "Received partial output"})
+        raise HTTPException(429, {"code": code}, headers={"Retry-After": "1"})
+
+    runtime.agent_runtime.bind_model_provider(model)
+    run = new_run(runtime, [])
+    await runtime.agent_runtime.start()
+    try:
+        await runtime.agent_runtime.wait_for_idle()
+        failed = runtime.agents.get_run(run.id)
+        assert failed.status.value == "failed"
+        if not streamed:
+            assert failed.error["retryable"] is False
+        assert len(calls) == 1
+        assert not any(event.type == "agent.model.invocation.rate_limited"
+                       for event in runtime.events.list_after(subject_id=run.id))
+    finally:
+        await runtime.agent_runtime.stop()
+
+
+@pytest.mark.asyncio
 async def test_selected_contract_then_form_restart_progress_partial_result(runtime):
     seen=[];requests=[]
     async def descriptor(principal,model=None):return {'selection_required':True,'effective_schema':{'type':'object','properties':{'query':{'type':'string'}},'required':['query']}}
@@ -68,14 +135,26 @@ async def test_selected_contract_then_form_restart_progress_partial_result(runti
         app=FastAPI();app.include_router(create_ai2apps_router(runtime_provider=lambda:runtime,principal_provider=lambda:IdentityRepository(runtime.database).local_principal_for('flow-owner')))
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url='http://test') as client:
             base=f'/v1/platform/agent-runs/{run.id}/interactions/{item.id}/parameters'
+            view = (await client.get(base)).json()
+            version = view['parameter_contract_version']
+            assert version == item.ui_hints['parameter_contract_version']
+            assert view['descriptor']['provider'] == 'test.flow_read.provider'
             saved=await client.put(base,json={'revision':0,'values':{'query':'user-edited'}})
             assert saved.status_code==200,saved.text
             url=base+'/submit'
-            submitted=await client.post(url,json={'revision':1,'values':{'query':'user-edited'}})
+            draft = {'revision':1,'values':{'query':'user-edited'}}
+            stale = await client.post(url,json={**draft,'parameter_contract_version':'0'*64})
+            assert stale.status_code == 409 and not seen
+            submitted=await client.post(url,json={**draft,'parameter_contract_version':version})
             assert submitted.status_code==200,submitted.text
-            assert (await client.post(url,json={'revision':1,'values':{'query':'user-edited'}})).json()==submitted.json()
+            assert submitted.json()['result']['parameter_contract_version'] == version
+            assert (await client.post(url,json=draft)).json()==submitted.json()
         done=await wait(runtime,run.id,'completed')
         assert len(seen)==1 and seen[0]['query']=='user-edited'
+        tool_result = next(s.output for s in runtime.agents.list_steps(run.id)
+                           if s.tool_name == 'test.flow_read' and s.status.value == 'completed')
+        assert tool_result['provider'] == view['descriptor']['provider']
+        assert tool_result['parameter_contract_version'] == version
         assert '1 of 3' in done.output['content']
         assert sum((s.error or {}).get('code')=='tool_declaration_required' for s in runtime.agents.list_steps(run.id))==1
     finally:await runtime.stop_background_tasks()
@@ -110,6 +189,10 @@ async def test_cross_capability_replanning_after_preflight_but_not_unknown_publi
         steps=runtime.agents.list_steps(run.id)
         assert calls==(['post'] if uncertain else ['browser']),[(s.tool_name,s.error,s.output) for s in steps]
         assert any((s.error or {}).get('outcome_uncertain') for s in steps)==uncertain
+        if uncertain:
+            receipt = next(s.error for s in steps if (s.error or {}).get('outcome_uncertain'))
+            invocation = runtime.services.get_invocation(receipt['original_invocation_id'])
+            assert invocation.trace_id == run.id
         if not uncertain:assert 'fixture-1' in done.output['content']
     finally:await runtime.stop_background_tasks()
 
@@ -314,3 +397,49 @@ async def test_budget_retains_concrete_failure_without_replay(runtime):
     assert failed.error['code']=='max_steps_exceeded' and 'Observed target quantity could not be verified' in failed.error['message']
     assert 'private_blob' not in str(failed.error)
     assert failed.error['tool_failures'][0]['tool']=='arbitrary.provider'
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('multiple', [False, True])
+async def test_agent_binds_provider_and_contract_before_dispatch(runtime, multiple):
+    from dataclasses import replace
+    from ai2apps.agents.parameter_contracts import resolve_contract
+
+    name = 'arbitrary.binding'
+    first = name + '.provider'
+    second = name + '.alternate'
+    calls = []
+
+    async def descriptor(principal, model=None):
+        return {'effective_schema': {'type': 'object', 'properties': {'query': {'type': 'string'}},
+                                     'required': ['query'], 'additionalProperties': False}}
+
+    async def execute(arguments, context):
+        calls.append((arguments, context.agent_provider_binding))
+        return {'fixture_done': True}
+
+    register(runtime, name, execute, describe=descriptor)
+    router = runtime.app_capability_router
+    if multiple:
+        router.register(replace(router.providers[first], id=second, app_id='test.alternate', priority=100))
+
+    async def model(request):
+        results = [json.loads(m['content']) for m in request['messages'] if m.get('role') == 'tool']
+        if any(r.get('fixture_done') for r in results):
+            return response(text='Complete')
+        if any(r.get('error', {}).get('code') == 'provider_selection_required' for r in results):
+            assert not calls
+            return response(name, {'query': 'keep me', 'provider': second})
+        return response(name, {'query': 'keep me'})
+
+    run = new_run(runtime, [name])
+    runtime.agent_runtime.bind_model_provider(model)
+    await runtime.agent_runtime.start()
+    try:
+        runtime.agent_runtime.wake()
+        await wait(runtime, run.id, 'completed')
+        chosen = router.providers[second if multiple else first]
+        contract = await resolve_contract(chosen, None, {'query': 'keep me'})
+        assert calls == [({'query': 'keep me'}, (name, chosen.id, chosen.version, contract['contract_version']))]
+        assert not runtime.agents.list_interactions(run.id)
+    finally:
+        await runtime.agent_runtime.stop()

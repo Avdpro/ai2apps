@@ -9,6 +9,8 @@ CUDA_PACKAGES = (
     "ai2apps-model-qwen25-0.5b-cuda",
     "ai2apps-model-qwen3-asr-0.6b-cuda",
     "ai2apps-model-qwen3-vl-2b-cuda",
+    "ai2apps-model-qwen38-cuda",
+    "ai2apps-model-qwen38-flash-next-cuda",
 )
 
 
@@ -39,5 +41,30 @@ def test_spark_cuda_categories_cover_chat_vision_and_asr() -> None:
 
 def test_cuda_runtime_declares_the_shared_base_capabilities() -> None:
     runtime = _manifest("ai2apps-runtime-cuda-torch")
-    assert runtime["version"] == "0.2.0"
+    assert runtime["version"] == "0.5.0"
     assert {"llm", "vlm", "audio-stt"} <= set(runtime["capabilities"])
+
+
+def test_qwen38_preserves_cross_platform_checkpoint_identity_and_requires_new_runtime():
+    cuda = _manifest("ai2apps-model-qwen38-cuda")
+    mac = _manifest("omlx-model-qwen38")
+    assert cuda["id"] == mac["id"]
+    assert cuda["models"][0]["id"] == mac["models"][0]["id"]
+    assert cuda["models"][0]["weights"] == mac["models"][0]["weights"]
+    assert cuda["models"][0]["context_window"] == 8192
+    assert cuda["models"][0]["metadata"]["native_nvfp4"] is True
+    required = set(cuda["requires"]["services"][0]["capabilities"])
+    assert "nvfp4-sm121" in required
+    assert cuda["requires"]["services"][0]["version"] == ">=0.3.0,<1.0.0"
+    assert required <= set(_manifest("ai2apps-runtime-cuda-torch")["capabilities"])
+
+
+def test_flash_cuda_preserves_identity_but_uses_native_disk_layout():
+    cuda = _manifest("ai2apps-model-qwen38-flash-next-cuda")
+    mac = _manifest("omlx-model-qwen38-flash-next-4bit")
+    assert cuda["id"] == mac["id"]
+    assert cuda["models"][0]["id"] == mac["models"][0]["id"]
+    for key in ("repo_id", "revision", "distribution_id"):
+        assert cuda["models"][0]["weights"][key] == mac["models"][0]["weights"][key]
+    assert cuda["models"][0]["weights"]["preparation"] == {"recipe": "native"}
+    assert cuda["models"][0]["metadata"]["development_status"] == "experimental-parity-pending"

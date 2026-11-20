@@ -79,7 +79,7 @@ async def audio(runtime,args,context,mini,capability):
  return await follow(runtime,principal,context,job)
 
 
-def reserve(runtime,context,args):
+def reserve(runtime,context,args,*,check_only=False):
  if not context.invocation_id:raise ToolProviderError('Durable invocation required')
  signature=json.dumps([context.session_id,args],sort_keys=True)
  with runtime.database.transaction(write=True) as db:
@@ -89,7 +89,7 @@ def reserve(runtime,context,args):
    if old['signature']!=signature:raise ToolProviderError('Invocation input changed')
    if not old['result']:raise ToolProviderError('Earlier submission is uncertain; inspect tasks without replay')
    return json.loads(old['result'])
-  db.execute('INSERT INTO studio_package_admissions VALUES(?,?,NULL)',(context.invocation_id,signature))
+  if not check_only:db.execute('INSERT INTO studio_package_admissions VALUES(?,?,NULL)',(context.invocation_id,signature))
  return None
 
 
@@ -213,9 +213,17 @@ async def avatar_descriptor(runtime,principal,model=None):
 
 async def frozen_descriptor(runtime,principal,model=None):
  from .frozen_time_pipeline import DEPTH_MODELS,MERIDIAN
- ready=lambda id: bool((m:=runtime.model_invocations.model(id)) and m.checkpoint_ready)
- return {'effective_schema':deepcopy(FROZEN_SCHEMA),'configuration_required':not (ready(MERIDIAN) and any(ready(id) for id in DEPTH_MODELS.values())),
-  'install':{'appId':IMAGINE,'capability':'image.frozen_time.vggt','requirements':{}}}
+ depth=model if model in DEPTH_MODELS else FROZEN_SCHEMA['properties']['depth']['default']
+ def ready(identifier,capability):
+  item=runtime.model_invocations.model(identifier)
+  return bool(item and item.checkpoint_ready and capability in item.capabilities)
+ missing=[]
+ if not ready(DEPTH_MODELS[depth],'depth_estimation'):missing.append('geometry:'+depth)
+ if not ready(MERIDIAN,'video_generation'):missing.append('meridian')
+ return {'effective_schema':deepcopy(FROZEN_SCHEMA),'model_field':'depth',
+  'configuration_required':bool(missing),'missing_requirements':missing,
+  'constraints':{'missing_requirements':missing},
+  'install':{'appId':IMAGINE,'capability':'image.frozen_time.'+depth,'requirements':{}}}
 
 def install(runtime,register):
  logging.getLogger(__name__).info('Studio Package AaAT owners loaded from %s',__file__)

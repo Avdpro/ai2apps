@@ -57,6 +57,7 @@ class _LiveProcess:
     process: asyncio.subprocess.Process
     record: ProcessRecord
     tasks: tuple[asyncio.Task[None], ...]
+    pty_io: object | None = None
 
 
 class ProcessManager:
@@ -270,8 +271,12 @@ class ProcessManager:
         return (str(resolved), *argv[1:])
 
     @staticmethod
-    def _resource_limiter(limits: ProcessLimits):
+    def _resource_limiter(limits: ProcessLimits, terminal_fd=None):
         def apply() -> None:
+            if terminal_fd is not None:
+                import fcntl
+                import termios
+                fcntl.ioctl(terminal_fd, termios.TIOCSCTTY, 0)
             def set_limit(kind: int, value: int) -> None:
                 try:
                     _soft, hard = resource.getrlimit(kind)
@@ -303,6 +308,9 @@ class ProcessManager:
         environment: Mapping[str, object] | None = None,
         network_enabled: bool = False,
         limits: Mapping[str, object] | None = None,
+        pty: bool = False,
+        cols: int = 100,
+        rows: int = 30,
     ) -> ProcessRecord:
         if self._stopping:
             raise ProcessServiceError("service_stopping", "Process Service is stopping")
@@ -382,6 +390,8 @@ class ProcessManager:
             expires_at=envelope.expires_at,
             evidence={"sandbox": launch.backend, "argv0": process_argv[0]},
         )
+        terminal = None
+        slave_fd = None
         try:
             self.broker.verify(
                 envelope.token,
@@ -389,17 +399,25 @@ class ProcessManager:
                 run_id=run_id,
                 operation="process.spawn",
             )
+            if pty:
+                import pty as pty_module
+                from .pty_io import PtyIO
+                master_fd, slave_fd = pty_module.openpty()
+                terminal = PtyIO(master_fd)
+                terminal.resize(cols, rows)
+                process_environment.setdefault('TERM', 'xterm-256color')
             child = await asyncio.create_subprocess_exec(
                 *launch.argv,
                 cwd=launch.cwd,
                 env=process_environment,
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+                stdin=slave_fd if pty else asyncio.subprocess.PIPE,
+                stdout=slave_fd if pty else asyncio.subprocess.PIPE,
+                stderr=slave_fd if pty else asyncio.subprocess.PIPE,
                 start_new_session=True,
-                preexec_fn=self._resource_limiter(process_limits),
+                preexec_fn=self._resource_limiter(process_limits, slave_fd),
             )
         except BaseException as error:
+            if terminal is not None: terminal.close()
             self.repository.resolve_broker_request(request_id, "denied")
             self.repository.settle(
                 record.id,
@@ -412,11 +430,13 @@ class ProcessManager:
             if isinstance(error, ProcessServiceError):
                 raise
             raise ProcessServiceError("spawn_failed", str(error)) from error
+        finally:
+            if slave_fd is not None: os.close(slave_fd)
         self.repository.resolve_broker_request(request_id, "accepted")
         record = self.repository.mark_running(record.id, child.pid)
         readers = (
             asyncio.create_task(
-                self._read_output(record.id, "stdout", child.stdout),
+                self._read_output(record.id, "stdout", terminal if pty else child.stdout),
                 name=f"{record.id}-stdout",
             ),
             asyncio.create_task(
@@ -429,7 +449,7 @@ class ProcessManager:
         )
         waiter = asyncio.create_task(self._wait(record.id), name=f"{record.id}-wait")
         self._live[record.id] = _LiveProcess(
-            child, record, (*readers, watchdog, waiter)
+            child, record, (*readers, watchdog, waiter), terminal
         )
         self._output_locks[record.id] = asyncio.Lock()
         return record
@@ -554,6 +574,7 @@ class ProcessManager:
                 task.cancel()
         self._live.pop(process_id, None)
         self._output_locks.pop(process_id, None)
+        if live.pty_io is not None: live.pty_io.close()
 
     async def _terminate(
         self, process_id: str, status: ProcessStatus, error: dict[str, str]
@@ -594,20 +615,38 @@ class ProcessManager:
         if (
             record.status is not ProcessStatus.RUNNING
             or live is None
-            or live.process.stdin is None
+            or (live.process.stdin is None and live.pty_io is None)
         ):
             raise ProcessServiceError("process_not_running", "Process is not running")
         if not record.stdin_open:
             raise ProcessServiceError("stdin_closed", "Process stdin is closed")
-        if encoded:
+        if live.pty_io is not None:
+            await live.pty_io.write(encoded + (b'\x04' if close else b''))
+        elif encoded:
             live.process.stdin.write(encoded)
             await live.process.stdin.drain()
-        if close:
+        if close and live.pty_io is None:
             live.process.stdin.close()
             with suppress(BrokenPipeError, ConnectionResetError):
                 await live.process.stdin.wait_closed()
         await asyncio.to_thread(self.repository.touch, process_id, stdin_open=not close)
         return await asyncio.to_thread(self.repository.get, process_id)
+
+    def resize(self, process_id, *, session_id, run_id, cols, rows):
+        self._owned(process_id, session_id=session_id, run_id=run_id)
+        live = self._live.get(process_id)
+        if live is None or live.pty_io is None:
+            raise ProcessServiceError('pty_unavailable', 'Owned live PTY required')
+        live.pty_io.resize(cols, rows)
+        return {'process_id':process_id, 'cols':cols, 'rows':rows}
+
+    def interrupt(self, process_id, *, session_id, run_id):
+        self._owned(process_id, session_id=session_id, run_id=run_id)
+        live = self._live.get(process_id)
+        if live is None or live.process.returncode is not None:
+            raise ProcessServiceError('process_not_running', 'Owned live process required')
+        os.killpg(live.process.pid, signal.SIGINT)
+        return {'process_id':process_id, 'signal':'SIGINT', 'status':'sent'}
 
     async def cancel(
         self, process_id: str, *, session_id: str, run_id: str | None

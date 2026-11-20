@@ -1,0 +1,69 @@
+schema: ai2apps.service/v1
+id: ai2apps.model.oxr
+name: SoMark OXR 1.0 BF16
+description: Local document-image OCR using SoMark OXR and the official oMLX Runtime.
+version: 0.1.0
+publisher:
+  id: ai2apps
+runtime:
+  mode: process
+  protocol: ai2apps-model-worker/v1
+  provider: ai2apps.runtime.omlx
+  adapter: src/worker_adapter.py:create_adapter
+models:
+- id: ai2apps.model.oxr/oxr-1.0-bf16
+  display_name: SoMark OXR 1.0 BF16
+  model_type: vlm
+  upstream_id: SoMarkAI/OXR-1.0
+  capabilities:
+  - image_recognition
+  context_window: 8192
+  weights:
+    provider: huggingface
+    repo_id: SoMarkAI/OXR-1.0
+    revision: c708407f9d2b4df658f2543d9132b62bb7221df4
+    preparation:
+      recipe: native
+    distribution_id: dist_ai2apps_oxr_1_0_bf16_c708407f_v1
+  metadata:
+    family: oxr
+    quantization: bf16
+    reasoning:
+      schema: ai2apps.reasoning/v1
+      mode: none
+      format: think_tags
+      default_enabled: false
+capabilities: []
+requires:
+  services:
+  - id: ai2apps.runtime.omlx
+    version: '>=1.8.15,<2.0.0'
+    optional: false
+    capabilities:
+    - mlx
+    - model-worker-v1
+    - vlm
+    - oxr-v1
+  python: '>=3.11,<3.14'
+permissions:
+  network:
+    outbound: false
+  model_weights:
+    huggingface_cache: read
+    reason: Read only the Host-selected pinned OXR checkpoint.
+  accelerator:
+    metal: true
+    reason: Run OXR document recognition on Apple GPU.
+compatibility:
+  os:
+  - macos
+  architectures:
+  - arm64
+  minimum_os_version: '26.2'
+health:
+  path: /health
+  startup_timeout_seconds: 60
+restart:
+  max_attempts: 2
+  base_delay_seconds: 1
+tools: []

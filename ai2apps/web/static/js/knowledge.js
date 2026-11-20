@@ -42,6 +42,7 @@
         return payload;
     }
     window.knowledgeApp = () => ({
+        appStateBinding: null, appStateRestoring: false,
         view: 'ask',
         buckets: [], items: [], selectedBucketId: '', contextBucketIds: [], browserBucketIds: [], browserBucketsRestored: false, query: '', kind: '',
         loading: true, busy: false, notice: '', noticeTone: '', composerOpen: false, mergeFiles: false, detectOverlap: true, groupTitle: '', composerFiles: [], composerPreviews: [], fileDrag: false, bucketRoutingJobs: [],
@@ -87,8 +88,21 @@
                 await this.loadItems();
                 this.restoreAskBucketSelection();
                 this.watchImports();
+                if(this.surface==='full')this.mountAppState();
             }
         },
+        mountAppState(){
+            if(!window.AI2AppsAppState||this.appStateBinding)return;
+            const sdk=window.AI2AppsAppState,instanceId=new URLSearchParams(location.hash.slice(1)).get('ai2apps-instance');if(!sdk||!instanceId)return;
+            const capture=()=>({bucket_id:this.selectedBucketId,kind:this.kind,view:this.view});
+            this.appStateBinding=sdk.register({instanceId,target:{app_id:'ai2apps.knowledge',mini_app_id:null,contract_version:1},capture,
+                revision:()=>JSON.stringify({settings:capture(),query:this.query,composer:this.composerOpen,draft:this.draft,ask:this.askInput,busy:this.busy,loading:this.loading,asking:this.askBusy}),
+                dirty:()=>Boolean(this.askInput?.trim()),setBusy:v=>{this.appStateRestoring=v;this.$root.inert=v;},
+                validate:async v=>{if(this.busy||this.loading||this.askBusy||this.composerOpen||this.importQueue.active||this.query.trim())throw Error('Finish active operations and clear the search before restoring Knowledge settings');const items=(await request('/buckets')).items||[];if(v.bucket_id&&!items.some(x=>x.id===v.bucket_id))throw Error('The saved knowledge bucket is unavailable on this installation');},
+                apply:async v=>{const buckets=(await request('/buckets')).items||[];if(v.bucket_id&&!buckets.some(x=>x.id===v.bucket_id))throw Error('The saved knowledge bucket is unavailable');const old={buckets:this.buckets,selectedBucketId:this.selectedBucketId,kind:this.kind,view:this.view,items:this.items};try{Object.assign(this,{buckets,selectedBucketId:v.bucket_id,kind:v.kind,view:v.view});await this.loadItems(true);}catch(e){Object.assign(this,old);throw e;}}
+            });
+        },
+        openAppState(){return window.AI2AppsAppState.panel(this.appStateBinding).catch(e=>this.fail(e));},
         accentStorageKey() { return `ai2apps.knowledge.accent.v1:${this.actorUserId || 'local'}`; },
         askBucketStorageKey() { return `ai2apps.knowledge.ask-buckets.v1:${this.actorUserId || 'local'}`; },
         browserBucketStorageKey() { return `ai2apps.knowledge.browser-target-buckets.v1:${this.actorUserId || 'local'}`; },
@@ -481,7 +495,8 @@
             try { this.contextBucketIds = (await request(this.contextPath())).bucket_ids || []; }
             catch (error) { this.fail(error); }
         },
-        async loadItems() {
+        async loadItems(throwOnError=false) {
+            if(this.appStateRestoring&&throwOnError!==true)return;
             if (!this.selectedBucketId) { this.items = []; this.loading = false; return; }
             this.loading = true;
             try {
@@ -513,7 +528,7 @@
                     tags: groupedTags[record.item.id] || record.tags || [],
                     suggestions: grouped[record.item.id] || [],
                 }));
-            } catch (error) { this.fail(error); }
+            } catch (error) { this.fail(error); if(throwOnError===true)throw error; }
             finally { this.loading = false; this.$nextTick(() => window.lucide?.createIcons()); }
         },
         async selectBucket(bucket) { if (bucket.id !== 'auto') this.selectedBucketId = bucket.id; await this.loadItems(); },
@@ -687,7 +702,7 @@
             }
             this.fail(new Error(tr('knowledge.web.login_timeout')));
         },
-        destroy() { this.closeComposer(); this.ocrDestroyed = true; window.clearTimeout(this.ocrPollTimer); },
+        destroy() { this.appStateBinding?.dispose(); this.closeComposer(); this.ocrDestroyed = true; window.clearTimeout(this.ocrPollTimer); },
         ocrAttentionJobs() { return this.ocrJobs.filter(job => ['awaiting_consent', 'failed', 'blocked'].includes(job.status)); },
         routingAttentionJobs() { return this.bucketRoutingJobs.filter(job => ['awaiting_consent', 'failed'].includes(job.status)); },
         itemProcessingLabel(record) {

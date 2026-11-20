@@ -11,10 +11,11 @@ from test_app_interactions import runtime
 async def test_reference_workflows(runtime,monkeypatch):
     image=io.BytesIO();Image.new('RGB',(16,16),'blue').save(image,format='PNG')
     calls=[]
+    monkeypatch.setattr('ai2apps.images.service._default_image_model',lambda store:'cloud/ai2apps/openai/gpt-image-2')
     async def cloud(body,**kwargs):
         calls.append(body)
         return {'image':{'dataUrl':'data:image/png;base64,'+base64.b64encode(image.getvalue()).decode(),'format':'png'}}
-    monkeypatch.setattr('ai2apps.cloud_gateway.request_cloud_image',cloud)
+    monkeypatch.setattr('ai2apps.images.cloud_gateway.request_cloud_image',cloud)
     from ai2apps.images.parameters import from_options
     async def catalog(*args):return [from_options('cloud/ai2apps/openai/gpt-image-2','GPT Image',{})],[]
     monkeypatch.setattr('ai2apps.images.parameters.models',catalog)

@@ -1,0 +1,74 @@
+{
+  "assets": [
+    {
+      "path": "build_artifacts/hubert-lbs-avtr1.onnx",
+      "repo": "avaturn-live/avtr-1",
+      "revision": "4c9bd5550f2617d0409ac602f75378502f675731",
+      "size": 1262266208,
+      "sha256": "c6c44581d52a4b67a535a48f2df8db014179c29ec915a6d429a497780c2b968d"
+    },
+    {
+      "path": "ditto_onnx/appearance_extractor.onnx",
+      "repo": "digital-avatar/ditto-talkinghead",
+      "revision": "e4a2f60328ee7c32af585ac4b3cce299e4c8e254",
+      "size": 3355896,
+      "sha256": "9f5823888fc155209d69cf5b3ad69502c553eaa500d28f07fd39a340bc5b7eb6"
+    },
+    {
+      "path": "ditto_onnx/decoder.onnx",
+      "repo": "digital-avatar/ditto-talkinghead",
+      "revision": "e4a2f60328ee7c32af585ac4b3cce299e4c8e254",
+      "size": 221530139,
+      "sha256": "94fca15fe5b67885edebfacbcadcac29e79238ac0d9ffbf0d688391cefb890be"
+    },
+    {
+      "path": "ditto_onnx/insightface_det.onnx",
+      "repo": "digital-avatar/ditto-talkinghead",
+      "revision": "e4a2f60328ee7c32af585ac4b3cce299e4c8e254",
+      "size": 16923442,
+      "sha256": "36470ce2f42822573fadfdc69b1fd20a96d3c0413e583d54738cf2869df0434e"
+    },
+    {
+      "path": "ditto_onnx/landmark106.onnx",
+      "repo": "digital-avatar/ditto-talkinghead",
+      "revision": "e4a2f60328ee7c32af585ac4b3cce299e4c8e254",
+      "size": 4956080,
+      "sha256": "80682a4fd45ee809a9ff436d4456bb482a06c4aaa17d9bb7fa191cd635d15e5e"
+    },
+    {
+      "path": "ditto_onnx/landmark203.onnx",
+      "repo": "digital-avatar/ditto-talkinghead",
+      "revision": "e4a2f60328ee7c32af585ac4b3cce299e4c8e254",
+      "size": 114678967,
+      "sha256": "babb139e95a783f0df5d296fc069badc4c7fcdacca0d202b21bcd409dfd2f556"
+    },
+    {
+      "path": "ditto_onnx/motion_extractor.onnx",
+      "repo": "digital-avatar/ditto-talkinghead",
+      "revision": "e4a2f60328ee7c32af585ac4b3cce299e4c8e254",
+      "size": 112610626,
+      "sha256": "91bd0c05e9fa2cb4918d32cfe547db1d3f3fbbf79713ffbe207670f422e069a1"
+    },
+    {
+      "path": "ditto_onnx/stitch_network.onnx",
+      "repo": "digital-avatar/ditto-talkinghead",
+      "revision": "e4a2f60328ee7c32af585ac4b3cce299e4c8e254",
+      "size": 185542,
+      "sha256": "d3629a08268f1125d60c194e6dbd495126424e8de1112f2fc368170660dde043"
+    },
+    {
+      "path": "ditto_onnx/warp_network.onnx",
+      "repo": "digital-avatar/ditto-talkinghead",
+      "revision": "e4a2f60328ee7c32af585ac4b3cce299e4c8e254",
+      "size": 199684267,
+      "sha256": "88f829070c6f5671f809e5ac4825320a8096fb0484fe72a67038d5515e52dba9"
+    },
+    {
+      "path": "build_artifacts/avtr1.scripted.pt",
+      "repo": "avaturn-live/avtr-1",
+      "revision": "4c9bd5550f2617d0409ac602f75378502f675731",
+      "size": 612501988,
+      "sha256": "c345fb1e84eabee3c247533b74e020f918eeec86febe5928fe16f8935572aed3"
+    }
+  ]
+}

@@ -1,8 +1,9 @@
 schema: ai2apps.app/v1
 id: ai2apps.media-voice-studio-suite
 name: Media Voice Studio Suite
-description: Local-first transcription, separation, voice replacement, dubbing, and subtitle tools.
-version: 0.2.3
+description: Local-first transcription, separation, voice replacement, dubbing, and
+  subtitle tools.
+version: 0.2.4
 publisher:
   id: ai2apps
 instances:
@@ -26,7 +27,7 @@ mini_apps:
 - schema: ai2apps.mini-app/v1
   id: ai2apps.media-voice.source-separation
   name: Voice and Background Separation
-  version: 0.2.3
+  version: 0.2.4
   kind: clip
   icon: split
   description: Separate vocals or dialogue from music and background audio.
@@ -70,8 +71,9 @@ mini_apps:
   chat:
     schema: ai2apps.mini-app-chat/v1
     enabled: true
-    system_prompt: Read and edit only declared current UI fields. Execute functions through the registered owner
-      AaAT, never through a UI run button. Preserve task, model, material and shared output ownership.
+    system_prompt: Read and edit only declared current UI fields. Execute functions
+      through the registered owner AaAT, never through a UI run button. Preserve task,
+      model, material and shared output ownership.
     context:
       transport: studio-bridge
       maxBytes: 40000
@@ -89,13 +91,170 @@ mini_apps:
             maxLength: 8000
         additionalProperties: false
       confirmation: never
+  aaat:
+    schema: ai2apps.mini-app-host-exports/v1
+    exports:
+    - name: voice.separate
+      host: ai2apps.readaloud
+      inputSchema:
+        type: object
+        additionalProperties: false
+        required:
+        - media_id
+        properties:
+          media_id:
+            type: string
+            minLength: 1
+            maxLength: 256
+            x-ai2apps-asset:
+              storage: artifact
+              accept: audio/*,video/*
+              references: true
+          profile:
+            enum:
+            - vocals_instrumental
+            - dialogue_background
+            - music_4stem
+            default: vocals_instrumental
+      fields:
+      - key: media_id
+        label:
+          zh: 源音频或视频
+          en: Source audio or video
+        type: asset
+        storage: artifact
+        accept: audio/*,video/*
+        references: true
+        multiple: false
+        minItems: 0
+        maxItems: 1
+      - key: profile
+        label:
+          zh: 分离音轨
+          en: Separation tracks
+        type: select
+        options:
+        - value: vocals_instrumental
+          label:
+            zh: 人声 / 伴奏
+            en: Vocals / instrumental
+        - value: dialogue_background
+          label:
+            zh: 对白 / 背景
+            en: Dialogue / background
+        - value: music_4stem
+          label:
+            zh: 鼓 / 贝斯 / 其他 / 人声
+            en: Drums / bass / other / vocals
+        default: vocals_instrumental
+      displayName:
+        zh: 分离人声和背景
+        en: Separate voice and background
+      summary:
+        zh: 从音频或视频分离音轨，结果进入语音工坊共享输出。
+        en: Separate audio tracks into the shared Voice Studio output.
+      agentContext:
+        schema: ai2apps.aaat-declaration/v1
+        instructions:
+        - Inputs are current Session attachment/artifact IDs or owned Gallery IDs,
+          never raw paths. Original media is referenced without copying.
+        - Use the existing durable Voice Studio job and host-owned Preview & Output.
+          Do not claim completion until its published result exists. Missing models
+          use Desktop ACPF; preserve materials and parameters. Client disconnect alone
+          does not cancel submitted work.
+        result_semantics:
+          files: Published separation ZIP and Session-owned WAV references. The shared
+            host Output remains the sole Studio media history; pass these file artifact
+            IDs to subsequent compatible Apps.
+      selectionRequired: true
+      sdk: studio.media-audio/v1
+      options: &id001
+        mode: separate
+      interfaceVersion: 1.0.0
+    - name: voice.separate
+      host: ai2apps.video-studio
+      inputSchema:
+        type: object
+        additionalProperties: false
+        required:
+        - media_id
+        properties:
+          media_id:
+            type: string
+            minLength: 1
+            maxLength: 256
+            x-ai2apps-asset:
+              storage: artifact
+              accept: audio/*,video/*
+              references: true
+          profile:
+            enum:
+            - vocals_instrumental
+            - dialogue_background
+            - music_4stem
+            default: vocals_instrumental
+      fields:
+      - key: media_id
+        label:
+          zh: 源音频或视频
+          en: Source audio or video
+        type: asset
+        storage: artifact
+        accept: audio/*,video/*
+        references: true
+        multiple: false
+        minItems: 0
+        maxItems: 1
+      - key: profile
+        label:
+          zh: 分离音轨
+          en: Separation tracks
+        type: select
+        options:
+        - value: vocals_instrumental
+          label:
+            zh: 人声 / 伴奏
+            en: Vocals / instrumental
+        - value: dialogue_background
+          label:
+            zh: 对白 / 背景
+            en: Dialogue / background
+        - value: music_4stem
+          label:
+            zh: 鼓 / 贝斯 / 其他 / 人声
+            en: Drums / bass / other / vocals
+        default: vocals_instrumental
+      displayName:
+        zh: 分离人声和背景
+        en: Separate voice and background
+      summary:
+        zh: 从音频或视频分离音轨，结果进入语音工坊共享输出。
+        en: Separate audio tracks into the shared Voice Studio output.
+      agentContext:
+        schema: ai2apps.aaat-declaration/v1
+        instructions:
+        - Inputs are current Session attachment/artifact IDs or owned Gallery IDs,
+          never raw paths. Original media is referenced without copying.
+        - Use the existing durable Voice Studio job and host-owned Preview & Output.
+          Do not claim completion until its published result exists. Missing models
+          use Desktop ACPF; preserve materials and parameters. Client disconnect alone
+          does not cancel submitted work.
+        result_semantics:
+          files: Published separation ZIP and Session-owned WAV references. The shared
+            host Output remains the sole Studio media history; pass these file artifact
+            IDs to subsequent compatible Apps.
+      selectionRequired: true
+      sdk: studio.media-audio/v1
+      options: *id001
+      interfaceVersion: 1.0.0
 - schema: ai2apps.mini-app/v1
   id: ai2apps.media-voice.transcription
   name: Detailed Transcription
-  version: 0.2.3
+  version: 0.2.4
   kind: project
   icon: captions
-  description: Create timestamped transcripts, detect speakers, and let the user assign names.
+  description: Create timestamped transcripts, detect speakers, and let the user assign
+    names.
   localizations:
     zh-CN:
       name: 详细转写
@@ -137,8 +296,9 @@ mini_apps:
   chat:
     schema: ai2apps.mini-app-chat/v1
     enabled: true
-    system_prompt: Read and edit only declared current UI fields. Execute functions through the registered owner
-      AaAT, never through a UI run button. Preserve task, model, material and shared output ownership.
+    system_prompt: Read and edit only declared current UI fields. Execute functions
+      through the registered owner AaAT, never through a UI run button. Preserve task,
+      model, material and shared output ownership.
     context:
       transport: studio-bridge
       maxBytes: 40000
@@ -164,13 +324,227 @@ mini_apps:
             type: boolean
         additionalProperties: false
       confirmation: never
+  aaat:
+    schema: ai2apps.mini-app-host-exports/v1
+    exports:
+    - name: voice.detailed_transcription
+      host: ai2apps.readaloud
+      inputSchema:
+        type: object
+        properties:
+          audio_artifact_id:
+            type: string
+            minLength: 1
+            maxLength: 500
+            x-ai2apps-asset:
+              storage: artifact
+              accept: audio/*,video/*
+              references: true
+          profile:
+            enum:
+            - compact
+            - quality
+            default: compact
+          language:
+            type: string
+            maxLength: 32
+          word_timestamps:
+            type: boolean
+            default: true
+          diarization:
+            type: boolean
+            default: true
+          output_format:
+            enum:
+            - json
+            - markdown
+            - srt
+            default: json
+        required:
+        - audio_artifact_id
+        additionalProperties: false
+      fields:
+      - key: audio_artifact_id
+        label:
+          zh: 音频或视频
+          en: Audio or video
+        type: asset
+        storage: artifact
+        accept: audio/*,video/*
+        references: true
+        multiple: false
+        minItems: 0
+        maxItems: 1
+      - key: profile
+        label:
+          zh: 转写方案
+          en: Transcription profile
+        type: select
+        options:
+        - value: compact
+          label: compact
+        - value: quality
+          label: quality
+        default: compact
+      - key: language
+        label:
+          zh: 语言
+          en: Language
+        type: text
+      - key: word_timestamps
+        label:
+          zh: 逐词时间戳
+          en: Word timestamps
+        type: boolean
+        default: true
+      - key: diarization
+        label:
+          zh: 区分说话人
+          en: Speaker diarization
+        type: boolean
+        default: true
+      - key: output_format
+        label:
+          zh: 输出格式
+          en: Output format
+        type: select
+        options:
+        - value: json
+          label: json
+        - value: markdown
+          label: markdown
+        - value: srt
+          label: srt
+        default: json
+      displayName:
+        zh: 详细转写
+        en: Detailed transcription
+      summary:
+        zh: 后台转写并保存到共享输出
+        en: Background transcription published to shared Output
+      agentContext:
+        schema: ai2apps.aaat-declaration/v1
+        instructions:
+        - Use only owned Session or Gallery media references; preserve input paths
+          and publish generated outputs through the host shared Output. Missing model
+          configuration retains parameters. Never replay an uncertain submission.
+      selectionRequired: true
+      sdk: studio.detailed-transcription/v1
+      options: &id002 {}
+      interfaceVersion: 1.0.0
+    - name: voice.detailed_transcription
+      host: ai2apps.video-studio
+      inputSchema:
+        type: object
+        properties:
+          audio_artifact_id:
+            type: string
+            minLength: 1
+            maxLength: 500
+            x-ai2apps-asset:
+              storage: artifact
+              accept: audio/*,video/*
+              references: true
+          profile:
+            enum:
+            - compact
+            - quality
+            default: compact
+          language:
+            type: string
+            maxLength: 32
+          word_timestamps:
+            type: boolean
+            default: true
+          diarization:
+            type: boolean
+            default: true
+          output_format:
+            enum:
+            - json
+            - markdown
+            - srt
+            default: json
+        required:
+        - audio_artifact_id
+        additionalProperties: false
+      fields:
+      - key: audio_artifact_id
+        label:
+          zh: 音频或视频
+          en: Audio or video
+        type: asset
+        storage: artifact
+        accept: audio/*,video/*
+        references: true
+        multiple: false
+        minItems: 0
+        maxItems: 1
+      - key: profile
+        label:
+          zh: 转写方案
+          en: Transcription profile
+        type: select
+        options:
+        - value: compact
+          label: compact
+        - value: quality
+          label: quality
+        default: compact
+      - key: language
+        label:
+          zh: 语言
+          en: Language
+        type: text
+      - key: word_timestamps
+        label:
+          zh: 逐词时间戳
+          en: Word timestamps
+        type: boolean
+        default: true
+      - key: diarization
+        label:
+          zh: 区分说话人
+          en: Speaker diarization
+        type: boolean
+        default: true
+      - key: output_format
+        label:
+          zh: 输出格式
+          en: Output format
+        type: select
+        options:
+        - value: json
+          label: json
+        - value: markdown
+          label: markdown
+        - value: srt
+          label: srt
+        default: json
+      displayName:
+        zh: 详细转写
+        en: Detailed transcription
+      summary:
+        zh: 后台转写并保存到共享输出
+        en: Background transcription published to shared Output
+      agentContext:
+        schema: ai2apps.aaat-declaration/v1
+        instructions:
+        - Use only owned Session or Gallery media references; preserve input paths
+          and publish generated outputs through the host shared Output. Missing model
+          configuration retains parameters. Never replay an uncertain submission.
+      selectionRequired: true
+      sdk: studio.detailed-transcription/v1
+      options: *id002
+      interfaceVersion: 1.0.0
 - schema: ai2apps.mini-app/v1
   id: ai2apps.media-voice.audio-speaker-replacement
   name: Audio Speaker Voice Replacement
-  version: 0.2.3
+  version: 0.2.4
   kind: project
   icon: audio-lines
-  description: Replace one selected speaker in an audio recording with an authorized target voice.
+  description: Replace one selected speaker in an audio recording with an authorized
+    target voice.
   localizations:
     zh-CN:
       name: 录音角色换声
@@ -211,8 +585,9 @@ mini_apps:
   chat:
     schema: ai2apps.mini-app-chat/v1
     enabled: true
-    system_prompt: Read and edit only declared current UI fields. Execute functions through the registered owner
-      AaAT, never through a UI run button. Preserve task, model, material and shared output ownership.
+    system_prompt: Read and edit only declared current UI fields. Execute functions
+      through the registered owner AaAT, never through a UI run button. Preserve task,
+      model, material and shared output ownership.
     context:
       transport: studio-bridge
       maxBytes: 40000
@@ -236,10 +611,181 @@ mini_apps:
             maxLength: 8000
         additionalProperties: false
       confirmation: never
+  aaat:
+    schema: ai2apps.mini-app-host-exports/v1
+    exports:
+    - name: voice.replace_speaker
+      host: ai2apps.readaloud
+      inputSchema:
+        type: object
+        additionalProperties: false
+        required:
+        - media_id
+        - action
+        properties:
+          media_id:
+            type: string
+            minLength: 1
+            maxLength: 256
+            x-ai2apps-asset:
+              storage: artifact
+              accept: audio/*
+              references: true
+          action:
+            enum:
+            - analyze
+            - replace
+            default: analyze
+          analysis_id:
+            type: string
+            minLength: 1
+            maxLength: 256
+          target_speaker:
+            type: string
+            minLength: 1
+            maxLength: 128
+          reference_id:
+            type: string
+            minLength: 1
+            maxLength: 256
+            x-ai2apps-asset:
+              storage: artifact
+              accept: audio/*
+              references: true
+          conversion_profile:
+            enum:
+            - timbre_fast
+            - timbre_quality
+            - voice_quality
+            default: timbre_fast
+          consent:
+            type: boolean
+            default: false
+        allOf:
+        - if:
+            properties:
+              action:
+                const: replace
+          then:
+            required:
+            - analysis_id
+            - target_speaker
+            - reference_id
+            - consent
+            properties:
+              consent:
+                const: true
+      fields:
+      - key: media_id
+        label:
+          zh: 源录音
+          en: Source recording
+        type: asset
+        storage: artifact
+        accept: audio/*
+        references: true
+        multiple: false
+        minItems: 0
+        maxItems: 1
+      - key: action
+        label:
+          zh: 处理阶段
+          en: Stage
+        type: select
+        options:
+        - value: analyze
+          label:
+            zh: 识别说话人
+            en: Analyze speakers
+        - value: replace
+          label:
+            zh: 替换指定角色声音
+            en: Replace observed speaker
+        default: analyze
+      - key: analysis_id
+        label:
+          zh: 角色分析记录（仅换声）
+          en: Analysis reference (replace only)
+        type: text
+      - key: target_speaker
+        label:
+          zh: 目标说话人编号（仅换声）
+          en: Observed speaker ID (replace only)
+        type: text
+      - key: reference_id
+        label:
+          zh: 目标声音参考音频
+          en: Reference voice audio
+        type: asset
+        storage: artifact
+        accept: audio/*
+        references: true
+        multiple: false
+        minItems: 0
+        maxItems: 1
+      - key: conversion_profile
+        label:
+          zh: 换声质量
+          en: Conversion quality
+        type: select
+        options:
+        - value: timbre_fast
+          label:
+            zh: 音色 · 快速
+            en: Timbre · fast
+        - value: timbre_quality
+          label:
+            zh: 音色 · 高质量
+            en: Timbre · quality
+        - value: voice_quality
+          label:
+            zh: 声音 · 高质量
+            en: Voice · quality
+        default: timbre_fast
+      - key: consent
+        label:
+          zh: 我确认拥有处理源录音和使用参考声音的权利
+          en: I confirm rights to process the recording and use the reference voice
+        type: boolean
+        default: false
+      displayName:
+        zh: 分析角色并换声
+        en: Analyze and replace a speaker
+      summary:
+        zh: 先识别录音角色，再选择目标角色与参考声音并确认使用权。
+        en: Analyze first; select the target and reference voice, then confirm usage
+          rights.
+      agentContext:
+        schema: ai2apps.aaat-declaration/v1
+        instructions:
+        - Inputs are current Session attachment/artifact IDs or owned Gallery IDs,
+          never raw paths. Original media is referenced without copying.
+        - Use the existing durable Voice Studio job and host-owned Preview & Output.
+          Do not claim completion until its published result exists. Missing models
+          use Desktop ACPF; preserve materials and parameters. Client disconnect alone
+          does not cancel submitted work.
+        - First call action=analyze without a target or reference. Return observed
+          speaker IDs and sample text; ask the user to identify the target. Analysis
+          does not replace any voice.
+        - For action=replace pass the returned analysis_id for this exact source in
+          the same Session, one observed target_speaker and reference_id. Obtain explicit
+          rights consent through the parameter form; consent defaults false and must
+          never be inferred from reference availability.
+        - Keep source and reference media unchanged. Missing or changed analysis is
+          a preflight failure; analyze again only within user authorization.
+        result_semantics:
+          speakers: Observed diarization IDs with short text samples, not verified
+            real identities. Empty speaker evidence cannot authorize replacement.
+          files: Analysis JSON or the final mixed WAV, also published to host Output.
+      selectionRequired: true
+      sdk: studio.media-audio/v1
+      options:
+        mode: replace_audio
+      interfaceVersion: 1.0.0
 - schema: ai2apps.mini-app/v1
   id: ai2apps.media-voice.video-subtitles
   name: Video Subtitles and Translation
-  version: 0.2.3
+  version: 0.2.4
   kind: project
   icon: subtitles
   description: Generate, translate, export, or burn subtitles into a video.
@@ -284,8 +830,9 @@ mini_apps:
   chat:
     schema: ai2apps.mini-app-chat/v1
     enabled: true
-    system_prompt: Read and edit only declared current UI fields. Execute functions through the registered owner
-      AaAT, never through a UI run button. Preserve task, model, material and shared output ownership.
+    system_prompt: Read and edit only declared current UI fields. Execute functions
+      through the registered owner AaAT, never through a UI run button. Preserve task,
+      model, material and shared output ownership.
     context:
       transport: studio-bridge
       maxBytes: 40000
@@ -319,14 +866,128 @@ mini_apps:
             type: boolean
         additionalProperties: false
       confirmation: never
+  aaat:
+    schema: ai2apps.mini-app-host-exports/v1
+    exports:
+    - name: video.subtitles
+      host: ai2apps.video-studio
+      inputSchema:
+        type: object
+        additionalProperties: false
+        required:
+        - video_id
+        - target_language
+        properties:
+          video_id:
+            type: string
+            minLength: 1
+            maxLength: 256
+            x-ai2apps-asset:
+              storage: artifact
+              accept: video/*
+              references: true
+          source_language:
+            type: string
+            maxLength: 32
+            default: ''
+          target_language:
+            type: string
+            minLength: 1
+            maxLength: 32
+          subtitle_format:
+            enum:
+            - srt
+            - vtt
+            - ass
+            default: srt
+          bilingual:
+            type: boolean
+            default: true
+          burn_in:
+            type: boolean
+            default: false
+      fields:
+      - key: video_id
+        label:
+          zh: 视频素材
+          en: Video material
+        type: asset
+        storage: artifact
+        accept: video/*
+        references: true
+        multiple: false
+        minItems: 0
+        maxItems: 1
+      - key: source_language
+        label:
+          zh: 原语言（留空自动识别）
+          en: Source language (blank for auto)
+        type: text
+        default: ''
+      - key: target_language
+        label:
+          zh: 目标语言
+          en: Target language
+        type: text
+      - key: subtitle_format
+        label:
+          zh: 字幕格式
+          en: Subtitle format
+        type: select
+        options:
+        - value: srt
+          label: srt
+        - value: vtt
+          label: vtt
+        - value: ass
+          label: ass
+        default: srt
+      - key: bilingual
+        label:
+          zh: 双语字幕
+          en: Bilingual subtitles
+        type: boolean
+        default: true
+      - key: burn_in
+        label:
+          zh: 将字幕烧录到视频
+          en: Burn subtitles into video
+        type: boolean
+        default: false
+      displayName:
+        zh: 视频字幕与翻译
+        en: Video subtitles and translation
+      summary:
+        zh: 翻译视频字幕并导出字幕文件，可选烧录；任务在 Desktop 后台运行。
+        en: Translate video subtitles and optionally burn them into video; runs in
+          the Desktop background.
+      agentContext:
+        schema: ai2apps.aaat-declaration/v1
+        instructions:
+        - Use video.subtitles for translated subtitles. Input video_id is a current
+          Session attachment ID or owned Gallery asset ID. Never request or invent
+          a raw filesystem path.
+        - Collect target language and output preferences before submitting. Preserve
+          source media in Gallery. The task executes on Desktop; client disconnect
+          does not cancel it.
+        - Missing-model forms retain media and parameters; Mobile users configure
+          in Desktop and recheck. Do not claim output exists before the durable task
+          succeeds.
+        result_semantics:
+          files: Actual generated output artifacts. Subtitle ZIP contains subtitles
+            and transcript; burn_in additionally includes rendered video.
+      selectionRequired: true
+      sdk: studio.video-subtitles/v1
+      options: {}
+      interfaceVersion: 1.0.0
 - schema: ai2apps.mini-app/v1
   id: ai2apps.media-voice.video-audio-translation
   name: Video Audio Translation
-  version: 0.2.3
+  version: 0.2.4
   kind: project
   icon: languages
-  description: Translate a single narrator and dub with a Voice Studio Character or a temporary clone of the original
-    voice.
+  description: Translate a single narrator and dub with a Voice Studio Character or
+    a temporary clone of the original voice.
   localizations:
     zh-CN:
       name: 视频音轨翻译
@@ -373,8 +1034,9 @@ mini_apps:
   chat:
     schema: ai2apps.mini-app-chat/v1
     enabled: true
-    system_prompt: Read and edit only declared current UI fields. Execute functions through the registered owner
-      AaAT, never through a UI run button. Preserve task, model, material and shared output ownership.
+    system_prompt: Read and edit only declared current UI fields. Execute functions
+      through the registered owner AaAT, never through a UI run button. Preserve task,
+      model, material and shared output ownership.
     context:
       transport: studio-bridge
       maxBytes: 40000
@@ -403,13 +1065,176 @@ mini_apps:
             type: boolean
         additionalProperties: false
       confirmation: never
+  aaat:
+    schema: ai2apps.mini-app-host-exports/v1
+    exports:
+    - name: video.dub
+      host: ai2apps.video-studio
+      inputSchema:
+        type: object
+        additionalProperties: false
+        required:
+        - video_id
+        - target_language
+        - voice_profile_id
+        - single_narrator
+        - consent
+        properties:
+          video_id:
+            type: string
+            minLength: 1
+            maxLength: 256
+            x-ai2apps-asset:
+              storage: artifact
+              accept: video/*
+              references: true
+          source_language:
+            type: string
+            maxLength: 32
+            default: ''
+          target_language:
+            enum:
+            - zh
+            - en
+            - ja
+            - ko
+          voice_profile_id:
+            type: string
+            minLength: 1
+            maxLength: 256
+          voice_clone_model_id:
+            type: string
+            minLength: 1
+            maxLength: 512
+          asr_verification:
+            type: boolean
+            default: true
+          single_narrator:
+            type: boolean
+            const: true
+            default: false
+          consent:
+            type: boolean
+            const: true
+            default: false
+        allOf:
+        - if:
+            properties:
+              voice_profile_id:
+                const: __original_voice__
+          then:
+            required:
+            - voice_clone_model_id
+          else:
+            not:
+              required:
+              - voice_clone_model_id
+      fields:
+      - key: video_id
+        label:
+          zh: 源视频
+          en: Source video
+        type: asset
+        storage: artifact
+        accept: video/*
+        references: true
+        multiple: false
+        minItems: 0
+        maxItems: 1
+      - key: source_language
+        label:
+          zh: 源语言（空为自动）
+          en: 'Source language (empty: auto)'
+        type: text
+        default: ''
+      - key: target_language
+        label:
+          zh: 配音语言
+          en: Dubbing language
+        type: select
+        options:
+        - value: zh
+          label:
+            zh: 中文
+            en: Chinese
+        - value: en
+          label:
+            zh: 英文
+            en: English
+        - value: ja
+          label:
+            zh: 日文
+            en: Japanese
+        - value: ko
+          label:
+            zh: 韩文
+            en: Korean
+      - key: voice_profile_id
+        label:
+          zh: 语音角色编号或 __original_voice__
+          en: Voice Character ID or __original_voice__
+        type: text
+      - key: voice_clone_model_id
+        label:
+          zh: 原声克隆模型（仅临时克隆）
+          en: Clone model (original voice only)
+        type: text
+      - key: asr_verification
+        label:
+          zh: 回听核验
+          en: ASR verification
+        type: boolean
+        default: true
+      - key: single_narrator
+        label:
+          zh: 我确认按单旁白配音，不保留多角色音色
+          en: I confirm single narration without preserving multiple voices
+        type: boolean
+        default: false
+      - key: consent
+        label:
+          zh: 我确认拥有视频处理与声音使用权
+          en: I confirm rights to process video and use the voice
+        type: boolean
+        default: false
+      displayName:
+        zh: 视频配音翻译
+        en: Translate video narration
+      summary:
+        zh: 单旁白视频翻译配音，保留背景；确认声音来源与使用权后后台执行。
+        en: Translate single narration with preserved background; confirm voice and
+          rights before background execution.
+      agentContext:
+        schema: ai2apps.aaat-declaration/v1
+        instructions:
+        - Owned current Session attachment/artifact or Gallery IDs only; original
+          source/reference paths are not copied. Reuse the existing durable Studio
+          job and host shared Output. Return published Session artifact IDs for further
+          processing.
+        - Missing models retain parameters for Desktop ACPF; Mobile asks to configure
+          Desktop. Client disconnect is not cancellation. Do not retry uncertain effectful
+          execution through another capability.
+        - Review descriptor characters and clone_models; use only actual ready owner-scoped
+          IDs. Original voice uses __original_voice__ and one explicitly selected
+          clone model. No saved Character is created.
+        - Confirm single narrator and rights through the parameter form; never infer
+          consent from attached media. Multi-speaker preservation requires a different
+          workflow.
+        result_semantics:
+          files: Published dubbed MP4 from shared Video Studio output. No claim of
+            subjective dubbing quality without listening.
+      selectionRequired: true
+      sdk: studio.narration-translation/v1
+      options: {}
+      interfaceVersion: 1.0.0
 - schema: ai2apps.mini-app/v1
   id: ai2apps.media-voice.video-speaker-replacement
   name: Video Speaker Voice Replacement
-  version: 0.2.3
+  version: 0.2.4
   kind: project
   icon: refresh-cw
-  description: Replace one selected speaker in a video while preserving its picture and ambience.
+  description: Replace one selected speaker in a video while preserving its picture
+    and ambience.
   localizations:
     zh-CN:
       name: 视频角色换声
@@ -460,8 +1285,9 @@ mini_apps:
   chat:
     schema: ai2apps.mini-app-chat/v1
     enabled: true
-    system_prompt: Read and edit only declared current UI fields. Execute functions through the registered owner
-      AaAT, never through a UI run button. Preserve task, model, material and shared output ownership.
+    system_prompt: Read and edit only declared current UI fields. Execute functions
+      through the registered owner AaAT, never through a UI run button. Preserve task,
+      model, material and shared output ownership.
     context:
       transport: studio-bridge
       maxBytes: 40000
@@ -485,3 +1311,333 @@ mini_apps:
             maxLength: 8000
         additionalProperties: false
       confirmation: never
+  aaat:
+    schema: ai2apps.mini-app-host-exports/v1
+    exports:
+    - name: video.replace_speaker
+      host: ai2apps.video-studio
+      inputSchema:
+        type: object
+        additionalProperties: false
+        required:
+        - media_id
+        - action
+        properties:
+          media_id:
+            type: string
+            minLength: 1
+            maxLength: 256
+            x-ai2apps-asset:
+              storage: artifact
+              accept: video/*
+              references: true
+          action:
+            enum:
+            - analyze
+            - replace
+            default: analyze
+          analysis_id:
+            type: string
+            minLength: 1
+            maxLength: 256
+          target_speaker:
+            type: string
+            minLength: 1
+            maxLength: 128
+          reference_id:
+            type: string
+            minLength: 1
+            maxLength: 256
+            x-ai2apps-asset:
+              storage: artifact
+              accept: audio/*
+              references: true
+          conversion_profile:
+            enum:
+            - timbre_fast
+            - timbre_quality
+            - voice_quality
+            default: timbre_fast
+          consent:
+            type: boolean
+            default: false
+        allOf:
+        - if:
+            properties:
+              action:
+                const: replace
+          then:
+            required:
+            - analysis_id
+            - target_speaker
+            - reference_id
+            - consent
+            properties:
+              consent:
+                const: true
+      fields:
+      - key: media_id
+        label:
+          zh: 源视频
+          en: Source video
+        type: asset
+        storage: artifact
+        accept: video/*
+        references: true
+        multiple: false
+        minItems: 0
+        maxItems: 1
+      - key: action
+        label:
+          zh: 处理阶段
+          en: Stage
+        type: select
+        options:
+        - value: analyze
+          label:
+            zh: 识别说话人
+            en: Analyze speakers
+        - value: replace
+          label:
+            zh: 替换指定角色声音
+            en: Replace observed speaker
+        default: analyze
+      - key: analysis_id
+        label:
+          zh: 视频角色分析记录（仅换声）
+          en: Video analysis reference (replace only)
+        type: text
+      - key: target_speaker
+        label:
+          zh: 目标说话人编号（仅换声）
+          en: Observed speaker ID (replace only)
+        type: text
+      - key: reference_id
+        label:
+          zh: 目标声音参考音频（仅换声）
+          en: Reference audio (replace only)
+        type: asset
+        storage: artifact
+        accept: audio/*
+        references: true
+        multiple: false
+        minItems: 0
+        maxItems: 1
+      - key: conversion_profile
+        label:
+          zh: 换声质量
+          en: Conversion quality
+        type: select
+        options:
+        - value: timbre_fast
+          label:
+            zh: 音色·快速
+            en: Timbre fast
+        - value: timbre_quality
+          label:
+            zh: 音色·高质量
+            en: Timbre quality
+        - value: voice_quality
+          label:
+            zh: 声音·高质量
+            en: Voice quality
+        default: timbre_fast
+      - key: consent
+        label:
+          zh: 我确认拥有视频处理与参考声音使用权
+          en: I confirm video and reference voice usage rights
+        type: boolean
+        default: false
+      displayName:
+        zh: 视频角色分析与换声
+        en: Replace a video speaker
+      summary:
+        zh: 先分析视频说话人，再确认目标角色、参考声音与使用权。
+        en: Analyze speakers, then confirm target, reference voice and usage rights.
+      agentContext:
+        schema: ai2apps.aaat-declaration/v1
+        instructions:
+        - Owned current Session attachment/artifact or Gallery IDs only; original
+          source/reference paths are not copied. Reuse the existing durable Studio
+          job and host shared Output. Return published Session artifact IDs for further
+          processing.
+        - Missing models retain parameters for Desktop ACPF; Mobile asks to configure
+          Desktop. Client disconnect is not cancellation. Do not retry uncertain effectful
+          execution through another capability.
+        - First use action=analyze, return observed IDs/sample text and ask which
+          speaker to replace. Analysis is not replacement.
+        - Use the returned analysis_id for this exact video and current Session. Select
+          one observed target_speaker, audio reference_id and explicit consent=true.
+          Do not reuse audio-workflow evidence for a video.
+        result_semantics:
+          speakers: Observed diarization IDs and short samples, not verified identities.
+          files: Analysis JSON or published replacement MP4 in shared Video Studio
+            Output.
+      selectionRequired: true
+      sdk: studio.media-audio/v1
+      options: &id003
+        mode: replace_video
+      interfaceVersion: 1.0.0
+    - name: video.replace_speaker
+      host: ai2apps.readaloud
+      inputSchema:
+        type: object
+        additionalProperties: false
+        required:
+        - media_id
+        - action
+        properties:
+          media_id:
+            type: string
+            minLength: 1
+            maxLength: 256
+            x-ai2apps-asset:
+              storage: artifact
+              accept: video/*
+              references: true
+          action:
+            enum:
+            - analyze
+            - replace
+            default: analyze
+          analysis_id:
+            type: string
+            minLength: 1
+            maxLength: 256
+          target_speaker:
+            type: string
+            minLength: 1
+            maxLength: 128
+          reference_id:
+            type: string
+            minLength: 1
+            maxLength: 256
+            x-ai2apps-asset:
+              storage: artifact
+              accept: audio/*
+              references: true
+          conversion_profile:
+            enum:
+            - timbre_fast
+            - timbre_quality
+            - voice_quality
+            default: timbre_fast
+          consent:
+            type: boolean
+            default: false
+        allOf:
+        - if:
+            properties:
+              action:
+                const: replace
+          then:
+            required:
+            - analysis_id
+            - target_speaker
+            - reference_id
+            - consent
+            properties:
+              consent:
+                const: true
+      fields:
+      - key: media_id
+        label:
+          zh: 源视频
+          en: Source video
+        type: asset
+        storage: artifact
+        accept: video/*
+        references: true
+        multiple: false
+        minItems: 0
+        maxItems: 1
+      - key: action
+        label:
+          zh: 处理阶段
+          en: Stage
+        type: select
+        options:
+        - value: analyze
+          label:
+            zh: 识别说话人
+            en: Analyze speakers
+        - value: replace
+          label:
+            zh: 替换指定角色声音
+            en: Replace observed speaker
+        default: analyze
+      - key: analysis_id
+        label:
+          zh: 视频角色分析记录（仅换声）
+          en: Video analysis reference (replace only)
+        type: text
+      - key: target_speaker
+        label:
+          zh: 目标说话人编号（仅换声）
+          en: Observed speaker ID (replace only)
+        type: text
+      - key: reference_id
+        label:
+          zh: 目标声音参考音频（仅换声）
+          en: Reference audio (replace only)
+        type: asset
+        storage: artifact
+        accept: audio/*
+        references: true
+        multiple: false
+        minItems: 0
+        maxItems: 1
+      - key: conversion_profile
+        label:
+          zh: 换声质量
+          en: Conversion quality
+        type: select
+        options:
+        - value: timbre_fast
+          label:
+            zh: 音色·快速
+            en: Timbre fast
+        - value: timbre_quality
+          label:
+            zh: 音色·高质量
+            en: Timbre quality
+        - value: voice_quality
+          label:
+            zh: 声音·高质量
+            en: Voice quality
+        default: timbre_fast
+      - key: consent
+        label:
+          zh: 我确认拥有视频处理与参考声音使用权
+          en: I confirm video and reference voice usage rights
+        type: boolean
+        default: false
+      displayName:
+        zh: 视频角色分析与换声
+        en: Replace a video speaker
+      summary:
+        zh: 先分析视频说话人，再确认目标角色、参考声音与使用权。
+        en: Analyze speakers, then confirm target, reference voice and usage rights.
+      agentContext:
+        schema: ai2apps.aaat-declaration/v1
+        instructions:
+        - Owned current Session attachment/artifact or Gallery IDs only; original
+          source/reference paths are not copied. Reuse the existing durable Studio
+          job and host shared Output. Return published Session artifact IDs for further
+          processing.
+        - Missing models retain parameters for Desktop ACPF; Mobile asks to configure
+          Desktop. Client disconnect is not cancellation. Do not retry uncertain effectful
+          execution through another capability.
+        - First use action=analyze, return observed IDs/sample text and ask which
+          speaker to replace. Analysis is not replacement.
+        - Use the returned analysis_id for this exact video and current Session. Select
+          one observed target_speaker, audio reference_id and explicit consent=true.
+          Do not reuse audio-workflow evidence for a video.
+        result_semantics:
+          speakers: Observed diarization IDs and short samples, not verified identities.
+          files: Analysis JSON or published replacement MP4 in shared Video Studio
+            Output.
+      selectionRequired: true
+      sdk: studio.media-audio/v1
+      options: *id003
+      interfaceVersion: 1.0.0

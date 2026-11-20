@@ -1,0 +1,12 @@
+<aside id="ds-output" class="ds-output" data-studio-output aria-labelledby="ds-output-title">
+    <h2 id="ds-output-title">{{ '预览与输出' if zh else 'Preview & Output' }}</h2>
+    <p data-output-empty>{{ '已完成的产物会显示在这里。' if zh else 'Completed outputs appear here.' }}</p>
+    <label data-output-picker hidden>{{ '产物' if zh else 'Output' }} <select data-output-select></select></label>
+    <div class="ds-preview" data-output-preview hidden></div>
+    <div class="ds-actions">
+        <button type="button" data-output-copy hidden>{{ '复制 X Post' if zh else 'Copy X Post' }}</button>
+        <a data-output-download download hidden>{{ '保存文件' if zh else 'Save file' }}</a>
+    </div>
+    <h3>{{ '任务' if zh else 'Tasks' }}</h3>
+    <div data-output-tasks></div>
+</aside>

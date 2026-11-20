@@ -1,0 +1,88 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/model-detailed-transcription-cuda",
+    "type": "service",
+    "version": "0.1.0",
+    "displayName": "Detailed Transcription CUDA",
+    "description": "Official Qwen3 ASR and forced alignment with NVIDIA Sortformer in isolated CUDA stages; standalone subtitles and meetings."
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": [
+      "linux"
+    ],
+    "architectures": [
+      "arm64"
+    ]
+  },
+  "entrypoints": [
+    {
+      "name": "model-worker",
+      "kind": "service",
+      "path": "service.yaml"
+    }
+  ],
+  "permissions": [
+    {
+      "capability": "model-weights.huggingface-cache.read",
+      "reason": "Read only the four Host-selected pinned official checkpoints.",
+      "required": true
+    },
+    {
+      "capability": "accelerator.cuda",
+      "reason": "Run official Qwen3 and NVIDIA Sortformer locally on the GPU.",
+      "required": true
+    }
+  ],
+  "dependencies": [
+    {
+      "packageId": "ai2apps/runtime-cuda-torch",
+      "version": ">=0.5.0 <1.0.0",
+      "optional": false
+    }
+  ],
+  "files": [],
+  "sbom": {
+    "format": "spdx-json-2.3",
+    "path": "META/sbom.spdx.json"
+  },
+  "discovery": {
+    "kind": "model",
+    "categories": [
+      "speech"
+    ],
+    "tasks": [
+      "detailed-transcription",
+      "speaker-diarization",
+      "subtitle-generation"
+    ]
+  },
+  "modelInstall": {
+    "serviceKey": "ai2apps.model.detailed-transcription-cuda",
+    "models": [
+      {
+        "id": "ai2apps.model.detailed-transcription-cuda/quality",
+        "label": "Detailed Transcription Quality",
+        "recommended": true
+      },
+      {
+        "id": "ai2apps.model.detailed-transcription-cuda/compact",
+        "label": "Detailed Transcription Compact",
+        "recommended": false
+      }
+    ]
+  },
+  "modelProfile": {
+    "sizeBytes": 8894997200,
+    "minimumMemoryBytes": 17179869184,
+    "scores": {
+      "speed": 3,
+      "capability": 4
+    },
+    "benchmark": {
+      "label": "Memory/scores estimated; compact synthetic 36s audio: 36.72s cold. Broad quality pending.",
+      "device": "NVIDIA DGX Spark GB10"
+    }
+  }
+}

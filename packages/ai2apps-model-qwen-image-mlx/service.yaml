@@ -1,8 +1,8 @@
 schema: ai2apps.service/v1
 id: ai2apps.model.qwen-image-mlx
 name: Qwen Image MLX
-description: Separate Qwen Image 2512 generation and Qwen Image Edit 2511 editing (1–3 references).
-version: 0.1.2
+description: Unified Qwen Image 2.1 text-to-image and instruction-based editing with RGBA PNG and WebP output.
+version: 0.1.3
 publisher: {id: ai2apps}
 license: {name: Apache License 2.0, id: Apache-2.0, path: LICENSE}
 runtime:
@@ -11,74 +11,46 @@ runtime:
   provider: ai2apps.runtime.omlx
   adapter: src/worker_adapter.py:create_adapter
 models:
-  - id: ai2apps.model.qwen-image-mlx/2512
-    display_name: Qwen Image 2512 MLX
+  - id: ai2apps.model.qwen-image-mlx/2.1
+    display_name: Qwen Image 2.1 MLX
     model_type: image_generation
-    upstream_id: Qwen/Qwen-Image-2512
-    capabilities: [image_generation, text_rendering, multilingual, local, mlx]
+    upstream_id: Qwen/Qwen-Image-2.1
+    capabilities: [image_generation, image_edit, multi_reference, text_rendering, multilingual, local, mlx]
     weights:
       provider: huggingface
-      repo_id: Qwen/Qwen-Image-2512
-      revision: 25468b98e3276ca6700de15c6628e51b7de54a26
-      distribution_id: dist_ai2apps_qwen_image_2512_25468b98_v1
+      repo_id: Qwen/Qwen-Image-2.1
+      revision: d26bb61231c349cf6b7896fa83353113880e1ba3
+      distribution_id: dist_ai2apps_mlx_qwen_image_21_d26bb612_v1
       preparation: {recipe: native}
     metadata:
       family: qwen-image
-      variant: "2512"
-      implementation: mflux-mlx-optimized
-      mflux_version: 0.19.0
+      variant: "2.1"
+      implementation: mflux-mlx
+      mflux_version: 0.24.0
       modelscope:
-        repo_id: Qwen/Qwen-Image-2512
-        revision: ee3f7563eefa997af5a07dbe54a57e5babd3768b
-        resolved_revision: ee3f7563eefa997af5a07dbe54a57e5babd3768b
+        repo_id: Qwen/Qwen-Image-2.1
+        revision: 45ee13449c69593e1b7a10d7d1cba830c7ada657
+        resolved_revision: 45ee13449c69593e1b7a10d7d1cba830c7ada657
         preferred: true
-        allow_patterns: ["vae/*", "transformer/*", "text_encoder/*", "tokenizer/**", "scheduler/*", "processor/*", added_tokens.json, chat_template.jinja, model_index.json]
+        allow_patterns: ["model_index.json", "processor/*", "scheduler/*", "text_encoder/*", "transformer/*", "vae/*"]
       device_recommendation: {minimum_memory_gib: 32, preferred_memory_gib: 64, quality_rank: 10}
-    image_capabilities: &qwen_generation_capabilities
+    image_capabilities:
       schema: ai2apps.image-capabilities/v1
-      operations: [image_generation]
-      inputs: {reference_images: {minimum: 0, maximum: 0}}
+      operations: [image_generation, image_edit]
+      inputs: {reference_images: {minimum: 1, maximum: 3}}
       formats: {input: [png, jpeg, webp], output: [png, jpeg, webp]}
       geometry:
         minimum: {width: 256, height: 256}
         maximum: {width: 2048, height: 2048}
-        multiple_of: 16
+        multiple_of: 32
         ratios: ["1:1", "4:3", "3:4", "16:9", "9:16", "3:2", "2:3"]
-      defaults: {width: 1328, height: 1328, steps: 20, guidance: 4.0, output_format: png}
-      execution: {quantizations: [q8, q4, bf16], compiled_denoiser: false, persistent_quantized_cache: true, single_pass_guidance_one: true, edit_kv_cache: false, max_concurrency_per_device: 1}
-  - id: ai2apps.model.qwen-image-mlx/edit-2511
-    display_name: Qwen Image Edit 2511 MLX
-    model_type: image_generation
-    upstream_id: Qwen/Qwen-Image-Edit-2511
-    capabilities: [image_edit, multi_reference, character_consistency, local, mlx]
-    weights:
-      provider: huggingface
-      repo_id: Qwen/Qwen-Image-Edit-2511
-      revision: 6f3ccc0b56e431dc6a0c2b2039706d7d26f22cb9
-      distribution_id: dist_ai2apps_qwen_image_edit_2511_6f3ccc0b_v1
-      preparation: {recipe: native}
-    metadata:
-      family: qwen-image
-      variant: edit-2511
-      implementation: mflux-mlx-optimized
-      mflux_version: 0.19.0
-      modelscope:
-        repo_id: Qwen/Qwen-Image-Edit-2511
-        revision: f8403bcb7b827dab45d845cb71415ec9276e61d6
-        resolved_revision: f8403bcb7b827dab45d845cb71415ec9276e61d6
-        preferred: true
-        allow_patterns: ["vae/*", "transformer/*", "text_encoder/*", "tokenizer/**", "scheduler/*", "processor/*", added_tokens.json, chat_template.jinja, model_index.json]
-      device_recommendation: {minimum_memory_gib: 48, preferred_memory_gib: 64, quality_rank: 10}
-    image_capabilities:
-      <<: *qwen_generation_capabilities
-      operations: [image_edit]
-      inputs: {reference_images: {minimum: 1, maximum: 3}}
-      defaults: {width: 1024, height: 1024, steps: 30, guidance: 2.5, output_format: png}
+      defaults: {width: 1024, height: 1024, steps: 40, guidance: 1.0, output_format: png}
+      execution: {quantizations: [q8, q4, bf16], compiled_denoiser: false, persistent_quantized_cache: false, single_pass_guidance_one: true, edit_kv_cache: true, max_concurrency_per_device: 1}
 capabilities: [image-generation, image-edit, qwen-image]
 requires:
   services:
     - id: ai2apps.runtime.omlx
-      version: ">=1.5.1,<2.0.0"
+      version: ">=1.8.17,<2.0.0"
       optional: false
       capabilities: [mlx, model-worker-v1, metal, image-generation, image-edit]
   python: ">=3.11,<3.14"

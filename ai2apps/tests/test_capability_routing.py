@@ -144,3 +144,31 @@ async def test_schema_error_before_handler_distinguished_from_after_submit(datab
     assert caught.value.code==('invalid_tool_arguments' if phase=='prepare' else 'provider_error')
     assert caught.value.details['phase']==phase
     assert calls==([] if phase=='prepare' else ['submitted'])
+
+@pytest.mark.asyncio
+async def test_agent_contract_drift_stops_before_provider_dispatch(database):
+    from ai2apps.services.capability_routing import CapabilityInvocationError
+    from ai2apps.agents.parameter_contracts import resolve_contract
+
+    router = CapabilityRouter(database)
+    calls = []
+    schema = {'type': 'object', 'properties': {'query': {'type': 'string'}}}
+
+    async def describe(principal, model=None):
+        return {'effective_schema': schema}
+
+    async def execute(arguments, ctx):
+        calls.append(arguments)
+        return {}
+
+    provider = CapabilityProvider('fixture.read.primary', 'fixture.read', 'fixture.app', execute, describe=describe)
+    router.register(provider)
+    original = await resolve_contract(provider, None)
+    scope = SimpleNamespace(**vars(context('local', 'local')), session_id=None, agent_provider_binding=(
+        provider.capability, provider.id, provider.version, original['contract_version']))
+    schema['properties']['limit'] = {'type': 'integer'}
+    with pytest.raises(CapabilityInvocationError) as caught:
+        await router.invoke(provider.capability, {'query': 'keep', 'provider': provider.id}, scope)
+    assert caught.value.code == 'provider_binding_changed'
+    assert caught.value.details['phase'] == 'prepare'
+    assert not calls

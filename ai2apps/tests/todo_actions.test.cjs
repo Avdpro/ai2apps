@@ -3,9 +3,9 @@ const source=fs.readFileSync('web/static/js/todo.js','utf8');
 function setup(){
  const listeners=[],calls=[],errors=[];
  // Preserve the production module boundary and the entire initialization tail.
- const tail=source.slice(source.indexOf('safe(async()=>{await refresh(true);setInterval'));
+ const start=source.indexOf('safe(async()=>{await refresh(true);mountTodoAppState();');assert.ok(start>=0);const tail=source.slice(start);
  const declarations=`const state={runs:[{id:'run',task_id:'task'}],tasks:[{id:'task',revision:7}]};let dirty=false,fieldSavePending=false,pollBusy=false;const zh=true;function safe(fn){return async(...args)=>{try{return await fn(...args);}catch(e){errors.push(e.message);}}}const api=async(...args)=>calls.push(args),codexApi=api,refresh=async()=>{},renderRuns=()=>{};`;
- vm.runInNewContext('(function(){'+declarations+tail,{document:{addEventListener:(_,fn)=>listeners.push(fn)},calls,errors,setInterval(){}});
+ vm.runInNewContext('(function(){'+declarations+tail,{document:{addEventListener:(_,fn)=>listeners.push(fn)},calls,errors,setInterval(){},mountTodoAppState(){},URLSearchParams,location:{search:''}});
  return {calls,errors,click:async(selector,dataset)=>{const button={dataset,disabled:false};for(const fn of listeners)await fn({target:{closest:s=>s===selector?button:null}});assert.equal(button.disabled,false);}};
 }
 test('review handler registers inside module and submits revision then refreshes',async()=>{

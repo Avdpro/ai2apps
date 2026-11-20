@@ -199,6 +199,16 @@ class ModelManagerStore:
 
     def resolve_default_model(self, purpose: str, fallback: str | None = None, *, profile: str = "normal") -> str | None:
         """Resolve one purpose for runtime consumers, with an explicit fallback."""
+        from ai2apps.model_preferences import choose
+        from ai2apps.task_llm import effective_profile
+        # The trusted execution scope may upgrade Normal to Privacy. Consumers
+        # still validate operation support and authorize the actual invocation.
+        from ai2apps.model_preferences import scoped_profile
+        profile = effective_profile(None, profile, scoped_profile())
+        default = self._system_default_model(purpose, fallback, profile=profile)
+        return choose(None, purpose, default, profile=profile)[0]
+
+    def _system_default_model(self, purpose: str, fallback: str | None = None, *, profile: str = "normal") -> str | None:
 
         if purpose not in DEFAULT_MODEL_PURPOSES:
             raise ValueError(f"Unknown default model purpose: {purpose}")
@@ -212,10 +222,13 @@ class ModelManagerStore:
                 if model:
                     return f"cloud/ai2apps/{model['modelId']}"
             if purpose == "work_chat":
-                return self.resolve_default_model("work_standard", fallback, profile=profile)
+                return self._system_default_model("work_standard", fallback, profile=profile)
             return None
         if profile == "privacy":
             return None
+        if purpose == "image_generation":
+            model = self.cloud_default_policy().get("imageApiDefault")
+            return f"cloud/ai2apps/{model['modelId']}" if model else fallback
         from ai2apps.cloud_defaults import WORK_PURPOSES
         if purpose in WORK_PURPOSES:
             policy = self.cloud_default_policy()

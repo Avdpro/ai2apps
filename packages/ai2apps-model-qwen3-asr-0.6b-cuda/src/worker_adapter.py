@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import wave
 from contextlib import suppress
+from pathlib import Path
 from typing import Any
 
 from ai2apps.model_worker.protocol import (
@@ -63,6 +64,13 @@ class CudaQwen3ASRAdapter:
                 processor = AutoProcessor.from_pretrained(
                     checkpoint.path, local_files_only=True, trust_remote_code=False
                 )
+                if not processor.chat_template:
+                    # The published six-file distribution predates the separate
+                    # upstream prompt template. Ship that pinned template as a
+                    # signed adapter resource; never modify shared checkpoints.
+                    processor.chat_template = Path(__file__).with_name(
+                        "chat_template.jinja"
+                    ).read_text(encoding="utf-8")
                 model = AutoModelForMultimodalLM.from_pretrained(
                     checkpoint.path,
                     local_files_only=True,
@@ -94,6 +102,8 @@ class CudaQwen3ASRAdapter:
             sample_width = source.getsampwidth()
             sample_rate = source.getframerate()
             frames = source.readframes(source.getnframes())
+        if not frames:
+            _error("Audio contains no samples", code="invalid_audio")
         if sample_width == 1:
             audio = (np.frombuffer(frames, dtype=np.uint8).astype(np.float32) - 128) / 128
         elif sample_width == 2:
@@ -126,25 +136,41 @@ class CudaQwen3ASRAdapter:
 
         audio = CudaQwen3ASRAdapter._read_wav(audio_path)
         language = body.get("language") or None
-        prompt = body.get("prompt") or None
+        if language == "auto":
+            language = None
         if language is not None:
-            inputs = processor.apply_transcription_request(
-                audio=audio, language=language, prompt=prompt
-            )
-        else:
-            messages = []
-            if prompt:
-                messages.append(
-                    {"role": "system", "content": [{"type": "text", "text": prompt}]}
-                )
+            from transformers.models.qwen3_asr.processing_qwen3_asr import LANGUAGE_CODE_TO_NAME
+
+            names = {**LANGUAGE_CODE_TO_NAME, **{name.lower(): name for name in LANGUAGE_CODE_TO_NAME.values()}}
+            if not isinstance(language, str) or language.lower() not in names:
+                _error("Unsupported transcription language")
+            language = names[language.lower()]
+        prompt = body.get("prompt") or None
+        messages = []
+        if prompt:
             messages.append(
-                {"role": "user", "content": [{"type": "audio", "audio": audio}]}
+                {"role": "system", "content": [{"type": "text", "text": prompt}]}
             )
-            inputs = processor.apply_chat_template(
-                messages,
-                add_generation_prompt=True,
-                tokenize=True,
-                return_dict=True,
+        messages.append(
+            {"role": "user", "content": [{"type": "audio", "audio": audio}]}
+        )
+        inputs = processor.apply_chat_template(
+            messages,
+            add_generation_prompt=True,
+            tokenize=True,
+            return_dict=True,
+        )
+        if language is not None:
+            # The pinned checkpoint template ignores assistant messages, so
+            # apply_transcription_request(continue_final_message=True) fails.
+            # Append the documented language prefill to its generation prompt.
+            prefix = processor.tokenizer(
+                f"language {language}<asr_text>", add_special_tokens=False,
+                return_tensors="pt",
+            )["input_ids"].to(inputs["input_ids"].device)
+            inputs["input_ids"] = torch.cat((inputs["input_ids"], prefix), dim=1)
+            inputs["attention_mask"] = torch.cat(
+                (inputs["attention_mask"], torch.ones_like(prefix)), dim=1
             )
         inputs = inputs.to(model.device, model.dtype)
         with torch.inference_mode():
@@ -154,6 +180,13 @@ class CudaQwen3ASRAdapter:
                 do_sample=False,
             )
         generated = output_ids[:, inputs["input_ids"].shape[1] :]
+        if language is not None:
+            # The language/asr_text prefix is part of the input, not the
+            # generated suffix. Parsing the suffix as a full ASR response
+            # loses the forced-language transcription.
+            decoded = processor.decode(generated, skip_special_tokens=True)
+            text = decoded[0] if isinstance(decoded, list) else decoded
+            return {"text": str(text).strip(), "language": language}
         parsed = processor.decode(generated, return_format="parsed")[0]
         return {
             "text": str(parsed.get("transcription") or ""),

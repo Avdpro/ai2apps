@@ -1,0 +1,1542 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ComApps · 传信</title>
+<style>
+:root {
+    color-scheme: light dark;
+    font: 14px/1.55 system-ui, sans-serif;
+    --line: color-mix(in srgb, CanvasText 15%, Canvas);
+    --subtle: color-mix(in srgb, CanvasText 66%, Canvas);
+    --surface: color-mix(in srgb, CanvasText 5%, Canvas);
+    --selected: color-mix(in srgb, Highlight 16%, Canvas);
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: Canvas; color: CanvasText; }
+[hidden] { display: none !important; }
+main { display: grid; grid-template-columns: minmax(208px, 264px) minmax(0, 1fr); min-height: 100dvh; }
+main > aside { border-inline-end: 1px solid var(--line); background: var(--surface); padding: 20px 16px; }
+.sidebar-header, .workspace-header, .dialog-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.sidebar-header h1 { margin: 0; font-size: 17px; }
+#avatar-list { list-style: none; margin: 18px 0 0; padding: 0; display: grid; gap: 4px; }
+.avatar-row { display: grid; width: 100%; gap: 2px; text-align: start; border-color: transparent; background: transparent; padding: 9px 11px; }
+.avatar-row[aria-current] { background: var(--selected); border-color: color-mix(in srgb, Highlight 32%, Canvas); }
+.avatar-row small, .muted, .type-details { color: var(--subtle); }
+.workspace { padding: 24px clamp(20px, 5vw, 56px); min-width: 0; }
+.workspace > * { max-width: 760px; }
+#status { margin: 0 0 12px; color: var(--subtle); min-height: 22px; }
+#status[data-error] { color: light-dark(#9e392c, #ff9b88); }
+#empty { text-align: center; margin: clamp(40px, 13vh, 150px) auto; padding: 24px; }
+h2 { margin: 0; font-size: 24px; letter-spacing: -.02em; }
+h3 { font-size: 15px; margin: 0 0 10px; }
+.eyebrow { margin: 0 0 5px; color: var(--subtle); }
+.panel { margin: 16px 0; border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+.panel > :first-child { margin-top: 0; }
+.panel > :last-child { margin-bottom: 0; }
+button, input, select, textarea { font: inherit; color: inherit; border: 1px solid var(--line); border-radius: 8px; padding: 7px 11px; }
+button { background: var(--surface); cursor: pointer; }
+button:hover:not(:disabled) { border-color: var(--subtle); }
+button:disabled { opacity: .55; cursor: default; }
+button.primary { background: Highlight; border-color: Highlight; color: HighlightText; font-weight: 600; }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid Highlight; outline-offset: 2px; }
+label, input, select, textarea { display: block; margin: 6px 0; }
+input, select, textarea { width: 100%; background: Canvas; }
+form button { margin-top: 6px; }
+#qr { display: block; margin: 14px 0; max-width: 100%; object-fit: contain; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+#items { padding: 0; list-style: none; max-height: 48vh; overflow: auto; }
+#items:empty { display: none; }
+#items li { padding: 8px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.message { white-space: pre-wrap; overflow-wrap: anywhere; }
+.status-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; margin: 12px 0 0; }
+.status-grid dt, .activity-meta { color: var(--subtle); font-size: 12px; }
+.recall-history p { white-space: pre-wrap; overflow-wrap: anywhere; }
+.recall-history img { display: block; max-width: min(100%, 256px); height: auto; margin: 6px 0; }
+.status-grid dd { margin: 3px 0 0; }
+.toggle { display: inline-flex; gap: 10px; align-items: center; margin: 0; font-weight: 600; }
+.toggle input { appearance: none; display: inline-grid; align-items: center; width: 38px; height: 22px; padding: 2px; margin: 0; border-radius: 12px; cursor: pointer; background: var(--surface); }
+.toggle input::before { content: ""; width: 16px; height: 16px; border-radius: 50%; background: var(--subtle); }
+.toggle input:checked { background: Highlight; }
+.toggle input:checked::before { background: HighlightText; transform: translateX(16px); }
+#activity-list { list-style: none; margin: 12px 0 0; padding: 0; max-height: 40vh; overflow: auto; }
+#activity-list li { padding: 8px 0; border-top: 1px solid var(--line); }
+#activity-list p { margin: 3px 0 0; }
+dialog { width: min(480px, calc(100% - 32px)); max-height: calc(100dvh - 32px); border: 1px solid var(--line); border-radius: 14px; padding: 20px; color: CanvasText; background: Canvas; }
+dialog::backdrop { background: rgb(0 0 0 / 45%); }
+.type-list { display: grid; gap: 6px; margin-top: 16px; }
+.type-option { display: flex; align-items: center; justify-content: space-between; gap: 10px; text-align: start; width: 100%; }
+.type-details { display: block; font-size: 12px; }
+@media (max-width: 640px) {
+    main { grid-template-columns: minmax(0, 1fr); }
+    main > aside { border-inline-end: 0; border-bottom: 1px solid var(--line); padding: 14px 20px; }
+    #avatar-list { display: flex; flex-wrap: wrap; margin-top: 8px; }
+    .workspace { padding: 18px 20px; }
+    #empty { margin: 28px auto; }
+}
+main.proxy-layout { grid-template-columns: minmax(165px, 220px) minmax(0, 1fr); }
+.proxy-layout .workspace { padding-inline: clamp(16px, 3vw, 40px); }
+#cli-panel { max-width: none; }
+.proxy-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, .95fr); gap: 24px; align-items: start; }
+.proxy-center, .worker-detail { min-width: 0; }
+.worker-detail { border-inline-start: 1px solid var(--line); padding-inline-start: 24px; min-height: 65vh; }
+.worker-detail h3, .worker-detail h4 { margin: 0; }
+.worker-detail fieldset { margin: 12px 0; border: 1px solid var(--line); border-radius: 8px; min-width: 0; }
+.worker-detail fieldset > div + div { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 10px; }
+.worker-detail summary, #cli-connection summary, #cli-read summary { cursor: pointer; }
+#cli-connection summary { overflow-wrap: anywhere; }
+#cli-connection summary span { margin-inline-start: 7px; }
+#worker-list { list-style: none; margin: 12px 0; padding: 0; display: grid; gap: 5px; }
+#worker-list li { min-width: 0; overflow-wrap: anywhere; }
+.worker-entry { margin-top: 14px; }
+.worker-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.worker-row > select { width: auto; max-width: 100%; }
+.worker-detail .toggle input { flex: 0 0 38px; }
+.worker-feedback { margin: 8px 0; }
+.target-list { max-height: 185px; overflow: auto; margin: 8px 0; }
+.target-list label { display: flex; gap: 8px; align-items: start; overflow-wrap: anywhere; }
+.target-list input { width: auto; margin: 4px 0; flex: 0 0 auto; }
+.worker-detail textarea { resize: vertical; }
+@media (max-width: 980px) {
+    .proxy-columns { grid-template-columns: minmax(0, 1fr); gap: 0; }
+    .worker-detail { border-inline-start: 0; padding-inline-start: 0; min-height: auto; }
+}
+@media (max-width: 640px) { main.proxy-layout { grid-template-columns: minmax(0, 1fr); } }
+</style>
+
+</head>
+<body>
+<main>
+  <aside aria-label="分身管理">
+    <div class="sidebar-header">
+      <h1>分身</h1>
+      <button id="add-avatar" disabled>＋ 添加</button>
+    </div>
+    <ul id="avatar-list" aria-label="分身列表"></ul>
+  </aside>
+  <div class="workspace">
+    <p id="status" role="status">正在加载分身…</p>
+    <section id="empty" aria-labelledby="empty-title" hidden>
+      <h2 id="empty-title">还没有分身</h2>
+      <p class="muted">添加一个分身，将 AI2Apps 连接到你的聊天软件。</p>
+      <button id="add-first" class="primary">添加分身</button>
+    </section>
+    <section id="ilink-panel" aria-labelledby="ilink-title" hidden>
+      <header class="workspace-header">
+        <div><p class="eyebrow">Agent 模式</p><h2 id="ilink-title" tabindex="-1">WeChat-iLink</h2></div>
+        <div class="actions"><button id="logoff" hidden>退出连接</button><button id="unlink">移除分身</button></div>
+      </header>
+      <div class="panel">
+        <div class="workspace-header"><strong>连接状态</strong><button id="auto-refresh">刷新状态</button></div>
+        <dl class="status-grid">
+          <div><dt>微信连接</dt><dd id="connection-state"></dd></div>
+          <div><dt>上次成功检查</dt><dd id="connection-checked"></dd></div>
+          <div><dt>最近发送</dt><dd id="delivery-state"></dd></div>
+        </dl>
+      </div>
+      <div class="panel" id="ilink-setup">
+        <h3>连接微信</h3>
+        <p class="muted">用微信扫码，在与 AI2Apps 的专用微信会话中对话。</p>
+        <button id="start" class="primary">获取绑定二维码</button>
+        <img id="qr" alt="微信绑定二维码" hidden width="224" height="224">
+        <form id="verification" hidden>
+          <label for="verify-code">微信显示的验证码</label>
+          <input id="verify-code" required inputmode="numeric" pattern="[0-9]{1,12}" autocomplete="off">
+          <button type="submit">继续绑定</button>
+        </form>
+      </div>
+      <div id="auto" class="panel" hidden>
+        <label class="toggle"><input id="auto-toggle" type="checkbox" role="switch"> Bot 自动回复 <span id="auto-state"></span></label>
+      </div>
+      <div id="activity" class="panel" hidden>
+        <h3>最近收发</h3>
+        <p id="activity-empty" class="muted">暂无记录。新收发的消息会显示在这里。</p>
+        <ul id="activity-list"></ul>
+      </div>
+      <div id="inbox" class="panel" hidden>
+        <h3>手动收发</h3>
+        <button id="receive">接收一批消息</button>
+        <p id="received" class="message"></p>
+        <form id="reply" hidden>
+          <label for="reply-text">以 AI2Apps 机器人身份回复</label>
+          <textarea id="reply-text" required maxlength="1800" rows="3"></textarea>
+          <button type="submit">核对并回复</button>
+        </form>
+      </div>
+    </section>
+    <section id="cli-panel" aria-labelledby="cli-title" hidden>
+      <header class="workspace-header">
+        <div><p class="eyebrow">代理模式</p><h2 id="cli-title" tabindex="-1">WeChat-CLI</h2></div>
+        <button id="cli-unlink">移除分身</button>
+      </header>
+      <div class="proxy-columns">
+      <div class="proxy-center">
+      <details class="panel" id="cli-connection" open>
+        <summary><strong>App 连接</strong><span id="cli-connection-state" class="muted"></span></summary>
+        <p class="muted">选择已有分身，或创建一个新的微信分身。启动并扫码登录后即可绑定。</p>
+        <form id="cli-config">
+          <label for="cli-path">wechat-agent 的绝对路径</label>
+          <input id="cli-path" required maxlength="1024" placeholder="/path/to/wechat-agent" autocomplete="off" spellcheck="false">
+          <button type="submit">授权并检查 CLI</button>
+          <button id="cli-load-profiles" type="button" hidden>刷新可用分身</button>
+        </form>
+        <form id="cli-bind" hidden>
+          <label for="profiles">本机微信分身</label>
+          <select id="profiles" required></select>
+          <button id="cli-launch-profile" type="button">启动所选分身</button>
+          <button type="submit">绑定已登录的分身</button>
+        </form>
+        <form id="cli-create-profile" hidden>
+          <label for="cli-profile-name">新分身名称</label>
+          <input id="cli-profile-name" required pattern="[a-z][a-z0-9\-]{0,31}" maxlength="32" placeholder="例如 group-helper" autocomplete="off" spellcheck="false">
+          <button type="submit">创建微信分身</button>
+          <p class="muted">名称以小写字母开头，可含数字和短横线，最多 32 个字符。default 已保留。</p>
+        </form>
+      </details>
+      <section id="draft-assistant" class="panel" aria-labelledby="draft-assistant-title" hidden>
+        <h3 id="draft-assistant-title">对话助手</h3>
+        <p class="muted">保持此页打开，在 Fuel 的托盘菜单选择「对话助手」。选中备选回复后可复制回微信。</p>
+        <form id="draft-model-form">
+          <label for="draft-model">回复模型</label>
+          <select id="draft-model" disabled aria-describedby="draft-model-routing draft-model-status"></select>
+          <p id="draft-model-routing" class="muted"></p>
+          <button id="draft-model-save" type="submit" disabled>保存模型</button>
+          <p id="draft-model-status" class="muted" role="status"></p>
+        </form>
+      </section>
+      <section id="worker-panel" class="panel" aria-labelledby="workers-title">
+        <div class="workspace-header"><h3 id="workers-title">Worker</h3></div>
+        <div class="actions">
+          <button id="add-monitor" disabled>＋ 监听 Worker</button>
+          <button id="add-broadcast" disabled>＋ 群发 Worker</button>
+          <button id="add-audience" disabled>＋ 会话名单</button>
+        </div>
+        <ul id="worker-list" aria-label="Worker 和会话名单"></ul>
+        <p id="worker-empty" class="muted">连接微信后可配置 Worker。</p>
+      </section>
+      <details id="cli-read" class="panel" hidden>
+        <summary><strong>浏览微信目录</strong></summary>
+        <div class="actions">
+          <button data-read="conversations">会话</button>
+          <button data-read="friends">好友</button>
+          <button data-read="groups">群聊</button>
+        </div>
+        <ul id="items"></ul>
+        <p id="coverage"></p>
+      </details>
+      </div>
+      <section class="worker-detail" aria-labelledby="worker-title">
+        <div class="panel">
+          <h3 id="worker-title" tabindex="-1">Worker 详情</h3>
+          <p id="worker-placeholder" class="muted">选择一个 Worker，或创建新的 Worker。</p>
+          <form id="worker-form" hidden>
+            <p id="worker-kind" class="muted"></p>
+            <div id="worker-fields"></div>
+            <p id="worker-feedback" role="status" class="worker-feedback muted"></p>
+            <div class="actions">
+              <button type="submit" class="primary">保存</button>
+              <button type="button" id="discard-worker">取消编辑</button>
+              <button type="button" id="delete-worker" hidden>删除</button>
+            </div>
+          </form>
+        </div>
+      </section>
+      </div>
+    </section>
+  </div>
+</main>
+<dialog id="avatar-picker" aria-labelledby="picker-title">
+  <div class="dialog-header">
+    <h2 id="picker-title">添加分身</h2>
+    <form method="dialog"><button>关闭</button></form>
+  </div>
+  <div class="type-list" id="avatar-types"></div>
+</dialog>
+<dialog id="worker-confirm" aria-labelledby="worker-confirm-text">
+  <p id="worker-confirm-text"></p>
+  <form method="dialog" class="actions">
+    <button value="cancel">返回</button><button id="worker-confirm-action" value="yes"></button>
+  </form>
+</dialog>
+<script>
+'use strict';
+
+const $ = id => document.getElementById(id);
+const pending = new Map();
+const parentOrigin = new URL(location.href).origin;
+const frameParams = new URLSearchParams(location.hash.slice(1));
+let mount;
+let loginId;
+let generation = 0;
+let replyId;
+let busy = false;
+let binding;
+let frameActive = true;
+let refreshing = false;
+let activeAvatar = null;
+let draftAvatar = null;
+
+const avatarTypes = [
+    { id: 'ilink', name: 'WeChat-iLink', mode: 'Agent 模式' },
+    { id: 'cli', name: 'WeChat-CLI', mode: '代理模式' },
+    { name: 'Telegram' },
+    { name: 'WhatsApp' },
+    { name: 'iMessage' },
+    { name: 'Messenger（Facebook）' },
+    { name: 'LINE（日本）' },
+    { name: 'KakaoTalk（韩国）' },
+];
+
+function avatarExists(id) {
+    return id === 'ilink' ? Boolean(binding?.ilink_bound || binding?.ilink_signed_out) : Boolean(binding?.cli_path);
+}
+
+function connectionLabel(state) {
+    if (state.ilink_delivery === 'reconnect') return '需要重新连接';
+    if (state.ilink_bound) return '已绑定';
+    return state.ilink_signed_out ? '已退出' : '待连接';
+}
+
+function renderAvatars() {
+    const visible = avatarTypes.filter(({ id }) => id && (avatarExists(id) || draftAvatar === id));
+    if (!visible.some(({ id }) => id === activeAvatar)) activeAvatar = visible[0]?.id ?? null;
+    $('empty').hidden = !binding || visible.length > 0;
+    $('ilink-panel').hidden = activeAvatar !== 'ilink';
+    $('cli-panel').hidden = activeAvatar !== 'cli';
+    $('draft-assistant').hidden = binding?.cli_profile !== 'default';
+    document.querySelector('main').classList.toggle('proxy-layout', activeAvatar === 'cli');
+    if (activeAvatar === 'cli') {
+        void loadWorkers();
+        if (!$('draft-assistant').hidden) void loadDraftModels();
+    }
+    $('avatar-list').replaceChildren(...visible.map(({ id, name, mode }) => {
+        const item = document.createElement('li');
+        const button = document.createElement('button');
+        button.className = 'avatar-row';
+        if (id === activeAvatar) button.setAttribute('aria-current', 'true');
+        const title = document.createElement('strong');
+        title.textContent = name;
+        const subtitle = document.createElement('small');
+        const connected = id === 'ilink' ? binding.ilink_bound : binding.cli_profile;
+        subtitle.textContent = mode + ' · ' + (id === 'ilink' ? connectionLabel(binding) : connected ? '已连接' : '待连接');
+        button.append(title, subtitle);
+        button.onclick = () => {
+            if (activeAvatar === id) return;
+            activeAvatar = id;
+            renderAvatars();
+            $('avatar-list').querySelector('[aria-current]')?.focus();
+            status('');
+        };
+        item.append(button);
+        return item;
+    }));
+}
+
+function openPicker() {
+    if (!binding || busy) return;
+    $('avatar-types').replaceChildren(...avatarTypes.map(({ id, name, mode }) => {
+        const button = document.createElement('button');
+        const title = document.createElement('strong');
+        const detail = document.createElement('span');
+        button.className = 'type-option';
+        title.textContent = name;
+        detail.className = 'type-details';
+        detail.textContent = id ? (avatarExists(id) ? '已添加 · ' : '') + mode : '暂不可用';
+        button.append(title, detail);
+        button.disabled = !id;
+        button.onclick = () => {
+            if (!avatarExists(id)) {
+                if (draftAvatar === 'ilink' && id !== draftAvatar) stopScan();
+                draftAvatar = id;
+            }
+            activeAvatar = id;
+            $('avatar-picker').close();
+            renderAvatars();
+            $(id + '-title').focus();
+            status('');
+        };
+        return button;
+    }));
+    $('avatar-picker').showModal();
+}
+
+$('add-avatar').onclick = openPicker;
+$('add-first').onclick = openPicker;
+
+function status(text, error = false) {
+    $('status').textContent = text;
+    $('status').toggleAttribute('data-error', error);
+}
+
+function call(operation, args = {}) {
+    if (!mount) return Promise.reject(new Error('请从 AI2Apps 打开传信。'));
+    const requestId = workerKey();
+    const identity = mount;
+    return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+            pending.delete(requestId);
+            reject(new Error('Local 请求超时，请检查连接状态。'));
+        }, ({ 'cli-worker-image-test': 330000, 'cli-draft-poll': 125000, 'cli-search': 90000, 'cli-profile-create': 190000 })[operation] || 65000);
+        pending.set(requestId, { resolve, reject, timer, identity });
+        parent.postMessage({
+            type: 'ai2apps.comapps.request', mountToken: identity.mountToken,
+            instanceId: identity.instanceId, requestId, operation, arguments: args,
+        }, parentOrigin);
+    });
+}
+
+function action(work) {
+    return async event => {
+        event?.preventDefault();
+        if (busy || !mount) return;
+        busy = true;
+        try {
+            status('处理中…');
+            await work();
+        } catch (error) {
+            status(error.message, true);
+        } finally {
+            busy = false;
+        }
+    };
+}
+
+const deliveryLabels = {
+    submitted: '微信已受理', reconnect: '需要重新连接', unknown: '结果未知',
+    rejected: '微信拒绝', dispatching: '发送中',
+};
+const activityDate = new Intl.DateTimeFormat('zh-CN', { dateStyle: 'short', timeStyle: 'medium' });
+
+function showState(state) {
+    const previous = binding;
+    binding = state;
+    if (!previous || previous.cli_workspace !== state.cli_workspace || previous.cli_path !== state.cli_path) {
+        $('cli-connection').open = !state.cli_profile;
+        $('items').replaceChildren();
+        $('coverage').textContent = '';
+        resetWorkers();
+    }
+    if (draftAvatar && avatarExists(draftAvatar)) draftAvatar = null;
+    $('add-avatar').disabled = false;
+    $('ilink-setup').hidden = state.ilink_bound;
+    $('unlink').textContent = avatarExists('ilink') ? '移除分身' : '取消添加';
+    $('logoff').hidden = !state.ilink_bound;
+    $('connection-state').textContent = connectionLabel(state);
+    $('connection-checked').textContent = state.ilink_checked_at ? activityDate.format(state.ilink_checked_at * 1000) : '暂无记录';
+    $('delivery-state').textContent = deliveryLabels[state.ilink_delivery] || '暂无记录';
+    $('inbox').hidden = !state.ilink_bound || state.ilink_auto || state.ilink_delivery === 'reconnect';
+    $('auto').hidden = !state.ilink_bound;
+    $('auto-toggle').checked = state.ilink_auto;
+    $('auto-toggle').disabled = state.ilink_delivery === 'reconnect';
+    $('auto-state').textContent = state.ilink_auto ? '已开启' : '已关闭';
+    showActivity(state.ilink_activity || []);
+    if (!previous || previous.cli_path !== state.cli_path) $('cli-path').value = state.cli_path || '';
+    $('cli-unlink').textContent = state.cli_path ? '移除分身' : '取消添加';
+    $('cli-load-profiles').hidden = !state.cli_path;
+    $('cli-create-profile').hidden = !state.cli_path;
+    $('cli-read').hidden = !state.cli_profile;
+    $('cli-connection-state').textContent = state.cli_profile
+        ? '已连接 · ' + state.cli_profile : state.cli_path ? '待绑定' : '未配置';
+    renderAvatars();
+}
+
+function showActivity(activity) {
+    $('activity').hidden = !binding.ilink_bound;
+    $('activity-empty').hidden = activity.length > 0;
+    $('activity-list').replaceChildren(...activity.slice().reverse().map(entry => {
+        const row = document.createElement('li');
+        const meta = document.createElement('div');
+        meta.className = 'activity-meta';
+        meta.textContent = [entry.direction === 'in' ? '收到' : '发出', activityDate.format(entry.at * 1000), deliveryLabels[entry.delivery]].filter(Boolean).join(' · ');
+        const preview = document.createElement('p');
+        preview.className = 'message';
+        preview.textContent = entry.text;
+        row.append(meta, preview);
+        return row;
+    }));
+}
+
+async function refreshActiveILink() {
+    if (!mount || !frameActive || document.hidden || activeAvatar !== 'ilink'
+        || !binding?.ilink_bound || busy || refreshing) return;
+    const identity = mount;
+    const previous = binding;
+    refreshing = true;
+    try {
+        const state = await call('state');
+        if (mount !== identity || binding !== previous || busy || !frameActive
+            || activeAvatar !== 'ilink') return;
+        if (state.ilink_bound !== previous.ilink_bound || state.ilink_auto !== previous.ilink_auto
+            || connectionLabel(state) !== connectionLabel(previous)) {
+            showState(state);
+            return;
+        }
+        const previous = binding;
+    binding = state;
+    if (!previous || previous.cli_workspace !== state.cli_workspace || previous.cli_path !== state.cli_path) {
+        $('cli-connection').open = !state.cli_profile;
+        $('items').replaceChildren();
+        $('coverage').textContent = '';
+        resetWorkers();
+    }
+        $('connection-checked').textContent = state.ilink_checked_at ? activityDate.format(state.ilink_checked_at * 1000) : '暂无记录';
+        $('delivery-state').textContent = deliveryLabels[state.ilink_delivery] || '暂无记录';
+        if (JSON.stringify(state.ilink_activity) !== JSON.stringify(previous.ilink_activity)) {
+            showActivity(state.ilink_activity || []);
+        }
+    } catch {
+        // The next refresh can recover from a busy Local service.
+    } finally {
+        refreshing = false;
+    }
+}
+
+setInterval(refreshActiveILink, 5000);
+
+let draftModelSettings;
+
+const draftModelSources = {
+    local_runtime: '本机模型',
+    ai2apps_cloud: 'AI2Apps 云模型',
+    local_byok: 'BYOK',
+};
+
+function describeDraftModel(data, selection) {
+    const model = selection ? data.models.find(item => item.id === selection) : data.default_model;
+    const hint = $('draft-model-routing');
+    if (!model) {
+        hint.textContent = selection ? '' : '尚未配置隐私标准 Task，系统也没有可用的 API Default。';
+        return;
+    }
+    const route = model.route === 'api_default' ? '系统 API Default · '
+        : model.route === 'privacy_standard' ? '隐私标准 Task · ' : '';
+    const processing = model.source === 'local_runtime' ? ''
+        : '。生成时，所需聊天上下文会交给该模型服务处理';
+    hint.textContent = route + model.name + processing + '。';
+}
+
+function renderDraftModels(data, saved = false) {
+    const {models, model_id: selected} = data;
+    const select = $('draft-model');
+    select.replaceChildren(new Option('默认隐私模型', ''));
+    for (const [source, label] of Object.entries(draftModelSources)) {
+        const matching = models.filter(model => model.source === source);
+        if (!matching.length) continue;
+        const group = document.createElement('optgroup');
+        group.label = label;
+        group.append(...matching.map(model => new Option(model.name, model.id)));
+        select.append(group);
+    }
+    const unavailable = selected && !models.some(model => model.id === selected);
+    if (unavailable) {
+        const option = new Option(selected + '（暂不可用）', selected);
+        option.disabled = true;
+        select.add(option);
+    }
+    select.value = selected;
+    select.disabled = false;
+    $('draft-model-save').disabled = true;
+    $('draft-model-status').textContent = unavailable ? '请选择可用模型或切回默认隐私模型。'
+        : saved ? '已保存。' : '';
+    describeDraftModel(data, selected);
+}
+
+async function loadDraftModels() {
+    if (!mount || !binding?.cli_workspace) return;
+    const workspace = binding.cli_workspace;
+    if (draftModelSettings?.mount === mount && draftModelSettings.workspace === workspace) return;
+    const state = draftModelSettings = {mount, workspace};
+    $('draft-model').replaceChildren(new Option('正在加载模型…', ''));
+    $('draft-model').disabled = true;
+    $('draft-model-save').disabled = true;
+    $('draft-model-routing').textContent = '';
+    $('draft-model-status').textContent = '';
+    try {
+        const data = await call('cli-draft-models', {workspace});
+        if (draftModelSettings !== state || mount !== state.mount || binding?.cli_workspace !== workspace) return;
+        state.data = data;
+        renderDraftModels(data);
+    } catch {
+        if (draftModelSettings !== state) return;
+        draftModelSettings = undefined;
+        $('draft-model-status').textContent = '未能读取模型，请刷新此页重试。';
+    }
+}
+
+$('draft-model').onchange = () => {
+    $('draft-model-save').disabled = !draftModelSettings?.data
+        || $('draft-model').value === draftModelSettings.data.model_id;
+    $('draft-model-status').textContent = '';
+    if (draftModelSettings?.data) describeDraftModel(draftModelSettings.data, $('draft-model').value);
+};
+
+$('draft-model-form').onsubmit = async event => {
+    event.preventDefault();
+    const state = draftModelSettings;
+    const select = $('draft-model');
+    if (!state?.data || select.disabled || $('draft-model-save').disabled) return;
+    select.disabled = true;
+    $('draft-model-save').disabled = true;
+    $('draft-model-status').textContent = '正在保存…';
+    try {
+        const data = await call('cli-draft-model-save', {workspace: state.workspace, model_id: select.value});
+        if (draftModelSettings !== state || mount !== state.mount || binding?.cli_workspace !== state.workspace) return;
+        state.data = data;
+        renderDraftModels(data, true);
+    } catch {
+        if (draftModelSettings !== state || mount !== state.mount || binding?.cli_workspace !== state.workspace) return;
+        renderDraftModels(state.data);
+        $('draft-model-status').textContent = '保存失败。请确认模型仍可用，再重新选择。';
+    }
+};
+
+let pollingDraft = false;
+setInterval(async () => {
+    if (pollingDraft || !mount || binding?.cli_profile !== 'default' || !binding.cli_workspace) return;
+    pollingDraft = true;
+    try {
+        await call('cli-draft-poll', { workspace: binding.cli_workspace });
+    } catch {
+        // Fuel shows a timeout if the Local connection goes away.
+    } finally {
+        pollingDraft = false;
+    }
+}, 2000);
+
+function showProfiles(profiles, selected = $('profiles').value || binding?.cli_profile) {
+    $('profiles').replaceChildren(...profiles.map(item => new Option(item.display_name + ' (' + item.name + ')', item.name)));
+    if (profiles.some(item => item.name === selected)) $('profiles').value = selected;
+    $('cli-bind').hidden = !profiles.length;
+}
+
+function stopScan() {
+    generation += 1;
+    loginId = undefined;
+    $('qr').hidden = true;
+    $('qr').removeAttribute('src');
+    $('verification').hidden = true;
+    $('start').textContent = '获取绑定二维码';
+}
+
+async function poll(scan, code) {
+    try {
+        while (scan === generation && mount) {
+            const result = await call('ilink-poll', { login_id: loginId, ...(code ? { verify_code: code } : {}) });
+            code = undefined;
+            if (scan !== generation) return;
+            if (result.status === 'confirmed') {
+                stopScan();
+                showState(await call('state'));
+                status('已绑定。可开启 Bot 自动回复。');
+                return;
+            }
+            if (['need_verifycode', 'confirmed_but_need_verifycode'].includes(result.status)) {
+                $('verification').hidden = false;
+                status('请输入微信显示的验证码。');
+                return;
+            }
+            if (!['wait', 'scaned'].includes(result.status)) throw new Error('无法继续绑定，请重新获取二维码：' + result.status);
+            status(result.status === 'scaned' ? '已扫码，等待微信确认…' : '请使用微信扫码。');
+            await new Promise(resolve => setTimeout(resolve, 1200));
+        }
+    } catch (error) {
+        if (scan === generation) {
+            stopScan();
+            $('start').disabled = false;
+            status(error.message, true);
+        }
+    }
+}
+
+$('start').onclick = action(async () => {
+    stopScan();
+    const { login_id, qr } = await call('ilink-start');
+    loginId = login_id;
+    $('qr').src = qr;
+    $('qr').hidden = false;
+    $('start').textContent = '重新获取二维码';
+    status('请使用微信扫码。');
+    void poll(generation);
+});
+$('verification').onsubmit = action(async () => {
+    const code = $('verify-code').value;
+    $('verify-code').value = '';
+    $('verification').hidden = true;
+    void poll(generation, code);
+});
+$('unlink').onclick = action(async () => {
+    if (avatarExists('ilink') && (await call('ilink-disconnect')).cancelled) {
+        status('');
+        return;
+    }
+    if (draftAvatar === 'ilink') draftAvatar = null;
+    stopScan();
+    replyId = undefined;
+    $('received').textContent = '';
+    $('reply').hidden = true;
+    $('reply-text').value = '';
+    showState(await call('state'));
+    status('');
+});
+$('logoff').onclick = action(async () => {
+    if ((await call('ilink-logoff')).cancelled) { status(''); return; }
+    stopScan();
+    replyId = undefined;
+    $('received').textContent = '';
+    $('reply').hidden = true;
+    $('reply-text').value = '';
+    showState(await call('state'));
+    status('已退出本机微信连接。');
+});
+const toggleAuto = action(async () => {
+    const wasAuto = binding.ilink_auto;
+    $('auto-toggle').checked = wasAuto;
+    $('auto-toggle').disabled = true;
+    try {
+        showState(await call(wasAuto ? 'ilink-auto-disable' : 'ilink-auto-enable'));
+    } finally {
+        $('auto-toggle').disabled = binding.ilink_delivery === 'reconnect';
+    }
+    if (!wasAuto) {
+        replyId = undefined;
+        $('reply').hidden = true;
+        $('reply-text').value = '';
+    }
+    status(wasAuto ? '自动回复已关闭。' : '自动回复已开启，可以在微信里发消息。');
+});
+$('auto-toggle').onclick = () => {
+    $('auto-toggle').checked = binding.ilink_auto;
+    void toggleAuto();
+};
+$('auto-refresh').onclick = action(async () => {
+    showState(await call('state'));
+    status('');
+});
+$('receive').onclick = action(async () => {
+    let result;
+    try {
+        result = await call('ilink-inbox');
+    } catch (error) {
+        if (error.message === 'ilink_reconnect_required') showState(await call('state'));
+        throw error;
+    }
+    replyId = result.reply_id;
+    $('received').textContent = result.message || '本次没有收到绑定用户的文本消息。';
+    $('reply').hidden = !replyId;
+    $('reply-text').value = '';
+    showState(await call('state'));
+    status('收取完成。');
+});
+$('reply').onsubmit = action(async () => {
+    try {
+        await call('ilink-reply', { reply_id: replyId, text: $('reply-text').value });
+    } catch (error) {
+        showState(await call('state'));
+        throw error;
+    }
+    replyId = undefined;
+    $('reply').hidden = true;
+    $('reply-text').value = '';
+    showState(await call('state'));
+    status('微信接口已受理，请在微信客户端核对送达。');
+});
+$('cli-config').onsubmit = action(async () => {
+    const result = await call('cli-configure', { path: $('cli-path').value.trim() });
+    showState(await call('state'));
+    showProfiles(result.profiles);
+    $('items').replaceChildren();
+    $('coverage').textContent = '';
+    status(result.profiles.length ? '请选择要绑定的分身。' : 'CLI 没有返回可用分身。');
+});
+$('cli-bind').onsubmit = action(async () => {
+    await call('cli-bind', { profile: $('profiles').value });
+    showState(await call('state'));
+    $('items').replaceChildren();
+    $('coverage').textContent = '';
+    status('已绑定，可以读取会话、好友和群目录。');
+});
+$('cli-unlink').onclick = action(async () => {
+    if (binding.cli_path && (await call('cli-disconnect')).cancelled) {
+        status('');
+        return;
+    }
+    if (draftAvatar === 'cli') draftAvatar = null;
+    showState(await call('state'));
+    showProfiles([]);
+    $('items').replaceChildren();
+    $('coverage').textContent = '';
+    status('');
+});
+$('cli-load-profiles').onclick = action(async () => {
+    const { profiles } = await call('cli-profiles');
+    showProfiles(profiles);
+    status(profiles.length ? '' : 'CLI 没有返回可用分身。');
+});
+$('cli-connection').addEventListener('toggle', () => {
+    if ($('cli-connection').open && binding?.cli_path && !$('profiles').length && !busy) {
+        void $('cli-load-profiles').onclick();
+    }
+});
+$('cli-create-profile').onsubmit = action(async () => {
+    const field = $('cli-profile-name');
+    const profile = field.value.trim();
+    if (profile === 'default') {
+        status('default 是保留名称，请换一个名称。', true);
+        field.focus();
+        return;
+    }
+    status('正在创建微信分身…');
+    let result;
+    try {
+        result = await call('cli-profile-create', { profile });
+    } catch (error) {
+        if (error.message === 'wechat_cli_timeout') {
+            status('创建超时。请先刷新可用分身，检查是否已经创建。', true);
+            return;
+        }
+        throw error;
+    }
+    field.value = '';
+    try {
+        const { profiles } = await call('cli-profiles');
+        if (!profiles.some(item => item.name === profile)) {
+            profiles.push({ name: profile, display_name: profile });
+        }
+        showProfiles(profiles, profile);
+    } catch {
+        const select = $('profiles');
+        if (!Array.from(select.options).some(option => option.value === profile)) {
+            select.add(new Option(profile, profile));
+        }
+        select.value = profile;
+        $('cli-bind').hidden = false;
+    }
+    status(result.created ? '已创建。请启动所选分身并扫码登录，再绑定。' : '同名分身已存在并已选中。');
+});
+$('cli-launch-profile').onclick = action(async () => {
+    const profile = $('profiles').value;
+    if (profile) {
+        await call('cli-profile-launch', { profile });
+        status('微信分身已启动。请在微信窗口扫码登录，再回到这里绑定。');
+    }
+});
+
+async function read(kind, chat) {
+    const result = await call('cli-' + kind, chat ? { chat } : {});
+    $('items').replaceChildren(...result.items.map(item => {
+        const row = document.createElement('li');
+        const label = item.remark || item.nickname || item.user_name;
+        if (kind === 'messages') row.textContent = [item.from_user, item.raw_content].filter(Boolean).join('：');
+        else if (item.user_name) {
+            const button = document.createElement('button');
+            button.textContent = label;
+            button.onclick = action(() => read('messages', item.user_name));
+            row.append(button, document.createTextNode(item.summary ? ' ' + item.summary : ''));
+        }
+        return row;
+    }));
+    $('coverage').textContent = result.partial ? '仅显示部分结果。' : '';
+    status('读取完成：' + result.items.length + ' 条。');
+}
+document.querySelectorAll('[data-read]').forEach(button => {
+    button.onclick = action(() => read(button.dataset.read));
+});
+
+const workerKinds = { monitor: '监听 Worker', broadcast: '群发 Worker', audience: '会话名单' };
+const triggers = {
+    all: '全部消息', image: '图片消息', mention: '@当前账号',
+    prefix: '指定文本开头', schedule: '定时触发', request: '新用户请求',
+};
+const responses = {
+    warn: '发送提醒', moderate: '检测图片并处理', answer: '按要求回答', publish: '发布指定内容',
+    recall: '撤回监控',
+};
+const templates = {
+    warn: { trigger: 'all', instruction: '发现争吵时发出提醒，请大家保持友善。' },
+    moderate: { trigger: 'image', instruction: '检查图片是否违反群规，并按规则警告或移除成员。' },
+    answer: { trigger: 'mention', instruction: '根据用户的问题回复。' },
+    publish: { trigger: 'schedule', instruction: '发布已准备好的通知或宣传内容。' },
+    recall: { trigger: 'recall', instruction: '' },
+};
+const contentKinds = { text: '文本', image: '图片', video: '视频', link: '链接' };
+let workerData;
+let workerDraft;
+let workerLoad;
+let workerDirty = false;
+let directory = { kind: '', items: [], more: false, incomplete: false, query: '' };
+
+function node(tag, text, className) {
+    const element = document.createElement(tag);
+    if (text) element.textContent = text;
+    if (className) element.className = className;
+    return element;
+}
+
+function workerKey() {
+    return Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, '0')).join('');
+}
+
+function workerButton(text, handler) {
+    const button = node('button', text);
+    button.type = 'button';
+    button.onclick = handler;
+    return button;
+}
+
+function field(label, control) {
+    const wrapper = node('label', label);
+    wrapper.append(control);
+    return wrapper;
+}
+
+function editField(label, value, update, options = {}) {
+    const input = node(options.rows ? 'textarea' : 'input');
+    if (options.rows) input.rows = options.rows;
+    else input.type = options.type || 'text';
+    input.value = value;
+    if (options.maxLength) input.maxLength = options.maxLength;
+    if (options.min !== undefined) input.min = options.min;
+    if (options.max !== undefined) input.max = options.max;
+    input.required = Boolean(options.required);
+    input.placeholder = options.placeholder || '';
+    input.oninput = () => {
+        update(input.type === 'number' ? input.valueAsNumber : input.value);
+        workerDirty = true;
+    };
+    return field(label, input);
+}
+
+function optionsField(values, current, update) {
+    const select = node('select');
+    for (const [value, label] of Object.entries(values)) select.add(new Option(label, value));
+    select.value = current;
+    if (update) select.onchange = () => {
+        workerDirty = true;
+        update(select.value);
+    };
+    return select;
+}
+
+function resetWorkers() {
+    workerData = workerDraft = workerLoad = undefined;
+    workerDirty = false;
+    directory = { kind: '', items: [], more: false, incomplete: false, query: '' };
+    $('worker-feedback').textContent = '';
+    renderWorkers();
+    renderWorker();
+}
+
+async function loadWorkers() {
+    const workspace = binding?.cli_workspace;
+    if (!workspace || workerData || workerLoad) return;
+    const loading = call('cli-workers');
+    workerLoad = loading;
+    $('worker-empty').textContent = '正在读取 Worker…';
+    try {
+        const data = await loading;
+        if (workerLoad === loading && binding.cli_workspace === data.workspace) {
+            workerData = data;
+            renderWorkers();
+        }
+    } catch {
+        if (workerLoad !== loading) return;
+        $('worker-empty').replaceChildren(
+            document.createTextNode('读取 Worker 失败。 '),
+            workerButton('重试', loadWorkers),
+        );
+    } finally {
+        if (workerLoad === loading) workerLoad = undefined;
+    }
+}
+
+function renderWorkers() {
+    for (const kind of Object.keys(workerKinds)) $('add-' + kind).disabled = !workerData;
+    const entries = workerData?.entries || [];
+    $('worker-empty').hidden = entries.length > 0;
+    $('worker-empty').textContent = workerData ? '还没有 Worker 或会话名单。' : '连接微信后可配置 Worker。';
+    $('worker-list').replaceChildren(...entries.map(entry => {
+        const item = node('li');
+        const button = workerButton('', () => selectWorker(entry));
+        button.className = 'avatar-row';
+        if (entry.id === workerDraft?.id) button.setAttribute('aria-current', 'true');
+        let description = '草稿 · ' + entry.targets?.length + ' 个会话';
+        if (entry.kind === 'monitor') description = (entry.target?.label || '新用户请求') + ' · ' + entry.works.length + ' 个 Work';
+        if (entry.kind === 'audience') description = '会话名单 · ' + entry.targets.length + ' 个会话';
+        button.append(node('strong', entry.name), node('small', description));
+        item.append(button);
+        return item;
+    }));
+}
+
+function confirmWorker(text, label, onConfirm) {
+    const dialog = $('worker-confirm');
+    $('worker-confirm-text').textContent = text;
+    $('worker-confirm-action').textContent = label;
+    dialog.returnValue = '';
+    dialog.onclose = () => {
+        if (dialog.returnValue === 'yes') onConfirm();
+    };
+    dialog.showModal();
+}
+
+function selectWorker(entry, discard = false) {
+    if (busy) return;
+    if (workerDirty && !discard) {
+        confirmWorker('放弃尚未保存的修改？', '放弃修改', () => selectWorker(entry, true));
+        return;
+    }
+    workerDraft = editableWorker(entry);
+    workerDirty = false;
+    $('worker-feedback').textContent = '';
+    renderWorkers();
+    renderWorker();
+    $('worker-title').focus();
+}
+
+function createWorker(kind) {
+    const common = { id: workerKey(), kind, name: '' };
+    if (kind === 'monitor') selectWorker({ ...common, source: 'session', target: null, works: [] });
+    else if (kind === 'broadcast') selectWorker({ ...common, targets: [], content: [], interval: 15 });
+    else selectWorker({ ...common, targets: [] });
+}
+
+for (const kind of Object.keys(workerKinds)) $('add-' + kind).onclick = () => createWorker(kind);
+
+function renderWorker() {
+    $('worker-placeholder').hidden = Boolean(workerDraft);
+    $('worker-form').hidden = !workerDraft;
+    if (!workerDraft) return;
+    const draft = workerDraft;
+    $('worker-kind').textContent = workerKinds[draft.kind];
+    $('delete-worker').hidden = !workerData.entries.some(entry => entry.id === draft.id);
+    const fields = $('worker-fields');
+    fields.replaceChildren(editField('名称', draft.name, value => draft.name = value, { required: true, maxLength: 80 }));
+    if (draft.kind === 'monitor') renderMonitor(fields, draft);
+    else {
+        if (draft.kind === 'broadcast') renderSavedAudiences(fields, draft);
+        fields.append(targetPicker(draft));
+        if (draft.kind === 'broadcast') renderBroadcast(fields, draft);
+    }
+}
+
+function targetPicker(draft) {
+    const box = node('fieldset');
+    const single = draft.kind === 'monitor';
+    box.append(node('legend', single ? '选择工作会话' : '目标会话'));
+    const search = node('input');
+    search.type = 'search';
+    search.maxLength = 180;
+    search.placeholder = '昵称、备注、群名或微信号';
+    search.value = directory.query;
+    const runSearch = kind => action(async () => {
+        const workspace = binding.cli_workspace;
+        const query = kind === 'all' ? search.value.trim() : '';
+        const result = await call('cli-search', { directory: kind, query, workspace });
+        if (workspace !== binding.cli_workspace || workerDraft !== draft) return;
+        directory = { kind, query, ...result };
+        search.value = query;
+        status('');
+        paint();
+    });
+    const searchAll = runSearch('all');
+    search.onkeydown = event => {
+        if (event.key === 'Enter' && !event.isComposing) void searchAll(event);
+    };
+    const bar = node('div', '', 'actions');
+    bar.append(workerButton('搜索', searchAll));
+    for (const [kind, label] of Object.entries({ conversations: '最近互动', friends: '好友', groups: '群聊' })) {
+        bar.append(workerButton(label, runSearch(kind)));
+    }
+    const selected = node('div', '', 'target-list');
+    const list = node('div', '', 'target-list');
+    const coverage = node('p', '', 'muted');
+    coverage.setAttribute('role', 'status');
+    const selection = () => single ? [draft.target].filter(Boolean) : draft.targets;
+    function paint() {
+        const targets = selection();
+        const choices = directory.items;
+        selected.replaceChildren(node('p', targets.length ? '已选 ' + targets.length + ' 个会话' : '尚未选择会话', 'muted'),
+            ...targets.map(target => {
+                const row = node('div', '', 'worker-row');
+                row.append(node('span', target.label), workerButton('移除', () => {
+                    if (single) draft.target = null;
+                    else draft.targets = targets.filter(item => item.id !== target.id);
+                    workerDirty = true;
+                    paint();
+                }));
+                return row;
+            }));
+        list.replaceChildren(...choices.map(target => {
+            const input = node('input');
+            input.type = single ? 'radio' : 'checkbox';
+            input.name = 'directory-choice';
+            input.checked = targets.some(item => item.id === target.id);
+            input.disabled = !single && !input.checked && targets.length >= 30;
+            input.onchange = () => {
+                if (single) draft.target = target;
+                else if (input.checked) draft.targets = [...targets, target];
+                else draft.targets = targets.filter(item => item.id !== target.id);
+                workerDirty = true;
+                paint();
+                const next = [...list.querySelectorAll('input')][choices.indexOf(target)];
+                if (next) next.focus();
+            };
+            const label = node('label');
+            const name = node('span', target.label);
+            if (target.label !== target.id) name.append(node('small', ' · ' + target.id, 'muted'));
+            label.append(input, name);
+            return label;
+        }));
+        const notes = [];
+        if (directory.kind && !choices.length) notes.push('没有匹配的会话。');
+        if (directory.more) notes.push('仅显示前 100 条，请输入更具体的关键词。');
+        if (directory.incomplete) notes.push('微信 CLI 返回的目录不完整，搜索范围限于已读取的记录。');
+        coverage.textContent = notes.join(' ');
+        coverage.hidden = !notes.length;
+    }
+    box.append(field('搜索会话', search), bar, selected, list, coverage);
+    paint();
+    return box;
+}
+
+function renderMonitor(fields, draft) {
+    fields.append(field('工作对象', optionsField({ session: '会话或群聊', requests: '新用户请求' }, draft.source, value => {
+        draft.source = value;
+        draft.target = null;
+        for (const work of draft.works) {
+            if (work.trigger === 'schedule') continue;
+            if (work.trigger === 'recall') continue;
+            work.trigger = value === 'requests' ? 'request' : 'all';
+            work.match = '';
+        }
+        renderWorker();
+    })));
+    if (draft.source === 'session') fields.append(targetPicker(draft));
+    fields.append(node('p', '可配置触发条件和响应。连接支持执行后，Work 才会运行。', 'muted'));
+    const works = node('fieldset');
+    works.append(node('legend', 'Work'));
+    for (const work of draft.works) works.append(renderWork(work, draft));
+    if (!draft.works.length) works.append(node('p', '从模板添加第一项 Work。', 'muted'));
+    if (draft.works.length < 8) {
+        const bar = node('div', '', 'worker-row');
+        const choices = Object.fromEntries(Object.entries(responses).filter(([key]) => key !== 'recall'));
+        const choose = optionsField(choices, 'warn');
+        choose.setAttribute('aria-label', 'Work 模板');
+        function addWork(type) {
+            const template = templates[type];
+            const trigger = draft.source === 'requests' && template.trigger !== 'schedule' ? 'request' : template.trigger;
+            draft.works.push({
+                id: workerKey(), trigger, response: type,
+                match: trigger === 'schedule' ? '每天 09:00' : '', instruction: template.instruction, enabled: false,
+            });
+            workerDirty = true;
+            renderWorker();
+        }
+        bar.append(choose, workerButton('添加 Work', () => addWork(choose.value)));
+        if (draft.source === 'session') bar.append(workerButton('＋ 撤回监控', () => addWork('recall')));
+        works.append(bar);
+    }
+    fields.append(works);
+}
+
+function renderWork(work, draft) {
+    const block = node('div', '', 'worker-entry');
+    const title = node('div', '', 'workspace-header');
+    title.append(node('h4', responses[work.response]), workerButton('移除 Work', () => {
+        draft.works = draft.works.filter(item => item.id !== work.id);
+        workerDirty = true;
+        renderWorker();
+    }));
+    block.append(title);
+    const isRecall = work.trigger === 'recall';
+    const allowed = Object.fromEntries(Object.entries(triggers).filter(([key]) =>
+        key === 'schedule' || (key === 'request') === (draft.source === 'requests')));
+    if (!isRecall) block.append(field('触发条件', optionsField(allowed, work.trigger, value => {
+        work.trigger = value;
+        work.match = '';
+        renderWorker();
+    })));
+    if (['prefix', 'schedule'].includes(work.trigger)) {
+        const schedule = work.trigger === 'schedule';
+        block.append(editField(schedule ? '计划时间（本地时间）' : '文本开头', work.match, value => work.match = value, {
+            required: true, maxLength: 120, placeholder: schedule ? '例如每天 09:00' : '例如 @画图Bot',
+        }));
+    }
+    if (!isRecall) block.append(editField('响应要求', work.instruction, value => work.instruction = value, { rows: 2, maxLength: 1000 }));
+    const toggle = node('input');
+    toggle.type = 'checkbox';
+    toggle.setAttribute('role', 'switch');
+    toggle.checked = work.enabled;
+    const label = node('label', '', 'toggle');
+    const toggleLabel = () => work.enabled ? (isRecall ? '已启用' : '已启用（待接入）') : '已暂停';
+    const state = node('span', toggleLabel());
+    toggle.onchange = () => {
+        work.enabled = toggle.checked;
+        workerDirty = true;
+        state.textContent = toggleLabel();
+    };
+    label.append(toggle, state);
+    const logs = node('details');
+    logs.append(node('summary', '工作日志'));
+    if (isRecall) renderRecallHistory(logs, draft, work);
+    else renderImageTest(logs, draft, work);
+    block.append(label, logs);
+    return block;
+}
+
+function renderRecallHistory(logs, draft, work) {
+    logs.open = true;
+    const state = node('p', '保存并启用后开始监听此会话。', 'muted');
+    const history = node('ol', '', 'recall-history');
+    logs.append(state, history);
+    const saved = workerData.entries.find(entry => entry.id === draft.id);
+    if (!saved || saved.target?.id !== draft.target?.id ||
+        !saved.works.some(entry => entry.id === work.id && entry.trigger === 'recall')) return;
+    const args = { workspace: workerData.workspace, worker_id: draft.id, work_id: work.id };
+    let refreshing = false;
+    let last = '';
+    async function refresh() {
+        if (refreshing || !logs.isConnected || !logs.open || activeAvatar !== 'cli') return;
+        refreshing = true;
+        try {
+            const result = await call('cli-recall-status', args);
+            if (!logs.isConnected || workerData?.workspace !== args.workspace) return;
+            const snapshot = JSON.stringify(result);
+            if (last === snapshot) return;
+            last = snapshot;
+            const label = {
+                off: '已暂停', starting: '正在建立监听起点…', watching: '正在监听',
+                waiting: '等待微信连接或会话数据', blocked: '监听已停止',
+            }[result.status];
+            state.textContent = [label, result.error, result.entries.length ? '最近 20 条撤回' : '暂无撤回记录'].filter(Boolean).join(' · ');
+            history.replaceChildren(...result.entries.map(entry => {
+                const row = node('li');
+                const date = activityDate.format(entry.at * 1000);
+                row.append(node('span', (entry.revoke_time ? '撤回于 ' : '检测于 ') + date, 'activity-meta'));
+                if (draft.target?.id.endsWith('@chatroom')) {
+                    const person = (name, id) => name && name !== id ? name + '（' + id + '）' : id;
+                    const revoker = person(entry.revoker_name, entry.revoker_id);
+                    const sender = person(entry.sender_name, entry.sender_id);
+                    row.append(node('p', '撤回人：' + (revoker || '微信未提供')));
+                    if (sender && entry.sender_id !== entry.revoker_id) {
+                        row.append(node('p', '原发送者：' + sender));
+                    }
+                }
+                if (entry.kind === 'text' && entry.text !== null) row.append(node('p', entry.text));
+                else if (entry.image?.startsWith('data:image/jpeg;base64,')) {
+                    const image = node('img');
+                    image.src = entry.image;
+                    image.alt = '已撤回的图片';
+                    image.loading = 'lazy';
+                    row.append(image);
+                } else row.append(node('p', entry.kind === 'image' ? '图片缩略图未缓存' : '原消息内容未缓存', 'muted'));
+                return row;
+            }));
+        } catch (error) {
+            last = '';
+            if (logs.isConnected) state.textContent = '读取撤回日志失败：' + error.message;
+        } finally {
+            refreshing = false;
+        }
+    }
+    logs.addEventListener('toggle', refresh);
+    const timer = setInterval(() => {
+        if (!logs.isConnected) clearInterval(timer);
+        else void refresh();
+    }, 4000);
+    queueMicrotask(refresh);
+}
+
+function renderImageTest(logs, draft, work) {
+    const history = node('ul');
+    const key = draft.id + ':' + work.id;
+    function paint() {
+        const entries = workerData.image_test_logs?.[key] || [];
+        history.replaceChildren(...entries.map(entry => {
+            const variantLabel = entry.variant === 'large' ? '大图' : '缩略图';
+            const result = ['thumbnail_read', 'large_read'].includes(entry.state)
+                ? '已读取' + variantLabel + ' · ' + (entry.format ? entry.format.toUpperCase() + ' · ' : '')
+                    + entry.width + ' × ' + entry.height + ' · ' + entry.bytes.toLocaleString('zh-CN') + ' 字节'
+                : '未处理 · ' + ({
+                    wechat_cli_cache_missing: '本地' + variantLabel + '尚未就绪',
+                    wechat_cli_decoder_unavailable: '缺少 ffmpeg 解码器',
+                    wechat_cli_decode_failed: '大图解码失败',
+                    wechat_cli_unsupported_wxgf: '无法解码这张大图',
+                    wechat_cli_message_mismatch: '找不到匹配的入站图片',
+                    wechat_cli_account_mismatch: '微信账号绑定不匹配',
+                    wechat_cli_account_changed: '微信账号已切换',
+                }[entry.error] || entry.error);
+            let judgment = '';
+            if (entry.judgment) judgment = ' · 视觉判断：' + entry.judgment + ' · ' + entry.model;
+            else if (entry.judgment_error) judgment = ' · 视觉判断未完成：' + ({
+                comapps_image_no_judgment: '模型未给出是或否',
+                comapps_image_model_missing: '未配置图像识别模型',
+                comapps_image_model_failed: '模型调用失败',
+            }[entry.judgment_error] || entry.judgment_error);
+            return node('li', activityDate.format(new Date(entry.at)) + ' · ' + entry.database + ' #' + entry.local_id + ' · ' + result + judgment + (entry.delivery ? ' · 回复：' + ({
+                sent: '已发送', queued: '已入队', unknown: '结果未知', rejected: '已拒绝',
+                failed: '失败', expired: '已过期', cancelled: '已取消',
+            }[entry.delivery] || entry.delivery) : ''));
+        }));
+        if (!entries.length) history.append(node('li', '暂无执行记录。', 'muted'));
+    }
+    paint();
+    logs.append(history);
+    const saved = workerData.entries.find(entry => entry.id === draft.id);
+    if (work.trigger !== 'image' || !draft.target?.id.startsWith('wxid_') || binding.cli_profile !== 'default'
+        || saved?.target?.id !== draft.target.id || !saved.works.some(entry => entry.id === work.id && entry.trigger === 'image')) return;
+    const database = node('input');
+    database.value = 'message_0.db';
+    const local = node('input');
+    local.inputMode = 'numeric';
+    const server = node('input');
+    server.inputMode = 'numeric';
+    const variant = optionsField({ thumbnail: '缩略图', large: '大图（微信本地缓存）' }, 'thumbnail');
+    const test = (classify, watch = false) => action(async () => {
+        const localId = Number(local.value);
+        const serverId = server.value.trim();
+        const useAnchor = !watch || local.value.trim() || serverId;
+        if (!/^message_[0-9]{1,6}\.db$/.test(database.value.trim())
+            || (useAnchor && (!/^[0-9]+$/.test(local.value.trim()) || !Number.isSafeInteger(localId) || localId < 1
+            || !/^-?[1-9][0-9]{0,18}$/.test(serverId)))) {
+            status('请填写有效的消息分库、本地消息 ID 和服务器消息 ID。', true);
+            return;
+        }
+        const workspace = workerData.workspace;
+        const { entry } = await call('cli-worker-image-test', {
+            workspace, worker_id: draft.id, work_id: work.id, database: database.value.trim(),
+            variant: variant.value, classify, watch, ...(useAnchor ? { local_id: localId, server_id: serverId } : {}),
+        });
+        if (workerData?.workspace !== workspace) return;
+        const records = workerData.image_test_logs ||= {};
+        records[key] = [entry, ...(records[key] || [])].slice(0, 5);
+        paint();
+        status('');
+    });
+    logs.append(
+        node('p', '按消息编号测试，结果写入工作日志。视觉测试使用设置中的图像识别模型。', 'muted'),
+        field('消息分库', database), field('本地消息 ID', local), field('服务器消息 ID', server),
+        field('图片版本', variant),
+        workerButton('测试读取图片', test(false)),
+    );
+    if (saved.works.some(entry => entry.id === work.id && entry.response === 'answer' && entry.instruction.trim())) {
+        logs.append(workerButton('测试视觉判断', test(true)));
+        if (saved.works.some(entry => entry.id === work.id && entry.enabled)) {
+            logs.append(node('p', '新图测试只监听所选分库。留空消息 ID 时从当前尾部开始，填写两个 ID 可从指定消息之后继续。识别后会回复一次。', 'muted'));
+            logs.append(workerButton('等待一张新图并回复', test(true, true)));
+            const monitorState = node('p', '正在查询常驻监听…', 'muted');
+            monitorState.setAttribute('role', 'status');
+            const args = { workspace: workerData.workspace, worker_id: draft.id, work_id: work.id };
+            const start = workerButton('启用常驻监听', action(async () => {
+                await call('cli-image-monitor-start', { ...args, revision: workerData.revision });
+                await refresh();
+                status('');
+            }));
+            const stop = workerButton('停止常驻监听', action(async () => {
+                await call('cli-image-monitor-stop', args);
+                await refresh();
+                status('');
+            }));
+            start.hidden = stop.hidden = true;
+            let refreshingMonitor = false;
+            async function refresh() {
+                if (refreshingMonitor || !logs.isConnected || !logs.open || activeAvatar !== 'cli') return;
+                refreshingMonitor = true;
+                try {
+                    const result = await call('cli-image-monitor-status', args);
+                    if (!logs.isConnected || workerData?.workspace !== args.workspace) return;
+                    monitorState.textContent = ({
+                        off: '常驻监听未启用', starting: '正在读取各分库的当前尾部',
+                        watching: '常驻监听已就绪', waiting: '等待分库可用', blocked: '监听已暂停',
+                    }[result.status] || result.status) + (result.error ? ' · ' + result.error : '');
+                    start.hidden = result.status !== 'off';
+                    stop.hidden = result.status === 'off';
+                    if (result.entries) {
+                        (workerData.image_test_logs ||= {})[key] = result.entries;
+                        paint();
+                    }
+                } catch (error) {
+                    monitorState.textContent = '监听状态暂不可用 · ' + error.message;
+                } finally {
+                    refreshingMonitor = false;
+                }
+            }
+            logs.append(monitorState, start, stop);
+            logs.addEventListener('toggle', refresh);
+            const timer = setInterval(() => {
+                if (!logs.isConnected) clearInterval(timer);
+                else void refresh();
+            }, 3000);
+
+        }
+    }
+}
+
+function renderSavedAudiences(fields, draft) {
+    const lists = workerData.entries.filter(entry => entry.kind === 'audience');
+    if (!lists.length) return;
+    const bar = node('div', '', 'worker-row');
+    const choices = Object.fromEntries(lists.map(item => [item.id, item.name]));
+    const select = optionsField(choices, lists[0].id);
+    select.setAttribute('aria-label', '已保存的会话名单');
+    bar.append(select, workerButton('加入名单中的会话', () => {
+        const source = lists.find(item => item.id === select.value);
+        const targets = new Map(draft.targets.map(item => [item.id, item]));
+        for (const item of source.targets) if (!targets.has(item.id)) targets.set(item.id, item);
+        if (targets.size > 30) {
+            $('worker-feedback').textContent = '每个群发草稿最多保存 30 个目标。';
+            return;
+        }
+        draft.targets = [...targets.values()];
+        workerDirty = true;
+        $('worker-feedback').textContent = '';
+        renderWorker();
+    }));
+    fields.append(bar);
+}
+
+function renderBroadcast(fields, draft) {
+    const box = node('fieldset');
+    box.append(node('legend', '群发内容'));
+    for (const content of draft.content) {
+        const item = node('div', '', 'worker-entry');
+        const bar = node('div', '', 'worker-row');
+        const format = optionsField(contentKinds, content.kind, value => {
+            content.kind = value;
+            renderWorker();
+        });
+        format.setAttribute('aria-label', '内容类型');
+        bar.append(format, workerButton('移除内容', () => {
+            draft.content = draft.content.filter(value => value !== content);
+            workerDirty = true;
+            renderWorker();
+        }));
+        item.append(bar, editField(content.kind === 'text' ? '消息正文' : '素材 URL', content.value, value => content.value = value, {
+            required: true, maxLength: 1800, ...(content.kind === 'text' ? { rows: 3 } : { type: 'url' }),
+        }));
+        box.append(item);
+    }
+    if (draft.content.length < 4) box.append(workerButton('＋ 添加内容', () => {
+        draft.content.push({ kind: 'text', value: '' });
+        workerDirty = true;
+        renderWorker();
+    }));
+    fields.append(box, editField('发送间隔（秒）', draft.interval, value => draft.interval = value, {
+        type: 'number', required: true, min: 5, max: 3600,
+    }));
+    fields.append(node('p', '发送尚未接入。保存后，目标、内容与发送间隔会保留在草稿中。', 'muted'));
+}
+
+async function saveWorker(remove = false) {
+    const draft = workerDraft;
+    const { revision, workspace } = workerData;
+    if (!remove && draft.kind === 'monitor' && draft.source === 'session' && !draft.target) {
+        $('worker-feedback').textContent = '请选择一个工作会话。';
+        status('');
+        return;
+    }
+    if (!remove && draft.kind === 'monitor' && draft.source !== 'session' &&
+        draft.works.some(work => work.trigger === 'recall')) {
+        $('worker-feedback').textContent = '撤回监控需要一个会话。请选择会话或移除撤回监控。';
+        return;
+    }
+    try {
+        const result = await call(remove ? 'cli-worker-delete' : 'cli-worker-save', {
+            revision, workspace, ...(remove ? { worker_id: draft.id } : { worker: draft }),
+        });
+        if (binding.cli_workspace !== result.workspace) return;
+        workerData = result;
+        workerDirty = false;
+        if (remove) {
+            workerDraft = undefined;
+            renderWorkers();
+            renderWorker();
+            status('已删除。');
+        } else {
+            selectSavedWorker(draft.id);
+            $('worker-feedback').textContent = '已保存。';
+            status('');
+        }
+    } catch (error) {
+        status('');
+        if (error.message === 'comapps_workers_conflict') {
+            $('worker-feedback').textContent = '配置已在别处更新。请重新打开传信后再编辑。';
+        } else {
+            $('worker-feedback').textContent = error.message === 'comapps_invalid_arguments' ? '请检查名称、触发条件和素材 URL。' : '保存失败：' + error.message;
+        }
+    }
+}
+
+function editableWorker({ updated_at, ...settings }) {
+    return structuredClone(settings);
+}
+
+function selectSavedWorker(id) {
+    workerDraft = editableWorker(workerData.entries.find(item => item.id === id));
+    renderWorkers();
+    renderWorker();
+}
+
+$('worker-form').onsubmit = action(() => saveWorker());
+const deleteWorker = action(() => saveWorker(true));
+$('delete-worker').onclick = () => {
+    if (!busy) confirmWorker('删除「' + workerDraft.name + '」？', '删除', deleteWorker);
+};
+function closeWorker() {
+    workerDraft = undefined;
+    workerDirty = false;
+    $('worker-feedback').textContent = '';
+    renderWorker();
+    renderWorkers();
+}
+$('discard-worker').onclick = () => {
+    if (busy) return;
+    if (workerDirty) confirmWorker('放弃尚未保存的修改？', '放弃修改', closeWorker);
+    else closeWorker();
+};
+
+window.addEventListener('message', event => {
+    if (event.source !== parent || event.origin !== parentOrigin) return;
+    const data = event.data;
+    if (data?.type === 'ai2apps.host.context' && data.appId === 'ai2apps.comapps' && data.mountToken) {
+        if (mount?.mountToken === data.mountToken && mount?.instanceId === data.instanceId) {
+            frameActive = data.visibility !== 'hidden';
+            void refreshActiveILink();
+            return;
+        }
+        stopScan();
+        mount = data;
+        frameActive = data.visibility !== 'hidden';
+        void action(async () => {
+            showState(await call('state'));
+            status('');
+        })();
+    } else if (mount && data?.mountToken === mount.mountToken && data.instanceId === mount.instanceId
+        && ['ai2apps.host.activate', 'ai2apps.host.background'].includes(data.type)) {
+        frameActive = data.type === 'ai2apps.host.activate';
+        void refreshActiveILink();
+    } else if (data?.type === 'ai2apps.host.response') {
+        const waiter = pending.get(data.requestId);
+        if (!waiter || data.mountToken !== waiter.identity.mountToken || data.instanceId !== waiter.identity.instanceId) return;
+        pending.delete(data.requestId);
+        clearTimeout(waiter.timer);
+        if (data.ok) waiter.resolve(data.result);
+        else waiter.reject(new Error(data.error === 'comapps_busy'
+            ? '传信正在处理另一项操作，请稍后重试。'
+            : data.error || 'Local 请求失败'));
+    }
+});
+
+function announceReady() {
+    const mountToken = frameParams.get('ai2apps-mount');
+    const instanceId = frameParams.get('ai2apps-instance');
+    if (mount || !mountToken || !instanceId || parent === window) return;
+    parent.postMessage({ type: 'ai2apps.shell.ready', mountToken, instanceId }, parentOrigin);
+    setTimeout(announceReady, 500);
+}
+
+announceReady();
+</script>
+</body>
+</html>

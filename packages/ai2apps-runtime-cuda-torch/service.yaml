@@ -2,7 +2,7 @@ schema: ai2apps.service/v1
 id: ai2apps.runtime.cuda-torch
 name: AI2Apps CUDA Torch Runtime
 description: Isolated PyTorch and Transformers Runtime for AI2Apps CUDA Model Workers.
-version: 0.2.0
+version: 0.5.0
 
 publisher:
   id: ai2apps
@@ -22,6 +22,16 @@ capabilities:
   - conversation
   - vlm
   - audio-stt
+  - qwen38-bf16
+  - nvfp4-sm121
+  - audio-tts
+  - qwen3-tts
+  - image-generation
+  - image-edit
+  - flux2-klein
+  - framework-profiles-v1
+  - video-generation
+  - minimax-h3
 
 requires:
   services: []

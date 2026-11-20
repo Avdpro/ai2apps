@@ -12,7 +12,7 @@ from pathlib import Path
 from urllib.parse import urlsplit, urlencode
 
 from .background_planner import BackgroundPlanner
-from .background_page import NativeInputNotDispatched
+from .background_page import NativeInputNotDispatched, PointerTargetUnavailable
 from .site_boundary import registrable_site
 
 logging.getLogger(__name__).info(
@@ -372,10 +372,13 @@ class BackgroundExecutor:
                     url = await page.select_xhs_site(url)
                     if not scope_allows(url, scopes):
                         return dict(outcome='restricted', evidence={'reason':'navigation_outside_scope','url':url})
-                result = (await page.preload(url) if args.get('preload') else
+                result = (await page.open_readable_page(url) if args.get('wait_for_readable_page') else
+                          await page.preload(url) if args.get('preload') else
                           {'url':url,'page_reused':True} if args.get('reuse_current_page') and before['url']==url
                           else await page.navigate(url, args.get('delay_ms', 3000)))
             except (TimeoutError, RuntimeError) as error:
+                if isinstance(error, TimeoutError) and args.get('wait_for_readable_page'):
+                    return dict(outcome='failed', evidence={'reason':'article_navigation_timeout','url':url})
                 # Search GET navigation is safe to abandon for the alternate engine.
                 # Never apply this recovery to clicks, inputs or submissions.
                 if args.get('search_provider') not in ('google', 'bing', 'duckduckgo', 'brave'):
@@ -506,6 +509,9 @@ class BackgroundExecutor:
                 else:
                     try:
                         await interact(target)
+                    except PointerTargetUnavailable:
+                        return dict(outcome='not_found', evidence={'reason':'target_not_clickable',
+                            'action_outcome_unknown':False, 'automatic_replay_allowed':False})
                     except NativeInputNotDispatched:
                         return dict(outcome='needs_user',evidence={'reason':'native_input_not_dispatched',
                             'action_outcome_unknown':False,'automatic_replay_allowed':False,
@@ -636,4 +642,26 @@ class BackgroundExecutor:
                         evidence.update(assistance_message=message,
                             failed_operation=action['operation'],failed_target=str(intent(action))[:200],owner_step=step.get('id'))
                     return result
+        args = step.get('arguments') or {}
+        if args.get('read_only') and args.get('return_partial_on_action_limit'):
+            pages = []
+            seen = set()
+            for attempt in reversed(attempts):
+                if attempt.get('outcome') != 'success':
+                    continue
+                evidence = attempt.get('evidence', {})
+                for observed in (evidence.get('after'), evidence.get('before')):
+                    if not isinstance(observed, dict):
+                        continue
+                    url, body = observed.get('url', ''), observed.get('text', '')
+                    if not body or not scope_allows(url, scopes) or (url, body) in seen:
+                        continue
+                    seen.add((url, body))
+                    pages.append({'url':url, 'title':observed.get('title', ''), 'text':body[:5500]})
+                    if len(pages) == 4:
+                        break
+                if len(pages) == 4:
+                    break
+            return dict(outcome='success', evidence={'operation':step['operation'],
+                'result':{'coverage':'partial', 'reason':'ai_step_action_limit', 'observations':pages}})
         return dict(outcome='failed', evidence={'reason': 'ai_step_action_limit', 'attempts': attempts})

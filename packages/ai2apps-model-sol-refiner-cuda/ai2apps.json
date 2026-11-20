@@ -1,0 +1,88 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/model-sol-refiner-cuda",
+    "type": "service",
+    "version": "0.1.0",
+    "displayName": "SoL-Refiner Image & Video Upscaler CUDA",
+    "description": "CUDA 2x image and whole-clip video upscaling, standard and custom prompts; preserves image alpha and video audio."
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": [
+      "linux"
+    ],
+    "architectures": [
+      "arm64"
+    ]
+  },
+  "entrypoints": [
+    {
+      "name": "model-worker",
+      "kind": "service",
+      "path": "service.yaml"
+    }
+  ],
+  "permissions": [
+    {
+      "capability": "model-weights.huggingface-cache.read",
+      "reason": "Run the dedicated SoL-Refiner video upscaler using the pinned checkpoint and Metal.",
+      "required": true
+    },
+    {
+      "capability": "accelerator.cuda",
+      "reason": "Run fixed SoL-Refiner on CUDA.",
+      "required": true
+    }
+  ],
+  "dependencies": [
+    {
+      "packageId": "ai2apps/runtime-cuda-torch",
+      "version": ">=0.6.0 <1.0.0",
+      "optional": false
+    }
+  ],
+  "files": [],
+  "sbom": {
+    "format": "spdx-json-2.3",
+    "path": "META/sbom.spdx.json"
+  },
+  "discovery": {
+    "kind": "model",
+    "categories": [
+      "image",
+      "video"
+    ],
+    "tasks": [
+      "image-upscaling",
+      "video-upscaling"
+    ]
+  },
+  "modelInstall": {
+    "serviceKey": "ai2apps.model.sol-refiner-cuda",
+    "models": [
+      {
+        "id": "ai2apps.model.sol-refiner-cuda/ltx23-one-step",
+        "label": "Standard Upscaling / 标准放大 - 28.71 GB",
+        "recommended": true
+      },
+      {
+        "id": "ai2apps.model.sol-refiner-cuda/ltx23-custom-prompt",
+        "label": "Custom Prompts / 自定义提示词 - 57.04 GB; +28.33 GB after Standard",
+        "recommended": false
+      }
+    ]
+  },
+  "modelProfile": {
+    "sizeBytes": 28705240872,
+    "minimumMemoryBytes": 103079215104,
+    "scores": {
+      "speed": 2,
+      "capability": 3
+    },
+    "benchmark": {
+      "label": "Conservative memory estimate; shared Runtime inference pending",
+      "device": "NVIDIA DGX Spark GB10"
+    }
+  }
+}

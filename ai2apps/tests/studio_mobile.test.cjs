@@ -2,10 +2,10 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs'),vm=require('node:vm');
 function fixture(mobile=true, imagine=false, overrides={}, appId=null, shell=false){
- class Element {constructor(){this.dataset={};this.children=[];this.classList={add(){},remove(){},toggle(){}};this.hidden=false;this.isConnected=true;} append(...x){this.children.push(...x);} prepend(x){this.children.unshift(x);} querySelectorAll(){return [];} querySelector(s){return this.selectors?.[s]||null;} addEventListener(k,f){(this.events??={})[k]=f;} setAttribute(){} showModal(){} close(){} remove(){this.isConnected=false;} }
+ class Element {constructor(){this.dataset={};this.children=[];this.classList={add(){},remove(){},toggle(){}};this.hidden=false;this.isConnected=true;} append(...x){this.children.push(...x);} prepend(x){this.children.unshift(x);} querySelectorAll(){return [];} querySelector(s){return this.selectors?.[s]||null;} addEventListener(k,f){(this.events??={})[k]=f;} dispatchEvent(event){this.events?.[event.type]?.(event);} click(){} setAttribute(){} showModal(){} close(){} remove(){this.isConnected=false;} }
  const header=new Element(),list=new Element(),editor=new Element(),output=new Element(),root=new Element();root.dataset.appId=appId||(imagine?'ai2apps.imagine-studio':'ai2apps.video-studio');root.selectors={'.studio-header':header,'.vs-studio-sidebar,.ra-studio-sidebar':list,'.is-mini-app-workspace,.vs-mini-app-workspace,.ra-pipeline-workspace':editor,'.vs-render-workspace,.ra-render-workspace':output};
  const media={matches:mobile,addEventListener(k,f){this.change=f;}};
- const messages={};const context={URLSearchParams,location:{hash:'#ai2apps-mount=t&ai2apps-instance=i'},setTimeout:()=>1,clearTimeout(){},window:{parent:{ai2appsMobileStudioNavigation:()=>shell},location:{origin:'http://localhost'},matchMedia:()=>media,addEventListener(k,f){messages[k]=f;}},document:{documentElement:{lang:'zh'},elementFromPoint:()=>null,createElement:()=>new Element()},console};vm.createContext(context);vm.runInContext(fs.readFileSync(__dirname+'/../web/static/js/studio_mobile.js','utf8'),context);
+ const messages={};const context={URLSearchParams,Event,location:{hash:'#ai2apps-mount=t&ai2apps-instance=i'},setTimeout:()=>1,clearTimeout(){},window:{parent:{ai2appsMobileStudioNavigation:()=>shell},location:{origin:'http://localhost'},matchMedia:()=>media,addEventListener(k,f){messages[k]=f;}},document:{documentElement:{lang:'zh'},elementFromPoint:()=>null,createElement:()=>new Element()},console};vm.createContext(context);vm.runInContext(fs.readFileSync(__dirname+'/../web/static/js/studio_mobile.js','utf8'),context);
  let calls=0;const app={currentMiniApp:{id:'a'},leftView:'assets',prompt:'keep',selectedOutput:{id:'out'},async selectMiniApp(id){calls++;this.currentMiniApp={id};}};
  Object.assign(app,overrides);
  context.window.AI2AppsMobileStudio.mount(root,app);
@@ -21,6 +21,17 @@ test('Package asset picker returns selected file without frame DOM access',async
  const f=fixture(),promise=f.picker({closest:()=>f.root},{accept:'image/*'});
  const input=f.root.children.at(-2),file={name:'owned.png',type:'image/png'};input.files=[file];input.events.change();
  const value=await promise;assert.equal(value.body,file);assert.equal(value.name,'owned.png');
+});
+test('Package asset picker opens the native chooser with multi-select and returns every file',async()=>{
+ const f=fixture(),promise=f.picker({closest:()=>f.root},{accept:'image/*',multiple:true});
+ const sheet=f.root.children.at(-1);
+ await sheet.children[1].onclick();
+ const picker=f.root.children.at(-1);
+ assert.equal(picker.multiple,true);
+ const files=[{name:'first.png'},{name:'second.png'}];
+ picker.files=files;picker.onchange();
+ const result=await promise;
+ assert.deepEqual(Array.from(result,entry=>entry.body),files);
 });
 test('mobile list, editor and shared output retain draft and selection',async()=>{const f=fixture();assert.equal(f.root.dataset.smPage,'library');await f.app.selectMiniApp('a');assert.equal(f.calls,0);assert.equal(f.root.dataset.smPage,'create');f.header.children[1].onclick();assert.equal(f.root.dataset.smPage,'output');f.header.children[0].onclick();assert.equal(f.root.dataset.smPage,'create');assert.equal(f.app.prompt,'keep');assert.equal(f.app.selectedOutput.id,'out');f.header.children[0].onclick();assert.equal(f.root.dataset.smPage,'library');});
 test('switching Mini-App retains the original activation implementation',async()=>{const f=fixture();await f.app.selectMiniApp('b');assert.equal(f.calls,1);assert.equal(f.root.dataset.smPage,'create');});
@@ -125,4 +136,12 @@ test('Voice Shell click defers retained workspace activation until Gallery opens
  await f.app.showLeftView('assets');assert.equal(f.calls,1);assert.equal(f.app.leftView,'assets');
  assert.equal(f.root.dataset.smPage,'library');
  await f.app.showLeftView('assets');assert.equal(f.calls,1);
+});
+
+
+test('returning to the same Package on mobile runs the Studio entry check', async () => {
+ const f=fixture(true,false,{currentMiniApp:{id:'a',source:'package'}});
+ await f.app.selectMiniApp('a');
+ assert.equal(f.calls,1);
+ assert.equal(f.root.dataset.smPage,'create');
 });

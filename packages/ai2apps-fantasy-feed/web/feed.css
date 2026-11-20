@@ -1,0 +1,31 @@
+:root {font:14px/1.45 system-ui,sans-serif;color:#172539;background:#fff}
+body {margin:0}
+main {display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:16px;padding:16px;align-items:start}
+form,.stack,label {display:grid;gap:8px;min-width:0}
+form {gap:14px}
+fieldset {min-width:0;margin:0;border:1px solid #dbe3ee;border-radius:12px;padding:12px}
+legend {font-weight:700;padding:0 6px}
+.grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+input,textarea,select,button {box-sizing:border-box;min-width:0;font:inherit;color:inherit;border:1px solid #cbd5df;border-radius:8px;padding:7px;background:#fff}
+textarea {resize:vertical;width:100%}
+button {cursor:pointer;font-weight:600}
+button.primary {background:#214fc5;color:#fff;border-color:#214fc5}
+button:disabled {opacity:.55;cursor:default}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible {outline:2px solid #214fc5;outline-offset:2px}
+.hint,#status {color:#4c6078;margin:0;overflow-wrap:anywhere}
+.actions,.row-actions {display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.card {background:#f5f7fb;border:1px solid #e0e7f0;border-radius:10px;padding:9px;min-width:0}
+.card>label,.card>.grid,.card>.row-actions {margin-top:8px}
+.card-heading {display:flex;justify-content:space-between;align-items:center;gap:6px}
+#messages {list-style:none;padding:0;margin:8px 0}
+#participants {margin-bottom:8px}
+.stage {position:sticky;top:10px;display:grid;place-items:center;gap:10px;background:#edf1f7;border:1px solid #e0e7ef;border-radius:14px;padding:10px;min-width:0}
+canvas {display:block;width:auto;height:auto;max-width:100%;max-height:72vh;border-radius:8px;box-shadow:0 5px 18px #1b2d4926}
+.scrubber {display:flex;align-items:end;gap:8px;width:100%}
+.scrubber label {flex:1}
+.scrubber output {min-width:4em;text-align:right}
+.thumbnail {width:36px;height:36px;object-fit:cover;border-radius:50%;vertical-align:middle}
+video {display:block;max-width:100%;max-height:160px;margin-top:8px}
+@media(max-width:660px) {main {grid-template-columns:1fr}.stage {grid-row:1;position:static}canvas {max-height:43vh}}
+
+#composer-mode-field[hidden] {display:none}

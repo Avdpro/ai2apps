@@ -32,3 +32,8 @@ The Mini-App follows the studio locale: English, Simplified Chinese, Traditional
 ## Audio input
 
 The audio slot shows the selected file name, size, duration and a native audio player. Record audio uses the Video Studio Host microphone bridge; stopping uses the recording, discarding keeps the previous input. Recording stops at the model duration limit (with a small encoding margin), and the Host releases the microphone when the mount closes. Browser microphone permission is requested only after clicking Record. Unsupported preview codecs show an explicit message. Host recording support and blob-media CSP must be deployed with this Package update.
+
+
+## AaAT ownership (0.1.5)
+
+This release owns its executable AaAT declarations and parameter schemas in signed `app.yaml.mini_apps[].aaat`. It requires the versioned native Host SDK protocol declared by each export (`ai2apps.mini-app-host-exports/v1`). The matching Desktop host registers exports only while this exact Package is installed, enabled, and compatible. The capability catalog alone never enables execution. Older Desktop hosts must be upgraded for this ownership contract. Existing native queues, original material references, and shared Studio Output are reused.

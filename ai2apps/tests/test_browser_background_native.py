@@ -27,6 +27,10 @@ async def test_native_background_actions(tmp_path):
 <button onclick="document.querySelector('#file').click()">Upload fixture</button><input id="file" type="file" hidden>
 <article><h2><a href="/one.html">Fixture article one</a></h2></article>
 <article><h2><a href="/two.html">Fixture article two</a></h2></article>
+<div style="height:150px;overflow:auto">
+  <div style="height:1200px"></div>
+  <button id="technical" aria-expanded="false" onclick="this.setAttribute('aria-expanded','true')">Technical data</button>
+</div>
 '''
     (tmp_path/'index.html').write_text(html)
     (tmp_path/'fixture.txt').write_text('disposable upload fixture')
@@ -60,6 +64,9 @@ async def test_native_background_actions(tmp_path):
         listing = await page.extract_list({'arguments': {'limit':20}})
         assert len(listing['items'])==2
         assert all(item['title'] and item['url'] for item in listing['items'])
+        target = await page.find_target('Technical data')
+        await page.pointer_to(target)
+        assert await page.call_json("function(){return document.querySelector('#technical').getAttribute('aria-expanded');}") == 'true'
         # Run a real durable queued capability after its HTTP client is closed.
         # Only Profile binding is substituted with this disposable native context.
         import runpy

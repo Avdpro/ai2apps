@@ -45,6 +45,11 @@ from ai2apps.studio.media_workflows import (
     validate_video_media,
 )
 
+from ai2apps.studio.visual_sequence import (
+    CAPABILITY as VISUAL_SEQUENCE_CAPABILITY,
+    HOST_STUDIOS as VISUAL_SEQUENCE_HOST_STUDIOS,
+)
+
 DETAILED_TRANSCRIPTION_CAPABILITY = "audio.detailed_transcription"
 DIARIZATION_CAPABILITY = "audio.speaker_diarization"
 SOURCE_SEPARATION_CAPABILITY = "audio.source_separation"
@@ -484,6 +489,14 @@ class StudioCapabilityBroker:
         mounted = self.mounted_mini_app(studio_id, mount_id, principal=principal)
         return self.probe_declaration(studio_id, mounted.declaration, mount_id=mount_id)
 
+    def _event_capabilities(self,declaration):
+        capabilities=_declared_capabilities(declaration)
+        optional=_optional_capabilities(declaration)
+        return [{'capability':name,'implemented':True,
+                 'ready':bool(getattr(self.runtime,'mini_app_hooks',None)) and 'events.subscribe' in capabilities,
+                 'required':name not in optional,'providers':[{'name':'AI2Apps Host Event Inbox'}]}
+                for name in ('events.subscribe','events.background') if name in capabilities]
+
     def probe_declaration(
         self,
         studio_id: str,
@@ -495,7 +508,8 @@ class StudioCapabilityBroker:
 
         if studio_id == "ai2apps.ai-browser":
             from ai2apps.browser.mini_apps import capability_catalog
-            items=capability_catalog(declaration)
+            items=capability_catalog(declaration) if declaration.get('web_agent') is not None else []
+            items.extend(self._event_capabilities(declaration))
             if 'device.location' in _declared_capabilities(declaration):
                 items.append({'capability':'device.location','implemented':True,'ready':True,
                               'required':'device.location' not in _optional_capabilities(declaration),
@@ -521,8 +535,9 @@ class StudioCapabilityBroker:
         ) else ()
         tts_models = self._tts_models(self.runtime) if SPEECH_GENERATION_CAPABILITY in capabilities else ()
         optional_capabilities = _optional_capabilities(declaration)
-        items = []
+        items = self._event_capabilities(declaration)
         for capability in sorted(capabilities):
+            if capability in {'events.subscribe','events.background'}:continue
             if capability == 'notifications.send':
                 producer=getattr(getattr(self.runtime,'remote',None),'notifications',None)
                 items.append({'capability':capability,'implemented':True,'ready':bool(producer and producer.supports_custom('https_url')),'required':capability not in optional_capabilities,'providers':[{'name':'AI2Apps Host Notifications'}]})
@@ -544,6 +559,15 @@ class StudioCapabilityBroker:
                             and model.checkpoint_ready and operation in model.capabilities for identifier, operation in required)
                 items.append({'capability': capability, 'implemented': studio_id == 'ai2apps.imagine-studio',
                     'ready': ready, 'required': capability not in optional_capabilities, 'providers': []})
+                continue
+            elif capability == VISUAL_SEQUENCE_CAPABILITY:
+                available = studio_id in VISUAL_SEQUENCE_HOST_STUDIOS
+                items.append({
+                    "capability": capability, "implemented": available,
+                    "ready": available and getattr(self.runtime, "studio_jobs", None) is not None,
+                    "required": capability not in optional_capabilities,
+                    "providers": [{"name": "AI2Apps Host Media Pipeline"}] if available else [],
+                })
                 continue
             elif capability == AVATAR_CAPABILITY:
                 models = avatar_models(self.runtime)
@@ -588,8 +612,25 @@ class StudioCapabilityBroker:
                     }
                 )
                 continue
-            elif capability == "llm.text":
+            elif capability == "comic.translation":
+                from ai2apps.images import comic_translation
+
+                supported = (studio_id == comic_translation.STUDIO_ID
+                             and declaration.get("provider", {}).get("appId") == comic_translation.APP_ID)
+                items.append({"capability": capability, "implemented": True,
+                    "ready": supported and comic_translation.ocr_ready(self.runtime),
+                    "required": capability not in optional_capabilities,
+                    "providers": [{"name": "SoMark OXR"}]})
+                continue
+            elif capability in {"image.workflow", "image.workflow.schedule"}:
                 items.append({"capability": capability, "implemented": True, "ready": True,
+                    "required": capability not in optional_capabilities,
+                    "providers": [{"name": "Bounded image sequence SDK v1"}]})
+                continue
+            elif capability == "llm.text":
+                from ai2apps.task_llm import resolve_task_model
+                items.append({"capability": capability, "implemented": True,
+                    "ready": bool(resolve_task_model(self.runtime, "standard")),
                     "required": capability not in optional_capabilities,
                     "providers": [{"name": "Task model routing"}]})
                 continue

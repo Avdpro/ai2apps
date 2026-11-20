@@ -11,6 +11,7 @@ from typing import Any
 from jsonschema import Draft202012Validator, ValidationError
 
 from ai2apps.capabilities import CapabilityRepository, GrantScope
+from ai2apps.capabilities.risk_memory import remember_risk, risk_binding
 from ai2apps.core import (
     EntityIdKind,
     ResourceConflictError,
@@ -1538,6 +1539,13 @@ class AgentRepository:
                 grants = set(json.loads(run["granted_capabilities_json"]))
                 if new_status is InteractionStatus.APPROVED:
                     approval_request = json.loads(row["request_json"])
+                    if "remember_risk" in response:
+                        binding = risk_binding(connection, approval_request["tool_name"],
+                                               approval_request.get("risk_variant"))
+                        if (run["status"] != "waiting_capability" or run["cancel_requested"]
+                                or not binding or binding != approval_request.get("risk_binding")):
+                            raise ResourceConflictError("Tool changed or approval is no longer active")
+                        remember_risk(connection, run_id, binding, response["remember_risk"], interaction_id)
                     approved = tuple(approval_request.get("capabilities", []))
                     grants.update(approved)
                     requested_scope = response.get("scope", "once")
@@ -1559,6 +1567,10 @@ class AgentRepository:
                         "requested_scope": requested_scope,
                         "single_use": single_use,
                     }
+                    if "exact_invocation_key" in approval_request:
+                        evidence["exact_invocation_key"] = approval_request["exact_invocation_key"]
+                    if single_use and "bound_invocation_key" in approval_request:
+                        evidence["bound_invocation_key"] = approval_request["bound_invocation_key"]
                     resource_scope = response.get("resource_scope", "current")
                     evidence["resource_scope"] = resource_scope
                     tool_name = approval_request.get("tool_name", "*")

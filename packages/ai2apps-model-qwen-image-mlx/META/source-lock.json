@@ -2,20 +2,15 @@
   "schema": "ai2apps.source-lock/v1",
   "implementation": {
     "name": "mflux",
-    "version": "0.19.0",
-    "wheel_sha256": "3214044d36dc9e3a371f40ac5206f4449974ad57bc7bd3763385c8ed5abf5e47",
-    "runtime_patch": "mlx-only-v2"
+    "version": "0.24.0",
+    "wheel_sha256": "682368f04a1b2b0871144a8d57b7f7866e84dd0fd2bc3a765d1d57918e21237e",
+    "runtime_patch": "mlx-only-v4"
   },
   "models": {
-    "2512": {
-      "repo_id": "Qwen/Qwen-Image-2512",
-      "revision": "25468b98e3276ca6700de15c6628e51b7de54a26",
-      "modelscope_revision": "ee3f7563eefa997af5a07dbe54a57e5babd3768b"
-    },
-    "edit-2511": {
-      "repo_id": "Qwen/Qwen-Image-Edit-2511",
-      "revision": "6f3ccc0b56e431dc6a0c2b2039706d7d26f22cb9",
-      "modelscope_revision": "f8403bcb7b827dab45d845cb71415ec9276e61d6"
+    "2.1": {
+      "repo_id": "Qwen/Qwen-Image-2.1",
+      "revision": "d26bb61231c349cf6b7896fa83353113880e1ba3",
+      "modelscope_revision": "45ee13449c69593e1b7a10d7d1cba830c7ada657"
     }
   }
 }

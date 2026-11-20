@@ -1,0 +1,34 @@
+{
+  "repository": "https://github.com/Neywa-Labs/mlx-audio",
+  "revision": "c4c3cb82f0d53dd3f175aea77eb66238497ad845",
+  "upstream_sha256": {
+    "mlx_audio/tts/models/zonos3/gguf.py": "b0da5f0b5e0856249d76fffe3aae3229ebf802df243ac067560ee4a1173a0bc7",
+    "mlx_audio/tts/models/zonos3/config.py": "b72117b93fd45a532eaa239b2b363dd8e5180b3ac0021f966064ac783c1cc87e",
+    "mlx_audio/tts/models/zonos3/generation.py": "552ae2bb500c6a103fdb8a1fea0988d0eb8ae543c8042b3ed3024ab5f884f866",
+    "mlx_audio/tts/models/zonos3/backbone.py": "70fdab354e8550be47e86124cf528a62a32692dc831124cb419a7751c87ea3d0",
+    "mlx_audio/tts/models/zonos3/__init__.py": "f076ffb67f463d249c891c2e6d60af535d004a41b17d8aa2d7638fcb7637d376",
+    "mlx_audio/tts/models/zonos3/model.py": "06efb763e95f526bb74450aa41e2ae45ec01ba8b9894b6d3b62dab6d75bd11ad",
+    "mlx_audio/tts/models/zonos3/audio.py": "59638ff553e004e2362f87c02afbd3fcd9378d541006282092344a82b71f2f58",
+    "mlx_audio/tts/models/zonos3/speaker.py": "21a3686b3ec0ad9e151905e164a12e4a54ac98207b027e287330cea5e3d14a9e",
+    "mlx_audio/tts/models/zonos3/codec.py": "be81a3992f46cd7594123b958da4bf76f584c6f3b54d05fa8ca47f5968e50785",
+    "mlx_audio/tts/models/zonos3/streaming.py": "1b167516f26a03834460ca1f72d684b5423b76fc3093f1f5f6326e62c5566844",
+    "mlx_audio/tts/models/zonos3/weights.py": "36124bc508d09c69d4079053dc0cdc4a11d3d56c60c1c11a0f72d88eb9702b3f",
+    "mlx_audio/tts/models/zonos3/gdn_kernel.py": "9e88a495cd8ef9eab880bff8aadb010d17f5e29aa9dd918f79733bacb0a25718",
+    "mlx_audio/tts/models/fish_drama3/chunking.py": "8b31655839a3c7112040657911b16cfe6fb7978fd98e35975c3d1cfa6196fbd7",
+    "mlx_audio/tts/models/fish_drama3/config.py": "343f94c9abf9a8da973bfb2058fd4fb28c8d8277b84cf88d04e2ce0156f31b98",
+    "mlx_audio/tts/models/fish_drama3/backbone.py": "7ba175d817d3a984c2ef061fe02491dfc9a0078ef1fe87d26d021c9044ff0e7d",
+    "mlx_audio/tts/models/fish_drama3/__init__.py": "eebf614917c9cb0d87c28e9cdcd561406554b8c1a07de5cce6fb3c8843d62a10",
+    "mlx_audio/tts/models/fish_drama3/tower.py": "2b05e74ef1b63a0acda681ba0a00329eccb0e4f1e6c4d6e9258ee5a92aede6d5",
+    "mlx_audio/tts/models/fish_drama3/drama3.py": "9bd5aaae064c9232aaba7a5008b3cedcbcde65208368119d8ddb6d0875959aaa",
+    "mlx_audio/codec/models/fish_s1_dac/fish_s1_dac.py": "e0045f6df7fb8945f348f31d05071785e0930ed4a44af417364ec7778f42e260",
+    "mlx_audio/resample.py": "7fcf04813bb8798f5f5882829caaa4e7e53fa030acc7517c58cd0c86eb87f638"
+  },
+  "changes": [
+    "Relative GenerationResult/textnorm imports resolve to pinned mlx-audio.",
+    "Drama3 uses existing Runtime mlx_lm Qwen3.5; codec is isolated backport.",
+    "Conversion scripts excluded; only preconverted MLX checkpoints accepted.",
+    "Drama3 tower and backbone both use existing mlx_lm KVCache.",
+    "Reference loading uses pinned audio_io and extracted upstream sinc resampler; Zonos trims after decoding.",
+    "Zonos3 utterance emotion steering: official Zyphra directions, source-19 pre-bank injection on decode only; provenance in zonos3/steering/manifest.json."
+  ]
+}

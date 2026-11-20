@@ -1,0 +1,21 @@
+.app-state-dialog{box-sizing:border-box;width:min(440px,calc(100vw - 32px));max-height:80vh;overflow:auto;padding:24px;border:1px solid #ddd;border-radius:20px;background:#fff;color:#171717;font:inherit;box-shadow:0 20px 80px #0003}.app-state-dialog::backdrop{background:#0005}.app-state-dialog h2{font-size:20px;font-weight:650;margin:0 0 14px}.app-state-dialog p{font-size:14px;line-height:1.6;margin:12px 0}.app-state-dialog input{width:100%;box-sizing:border-box;padding:10px;border:1px solid #ddd;border-radius:8px}.app-state-dialog button{border:1px solid #ddd;border-radius:9px;padding:9px 12px;margin:8px 8px 0 0;background:#fff;font:inherit;cursor:pointer}.app-state-dialog button:disabled{opacity:.5;cursor:wait}.app-state-dialog button:focus-visible{outline:2px solid #6366f1;outline-offset:2px}
+
+.app-shortcut-create .asc-name-field{display:block;font-size:13px;font-weight:500;margin:16px 0}
+.app-shortcut-create .asc-name-field input{display:block;margin-top:6px;font:inherit;font-size:14px;font-weight:400}
+.app-shortcut-create fieldset{min-width:0;border:0;margin:18px 0;padding:0}
+.app-shortcut-create legend{font-size:13px;font-weight:500;margin-bottom:10px;padding:0}
+.app-shortcut-create .asc-avatar-summary{display:flex;gap:12px;align-items:center;margin-bottom:14px;color:#525252;font-size:13px}
+.app-shortcut-create .asc-avatar-preview{width:56px;height:56px;border-radius:16px}
+.app-shortcut-create .asc-avatar-icons{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px}
+.app-shortcut-create .asc-avatar-icons button{margin:0;display:grid;place-items:center;padding:5px;border:2px solid transparent;border-radius:12px;background:#f5f5f5;min-width:0}
+.app-shortcut-create .asc-avatar-icons img{width:32px;height:32px}
+.app-shortcut-create .asc-avatar-icons button[aria-pressed=true]{border-color:#6366f1;background:#eef2ff}
+.app-shortcut-create .asc-avatar-colors{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:16px}
+.app-shortcut-create .asc-avatar-colors>button{margin:0;padding:0;width:28px;height:28px;min-height:28px;border:3px solid #fff;border-radius:50%;box-shadow:0 0 0 1px #ddd}
+.app-shortcut-create .asc-avatar-colors>button[aria-pressed=true]{box-shadow:0 0 0 2px #525252}
+.app-shortcut-create .asc-custom-color{display:flex;gap:6px;align-items:center;color:#737373;font-size:12px}
+.app-shortcut-create .asc-custom-color input{width:28px;height:28px;padding:2px;border-radius:7px}
+.app-shortcut-create .asc-create-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;padding-top:14px;border-top:1px solid #eee}
+.app-shortcut-create .asc-create-actions button{margin:0}
+.app-shortcut-create .asc-create-actions .asc-create-primary{background:#171717;color:#fff;border-color:#171717}
+@media(pointer:coarse){.app-shortcut-create .asc-avatar-icons button{min-height:44px}.app-shortcut-create .asc-avatar-colors{gap:12px}.app-shortcut-create .asc-avatar-colors>button{width:32px;height:32px}.app-shortcut-create .asc-name-field input{font-size:16px}}

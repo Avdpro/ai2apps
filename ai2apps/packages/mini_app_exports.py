@@ -214,7 +214,11 @@ class MiniAppExportBinder:
                 for name,rule in native.get('properties',{}).items():
                     if 'default' in rule and Draft202012Validator(schema['properties'][name]).is_valid(rule['default']):
                         schema['properties'][name]['default']=deepcopy(rule['default'])
-            fields=deepcopy(spec['fields'])
+            # Signed enum schemas remain the source of options when the signed
+            # presentation declares a select without duplicating its enum.
+            from ai2apps.agents.parameter_forms import schema_fields
+            defaults={f['key']:f for f in schema_fields(schema)}
+            fields=[{**defaults.get(f['key'],{}),**deepcopy(f)} for f in spec['fields']]
             # A trusted typed Host SDK may refine presentation/options for signed
             # fields, but cannot add parameter identities outside the Package.
             refinements={f['key']:f for f in data.get('fields',[]) if isinstance(f,dict) and f.get('key') in schema['properties']}
@@ -224,6 +228,9 @@ class MiniAppExportBinder:
         async def prepare(args,context):
             principal=principal_for(r,context);await verify(principal)
             data=await describe(principal)
+            model_field=data.get('model_field')
+            if isinstance(model_field,str) and model_field!='model' and args.get(model_field) is not None:
+                data=await describe(principal,args[model_field])
             if data.get('configuration_required'):raise ValueError('Host SDK requires model configuration; parameters and materials are preserved')
             values=deepcopy(args)
             if protocol.normalize:values=await protocol.normalize(r,values,context,mini,spec)

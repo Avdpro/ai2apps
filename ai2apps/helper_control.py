@@ -13,7 +13,7 @@ from urllib.parse import urlparse
 
 _TOKEN = re.compile(r"^[0-9a-f]{64}$")
 _BROWSER_PROFILE_KEY = re.compile(r"^(?:default|[0-9a-f]{32})$")
-_MAX_MESSAGE_BYTES = 64 * 1024
+_MAX_MESSAGE_BYTES = 256 * 1024
 
 
 class HelperControlError(RuntimeError):
@@ -63,6 +63,25 @@ class HelperControlClient:
         ):
             raise HelperControlError("Helper endpoint descriptor is unsafe")
         return host, port
+
+    def import_credentials(self, *, actor_user_id: str, ticket: str) -> dict[str, Any]:
+        """Native-only credential exchange; the response contains no secrets."""
+        self._validate_actor_user_id(actor_user_id)
+        request = {"version": 1, "request_id": str(uuid.uuid4()), "token": self.token,
+                   "operation": "credential.import", "actor_user_id": actor_user_id,
+                   "credential_import_ticket": ticket}
+        response = self._exchange(request)
+        if response.get("request_id") != request["request_id"] or response.get("ok") is not True:
+            raise HelperControlError(str(response.get("error") or "Credential import was rejected"))
+        result = response.get("result", {})
+        raw = result.get("credential_import") if isinstance(result, dict) else None
+        try:
+            value = json.loads(raw)
+        except (TypeError, ValueError):
+            raise HelperControlError("Upgrade the desktop Helper to import API keys") from None
+        if not isinstance(value, dict) or not set(value) <= {"sources", "status", "items"}:
+            raise HelperControlError("Invalid credential import receipt")
+        return value
 
     def ensure_browser_host(self, *, actor_user_id: str) -> dict[str, Any]:
         """Start the native shared-Profile host without loading a Local HTML App."""

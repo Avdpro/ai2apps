@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+import logging
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SecretStr
 
 from ai2apps.api.errors import platform_error_response
 from ai2apps.api.health import PlatformRuntimeProvider
@@ -29,6 +30,10 @@ class TestNotificationRequest(BaseModel):
 
 class MobileAppAccessRequest(BaseModel):
     enabled: bool
+
+
+class RotateRemoteCredentialRequest(BaseModel):
+    owner_password: SecretStr = Field(alias="ownerPassword", min_length=1, max_length=1024)
 
 
 class RegisterRemoteDeviceRequest(BaseModel):
@@ -57,6 +62,7 @@ def create_remote_router(
     runtime_provider: PlatformRuntimeProvider,
     principal_provider: PrincipalProvider = resolve_request_principal,
 ) -> APIRouter:
+    logging.getLogger(__name__).info("Remote credential owner reauth API loaded from %s", __file__)
     router = APIRouter(
         prefix="/remote",
         tags=["platform-remote"],
@@ -356,8 +362,24 @@ def create_remote_router(
         return result if isinstance(result, Response) else {"devices": [_device(item) for item in result]}
 
     @router.post("/devices/{device_id}/credentials/rotate")
-    async def rotate(device_id: str, cloud=browser_cloud_dependency):
-        result = await run(manager().rotate(device_id, cloud=cloud))
+    async def rotate(device_id: str, body: RotateRemoteCredentialRequest, request: Request, cloud=browser_cloud_dependency):
+        from ai2apps.http_security import enforce_same_origin_cookie_request
+        enforce_same_origin_cookie_request(request)
+        value = manager()
+        value.require_device(device_id)
+        installation = value.identity_repository.get_installation() if value.identity_repository else None
+        if installation is None or installation.cloud_device_id != device_id:
+            raise HTTPException(409, "This device has no matching Installation binding")
+        async def authorized_rotation():
+            grant = await value._request("POST", "/v1/owner-reauth/grants", cloud=cloud, json={
+                "purpose": "installation.rotate_credential", "resourceType": "installation",
+                "resourceId": installation.id, "password": body.owner_password.get_secret_value(),
+            })
+            token = grant.get("grant")
+            if not isinstance(token, str) or not token:
+                raise RemoteAccessError(502, "OWNER_REAUTH_INVALID_RESPONSE", "Owner verification returned no authorization")
+            return await value.rotate(device_id, cloud=cloud, owner_reauth_grant=token)
+        result = await run(authorized_rotation())
         return result if isinstance(result, Response) else _device(result)
 
     @router.post("/devices/{device_id}/pairing-challenges")

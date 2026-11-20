@@ -1,0 +1,76 @@
+schema: ai2apps.service/v1
+id: ai2apps.model.qwen38
+name: Qwen3.8 27B CUDA
+description: Qwen3.8 text, image, reasoning and tool Worker; native NVFP4 MLP on GB10, remaining FP8 layers dequantized to BF16.
+version: 0.2.0
+publisher:
+  id: ai2apps
+runtime:
+  mode: process
+  protocol: ai2apps-model-worker/v1
+  provider: ai2apps.runtime.cuda-torch
+  adapter: src/qwen38_worker_adapter.py:create_adapter
+models:
+- id: ai2apps.model.qwen38/qwen3.8-27b-nvfp4
+  display_name: Qwen3.8 27B CUDA (native NVFP4 MLP)
+  model_type: vlm
+  upstream_id: unsloth/Qwen3.8-27B-NVFP4
+  capabilities:
+  - work
+  - conversation
+  - image_recognition
+  context_window: 8192
+  weights:
+    provider: huggingface
+    repo_id: unsloth/Qwen3.8-27B-NVFP4
+    revision: 16b6615af3548b88e2d8e382457bc705b00479cf
+    distribution_id: dist_ai2apps_qwen3_8_27b_nvfp4_16b6615a_v1
+    preparation:
+      recipe: native
+  metadata:
+    family: qwen3.8
+    quantization: nvfp4-mixed
+    reasoning:
+      schema: ai2apps.reasoning/v1
+      mode: optional
+      format: think_tags
+      default_enabled: true
+    precision: nvfp4-mlp-bfloat16-attention
+    execution_backend: cuda-transformers
+    native_nvfp4: true
+capabilities: []
+requires:
+  services:
+  - id: ai2apps.runtime.cuda-torch
+    version: '>=0.3.0,<1.0.0'
+    optional: false
+    capabilities:
+    - cuda
+    - torch
+    - transformers
+    - model-worker-v1
+    - vlm
+    - nvfp4-sm121
+  python: '>=3.12,<3.13'
+permissions:
+  network:
+    outbound: false
+  model_weights:
+    huggingface_cache: read
+    reason: Read only the Host-selected pinned Qwen3.8 repository cache.
+  accelerator:
+    cuda: true
+    reason: Run isolated inference on NVIDIA GB10.
+compatibility:
+  os:
+  - linux
+  architectures:
+  - arm64
+  - aarch64
+health:
+  path: /health
+  startup_timeout_seconds: 30
+restart:
+  max_attempts: 2
+  base_delay_seconds: 1
+tools: []

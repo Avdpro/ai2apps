@@ -1,0 +1,19 @@
+{
+  "status": "development_contract_not_published",
+  "source_hashes": {
+    "LICENSE.md": "6bb0ef77445d039f6fefdd166062723d5f191212cab45587b6a45b3df0509c34",
+    "LICENSE-RENDERER.md": "69df9ebdd4d838300e2d4d49e661bf3e246f22276176e9b0f21c7746bec2496c",
+    "LICENSE.liveportrait": "4624115317f7f6c3a06224228f5f6e90e2e363ac941f52fd9002a0fab167e6e5",
+    "ATTRIBUTION.md": "9d935ffc31260d323b795ccb5101bd34fac1632179cfa7e56c47bbf1ad3a6298",
+    "LICENSE-MODEL.md": "e36b4c98a1e5465c5337609f3c1370ff7e4b3f5d64d776084d1816c6c119a3d3",
+    "ai2apps.json": "972b1bdd770c1ac2540cdc407178afa94ffd849dfe3557bfda709e0f161b8130",
+    "service.yaml": "a71b9547b123d8509d8e6a27559f88cce609182493514c6c32f9daeff13c9677",
+    "README.md": "2fce6729c796070f2f9b92f7e35dfe66774bd2698e776160fe4b04104f5fd66d",
+    "META/checkpoint-distribution.json": "f173c1e287233d1b4e7715a4d94b862d11dbcf0e736ea397ebde97e2ee5e99cf",
+    "META/sbom.spdx.json": "1912b801ba3554022e43fb7b39bfd8b4d18a5fed98bbf4ddb12b4ff97f5a409a",
+    "META/vendored-sources.json": "a6d561aae50284d4a3268a74c966d595e9e8bad37e95d82c1492b359a1651f0a",
+    "src/worker_adapter.py": "a60d1d4b9912cf79e1dc1df8c10ae0e218e6cc5364b8cd1df15347d35e9dbca8"
+  },
+  "signed_installation_passed": false,
+  "checkpoint_publication_evidence": "spark/artifacts/media-batch-production-20261009.json"
+}

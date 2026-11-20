@@ -7,6 +7,9 @@ os.environ['MLX_ENABLE_TF32'] = '0'
 
 def generate(checkpoints, config, params, output, check, report):
     import soundfile as sf
+    import json
+    from pathlib import Path
+    from ai2apps.model_worker.yue2_instrumental import plan_song
     from yue2_native.pipeline import Pipeline
     from yue2_native.protocol import GenerationConfig, SongRequest
 
@@ -25,7 +28,7 @@ def generate(checkpoints, config, params, output, check, report):
         return False
     try:
         check(); report('plan')
-        plan = pipeline.plan(song, cancelled=cancelled, on_token=lambda *_: check())
+        plan = plan_song(pipeline, song, output, cancelled=cancelled, on_token=lambda *_: check())
         report('semantic')
         semantic = pipeline.generate_semantic(plan, cancelled=cancelled, on_token=lambda *_: check())
         report('synthesis')
@@ -34,6 +37,11 @@ def generate(checkpoints, config, params, output, check, report):
         audio = pipeline.decode(latent, cancelled=cancelled)
         check()
         sf.write(output, audio, 48000, subtype='PCM_16')
+        (Path(output).parent / (Path(output).stem + '-evidence') / 'generation.json').write_text(
+            json.dumps({'sample_rate':48000, 'frames':len(audio),
+                        'semantic_tokens':len(semantic.tokens),
+                        'truncated':{'abc':plan.truncated, 'semantic':semantic.truncated},
+                        'config':generation.to_dict()}, indent=2))
         check()
     finally:
         pipeline.close()

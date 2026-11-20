@@ -1,0 +1,81 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/model-yue2-cuda",
+    "type": "service",
+    "version": "0.1.0",
+    "displayName": "YuE2 CUDA",
+    "description": "Song creation with the pinned official YuE2 CUDA pipeline, lyrics and optional ABC planning. Original model terms require confirmation before downloading."
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": [
+      "linux"
+    ],
+    "architectures": [
+      "arm64"
+    ]
+  },
+  "entrypoints": [
+    {
+      "name": "model-worker",
+      "kind": "service",
+      "path": "service.yaml"
+    }
+  ],
+  "permissions": [
+    {
+      "capability": "model-weights.huggingface-cache.read",
+      "reason": "Read only the Host-selected pinned model and VAE.",
+      "required": true
+    },
+    {
+      "capability": "accelerator.cuda",
+      "reason": "Run official YuE2 locally on the GPU.",
+      "required": true
+    }
+  ],
+  "dependencies": [
+    {
+      "packageId": "ai2apps/runtime-cuda-torch",
+      "version": ">=0.5.0 <1.0.0",
+      "optional": false
+    }
+  ],
+  "files": [],
+  "sbom": {
+    "format": "spdx-json-2.3",
+    "path": "META/sbom.spdx.json"
+  },
+  "discovery": {
+    "kind": "model",
+    "categories": [
+      "speech"
+    ],
+    "tasks": [
+      "music-generation"
+    ]
+  },
+  "modelInstall": {
+    "serviceKey": "ai2apps.model.yue2-cuda",
+    "models": [
+      {
+        "id": "ai2apps.model.yue2-cuda/default",
+        "label": "YuE2 Song Creation",
+        "recommended": true
+      }
+    ]
+  },
+  "modelProfile": {
+    "sizeBytes": 7794560119,
+    "minimumMemoryBytes": 34359738368,
+    "scores": {
+      "speed": 2,
+      "capability": 4
+    },
+    "benchmark": {
+      "label": "Memory/scores estimated, quality pending. Unsigned Host fixture: 73.479s audio in 98.582s; not a steady-state benchmark.",
+      "device": "NVIDIA DGX Spark GB10"
+    }
+  }
+}

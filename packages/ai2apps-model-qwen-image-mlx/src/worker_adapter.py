@@ -15,6 +15,7 @@ import os
 import re
 import shutil
 import tempfile
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any, Callable
 
@@ -23,14 +24,24 @@ from PIL import Image
 from ai2apps.model_worker import ModelWorkerError, ModelWorkerRequest
 
 
+QWEN_IMAGE_21 = "Qwen/Qwen-Image-2.1"
+QWEN_IMAGE_21_ID = "ai2apps.model.qwen-image-mlx/2.1"
+QWEN_IMAGE_21_REVISION = "d26bb61231c349cf6b7896fa83353113880e1ba3"
+
 MODEL_IDS = {
     "Qwen/Qwen-Image-2512": ("generation", "ai2apps.model.qwen-image-mlx/2512"),
     "Qwen/Qwen-Image-Edit-2511": ("edit", "ai2apps.model.qwen-image-mlx/edit-2511"),
 }
 _DATA_URL = re.compile(r"^data:image/(png|jpeg|webp);base64,([A-Za-z0-9+/=\s]+)$")
 _DERIVED_FORMAT = "ai2apps.qwen-image-mlx-quantized/v1"
-_MFLUX_VERSION = "0.19.0"
 _LOG = logging.getLogger(__name__)
+
+
+def _mflux_version() -> str:
+    try:
+        return version("mflux")
+    except PackageNotFoundError:
+        return "unknown"
 
 
 def _checkpoint_quantization(root: Path) -> int | None:
@@ -66,7 +77,7 @@ def _derived_checkpoint_complete(root: Path, bits: int) -> bool:
 def _derived_cache_key(checkpoint: Path, revision: str, kind: str, bits: int) -> str:
     identity = (
         f"{checkpoint.resolve()}\0{revision}\0{kind}\0q{bits}\0"
-        f"mflux-{_MFLUX_VERSION}\0v1"
+        f"mflux-{_mflux_version()}\0v1"
     )
     return hashlib.sha256(identity.encode("utf-8")).hexdigest()[:24]
 
@@ -76,7 +87,7 @@ class QwenImageAdapter:
         self.context = context
         self._pipeline_factory = pipeline_factory
         self._pipeline: Any | None = None
-        self._pipeline_key: tuple[str, int | None] | None = None
+        self._pipeline_key: tuple[str, Path, str, int | None] | None = None
 
     async def start(self) -> None:
         return None
@@ -94,6 +105,10 @@ class QwenImageAdapter:
     @staticmethod
     def _model(payload: dict[str, Any], operation: str) -> tuple[str, str, str]:
         upstream = str(payload.get("model") or "")
+        if upstream in {QWEN_IMAGE_21, QWEN_IMAGE_21_ID} and operation in {
+            "image_generation", "image_edit",
+        }:
+            return "qwen21", QWEN_IMAGE_21_ID, QWEN_IMAGE_21
         selected = MODEL_IDS.get(upstream)
         if selected is None:
             raise ModelWorkerError(
@@ -118,12 +133,20 @@ class QwenImageAdapter:
                 status_code=503,
             )
         root = checkpoint.path.resolve()
+        revision = str(getattr(checkpoint, "revision", "unknown"))
+        unified = package_id == QWEN_IMAGE_21_ID
+        if unified and revision != QWEN_IMAGE_21_REVISION:
+            raise ModelWorkerError(
+                "Unsupported Qwen Image 2.1 checkpoint revision",
+                code="invalid_checkpoint",
+                status_code=503,
+            )
         required = (
             root / "model_index.json",
             root / "transformer",
             root / "text_encoder",
             root / "vae",
-            root / "tokenizer",
+            root / ("processor" if unified else "tokenizer"),
         )
         if not all(item.exists() for item in required):
             raise ModelWorkerError(
@@ -131,7 +154,7 @@ class QwenImageAdapter:
                 code="invalid_checkpoint",
                 status_code=503,
             )
-        return root, str(getattr(checkpoint, "revision", "unknown"))
+        return root, revision
 
     def _cache_target(self, checkpoint: Path, revision: str, kind: str, bits: int) -> Path:
         key = _derived_cache_key(checkpoint, revision, kind, bits)
@@ -179,7 +202,7 @@ class QwenImageAdapter:
                             "source_revision": revision,
                             "kind": kind,
                             "quantization_bits": bits,
-                            "mflux_version": _MFLUX_VERSION,
+                            "mflux_version": _mflux_version(),
                         },
                         indent=2,
                         sort_keys=True,
@@ -222,7 +245,7 @@ class QwenImageAdapter:
         revision: str,
         bits: int | None,
     ) -> Any:
-        key = (kind, bits)
+        key = (upstream, checkpoint, revision, bits)
         if self._pipeline is not None and self._pipeline_key == key:
             return self._pipeline
         self._pipeline = None
@@ -231,6 +254,12 @@ class QwenImageAdapter:
                 pipeline = self._pipeline_factory(
                     kind=kind, upstream=upstream, checkpoint=checkpoint, bits=bits
                 )
+            elif kind == "qwen21":
+                import mlx.core as mx
+                from mflux.models.qwen21.variants.edit.qwen_image_21_edit import QwenImage21Edit
+
+                mx.clear_cache()
+                pipeline = QwenImage21Edit(model_path=str(checkpoint), quantize=bits)
             else:
                 import mlx.core as mx
                 from optimized_pipeline import OptimizedQwenImage, OptimizedQwenImageEdit
@@ -275,25 +304,27 @@ class QwenImageAdapter:
             ) from exc
 
     @staticmethod
-    def _parameters(payload: dict[str, Any], *, edit: bool):
+    def _parameters(payload: dict[str, Any], *, edit: bool, unified: bool = False):
         prompt = str(payload.get("prompt") or "").strip()
         negative_prompt = str(payload.get("negative_prompt") or "").strip()
         if not prompt or len(prompt) > 8192 or len(negative_prompt) > 8192:
             raise ValueError("prompt must contain 1-8192 characters")
-        size = str(payload.get("size") or ("1024x1024" if edit else "1328x1328")).lower()
+        size = str(payload.get("size") or ("1024x1024" if edit or unified else "1328x1328")).lower()
         try:
             width, height = (int(item) for item in size.split("x", 1))
         except (TypeError, ValueError) as exc:
             raise ValueError("size must be WIDTHxHEIGHT") from exc
+        multiple = 32 if unified else 16
         if not (
             256 <= width <= 2048
             and 256 <= height <= 2048
-            and width % 16 == height % 16 == 0
+            and width % multiple == height % multiple == 0
         ):
-            raise ValueError("dimensions must be 256-2048 pixels and divisible by 16")
-        default_steps = 30 if edit else 20
+            raise ValueError(f"dimensions must be 256-2048 pixels and divisible by {multiple}")
+        default_steps = 40 if unified else (30 if edit else 20)
+        default_guidance = 1.0 if unified else (2.5 if edit else 4.0)
         steps = int(payload.get("num_inference_steps", payload.get("steps", default_steps)))
-        guidance = float(payload.get("guidance", payload.get("guidance_scale", 2.5 if edit else 4.0)))
+        guidance = float(payload.get("guidance", payload.get("guidance_scale", default_guidance)))
         seed = int(payload.get("seed", 0))
         if not 1 <= steps <= 100 or not 0.0 <= guidance <= 20.0 or not 0 <= seed < 2**32:
             raise ValueError("steps, guidance, or seed is out of range")
@@ -351,7 +382,10 @@ class QwenImageAdapter:
         payload = dict(request.payload)
         try:
             kind, package_id, upstream = self._model(payload, request.operation)
-            edit = kind == "edit"
+            edit = request.operation == "image_edit"
+            unified = kind == "qwen21"
+            if unified and not edit and payload.get("imageDataUrls", payload.get("image_data_urls")):
+                raise ValueError("Use image editing for reference images")
             (
                 prompt,
                 negative_prompt,
@@ -362,7 +396,7 @@ class QwenImageAdapter:
                 seed,
                 bits,
                 output_format,
-            ) = self._parameters(payload, edit=edit)
+            ) = self._parameters(payload, edit=edit, unified=unified)
             checkpoint, revision = self._checkpoint(package_id)
             references = self._reference_images(payload, request.output_root) if edit else []
         except ModelWorkerError:

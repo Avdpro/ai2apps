@@ -4,6 +4,7 @@
 
 {% block head %}
 <link rel="stylesheet" href="{{ static('css/dashboard.css') }}">
+{% if system_app.id == 'ai2apps.settings' %}<link rel="stylesheet" href="{{ static('css/event_hooks.css') }}">{% endif %}
 {% endblock %}
 
 {% block content %}
@@ -44,5 +45,9 @@ window.AI2APPS_INITIAL_DASHBOARD_TAB = {{ system_app.tab | tojson }};
 <script src="{{ static('js/purify.min.js') }}"></script>
 <script src="{{ static('js/marked.umd.js') }}"></script>
 <script src="{{ static('js/conversation_model_policy.js') }}"></script>
+{% if system_app.id == 'ai2apps.settings' %}
+<script src="{{ static('js/hook_monitor.js') }}"></script>
+<script src="{{ static('js/settings_event_hooks.js') }}"></script>
+{% endif %}
 <script src="{{ static('js/dashboard.js') }}"></script>
 {% endblock %}

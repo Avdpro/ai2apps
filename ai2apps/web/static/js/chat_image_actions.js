@@ -8,11 +8,13 @@
         const chinese = String(document.documentElement.lang).startsWith('zh');
         return {save: chinese ? '保存图片' : 'Save image', add_gallery: chinese ? '加入素材库' : 'Add to Gallery', added: chinese ? '已加入素材库' : 'Added to Gallery'}[key];
     }
-    function reference(url) {
+    function reference(url, sourceAppId = 'ai2apps.general-chat') {
         const value = new URL(url, window.location.origin);
         if (value.origin !== window.location.origin) return null;
         const match = value.pathname.match(/^\/v1\/platform\/sessions\/([^/]+)\/artifacts\/([^/]+)\/download$/);
-        return match ? {sessionId: decodeURIComponent(match[1]), artifactId: decodeURIComponent(match[2]), sourceAppId: 'ai2apps.general-chat'} : null;
+        if (match) return {sessionId: decodeURIComponent(match[1]), artifactId: decodeURIComponent(match[2]), sourceAppId};
+        const attachment = value.pathname.match(/^\/v1\/platform\/sessions\/([^/]+)\/attachments\/([^/]+)\/content$/);
+        return attachment ? {sessionId: decodeURIComponent(attachment[1]), attachmentId: decodeURIComponent(attachment[2]), sourceAppId} : null;
     }
     async function checked(response) {
         if (response.ok) return response;
@@ -36,18 +38,18 @@
         document.body.append(link); link.click(); link.remove();
         setTimeout(() => URL.revokeObjectURL(objectUrl), 30000);
     }
-    async function addToGallery(url, apiKey) {
-        const ref = reference(url);
+    async function addToGallery(url, apiKey, options = {}) {
+        const ref = reference(url, options.sourceAppId || 'ai2apps.general-chat');
         const headers = apiKey ? {Authorization: `Bearer ${apiKey}`} : {};
         let endpoint, body;
         if (ref) {
-            endpoint = `/v1/platform/gallery/assets/import-artifact/${encodeURIComponent(ref.sessionId)}/${encodeURIComponent(ref.artifactId)}`;
+            endpoint = `/v1/platform/gallery/assets/import-${ref.attachmentId ? "attachment" : "artifact"}/${encodeURIComponent(ref.sessionId)}/${encodeURIComponent(ref.attachmentId || ref.artifactId)}`;
             headers['Content-Type'] = 'application/json';
             body = JSON.stringify({sourceAppId: ref.sourceAppId});
         } else {
             const blob = await imageBlob(url, apiKey);
             endpoint = '/v1/platform/gallery/assets/import';
-            body = new FormData(); body.append('file', blob, filename(blob)); body.append('sourceAppId', 'ai2apps.general-chat');
+            body = new FormData(); body.append('file', blob, filename(blob)); body.append('sourceAppId', options.sourceAppId || 'ai2apps.general-chat');
         }
         await checked(await fetch(endpoint, {method: 'POST', credentials: 'same-origin', headers, body}));
         document.querySelectorAll('iframe[data-mini-mount-id]').forEach(frame => frame.contentWindow?.postMessage({type: 'ai2apps.gallery.refresh'}, window.location.origin));
@@ -58,7 +60,7 @@
         const ref = reference(url);
         transfer.effectAllowed = 'copy';
         transfer.clearData();
-        if (ref) transfer.setData('application/x-ai2apps-session-artifact', JSON.stringify(ref));
+        if (ref) transfer.setData(ref.attachmentId ? 'application/x-ai2apps-session-attachment' : 'application/x-ai2apps-session-artifact', JSON.stringify(ref));
         else if (String(url).startsWith('data:image/')) transfer.setData('text/uri-list', url);
         else { event.preventDefault(); return; }
         transfer.setData('text/plain', 'Chat image');

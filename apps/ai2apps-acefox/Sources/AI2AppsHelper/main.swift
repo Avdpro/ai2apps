@@ -206,6 +206,7 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate, NSMenuDeleg
     private var actualPort: Int?
     private var healthMonitor: Task<Void, Never>?
     private var browserAgentLeaseMonitor: Task<Void, Never>?
+    private var credentialImportBroker: CredentialImportBroker?
     private var controlServer: HelperControlServer?
     private var browserAgents: [String: ManagedBrowserAgent] = [:]
     private var updateProcess: Process?
@@ -337,6 +338,17 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate, NSMenuDeleg
             }
             try server.start()
             controlServer = server
+            let broker = CredentialImportBroker(instance: arguments.instanceID.rawValue,
+                name: appDisplayName, token: controlCredentials.token) { [weak self] in
+                    await MainActor.run { self?.actualPort }
+                }
+            do {
+                try broker.start()
+                credentialImportBroker = broker
+            } catch {
+                // Optional settings functionality must never block Local startup.
+                NSLog("AI2Apps API-Key import initialization failed; Local startup continues")
+            }
         } catch {
             publishStatus(
                 .degraded,
@@ -522,8 +534,10 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate, NSMenuDeleg
     }
 
     private var allowsTestEnvironment: Bool {
-        developmentBuild && arguments.instanceID.rawValue == "app-dev"
-            && mainBundleIdentifier == "com.ai2apps.desktop.appdev"
+        developmentBuild && ((arguments.instanceID.rawValue == "app-dev"
+            && mainBundleIdentifier == "com.ai2apps.desktop.appdev")
+            || (arguments.instanceID.rawValue == "miniapp-dev"
+            && mainBundleIdentifier == "com.ai2apps.desktop.miniappdev"))
             && developmentSourceRoot != nil
     }
 
@@ -859,6 +873,15 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate, NSMenuDeleg
         publishStatus(.stopping, message: L("正在停止 AI2Apps 服务…", "Stopping AI2Apps service…"))
         Task {
             await supervisor.stop()
+            guard case .stopped = await supervisor.state else {
+                statusMenuItem.title = L("状态：旧服务未停止", "Status: Previous service did not stop")
+                publishStatus(
+                    .failed,
+                    message: L("旧 AI2Apps 服务未停止；未启动新服务", "Previous AI2Apps service did not stop; no new service started"),
+                    errorCode: "local_stop_failed"
+                )
+                return
+            }
             actualPort = nil
             statusMenuItem.title = L("状态：已停止", "Status: Stopped")
             publishStatus(.stopped, message: L("AI2Apps 服务已停止", "AI2Apps service stopped"))
@@ -873,25 +896,32 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate, NSMenuDeleg
     private func beginHealthMonitoring() {
         healthMonitor?.cancel()
         healthMonitor = Task { [weak self] in
-            var consecutiveFailures = 0
+            var healthPolicy = HealthProbePolicy()
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(5))
                 guard !Task.isCancelled, let self else { return }
                 updateLoginItemLabel()
-                if await supervisor.healthCheck() {
-                    consecutiveFailures = 0
+                let result = await supervisor.probeHealth()
+                // A stopped/replaced monitor cannot publish over a newer boot.
+                guard !Task.isCancelled else { return }
+                let unhealthy = healthPolicy.record(result)
+                if result == .healthy {
                     statusMenuItem.title = L("状态：运行中", "Status: Running")
                     publishStatus(.ready, message: L("AI2Apps 服务运行正常", "AI2Apps service is healthy"))
                     continue
                 }
-                consecutiveFailures += 1
+                let consecutiveFailures = healthPolicy.consecutiveFailures
+                if !unhealthy {
+                    statusMenuItem.title = L("状态：正在复核连接", "Status: Rechecking connection")
+                    continue
+                }
                 statusMenuItem.title = L("状态：连接异常（\(consecutiveFailures)/3）", "Status: Connection failure (\(consecutiveFailures)/3)")
                 publishStatus(
                     .degraded,
                     message: L("AI2Apps 服务连接异常（\(consecutiveFailures)/3）", "AI2Apps service connection failure (\(consecutiveFailures)/3)"),
                     errorCode: "local_health_failed"
                 )
-                if consecutiveFailures >= 3, configuration.autoRestart {
+                if healthPolicy.shouldRestart, configuration.autoRestart {
                     statusMenuItem.title = L("状态：自动重启中", "Status: Restarting automatically")
                     publishStatus(.restarting, message: L("正在自动重启 AI2Apps 服务…", "Automatically restarting AI2Apps service…"))
                     stopLocal(restart: true)
@@ -1002,11 +1032,12 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate, NSMenuDeleg
         // State color is meaningful, so this must not be converted into a
         // monochrome macOS template image.
         image.isTemplate = false
-        statusItem.length = activityTitle == nil
+        let miniBadge = arguments.instanceID.rawValue == "miniapp-dev" ? " Mini" : ""
+        statusItem.length = activityTitle == nil && miniBadge.isEmpty
             ? NSStatusItem.squareLength
             : NSStatusItem.variableLength
-        statusItem.button?.title = activityTitle.map { " \($0)" } ?? ""
-        statusItem.button?.imagePosition = activityTitle == nil ? .imageOnly : .imageLeft
+        statusItem.button?.title = miniBadge + (activityTitle.map { " \($0)" } ?? "")
+        statusItem.button?.imagePosition = activityTitle == nil && miniBadge.isEmpty ? .imageOnly : .imageLeft
         statusItem.button?.image = image
         if hasInstallableUpdate {
             statusItem.button?.toolTip = L("AI2Apps — Build \(stagedCandidateBuild ?? "?") 可安装", "AI2Apps — Build \(stagedCandidateBuild ?? "?") ready to install")
@@ -1036,6 +1067,15 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate, NSMenuDeleg
         _ request: HelperControlRequest
     ) async -> HelperControlResponse {
         do {
+            if request.operation == "credential.import" {
+                guard let ticket = request.credentialImportTicket, ticket.count <= 100,
+                      let broker = credentialImportBroker else {
+                    return .failure(requestID: request.requestID, error: "Credential import is unavailable")
+                }
+                let result = try await broker.perform(ticket: ticket)
+                return .success(requestID: request.requestID,
+                    result: HelperControlResult(status: "completed", credentialImport: result))
+            }
             if request.operation == "local.restart" {
                 stopLocal(restart: true)
                 return .success(

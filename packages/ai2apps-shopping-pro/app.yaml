@@ -2,7 +2,7 @@
   "schema": "ai2apps.app/v1",
   "id": "ai2apps.shopping-pro",
   "name": "Shopping Pro",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publisher": {
     "id": "ai2apps"
   },
@@ -22,7 +22,7 @@
       "schema": "ai2apps.mini-app/v1",
       "id": "ai2apps.shopping-pro",
       "name": "Shopping Pro",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "kind": "project",
       "icon": "shopping-cart",
       "description": "Replenishment and gift recommendations.",
@@ -1289,6 +1289,878 @@
               "additionalProperties": false
             },
             "confirmation": "never"
+          }
+        ]
+      },
+      "aaat": {
+        "schema": "ai2apps.mini-app-host-exports/v1",
+        "exports": [
+          {
+            "name": "shopping.history",
+            "interfaceVersion": "1.0.0",
+            "host": "ai2apps.ai-browser",
+            "sdk": "browser.shopping-research/v1",
+            "inputSchema": {
+              "type": "object",
+              "properties": {
+                "pages": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 6,
+                  "default": 1
+                },
+                "profile": {
+                  "type": "string",
+                  "default": "default"
+                },
+                "history_mode": {
+                  "enum": [
+                    "incremental",
+                    "cache"
+                  ],
+                  "default": "incremental"
+                }
+              },
+              "required": [
+                "pages"
+              ],
+              "additionalProperties": false
+            },
+            "fields": [
+              {
+                "key": "pages",
+                "label": {
+                  "zh": "订单页数",
+                  "en": "Order pages"
+                },
+                "type": "number",
+                "default": 1
+              },
+              {
+                "key": "profile",
+                "label": {
+                  "zh": "浏览器分身",
+                  "en": "Browser profile"
+                },
+                "type": "text",
+                "default": "default"
+              },
+              {
+                "key": "history_mode",
+                "label": {
+                  "zh": "购物历史",
+                  "en": "Purchase history"
+                },
+                "type": "select",
+                "options": [
+                  {
+                    "value": "incremental",
+                    "label": "incremental"
+                  },
+                  {
+                    "value": "cache",
+                    "label": "cache"
+                  }
+                ],
+                "default": "incremental"
+              }
+            ],
+            "displayName": {
+              "zh": "Shopping Pro",
+              "en": "Shopping Pro"
+            },
+            "summary": {
+              "zh": "Replenishment and gift recommendations.",
+              "en": "Replenishment and gift recommendations."
+            },
+            "agentContext": {
+              "schema": "ai2apps.aaat-declaration/v1",
+              "instructions": [
+                "For a purchase history request, use shopping.history directly. Omit unspecific options to use the default browser profile, one page and incremental sync. Use cache when the request is limited to saved orders.",
+                "Shopping Pro prepares replenishment lists and Amazon carts from observed purchases. For a replenishment request use shopping.refresh_list (incremental history and recommendations), or shopping.recommend with existing cached source tasks. AaAT history_mode is incremental by default, or cache for no network history read. Full history reload is available ONLY inside Shopping Pro, never through AaAT. Saved history is selected by this owner automatically; do not request task IDs from the user. Reading history alone does not produce recommendations. Do not substitute your own ranking or a PDF for the Shopping Pro recommendation.",
+                "shopping.prepare_cart arguments are source_tasks (observed browser_task_id strings), selected (an array of {id, quantity}), and profile. Example: {\"source_tasks\":[\"observed-task-id\"],\"selected\":[{\"id\":\"B000000001\",\"quantity\":2}],\"profile\":\"default\"}. Use selected, not report.items. Resolve first/next references against the displayed report order, preserving user quantities.",
+                "Use returned browser_task_id as source_tasks for shopping.recommend and shopping.prepare_cart. Use the same browser profile. Products must come from observed history, never invented IDs or URLs.",
+                "When a task needs assistance, relay its owner-provided message and observed quantities. Unverified cart quantities are not proof of authentication failure; never guess that login or captcha is required. Do not retry uncertain cart changes or claim success before the actual cart is verified.",
+                "Present the owner report with its exact due_date, days_until_due and due_bucket. overdue<0, due_today=0, next_3_days=1..3, later>3, unknown=no repeat cycle. Do not reclassify four days away as within three days. Historical cycles are estimates, not stock measurements.",
+                "For a list-first request, finish this turn by showing the replenishment report; do not open a cart form until the user subsequently asks to prepare the cart. After showing the replenishment list, offer shopping.prepare_cart. Open its confirmation form with observed source_tasks and selected IDs/quantities. Let the user review products and quantities before any cart changes. Cancellation is not permission. Only the actual verified cart result proves preparation; never checkout, pay or subscribe."
+              ],
+              "workflows": [
+                {
+                  "intent": "刷新购买记录并生成补货单",
+                  "capabilities": [
+                    "shopping.refresh_list",
+                    "shopping.history",
+                    "shopping.recommend"
+                  ]
+                },
+                {
+                  "intent": "确认商品与数量后准备购物车",
+                  "capabilities": [
+                    "shopping.prepare_cart"
+                  ]
+                }
+              ],
+              "result_semantics": {
+                "report": "Backend calendar facts and selected quantities are authoritative. Unknown prices remain null; monetary values are integer minor units. source_task is the observed-history task, not the recommendation task.",
+                "history": "Incremental sync skips known order details; cache mode does not browse history. Recomputing a date-based recommendation does not require rereading purchases.",
+                "cart": "Explicit out-of-stock products are skipped; partial results list skipped products and reasons. Unknown action outcomes still pause and prohibit automatic replay. prepare_cart verifies observed target quantities in the actual cart; existing equal/higher quantities may already satisfy the target. Failure or assistance is not success."
+              }
+            },
+            "selectionRequired": false,
+            "options": {
+              "operation": "history"
+            }
+          },
+          {
+            "name": "shopping.refresh_list",
+            "interfaceVersion": "1.0.0",
+            "host": "ai2apps.ai-browser",
+            "sdk": "browser.shopping-research/v1",
+            "inputSchema": {
+              "type": "object",
+              "properties": {
+                "pages": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 6,
+                  "default": 1
+                },
+                "locale": {
+                  "type": "string",
+                  "maxLength": 32,
+                  "default": "zh"
+                },
+                "profile": {
+                  "type": "string",
+                  "default": "default"
+                },
+                "history_mode": {
+                  "enum": [
+                    "incremental",
+                    "cache"
+                  ],
+                  "default": "incremental"
+                }
+              },
+              "required": [
+                "pages",
+                "locale"
+              ],
+              "additionalProperties": false
+            },
+            "fields": [
+              {
+                "key": "pages",
+                "label": {
+                  "zh": "订单页数",
+                  "en": "Order pages"
+                },
+                "type": "number",
+                "default": 1
+              },
+              {
+                "key": "locale",
+                "label": {
+                  "zh": "输出语言",
+                  "en": "Output language"
+                },
+                "type": "text",
+                "default": "zh"
+              },
+              {
+                "key": "profile",
+                "label": {
+                  "zh": "浏览器分身",
+                  "en": "Browser profile"
+                },
+                "type": "text",
+                "default": "default"
+              },
+              {
+                "key": "history_mode",
+                "label": {
+                  "zh": "购物历史",
+                  "en": "Purchase history"
+                },
+                "type": "select",
+                "options": [
+                  {
+                    "value": "incremental",
+                    "label": "incremental"
+                  },
+                  {
+                    "value": "cache",
+                    "label": "cache"
+                  }
+                ],
+                "default": "incremental"
+              }
+            ],
+            "displayName": {
+              "zh": "Shopping Pro",
+              "en": "Shopping Pro"
+            },
+            "summary": {
+              "zh": "Replenishment and gift recommendations.",
+              "en": "Replenishment and gift recommendations."
+            },
+            "agentContext": {
+              "schema": "ai2apps.aaat-declaration/v1",
+              "instructions": [
+                "Shopping Pro prepares replenishment lists and Amazon carts from observed purchases. For a replenishment request use shopping.refresh_list (incremental history and recommendations), or shopping.recommend with existing cached source tasks. AaAT history_mode is incremental by default, or cache for no network history read. Full history reload is available ONLY inside Shopping Pro, never through AaAT. Saved history is selected by this owner automatically; do not request task IDs from the user. Reading history alone does not produce recommendations. Do not substitute your own ranking or a PDF for the Shopping Pro recommendation.",
+                "shopping.prepare_cart arguments are source_tasks (observed browser_task_id strings), selected (an array of {id, quantity}), and profile. Example: {\"source_tasks\":[\"observed-task-id\"],\"selected\":[{\"id\":\"B000000001\",\"quantity\":2}],\"profile\":\"default\"}. Use selected, not report.items. Resolve first/next references against the displayed report order, preserving user quantities.",
+                "Use returned browser_task_id as source_tasks for shopping.recommend and shopping.prepare_cart. Use the same browser profile. Products must come from observed history, never invented IDs or URLs.",
+                "When a task needs assistance, relay its owner-provided message and observed quantities. Unverified cart quantities are not proof of authentication failure; never guess that login or captcha is required. Do not retry uncertain cart changes or claim success before the actual cart is verified.",
+                "Present the owner report with its exact due_date, days_until_due and due_bucket. overdue<0, due_today=0, next_3_days=1..3, later>3, unknown=no repeat cycle. Do not reclassify four days away as within three days. Historical cycles are estimates, not stock measurements.",
+                "For a list-first request, finish this turn by showing the replenishment report; do not open a cart form until the user subsequently asks to prepare the cart. After showing the replenishment list, offer shopping.prepare_cart. Open its confirmation form with observed source_tasks and selected IDs/quantities. Let the user review products and quantities before any cart changes. Cancellation is not permission. Only the actual verified cart result proves preparation; never checkout, pay or subscribe."
+              ],
+              "workflows": [
+                {
+                  "intent": "刷新购买记录并生成补货单",
+                  "capabilities": [
+                    "shopping.refresh_list",
+                    "shopping.history",
+                    "shopping.recommend"
+                  ]
+                },
+                {
+                  "intent": "确认商品与数量后准备购物车",
+                  "capabilities": [
+                    "shopping.prepare_cart"
+                  ]
+                }
+              ],
+              "result_semantics": {
+                "report": "Backend calendar facts and selected quantities are authoritative. Unknown prices remain null; monetary values are integer minor units. source_task is the observed-history task, not the recommendation task.",
+                "history": "Incremental sync skips known order details; cache mode does not browse history. Recomputing a date-based recommendation does not require rereading purchases.",
+                "cart": "Explicit out-of-stock products are skipped; partial results list skipped products and reasons. Unknown action outcomes still pause and prohibit automatic replay. prepare_cart verifies observed target quantities in the actual cart; existing equal/higher quantities may already satisfy the target. Failure or assistance is not success."
+              }
+            },
+            "selectionRequired": true,
+            "options": {
+              "operation": "refresh_list"
+            }
+          },
+          {
+            "name": "shopping.recommend",
+            "interfaceVersion": "1.0.0",
+            "host": "ai2apps.ai-browser",
+            "sdk": "browser.shopping-research/v1",
+            "inputSchema": {
+              "type": "object",
+              "properties": {
+                "source_tasks": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 20,
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "maxLength": 100
+                  }
+                },
+                "locale": {
+                  "type": "string",
+                  "maxLength": 32,
+                  "default": "zh"
+                },
+                "profile": {
+                  "type": "string",
+                  "default": "default"
+                }
+              },
+              "required": [
+                "source_tasks",
+                "locale"
+              ],
+              "additionalProperties": false
+            },
+            "fields": [
+              {
+                "key": "source_tasks",
+                "label": {
+                  "zh": "历史记录来源",
+                  "en": "Observed history tasks"
+                },
+                "type": "json"
+              },
+              {
+                "key": "locale",
+                "label": {
+                  "zh": "输出语言",
+                  "en": "Output language"
+                },
+                "type": "text",
+                "default": "zh"
+              },
+              {
+                "key": "profile",
+                "label": {
+                  "zh": "浏览器分身",
+                  "en": "Browser profile"
+                },
+                "type": "text",
+                "default": "default"
+              }
+            ],
+            "displayName": {
+              "zh": "Shopping Pro",
+              "en": "Shopping Pro"
+            },
+            "summary": {
+              "zh": "Replenishment and gift recommendations.",
+              "en": "Replenishment and gift recommendations."
+            },
+            "agentContext": {
+              "schema": "ai2apps.aaat-declaration/v1",
+              "instructions": [
+                "Shopping Pro prepares replenishment lists and Amazon carts from observed purchases. For a replenishment request use shopping.refresh_list (incremental history and recommendations), or shopping.recommend with existing cached source tasks. AaAT history_mode is incremental by default, or cache for no network history read. Full history reload is available ONLY inside Shopping Pro, never through AaAT. Saved history is selected by this owner automatically; do not request task IDs from the user. Reading history alone does not produce recommendations. Do not substitute your own ranking or a PDF for the Shopping Pro recommendation.",
+                "shopping.prepare_cart arguments are source_tasks (observed browser_task_id strings), selected (an array of {id, quantity}), and profile. Example: {\"source_tasks\":[\"observed-task-id\"],\"selected\":[{\"id\":\"B000000001\",\"quantity\":2}],\"profile\":\"default\"}. Use selected, not report.items. Resolve first/next references against the displayed report order, preserving user quantities.",
+                "Use returned browser_task_id as source_tasks for shopping.recommend and shopping.prepare_cart. Use the same browser profile. Products must come from observed history, never invented IDs or URLs.",
+                "When a task needs assistance, relay its owner-provided message and observed quantities. Unverified cart quantities are not proof of authentication failure; never guess that login or captcha is required. Do not retry uncertain cart changes or claim success before the actual cart is verified.",
+                "Present the owner report with its exact due_date, days_until_due and due_bucket. overdue<0, due_today=0, next_3_days=1..3, later>3, unknown=no repeat cycle. Do not reclassify four days away as within three days. Historical cycles are estimates, not stock measurements.",
+                "For a list-first request, finish this turn by showing the replenishment report; do not open a cart form until the user subsequently asks to prepare the cart. After showing the replenishment list, offer shopping.prepare_cart. Open its confirmation form with observed source_tasks and selected IDs/quantities. Let the user review products and quantities before any cart changes. Cancellation is not permission. Only the actual verified cart result proves preparation; never checkout, pay or subscribe."
+              ],
+              "workflows": [
+                {
+                  "intent": "刷新购买记录并生成补货单",
+                  "capabilities": [
+                    "shopping.refresh_list",
+                    "shopping.history",
+                    "shopping.recommend"
+                  ]
+                },
+                {
+                  "intent": "确认商品与数量后准备购物车",
+                  "capabilities": [
+                    "shopping.prepare_cart"
+                  ]
+                }
+              ],
+              "result_semantics": {
+                "report": "Backend calendar facts and selected quantities are authoritative. Unknown prices remain null; monetary values are integer minor units. source_task is the observed-history task, not the recommendation task.",
+                "history": "Incremental sync skips known order details; cache mode does not browse history. Recomputing a date-based recommendation does not require rereading purchases.",
+                "cart": "Explicit out-of-stock products are skipped; partial results list skipped products and reasons. Unknown action outcomes still pause and prohibit automatic replay. prepare_cart verifies observed target quantities in the actual cart; existing equal/higher quantities may already satisfy the target. Failure or assistance is not success."
+              }
+            },
+            "selectionRequired": false,
+            "options": {
+              "operation": "recommend"
+            }
+          },
+          {
+            "name": "shopping.revise",
+            "interfaceVersion": "1.0.0",
+            "host": "ai2apps.ai-browser",
+            "sdk": "browser.shopping-research/v1",
+            "inputSchema": {
+              "type": "object",
+              "properties": {
+                "source_tasks": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 20,
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "maxLength": 100
+                  }
+                },
+                "locale": {
+                  "type": "string",
+                  "maxLength": 32,
+                  "default": "zh"
+                },
+                "selected": {
+                  "type": "array",
+                  "minItems": 0,
+                  "maxItems": 20,
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "pattern": "^[A-Z0-9]{10}$"
+                      },
+                      "quantity": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 10
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "quantity"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "message": {
+                  "type": "string",
+                  "maxLength": 2000
+                },
+                "profile": {
+                  "type": "string",
+                  "default": "default"
+                }
+              },
+              "required": [
+                "source_tasks",
+                "locale",
+                "selected",
+                "message"
+              ],
+              "additionalProperties": false
+            },
+            "fields": [
+              {
+                "key": "source_tasks",
+                "label": {
+                  "zh": "历史记录来源",
+                  "en": "Observed history tasks"
+                },
+                "type": "json"
+              },
+              {
+                "key": "locale",
+                "label": {
+                  "zh": "输出语言",
+                  "en": "Output language"
+                },
+                "type": "text",
+                "default": "zh"
+              },
+              {
+                "key": "selected",
+                "label": {
+                  "zh": "商品与目标数量",
+                  "en": "Products and target quantities"
+                },
+                "type": "json"
+              },
+              {
+                "key": "message",
+                "label": {
+                  "zh": "补充要求",
+                  "en": "Additional instructions"
+                },
+                "type": "text"
+              },
+              {
+                "key": "profile",
+                "label": {
+                  "zh": "浏览器分身",
+                  "en": "Browser profile"
+                },
+                "type": "text",
+                "default": "default"
+              }
+            ],
+            "displayName": {
+              "zh": "Shopping Pro",
+              "en": "Shopping Pro"
+            },
+            "summary": {
+              "zh": "Replenishment and gift recommendations.",
+              "en": "Replenishment and gift recommendations."
+            },
+            "agentContext": {
+              "schema": "ai2apps.aaat-declaration/v1",
+              "instructions": [
+                "Shopping Pro prepares replenishment lists and Amazon carts from observed purchases. For a replenishment request use shopping.refresh_list (incremental history and recommendations), or shopping.recommend with existing cached source tasks. AaAT history_mode is incremental by default, or cache for no network history read. Full history reload is available ONLY inside Shopping Pro, never through AaAT. Saved history is selected by this owner automatically; do not request task IDs from the user. Reading history alone does not produce recommendations. Do not substitute your own ranking or a PDF for the Shopping Pro recommendation.",
+                "shopping.prepare_cart arguments are source_tasks (observed browser_task_id strings), selected (an array of {id, quantity}), and profile. Example: {\"source_tasks\":[\"observed-task-id\"],\"selected\":[{\"id\":\"B000000001\",\"quantity\":2}],\"profile\":\"default\"}. Use selected, not report.items. Resolve first/next references against the displayed report order, preserving user quantities.",
+                "Use returned browser_task_id as source_tasks for shopping.recommend and shopping.prepare_cart. Use the same browser profile. Products must come from observed history, never invented IDs or URLs.",
+                "When a task needs assistance, relay its owner-provided message and observed quantities. Unverified cart quantities are not proof of authentication failure; never guess that login or captcha is required. Do not retry uncertain cart changes or claim success before the actual cart is verified.",
+                "Present the owner report with its exact due_date, days_until_due and due_bucket. overdue<0, due_today=0, next_3_days=1..3, later>3, unknown=no repeat cycle. Do not reclassify four days away as within three days. Historical cycles are estimates, not stock measurements.",
+                "For a list-first request, finish this turn by showing the replenishment report; do not open a cart form until the user subsequently asks to prepare the cart. After showing the replenishment list, offer shopping.prepare_cart. Open its confirmation form with observed source_tasks and selected IDs/quantities. Let the user review products and quantities before any cart changes. Cancellation is not permission. Only the actual verified cart result proves preparation; never checkout, pay or subscribe."
+              ],
+              "workflows": [
+                {
+                  "intent": "刷新购买记录并生成补货单",
+                  "capabilities": [
+                    "shopping.refresh_list",
+                    "shopping.history",
+                    "shopping.recommend"
+                  ]
+                },
+                {
+                  "intent": "确认商品与数量后准备购物车",
+                  "capabilities": [
+                    "shopping.prepare_cart"
+                  ]
+                }
+              ],
+              "result_semantics": {
+                "report": "Backend calendar facts and selected quantities are authoritative. Unknown prices remain null; monetary values are integer minor units. source_task is the observed-history task, not the recommendation task.",
+                "history": "Incremental sync skips known order details; cache mode does not browse history. Recomputing a date-based recommendation does not require rereading purchases.",
+                "cart": "Explicit out-of-stock products are skipped; partial results list skipped products and reasons. Unknown action outcomes still pause and prohibit automatic replay. prepare_cart verifies observed target quantities in the actual cart; existing equal/higher quantities may already satisfy the target. Failure or assistance is not success."
+              }
+            },
+            "selectionRequired": false,
+            "options": {
+              "operation": "revise"
+            }
+          },
+          {
+            "name": "shopping.prepare_cart",
+            "interfaceVersion": "1.0.0",
+            "host": "ai2apps.ai-browser",
+            "sdk": "browser.cart-preparation/v1",
+            "inputSchema": {
+              "type": "object",
+              "properties": {
+                "source_tasks": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 20,
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "maxLength": 100
+                  }
+                },
+                "selected": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 20,
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "pattern": "^[A-Z0-9]{10}$"
+                      },
+                      "quantity": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 10
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "quantity"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "profile": {
+                  "type": "string",
+                  "default": "default"
+                }
+              },
+              "required": [
+                "source_tasks",
+                "selected"
+              ],
+              "additionalProperties": false
+            },
+            "fields": [
+              {
+                "key": "source_tasks",
+                "label": {
+                  "zh": "历史记录来源",
+                  "en": "Observed history tasks"
+                },
+                "type": "json"
+              },
+              {
+                "key": "selected",
+                "label": {
+                  "zh": "商品与目标数量",
+                  "en": "Products and target quantities"
+                },
+                "type": "json"
+              },
+              {
+                "key": "profile",
+                "label": {
+                  "zh": "浏览器分身",
+                  "en": "Browser profile"
+                },
+                "type": "text",
+                "default": "default"
+              }
+            ],
+            "displayName": {
+              "zh": "Shopping Pro",
+              "en": "Shopping Pro"
+            },
+            "summary": {
+              "zh": "Replenishment and gift recommendations.",
+              "en": "Replenishment and gift recommendations."
+            },
+            "agentContext": {
+              "schema": "ai2apps.aaat-declaration/v1",
+              "instructions": [
+                "Shopping Pro prepares replenishment lists and Amazon carts from observed purchases. For a replenishment request use shopping.refresh_list (incremental history and recommendations), or shopping.recommend with existing cached source tasks. AaAT history_mode is incremental by default, or cache for no network history read. Full history reload is available ONLY inside Shopping Pro, never through AaAT. Saved history is selected by this owner automatically; do not request task IDs from the user. Reading history alone does not produce recommendations. Do not substitute your own ranking or a PDF for the Shopping Pro recommendation.",
+                "shopping.prepare_cart arguments are source_tasks (observed browser_task_id strings), selected (an array of {id, quantity}), and profile. Example: {\"source_tasks\":[\"observed-task-id\"],\"selected\":[{\"id\":\"B000000001\",\"quantity\":2}],\"profile\":\"default\"}. Use selected, not report.items. Resolve first/next references against the displayed report order, preserving user quantities.",
+                "Use returned browser_task_id as source_tasks for shopping.recommend and shopping.prepare_cart. Use the same browser profile. Products must come from observed history, never invented IDs or URLs.",
+                "When a task needs assistance, relay its owner-provided message and observed quantities. Unverified cart quantities are not proof of authentication failure; never guess that login or captcha is required. Do not retry uncertain cart changes or claim success before the actual cart is verified.",
+                "Present the owner report with its exact due_date, days_until_due and due_bucket. overdue<0, due_today=0, next_3_days=1..3, later>3, unknown=no repeat cycle. Do not reclassify four days away as within three days. Historical cycles are estimates, not stock measurements.",
+                "For a list-first request, finish this turn by showing the replenishment report; do not open a cart form until the user subsequently asks to prepare the cart. After showing the replenishment list, offer shopping.prepare_cart. Open its confirmation form with observed source_tasks and selected IDs/quantities. Let the user review products and quantities before any cart changes. Cancellation is not permission. Only the actual verified cart result proves preparation; never checkout, pay or subscribe."
+              ],
+              "workflows": [
+                {
+                  "intent": "刷新购买记录并生成补货单",
+                  "capabilities": [
+                    "shopping.refresh_list",
+                    "shopping.history",
+                    "shopping.recommend"
+                  ]
+                },
+                {
+                  "intent": "确认商品与数量后准备购物车",
+                  "capabilities": [
+                    "shopping.prepare_cart"
+                  ]
+                }
+              ],
+              "result_semantics": {
+                "report": "Backend calendar facts and selected quantities are authoritative. Unknown prices remain null; monetary values are integer minor units. source_task is the observed-history task, not the recommendation task.",
+                "history": "Incremental sync skips known order details; cache mode does not browse history. Recomputing a date-based recommendation does not require rereading purchases.",
+                "cart": "Explicit out-of-stock products are skipped; partial results list skipped products and reasons. Unknown action outcomes still pause and prohibit automatic replay. prepare_cart verifies observed target quantities in the actual cart; existing equal/higher quantities may already satisfy the target. Failure or assistance is not success."
+              }
+            },
+            "selectionRequired": true,
+            "options": {
+              "operation": "prepare_cart"
+            }
+          },
+          {
+            "name": "shopping.gift_recommend",
+            "interfaceVersion": "1.0.0",
+            "host": "ai2apps.ai-browser",
+            "sdk": "browser.shopping-research/v1",
+            "inputSchema": {
+              "type": "object",
+              "properties": {
+                "recipient": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 500
+                },
+                "occasion": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 500
+                },
+                "preferences": {
+                  "type": "string",
+                  "maxLength": 1500
+                },
+                "budget_minor": {
+                  "type": "integer",
+                  "minimum": 100,
+                  "maximum": 10000000
+                },
+                "currency": {
+                  "type": "string",
+                  "enum": [
+                    "USD"
+                  ]
+                },
+                "locale": {
+                  "type": "string",
+                  "maxLength": 32,
+                  "default": "zh"
+                },
+                "model_profile": {
+                  "type": "string",
+                  "enum": [
+                    "normal",
+                    "privacy"
+                  ]
+                },
+                "message": {
+                  "type": "string",
+                  "maxLength": 2000
+                },
+                "conversation": {
+                  "type": "array",
+                  "maxItems": 10,
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "role": {
+                        "type": "string",
+                        "enum": [
+                          "Me",
+                          "AI"
+                        ]
+                      },
+                      "text": {
+                        "type": "string",
+                        "maxLength": 2000
+                      }
+                    },
+                    "required": [
+                      "role",
+                      "text"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "profile": {
+                  "type": "string",
+                  "default": "default"
+                }
+              },
+              "required": [
+                "recipient",
+                "occasion",
+                "preferences",
+                "budget_minor",
+                "currency",
+                "locale",
+                "message",
+                "conversation"
+              ],
+              "additionalProperties": false
+            },
+            "fields": [
+              {
+                "key": "recipient",
+                "label": {
+                  "zh": "收礼人",
+                  "en": "Recipient"
+                },
+                "type": "text"
+              },
+              {
+                "key": "occasion",
+                "label": {
+                  "zh": "送礼场合",
+                  "en": "Occasion"
+                },
+                "type": "text"
+              },
+              {
+                "key": "preferences",
+                "label": {
+                  "zh": "偏好",
+                  "en": "Preferences"
+                },
+                "type": "text"
+              },
+              {
+                "key": "budget_minor",
+                "label": {
+                  "zh": "预算（最小货币单位）",
+                  "en": "Budget (minor currency units)"
+                },
+                "type": "number"
+              },
+              {
+                "key": "currency",
+                "label": {
+                  "zh": "货币",
+                  "en": "Currency"
+                },
+                "type": "select",
+                "options": [
+                  {
+                    "value": "USD",
+                    "label": "USD"
+                  }
+                ]
+              },
+              {
+                "key": "locale",
+                "label": {
+                  "zh": "输出语言",
+                  "en": "Output language"
+                },
+                "type": "text",
+                "default": "zh"
+              },
+              {
+                "key": "model_profile",
+                "label": {
+                  "zh": "模型配置",
+                  "en": "Model profile"
+                },
+                "type": "select",
+                "options": [
+                  {
+                    "value": "normal",
+                    "label": "normal"
+                  },
+                  {
+                    "value": "privacy",
+                    "label": "privacy"
+                  }
+                ]
+              },
+              {
+                "key": "message",
+                "label": {
+                  "zh": "补充要求",
+                  "en": "Additional instructions"
+                },
+                "type": "text"
+              },
+              {
+                "key": "conversation",
+                "label": {
+                  "zh": "对话上下文",
+                  "en": "Conversation context"
+                },
+                "type": "json"
+              },
+              {
+                "key": "profile",
+                "label": {
+                  "zh": "浏览器分身",
+                  "en": "Browser profile"
+                },
+                "type": "text",
+                "default": "default"
+              }
+            ],
+            "displayName": {
+              "zh": "Shopping Pro",
+              "en": "Shopping Pro"
+            },
+            "summary": {
+              "zh": "Replenishment and gift recommendations.",
+              "en": "Replenishment and gift recommendations."
+            },
+            "agentContext": {
+              "schema": "ai2apps.aaat-declaration/v1",
+              "instructions": [
+                "Shopping Pro prepares replenishment lists and Amazon carts from observed purchases. For a replenishment request use shopping.refresh_list (incremental history and recommendations), or shopping.recommend with existing cached source tasks. AaAT history_mode is incremental by default, or cache for no network history read. Full history reload is available ONLY inside Shopping Pro, never through AaAT. Saved history is selected by this owner automatically; do not request task IDs from the user. Reading history alone does not produce recommendations. Do not substitute your own ranking or a PDF for the Shopping Pro recommendation.",
+                "shopping.prepare_cart arguments are source_tasks (observed browser_task_id strings), selected (an array of {id, quantity}), and profile. Example: {\"source_tasks\":[\"observed-task-id\"],\"selected\":[{\"id\":\"B000000001\",\"quantity\":2}],\"profile\":\"default\"}. Use selected, not report.items. Resolve first/next references against the displayed report order, preserving user quantities.",
+                "Use returned browser_task_id as source_tasks for shopping.recommend and shopping.prepare_cart. Use the same browser profile. Products must come from observed history, never invented IDs or URLs.",
+                "When a task needs assistance, relay its owner-provided message and observed quantities. Unverified cart quantities are not proof of authentication failure; never guess that login or captcha is required. Do not retry uncertain cart changes or claim success before the actual cart is verified.",
+                "Present the owner report with its exact due_date, days_until_due and due_bucket. overdue<0, due_today=0, next_3_days=1..3, later>3, unknown=no repeat cycle. Do not reclassify four days away as within three days. Historical cycles are estimates, not stock measurements.",
+                "For a list-first request, finish this turn by showing the replenishment report; do not open a cart form until the user subsequently asks to prepare the cart. After showing the replenishment list, offer shopping.prepare_cart. Open its confirmation form with observed source_tasks and selected IDs/quantities. Let the user review products and quantities before any cart changes. Cancellation is not permission. Only the actual verified cart result proves preparation; never checkout, pay or subscribe."
+              ],
+              "workflows": [
+                {
+                  "intent": "刷新购买记录并生成补货单",
+                  "capabilities": [
+                    "shopping.refresh_list",
+                    "shopping.history",
+                    "shopping.recommend"
+                  ]
+                },
+                {
+                  "intent": "确认商品与数量后准备购物车",
+                  "capabilities": [
+                    "shopping.prepare_cart"
+                  ]
+                }
+              ],
+              "result_semantics": {
+                "report": "Backend calendar facts and selected quantities are authoritative. Unknown prices remain null; monetary values are integer minor units. source_task is the observed-history task, not the recommendation task.",
+                "history": "Incremental sync skips known order details; cache mode does not browse history. Recomputing a date-based recommendation does not require rereading purchases.",
+                "cart": "Explicit out-of-stock products are skipped; partial results list skipped products and reasons. Unknown action outcomes still pause and prohibit automatic replay. prepare_cart verifies observed target quantities in the actual cart; existing equal/higher quantities may already satisfy the target. Failure or assistance is not success."
+              }
+            },
+            "selectionRequired": true,
+            "options": {
+              "operation": "gift_recommend"
+            }
           }
         ]
       }

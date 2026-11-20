@@ -345,3 +345,51 @@ async def test_link_guards_all_active_states_and_serializes_competing_tasks(runt
             assert completed.json()['result']['studio_run_id']==winner['id']
             assert _artifacts(runtime,thread.session.id)==set(values['person_artifact_ids'])|{completed.json()['result']['artifact']['id']}
     finally:await runtime.stop_background_tasks()
+
+@pytest.mark.asyncio
+async def test_handoff_claim_reserves_writer_before_rechecking_parameters(runtime,monkeypatch):
+    """A concurrent writer cannot invalidate the handoff's selected draft snapshot."""
+    from contextlib import contextmanager
+    import threading
+    thread,run,item,values=await _waiting_form(runtime,monkeypatch)
+    # Isolate the two deliberate writers from periodic background dispatch.
+    await runtime.stop_background_tasks()
+    selected=threading.Event();release=threading.Event();writer_started=threading.Event();writer_acquired=threading.Event()
+    original=runtime.database.transaction
+    class Connection:
+        def __init__(self,db):self.db=db
+        def __getattr__(self,name):return getattr(self.db,name)
+        def execute(self,sql,*args):
+            cursor=self.db.execute(sql,*args)
+            if sql.startswith('SELECT provider FROM agent_parameter_choices'):
+                selected.set()
+                if not release.wait(10):raise AssertionError('Handoff was not released')
+            return cursor
+    @contextmanager
+    def transaction(*,write=False):
+        with original(write=write) as db:yield Connection(db)
+    monkeypatch.setattr(runtime.database,'transaction',transaction)
+    def competing_write():
+        writer_started.set()
+        with original(write=True) as db:
+            writer_acquired.set()
+            db.execute('UPDATE agent_parameter_drafts SET revision=revision WHERE interaction_id=?',(item.id,))
+    request=writer=None
+    try:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=_client_app(runtime)),base_url='http://test') as c:
+            url=f'/v1/platform/agent-runs/{run.id}/interactions/{item.id}/parameters/handoff'
+            request=asyncio.create_task(c.post(url,json={'revision':0,'values':values}))
+            assert await asyncio.to_thread(selected.wait,5)
+            writer=asyncio.create_task(asyncio.to_thread(competing_write))
+            assert await asyncio.to_thread(writer_started.wait,5)
+            assert not await asyncio.to_thread(writer_acquired.wait,.15)
+            release.set()
+            response=await asyncio.wait_for(request,10)
+            assert response.status_code==200,response.text
+            await asyncio.wait_for(writer,10)
+            assert writer_acquired.is_set()
+    finally:
+        release.set()
+        for task in (request,writer):
+            if task:await asyncio.gather(task,return_exceptions=True)
+        await runtime.stop_background_tasks()

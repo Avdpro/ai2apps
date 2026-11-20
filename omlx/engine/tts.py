@@ -203,6 +203,9 @@ class TTSEngine(BaseNonStreamingEngine):
         model_name = self._model_name
 
         def _load_sync():
+            from .tts_backends.loader import family_for, load_local
+            if family_for(model_name):
+                return load_local(model_name, self._dependency_checkpoints)
             try:
                 model = _load_model(model_name, strict=True)
             except ValueError as exc:
@@ -304,6 +307,8 @@ class TTSEngine(BaseNonStreamingEngine):
         )
         is_fish_tts = "fish_qwen3_omni" in model_module
         is_cosyvoice = "cosyvoice" in model_module
+        is_drama3 = "fish_drama3" in model_module
+        is_moss_nano = "moss_tts_nano" in model_module
 
         def _build_generate_kwargs() -> Dict[str, Any]:
             effective_text: str | list[str] = text
@@ -318,7 +323,7 @@ class TTSEngine(BaseNonStreamingEngine):
                         raise ValueError("Fish S2 supports at most five speakers")
                     turns.append(f"<|speaker:{speaker_id}|>{turn_text}")
                 effective_text = " ".join(turns)
-            if is_fish_tts and instructions:
+            if (is_fish_tts or is_drama3) and instructions:
                 instruction_tag = instructions.strip().strip("[]")
                 effective_text = f"[{instruction_tag}] {effective_text}"
             gen_kwargs: Dict[str, Any] = {
@@ -337,7 +342,9 @@ class TTSEngine(BaseNonStreamingEngine):
                     gen_kwargs["voice"] = voice
                 elif "instruct" in gen_params:
                     gen_kwargs["instruct"] = voice
-            effective_instructions = instructions
+            effective_instructions = None if is_drama3 else instructions
+            if is_moss_nano and ref_audio is None:
+                gen_kwargs["mode"] = "continuation"
             if is_qwen3_tts or is_cosyvoice:
                 effective_instructions = _append_instruction(
                     effective_instructions, _qwen3_speed_instruction(speed)
@@ -403,7 +410,18 @@ class TTSEngine(BaseNonStreamingEngine):
                 audio = result.audio
                 if isinstance(audio, mx.array) and audio.dtype == mx.bfloat16:
                     audio = audio.astype(mx.float32)
-                audio_chunks.append(np.array(audio))
+                samples = np.array(audio)
+                if samples.ndim == 2:
+                    # Runtime speech output is mono. Average channels; flattening
+                    # stereo would interleave time and double playback duration.
+                    samples = samples.mean(axis=1 if samples.shape[1] <= 8 else 0)
+                if samples.ndim != 1 or not np.isfinite(samples).all():
+                    raise ValueError("TTS returned invalid audio samples")
+                result_rate = int(getattr(result, "sample_rate", sample_rate))
+                if audio_chunks and result_rate != sample_rate:
+                    raise ValueError("TTS changed sample rate between chunks")
+                sample_rate = result_rate
+                audio_chunks.append(samples)
 
             if not audio_chunks:
                 raise RuntimeError("TTS model produced no audio output")

@@ -146,7 +146,7 @@ class OmlxModelServiceAdapter:
                 description=description,
                 input_schema=input_schema,
                 output_schema=OBJECT_SCHEMA,
-                effects=("memory",) if name != "model.status" else (),
+                effects=("model.lifecycle",) if name != "model.status" else (),
                 required_capabilities=capabilities,
                 timeout_ms=300_000 if name == "model.load" else 30_000,
             )

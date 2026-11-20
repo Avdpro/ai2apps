@@ -117,14 +117,18 @@ def install_document_service(
 
     async def document_preview(arguments, context):
         limit = arguments.get("max_chars", 8000)
-        blocks = documents.blocks(
-            session(context), arguments["attachment_id"], limit=20
-        )
+        # One lookahead block distinguishes a short document from an omitted tail.
+        candidates = documents.blocks(session(context), arguments["attachment_id"], limit=21)
+        blocks = candidates[:20]
         text = "\n\n".join(item.text for item in blocks)
+        char_truncated = len(text) > limit
         return {
             "text": text[:limit],
-            "truncated": len(text) > limit,
+            "truncated": char_truncated or len(candidates) > len(blocks),
             "blocks": len(blocks),
+            "has_more_blocks": len(candidates) > len(blocks),
+            # Re-read from zero when the character cap cut through this batch.
+            "next_offset": 0 if char_truncated else len(blocks) if len(candidates) > len(blocks) else None,
         }
 
     async def document_search(arguments, context):
@@ -247,7 +251,7 @@ def install_document_service(
         (
             "document.preview",
             "Preview document",
-            "Read a short bounded preview of an attached document.",
+            "Read a short bounded text preview (up to 20 blocks). truncated covers both the character cap and later blocks; use document.read with next_offset for more. Not a rendered page image.",
             {
                 "type": "object",
                 "properties": {

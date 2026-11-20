@@ -1,0 +1,122 @@
+{
+  "status": "checkpoint_distributions_signed_verified_not_published",
+  "checkpoint": {
+    "name": "sensevoice",
+    "huggingface": {
+      "repo": "FunAudioLLM/SenseVoiceSmall",
+      "revision": "3847d57b6bdf2dd8875cb1508d2af43d80a16bf7"
+    },
+    "modelscope": {
+      "repo": "iic/SenseVoiceSmall",
+      "revision": "7bf452403abd7353a300cd760f7adae7701c92c1"
+    },
+    "files": [
+      {
+        "path": "am.mvn",
+        "hf_size": 11203,
+        "hf_sha256": "29b3c740a2c0cfc6b308126d31d7f265fa2be74f3bb095cd2f143ea970896ae5",
+        "ms_size": 11203,
+        "ms_sha256": "29b3c740a2c0cfc6b308126d31d7f265fa2be74f3bb095cd2f143ea970896ae5",
+        "identical": true
+      },
+      {
+        "path": "chn_jpn_yue_eng_ko_spectok.bpe.model",
+        "hf_size": 377341,
+        "hf_sha256": "aa87f86064c3730d799ddf7af3c04659151102cba548bce325cf06ba4da4e6a8",
+        "ms_size": 377341,
+        "ms_sha256": "aa87f86064c3730d799ddf7af3c04659151102cba548bce325cf06ba4da4e6a8",
+        "identical": true
+      },
+      {
+        "path": "config.yaml",
+        "hf_size": 1855,
+        "hf_sha256": "f71e239ba36705564b5bf2d2ffd07eece07b8e3f2bbf6d2c99d8df856339ac19",
+        "ms_size": 1855,
+        "ms_sha256": "f71e239ba36705564b5bf2d2ffd07eece07b8e3f2bbf6d2c99d8df856339ac19",
+        "identical": true
+      },
+      {
+        "path": "configuration.json",
+        "hf_size": 396,
+        "hf_sha256": "02810a7f8e9e8aee10370a265f7e799728ce25b4c00cdbf4602b303ee395a38e",
+        "ms_size": 396,
+        "ms_sha256": "02810a7f8e9e8aee10370a265f7e799728ce25b4c00cdbf4602b303ee395a38e",
+        "identical": true
+      },
+      {
+        "path": "model.pt",
+        "hf_size": 936291369,
+        "hf_sha256": "833ca2dcfdf8ec91bd4f31cfac36d6124e0c459074d5e909aec9cabe6204a3ea",
+        "ms_size": 936291369,
+        "ms_sha256": "833ca2dcfdf8ec91bd4f31cfac36d6124e0c459074d5e909aec9cabe6204a3ea",
+        "identical": true
+      }
+    ],
+    "all_identical": true,
+    "metadata_url": "https://modelscope.cn/api/v1/models/iic/SenseVoiceSmall/repo/files?Revision=7bf452403abd7353a300cd760f7adae7701c92c1&Recursive=true"
+  },
+  "license": {
+    "upstream_revision": "e7e61293d308f4342ab9307895e710e4b51b949c",
+    "url": "https://raw.githubusercontent.com/modelscope/FunASR/e7e61293d308f4342ab9307895e710e4b51b949c/MODEL_LICENSE",
+    "bytes": 5306,
+    "sha256": "7dba975a2069691db4992b0592d70828b330d2f8a30a71450f4e152a554e84f8"
+  },
+  "adapterSource": "spark/cuda_sensevoice_adapter.py",
+  "vad_mirror": {
+    "status": "all_eight_files_anonymous_full_download_verified",
+    "repo": "ai2apps/fsmn-vad",
+    "revision": "dce94570fbc263aa692d8867b0f47bc03f6330b3",
+    "files": [
+      {
+        "path": "LICENSE",
+        "size": 11358,
+        "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+        "full_download_verified": true
+      },
+      {
+        "path": "NOTICE",
+        "size": 405,
+        "sha256": "08ef48b42201b6d6de3a157924a71a19c279fc31b458368045bc0385e35bea8b",
+        "full_download_verified": true
+      },
+      {
+        "path": "README.md",
+        "size": 1013,
+        "sha256": "0e8b27ad29b9772e558ecb873a4175ae795eb36419c03a64822651da7c238026",
+        "full_download_verified": true
+      },
+      {
+        "path": "UPSTREAM_README.md",
+        "size": 2289,
+        "sha256": "bc7ed04222f932ea519e5969140a7fa14944becbbb3c0728a267c5bf9dc9c200",
+        "full_download_verified": true
+      },
+      {
+        "path": "am.mvn",
+        "size": 8033,
+        "sha256": "df189fd5f4352df84a0fd464eeab4e450a5e645665d6b38f13c832492261a739",
+        "full_download_verified": true
+      },
+      {
+        "path": "config.yaml",
+        "size": 1215,
+        "sha256": "486861ca26ddb79081663b6179cb204c6bfae71c52f04aafc48a9e9d8dde1e93",
+        "full_download_verified": true
+      },
+      {
+        "path": "configuration.json",
+        "size": 365,
+        "sha256": "7bce8867e37d55c3dd8f672695ced18077a2be199ea529a5d432d5350fc0acba",
+        "full_download_verified": true
+      },
+      {
+        "path": "model.pt",
+        "size": 1721366,
+        "sha256": "b3be75be477f0780277f3bae0fe489f48718f585f3a6e45d7dd1fbb1a4255fc5",
+        "full_download_verified": true
+      }
+    ],
+    "registry_published": false
+  },
+  "signed_receipt": "spark/evidence/media/sensevoice-distributions-signed-20261008.json"
+}

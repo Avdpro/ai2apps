@@ -1,0 +1,46 @@
+dialog.ai2apps-dialog {
+    box-sizing: border-box;
+    width: min(var(--ai2apps-dialog-width, 420px), calc(100% - 32px));
+    max-height: calc(100% - 32px);
+    margin: auto;
+    padding: 24px;
+    border: 1px solid var(--border-color, #dedede);
+    border-radius: 14px;
+    background: var(--bg-surface, #fff);
+    color: var(--text-primary, #171717);
+    box-shadow: 0 16px 48px #0002;
+}
+.ai2apps-dialog::backdrop { background: #0006; }
+.ai2apps-text-dialog form { display: grid; gap: 16px; margin: 0; }
+.ai2apps-dialog h2 { margin: 0; font-size: 18px; font-weight: 650; line-height: 1.4; }
+.ai2apps-text-dialog label { display: grid; gap: 6px; font-size: 14px; }
+.ai2apps-text-dialog input {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 44px;
+    padding: 8px 12px;
+    border: 1px solid var(--border-color, #d4d4d4);
+    border-radius: 8px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 16px;
+}
+.ai2apps-text-dialog-error { margin: 0; color: #b91c1c; font-size: 14px; }
+.ai2apps-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.ai2apps-dialog-actions button {
+    min-width: 72px;
+    min-height: 44px;
+    padding: 8px 16px;
+    border: 1px solid var(--border-color, #d4d4d4);
+    border-radius: 8px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.ai2apps-dialog-actions .primary { background: #262626; border-color: #262626; color: #fff; }
+.ai2apps-dialog-actions button:disabled { opacity: .45; cursor: default; }
+.ai2apps-dialog :is(input, button):focus-visible { outline: 2px solid #6366f1; outline-offset: 2px; }

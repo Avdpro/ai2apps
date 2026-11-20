@@ -28,8 +28,10 @@ def resolve_task_model(runtime, complexity, profile='normal', *, declared='norma
     if manager is None:
         return None
     purpose = 'work_' + complexity
-    return (manager.resolve_default_model(purpose, profile='privacy')
-            if effective == 'privacy' else manager.resolve_default_model(purpose))
+    default=(manager.resolve_default_model(purpose, profile='privacy')
+             if effective == 'privacy' else manager.resolve_default_model(purpose))
+    from ai2apps.model_preferences import choose
+    return choose(runtime,purpose,default,profile=effective)[0]
 
 
 def task_payload(model_id, messages, complexity, *, max_tokens=2000, reasoning_effort=None):

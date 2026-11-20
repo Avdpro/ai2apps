@@ -1,0 +1,48 @@
+{
+  "schema": "ai2apps.checkpoint-build/v1",
+  "distributionId": "dist_ai2apps_cosyvoice3_original_29e01c4e_v1",
+  "modelId": "ai2apps.model.cosyvoice3-cuda/original-fp32",
+  "repoId": "FunAudioLLM/Fun-CosyVoice3-0.5B-2512",
+  "revision": "29e01c4e8d000f4bcd70751be16fa94bf3d85a18",
+  "format": "pytorch",
+  "quantization": "fp32",
+  "pieceSize": 8388608,
+  "license": {
+    "id": "Apache-2.0",
+    "name": "Apache License 2.0",
+    "termsUrl": "https://www.apache.org/licenses/LICENSE-2.0",
+    "termsHash": "sha256:59df539296ae6da58dc5b1ffb9971147429c2a8f2fb6ab862ef8322b655df025",
+    "usagePolicy": "license_terms",
+    "accessPolicy": "public",
+    "redistributionPolicy": "allowed"
+  },
+  "includePatterns": [
+    "CosyVoice-BlankEN/config.json",
+    "CosyVoice-BlankEN/generation_config.json",
+    "CosyVoice-BlankEN/merges.txt",
+    "CosyVoice-BlankEN/model.safetensors",
+    "CosyVoice-BlankEN/tokenizer_config.json",
+    "CosyVoice-BlankEN/vocab.json",
+    "campplus.onnx",
+    "configuration.json",
+    "cosyvoice3.yaml",
+    "flow.pt",
+    "hift.pt",
+    "llm.pt",
+    "speech_tokenizer_v3.onnx"
+  ],
+  "sourceRepositories": [
+    {
+      "type": "huggingface",
+      "repoId": "FunAudioLLM/Fun-CosyVoice3-0.5B-2512",
+      "revision": "29e01c4e8d000f4bcd70751be16fa94bf3d85a18",
+      "access": "public_anonymous"
+    },
+    {
+      "type": "modelscope",
+      "repoId": "FunAudioLLM/Fun-CosyVoice3-0.5B-2512",
+      "revision": "9f9c56f2514700ef79d64fd0afb693e0d672373b",
+      "access": "public_anonymous"
+    }
+  ]
+}

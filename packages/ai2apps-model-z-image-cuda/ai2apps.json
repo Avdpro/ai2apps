@@ -1,0 +1,81 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/model-z-image-cuda",
+    "type": "service",
+    "version": "0.1.0",
+    "displayName": "Z-Image Turbo CUDA",
+    "description": "Pinned official BF16 CUDA image models; signed installation and remaining quality acceptance pending."
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": [
+      "linux"
+    ],
+    "architectures": [
+      "arm64"
+    ]
+  },
+  "entrypoints": [
+    {
+      "name": "model-worker",
+      "kind": "service",
+      "path": "service.yaml"
+    }
+  ],
+  "permissions": [
+    {
+      "capability": "model-weights.huggingface-cache.read",
+      "reason": "Read a pinned FLUX.2 checkpoint.",
+      "required": true
+    },
+    {
+      "capability": "accelerator.cuda",
+      "reason": "Run BF16 CUDA image inference.",
+      "required": true
+    }
+  ],
+  "dependencies": [
+    {
+      "packageId": "ai2apps/runtime-cuda-torch",
+      "version": ">=0.6.0 <1.0.0",
+      "optional": false
+    }
+  ],
+  "files": [],
+  "sbom": {
+    "format": "spdx-json-2.3",
+    "path": "META/sbom.spdx.json"
+  },
+  "discovery": {
+    "kind": "model",
+    "categories": [
+      "image"
+    ],
+    "tasks": [
+      "image-generation"
+    ]
+  },
+  "modelProfile": {
+    "sizeBytes": 32848305533,
+    "minimumMemoryBytes": 51539607552,
+    "scores": {
+      "speed": 2,
+      "capability": 4
+    },
+    "benchmark": {
+      "label": "Estimated BF16 memory; basic Worker evidence, signed installation and remaining quality pending",
+      "device": "NVIDIA DGX Spark GB10"
+    }
+  },
+  "modelInstall": {
+    "serviceKey": "ai2apps.model.z-image-cuda",
+    "models": [
+      {
+        "id": "ai2apps.model.z-image-cuda/turbo",
+        "label": "Z-Image Turbo CUDA BF16",
+        "recommended": true
+      }
+    ]
+  }
+}

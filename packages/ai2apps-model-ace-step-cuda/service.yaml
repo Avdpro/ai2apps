@@ -1,0 +1,107 @@
+schema: ai2apps.service/v1
+id: ai2apps.model.ace-step-cuda
+name: ACE-Step 1.5 Turbo CUDA
+description: CUDA music generation with optional lyrics, 10–120 seconds, using fixed
+  official ACE-Step inputs.
+version: 0.1.0
+publisher:
+  id: ai2apps
+license:
+  id: MIT
+  name: MIT License
+  path: LICENSE
+attribution:
+  notice: META/NOTICE.md
+  source: https://github.com/ace-step/ACE-Step-1.5/tree/ca1e85fe9430179831e6bc6be790c332190a3866
+  checkpoint: https://huggingface.co/ACE-Step/Ace-Step1.5/tree/19671f406d603126926c1b7e2adc169acbcade22
+runtime:
+  mode: process
+  protocol: ai2apps-model-worker/v1
+  provider: ai2apps.runtime.cuda-torch
+  adapter: src/worker_adapter.py:create_adapter
+models:
+- id: ai2apps.model.ace-step-cuda/turbo
+  display_name: ACE-Step 1.5 Turbo
+  model_type: audio_generation
+  upstream_id: ace-step-1.5-turbo
+  capabilities:
+  - audio_generation
+  weights:
+    provider: huggingface
+    repo_id: ACE-Step/Ace-Step1.5
+    revision: 19671f406d603126926c1b7e2adc169acbcade22
+    preparation:
+      recipe: native
+  metadata:
+    family: ace-step
+    estimated_resident_bytes: 38654705664
+    audio_generation:
+      schema: ai2apps.audio-generation-capabilities/v1
+      task: music
+      minimum_duration: 10
+      maximum_duration: 120
+      lyrics: true
+      output_formats:
+      - wav
+      variant: ace-step-1.5-turbo
+    modelscope:
+      repo_id: ACE-Step/Ace-Step1.5
+      revision: 3e24671cd4f2830dea1cbf5eaaf00cab1087f7ea
+      preferred: true
+      allow_patterns:
+      - Qwen3-Embedding-0.6B/added_tokens.json
+      - Qwen3-Embedding-0.6B/chat_template.jinja
+      - Qwen3-Embedding-0.6B/config.json
+      - Qwen3-Embedding-0.6B/merges.txt
+      - Qwen3-Embedding-0.6B/model.safetensors
+      - Qwen3-Embedding-0.6B/special_tokens_map.json
+      - Qwen3-Embedding-0.6B/tokenizer.json
+      - Qwen3-Embedding-0.6B/tokenizer_config.json
+      - Qwen3-Embedding-0.6B/vocab.json
+      - acestep-5Hz-lm-1.7B/added_tokens.json
+      - acestep-5Hz-lm-1.7B/chat_template.jinja
+      - acestep-5Hz-lm-1.7B/config.json
+      - acestep-5Hz-lm-1.7B/merges.txt
+      - acestep-5Hz-lm-1.7B/model.safetensors
+      - acestep-5Hz-lm-1.7B/special_tokens_map.json
+      - acestep-5Hz-lm-1.7B/tokenizer.json
+      - acestep-5Hz-lm-1.7B/tokenizer_config.json
+      - acestep-5Hz-lm-1.7B/vocab.json
+      - acestep-v15-turbo/config.json
+      - acestep-v15-turbo/model.safetensors
+      - acestep-v15-turbo/silence_latent.pt
+      - vae/config.json
+      - vae/diffusion_pytorch_model.safetensors
+capabilities:
+- audio-generation
+requires:
+  services:
+  - id: ai2apps.runtime.cuda-torch
+    version: '>=0.6.0,<1.0.0'
+    optional: false
+    capabilities:
+    - cuda
+    - model-worker-v1
+    - ace-step
+  python: '>=3.12,<3.13'
+permissions:
+  network:
+    outbound: false
+  model_weights:
+    huggingface_cache: read
+    reason: Read only the declared immutable audio generation checkpoint.
+  accelerator:
+    cuda: true
+    reason: Generate music with the fixed CUDA engine.
+compatibility:
+  os:
+  - linux
+  architectures:
+  - arm64
+health:
+  path: /health
+  startup_timeout_seconds: 120
+restart:
+  max_attempts: 2
+  base_delay_seconds: 1
+tools: []

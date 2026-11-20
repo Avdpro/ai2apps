@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1] / 'web/static/builtin_mini_apps'
 def definitions():
     result = []
     resources = []
-    for name in ('search-all', 'web-reader'):
+    for name in ('search-all', 'web-reader', 'share-works'):
         folder = ROOT / name
         mini = json.loads((folder / 'app.yaml').read_text())['mini_apps'][0]
         mini['entry']['resource'] = f'builtin_mini_apps/{name}/web/index.html'
@@ -18,10 +18,15 @@ def definitions():
             export = mini['aaat']['exports'][0]
             export['inputSchema']['properties']['mode']['default'] = 'fast'
             export['agentContext']['instructions'].insert(0,
-                'Default ordinary web searches to Search All fast mode. This built-in Mini-App is always available; do not substitute server HTTP search silently. Use a dedicated Mini-App for its supported task before general browser exploration.')
-        else:
-            mini['aaat']['exports'][0]['agentContext']['instructions'].append(
-                'Read rendered public webpage text. This is not screenshot vision: when the request requires visual appearance or images beyond this reader, discover browser.complete_goal with visual=true after checking dedicated Mini-Apps. Do not claim a text read is a visual observation.')
+                'Use Search All fast mode to discover sources or a starting URL. If search returns partial coverage with candidate URLs but no readable bodies, use a relevant observed URL as a starting point for browser.complete_goal when the task requires site investigation. Search titles and snippets alone are not factual evidence. Do not substitute server HTTP search silently.')
+        elif name == 'web-reader':
+            export = mini['aaat']['exports'][0]
+            export['summary'] = {
+                'zh': '读取一张已知最终网页的正文。站内搜索、筛选、展开控件或打开详情页请用网页调查。',
+                'en': 'Read text from one known final page. Use browser.complete_goal for site navigation, filtering, expanding controls, or opening detail pages.',
+            }
+            export['agentContext']['instructions'].insert(0,
+                'Select Web Reader only when the supplied URL is the final page and the requested evidence is already in its rendered content. If the page opened but requires navigation, expanding controls, or collecting evidence across pages, invoke browser.complete_goal with the observed URL and remaining goal. This is a separate authorized invocation; do not use it to bypass blocked access or uncertain input. For visual appearance, use a suitable dedicated Mini-App or browser.complete_goal with visual=true.')
         help_file=(mini.get('chat') or {}).get('help',{}).get('resource')
         if help_file:
             mini['chat']['help']['resource']=f'builtin_mini_apps/{name}/{help_file}'
@@ -40,6 +45,11 @@ def install(runtime, register):
     from ai2apps.browser.package_sdk import citation_policy
     minis, _ = definitions()
     for mini in minis:
+        if mini['id']=='ai2apps.share-works':
+            from ai2apps.share_works.aaat import install as install_share
+            install_share(runtime,register,mini)
+            continue
+        if not mini.get('aaat', {}).get('exports'): continue
         spec = mini['aaat']['exports'][0]
         search = spec['name'] == 'web.search'
         key = mini['id'] + ('.search' if search else '.fetch')
@@ -49,6 +59,10 @@ def install(runtime, register):
                 return await invoke(runtime,args,context)
             return await WebMiniAppAdapters(runtime).fetch(args,context)
         async def policy(args, context, mini=mini, spec=spec):
+            if not args.get('confirmation_id'):
+                from ai2apps.research.mini_apps import principal_for
+                from ai2apps.research.search_preparation import automatic_values
+                return automatic_values(runtime, principal_for(runtime, context), args, context) is not None
             return await confirmed_search(runtime, args, context, mini, spec)
         register(spec['name'], HOST,
             '一搜到底 / Search All' if search else '网页阅读器 / Web Reader',
@@ -61,4 +75,6 @@ def install(runtime, register):
             form_name=spec['displayName'], form_summary=spec['summary'])
         if search:
             search_form(runtime, key, mini, spec)
+    from ai2apps.research.pdf_reader import install as install_pdf_reader
+    install_pdf_reader(runtime, register)
     citation_policy(runtime)

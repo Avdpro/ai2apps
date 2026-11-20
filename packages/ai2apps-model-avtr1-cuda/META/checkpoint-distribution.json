@@ -1,0 +1,86 @@
+{
+  "schema": "ai2apps.checkpoint-build/v1",
+  "distributionId": "dist_ai2apps_avtr1_cuda_57bfb656_v1",
+  "modelId": "ai2apps.model.avtr1-cuda/default",
+  "repoId": "Avdpro/AVTR-1-MLX",
+  "revision": "57bfb656636e9fdb24646a2711a7bb606cbd7cb5",
+  "format": "safetensors",
+  "quantization": "native-mlx",
+  "pieceSize": 8388608,
+  "license": {
+    "id": "LicenseRef-AVTR1-Community-and-Components",
+    "name": "AVTR-1 Community and component licenses",
+    "termsUrl": "https://huggingface.co/Avdpro/AVTR-1-MLX/blob/57bfb656636e9fdb24646a2711a7bb606cbd7cb5/LICENSE-MODEL.md",
+    "termsHash": "sha256:e36b4c98a1e5465c5337609f3c1370ff7e4b3f5d64d776084d1816c6c119a3d3",
+    "usagePolicy": "original_component_license_terms",
+    "accessPolicy": "public",
+    "redistributionPolicy": "conditional",
+    "redistributionConditions": {
+      "termsAcceptance": "required",
+      "licenseDelivery": "required",
+      "downstreamTerms": "license_terms",
+      "commercialUse": "separate_license_required",
+      "attribution": {
+        "required": true,
+        "noticeText": "AVTR-1 by Goodsize Inc. (Avaturn); third-party MLX conversion with original component terms preserved.",
+        "noticeFile": "ATTRIBUTION.md",
+        "productDisplay": "not_required"
+      },
+      "modifiedFilesNotice": "required"
+    },
+    "downloadConsent": {
+      "required": true,
+      "attestationText": "I have read and accept the AVTR-1 Community License and applicable component terms included with these weights, or have obtained the required separate permission for my use.",
+      "acceptanceOptions": [
+        "accepted_license_terms",
+        "obtained_separate_license"
+      ]
+    }
+  },
+  "includePatterns": [
+    "LICENSE.md",
+    "LICENSE-RENDERER.md",
+    "LICENSE.liveportrait",
+    "ATTRIBUTION.md",
+    "LICENSE-MODEL.md",
+    "config.json",
+    "PATENTS.md",
+    "README.md",
+    "motion.safetensors",
+    "ai2apps-checkpoint.json",
+    "model_config.json",
+    "conversion.json",
+    "graphs/landmark203/weights.safetensors",
+    "graphs/landmark203/graph.json",
+    "graphs/motion_extractor/weights.safetensors",
+    "graphs/motion_extractor/graph.json",
+    "graphs/hubert/weights.safetensors",
+    "graphs/hubert/graph.json",
+    "graphs/decoder/weights.safetensors",
+    "graphs/decoder/graph.json",
+    "graphs/stitch_network/weights.safetensors",
+    "graphs/stitch_network/graph.json",
+    "graphs/appearance_extractor/weights.safetensors",
+    "graphs/appearance_extractor/graph.json",
+    "graphs/warp_network/weights.safetensors",
+    "graphs/warp_network/graph.json",
+    "graphs/insightface_det/weights.safetensors",
+    "graphs/insightface_det/graph.json",
+    "graphs/landmark106/weights.safetensors",
+    "graphs/landmark106/graph.json"
+  ],
+  "sourceRepositories": [
+    {
+      "type": "huggingface",
+      "repoId": "Avdpro/AVTR-1-MLX",
+      "revision": "57bfb656636e9fdb24646a2711a7bb606cbd7cb5",
+      "access": "public_anonymous"
+    },
+    {
+      "type": "modelscope",
+      "repoId": "ai2apps/AVTR-1-MLX",
+      "revision": "17caeffa78ee672e36e22e6f3d798ccef90e7c45",
+      "access": "public_anonymous"
+    }
+  ]
+}

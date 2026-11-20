@@ -1,5 +1,34 @@
             <div x-show="mainTab === 'models'" x-cloak>
                 <div data-models-root>
+                    <div class="flex justify-end mb-3">
+                        <button type="button" @click="openCredentialImport()" class="px-4 py-2 rounded-xl border border-neutral-200 text-sm font-medium" data-credential-import-open>{{ t('models.credential_import.open') }}</button>
+                    </div>
+                    <div x-show="credentialImportOpen" x-cloak class="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4" @keydown.escape.window="if (!credentialImportBusy) credentialImportOpen = false">
+                        <section role="dialog" aria-modal="true" aria-labelledby="credential-import-title" class="bg-white rounded-2xl shadow-xl w-full max-w-xl max-h-[85vh] overflow-y-auto p-6 space-y-4">
+                            <h3 id="credential-import-title" class="text-lg font-semibold">{{ t('models.credential_import.open') }}</h3>
+                            <p class="text-sm text-neutral-600">{{ t('models.credential_import.description') }}</p>
+                            <label class="block text-sm">{{ t('models.credential_import.source') }}
+                                <select x-model="credentialImportSource" @change="credentialImportSelected = []" :disabled="credentialImportBusy" class="mt-1 w-full border rounded-xl p-2">
+                                    <option value="">{{ t('models.credential_import.choose') }}</option>
+                                    <template x-for="source in credentialImportSources" :key="source.id"><option :value="source.id" x-text="source.name + ' (' + source.id + ')'"></option></template>
+                                </select>
+                            </label>
+                            <template x-for="provider in credentialImportProviders" :key="provider.key">
+                                <label class="flex items-start gap-3 border rounded-xl p-3">
+                                    <input type="checkbox" x-model="credentialImportSelected" :value="provider.key" :disabled="credentialImportBusy" class="mt-1">
+                                    <span class="min-w-0"><strong class="block text-sm" x-text="provider.config.name"></strong><small class="block break-all text-neutral-500" x-text="provider.config.base_url"></small><small x-show="provider.ownership === 'unclaimed'" class="block text-amber-700">{{ t('models.credential_import.legacy') }}</small></span>
+                                </label>
+                            </template>
+                            <label class="flex gap-2 text-sm"><input type="checkbox" x-model="credentialImportReplace" :disabled="credentialImportBusy">{{ t('models.credential_import.replace') }}</label>
+                            <p role="status" class="text-sm whitespace-pre-wrap" x-text="credentialImportMessage"></p>
+                            <ul class="text-sm space-y-1" aria-live="polite"><template x-for="result in credentialImportResults" :key="result.name"><li><span x-text="result.name"></span> · <span x-text="result.status"></span></li></template></ul>
+                            <div class="flex justify-end gap-3">
+                                <button type="button" @click="credentialImportOpen = false" :disabled="credentialImportBusy" class="border rounded-xl px-4 py-2 disabled:opacity-40">{{ t('models.credential_import.close') }}</button>
+                                <button type="button" @click="openCredentialImport()" :disabled="credentialImportBusy" class="border rounded-xl px-4 py-2 disabled:opacity-40">{{ t('models.credential_import.refresh') }}</button>
+                                <button type="button" @click="submitCredentialImport()" :disabled="credentialImportBusy || !credentialImportSelected.length" class="bg-neutral-900 text-white rounded-xl px-4 py-2 disabled:opacity-40">{{ t('models.credential_import.confirm') }}</button>
+                            </div>
+                        </section>
+                    </div>
                     <!-- Model routing, management, and Core maintenance tools -->
                     <div class="flex flex-wrap items-center gap-2 mb-10 animate-fade-in-up">
                         <button
@@ -57,8 +86,8 @@
                             </div>
                             <div class="grid gap-4 md:grid-cols-3">
                                 <template x-for="route in [
-                                    {id:'work_chat', title:'Chat 默认模型', description:'新建普通对话时使用；默认采用 API 默认模型。'},
-                                    {id:'work_agent', title:'Agent 默认模型', description:'新建 Agent 对话时使用；默认采用 API 默认模型。也可手动选择其它对话模型。'},
+                                    {id:'work_chat', title:window.t('models.defaults.work_chat.title'), description:window.t('models.defaults.work_chat.description')},
+                                    {id:'work_agent', title:window.t('models.defaults.work_agent.title'), description:window.t('models.defaults.work_agent.description')},
                                     {id:'work_simple', title:window.t('models.defaults.work_simple.title'), description:window.t('models.defaults.work_simple.description')},
                                     {id:'work_standard', title:window.t('models.defaults.work_standard.title'), description:window.t('models.defaults.work_standard.description')},
                                     {id:'work_complex', title:window.t('models.defaults.work_complex.title'), description:window.t('models.defaults.work_complex.description')}
@@ -236,6 +265,18 @@
                                 </template>
                                 <div x-show="!modelManager.fusion.length" class="px-6 py-12 text-center text-sm text-neutral-500">No Fusion models configured.</div>
                             </div>
+                        </div>
+
+                        <div x-show="!modelManagerLoading && managerSection === 'video_byok'" class="space-y-4">
+                            <div><h4 class="text-sm font-semibold text-neutral-800">视频 API (BYOK)</h4><p class="text-xs text-neutral-500">在模型中统一保存视频服务商密钥；视频工坊只选择模型。请求直接发送给服务商，不经过 AI2Apps Cloud 生成服务。</p></div>
+                            <template x-for="provider in videoByokProviders" :key="provider.id">
+                                <div class="bg-white rounded-2xl border border-neutral-200 p-5 space-y-3">
+                                    <div class="flex items-start justify-between gap-3"><div><h5 class="font-semibold text-neutral-800" x-text="provider.name"></h5><p class="text-xs text-neutral-500" x-text="(provider.modelIds || [provider.modelId]).join(' · ')"></p></div><span class="px-2 py-1 rounded-full text-xs font-semibold" :class="provider.configured ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'" x-text="provider.configured ? '已配置' : '需要 API Key'"></span></div>
+                                    <label class="block text-xs font-medium text-neutral-700">API Key<input type="password" autocomplete="off" x-model="videoByokKeys[provider.id]" placeholder="粘贴服务商提供的 API Key" class="mt-1 w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm"></label>
+                                    <div class="flex flex-wrap gap-2"><button type="button" @click="saveVideoByokProvider(provider)" :disabled="videoByokBusy[provider.id] || !videoByokKeys[provider.id]" class="px-4 py-2 rounded-xl bg-neutral-900 text-white text-xs font-semibold disabled:opacity-40">保存密钥</button><button type="button" x-show="provider.configured" @click="removeVideoByokProvider(provider)" :disabled="videoByokBusy[provider.id]" class="px-4 py-2 rounded-xl border border-neutral-200 text-xs font-semibold disabled:opacity-40">移除密钥</button></div>
+                                    <p class="text-[11px] text-neutral-500">密钥按当前用户保存在本机密钥库，不会显示在模型目录或生成记录中。服务商会按自己的计费规则扣费。</p>
+                                </div>
+                            </template>
                         </div>
 
                         <div x-show="!modelManagerLoading && managerSection === 'cloud'">

@@ -15,7 +15,10 @@ import test_parameter_forms as forms
 @pytest.mark.parametrize('owner', ['fixture.alpha', 'package.beta'])
 async def test_chat_configuration_reconnect_guards_and_no_business_submission(runtime,monkeypatch,owner):
     key=owner+'.chat-config'
-    async def describe(*args): return {'install':{'appId':owner,'capability':'fixture.compute'}}
+    inline = owner == 'fixture.alpha'
+    async def describe(*args):
+        return {'install': {'appId': owner, 'capability': 'fixture.compute'},
+                'inline_setup': inline, 'configuration_required': True}
     register_form(ParameterForm(key,owner,{'type':'object','properties':{'text':{'type':'string'}},'additionalProperties':False},(),describe=describe,provider_version='1'))
     monkeypatch.setattr(forms,'ARGS',{'request_id':'config-'+owner,'capability':key,'initial_values':{'text':'preserved'}})
     repo=ProvisioningSessionRepository(runtime.database);calls=[]
@@ -46,6 +49,7 @@ async def test_chat_configuration_reconnect_guards_and_no_business_submission(ru
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url='http://test') as client:
             assert (await client.get(base+'/setup/session')).json()['session'] is None
             state=(await client.get(base)).json()
+            assert state['inline_setup'] is inline
             first=await client.post(base+'/setup/session');assert first.status_code==200,first.text
             identifier=first.json()['session']['id']
             assert (await client.post(base+'/setup/session')).json()['session']['id']==identifier

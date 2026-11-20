@@ -1,0 +1,37 @@
+{
+  "schema": "ai2apps.checkpoint-build/v1",
+  "distributionId": "dist_ai2apps_musetalk_unet_2bcb936e_v1",
+  "modelId": "ai2apps.model.musetalk-cuda/default",
+  "repoId": "TMElyralab/MuseTalk",
+  "revision": "2bcb936e2fddb4d86db4c62fd45b387d0c061571",
+  "format": "pytorch",
+  "quantization": "fp32",
+  "pieceSize": 8388608,
+  "license": {
+    "id": "MIT",
+    "name": "MIT License",
+    "termsUrl": "https://huggingface.co/TMElyralab/MuseTalk/resolve/2bcb936e2fddb4d86db4c62fd45b387d0c061571/LICENSE.txt",
+    "termsHash": "sha256:992ec5fd1dd4964cfa003665196cd0c0c10a7a5aa10109991e964eebd2c7f116",
+    "usagePolicy": "license_terms",
+    "accessPolicy": "public",
+    "redistributionPolicy": "allowed"
+  },
+  "includePatterns": [
+    "musetalkV15/musetalk.json",
+    "musetalkV15/unet.pth"
+  ],
+  "sourceRepositories": [
+    {
+      "type": "huggingface",
+      "repoId": "TMElyralab/MuseTalk",
+      "revision": "2bcb936e2fddb4d86db4c62fd45b387d0c061571",
+      "access": "public_anonymous"
+    },
+    {
+      "type": "modelscope",
+      "repoId": "AI-ModelScope/MuseTalk",
+      "revision": "85beef24bd9d472f66e557aef37f4032b263776e",
+      "access": "public_anonymous"
+    }
+  ]
+}

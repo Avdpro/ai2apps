@@ -349,7 +349,8 @@ async def test_gateway_propagates_cancellation_and_records_it(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_gateway_persists_progress_and_explicit_bounded_retry(tmp_path):
+@pytest.mark.parametrize("effectful", [False, True])
+async def test_gateway_persists_progress_and_explicit_bounded_retry(tmp_path, effectful):
     runtime = _runtime(tmp_path)
     service = runtime.services.ensure_service(
         service_key="example.retry",
@@ -374,10 +375,12 @@ async def test_gateway_persists_progress_and_explicit_bounded_retry(tmp_path):
             "properties": {"attempt": {"type": "integer"}},
             "required": ["attempt"],
         },
+        effects=("write",) if effectful else (),
         retry_policy={
             "max_attempts": 2,
             "backoff_ms": 0,
             "retry_codes": ["provider_error"],
+            "allow_effect_replay": effectful,
         },
     )
     attempts = 0
@@ -394,15 +397,19 @@ async def test_gateway_persists_progress_and_explicit_bounded_retry(tmp_path):
     runtime.service_registry.bind_tool(
         "fixture.retry", provider_key=instance.provider_key, handler=retry
     )
-    result = await runtime.tools.execute(
-        "fixture.retry",
-        {},
-        context=ToolCallContext(
-            caller_id="agent:test",
-            trace_id="run_retry",
-            progress_reporter=observed_progress.append,
-        ),
+    context = ToolCallContext(
+        caller_id="agent:test",
+        trace_id="run_retry",
+        progress_reporter=observed_progress.append,
     )
+    if effectful:
+        with pytest.raises(ToolGatewayError) as caught:
+            await runtime.tools.execute("fixture.retry", {}, context=context)
+        invocation = runtime.services.get_invocation(caught.value.invocation_id)
+        assert attempts == invocation.attempt == 1
+        assert invocation.status is ToolInvocationStatus.FAILED
+        return
+    result = await runtime.tools.execute("fixture.retry", {}, context=context)
     invocation = runtime.services.get_invocation(result.invocation_id)
     events = runtime.events.list_after(subject_id=result.tool_id, limit=20)
 

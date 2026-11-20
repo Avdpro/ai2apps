@@ -110,6 +110,12 @@
                     </div>
                 </section>
 
+                <button class="desktop-home-bot-entry" type="button" data-home-app-id="ai2apps.messager">
+                    <span class="desktop-home-app-icon"><i data-lucide="messages-square"></i></span>
+                    <span class="desktop-home-bot-copy"><strong>{{ t('shell.home.bot.title') }}</strong><small>{{ t('shell.home.bot.description') }}</small></span>
+                    <span class="desktop-home-bot-action">{{ t('shell.home.bot.action') }} <i data-lucide="arrow-right"></i></span>
+                </button>
+
                 <section class="desktop-home-account" data-desktop-home-account hidden aria-live="polite">
                     <span class="desktop-home-account-icon"><i data-lucide="circle-user-round"></i></span>
                     <div class="desktop-home-account-copy">
@@ -140,6 +146,7 @@
         <div class="app-loading" aria-live="polite" hidden>
             <span class="app-loading-mark"></span>
             <span>{{ t('shell.opening_app') }}</span>
+            <strong class="app-loading-name"></strong>
         </div>
     </main>
 
@@ -184,6 +191,7 @@
                 <button type="button" data-control-tab="capabilities">Capabilities & Tools</button>
                 <button type="button" data-control-tab="approvals">Approvals</button>
                 <button type="button" data-control-tab="grants">Grants</button>
+                <button type="button" data-hook-permissions>{{ t('messager.hooks.package_permissions') }}</button>
                 <button type="button" data-control-tab="trust">Package Trust</button>
                 <button type="button" data-control-tab="patches">Patch Conflicts</button>
             </nav>
@@ -197,7 +205,7 @@
             aria-label="Close App actions" hidden></button>
     <div class="dock-context-menu" role="menu" aria-label="App actions" hidden>
         <div class="dock-context-heading">
-            <i data-context-icon data-lucide="app-window"></i>
+            <span data-context-icon></span>
             <span data-context-name>App</span>
         </div>
         <button type="button" role="menuitem" data-dock-menu-action="switch">
@@ -239,5 +247,5 @@ window.AI2APPS_SHELL_BOOT = {
 {% block scripts %}
 <script src="{{ static('js/capability_tree.js') }}"></script>
 <script src="{{ static('js/desktop_mobile_agent.js') }}"></script>
-<script src="{{ static('js/chat_context_handoff.js') }}?v=20261024-2"></script><script src="{{ static('js/shell.js') }}?v=bounded-reading-20261024"></script>
+<script src="{{ static('js/chat_context_handoff.js') }}?v=20261024-2"></script><script src="{{ static('js/shell.js') }}?v=comapps-reload"></script>
 {% endblock %}

@@ -21,7 +21,7 @@ DECLARATION = {
     'instructions': [
         'Trip Planner researches travel only: never reserve, select a fare/room, book or pay.',
         'When sources are omitted or auto, prefer Ctrip for flights wholly within China and hotels in China; explicit sources always win. For other destinations use Google Flights/Booking. Do not treat Chinese input language as proof of domestic travel.',
-        'Use travel.flights for flight quotes, travel.hotels for lodging, travel.guide for sightseeing research and itinerary suggestions. Ask for missing dates/cities; never infer an airport code or exact location.',
+        'Use travel.flights for flight quotes, travel.hotels for lodging, travel.guide for sightseeing research and itinerary suggestions. Resolve required cities and dates from the current task and prior conversation. Ask only for unresolved required cities or dates. Omit optional airport fields unless the user specified an airport. Invoke flight and hotel queries directly when required inputs are known.',
         'Use explicit origin_airport, destination_airport and excluded_airports for airport restrictions. An excluded airport must not be inferred as a different requested airport; preserve user scope and verify actual candidate airport evidence.',
         'Flights default to outbound only. Do not assume a return journey or date; require return_date only for explicitly selected both/return directions. Outbound quotes can be round-trip references; independent return one-way quotes cannot be added to them as a paired total.',
         'Use travel.refine with recent same-Session source_tasks to filter observed offers or propose changed criteria. A requery proposal is not execution or authority: review changes with the user, then call the affected flight/hotel capability with the reviewed parameters.',
@@ -276,7 +276,7 @@ def install(runtime,register):
              'guide':'Research destination sightseeing and generate a source-grounded itinerary; snippets remain unverified leads.',
              'refine':'Filter existing same-Session travel offers or propose changed criteria; never auto-execute a proposed requery.'}[operation],
             schema(operation),execute,mini=MINI,agent_context=DECLARATION,
-            effects=('external_read','network'),timeout_ms=900000,selection_required=operation!='refine',
+            effects=('external_read','network'),timeout_ms=900000,selection_required=operation=='guide',
             discovery_context=discover,field_labels=LABELS,option_labels=OPTIONS,
             form_name={'zh':zh,'en':en},form_summary={'zh':'仅查询与建议，不预订或付款；缺少条件时先补齐并确认。',
                                                   'en':'Research and suggestions only. Review missing criteria first; never book or pay.'})

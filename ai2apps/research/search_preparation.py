@@ -13,6 +13,31 @@ from ai2apps.browser.mini_apps import WebAgentMiniAppBroker
 
 MINI='ai2apps.search-all'
 
+def automatic_values(runtime, principal, args, context):
+    """Resolve ordinary task searches without accepting model-supplied consent."""
+    binding = runtime.app_chat.binding(context.session_id) if context.trace_id else None
+    owner = runtime.app_chat.owners.get(binding['registration']) if binding else None
+    query = args.get('query')
+    if (not owner or not owner.allow_tool_approval or binding['owner'] != principal.actor_user_id
+            or not isinstance(query, str) or not query.strip() or args.get('preparation_id')
+            or any(args.get(key) for key in ('cloud_consent', 'cloud_price_version', 'cloud_max_points'))):
+        return None
+    from ai2apps.browser.search_api import byok_available
+    fast = fast_source(runtime, principal.actor_user_id)
+    byok = byok_available(runtime, principal.actor_user_id)
+    sources = args.get('sources')
+    mode = args.get('mode', 'fast')
+    if sources and 'deepseek' in sources and not byok:
+        return None
+    if not sources:
+        if mode == 'fast' and fast == 'deepseek' and not byok:
+            mode = 'custom'
+        sources = [fast if mode == 'fast' else 'google']
+    values = {key: args[key] for key in (
+        'query', 'limit', 'profile', 'exclude_ads', 'retain_pages', 'x_sort', 'xiaohongshu_sort'
+    ) if key in args}
+    return {'limit': 5, 'profile': 'default', **values, 'mode': mode, 'sources': sources}
+
 def initialize(database):
     from ai2apps.browser.cloud_search import initialize as cloud_initialize
     cloud_initialize(database)

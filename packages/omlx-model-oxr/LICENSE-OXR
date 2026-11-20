@@ -1,0 +1,140 @@
+# OXR License
+
+Copyright (c) 2026 SoMark Team
+
+OXR is licensed under the Apache License, Version 2.0, subject to the
+additional terms below. These additional terms take precedence in the event
+of a conflict; otherwise, Apache License 2.0 applies.
+
+## 1. Commercial License and Thresholds
+
+Commercial use of OXR and its Derivative Works is permitted without a
+separate commercial license only while you and your Affiliates, on a
+consolidated basis, do not exceed either of the following thresholds:
+
+(a) USD 2,000,000 in Total Funding; or
+(b) USD 2,000,000 in Annual Revenue.
+
+If either threshold is exceeded, you must obtain a separate commercial
+license from SoMark Team before commencing or continuing commercial use.
+Being below these thresholds does not waive any other term of this License,
+including the competing hosted API restriction in Section 3.
+
+## 2. Online Service Attribution
+
+When providing an online service to third parties using OXR or its Derivative
+Works, you must prominently identify SoMark OXR in the service's user interface or
+publicly accessible documentation.
+
+## 3. Competing Hosted API Services
+
+Unless expressly authorized in advance by a separate written license from
+SoMark Team, you may not use OXR or its Derivative Works to offer, operate,
+or make available to third parties a hosted API service that competes with
+a hosted API service offered by SoMark Team or its Affiliates.
+
+This restriction includes services offered through a reseller, a white-label
+arrangement, or an intermediary interface, whether paid or free. A competing
+hosted API service is one whose principal functionality provides document
+parsing, optical character recognition (OCR), document layout analysis, or
+document content extraction as a substitute for substantially similar
+functionality of a hosted API service offered by SoMark Team or its Affiliates.
+
+This restriction applies regardless of Total Funding or Annual Revenue.
+Use solely within your organization and its Affiliates, without offering such
+a service to third parties, is not prohibited by this Section; all other
+terms of this License still apply.
+
+## 4. Termination
+
+Your rights under this License terminate automatically, without notice from
+SoMark Team, if you fail to obtain a commercial license as required by
+Section 1, fail to comply with Section 2, or violate Section 3.
+
+## 5. Definitions and Scope
+
+"Affiliates" are entities that directly or indirectly control you, are
+controlled by you, or share common control with you. "Control" means the
+power to direct an entity's management or operations through ownership,
+voting rights, contractual rights, or other means.
+
+"Total Funding" means cumulative equity and debt financing raised from all
+sources by you and your Affiliates, on a consolidated basis, excluding
+intra-group transactions to avoid double counting.
+
+"Annual Revenue" means the gross revenue of you and your Affiliates for the
+most recently completed fiscal year, on a consolidated basis, excluding
+intra-group transactions to avoid double counting. Amounts in other
+currencies are measured at their US dollar equivalent.
+
+"Derivative Works" has the meaning given in Apache License 2.0. When
+redistributing OXR or its Derivative Works, you must include these additional
+terms together with Apache License 2.0. Third-party components separately
+identified as being under other licenses remain governed by those licenses.
+
+The full text of Apache License 2.0 is available at
+https://www.apache.org/licenses/LICENSE-2.0 .
+
+---
+
+# OXR 许可协议
+
+版权所有 (c) 2026 SoMark Team
+
+OXR 依据 Apache License 2.0 进行许可，同时受下列附加条款约束。若存在冲突，
+以本附加条款为准；其他事项适用 Apache License 2.0。
+
+## 1. 商业许可与门槛
+
+仅当您及您的关联方按合并口径计算，均未超过以下任一门槛时，方可无需另行
+取得商业许可而将 OXR 及其衍生作品用于商业用途：
+
+(a) 累计融资总额 2,000,000 美元；或
+(b) 年度总收入 2,000,000 美元。
+
+一旦超过任一门槛，您必须在开始或继续商业使用之前，从 SoMark Team 取得
+单独的商业许可。未超过上述门槛并不免除本许可中的其他义务，包括第 3 条
+关于竞争性托管 API 服务的限制。
+
+## 2. 在线服务标识义务
+
+如果您使用 OXR 或其衍生作品向第三方提供在线服务，必须在该服务的用户界面
+或公开可访问的文档中，显著标明使用了 SoMark OXR。
+
+## 3. 竞争性托管 API 服务限制
+
+除非事先通过与 SoMark Team 签订单独的书面许可取得明确授权，否则您不得
+使用 OXR 或其衍生作品，向第三方提供、运营或开放与 SoMark Team 或其关联方
+所提供的托管 API 服务构成竞争的托管 API 服务。
+
+本限制包括通过转售、白标或中间接口提供的服务，无论收费或免费。竞争性
+托管 API 服务，是指以文档解析、光学字符识别（OCR）、文档版面分析或文档
+内容提取为主要功能，并能够替代 SoMark Team 或其关联方提供的托管 API
+服务中实质相似功能的服务。
+
+本限制不受累计融资总额或年度总收入门槛影响。仅在您所属组织及其关联方内部
+使用，且不向第三方提供上述服务的，不属于本条禁止的行为；本许可的其他
+条款仍然适用。
+
+## 4. 许可终止
+
+如果您未按第 1 条要求取得商业许可、未遵守第 2 条标识义务，或违反第 3 条，
+您在本许可项下的权利将自动终止，SoMark Team 无须另行通知。
+
+## 5. 定义与适用范围
+
+“关联方”是指直接或间接控制您、受您控制，或与您处于共同控制之下的实体。
+“控制”是指通过所有权、表决权、合同权利或其他方式，决定某一实体管理或
+经营事项的能力。
+
+“累计融资总额”是指您及您的关联方按合并口径计算，从所有来源累计取得的
+股权融资和债务融资总额，剔除集团内部交易以避免重复计算。
+
+“年度总收入”是指您及您的关联方最近一个已结束财年的总收入，按合并口径
+计算，并剔除集团内部交易以避免重复计算。其他币种金额按其等值美元计算。
+
+“衍生作品”的含义与 Apache License 2.0 中的定义一致。再分发 OXR 或其
+衍生作品时，必须同时附上本附加条款和 Apache License 2.0。单独标明适用
+其他许可的第三方组件，仍受各自许可约束。
+
+Apache License 2.0 全文见：https://www.apache.org/licenses/LICENSE-2.0 。

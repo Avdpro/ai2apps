@@ -57,8 +57,10 @@ async def test_background_run_resumes_same_history_without_confirmation(runtime,
  args={'prompt':'fixture','model':'fixture'} if app!=CASES[2][0] else {'text':'fixture','model_id':'fixture'}
  async def model(request):
   outputs=[json.loads(m['content']) for m in request['messages'] if m.get('role')=='tool']
+  selected_args=({**args,'provider':providers[0].id}
+                 if any(o.get('error',{}).get('code')=='provider_selection_required' for o in outputs) else args)
   if any(o.get('status')=='completed' for o in outputs):message={'role':'assistant','content':'后台结果已保存'}
-  else:message={'role':'assistant','content':None,'tool_calls':[{'id':'next','type':'function','function':{'name':_tool_alias(cap),'arguments':json.dumps(args)}}]}
+  else:message={'role':'assistant','content':None,'tool_calls':[{'id':'next','type':'function','function':{'name':_tool_alias(cap),'arguments':json.dumps(selected_args)}}]}
   return {'choices':[{'message':message,'finish_reason':'tool_calls' if 'tool_calls' in message else 'stop'}]}
  runtime.agent_runtime.bind_model_provider(model);await runtime.start_background_tasks(retention_interval_seconds=60)
  try:

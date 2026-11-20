@@ -1,0 +1,3 @@
+MiniMax-H3-Image is licensed under the MiniMax-H3-Image Community License Agreement, Copyright © 2026 MiniMax. All Rights Reserved.
+
+The native MLX inference implementation reuses portions of PipeNetwork/minimax-h3-mlx, revision b2f7e4d2b7861cefe68b75e4b59ab81cc4e7c318, under Apache-2.0. The staged adapter and the 2D image decoder are AI2Apps modifications. See the included code license.

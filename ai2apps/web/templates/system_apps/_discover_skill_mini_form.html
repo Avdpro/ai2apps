@@ -1,0 +1,72 @@
+<form @submit.prevent="createMiniApp()" class="discover-section" style="display:grid;gap:14px">
+    <h3 x-text="label('Create Mini-App', '创建 Mini-App')"></h3>
+    <label style="display:grid;gap:5px">
+        <span x-text="label('Mini-App name', 'Mini-App 名称')"></span>
+        <input class="discover-button" style="text-align:left" x-model.trim="miniDraft.title" maxlength="80" required>
+    </label>
+    <label style="display:grid;gap:5px">
+        <span x-text="label('Studio', '工作室')"></span>
+        <select class="discover-button" x-model="miniDraft.studio" required>
+            <option value="" x-text="label('Choose a Studio', '选择工作室')"></option>
+            <template x-for="studio in miniStudios" :key="studio.id">
+                <option :value="studio.id" :disabled="!studio.compatible"
+                    x-text="label(studio.name, studio.name_zh) + (studio.compatible ? '' : label(' · Image workflow unavailable', ' · 暂不支持此图像流程'))"></option>
+            </template>
+        </select>
+    </label>
+    <p class="discover-meta" x-text="label('Output: one image in Studio Output', '结果：一张图片，显示在工作室输出区')"></p>
+    <template x-for="(field, index) in miniDraft.parameters" :key="field.rowId">
+        <fieldset class="discover-card" style="display:grid;min-height:0;gap:8px">
+            <legend x-text="label('Parameter', '参数') + ' ' + (index + 1)"></legend>
+            <div class="discover-card-actions" style="flex-wrap:wrap">
+                <label><span x-text="label('Field key', '字段键')"></span>
+                    <input class="discover-button" x-model.trim="field.key" pattern="[a-z][a-z0-9_]{0,39}" placeholder="topic" required>
+                </label>
+                <label><span x-text="label('Field label', '字段名称')"></span>
+                    <input class="discover-button" x-model.trim="field.label" maxlength="80" required>
+                </label>
+                <label><span x-text="label('Field type', '字段类型')"></span>
+                    <select class="discover-button" x-model="field.type" @change="field.default=''">
+                        <option value="text" x-text="label('Short text', '短文本')"></option>
+                        <option value="multiline" x-text="label('Long text', '多行文本')"></option>
+                        <option value="number" x-text="label('Number', '数字')"></option>
+                        <option value="boolean" x-text="label('Switch', '开关')"></option>
+                        <option value="choice" x-text="label('Choice', '选项')"></option>
+                        <option value="image" x-text="label('Gallery image', '素材库图片')"></option>
+                    </select>
+                </label>
+            </div>
+            <label x-show="field.type === 'choice'" style="display:grid">
+                <span x-text="label('Options, one per line', '选项，每行一个')"></span>
+                <textarea class="discover-button" style="text-align:left" rows="3" maxlength="2500"
+                    :required="field.type === 'choice'" x-model="field.options"></textarea>
+            </label>
+            <template x-if="field.type !== 'image'">
+                <label style="display:grid">
+                    <span x-text="label('Default value', '默认值')"></span>
+                    <select class="discover-button" x-show="field.type === 'boolean'" x-model="field.default" :aria-label="label('Default value', '默认值')">
+                        <option value="" x-text="label('No default', '无默认值')"></option>
+                        <option value="true" x-text="label('On', '开启')"></option>
+                        <option value="false" x-text="label('Off', '关闭')"></option>
+                    </select>
+                    <textarea class="discover-button" style="text-align:left" x-show="field.type === 'multiline'" x-model="field.default"
+                        maxlength="4000" :aria-label="label('Default value', '默认值')"></textarea>
+                    <input class="discover-button" style="text-align:left" x-show="!['boolean','multiline'].includes(field.type)"
+                        :type="field.type === 'number' ? 'number' : 'text'" step="any" maxlength="300" x-model="field.default"
+                        :aria-label="label('Default value', '默认值')">
+                </label>
+            </template>
+            <div class="discover-card-actions">
+                <label><input type="checkbox" x-model="field.required"><span x-text="label('Required', '必填')"></span></label>
+                <button type="button" class="discover-button" :disabled="miniDraft.parameters.length <= 1" @click="miniDraft.parameters.splice(index, 1)"
+                    x-text="label('Remove parameter', '移除参数')"></button>
+            </div>
+        </fieldset>
+    </template>
+    <div class="discover-card-actions" style="flex-wrap:wrap">
+        <button type="button" class="discover-button" :disabled="miniDraft.parameters.length >= 12" @click="addMiniParameter()"
+            x-text="label('Add parameter', '添加参数')"></button>
+        <button type="submit" class="discover-button primary" :disabled="busySkills" x-text="label('Create and add to Studio', '创建并加入工作室')"></button>
+        <button type="button" class="discover-button" :disabled="busySkills" @click="miniDraft=null" x-text="label('Cancel', '取消')"></button>
+    </div>
+</form>

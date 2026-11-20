@@ -1,0 +1,81 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/model-ace-step-cuda",
+    "type": "service",
+    "version": "0.1.0",
+    "displayName": "ACE-Step 1.5 Turbo CUDA",
+    "description": "CUDA music generation with optional lyrics, 10\u2013120 seconds, using fixed official ACE-Step inputs."
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": [
+      "linux"
+    ],
+    "architectures": [
+      "arm64"
+    ]
+  },
+  "entrypoints": [
+    {
+      "name": "model-worker",
+      "kind": "service",
+      "path": "service.yaml"
+    }
+  ],
+  "permissions": [
+    {
+      "capability": "model-weights.huggingface-cache.read",
+      "reason": "Generate music using the fixed ACE-Step checkpoint and CUDA Runtime.",
+      "required": true
+    },
+    {
+      "capability": "accelerator.cuda",
+      "reason": "Generate music using the fixed ACE-Step checkpoint and CUDA Runtime.",
+      "required": true
+    }
+  ],
+  "dependencies": [
+    {
+      "packageId": "ai2apps/runtime-cuda-torch",
+      "version": ">=0.6.0 <1.0.0",
+      "optional": false
+    }
+  ],
+  "files": [],
+  "sbom": {
+    "format": "spdx-json-2.3",
+    "path": "META/sbom.spdx.json"
+  },
+  "discovery": {
+    "kind": "model",
+    "categories": [
+      "speech"
+    ],
+    "tasks": [
+      "music-generation"
+    ]
+  },
+  "modelInstall": {
+    "serviceKey": "ai2apps.model.ace-step-cuda",
+    "models": [
+      {
+        "id": "ai2apps.model.ace-step-cuda/turbo",
+        "label": "Turbo",
+        "recommended": true
+      }
+    ]
+  },
+  "modelProfile": {
+    "sizeBytes": 10091984223,
+    "minimumMemoryBytes": 51539607552,
+    "scores": {
+      "speed": 4,
+      "capability": 3
+    },
+    "benchmark": {
+      "label": "Conservative memory estimate; scores provisional, CUDA evidence retained; signed installation pending",
+      "device": "NVIDIA DGX Spark GB10"
+    }
+  }
+}

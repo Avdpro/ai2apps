@@ -1,0 +1,142 @@
+<section x-data="discoverSkills()" x-init="perform(() => loadSkills())" aria-label="Skills">
+    <div class="discover-section">
+        <div class="discover-card-actions">
+            <button class="discover-button primary" :disabled="busySkills" @click="$refs.newFolder.click()" x-text="label('Import folder', '导入本地目录')"></button>
+            <input hidden type="file" webkitdirectory multiple x-ref="newFolder" @change="previewLocal($event)">
+        </div>
+        <form class="discover-card-actions" @submit.prevent="lookupGithub()">
+            <input class="discover-button" style="flex:1;min-width:0;text-align:left" type="url" x-model="githubUrl"
+                @input="github=null;preview=null" placeholder="https://github.com/…"
+                :aria-label="label('GitHub repository or folder URL', 'GitHub 仓库或目录链接')" :disabled="busySkills" required>
+            <button class="discover-button" :disabled="busySkills" x-text="label('Find Skills', '查找 Skill')"></button>
+        </form>
+        <div class="discover-card-actions" x-show="github && github.folders.length > 1">
+            <select class="discover-button" style="max-width:75%" x-model="folder" :disabled="busySkills"
+                :aria-label="label('Skill folder', 'Skill 目录')">
+                <template x-for="path in (github?.folders || [])" :key="path">
+                    <option :value="path" x-text="path || label('Repository root', '仓库根目录')"></option>
+                </template>
+            </select>
+            <button class="discover-button" :disabled="busySkills" @click="perform(() => readGithubPreview())"
+                x-text="label('Preview', '预览')"></button>
+        </div>
+    </div>
+    <p role="status" class="discover-meta" x-show="busySkills" x-text="label('Working…', '处理中…')"></p>
+    <p role="alert" class="discover-alert" x-show="skillError" x-text="skillError"></p>
+    <template x-if="preview || details">
+        <article class="discover-card" style="margin:16px 0;min-height:0;overflow-wrap:anywhere">
+            <h2 x-text="(preview || details).name"></h2>
+            <p x-text="(preview || details).description"></p>
+            <p class="discover-meta" x-text="sourceLabel(preview || details) + ' · ' + ((preview || details).source.commit || (preview || details).revision).slice(0,12)"></p>
+            <p x-show="(preview || details).license" x-text="label('License', '许可证') + ' · ' + (preview || details).license"></p>
+            <p x-show="(preview || details).requirements" x-text="(preview || details).requirements"></p>
+            <p x-show="(preview || details).tools" x-text="label('Declared tools', '声明的工具') + ' · ' + (preview || details).tools"></p>
+            <p class="discover-compatibility" x-show="(preview || details).unsupported.length"
+                x-text="label('Host-specific features', '依赖原宿主的功能') + ' · ' + (preview || details).unsupported.join(', ')"></p>
+            <template x-if="preview?.changes">
+                <ul>
+                    <template x-for="[kind, paths] in Object.entries(preview.changes)" :key="kind">
+                        <li x-show="paths.length" x-text="({added: label('Added', '新增'), removed: label('Removed', '移除'), modified: label('Changed', '更改')})[kind] + ' · ' + paths.join(', ')"></li>
+                    </template>
+                    <li x-show="!Object.values(preview.changes).some(paths => paths.length)" x-text="label('No file changes', '文件没有变化')"></li>
+                </ul>
+            </template>
+            <details>
+                <summary x-text="label('Files', '文件') + ' (' + (preview || details).files.length + ')'"></summary>
+                <ul><template x-for="path in (preview || details).files" :key="path"><li x-text="path"></li></template></ul>
+            </details>
+            <pre style="max-height:260px;overflow:auto;white-space:pre-wrap" x-text="(preview || details).markdown"></pre>
+            <div class="discover-card-actions">
+                <button x-show="preview" class="discover-button primary" :disabled="busySkills" @click="commitPreview()"
+                    x-text="preview?.changes ? label('Apply update', '应用更新') : label('Install Skill', '安装 Skill')"></button>
+                <button x-show="preview" class="discover-button" :disabled="busySkills"
+                    :aria-expanded="!!currentReview" @click="currentReview ? reviewPlan=null : openReview()"
+                    x-text="label('Safety review', '安全评估')"></button>
+                <button x-show="!preview && details?.user_invocable && !details?.unsupported.length && !miniDraft"
+                    class="discover-button primary" :disabled="busySkills" @click="openMiniCreator()"
+                    x-text="label('Create Mini-App', '创建 Mini-App')"></button>
+                <button class="discover-button" :disabled="busySkills" @click="preview=null;details=null;miniDraft=null;createdMini=null"
+                    x-text="label('Close', '关闭')"></button>
+            </div>
+            <template x-if="!preview && details && miniDraft">
+                {% include "system_apps/_discover_skill_mini_form.html" %}
+            </template>
+            <template x-if="!preview && details && createdMini">
+                <div class="discover-card-actions" role="status">
+                    <span x-text="label('Created', '已创建') + ' · ' + createdMini.title"></span>
+                    <a class="discover-button primary" target="_top" :href="'/apps/' + createdMini.studio"
+                        x-text="label('Open Imagine Studio', '打开图像工作室')"></a>
+                </div>
+            </template>
+            <template x-if="currentReview">
+                <section class="discover-section" :aria-label="label('Safety review', '安全评估')">
+                    <h3 x-text="label('Safety review', '安全评估')"></h3>
+                    <p class="discover-meta" x-text="sourceLabel(currentReview) + ' · ' + currentReview.revision.slice(0, 12)"></p>
+                    <p x-show="preview?.changes" class="discover-meta"
+                        x-text="label('Review findings apply to one version. Review updated files again.', '报告仅适用于对应版本。更新后的文件可重新评估。')"></p>
+                    <p x-show="currentReview.model"
+                        x-text="currentReview.model + ' · ' + reviewDestination(currentReview.destination)"></p>
+                    <p x-show="!currentReview.model"
+                        x-text="label('Set a Standard task model in the Privacy profile to run a safety review.', '请在隐私配置中设置标准任务模型，再运行安全评估。')"></p>
+                    <details open>
+                        <summary x-text="(currentReport ? label('Reviewed files', '已评估文件') : label('Files to review', '将评估的文件')) + ' (' + currentReview.files.length + ')'"></summary>
+                        <ul><template x-for="path in currentReview.files" :key="path"><li x-text="path"></li></template></ul>
+                    </details>
+                    <details x-show="currentReview.skipped.length">
+                        <summary x-text="label('Partial coverage · Skipped files', '部分覆盖 · 跳过的文件') + ' (' + currentReview.skipped.length + ')'"></summary>
+                        <ul><template x-for="file in currentReview.skipped" :key="file.path">
+                            <li x-text="file.path + ' · ' + reviewReason(file.reason)"></li>
+                        </template></ul>
+                    </details>
+                    <button x-show="!currentReport && currentReview.model && currentReview.files.length" class="discover-button"
+                        :disabled="busySkills" @click="runReview()" x-text="label('Run AI review', '开始 AI 评估')"></button>
+                    <template x-if="currentReport">
+                        <div aria-live="polite">
+                            <p x-show="!currentReport.findings.length"
+                                x-text="label('The AI found no risks in the reviewed files.', 'AI 在已评估的文件中未发现风险。')"></p>
+                            <template x-for="(finding, index) in currentReport.findings" :key="index">
+                                <article style="border-top:1px solid var(--border, #ddd);padding:10px 0">
+                                    <strong x-text="reviewSeverity(finding.severity) + ' · ' + finding.risk"></strong>
+                                    <p class="discover-meta"><code x-text="finding.path + ':' + finding.line"></code></p>
+                                    <blockquote><code x-text="finding.evidence"></code></blockquote>
+                                    <p x-text="finding.recommendation"></p>
+                                </article>
+                            </template>
+                        </div>
+                    </template>
+                </section>
+            </template>
+        </article>
+    </template>
+    <template x-if="removeTarget">
+        <div class="discover-alert" role="alert">
+            <p x-text="label('Uninstall this Skill?', '确定卸载此 Skill？') + ' ' + removeTarget.name"></p>
+            <button class="discover-button danger" :disabled="busySkills" @click="removeSkill()" x-text="label('Uninstall', '卸载')"></button>
+            <button class="discover-button" :disabled="busySkills" @click="removeTarget=null" x-text="label('Cancel', '取消')"></button>
+        </div>
+    </template>
+    <h2 x-text="label('Installed Skills', '已安装的 Skill')"></h2>
+    <div class="discover-grid">
+        <p class="discover-empty" x-show="!busySkills && !items.length" x-text="label('No Skills installed yet.', '还没有安装 Skill。')"></p>
+        <template x-for="item in items" :key="item.id">
+            <article class="discover-card" style="min-height:0;overflow-wrap:anywhere">
+                <h2 x-text="item.name"></h2>
+                <p class="discover-description" x-text="item.description"></p>
+                <p class="discover-meta" x-text="sourceLabel(item) + ' · ' + (item.source.commit || item.revision).slice(0,12)"></p>
+                <div class="discover-card-actions" style="flex-wrap:wrap">
+                    <button class="discover-button" :disabled="busySkills" @click="openSkill(item)" x-text="label('Details', '详情')"></button>
+                    <template x-if="item.source.kind === 'local'">
+                        <span x-data><button class="discover-button" :disabled="busySkills" @click="$refs.updateFolder.click()"
+                            x-text="label('Update', '更新')"></button>
+                            <input hidden type="file" webkitdirectory multiple x-ref="updateFolder" @change="previewLocal($event, item)">
+                        </span>
+                    </template>
+                    <button x-show="item.source.kind === 'github'" class="discover-button" :disabled="busySkills"
+                        @click="perform(() => { preview=null; return readGithubPreview(item); })" x-text="label('Check update', '检查更新')"></button>
+                    <a class="discover-button" :href="'/v1/platform/skills/' + item.id + '/export'" download x-text="label('Export', '导出')"></a>
+                    <button class="discover-button danger" :disabled="busySkills" @click="removeTarget=item" x-text="label('Uninstall', '卸载')"></button>
+                </div>
+            </article>
+        </template>
+    </div>
+</section>

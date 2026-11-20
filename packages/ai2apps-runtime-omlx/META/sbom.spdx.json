@@ -1,7 +1,7 @@
 {
   "spdxVersion": "SPDX-2.3",
   "SPDXID": "SPDXRef-DOCUMENT",
-  "name": "ai2apps-runtime-omlx-1.8.10",
+  "name": "ai2apps-runtime-omlx-1.8.20",
   "dataLicense": "CC0-1.0",
   "packages": [
     {
@@ -49,17 +49,88 @@
     {
       "SPDXID": "SPDXRef-Package-Mflux",
       "name": "mflux",
-      "versionInfo": "0.19.0",
-      "downloadLocation": "https://pypi.org/project/mflux/0.19.0/",
+      "versionInfo": "0.24.0",
+      "downloadLocation": "https://pypi.org/project/mflux/0.24.0/",
       "licenseConcluded": "MIT",
       "licenseDeclared": "MIT",
       "checksums": [
         {
           "algorithm": "SHA256",
-          "checksumValue": "3214044d36dc9e3a371f40ac5206f4449974ad57bc7bd3763385c8ed5abf5e47"
+          "checksumValue": "682368f04a1b2b0871144a8d57b7f7866e84dd0fd2bc3a765d1d57918e21237e"
         }
       ],
-      "comment": "Installed without dependencies; torch/OpenCV-only optional paths are made lazy by the deterministic AI2Apps mlx-only-v3 patch."
+      "comment": "Installed without dependencies; torch/OpenCV-only optional paths are made lazy by the deterministic AI2Apps mlx-only-v4 patch."
+    },
+    {
+      "SPDXID": "SPDXRef-Package-MLXVLM-OXR-Compat",
+      "name": "mlx-vlm-oxr-model-scoped-backport",
+      "versionInfo": "git.8826b1126507cd8e87d125c656e10d119b764d0e",
+      "downloadLocation": "https://github.com/Blaizzy/mlx-vlm/tree/8826b1126507cd8e87d125c656e10d119b764d0e/mlx_vlm/models/oxr",
+      "licenseDeclared": "MIT",
+      "licenseConcluded": "MIT",
+      "filesAnalyzed": false,
+      "comment": "OXR and OXR-local Qwen3/MLP/activation dependencies only; import adjustments documented in omlx/patches/mlx_vlm_oxr_compat/NOTICE.md. Model weights are excluded."
+    },
+    {
+      "SPDXID": "SPDXRef-lancedb",
+      "name": "lancedb",
+      "versionInfo": "0.37.1",
+      "licenseDeclared": "Apache-2.0",
+      "downloadLocation": "https://pypi.org/project/lancedb/0.37.1/"
+    },
+    {
+      "SPDXID": "SPDXRef-pyarrow",
+      "name": "pyarrow",
+      "versionInfo": "25.0.1",
+      "licenseDeclared": "Apache-2.0",
+      "downloadLocation": "https://pypi.org/project/pyarrow/25.0.1/"
+    },
+    {
+      "SPDXID": "SPDXRef-overrides",
+      "name": "overrides",
+      "versionInfo": "7.7.0",
+      "licenseDeclared": "Apache-2.0",
+      "downloadLocation": "https://pypi.org/project/overrides/7.7.0/"
+    },
+    {
+      "SPDXID": "SPDXRef-deprecation",
+      "name": "deprecation",
+      "versionInfo": "2.1.0",
+      "licenseDeclared": "Apache-2.0",
+      "downloadLocation": "https://pypi.org/project/deprecation/2.1.0/"
+    },
+    {
+      "SPDXID": "SPDXRef-lance-namespace",
+      "name": "lance-namespace",
+      "versionInfo": "0.13.0",
+      "licenseDeclared": "Apache-2.0",
+      "downloadLocation": "https://pypi.org/project/lance-namespace/0.13.0/"
+    },
+    {
+      "SPDXID": "SPDXRef-lance-namespace-urllib3-client",
+      "name": "lance-namespace-urllib3-client",
+      "versionInfo": "0.13.0",
+      "licenseDeclared": "Apache-2.0",
+      "downloadLocation": "https://pypi.org/project/lance-namespace-urllib3-client/0.13.0/"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-HaruMLX",
+      "name": "Haru-MLX-inference-core",
+      "versionInfo": "git.7fe6b7665f8bf035998f401f8cb779fbe53f2751",
+      "downloadLocation": "https://github.com/higurashi-ai/Haru/tree/7fe6b7665f8bf035998f401f8cb779fbe53f2751/haru_mlx",
+      "licenseConcluded": "Apache-2.0 AND MIT",
+      "licenseDeclared": "Apache-2.0 AND MIT",
+      "filesAnalyzed": false,
+      "comment": "MLX speech inference core only; upstream VibeVoice codec and mlx-lm attribution retained. No weights, microphone client, web UI or server are vendored."
+    },
+    {
+      "SPDXID": "SPDXRef-Package-OpenCVPython",
+      "name": "opencv-python",
+      "versionInfo": "5.0.0.93",
+      "downloadLocation": "https://pypi.org/project/opencv-python/5.0.0.93/",
+      "licenseDeclared": "Apache-2.0",
+      "licenseConcluded": "NOASSERTION",
+      "comment": "Bounded native video decoding; bundled third-party terms retained in META/licenses and wheel dist-info. No model weights."
     }
   ]
 }

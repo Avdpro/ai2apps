@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import inspect
+from contextlib import ExitStack
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
@@ -11,6 +13,8 @@ from typing import Any
 
 from jsonschema import Draft202012Validator, ValidationError
 
+from ai2apps.capabilities.effects import EXACT_EFFECT_CONFIRMATION, has_mutating_effects, requires_exact_confirmation
+from ai2apps.capabilities.risk_memory import risk_binding, saved_risk
 from ai2apps.core import ResourceNotFoundError, RevisionConflictError
 from ai2apps.events import EventStore
 from ai2apps.identity import IdentityBindingError, IdentityRepository
@@ -206,7 +210,8 @@ class ToolGateway:
         self.repository = repository
         self.registry = registry
         self._secret_resolver: SecretResolver | None = None
-        self.execution_scope = None # Trusted host policy; never populated from Tool arguments.
+        self.execution_scope = None
+        self.execution_guards = [] # Trusted host policy; never populated from Tool arguments.
 
     def bind_secret_resolver(self, resolver: SecretResolver | None) -> None:
         """Resolve secret:// references only after validation and authorization."""
@@ -278,6 +283,7 @@ class ToolGateway:
         visible = []
         services, instances = {}, {}
         for tool in self.repository.list_tools():
+            if any(not guard.visible(context,tool.qualified_name) for guard in self.execution_guards):continue
             if self.execution_scope and not self.execution_scope.visible(context, tool.qualified_name):
                 continue
             if tool_filter is not None and not tool_filter(tool):
@@ -308,11 +314,20 @@ class ToolGateway:
             visible.append(tool)
         return tuple(visible)
 
+    def risk_variant(self, tool_name, arguments, capabilities):
+        provider = arguments.get("provider")
+        selected = provider if isinstance(provider, str) and len(provider) <= 256 else None
+        provider_versions = getattr(self.execution_scope, "risk_providers", None)
+        return [hashlib.sha256(selected.encode()).hexdigest() if selected else None, sorted(capabilities),
+                provider_versions(tool_name, selected) if provider_versions else []]
+
     @staticmethod
     def required_capabilities(tool, arguments: dict[str, Any]) -> frozenset[str]:
         """Resolve static plus declarative argument-dependent capabilities."""
 
         required = set(tool.required_capabilities)
+        if requires_exact_confirmation(tool.effects):
+            required.add(EXACT_EFFECT_CONFIRMATION)
         for rule in tool.capability_rules:
             condition = rule.get("when", {})
             property_name = condition.get("property")
@@ -383,11 +398,13 @@ class ToolGateway:
         *,
         context: ToolCallContext,
         timeout_ms: int | None = None,
+        remembered_risk_binding: str | None = None,
     ) -> ToolExecutionResult:
         try:
             tool = self.repository.get_tool(qualified_name)
         except ResourceNotFoundError as exc:
             raise ToolGatewayError("tool_not_found", str(exc)) from exc
+        for guard in self.execution_guards:guard.authorize(context,qualified_name,arguments)
         scoped_grant = self.execution_scope.authorize(context, qualified_name, arguments) if self.execution_scope else False
         service = self.repository.get_service(tool.service_id)
         instance = self.repository.get_instance_for_service(tool.service_id)
@@ -416,9 +433,20 @@ class ToolGateway:
                 "provider_identity_mismatch",
                 f"Bound provider does not own {qualified_name}",
             )
-        missing = sorted(
-            self.required_capabilities(tool, arguments) - (self.required_capabilities(tool, arguments) if scoped_grant else context.granted_capabilities)
-        )
+        if remembered_risk_binding:
+            variant = self.risk_variant(qualified_name, arguments, self.required_capabilities(tool, arguments))
+            with self.database.transaction() as db:
+                current = risk_binding(db, qualified_name, variant)
+                if (current != remembered_risk_binding
+                        or saved_risk(db, context.trace_id, current) != "low"):
+                    raise ToolGatewayError("tool_risk_changed", "Saved tool risk changed; start a new request")
+        required=self.required_capabilities(tool,arguments)
+        extra_policy=getattr(self.execution_scope,'additional_capabilities',None)
+        if extra_policy:required=required|extra_policy(context,qualified_name,arguments)
+        granted = set(context.granted_capabilities)
+        if scoped_grant:
+            granted.update(required - {EXACT_EFFECT_CONFIRMATION})
+        missing = sorted(required - granted)
         if missing:
             raise ToolGatewayError(
                 "capability_denied",
@@ -437,12 +465,24 @@ class ToolGateway:
                     f"Active Session not found: {context.session_id}",
                 )
         try:
-            Draft202012Validator(tool.input_schema).validate(arguments)
+            schema_arguments = arguments
+            provider_binding = context.agent_provider_binding
+            if provider_binding:
+                from ai2apps.agents.parameter_contracts import STATIC_PREFIX, static_contract_version
+                version = provider_binding[3]
+                if version and version.startswith(STATIC_PREFIX) and version != static_contract_version(tool):
+                    raise ToolGatewayError("provider_binding_changed", "Selected Tool parameter contract changed",
+                                           details={"phase": "prepare"})
+            if (provider_binding and provider_binding[:2] == (qualified_name, arguments.get('provider'))
+                    and tool.input_schema.get('additionalProperties') is False
+                    and 'provider' not in tool.input_schema.get('properties', {})):
+                schema_arguments = {key: value for key, value in arguments.items() if key != 'provider'}
+            Draft202012Validator(tool.input_schema).validate(schema_arguments)
         except ValidationError as exc:
             raise ToolGatewayError(
                 "invalid_tool_input",
                 exc.message,
-                details={"path": list(exc.absolute_path)},
+                details={"phase": "prepare", "submitted": False, "path": list(exc.absolute_path)},
             ) from exc
 
         handler_arguments = arguments
@@ -525,10 +565,17 @@ class ToolGateway:
             retryable = False
             caught: Exception | None = None
             try:
-                async with asyncio.timeout(effective_timeout_ms / 1_000):
-                    output = await _await_if_needed(
-                        binding.handler(handler_arguments, execution_context)
-                    )
+                from contextlib import AsyncExitStack
+                async with AsyncExitStack() as scopes:
+                    model_scope = getattr(self.execution_scope, 'model_scope', None)
+                    if model_scope:
+                        await scopes.enter_async_context(model_scope(execution_context,
+                            tool_name=qualified_name, arguments=arguments))
+                    for guard in self.execution_guards:
+                        guard.authorize(execution_context,qualified_name,arguments)
+                        scopes.enter_context(guard.scope(execution_context))
+                    async with asyncio.timeout(effective_timeout_ms / 1_000):
+                        output = await _await_if_needed(binding.handler(handler_arguments, execution_context))
                 Draft202012Validator(tool.output_schema).validate(output)
                 break
             except asyncio.CancelledError:
@@ -572,7 +619,10 @@ class ToolGateway:
                 retryable = True
 
             duration = int((time.monotonic() - started) * 1_000)
-            if error_code in retry_codes and attempt < max_attempts:
+            confirmed_preflight = error_details.get("phase") == "prepare" and error_details.get("submitted") is False
+            if error_code in retry_codes and attempt < max_attempts and (
+                confirmed_preflight or not has_mutating_effects(tool.effects)
+            ):
                 self._audit(
                     tool_id=tool.id,
                     invocation_id=invocation.id,
@@ -610,6 +660,7 @@ class ToolGateway:
                 error_message or "Tool provider failed",
                 retryable=retryable,
                 details=error_details,
+                invocation_id=invocation.id,
             ) from caught
 
         assert output is not None

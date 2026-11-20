@@ -1,0 +1,51 @@
+{
+  "schema": "ai2apps.checkpoint-build/v1",
+  "distributionId": "dist_ai2apps_liveportrait_cuda_f8dd1b0c_v1",
+  "modelId": "ai2apps.model.liveportrait-cuda/liveportrait",
+  "repoId": "Avdpro/LivePortrait-CUDA",
+  "revision": "f8dd1b0cf7ebd665c7f71ce12ecb8b0725183a83",
+  "format": "safetensors",
+  "quantization": "fp32",
+  "pieceSize": 8388608,
+  "license": {
+    "id": "MIT",
+    "name": "MIT License with bundled third-party notices",
+    "termsUrl": "https://huggingface.co/Avdpro/LivePortrait-CUDA/blob/f8dd1b0cf7ebd665c7f71ce12ecb8b0725183a83/LICENSE",
+    "termsHash": "sha256:75fcad03ad21369e9eeb369b97b73fc0bba7f7f3243d0a661f968bd1478207bb",
+    "usagePolicy": "license_terms",
+    "accessPolicy": "public",
+    "redistributionPolicy": "allowed"
+  },
+  "includePatterns": [
+    "LICENSE",
+    "NOTICE.md",
+    "README.md",
+    "YUNET_LICENSE",
+    "appearance_feature_extractor.safetensors",
+    "conversion-receipt.json",
+    "face_detection_yunet_2023mar.onnx",
+    "landmark.onnx",
+    "models.yaml",
+    "motion_extractor.safetensors",
+    "spade_generator.safetensors",
+    "stitching.safetensors",
+    "stitching_eye.safetensors",
+    "stitching_lip.safetensors",
+    "warping_module.safetensors",
+    "ai2apps-checkpoint.json"
+  ],
+  "sourceRepositories": [
+    {
+      "type": "huggingface",
+      "repoId": "Avdpro/LivePortrait-CUDA",
+      "revision": "f8dd1b0cf7ebd665c7f71ce12ecb8b0725183a83",
+      "access": "public_anonymous"
+    },
+    {
+      "type": "modelscope",
+      "repoId": "ai2apps/LivePortrait-CUDA",
+      "revision": "001cf3c768341904d63f8563fcd1cbc459fe3831",
+      "access": "public_anonymous"
+    }
+  ]
+}

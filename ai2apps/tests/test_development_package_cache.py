@@ -111,3 +111,37 @@ def test_invalid_source_package_cannot_block_system_apps_or_reuse_stale_definiti
     path.write_text(original)
     assert manager.launch_app(package.package_id)[0].id
     assert not loader.errors
+
+
+def test_installed_mini_app_gets_its_own_singleton_after_source_removal(loader, runtime):
+    from ai2apps.core import AppInstanceMode, SingletonScope
+
+    manager = runtime.extension_manager
+    package_id = "fixture.singleton-mini"
+    studio_id = "ai2apps.ai-browser"
+    manifest = loader.discover()[0].manifest
+    manifest.pop("development", None)
+    manifest["mini_apps"][0]["id"] = package_id
+    definition = {
+        "package_id": package_id,
+        "package_version": "0.1.0",
+        "display_name": "Singleton fixture",
+        "instance_mode": AppInstanceMode.SINGLETON,
+        "singleton_scope": SingletonScope.USER,
+        "manifest": manifest,
+    }
+    original_definition = manager.apps.create_definition(**definition)
+    original = manager.mount_studio_mini_app(studio_id, package_id)
+    original_id = original["app_instance_id"]
+    with runtime.database.transaction(write=True) as db:
+        db.execute("UPDATE app_definitions SET status='disabled' WHERE id=?", (original_definition.id,))
+    manager.apps.create_definition(**{**definition, "package_version": "0.1.1"}, source="installed")
+
+    mounted = manager.mount_studio_mini_app(studio_id, package_id)
+    live_id = mounted["app_instance_id"]
+    assert live_id != original_id
+    assert manager.instance_entry(live_id)["source"] == "installed"
+    assert manager.launch_app(package_id)[0].id == live_id
+    assert manager.apps.get_instance(original_id).app_definition_id == original_definition.id
+    with pytest.raises(ExtensionError, match="App instance is not active"):
+        manager.instance_entry(original_id)

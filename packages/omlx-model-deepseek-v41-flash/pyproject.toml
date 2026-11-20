@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "omlx-model-deepseek-v41-flash"
-version = "0.1.1"
+version = "0.1.2"
 description = "DeepSeek V4.1 Flash lossless SSD Cached-MoE Model Worker Package"
 readme = "README.md"
 license = "MIT"

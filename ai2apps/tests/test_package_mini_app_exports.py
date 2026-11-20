@@ -92,7 +92,8 @@ def test_retirement_releases_name_preserving_history_and_other_owners(runtime):
     assert again['revision']==row['revision']
 
 
-def test_live_source_packages_bind_only_declared_current_placements(tmp_path,monkeypatch):
+@pytest.mark.asyncio
+async def test_live_source_packages_bind_only_declared_current_placements(tmp_path,monkeypatch):
     """Actual trusted source loader, not signed production installation evidence."""
     from pathlib import Path
     from ai2apps.config import PlatformConfig
@@ -104,7 +105,28 @@ def test_live_source_packages_bind_only_declared_current_placements(tmp_path,mon
     try:
         binder=r.package_mini_exports
         assert not binder.errors,binder.errors
-        assert len(binder.owned)==24
+        assert {p.id for p in r.app_capability_router.providers.values() if p.id in binder.owned}==set(binder.owned)
+        conversation = next(p for p in r.app_capability_router.providers.values()
+                            if p.capability == 'media.fictional_conversation')
+        assert binder.is_placement(conversation,'ai2apps.imagine-studio','ai2apps.imagine.fantasy-feed')
+        principal = RequestPrincipal.legacy_local()
+        context = ToolCallContext.from_principal(principal, caller_id='fixture')
+        providers = {p.capability:p for p in r.app_capability_router.providers.values() if p.id in binder.owned}
+        for capability in ('travel.flights','travel.hotels','shopping.history'):
+            assert not (await providers[capability].describe(principal))['selection_required']
+        for capability in ('travel.guide','shopping.prepare_cart'):
+            assert (await providers[capability].describe(principal))['selection_required']
+        flight = {'origin':'北京','destination':'上海','departure':'2026-12-01'}
+        assert (await providers['travel.flights'].prepare(flight,context))['direction']=='outbound'
+        from jsonschema import ValidationError
+        with pytest.raises(ValidationError,match='return_date'):
+            await providers['travel.flights'].prepare({**flight,'direction':'both'},context)
+        hotel = {'destination':'上海','hotel_checkin':'2026-12-01','hotel_checkout':'2026-12-03'}
+        assert (await providers['travel.hotels'].prepare(hotel,context))['adults']==1
+        with pytest.raises(ValidationError,match='hotel_checkout'):
+            await providers['travel.hotels'].prepare({'destination':'上海','hotel_checkin':'2026-12-01'},context)
+        assert await providers['shopping.history'].prepare({},context)=={
+            'pages':1,'profile':'default','history_mode':'incremental'}
         for provider in r.app_capability_router.providers.values():
             if provider.id not in binder.owned:continue
             assert provider.app_id not in ('ai2apps.readaloud','ai2apps.video-studio','ai2apps.imagine-studio','ai2apps.ai-browser')
@@ -149,3 +171,67 @@ async def test_product_owned_mini_identity_revokes_obsolete_package_binding(runt
     assert f.provider.id not in runtime.app_capability_router.providers
     with pytest.raises(ProviderUnavailable):await f.provider.handler({'value':'do not execute'},f.context)
     assert not f.calls
+
+
+@pytest.mark.parametrize('suffix',['choices-a','unrelated-b'])
+@pytest.mark.asyncio
+async def test_signed_select_fields_inherit_declared_schema_options(runtime,monkeypatch,suffix):
+    f=fixture(runtime,monkeypatch,suffix)
+    f.spec['inputSchema']['properties']['value']={'type':'string','enum':['en','fr'],'default':'en'}
+    f.spec['fields'][0]['type']='select'
+    f.binder.sync()
+    provider=runtime.app_capability_router.providers[f.provider.id]
+    descriptor=await provider.describe(RequestPrincipal.legacy_local())
+    assert descriptor['fields'][0]['options']==[{'value':'en','label':'en'},{'value':'fr','label':'fr'}]
+    assert descriptor['fields'][0]['label']==f.spec['fields'][0]['label']
+    assert descriptor['effective_schema']['properties']['value']==f.spec['inputSchema']['properties']['value']
+
+
+@pytest.mark.parametrize('suffix',['setup-a','unrelated-setup-b'])
+@pytest.mark.asyncio
+async def test_owner_setup_continuation_is_preserved_by_generic_contract_and_form(runtime,monkeypatch,suffix):
+    from ai2apps.agents.parameter_contracts import resolve_contract
+    f=fixture(runtime,monkeypatch,suffix)
+    async def descriptor(*args):return {'auto_continue_after_setup':True,'configuration_required':True,'install':{'appId':f.host,'capability':'fixture.setup'}}
+    f.binder.unregister_protocol('fixture.echo/v1')
+    f.binder.register_protocol(HostProtocol('fixture.echo/v1',(f.host,),lambda *a:None,descriptor))
+    f.binder.sync();provider=runtime.app_capability_router.providers[f.provider.id]
+    contract=await resolve_contract(provider,RequestPrincipal.legacy_local())
+    assert contract['auto_continue_after_setup'] is True and contract['configuration_required'] is True
+    form=FORMS[provider.id]
+    state=await form.describe(runtime,RequestPrincipal.legacy_local(),form,{},None)
+    assert state['auto_continue_after_setup'] is True and state['configuration_required'] is True
+    assert state['install']['appId']==form.configuration_app_id
+    assert not f.calls  # review/configuration metadata never submits the operation
+
+
+@pytest.mark.asyncio
+async def test_voice_replacement_ready_profile_applied_by_signed_binder(runtime, monkeypatch):
+    from ai2apps.studio import voice_aaat as owner
+    f = fixture(runtime, monkeypatch, 'voice-quality')
+    f.spec['inputSchema'] = deepcopy(owner.REPLACE_SCHEMA)
+    from ai2apps.agents.parameter_forms import schema_fields
+    f.spec['fields'] = schema_fields(f.spec['inputSchema'])
+    f.spec['selectionRequired'] = True
+    async def describe(r, principal, model, mini, spec):
+        return await owner.audio_replacement_descriptor(r, principal, action=model)
+    async def execute(r, args, context, mini, spec):
+        f.calls.append(args)
+        return {'accepted': args['conversion_profile']}
+    f.binder.unregister_protocol('fixture.echo/v1')
+    f.binder.register_protocol(HostProtocol('fixture.echo/v1', (f.host,), execute, describe=describe))
+    f.binder.sync()
+    provider = next(p for p in runtime.app_capability_router.providers.values() if p.capability == f.name)
+    monkeypatch.setattr(owner, 'readiness', lambda _: ({'dialogue_background'}, {'voice_quality'}, True))
+    args = dict(media_id='source', action='replace', analysis_id='analysis',
+                target_speaker='speaker', reference_id='reference', consent=True)
+    # Asset resolution belongs to the owner execution fixture here; this test
+    # exercises signed schema intersection and default/profile preparation.
+    result = await provider.handler(args, f.context)
+    assert result['accepted'] == 'voice_quality'
+    with pytest.raises(Exception):
+        await provider.handler({**args, 'conversion_profile': 'timbre_fast'}, f.context)
+    monkeypatch.setattr(owner, 'readiness', lambda _: (set(), set(), True))
+    with pytest.raises(Exception, match='configuration'):
+        await provider.handler(args, f.context)
+    assert len(f.calls) == 1

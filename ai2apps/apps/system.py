@@ -7,6 +7,7 @@ import hashlib
 import sqlite3
 from typing import Any
 
+from ai2apps.comapps import APP_ID as COMAPPS_ID
 from ai2apps.core import (
     EntityIdKind,
     ResourceConflictError,
@@ -18,6 +19,16 @@ from ai2apps.storage import PlatformDatabase
 from ai2apps.storage.records import canonical_json
 
 _SYSTEM_APP_MANIFESTS_BASE: tuple[dict[str, Any], ...] = (
+    {
+        "schema": "ai2apps.app/v1", "id": COMAPPS_ID, "name": "ComApps",
+        "description": "Connect AI2Apps with WeChat",
+        "version": "0.1.0", "instances": {"mode": "singleton", "scope": "user"},
+        "access": {"capabilities": ["app.use"]},
+        "entry": {"kind": "sandbox", "resource": "comapps/index.html"},
+        "builtin_resources": ["comapps/index.html"],
+        "navigation": {"category": "AI & Chat", "icon": "comapps", "order": 45, "pinned_default": False},
+        "state": {"version": 1, "defaults": {}},
+    },
     {
         "schema": "ai2apps.app/v1", "id": "ai2apps.visitor-space", "name": "Visitor Space",
         "description": "Edit, preview and publish your visitor space", "version": "1.0.0",
@@ -42,6 +53,15 @@ _SYSTEM_APP_MANIFESTS_BASE: tuple[dict[str, Any], ...] = (
         "state": {"version": 1, "defaults": {}},
     },
     {
+        "schema": "ai2apps.app/v1", "id": "ai2apps.doc-studio", "name": "Doc Studio",
+        "description": "Turn source materials into editable articles, X Posts, and standalone HTML",
+        "version": "0.1.0", "instances": {"mode": "singleton", "scope": "user"},
+        "access": {"capabilities": ["app.use"]},
+        "entry": {"kind": "host", "resource": "ai2apps:system/doc-studio"},
+        "navigation": {"category": "AI & Media", "icon": "file-pen-line", "order": 37, "pinned_default": False},
+        "state": {"version": 1, "defaults": {}},
+    },
+    {
         "schema": "ai2apps.app/v1", "id": "ai2apps.todo", "name": "Todo",
         "mobile": {"ready": True},
         "mobile_entry": {"kind": "host", "resource": "ai2apps:mobile/todo"},
@@ -50,6 +70,20 @@ _SYSTEM_APP_MANIFESTS_BASE: tuple[dict[str, Any], ...] = (
         "access": {"capabilities": ["app.use"]},
         "entry": {"kind": "host", "resource": "ai2apps:system/todo"},
         "navigation": {"category": "Productivity", "icon": "list-todo", "order": 42, "pinned_default": True},
+        "state": {"version": 1, "defaults": {}},
+    },
+    {
+        "schema": "ai2apps.app/v1", "id": "ai2apps.mail", "name": "Mail",
+        "mobile": {"ready": True, "gateway": {
+            "template": "system_apps/mail.html",
+            "assets": ["css/mail.css", "js/mail.js", "js/mobile_app_gateway.js", "js/bot_avatars.js"],
+            "api": {"module": "mail", "factory": "create_mobile_mail_router", "prefix": "/v1/platform/mail"},
+        }},
+        "description": "Connect mail accounts and read a unified inbox",
+        "version": "0.1.0", "instances": {"mode": "singleton", "scope": "user"},
+        "access": {"capabilities": ["app.use"]},
+        "entry": {"kind": "host", "resource": "ai2apps:system/mail"},
+        "navigation": {"category": "Productivity", "icon": "mail", "order": 44, "pinned_default": False},
         "state": {"version": 1, "defaults": {}},
     },
     {
@@ -201,7 +235,7 @@ _SYSTEM_APP_MANIFESTS_BASE: tuple[dict[str, Any], ...] = (
         "navigation": {
             "category": "AI & Chat",
             "icon": "message-square",
-            "order": 30,
+            "order": 32,
             "pinned_default": True,
         },
         "session_kind": "chat_thread",
@@ -230,7 +264,7 @@ _SYSTEM_APP_MANIFESTS_BASE: tuple[dict[str, Any], ...] = (
         "id": "ai2apps.ai-browser",
         "mobile": {"ready": True, "gateway": {
             "template": "mobile_ai_browser.html",
-            "assets": ["css/ai_browser.css", "js/ai_browser.js", "js/ai_browser_mobile_i18n.js", "js/studio_mini_apps.js", "js/mobile_app_gateway.js"],
+            "assets": ["css/ai_browser.css", "js/ai_browser.js", "js/ai_browser_mobile_i18n.js", "js/studio_mini_apps.js", "js/share_works_host.js", "js/mobile_app_gateway.js"],
             "api": {"module": "ai_browser_mobile", "factory": "create_ai_browser_mobile_router", "prefix": "/v1/platform"},
         }},
         "name": "AI Browser",
@@ -251,18 +285,22 @@ _SYSTEM_APP_MANIFESTS_BASE: tuple[dict[str, Any], ...] = (
         "schema": "ai2apps.app/v1",
         "id": "ai2apps.messager",
         "name": "Messager",
-        "description": "Private Local-first conversations with Cloud offline fallback",
+        "description": "Chat with Bots, run tasks, and use your Apps",
         "version": "0.1.0",
         "instances": {"mode": "singleton", "scope": "user"},
         "access": {"capabilities": ["app.use"]},
-        "mobile": {"ready": True},
+        "mobile": {"ready": True, "gateway": {
+            "template": "system_apps/messager_mobile.html", "microphone": True,
+            "assets": ["css/chat_message_feedback.css", "css/system_dialog.css", "js/text_input_dialog.js", "js/messager_usage.js", "js/bot_conversation_trim.js", "css/messager_mobile.css", "css/bot_creation.css", "js/bot_creation.js", "js/purify.min.js", "js/marked.umd.js", "js/conversation_model_policy.js", "js/bot_avatars.js", "js/bot_interactions.js", "js/studio_audio_recorder.js", "js/streaming_tts.js", "js/bot_realtime_audio.js", "js/bot_realtime_processor.js", "js/bot_realtime.js", "js/mobile_bot_voice.js", "js/messager_mobile.js", "js/mobile_app_gateway.js"],
+            "api": {"module": "messager_mobile", "factory": "create_messager_mobile_router", "prefix": "/v1/platform/messager-mobile"},
+        }},
         "entry": {"kind": "host", "resource": "ai2apps:system/messager"},
         "navigation": {
             "category": "AI & Chat",
             "icon": "messages-square",
-            "order": 32,
-            "pinned_default": False,
-            "status": "development",
+            "order": 1,
+            "pinned_default": True,
+            "status": "active",
         },
         "state": {"version": 1, "defaults": {}},
     },
@@ -412,6 +450,18 @@ _SYSTEM_APP_MANIFESTS_BASE: tuple[dict[str, Any], ...] = (
     },
     {
         "schema": "ai2apps.app/v1",
+        "id": "ai2apps.harness",
+        "name": "Harness",
+        "description": "Run sandboxed commands, read documents and save task artifacts to user-named local folders",
+        "version": "1.0.0",
+        "instances": {"mode": "singleton", "scope": "system"},
+        "access": {"capabilities": []},
+        "entry": {"kind": "host", "resource": "ai2apps:generic-launcher"},
+        "navigation": {"category": "Developer Tools", "icon": "square-terminal", "launcher": False},
+        "state": {"version": 1, "defaults": {}},
+    },
+    {
+        "schema": "ai2apps.app/v1",
         "id": "ai2apps.terminal",
         "name": "Terminal",
         "description": "Interactive system terminal sessions",
@@ -468,7 +518,9 @@ _SYSTEM_APP_MANIFESTS_BASE: tuple[dict[str, Any], ...] = (
 
 _SYSTEM_APP_ZH: dict[str, tuple[str, str, str]] = {
     "ai2apps.intelligence": ("情报中心", "追踪兴趣与信息源，阅读有据可查的情报简报", "效率工具"),
+    "ai2apps.doc-studio": ("Doc Studio", "使用来源素材撰写可编辑的文章、X Post 和独立 HTML", "AI 与媒体"),
     "ai2apps.todo": ("待办", "项目树、附件、智能体执行与定时计划", "效率工具"),
+    "ai2apps.mail": ("邮件", "连接多个邮箱并在统一收件箱中阅读邮件", "效率工具"),
     "ai2apps.dashboard": ("仪表盘", "系统状态与运行时概览", "系统"),
     "ai2apps.account": ("账户", "连接可选的 AI2Apps 账户并管理云端积分", "系统"),
     "ai2apps.visitor-space": ("访客空间", "编辑、预览并发布对外开放的空间", "系统"),
@@ -479,7 +531,8 @@ _SYSTEM_APP_ZH: dict[str, tuple[str, str, str]] = {
     "ai2apps.agents": ("智能体", "管理智能体、运行记录、软件包和本地补丁", "AI 与聊天"),
     "ai2apps.general-chat": ("聊天", "与云端、Fusion、本地模型和智能体聊天", "AI 与聊天"),
     "ai2apps.ai-browser": ("AI 浏览器", "创建和管理相互隔离的 AceFox 浏览器 Profile", "AI 与聊天"),
-    "ai2apps.messager": ("消息", "以本地加密通信为主、Cloud 离线消息为兜底的好友对话", "AI 与聊天"),
+    "ai2apps.messager": ("消息", "与 Bot 对话、执行任务，调用你的 App", "AI 与聊天"),
+    COMAPPS_ID: ("传信", "连接 AI2Apps 与微信分身", "AI 与聊天"),
     "ai2apps.gallery": ("素材库", "统一管理本地 AI 生成的图片、视频、音频、网页与文件", "AI 与媒体"),
     "ai2apps.knowledge": ("知识库", "保存、检索并引用私有或本机共享知识", "AI 与聊天"),
     "ai2apps.readaloud": ("语音工坊", "本地优先的朗读、有声书与多角色音频制作", "AI 与媒体"),
@@ -488,6 +541,7 @@ _SYSTEM_APP_ZH: dict[str, tuple[str, str, str]] = {
     "ai2apps.trust-center": ("信任中心", "检查审批、权限、密钥和安全模式", "系统"),
     "ai2apps.settings": ("设置", "配置 AI2Apps 系统", "系统"),
     "ai2apps.logs": ("日志", "检查系统和服务日志", "开发者工具"),
+    "ai2apps.harness": ("Harness", "运行沙箱命令、读取文档，将任务产物保存到指定本地目录", "开发者工具"),
     "ai2apps.terminal": ("终端", "交互式系统终端会话", "开发者工具"),
     "ai2apps.coder": ("编程", "使用终端编程智能体构建软件", "开发者工具"),
     "ai2apps.benchmark": ("基准测试", "测量模型和设备性能", "开发者工具"),
@@ -501,9 +555,17 @@ for _manifest in _SYSTEM_APP_MANIFESTS_BASE:
         _manifest['mini_apps'] = _browser_declarations
         _manifest['builtin_resources'] = _browser_resources
 
+def _messager_launcher_status() -> str:
+    """Messager is available in every Desktop instance, including production."""
+    return "active"
+
+
+
 SYSTEM_APP_MANIFESTS: tuple[dict[str, Any], ...] = tuple(
     {
         **manifest,
+        **({"navigation": {**manifest["navigation"], "status": _messager_launcher_status()}}
+           if manifest["id"] == "ai2apps.messager" else {}),
         "localizations": {
             "zh": {
                 "name": _SYSTEM_APP_ZH[manifest["id"]][0],
@@ -514,6 +576,47 @@ SYSTEM_APP_MANIFESTS: tuple[dict[str, Any], ...] = tuple(
     }
     for manifest in _SYSTEM_APP_MANIFESTS_BASE
 )
+
+
+def _adopt_comapps(connection, definition, now):
+    """Keep instance IDs used by Shell and the bound WeChat channel."""
+    definition_id = definition["id"]
+    connection.execute(
+        """UPDATE app_mounts SET status='unmounted',updated_at=?
+           WHERE status='mounted' AND app_instance_id IN (
+               SELECT i.id FROM app_instances i JOIN app_definitions d ON d.id=i.app_definition_id
+               WHERE d.package_id=? AND d.source!='builtin'
+           )""",
+        (now, COMAPPS_ID),
+    )
+    connection.execute(
+        """UPDATE app_instances SET app_definition_id=?,revision=revision+1,updated_at=?
+           WHERE app_definition_id IN (
+               SELECT id FROM app_definitions WHERE package_id=? AND id!=?
+           )""",
+        (definition_id, now, COMAPPS_ID, definition_id),
+    )
+    connection.execute(
+        """UPDATE app_definitions SET status='disabled',revision=revision+1,updated_at=?
+           WHERE package_id=? AND id!=? AND status='enabled'""",
+        (now, COMAPPS_ID, definition_id),
+    )
+    if definition["source"] != "builtin":
+        connection.execute(
+            """UPDATE app_definitions SET source='builtin',upstream_digest=NULL,
+               revision=revision+1,updated_at=? WHERE id=?""",
+            (now, definition_id),
+        )
+    connection.execute(
+        """UPDATE interactive_packages SET status='uninstalled',retired_at=?
+           WHERE package_kind='app' AND unit_key=? AND status!='uninstalled'""",
+        (now, COMAPPS_ID),
+    )
+    connection.execute(
+        """UPDATE effective_definitions SET status='retained',retired_at=?
+           WHERE unit_kind='app' AND unit_key=? AND status='active'""",
+        (now, COMAPPS_ID),
+    )
 
 
 def ensure_system_apps(
@@ -529,10 +632,12 @@ def ensure_system_apps(
         with database.transaction(write=True) as connection:
             for manifest in SYSTEM_APP_MANIFESTS:
                 package_id = str(manifest["id"])
+                adopt = package_id == COMAPPS_ID
                 digest = "sha256:" + hashlib.sha256(canonical_json(manifest).encode()).hexdigest()
+                ordering = "(source='builtin') DESC,(status='enabled') DESC," if adopt else ""
                 row = connection.execute(
                     "SELECT * FROM app_definitions WHERE package_id=? "
-                    "ORDER BY created_at DESC LIMIT 1",
+                    f"ORDER BY {ordering}created_at DESC LIMIT 1",
                     (package_id,),
                 ).fetchone()
                 instances = manifest["instances"]
@@ -540,7 +645,7 @@ def ensure_system_apps(
                 scope = str(instances["scope"])
                 if row is not None:
                     if (
-                        row["source"] != "builtin"
+                        (row["source"] != "builtin" and not adopt)
                         or row["instance_mode"] != mode
                         or row["singleton_scope"] != scope
                     ):
@@ -548,8 +653,11 @@ def ensure_system_apps(
                             "Reserved system App has incompatible definition: "
                             f"{package_id}"
                         )
+                    if adopt:
+                        _adopt_comapps(connection, row, now)
                     if (
-                        json.loads(row["manifest_json"]) != manifest
+                        row["source"] != "builtin"
+                        or json.loads(row["manifest_json"]) != manifest
                         or row["display_name"] != manifest["name"]
                         or row["status"] != "enabled"
                         or row["effective_digest"] != digest

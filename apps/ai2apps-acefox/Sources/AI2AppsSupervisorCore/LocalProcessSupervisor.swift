@@ -9,6 +9,7 @@ public enum LocalSupervisorError: Error, Equatable, Sendable {
     case descriptorProcessMismatch(expected: Int32, actual: Int32)
     case startupTimedOut
     case bootstrapRejected(String)
+    case bootstrapIdentityMismatch(String)
 }
 
 public actor LocalProcessSupervisor {
@@ -53,7 +54,7 @@ public actor LocalProcessSupervisor {
             expectedInstanceID: instanceID
         )
 
-        if let conflict = try LoopbackPortInspector().conflict(for: configuration) {
+        if let conflict = try await LoopbackPortInspector().conflictAfterWaiting(for: configuration) {
             state = .failed(message: "Port \(conflict.port) is already in use", restartAttempt: 0)
             throw LocalSupervisorError.portInUse(conflict)
         }
@@ -194,6 +195,14 @@ public actor LocalProcessSupervisor {
         }
         if isProcessRunning(descriptor.processID) {
             kill(descriptor.processID, SIGKILL)
+            let killDeadline = clock.now.advanced(by: .seconds(2))
+            while isProcessRunning(descriptor.processID), clock.now < killDeadline {
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+            if isProcessRunning(descriptor.processID) {
+                state = .failed(message: "Old Local process did not exit", restartAttempt: 0)
+                return
+            }
         }
         process = nil
         try? processLogHandle?.close()
@@ -203,15 +212,24 @@ public actor LocalProcessSupervisor {
     }
 
     public func healthCheck() async -> Bool {
+        await probeHealth() == .healthy
+    }
+
+    public func probeHealth() async -> HealthProbeResult {
         let local: ReadyLocal
         switch state {
         case .ready(let ready), .degraded(let ready, _):
             local = ready
         default:
-            return false
+            return .definiteFailure
+        }
+        guard isProcessRunning(local.descriptor.processID) else {
+            state = .degraded(local, consecutiveHealthFailures: 3)
+            return .definiteFailure
         }
         do {
             _ = try await fetchBootstrap(from: local.origin, bootID: local.descriptor.bootID)
+            guard isCurrentHealthTarget(local) else { return .transientFailure }
             if case .degraded = state {
                 state = (try? SupervisorReducer.reduce(
                     state: state,
@@ -219,13 +237,26 @@ public actor LocalProcessSupervisor {
                     expectedInstanceID: instanceID
                 )) ?? state
             }
-            return true
+            return .healthy
         } catch {
+            guard isCurrentHealthTarget(local) else { return .transientFailure }
             state = (try? SupervisorReducer.reduce(
                 state: state,
                 event: .healthFailed,
                 expectedInstanceID: instanceID
             )) ?? state
+            if case LocalSupervisorError.bootstrapIdentityMismatch = error {
+                return .definiteFailure
+            }
+            return .transientFailure
+        }
+    }
+
+    private func isCurrentHealthTarget(_ target: ReadyLocal) -> Bool {
+        switch state {
+        case .ready(let current), .degraded(let current, _):
+            return current.descriptor.bootID == target.descriptor.bootID
+        default:
             return false
         }
     }
@@ -316,7 +347,7 @@ public actor LocalProcessSupervisor {
         do {
             try bootstrap.validate(expectedInstanceID: instanceID, expectedBootID: bootID)
         } catch {
-            throw LocalSupervisorError.bootstrapRejected(String(describing: error))
+            throw LocalSupervisorError.bootstrapIdentityMismatch(String(describing: error))
         }
         return bootstrap
     }

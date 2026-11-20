@@ -62,7 +62,7 @@
         'qwen3_5_mtp',
     ]);
     const DASHBOARD_MAIN_TABS = new Set(['status', 'settings', 'models', 'logs', 'bench']);
-    const DASHBOARD_SETTINGS_TABS = new Set(['global', 'integrations', 'models', 'capabilities']);
+    const DASHBOARD_SETTINGS_TABS = new Set(['global', 'integrations', 'models', 'capabilities', 'events']);
     const DASHBOARD_MODELS_TABS = new Set(['defaults', 'manager']);
     const DASHBOARD_BENCH_TABS = new Set(['throughput', 'accuracy', 'context']);
 
@@ -396,6 +396,74 @@
             fusionEditor: { id: '', alias: '', generator: '', reviewer: '', reviewerBackend: 'local', reviewerProvider: '', editing: false, resolverEnabled: false, resolverProvider: '', resolver: '', gatePolicy: 'adaptive', reviewThreshold: 0.45, forceThreshold: 0.85, longOutputTokens: 512, midGenerationReviewEnabled: true, checkpointTokens: 1024, thinkingAuditEnabled: true, reviewerGuidanceMode: 'off', reviewerMaxTokens: 8192, reasoningHandoffMaxTokens: 256, generatorCacheMoeL1Mode: 'auto', generatorCacheMoePrefillBoost: 'natural', generatorCacheMoeDecodeBoost: 'natural', reviewerCacheMoeL1Mode: 'auto', reviewerCacheMoePrefillBoost: 'natural', reviewerCacheMoeDecodeBoost: 'natural' },
             showCloudEditor: false,
             cloudEditor: { id: '', name: '', base_url: '', protocol: 'openai', models: '', enabled: true, api_key: '', builtin: false },
+            videoByokProviders: [],
+            videoByokKeys: {},
+            videoByokBusy: {},
+            credentialImportOpen: false,
+            credentialImportBusy: false,
+            credentialImportSources: [],
+            credentialImportSource: '',
+            credentialImportSelected: [],
+            credentialImportReplace: false,
+            credentialImportMessage: '',
+            credentialImportResults: [],
+
+            get credentialImportProviders() {
+                return this.credentialImportSources.find(item => item.id === this.credentialImportSource)?.providers || [];
+            },
+            async credentialImportAction(payload) {
+                const response = await fetch('/v1/platform/credential-import/action', {
+                    method: 'POST', credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ...payload, language: document.documentElement.lang || 'en' }),
+                });
+                const result = await response.json();
+                if (!response.ok) throw new Error(typeof result.detail === 'string' ? result.detail : window.t('models.credential_import.failed'));
+                return result;
+            },
+            async openCredentialImport() {
+                this.credentialImportOpen = true;
+                this.credentialImportBusy = true;
+                this.credentialImportSources = [];
+                this.credentialImportSource = '';
+                this.credentialImportSelected = [];
+                this.credentialImportReplace = false;
+                this.credentialImportMessage = '';
+                this.credentialImportResults = [];
+                try {
+                    const result = await this.credentialImportAction({ action: 'list' });
+                    this.credentialImportSources = result.sources || [];
+                    await this.$nextTick();
+                    this.credentialImportSource = this.credentialImportSources[0]?.id || '';
+                    if (!this.credentialImportSources.length) this.credentialImportMessage = window.t('models.credential_import.empty');
+                } catch (error) { this.credentialImportMessage = error.message; }
+                finally { this.credentialImportBusy = false; }
+            },
+            async submitCredentialImport() {
+                const source = this.credentialImportSources.find(item => item.id === this.credentialImportSource);
+                if (!source || !this.credentialImportSelected.length || this.credentialImportBusy) return;
+                this.credentialImportBusy = true;
+                this.credentialImportMessage = window.t('models.credential_import.authenticate');
+                try {
+                    const result = await this.credentialImportAction({ action: 'import', source: source.id,
+                        offer_id: source.offer_id, selected: [...this.credentialImportSelected],
+                        replace_existing: this.credentialImportReplace });
+                    if (result.status === 'cancelled') {
+                        this.credentialImportMessage = window.t('models.credential_import.cancelled');
+                        return;
+                    }
+                    this.credentialImportMessage = result.status === 'completed'
+                        ? window.t('models.credential_import.done') : window.t('models.credential_import.partial');
+                    this.credentialImportResults = (result.items || []).map(item => ({
+                        name: source.providers.find(provider => provider.key === item.key)?.config.name || item.key,
+                        status: window.t('models.credential_import.status_' + item.status),
+                    }));
+                    this.credentialImportSelected = [];
+                    this.credentialImportSources = [];
+                    await this.loadModelManager();
+                } catch (error) { this.credentialImportMessage = error.message; }
+                finally { this.credentialImportBusy = false; }
+            },
             cloudExpanded: {},
             cloudModelSearch: {},
             cloudRefreshing: {},
@@ -423,6 +491,7 @@
             modelManagerSections() {
                 const sections = [
                     { id: 'cloud', label: window.t('models.manager.section.cloud') },
+                    { id: 'video_byok', label: '视频 API (BYOK)' },
                     { id: 'packages', label: window.t('models.manager.section.packages') },
                     { id: 'fusion', label: 'Fusion' },
                 ];
@@ -453,6 +522,7 @@
 
             modelManagerSectionCount(section) {
                 if (section === 'cloud') return this.cloudEnabledModelCount;
+                if (section === 'video_byok') return this.videoByokProviders.filter(item => item.configured).length;
                 if (section === 'packages') return this.modelPackageCount;
                 return this.modelManager[section]?.length || 0;
             },
@@ -1450,6 +1520,14 @@
                         fusion: data.fusion || [],
                         cloud: data.cloud || [],
                     };
+                    try {
+                        const videoResponse = await fetch('/v1/platform/video-studio/byok', { credentials: 'same-origin' });
+                        if (!videoResponse.ok) throw new Error('Video API providers are unavailable');
+                        this.videoByokProviders = (await videoResponse.json()).items || [];
+                    } catch (error) {
+                        this.videoByokProviders = [];
+                        this.modelManagerError = error.message || 'Video API providers are unavailable';
+                    }
                     this.defaultModels = {
                         ...this.defaultModels,
                         ...(data.defaults || {}),
@@ -1740,6 +1818,46 @@
                     enabled: provider.enabled, api_key: '', builtin: provider.builtin,
                 } : { id: '', name: '', base_url: '', protocol: 'openai', models: '', enabled: true, api_key: '', builtin: false };
                 this.showCloudEditor = true;
+            },
+
+            async saveVideoByokProvider(provider) {
+                const key = String(this.videoByokKeys[provider.id] || '').trim();
+                if (!key || this.videoByokBusy[provider.id]) return;
+                this.videoByokBusy[provider.id] = true;
+                this.modelManagerError = '';
+                try {
+                    const response = await fetch(`/v1/platform/video-studio/byok/${encodeURIComponent(provider.id)}`, {
+                        method: 'PUT', credentials: 'same-origin',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ apiKey: key }),
+                    });
+                    const data = await response.json().catch(() => ({}));
+                    if (!response.ok) throw new Error(data.detail || 'Could not save video API key');
+                    this.videoByokKeys[provider.id] = '';
+                    provider.configured = true;
+                } catch (error) {
+                    this.modelManagerError = error.message || 'Could not save video API key';
+                } finally {
+                    this.videoByokBusy[provider.id] = false;
+                }
+            },
+
+            async removeVideoByokProvider(provider) {
+                if (this.videoByokBusy[provider.id]) return;
+                this.videoByokBusy[provider.id] = true;
+                this.modelManagerError = '';
+                try {
+                    const response = await fetch(`/v1/platform/video-studio/byok/${encodeURIComponent(provider.id)}`, {
+                        method: 'DELETE', credentials: 'same-origin',
+                    });
+                    if (!response.ok) throw new Error('Could not remove video API key');
+                    this.videoByokKeys[provider.id] = '';
+                    provider.configured = false;
+                } catch (error) {
+                    this.modelManagerError = error.message || 'Could not remove video API key';
+                } finally {
+                    this.videoByokBusy[provider.id] = false;
+                }
             },
 
             async saveCloudProvider() {

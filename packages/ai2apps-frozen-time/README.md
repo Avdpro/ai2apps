@@ -20,3 +20,8 @@ Categories: image, video. No independent launcher entry.
 
 Copyright AI2Apps. Package UI source is Apache-2.0 (see LICENSE).
 Project: https://github.com/Avdpro/ai2apps
+
+
+## AaAT ownership (0.1.3)
+
+This release owns its executable AaAT declarations and parameter schemas in signed `app.yaml.mini_apps[].aaat`. It requires the versioned native Host SDK protocol declared by each export (`ai2apps.mini-app-host-exports/v1`). The matching Desktop host registers exports only while this exact Package is installed, enabled, and compatible. The capability catalog alone never enables execution. Older Desktop hosts must be upgraded for this ownership contract. Existing native queues, original material references, and shared Studio Output are reused.

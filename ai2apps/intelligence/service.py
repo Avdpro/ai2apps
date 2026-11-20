@@ -38,6 +38,7 @@ def planning_previous(previous):
 def generation_budget(stage, data):
     if stage in ('x_rule','site_rule'):return 1024
     if stage=='post_filter':return min(8192,max(2048,len(data.get('posts',[]))*160))
+    if stage=='long_manuscript':return 32768
     return 20000
 
 
@@ -51,8 +52,9 @@ def declared_reasoning_efforts(manager, model_id):
     return ()
 
 
-async def model_json(runtime, request, principal, channel_id, instruction, data, validator, *, image_data_url=None, stage="editorial", on_progress=None, model_id=None, tools=None):
+async def model_json(runtime, request, principal, channel_id, instruction, data, validator, *, image_data_url=None, stage="editorial", on_progress=None, model_id=None, tools=None, consumer_app_id="ai2apps.intelligence"):
     from .language import output_language
+    session_id = consumer_app_id.removeprefix('ai2apps.') + '-' + channel_id
     language = output_language(runtime, request, principal, channel_id, data)
     manager = runtime.model_manager
     model_id = model_id or (manager.resolve_default_model('work_standard') if manager else None)
@@ -80,12 +82,12 @@ async def model_json(runtime, request, principal, channel_id, instruction, data,
         async with asyncio.timeout(150):
             if request is None and str(model_id).startswith('cloud/'):
                 output = await invocations.invoke_agent_cloud_json(payload, context=invocations.context_for_actor(
-                    principal.actor_user_id, session_id='intelligence-' + channel_id, consumer_app_id='ai2apps.intelligence'))
+                    principal.actor_user_id, session_id=session_id, consumer_app_id=consumer_app_id))
                 response = None
             elif str(model_id).startswith('cloud/'):
                 from ai2apps.model_invocation import invoke_app_cloud_chat
                 response = await invoke_app_cloud_chat(runtime, payload, principal=principal,
-                    session_id='intelligence-' + channel_id, consumer_app_id='ai2apps.intelligence')
+                    session_id=session_id, consumer_app_id=consumer_app_id)
                 raw = bytes(response.body)
             elif request is None:
                 if not model or 'chat_completions' not in model.endpoints:
@@ -93,13 +95,13 @@ async def model_json(runtime, request, principal, channel_id, instruction, data,
                 response = await invocations.invoke_background_json(
                     model.id, 'chat_completions', payload, request_id='intelligence-' + uuid.uuid4().hex,
                     context=invocations.context_for_actor(principal.actor_user_id,
-                        session_id='intelligence-' + channel_id, consumer_app_id='ai2apps.intelligence'))
+                        session_id=session_id, consumer_app_id=consumer_app_id))
                 raw = bytes(response.body)
             elif model and 'chat_completions' in model.endpoints:
                 response = await invocations.invoke_foreground_json(
                     model.id, 'chat_completions', payload, request_id='intelligence-' + uuid.uuid4().hex,
-                    context=ModelInvocationContext.from_principal(principal, session_id='intelligence-' + channel_id,
-                                                                 consumer_app_id='ai2apps.intelligence'))
+                    context=ModelInvocationContext.from_principal(principal, session_id=session_id,
+                                                                 consumer_app_id=consumer_app_id))
                 raw = bytes(response.body)
             else:
                 headers = {k: v for k, v in request.headers.items() if k.lower() in
@@ -124,6 +126,11 @@ async def model_json(runtime, request, principal, channel_id, instruction, data,
                 continue
             if attempt == max_attempts - 1:
                 raise HTTPException(502, f"AI 输出达到 {payload['max_tokens']} token 上限被截断；此事件未标为已处理")
+            if stage == 'long_manuscript':
+                payload = {**payload, 'messages': [*payload['messages'][:2], {'role': 'user', 'content':
+                    'The previous response was truncated. Return a complete, shorter manuscript in the original schema. '
+                    'Keep the main event, context and accurate citations. Remove repetitive detail.'}]}
+                continue
             # A truncated response is not a JSON repair. Start from the evidence
             # again with a smaller requested output; never append partial JSON.
             payload = {**payload, 'messages': [*payload['messages'][:2], {'role':'user','content':
@@ -607,7 +614,7 @@ def knowledge_conversation_evidence(runtime, principal, channel, question, artic
     return evidence
 
 
-async def converse(runtime, request, principal, channel, question, articles, history, article_id=None):
+async def converse(runtime, request, principal, channel, question, articles, history, article_id=None, *, model_id=None):
     from .models import ChannelAnswer
     evidence = conversation_evidence(articles, question, history, article_id)
     knowledge_evidence = await asyncio.to_thread(knowledge_conversation_evidence, runtime, principal, channel, question, {e['id'] for e in evidence})
@@ -635,6 +642,6 @@ async def converse(runtime, request, principal, channel, question, articles, his
         {'channel':{'name':channel['name'],'interests':channel['interests']},
          'current_question':question,'selected_article_id':article_id,
          'history':[{'question':t['question'],'answer':t['answer'][:4000]} for t in history[-8:]],
-         'articles':[e for e in evidence if e.get('kind') != 'knowledge'], 'knowledge_excerpts':knowledge_evidence,'total_channel_articles':len(articles)},validate)
+         'articles':[e for e in evidence if e.get('kind') != 'knowledge'], 'knowledge_excerpts':knowledge_evidence,'total_channel_articles':len(articles)},validate,**({'model_id':model_id} if model_id else {}))
     return {'answer':result.answer,'references':[
         ({'number':i,'kind':'knowledge','item_id':allowed[i]['id'],'title':allowed[i]['title'], 'excerpt':allowed[i]['body'],'revision':allowed[i]['revision']} if allowed[i].get('kind') == 'knowledge' else {'number':i,'article_id':allowed[i]['id'],'title':allowed[i]['title']}) for i in result.evidence_ids]}

@@ -1,0 +1,206 @@
+{% extends app_base_template|default("base.html") %}
+{% set zh = (current_lang|default('en')).startswith('zh') %}
+{% block title %}{{ '邮件' if zh else 'Mail' }} - AI2Apps{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ static('css/mail.css') }}">{% endblock %}
+{% block content %}
+<main class="mail-app" id="mail-app" lang="{{ 'zh' if zh else 'en' }}"{% if mobile_surface %} data-mobile-screen="list"{% endif %}>
+  <header class="mail-bar">
+    <h1><i data-lucide="mail" aria-hidden="true"></i> {{ '邮件' if zh else 'Mail' }}</h1>
+    <div class="mail-smart-actions">
+      {% if mobile_surface %}
+      <button type="button" id="mail-mobile-folders" aria-expanded="false" aria-controls="mail-navigation">{{ '邮箱' if zh else 'Mailboxes' }}</button>
+      {% endif %}
+      <button type="button" id="mail-compose">{{ '写邮件' if zh else 'New email' }}</button>
+      {% if not mobile_surface %}
+      <button type="button" id="mail-add">{{ '添加账户' if zh else 'Add account' }}</button>
+      {% endif %}
+    </div>
+  </header>
+  <div class="mail-layout">
+    <aside id="mail-navigation" class="mail-panel" aria-label="{{ '邮件导航' if zh else 'Mail navigation' }}">
+      <div class="mail-sidebar-tabs" role="tablist" aria-label="{{ '邮件视图' if zh else 'Mail views' }}">
+        <button type="button" id="mail-smart-tab" role="tab" aria-controls="mail-smart-panel" aria-selected="true">{{ '智能目录' if zh else 'Smart folders' }}</button>
+        <button type="button" id="mail-accounts-tab" role="tab" aria-controls="mail-accounts-panel" aria-selected="false" tabindex="-1">{{ '账号' if zh else 'Accounts' }}</button>
+      </div>
+      <div id="mail-smart-panel" class="mail-sidebar-section" role="tabpanel" aria-labelledby="mail-smart-tab">
+        <select id="mail-smart-scope" aria-label="{{ '智能目录账号范围' if zh else 'Smart folder account scope' }}" hidden></select>
+        <ul id="mail-smart-folders"></ul>
+        <div class="mail-smart-actions">
+          <button type="button" id="mail-smart-add">{{ '新建目录' if zh else 'New folder' }}</button>
+          <button type="button" id="mail-smart-suggest">{{ 'AI 建议' if zh else 'AI suggestions' }}</button>
+        </div>
+        <p id="mail-smart-model" class="mail-hint"></p>
+      </div>
+      <div id="mail-accounts-panel" class="mail-sidebar-section" role="tabpanel" aria-labelledby="mail-accounts-tab" hidden>
+        <button type="button" id="mail-all">{{ '统一收件箱' if zh else 'Unified inbox' }}</button>
+        <ul id="mail-accounts"></ul>
+        {% if mobile_surface %}<p class="mail-hint">{{ '请在连接的电脑上添加或管理邮箱账户。' if zh else 'Add or manage mail accounts on the connected desktop.' }}</p>{% endif %}
+      </div>
+    </aside>
+    <section id="mail-inbox-panel" class="mail-panel" tabindex="0" aria-labelledby="mail-inbox-title">
+      <div class="mail-bar">
+        <h2 id="mail-inbox-title">{{ ('统一收件箱' if zh else 'Unified inbox') if mobile_surface else 'Top5' }}</h2>
+        <div class="mail-inbox-actions">
+          <button type="button" class="mail-icon-button" id="mail-smart-edit" aria-label="{{ '编辑目录属性' if zh else 'Edit folder properties' }}" hidden>
+            <i data-lucide="file-pen-line" aria-hidden="true"></i>
+          </button>
+          <button type="button" class="mail-icon-button" id="mail-sync" aria-label="{{ '刷新：同步并整理邮件' if zh else 'Refresh: sync and organize mail' }}">
+            <i data-lucide="refresh-cw" aria-hidden="true"></i>
+          </button>
+        </div>
+      </div>
+      <form id="mail-search" class="mail-bar"{% if not mobile_surface %} hidden{% endif %}>
+        <input type="search" name="q" maxlength="200" aria-label="{{ '搜索已同步邮件' if zh else 'Search synced mail' }}" placeholder="{{ '搜索主题或发件人' if zh else 'Search subject or sender' }}">
+        <button>{{ '搜索' if zh else 'Search' }}</button>
+      </form>
+      <p id="mail-coverage" class="mail-hint"></p>
+      <ul id="mail-list"></ul>
+      <button type="button" id="mail-more" hidden>{{ '加载更多' if zh else 'Load more' }}</button>
+    </section>
+    <section id="mail-reading-panel" class="mail-panel" tabindex="0" aria-label="{{ '邮件预览' if zh else 'Message preview' }}">
+      {% if mobile_surface %}<button type="button" id="mail-mobile-back">{{ '‹ 返回列表' if zh else '‹ Back to list' }}</button>{% endif %}
+      <header class="mail-reading-header">
+        <p id="mail-from" class="mail-hint"></p>
+        <h2 id="mail-subject">{{ '邮件预览' if zh else 'Message preview' }}</h2>
+        <div class="mail-preview-toolbar">
+          <div class="mail-preview-actions">
+            <button type="button" id="mail-load-images" hidden>{{ '加载远程图片' if zh else 'Load remote images' }}</button>
+            <div id="mail-smart-feedback"></div>
+          </div>
+        </div>
+        <p id="mail-priority-reason" class="mail-hint" hidden></p>
+        <p id="mail-image-status" class="mail-hint" role="status"></p>
+      </header>
+      <div class="mail-reading-body">
+        <pre id="mail-preview"></pre>
+        <iframe id="mail-rich-preview" sandbox="allow-same-origin{% if mobile_surface %} allow-popups allow-popups-to-escape-sandbox{% endif %}" referrerpolicy="no-referrer" title="{{ '邮件正文（远程资源已屏蔽）' if zh else 'Message body (remote resources blocked)' }}" hidden></iframe>
+      </div>
+    </section>
+  </div>
+  <footer class="mail-footer" id="mail-footer" data-state="idle">
+    <span data-status-icon="idle" aria-hidden="true"><i data-lucide="circle"></i></span>
+    <span data-status-icon="running" aria-hidden="true"><i data-lucide="loader-circle"></i></span>
+    <span data-status-icon="success" aria-hidden="true"><i data-lucide="check"></i></span>
+    <span data-status-icon="error" aria-hidden="true"><i data-lucide="circle-alert"></i></span>
+    <p id="mail-status" role="status" aria-live="polite">{{ '就绪' if zh else 'Ready' }}</p>
+  </footer>
+  <dialog id="mail-smart-dialog" aria-labelledby="mail-smart-title">
+    <form id="mail-smart-form" method="dialog">
+      <header class="mail-smart-dialog-header">
+        <h2 id="mail-smart-title">{{ '智能目录' if zh else 'Smart folder' }}</h2>
+      </header>
+      <div class="mail-smart-dialog-body">
+        <label data-folder-rule>{{ '目录名称' if zh else 'Folder name' }}<input name="name" maxlength="60" required></label>
+        <label data-folder-rule>{{ '分类规则' if zh else 'Classification rule' }}<textarea name="rule" maxlength="800" rows="4" required placeholder="{{ '例如，收录订单、物流更新和发票，排除促销。' if zh else 'Include orders, shipping updates and invoices. Exclude promotions.' }}"></textarea></label>
+        <label>{{ '排除发件人' if zh else 'Exclude senders' }}
+          <textarea name="excluded_senders" maxlength="7650" rows="3" aria-describedby="mail-sender-filter-hint" placeholder="newsletter@example.com&#10;offers.example.net"></textarea>
+        </label>
+        <p class="mail-hint" id="mail-sender-filter-hint">{{ '每行填一个发件地址或域名，最多 30 条。域名也匹配其子域名。' if zh else 'Enter one sender address or domain per line, up to 30. Domains also match their subdomains.' }}</p>
+        <label data-folder-rule>{{ 'AI 辅助判断（可选）' if zh else 'Additional guidance for AI (optional)' }}
+          <textarea name="guidance" maxlength="800" rows="3" placeholder="{{ '例如，付款成功通知算收据；付款提醒不算。' if zh else 'For example, count payment confirmations as receipts and exclude payment reminders.' }}"></textarea>
+        </label>
+        <p id="mail-smart-error" role="status"></p>
+        <ul id="mail-smart-examples"></ul>
+      </div>
+      <footer class="mail-smart-actions mail-smart-dialog-footer">
+        <button type="button" id="mail-smart-preview">{{ '预览规则' if zh else 'Preview rule' }}</button>
+        <button type="button" id="mail-smart-delete" hidden>{{ '删除目录' if zh else 'Delete folder' }}</button>
+        <button type="button" id="mail-smart-cancel">{{ '取消' if zh else 'Cancel' }}</button>
+        <button>{{ '保存' if zh else 'Save' }}</button>
+      </footer>
+    </form>
+  </dialog>
+  <dialog id="mail-block-dialog" aria-labelledby="mail-block-title" aria-describedby="mail-block-scope">
+    <form method="dialog">
+      <h2 id="mail-block-title">{{ '确认屏蔽' if zh else 'Confirm block' }}</h2>
+      <p id="mail-block-target" dir="auto" style="overflow-wrap:anywhere"></p>
+      <p id="mail-block-scope" class="mail-hint"></p>
+      <div class="mail-smart-actions">
+        <button value="cancel" autofocus>{{ '取消' if zh else 'Cancel' }}</button>
+        <button value="block">{{ '确认屏蔽' if zh else 'Confirm block' }}</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog id="mail-suggestions-dialog">
+    <h2>{{ '建议的智能目录' if zh else 'Suggested smart folders' }}</h2>
+    <p id="mail-suggestions-status" role="status"></p>
+    <ul id="mail-suggestions"></ul>
+    <form method="dialog"><button>{{ '关闭' if zh else 'Close' }}</button></form>
+  </dialog>
+  <dialog id="mail-dialog">
+    <form id="mail-form" method="dialog" autocomplete="off">
+      <h2 id="mail-dialog-title">{{ '添加账户' if zh else 'Add account' }}</h2>
+      <fieldset id="mail-settings">
+        <label>{{ '提供商' if zh else 'Provider' }}
+          <select name="provider"><option value="icloud">iCloud</option><option value="gmail">Gmail</option><option value="imap">IMAP</option></select>
+        </label>
+        <label id="mail-address-label">{{ '邮箱地址' if zh else 'Email address' }}<input type="email" name="address" maxlength="254" required></label>
+        <label id="mail-display-name-label">{{ '显示名称（可选）' if zh else 'Display name (optional)' }}<input name="display_name" maxlength="100"></label>
+        <label id="mail-user-label">{{ 'IMAP 用户名（可选）' if zh else 'IMAP username (optional)' }}<input name="username" maxlength="254"></label>
+        <fieldset id="mail-custom">
+          <legend>{{ '服务器' if zh else 'Servers' }}</legend>
+          <label>IMAP TLS <input name="host" maxlength="253" placeholder="imap.example.com"></label>
+          <label>{{ 'IMAP 端口' if zh else 'IMAP port' }}<input type="number" name="port" min="1" max="65535" value="993"></label>
+          <label>{{ 'SMTP（可选，共用此凭据）' if zh else 'SMTP (optional, same credential)' }}<input name="smtp_host" maxlength="253" placeholder="smtp.example.com"></label>
+          <label>{{ 'SMTP 端口' if zh else 'SMTP port' }}<input type="number" name="smtp_port" min="1" max="65535" value="587"></label>
+          <label>{{ 'SMTP 加密' if zh else 'SMTP encryption' }}<select name="smtp_tls"><option value="starttls">STARTTLS</option><option value="implicit">TLS</option></select></label>
+          <label>{{ 'SMTP 用户名（可选）' if zh else 'SMTP username (optional)' }}<input name="smtp_username" maxlength="254"></label>
+        </fieldset>
+      </fieldset>
+      <p id="mail-provider-hint" class="mail-hint"></p>
+      <a id="mail-password-link" target="_blank" rel="noopener noreferrer" hidden>{{ '管理应用专用密码' if zh else 'Manage app passwords' }}</a>
+      <label id="mail-password-label"><span></span><input name="password" type="password" maxlength="1024" autocomplete="new-password" required></label>
+      <button type="button" id="mail-gmail-mode" hidden></button>
+      <p id="mail-form-error" role="alert"></p>
+      <div class="mail-bar">
+        <button type="button" id="mail-cancel">{{ '取消' if zh else 'Cancel' }}</button>
+        <button id="mail-submit">{{ '验证并连接' if zh else 'Verify and connect' }}</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog id="mail-compose-dialog" aria-labelledby="mail-compose-title">
+    <form id="mail-compose-form" method="dialog">
+      <h2 id="mail-compose-title"></h2>
+      <label>{{ '发件账户' if zh else 'From account' }}<select name="account" required></select></label>
+      <label>{{ '收件人' if zh else 'To' }}<input name="recipients" type="email" multiple required maxlength="5100"></label>
+      <label>{{ '主题' if zh else 'Subject' }}<input name="subject" maxlength="500"></label>
+      <div class="mail-smart-actions">
+        <button type="button" id="mail-ai-assist" aria-expanded="false" aria-controls="mail-ai-panel">{{ 'AI 辅助' if zh else 'AI assist' }}</button>
+      </div>
+      <section id="mail-ai-panel" aria-label="{{ 'AI 辅助' if zh else 'AI assist' }}" hidden>
+        <p class="mail-hint">{{ '使用隐私方案中配置的模型处理写信要求、草稿和回复原文。' if zh else 'Uses the model configured in your Privacy profile to process your instructions, draft and original email.' }}</p>
+        <p id="mail-ai-status" role="status"></p>
+        <p id="mail-ai-summary" hidden></p>
+        <div class="mail-smart-actions" id="mail-ai-directions"></div>
+        <label><span id="mail-ai-label">{{ '撰写或修改要求' if zh else 'Writing or revision instructions' }}</span>
+          <textarea id="mail-ai-instruction" maxlength="2000" rows="2"></textarea>
+        </label>
+        <div class="mail-smart-actions">
+          <button type="button" id="mail-ai-generate">{{ '生成正文' if zh else 'Generate body' }}</button>
+          <button type="button" id="mail-ai-retry" hidden>{{ '重新分析原邮件' if zh else 'Analyze original email again' }}</button>
+          <button type="button" id="mail-ai-stop" hidden>{{ '停止等待' if zh else 'Stop waiting' }}</button>
+        </div>
+        <pre id="mail-ai-result" hidden></pre>
+        <div class="mail-smart-actions"><button type="button" id="mail-ai-apply" hidden>{{ '使用这版正文' if zh else 'Use this version' }}</button></div>
+      </section>
+      <label>{{ '正文' if zh else 'Message' }}<textarea name="body" maxlength="32000" rows="9"></textarea></label>
+      <label>{{ '添加附件' if zh else 'Add attachments' }}<input id="mail-attachment-picker" type="file" multiple aria-describedby="mail-attachment-limit"></label>
+      <small id="mail-attachment-limit">{{ '最多 10 个附件，合计不超过 10 MB' if zh else 'Up to 10 attachments, 10 MB total' }}</small>
+      <ul id="mail-compose-attachments" class="mail-compose-attachments" hidden></ul>
+      <p id="mail-compose-status" role="status"></p>
+      <p id="mail-review-note" class="mail-hint" hidden>{{ '确认只记录你已审核的草稿版本。' if zh else 'Confirmation records the draft revision you reviewed.' }}</p>
+      <div class="mail-bar">
+        <button type="button" id="mail-compose-cancel">{{ '关闭' if zh else 'Close' }}</button>
+        <button type="button" id="mail-compose-delete" hidden>{{ '删除草稿' if zh else 'Delete draft' }}</button>
+        <button type="button" id="mail-compose-save">{{ '保存草稿' if zh else 'Save draft' }}</button>
+        <button type="button" id="mail-review-cancel" hidden>{{ '取消审核' if zh else 'Cancel review' }}</button>
+        <button type="button" id="mail-review-confirm" hidden>{{ '确认草稿并返回' if zh else 'Confirm draft and return' }}</button>
+        <button type="submit" id="mail-send">{{ '发送' if zh else 'Send' }}</button>
+      </div>
+    </form>
+  </dialog>
+  <div id="mail-toolbar-tip" class="mail-toolbar-tip" role="tooltip" hidden></div>
+</main>
+{% if not mobile_surface %}<script src="{{ static('js/browser_bidi_client.js') }}" defer></script>{% endif %}
+<script src="{{ static('js/mail.js') }}" defer></script>
+{% endblock %}

@@ -79,14 +79,17 @@ class StudioRepository:
     def save_draft(
         self, *, actor_id: str, installation_id: str, app_instance_id: str,
         studio_id: str, mini_app_id: str, draft: dict[str, Any],
+        expected_updated_at: str | None = None,
     ) -> dict[str, Any]:
         now = utc_now_text()
         with self.database.transaction(write=True) as connection:
             row = connection.execute(
-                """SELECT id,created_at FROM studio_drafts WHERE actor_id=? AND installation_id=?
+                """SELECT id,created_at,updated_at FROM studio_drafts WHERE actor_id=? AND installation_id=?
                    AND app_instance_id=? AND studio_id=? AND mini_app_id=?""",
                 (actor_id, installation_id, app_instance_id, studio_id, mini_app_id),
             ).fetchone()
+            if expected_updated_at is not None and expected_updated_at != (row["updated_at"] if row else ""):
+                raise StudioRepositoryError("studio_draft_conflict", "Draft changed in another editor.", status_code=409)
             draft_id = row["id"] if row else self._id("std")
             created_at = row["created_at"] if row else now
             connection.execute(
@@ -120,30 +123,41 @@ class StudioRepository:
         title: str, input_data: dict[str, Any], retry_of: str | None = None,
         step_label: str = "Run Mini-App",
     ) -> dict[str, Any]:
-        run_id, step_id, now = self._id("strun"), self._id("ststep"), utc_now_text()
         with self.database.transaction(write=True) as connection:
-            if retry_of:
-                owned = connection.execute(
-                    """SELECT 1 FROM studio_runs WHERE id=? AND actor_id=? AND installation_id=?
-                       AND app_instance_id=? AND studio_id=?""",
-                    (retry_of, actor_id, installation_id, app_instance_id, studio_id),
-                ).fetchone()
-                if owned is None:
-                    raise StudioRepositoryError("studio_run_not_found", "Retry source Run was not found", status_code=404)
-            connection.execute(
-                """INSERT INTO studio_runs(id,actor_id,installation_id,app_instance_id,studio_id,
-                   mini_app_id,mini_app_version,placement,status,progress,title,input_json,error_json,
-                   retry_of,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?, 'queued',0,?,?,NULL,?,?,?)""",
-                (run_id, actor_id, installation_id, app_instance_id, studio_id, mini_app_id,
-                 mini_app_version, placement, title[:160], canonical_json(input_data), retry_of, now, now),
-            )
-            connection.execute(
-                """INSERT INTO studio_run_steps(id,run_id,position,label,status,progress,detail,
-                   started_at,completed_at,updated_at) VALUES (?,?,0,?,'pending',0,'',NULL,NULL,?)""",
-                (step_id, run_id, step_label[:160], now),
+            run_id = self.insert_run(
+                connection, actor_id=actor_id, installation_id=installation_id,
+                app_instance_id=app_instance_id, studio_id=studio_id, mini_app_id=mini_app_id,
+                mini_app_version=mini_app_version, placement=placement, title=title,
+                input_data=input_data, retry_of=retry_of, step_label=step_label,
             )
         return self.get_run(run_id, actor_id=actor_id, installation_id=installation_id,
                             app_instance_id=app_instance_id, studio_id=studio_id)
+
+    def insert_run(self, connection, *, actor_id, installation_id, app_instance_id,
+                   studio_id, mini_app_id, mini_app_version, placement, title,
+                   input_data, retry_of=None, step_label="Run Mini-App"):
+        run_id, step_id, now = self._id("strun"), self._id("ststep"), utc_now_text()
+        if retry_of:
+            try:
+                self._owned_row(connection, retry_of, actor_id=actor_id, installation_id=installation_id,
+                                app_instance_id=app_instance_id, studio_id=studio_id)
+            except StudioRepositoryError as error:
+                raise StudioRepositoryError(
+                    "studio_run_not_found", "Retry source Run was not found", status_code=404,
+                ) from error
+        connection.execute(
+            """INSERT INTO studio_runs(id,actor_id,installation_id,app_instance_id,studio_id,
+               mini_app_id,mini_app_version,placement,status,progress,title,input_json,error_json,
+               retry_of,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?, 'queued',0,?,?,NULL,?,?,?)""",
+            (run_id, actor_id, installation_id, app_instance_id, studio_id, mini_app_id,
+             mini_app_version, placement, title[:160], canonical_json(input_data), retry_of, now, now),
+        )
+        connection.execute(
+            """INSERT INTO studio_run_steps(id,run_id,position,label,status,progress,detail,
+               started_at,completed_at,updated_at) VALUES (?,?,0,?,'pending',0,'',NULL,NULL,?)""",
+            (step_id, run_id, step_label[:160], now),
+        )
+        return run_id
 
     def _owned_row(self, connection, run_id: str, *, actor_id: str,
                    installation_id: str, app_instance_id: str, studio_id: str):

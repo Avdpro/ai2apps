@@ -53,6 +53,16 @@ def test_gateway_preserves_observed_cache_but_does_not_invent_missing_cache():
     assert _openai_usage({'inputTokens':100,'cachedInputTokens':75,'outputTokens':5})['prompt_tokens_details']=={'cached_tokens':75}
     assert 'prompt_tokens_details' not in _openai_usage({'inputTokens':100,'outputTokens':5})
 
+
+def test_native_provider_cache_usage_and_openai_details_agree():
+    # Real direct-provider field shapes; no inferred price or guessed cache.
+    native={'prompt_tokens':1916,'completion_tokens':1,'prompt_cache_hit_tokens':1664,
+            'prompt_cache_miss_tokens':252}
+    for usage in (native, {**native,'prompt_tokens_details':{'cached_tokens':1664}}):
+        metrics=observed_metrics([model_step(1,usage)])
+        assert metrics['cached_input_tokens']==1664 and metrics['uncached_input_tokens']==252
+        assert metrics['rows'][0]['cache_usage_source']=='direct-provider-reported'
+
 @pytest.mark.asyncio
 async def test_inventory_is_bounded_and_selected_schema_still_available(runtime):
     from ai2apps.services import ToolCallContext

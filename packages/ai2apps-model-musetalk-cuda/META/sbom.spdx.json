@@ -1,0 +1,93 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "ai2apps.model.musetalk-cuda-0.1.0",
+  "documentNamespace": "https://ai2apps.com/spdx/ai2apps.model.musetalk-cuda/0.1.0/source-preparation",
+  "creationInfo": {
+    "creators": [
+      "Organization: AI2Apps"
+    ],
+    "created": "2026-10-09T00:00:00Z"
+  },
+  "documentComment": "Development source dependency inventory. Weights and upstream engine are external dependencies, not bundled payload. Runtime transitive libraries belong to its own SBOM.",
+  "packages": [
+    {
+      "SPDXID": "SPDXRef-bisenet",
+      "name": "vivym/face-parsing-bisenet",
+      "versionInfo": "768606b84908769d31ddd78b2e1105319839edfa",
+      "downloadLocation": "https://huggingface.co/vivym/face-parsing-bisenet/tree/768606b84908769d31ddd78b2e1105319839edfa",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "SPDXID": "SPDXRef-unet",
+      "name": "TMElyralab/MuseTalk",
+      "versionInfo": "2bcb936e2fddb4d86db4c62fd45b387d0c061571",
+      "downloadLocation": "https://huggingface.co/TMElyralab/MuseTalk/tree/2bcb936e2fddb4d86db4c62fd45b387d0c061571",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "SPDXID": "SPDXRef-vae",
+      "name": "stabilityai/sd-vae-ft-mse",
+      "versionInfo": "31f26fdeee1355a5c34592e401dd41e45d25a493",
+      "downloadLocation": "https://huggingface.co/stabilityai/sd-vae-ft-mse/tree/31f26fdeee1355a5c34592e401dd41e45d25a493",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "SPDXID": "SPDXRef-whisper",
+      "name": "openai/whisper-tiny",
+      "versionInfo": "169d4a4341b33bc18d8881c4b69c2e104e1cc0af",
+      "downloadLocation": "https://huggingface.co/openai/whisper-tiny/tree/169d4a4341b33bc18d8881c4b69c2e104e1cc0af",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0",
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "SPDXID": "SPDXRef-yunet",
+      "name": "opencv/face_detection_yunet",
+      "versionInfo": "3cc26e7f1014a5ee5d74a42acee58bafc9d0a310",
+      "downloadLocation": "https://huggingface.co/opencv/face_detection_yunet/tree/3cc26e7f1014a5ee5d74a42acee58bafc9d0a310",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "copyrightText": "NOASSERTION"
+    }
+  ],
+  "relationships": [
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-bisenet"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-unet"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-vae"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-whisper"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-yunet"
+    }
+  ]
+}

@@ -18,6 +18,8 @@
     "ai2apps.services.adapters": "Generic service transport adapters",
     "ai2apps.services.capability_routing": "Generic provider routing",
     "ai2apps.services.capability_catalog": "Generic capability inventory",
+    "ai2apps.services.parameter_repair": "New-entry-only bounded read preflight repair; generic owner policy and model transport, no Agent-Chat execution dependency",
+    "ai2apps.services.channels": "Versioned read-only channel projection and Gateway adapter; no owner business semantics",
     "ai2apps.services.models": "Service records",
     "ai2apps.services.registry": "Tool gateway",
     "ai2apps.services.repository": "Service persistence",
@@ -28,6 +30,7 @@
     "ai2apps.cloud_client": "Model transport",
     "ai2apps.cloud_defaults": "Transport defaults",
     "ai2apps.cloud_gateway": "Model gateway",
+    "ai2apps.cloud_structured_output": "Provider-independent managed model format negotiation and terminal validation; no business schema or authority",
     "ai2apps.config": "Platform configuration",
     "ai2apps.identity": "Platform identity",
     "ai2apps.installation_security": "Installation identity",
@@ -38,6 +41,7 @@
     "ai2apps.offline": "Transport availability policy",
     "ai2apps.proc_memory": "Resource measurement",
     "ai2apps.task_llm": "Generic model invocation preparation",
+    "ai2apps.model_preferences": "Bounded model-purpose/profile routing data and context isolation; consumes trusted owner snapshots and consumer catalogs, never imports Bot memory or business adapters",
     "ai2apps.video_policy": "Model media capability constraints",
     "ai2apps.worker_resources": "Resource scheduling",
     "ai2apps.worker_scheduler": "Resource scheduling"
@@ -54,6 +58,7 @@
     "ai2apps.services.aaat",
     "ai2apps.services.capability_routing",
     "ai2apps.services.capability_catalog",
+    "ai2apps.services.channels",
     "ai2apps.services.registry"
   ],
   "platform_control_ids": {

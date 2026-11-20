@@ -2,31 +2,437 @@
 
 {% block title %}{{ t('messager.page_title') }}{% endblock %}
 
-{% block head %}<link rel="stylesheet" href="{{ static('css/messager.css') }}">{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ static('css/system_dialog.css') }}"><link rel="stylesheet" href="{{ static('css/gallery.css') }}"><link rel="stylesheet" href="{{ static('css/bot_knowledge.css') }}"><link rel="stylesheet" href="{{ static('css/capability_provisioning.css') }}"><link rel="stylesheet" href="{{ static('css/chat_message_feedback.css') }}"><link rel="stylesheet" href="{{ static('css/gallery_picker.css') }}"><link rel="stylesheet" href="{{ static('css/chat_message_stream.css') }}"><link rel="stylesheet" href="{{ static('css/messager.css') }}"><link rel="stylesheet" href="{{ static('css/chat_artifacts.css') }}">{% endblock %}
 
 {% block content %}
 <div class="messager-app" x-data="messagerApp()" data-app-id="ai2apps.messager">
-    <header class="messager-header"><span class="messager-mark"><i data-lucide="messages-square"></i></span><div><div class="messager-title">{{ t('messager.title') }}</div><div class="messager-subtitle">{{ t('messager.subtitle') }}</div></div><span class="messager-unread" x-show="unreadCount" x-text="unreadCount"></span><button class="messager-button" :disabled="busy" @click="rotateIdentity()"><i data-lucide="key-round"></i><span x-text="tr(rotationConfirming?'messager.action.confirm_rotate_identity':'messager.action.rotate_identity')"></span></button><button class="messager-button" :disabled="busy" @click="refresh()"><i data-lucide="refresh-cw"></i>{{ t('messager.action.refresh') }}</button></header>
+    <header class="messager-header">
+        <span class="messager-mark"><i data-lucide="messages-square"></i></span>
+        <div class="messager-title">{{ t('messager.title') }}</div>
+        <div class="messager-header-actions">
+            <button type="button" class="messager-button" @click="leftOpen=!leftOpen;$nextTick(()=>refreshSidebarWidth())"
+                    :aria-label="leftOpen?ui('隐藏左侧栏','Hide left sidebar'):ui('显示左侧栏','Show left sidebar')">
+                <i data-lucide="panel-left" aria-hidden="true"></i>
+                <span class="messager-tip messager-header-tip" aria-hidden="true" x-text="leftOpen?ui('隐藏左侧栏','Hide left sidebar'):ui('显示左侧栏','Show left sidebar')"></span>
+            </button>
+            <button type="button" class="messager-button" @click="rightOpen=!rightOpen;$nextTick(()=>refreshSidebarWidth())"
+                    :aria-label="rightOpen?ui('隐藏右侧栏','Hide right sidebar'):ui('显示右侧栏','Show right sidebar')">
+                <i data-lucide="panel-right" aria-hidden="true"></i>
+                <span class="messager-tip messager-header-tip" aria-hidden="true" x-text="rightOpen?ui('隐藏右侧栏','Hide right sidebar'):ui('显示右侧栏','Show right sidebar')"></span>
+            </button>
+            <button type="button" class="messager-button" :disabled="busy" aria-haspopup="dialog" @click="$refs.identityRotationDialog.showModal()"
+                    :aria-label="ui('更换此设备的消息身份密钥','Replace this device’s messaging identity keys')">
+                <i data-lucide="key-round" aria-hidden="true"></i>
+                <span class="messager-tip messager-header-tip" aria-hidden="true" x-text="ui('更换此设备的消息身份密钥','Replace this device’s messaging identity keys')"></span>
+            </button>
+            <button type="button" class="messager-button" :disabled="busy" @click="refresh()"
+                    :aria-label="ui('刷新好友和收件箱','Refresh friends and inbox')">
+                <i data-lucide="refresh-cw" aria-hidden="true"></i>
+                <span class="messager-tip messager-header-tip" aria-hidden="true" x-text="ui('刷新好友和收件箱','Refresh friends and inbox')"></span>
+            </button>
+        </div>
+    </header>
+    <dialog class="ai2apps-dialog" x-ref="identityRotationDialog" aria-labelledby="messager-identity-rotation-title" aria-describedby="messager-identity-rotation-description" @cancel="if(busy)$event.preventDefault()">
+        <h2 id="messager-identity-rotation-title" x-text="ui('更换消息身份密钥？','Replace messaging identity keys?')"></h2>
+        <p id="messager-identity-rotation-description" x-text="ui('更换后，新的会话将不再信任此设备的旧密钥。','After replacement, new conversations will no longer trust this device’s previous keys.')"></p>
+        <div class="ai2apps-dialog-actions">
+            <button type="button" autofocus :disabled="busy" @click="$refs.identityRotationDialog.close()" x-text="ui('取消','Cancel')"></button>
+            <button type="button" class="primary" :disabled="busy" @click="rotateIdentity()" x-text="busy?ui('正在更换…','Replacing…'):ui('更换密钥','Replace keys')"></button>
+        </div>
+    </dialog>
+    <div class="messager-toast-layer"><div x-show="notice" x-cloak class="messager-notice" :class="noticeTone" :role="noticeTone==='error'?'alert':'status'" x-transition:enter="messager-toast-enter" x-transition:enter-start="messager-toast-hidden" x-transition:enter-end="messager-toast-visible" x-transition:leave="messager-toast-leave" x-transition:leave-start="messager-toast-visible" x-transition:leave-end="messager-toast-hidden"><span x-text="notice"></span><button type="button" @click="dismissNotice()" :title="ui('关闭提示','Dismiss notice')" :aria-label="ui('关闭提示','Dismiss notice')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div></div>
+<dialog class="ai2apps-dialog bot-cleanup-dialog" aria-modal="true" aria-labelledby="bot-cleanup-title" @cancel.prevent="cancelCleanup()">
+                            <h2 id="bot-cleanup-title" x-text="cleanupLabel(cleanupAction)"></h2><p><strong x-text="cleanupShortcutName??currentBot?.name"></strong></p><p x-show="cleanupAction==='clear_dialogue'" x-text="ui('确认清除这个 Bot 的对话记录？确认后，当前消息流和会话材料会被清空。可通过“恢复上一份对话”找回记录；Gallery 原文件仍保留。','Clear this Bot’s conversation? This empties the current messages and conversation materials. You can restore the previous conversation; original Gallery files are retained.')"></p>
+        <fieldset x-show="cleanupAction==='clear_dialogue'" :disabled="cleanupBusy" class="bot-cleanup-options">
+            <legend x-text="ui('同时清理（可选）','Also clean up (optional)')"></legend>
+            <label><input type="checkbox" x-model="cleanupClearMemory"><span x-text="ui('同时清除长期记忆','Also clear long-term memory')"></span></label>
+            <label><input type="checkbox" x-model="cleanupRevokeAccess"><span x-text="ui('同时撤销 App / Mini-App 访问权限','Also revoke App / Mini-App access')"></span></label>
+                <label><input type="checkbox" x-model="cleanupDeleteTasks"><span x-text="ui('同时删除后台任务（记录可恢复，恢复后保持停用）','Also delete background tasks (recoverable; restored tasks stay disabled)')"></span></label>
+        </fieldset>
+        <p x-show="cleanupAction==='clear_dialogue'" role="status" aria-live="polite" x-text="cleanupSelectionSummary()"></p>
+                            <p x-show="cleanupShortcutName!==null" x-text="ui('从列表删除这个快捷 Bot？之后可在「已删除 Bot」中恢复。','Delete this shortcut from the list? You can restore it from Deleted Bots.')"></p>
+                            <p x-show="cleanupShortcutName===null && cleanupAction!=='clear_dialogue'" x-text="['archive','reset'].includes(cleanupAction)?ui('此操作将停止该 Bot 的执行，删除 Bot 创建的后台任务记录（可恢复），暂停 Hook，并撤回 App 访问权限。恢复 Bot 会恢复其任务记录但保持停用，需要重新确认计划。已发生的操作不会被撤销。','This stops Bot executions, recoverably deletes Bot-owned background tasks, pauses Hooks and revokes App access. Restoring the Bot restores its task records disabled; plans need renewed confirmation. Completed effects are retained.'):ui('此操作保留 App 和 Mini-App 访问权限。旧上下文的执行与审批将停止，关联任务计划和 Hook 将暂停；恢复内容不会自动恢复调度。已发生的操作不会被撤销。','App and Mini-App access is retained. Executions and approvals using the old context stop; linked schedules and Hooks pause. Restoring content does not restart schedules. Completed effects are retained.')"></p>
+        <p x-show="cleanupAction==='clear_dialogue'" x-text="ui('旧上下文的执行与审批将停止，关联任务计划和 Hook 将暂停；恢复对话不会自动启动任务。已发生的操作不会被撤销。','Executions and approvals using the old context stop; linked schedules and Hooks pause. Restoring the conversation will not restart tasks. Completed effects are retained.')"></p>
+                            <p x-show="cleanupShortcutName===null" x-text="cleanupReview?ui('当前执行：','Active runs: ')+cleanupReview.runs.length+ui('；关联任务：','; linked tasks: ')+cleanupReview.tasks.length+ui('；Hook：','; Hooks: ')+cleanupReview.hooks.length+ui('；记忆：','; memories: ')+cleanupReview.memory_count:''"></p>
+        <div class="ai2apps-dialog-actions">
+            <button type="button" autofocus :disabled="cleanupBusy" @click="cancelCleanup()" x-text="ui('取消','Cancel')"></button>
+            <button type="button" class="primary" :disabled="cleanupBusy||!cleanupReview" @click="applyCleanup()" x-text="cleanupBusy?ui('正在处理…','Processing…'):cleanupConfirmLabel()"></button>
+        </div>
+    </dialog>
     <main class="messager-main">
-        <div x-show="notice" x-cloak class="messager-notice" :class="noticeTone" x-text="notice"></div>
-        <section class="messager-shell">
-            <aside class="messager-sidebar">
-                <nav class="messager-tabs"><button :class="tab==='friends'&&'active'" @click="tab='friends'">{{ t('messager.tab.friends') }}</button><button :class="tab==='requests'&&'active'" @click="tab='requests'">{{ t('messager.tab.requests') }}</button><button :class="tab==='inbox'&&'active'" @click="tab='inbox'">{{ t('messager.tab.inbox') }}<span x-show="unreadCount" x-text="unreadCount"></span></button></nav>
-                <div x-show="tab==='friends'" class="messager-pane">
-                    <form class="messager-search" @submit.prevent="lookup()"><input maxlength="320" autocomplete="off" x-model.trim="identifier" placeholder="{{ t('messager.search.placeholder') }}"><button :disabled="busy||!identifier"><i data-lucide="search"></i></button></form>
+        <section class="messager-shell" x-ref="messagerShell" :style="'--messager-left-width:'+sidebarWidth+'px;--messager-right-width:'+rightSidebarWidth+'px'" :class="{'left-closed':!leftOpen,'right-closed':!rightOpen,'sidebar-compact':sidebarCompact}">
+            <aside class="messager-sidebar" x-show="leftOpen"><div class="messager-sidebar-normal" x-show="!creatingBot">
+                <nav class="messager-tabs"><button :class="tab==='bots'&&'active'" @click="switchTab('bots')" title="{{ t('messager.tab.bots') }}" aria-label="{{ t('messager.tab.bots') }}"><i data-lucide="bot"></i><span class="sidebar-tab-label">{{ t('messager.tab.bots') }}</span></button><button x-show="!sidebarCompact" :class="['friends','requests'].includes(tab)&&'active'" @click="switchTab('friends')" title="{{ t('messager.tab.friends') }}" aria-label="{{ t('messager.tab.friends') }}"><i data-lucide="users"></i><span class="sidebar-tab-label">{{ t('messager.tab.friends') }}</span></button><button x-show="!sidebarCompact" :class="tab==='inbox'&&'active'" @click="switchTab('inbox')" title="{{ t('messager.tab.inbox') }}" aria-label="{{ t('messager.tab.inbox') }}"><i data-lucide="inbox"></i><span class="sidebar-tab-label">{{ t('messager.tab.inbox') }}</span><span class="sidebar-tab-badge" x-show="inboxUnread" x-text="inboxUnread>99?'99+':inboxUnread"></span></button></nav>
+                <div x-show="['friends','requests'].includes(tab)" class="messager-pane"><button class="messager-button sidebar-action" @click="if(sidebarWidth<168)expandSidebar();switchTab('requests')" title="{{ t('messager.tab.requests') }}"><i data-lucide="user-plus"></i><span class="sidebar-action-label">{{ t('messager.tab.requests') }}</span> <span x-text="incomingRequests.filter(x=>x.status==='pending').length"></span></button>
+                    <button type="button" class="messager-button sidebar-search-expand" @click="expandSidebar()" :title="ui('搜索或添加好友','Find or add friends')" :aria-label="ui('搜索或添加好友','Find or add friends')"><i data-lucide="search"></i></button><form class="messager-search" @submit.prevent="lookup()"><input maxlength="320" autocomplete="off" x-model.trim="identifier" placeholder="{{ t('messager.search.placeholder') }}"><button :disabled="busy||!identifier"><i data-lucide="search"></i></button></form>
                     <div x-show="lookupProfile" x-cloak class="messager-profile-result"><span class="messager-avatar" x-text="initials(lookupProfile)"></span><div><strong x-text="lookupProfile?.displayName"></strong><small x-text="lookupProfile?.publicHandle?'@'+lookupProfile.publicHandle:shortId(lookupProfile?.userId)"></small></div><button x-show="lookupRelationship&&!lookupRelationship.friends&&!lookupRelationship.outgoingFriendRequestId" class="messager-button" @click="requestFriend()">{{ t('messager.action.add_friend') }}</button><span x-show="lookupRelationship?.friends" class="messager-pill good">{{ t('messager.status.friend') }}</span></div>
-                    <div class="messager-list"><template x-for="friend in friends" :key="friend.userId"><button class="messager-person" :class="selected?.userId===friend.userId&&'active'" @click="openFriend(friend)"><span class="messager-avatar" x-text="initials(friend)"></span><span><strong x-text="friend.displayName"></strong><small x-text="friend.publicHandle?'@'+friend.publicHandle:shortId(friend.userId)"></small></span></button></template><div x-show="!friends.length" class="messager-empty">{{ t('messager.friends.empty') }}</div></div>
+                    <div class="messager-list"><template x-for="friend in friends" :key="friend.userId"><button class="messager-person" :class="selected?.userId===friend.userId&&'active'" @click="openFriend(friend)" :title="friend.displayName" :aria-label="friend.displayName"><span class="messager-avatar" x-text="initials(friend)"></span><span class="sidebar-person-text"><strong x-text="friend.displayName"></strong><small x-text="friend.publicHandle?'@'+friend.publicHandle:shortId(friend.userId)"></small></span><span class="sidebar-person-badge" x-show="sidebarUnread(friend)" x-text="sidebarBadge(friend)" :aria-label="ui('未读消息','Unread messages')"></span></button></template><div x-show="!friends.length" class="messager-empty">{{ t('messager.friends.empty') }}</div></div>
                 </div>
-                <div x-show="tab==='requests'" class="messager-pane"><h3>{{ t('messager.requests.incoming') }}</h3><template x-for="item in incomingRequests" :key="item.requestId"><div class="messager-request"><div><strong x-text="item.profile?.displayName||shortId(item.requesterUserId)"></strong><small x-text="item.status"></small></div><div x-show="item.status==='pending'"><button class="messager-button primary" @click="actRequest(item,'accept')">{{ t('messager.action.accept') }}</button><button class="messager-button" @click="actRequest(item,'reject')">{{ t('messager.action.reject') }}</button></div></div></template><h3>{{ t('messager.requests.outgoing') }}</h3><template x-for="item in outgoingRequests" :key="item.requestId"><div class="messager-request"><div><strong x-text="item.profile?.displayName||shortId(item.recipientUserId)"></strong><small x-text="item.status"></small></div><button x-show="item.status==='pending'" class="messager-button" @click="actRequest(item,'cancel')">{{ t('messager.action.cancel') }}</button></div></template></div>
-                <div x-show="tab==='inbox'" class="messager-pane"><div class="messager-pane-head"><h3>{{ t('messager.inbox.title') }}</h3><button class="messager-link" @click="readAll()">{{ t('messager.action.read_all') }}</button></div><template x-for="item in inbox" :key="item.id"><button class="messager-inbox-item" :class="!item.readAt&&'unread'" @click="readMessage(item)"><strong x-text="item.title||kindLabel(item.kind)"></strong><span x-text="item.body||''"></span><small x-text="formatTime(item.createdAt)"></small></button></template><div x-show="!inbox.length" class="messager-empty">{{ t('messager.inbox.empty') }}</div></div>
-            </aside>
+                <div x-show="tab==='bots'" x-cloak class="messager-pane messager-bot-pane"><div class="messager-bot-list-scroll">
+
+                    <div x-ref="botArchiveList" x-show="showArchivedBots" class="messager-bot-archive-list"><p x-show="!archivedBots.length" class="messager-empty" x-text="ui('没有已删除的 Bot','No deleted Bots')"></p><template x-for="bot in archivedBots" :key="bot.id"><div class="bot-archived-item"><span x-text="bot.name"></span><button class="messager-button" type="button" @click="restoreBot(bot)" x-text="ui('恢复（不恢复权限或计划）','Restore without access or schedules')"></button></div></template></div>
+                    <div class="messager-list" @pointerdown="startBotDrag($event)" @pointermove="trackBotDrag($event)" @pointerup="dropBot($event)" @pointerleave="if(!botDragId) finishBotDrag()" @pointercancel="finishBotDrag()" @lostpointercapture="finishBotDrag()"><template x-for="group in sidebarGroups" :key="group.id"><section class="bot-sidebar-group" :data-bot-group-id="group.id" :class="{'bot-group-drop':botDragId&&botDropGroup===group.id}" x-show="group.id!=='ungrouped'||groupBots(group).length||botDragId">
+<div class="bot-group-heading" :draggable="group.id!=='ungrouped'" @dragstart.stop="startGroupDrag($event,group)" @dragover="trackGroupDrag($event,group)" @drop.stop="dropGroup($event,group)" @dragend="finishGroupDrag()" :class="{'group-order-before':groupDropId===group.id&&!groupDropAfter,'group-order-after':groupDropId===group.id&&groupDropAfter,'group-order-dragging':groupDragId===group.id}"><button type="button" class="bot-group-toggle" :title="sidebarCompact?'':group.name" :aria-label="group.id==='quick'?ui('快捷Bot','Quick Bots'):group.name" @click="Date.now()>botDragClickUntil&&group.id!=='ungrouped'&&toggleGroup(group)" :aria-expanded="!group.collapsed"><svg x-show="group.id!=='ungrouped'" class="bot-group-chevron" :class="{'collapsed':group.collapsed}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg><strong x-text="groupLabel(group)"></strong><small x-text="groupBots(group).length"></small></button><button x-show="!group.permanent" type="button" class="bot-group-action bot-group-menu" @click="openGroupMenu($event.currentTarget,group)" @pointerdown.stop @dragstart.stop.prevent aria-haspopup="menu" aria-expanded="false" :aria-label="ui('分组操作：','Group actions: ')+group.name"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path stroke-linecap="round" d="M5 12h.01M12 12h.01M19 12h.01"/></svg></button><span x-show="group.id==='quick'" class="bot-group-action bot-group-permanent" :title="ui('默认分组，不能删除','Default group; cannot be deleted')" :aria-label="ui('默认分组，不能删除','Default group; cannot be deleted')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V6a4 4 0 0 1 8 0v4"/></svg></span></div>
+<div x-show="!group.collapsed" class="bot-group-content"><template x-for="bot in groupBots(group)" :key="bot.id"><div class="bot-card-entry" :class="{'has-shortcut-action':bot.definition?.execution_mode==='app_shortcut'}"><button class="messager-person messager-bot-card" :data-bot-order-id="bot.id" :class="{active:currentBot?.id===bot.id,'bot-order-dragging':botDragId===bot.id,'bot-order-before':botDropId===bot.id&&!botDropAfter,'bot-order-after':botDropId===bot.id&&botDropAfter}" @click="if(!botDragId&&Date.now()>botDragClickUntil) openBot(bot,{focusFrom:$event.currentTarget})" @contextmenu.prevent="openBot(bot,{manage:true})" :title="[bot.name, (bot.definition?.execution_mode === 'flash' ? 'FlashBot' : bot.definition?.execution_mode === 'app_shortcut' ? 'ASCBot' : '')].filter(Boolean).join(' · ')" :aria-label="[bot.name, (bot.definition?.execution_mode === 'flash' ? 'FlashBot' : bot.definition?.execution_mode === 'app_shortcut' ? 'ASCBot' : '')].filter(Boolean).join(' · ')">
+<template x-if="['flash', 'app_shortcut'].includes(bot.definition?.execution_mode)">
+  <svg class="bot-type-corner" viewBox="0 0 32 32" aria-hidden="true"><path fill="none" stroke="#d6d6d6" d="M0 32 32 0"/><path fill="none" stroke="#858585" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" :d="bot.definition.execution_mode === 'flash' ? 'm25 15-6 7h4l-1 6 6-8h-4z' : 'M18 24h10m-4-4 4 4-4 4'"/></svg>
+</template><img draggable="false" class="messager-avatar" :src="botAvatar(bot)" alt=""><span class="sidebar-person-text"><strong x-text="bot.name"></strong></span><span class="bot-assistance-ribbon" x-show="sidebarAssistance(bot)" :title="ui('需要你的协助：请批准权限或补全参数','Needs your help: approve access or complete parameters')" role="img" :aria-label="ui('等待用户协助','Waiting for your help')"><span>!</span></span><span class="bot-work-indicators"><span class="bot-work-indicator replying" x-show="sidebarReply(bot)" :title="ui('正在回复','Replying')" role="img" :aria-label="ui('正在回复','Replying')"></span><span class="bot-work-indicator task" x-show="sidebarTask(bot)" :class="bot.task_status==='queued'||bot.task_status?.startsWith('waiting')?'waiting':'executing'" :title="sidebarTaskLabel(bot)" role="img" :aria-label="sidebarTaskLabel(bot)"></span></span><span class="bot-unread-ribbon" x-show="sidebarUnread(bot)" :aria-label="ui('未读消息','Unread messages')"><span class="bot-unread-ribbon-band" x-text="sidebarBadge(bot)"></span></span></button>
+<button x-show="bot.definition?.execution_mode==='app_shortcut'" type="button" class="bot-shortcut-action" :disabled="cleanupBusy||cleanupLoading" @pointerdown.stop @click.stop="openShortcutMenu($event.currentTarget,bot)" aria-haspopup="menu" aria-expanded="false" :aria-label="ui('快捷 Bot 操作：','Shortcut Bot actions: ')+bot.name" :title="ui('快捷 Bot 操作','Shortcut Bot actions')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path stroke-linecap="round" d="M5 12h.01M12 12h.01M19 12h.01"/></svg>
+</button></div></template><p class="bot-group-empty" x-show="!groupBots(group).length" x-text="ui('拖入 Bot','Drop Bots here')"></p></div></section></template></div>
+                    </div><footer class="messager-bot-list-actions" :aria-label="ui('Bot 列表操作','Bot list actions')"><button type="button" :class="creatingBot&&'active'" :aria-pressed="creatingBot" @click="toggleBotCreation($event.currentTarget)" aria-describedby="messager-new-bot-tip" :aria-label="creatingBot?ui('取消新建','Cancel new Bot'):tr('messager.bot.new')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span id="messager-new-bot-tip" class="messager-tip messager-footer-tip" role="tooltip" x-text="creatingBot?ui('取消新建','Cancel new Bot'):tr('messager.bot.new')"></span></button><button type="button" :class="showArchivedBots&&'active'" :aria-pressed="showArchivedBots" @click="toggleArchivedBots()" aria-describedby="messager-deleted-bots-tip" :aria-label="ui('已删除 Bot','Deleted Bots')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 8h16v12H4zM3 4h18v4H3zM9 12h6M12 12v5m-3-3 3 3 3-3"/></svg><span id="messager-deleted-bots-tip" class="messager-tip messager-footer-tip" role="tooltip" x-text="ui('已删除 Bot','Deleted Bots')"></span></button></footer>
+<dialog class="bot-access-dialog" x-ref="botGroupDialog" @cancel.prevent="closeGroupDialog()">
+    <form @submit.prevent="commitGroup()">
+        <h2 x-text="ui('删除分组','Delete group')"></h2>
+        <div><strong x-text="groupRemoval?.name"></strong><p x-text="ui('删除后，其中的 Bot 会变为无分组，不会删除 Bot 或对话。','Bots will become ungrouped. Bots and conversations will be kept.')"></p></div>
+        <div class="bot-access-dialog-actions">
+            <button type="button" class="messager-button" data-group-cancel :disabled="groupBusy" @click="closeGroupDialog()" x-text="ui('取消','Cancel')"></button>
+            <button type="submit" class="messager-button danger" :disabled="groupBusy" x-text="ui('删除分组','Delete group')"></button>
+        </div>
+    </form>
+</dialog>                </div>
+                <div x-show="tab==='inbox'" class="messager-pane"><div class="messager-pane-head"><h3>{{ t('messager.inbox.title') }}</h3><button class="messager-link" @click="readAll()">{{ t('messager.action.read_all') }}</button></div><h3 x-text="ui('Bot 提醒','Bot reminders')"></h3><template x-for="item in localNotices" :key="item.id"><button class="messager-inbox-item" :class="!item.read_at&&'unread'" @click="openBotNotice(item.id)"><strong x-text="item.content.title"></strong><span x-text="item.content.body"></span><small x-text="formatTime(item.created_at)"></small></button></template><p x-show="localNoticesMore" x-text="ui('显示最近100条提醒','Showing the latest 100 reminders')"></p><h3 x-text="ui('系统消息','System messages')"></h3><template x-for="item in inbox" :key="item.id"><button class="messager-inbox-item" :class="!item.readAt&&'unread'" @click="readMessage(item)"><strong x-text="item.title||kindLabel(item.kind)"></strong><span x-text="item.body||''"></span><small x-text="formatTime(item.createdAt)"></small></button></template><div x-show="!inbox.length&&!localNotices.length" class="messager-empty">{{ t('messager.inbox.empty') }}</div></div>
+            </div><div x-ref="botCreationHost" x-show="creatingBot" class="messager-creation-host"></div></aside><div x-ref="sidebarHandle" class="messager-sidebar-resizer" x-show="leftOpen" role="separator" tabindex="0" aria-orientation="vertical" aria-valuemin="88" aria-valuemax="480" :aria-valuenow="sidebarWidth" :aria-label="ui('调整左侧栏宽度','Resize left sidebar')" :title="ui('拖拽调整宽度；双击恢复默认','Drag to resize; double-click to reset')"></div>
             <section class="messager-conversation">
-                <template x-if="selected"><div class="messager-conversation-inner"><header class="messager-peer"><span class="messager-avatar large" x-text="initials(selected)"></span><div><h2 x-text="selected.displayName"></h2><p x-text="selected.publicHandle?'@'+selected.publicHandle:shortId(selected.userId)"></p></div><span class="messager-pill good" x-text="tr('messager.status.local_first')"></span></header><div class="messager-privacy"><i data-lucide="shield-check"></i><span x-text="tr('messager.privacy.local_first')"></span></div><div class="messager-messages"><template x-for="item in conversationMessages" :key="item.id"><div class="messager-bubble" :class="item.outgoing&&'outgoing'"><p x-show="item.body" x-text="item.body"></p><img x-show="item.attachmentObjectUrl" :src="item.attachmentObjectUrl" :alt="tr('messager.attachment.alt')"><span x-show="item.attachmentError" class="messager-attachment-error" x-text="item.attachmentError"></span><small><span x-text="item.status==='result_unknown'?tr('messager.transport.local_unknown'):(item.transport==='cloud_offline'?tr('messager.transport.cloud'):tr('messager.transport.local'))"></span> · <span x-text="formatTime(item.createdAt)"></span></small></div></template><div x-show="!conversationMessages.length" class="messager-empty">{{ t('messager.conversation.empty') }}</div></div><form class="messager-composer" @submit.prevent="send()"><div x-show="draftPreviewUrl" class="messager-draft-attachment"><img :src="draftPreviewUrl" alt=""><button type="button" @click="removeAttachment()" :aria-label="tr('messager.action.remove_attachment')"><i data-lucide="x"></i></button></div><textarea maxlength="4000" x-model="draft" placeholder="{{ t('messager.composer.placeholder') }}"></textarea><label class="messager-attach" :title="tr('messager.action.attach_image')"><i data-lucide="image-plus"></i><input type="file" accept="image/png,image/jpeg,image/webp" @change="selectAttachment($event)"></label><button class="messager-send" :disabled="busy||(!draft.trim()&&!draftAttachment)"><i data-lucide="send"></i></button></form></div></template>
-                <div x-show="!selected" class="messager-welcome"><span><i data-lucide="message-circle"></i></span><h2>{{ t('messager.welcome.title') }}</h2><p>{{ t('messager.welcome.body') }}</p></div>
+                <div x-show="tab==='requests'" class="messager-pane"><h3>{{ t('messager.requests.incoming') }}</h3><template x-for="item in incomingRequests" :key="item.requestId"><div class="messager-request"><div><strong x-text="item.profile?.displayName||shortId(item.requesterUserId)"></strong><small x-text="item.status"></small></div><div x-show="item.status==='pending'"><button class="messager-button primary" @click="actRequest(item,'accept')">{{ t('messager.action.accept') }}</button><button class="messager-button" @click="actRequest(item,'reject')">{{ t('messager.action.reject') }}</button></div></div></template><h3>{{ t('messager.requests.outgoing') }}</h3><template x-for="item in outgoingRequests" :key="item.requestId"><div class="messager-request"><div><strong x-text="item.profile?.displayName||shortId(item.recipientUserId)"></strong><small x-text="item.status"></small></div><button x-show="item.status==='pending'" class="messager-button" @click="actRequest(item,'cancel')">{{ t('messager.action.cancel') }}</button></div></template></div>
+
+                <section x-show="tab==='bots'" x-cloak class="messager-bot-conversation">
+                    <div x-show="currentBot" x-ref="botChat" class="bot-chat-host"></div>
+                    <p x-show="!currentBot" class="messager-empty">{{ t('messager.bot.choose') }}</p>
+                </section>
+                <template x-if="selected && tab==='friends'"><div class="messager-conversation-inner"><header class="messager-peer"><span class="messager-avatar large" x-text="initials(selected)"></span><div><h2 x-text="selected.displayName"></h2><p x-text="selected.publicHandle?'@'+selected.publicHandle:shortId(selected.userId)"></p></div><span class="messager-pill good" x-text="tr('messager.status.local_first')"></span></header><div class="messager-privacy"><i data-lucide="shield-check"></i><span x-text="tr('messager.privacy.local_first')"></span></div><div class="messager-messages"><template x-for="item in conversationMessages" :key="item.id"><div class="messager-bubble" :class="item.outgoing&&'outgoing'"><p x-show="item.body" x-text="item.body"></p><img x-show="item.attachmentObjectUrl" :src="item.attachmentObjectUrl" :alt="tr('messager.attachment.alt')"><span x-show="item.attachmentError" class="messager-attachment-error" x-text="item.attachmentError"></span><small><span x-text="item.status==='result_unknown'?tr('messager.transport.local_unknown'):(item.transport==='cloud_offline'?tr('messager.transport.cloud'):tr('messager.transport.local'))"></span> · <span x-text="formatTime(item.createdAt)"></span></small></div></template><div x-show="!conversationMessages.length" class="messager-empty">{{ t('messager.conversation.empty') }}</div></div><form class="messager-composer" @submit.prevent="send()"><div x-show="draftPreviewUrl" class="messager-draft-attachment"><img :src="draftPreviewUrl" alt=""><button type="button" @click="removeAttachment()" :aria-label="tr('messager.action.remove_attachment')"><i data-lucide="x"></i></button></div><textarea maxlength="4000" x-model="draft" placeholder="{{ t('messager.composer.placeholder') }}"></textarea><label class="messager-attach" :title="tr('messager.action.attach_image')"><i data-lucide="image-plus"></i><input type="file" accept="image/png,image/jpeg,image/webp" @change="selectAttachment($event)"></label><button class="messager-send" :disabled="busy||(!draft.trim()&&!draftAttachment)"><i data-lucide="send"></i></button></form></div></template>
+                <div x-show="!selected && tab==='friends'" class="messager-welcome"><span><i data-lucide="message-circle"></i></span><h2>{{ t('messager.welcome.title') }}</h2><p>{{ t('messager.welcome.body') }}</p></div>
             </section>
+            <div x-ref="rightSidebarHandle" class="messager-details-resizer" x-show="rightOpen" role="separator" tabindex="0" aria-orientation="vertical" :aria-valuenow="rightSidebarWidth" :aria-label="ui('调整右侧栏宽度','Resize right sidebar')" :title="ui('拖拽调整宽度；双击恢复最小宽度','Drag to resize; double-click for minimum width')"></div>
+            <aside class="messager-details" x-ref="messagerDetails" x-show="rightOpen">
+                <nav class="messager-detail-tabs" x-show="tab==='bots'" role="tablist" :aria-label="ui('Bot 侧栏','Bot sidebar')"><button type="button" role="tab" :aria-selected="rightTab==='bot'" :class="rightTab==='bot'&&'active'" @click="showRightTab('bot')">Bot</button><button type="button" role="tab" :aria-selected="rightTab==='gallery'" :class="rightTab==='gallery'&&'active'" @click="showRightTab('gallery')">Gallery</button></nav>
+<div class="messager-bot-tab" x-show="rightTab==='bot' && tab==='bots'">
+<template x-if="currentBot && tab==='bots'"><form class="messager-bot-settings" @submit.prevent="saveBot()"><details x-show="currentBot?.definition?.execution_mode !== 'app_shortcut'" class="bot-settings-group" open><summary><span class="bot-settings-heading"><i data-lucide="list-checks" aria-hidden="true"></i><span x-text="ui('任务','Tasks')"></span></span></summary><div class="bot-settings-group-body"><template x-if="focusedTask"><article class="bot-task-item" role="status"><strong x-text="ui('提醒对应的任务','Task from this reminder')"></strong><span x-text="focusedTask.title"></span><small x-text="taskLabel({run:{status:focusedTask.status}})"></small><a :href="todoTaskUrl(focusedTask)" target="_blank" rel="noopener" x-text="ui('查看原 Todo 任务','View original Todo task')"></a></article></template>
+                    <div x-show="botTaskSessionDetail || botTaskBrowseOpen" class="bot-task-toolbar">
+                        <button type="button" class="bot-task-link" @click="botTaskSessionDetail ? botTaskSessionDetail=null : botTaskBrowseOpen=false" x-text="ui('‹ 返回','‹ Back')"></button>
+                    </div>
+                    <p x-show="botTasksUnavailable" class="messager-help" role="status" x-text="ui('任务服务暂未就绪，正在自动重试…','Task service is not ready. Retrying automatically…')"></p>
+                    <section x-show="!botTaskSessionDetail && botTaskBrowseOpen && !botTaskBrowseArchived && scheduledBotTasks().length" class="bot-scheduled-tasks">
+                        <h3 x-text="ui('计划中','Scheduled')"></h3>
+                        <template x-for="task in scheduledBotTasks()" :key="task.id">
+                            <div class="bot-task-row">
+                                <button type="button" class="bot-task-title" @click="inspectBotTask({...linkedTaskEntry(task),planned:true})" :title="task.title" x-text="task.title"></button>
+                                <time :datetime="task.next_due" :title="formatTime(task.next_due)" x-text="nextTaskRunLabel(task.next_due)"></time>
+                            </div>
+                        </template>
+                    </section>
+                    <div x-show="!botTaskSessionDetail && !botTaskBrowseOpen" class="bot-task-overview">
+                        <p x-show="!botTasksUnavailable && !taskOverview().length" class="messager-help" x-text="ui('暂无任务','No tasks yet')"></p>
+                        <template x-for="group in taskOverview()" :key="group.kind">
+                            <section class="bot-scheduled-tasks">
+                                <h3 x-text="group.label"></h3>
+                                <template x-for="entry in group.entries" :key="entry.id">
+                                    <div class="bot-task-row">
+                                        <button type="button" class="bot-task-title" @click="inspectBotTask(entry)" :title="entry.title" x-text="entry.title"></button>
+                                        <template x-if="entry.planned">
+                                            <time :datetime="entry.linked.next_due" :title="formatTime(entry.linked.next_due)" x-text="nextTaskRunLabel(entry.linked.next_due)"></time>
+                                        </template>
+                                        <button x-show="!entry.linked && ['waiting_input','waiting_capability'].includes(entry.status)" type="button" class="bot-task-link bot-task-needs-you" @click="taskRowAction(entry)" x-text="entry.status==='waiting_capability'?ui('查看确认','Review'):ui('去回复','Reply')"></button>
+                                        <small x-show="!entry.planned && (entry.linked || !['waiting_input','waiting_capability'].includes(entry.status))" x-text="entry.linked?taskLabel(entry.linked):botSessionLabel(entry)"></small>
+                                    </div>
+                                </template>
+                            </section>
+                        </template>
+                        <button type="button" class="bot-task-link" @click="browseBotTasks(false)" x-text="ui('全部任务 ›','All tasks ›')"></button>
+                    </div>
+                    <div x-show="botTaskBrowseOpen && !botTaskSessionDetail" class="bot-task-browser">
+                        <div class="bot-task-toolbar">
+                            <button type="button" class="bot-task-link" :aria-pressed="!botTaskBrowseArchived" @click="browseBotTasks(false)" x-text="ui('全部任务','All tasks')"></button>
+                            <button type="button" class="bot-task-link" :aria-pressed="botTaskBrowseArchived" @click="browseBotTasks(true)" x-text="ui('已归档','Archived')"></button>
+                        </div>
+                        <p x-show="botTaskBrowseLoading" class="messager-help" x-text="ui('正在加载任务…','Loading tasks…')"></p>
+                        <p x-show="!botTaskBrowseLoading && !botTaskSessionBrowse.length" class="messager-help" x-text="botTaskBrowseArchived?ui('暂无已归档任务','No archived tasks'):ui('暂无对话任务','No conversation tasks yet')"></p>
+                        <template x-for="entry in botTaskSessionBrowse" :key="entry.id">
+                            <div class="bot-task-row">
+                                <button type="button" class="bot-task-title" @click="inspectBotTask(entry)" :title="entry.title" x-text="entry.title"></button>
+                                <small x-text="botTaskBrowseArchived?ui('已归档','Archived'):botSessionLabel(entry)"></small>
+                            </div>
+                        </template>
+                        <button x-show="botTaskBrowseMore" type="button" class="bot-task-link" :disabled="botTaskBrowseLoading" @click="browseBotTasks(botTaskBrowseArchived,true)" x-text="ui('加载更多','Load more')"></button>
+                        <details class="bot-settings-help">
+                            <summary x-text="ui('Todo 任务与授权','Todo tasks and access')"></summary>
+                            <button type="button" class="messager-button" @click="chooseBotTask()" x-text="ui('关联 Todo 任务','Link a Todo task')"></button>
+                            <div x-show="taskChooser">
+                                <p class="messager-help" x-text="ui('关联后可在此查看任务。关联时不会启动执行。','Link a task to see it here. Linking does not start it.')"></p>
+                                <select x-model="taskSelection" :aria-label="ui('选择 Todo 任务','Choose Todo task')">
+                                    <option value="" x-text="ui('选择任务','Choose a task')"></option>
+                                    <template x-for="task in taskCandidates" :key="task.id"><option :value="task.id" x-text="task.title"></option></template>
+                                </select>
+                                <p x-show="!taskCandidates.length" x-text="ui('没有可关联的任务，请先在 Todo 中创建。','No available tasks. Create one in Todo first.')"></p>
+                                <p x-show="taskCandidatesMore" x-text="ui('显示最近100项未关联任务。','Showing the latest 100 unlinked tasks.')"></p>
+                                <button type="button" class="messager-button" :disabled="taskBusy||!taskSelection" @click="assignBotTask()" x-text="ui('关联','Link')"></button>
+                                <button type="button" class="messager-button" @click="taskChooser=false" x-text="ui('取消','Cancel')"></button>
+                            </div>
+                            <template x-for="task in botTasks.filter(item=>!item.task_session_id&&(!item.scheduled||!item.next_due||item.archived_at))" :key="task.id">
+                                <div class="bot-task-row">
+                                    <button type="button" class="bot-task-title" @click="inspectBotTask({id:task.id,title:task.title,linked:task})" x-text="task.title"></button>
+                                    <small x-text="taskLabel(task)"></small>
+                                </div>
+                            </template>
+                            <details x-show="botTaskAccessPolicies.length" class="bot-settings-help">
+                                <summary x-text="ui('任务执行授权','Task execution authorization')"></summary>
+                                <template x-for="policy in botTaskAccessPolicies" :key="policy.id">
+                                    <div class="bot-task-item">
+                                        <strong x-text="policy.title"></strong><small x-text="policy.targets.map(t=>t.name).join('、')"></small>
+                                        <button type="button" class="messager-button" @click="disableTaskAccess(policy)" x-text="ui('停用此任务授权','Disable task authorization')"></button>
+                                    </div>
+                                </template>
+                            </details>
+                            <a href="/apps/ai2apps.todo" target="_top" x-text="ui('打开 Todo','Open Todo')"></a>
+                        </details>
+                    </div>
+                    <template x-if="botTaskSessionDetail">
+                        <article class="bot-task-item bot-task-detail" x-data="{get entry(){return botTaskSessionDetail}}">
+                            <strong x-text="entry.title"></strong>
+                            <small x-text="entry.planned&&entry.linked?.next_due?ui('下次执行','Next run')+' · '+formatTime(entry.linked.next_due):entry.linked?taskLabel(entry.linked):botSessionLabel(entry)"></small>
+                            <template x-if="entry.statistics?.task_usage">
+                                <div class="bot-task-usage">
+                                    <strong x-text="ui('此任务累计用量','Task lifetime usage')"></strong>
+                                    <dl class="bot-statistics">
+                                        <dt x-text="ui('执行次数','Executions')"></dt><dd x-text="entry.statistics.executions"></dd>
+                                        <dt x-text="ui('任务自身 BYOK','Task BYOK')"></dt><dd x-text="Object.entries(entry.statistics.usage.currency_costs).map(([k,v])=>k+' '+v).join(' · ')||ui('未报告','Not reported')"></dd>
+                                    </dl>
+                                    <div class="bot-task-usage-table-container">
+                                        <table class="bot-task-usage-table">
+                                            <thead><tr><th scope="col" x-text="ui('用量来源','Source')"></th><th scope="col">Tokens</th><th scope="col">Points</th></tr></thead>
+                                            <tbody><template x-for="row in taskUsageRows(entry.statistics.task_usage)" :key="row.key">
+                                                <tr :class="{'bot-task-usage-total':row.key==='total'}">
+                                                    <th scope="row" x-text="row.label"></th>
+                                                    <td x-text="taskUsageValue(row.tokens,row.known_tokens)"></td>
+                                                    <td x-text="taskUsageValue(row.points,row.known_points)"></td>
+                                                </tr>
+                                            </template></tbody>
+                                        </table>
+                                    </div>
+                                    <small x-text="ui('委派用量包含子任务及其 AaAT。大于号后的数字为已知用量，其余用量未报告。','Delegated usage includes child tasks and their AaAT calls. > marks the known amount in an incomplete total. Unk. means unknown.')"></small>
+                                </div>
+                            </template>
+                            <p x-show="entry.summary || entry.linked?.run?.message" x-text="entry.summary || entry.linked?.run?.message"></p>
+                            <template x-if="entry.linked">
+                                <div class="bot-task-actions">
+                                    <a :href="todoTaskUrl(entry.linked)" target="_blank" rel="noopener" x-text="ui('在 Todo 中查看','View in Todo')"></a>
+                                    <button type="button" class="messager-button" x-show="entry.linked.managed&&taskActive(entry.linked)" :disabled="taskBusy" @click="stopBotTask(entry.linked)" x-text="ui('停止本次执行','Stop this run')"></button>
+                                    <button type="button" class="messager-button" x-show="!entry.linked.managed" :disabled="taskBusy||taskActive(entry.linked)" @click="removeBotTask(entry.linked)" x-text="ui('解除关联','Unlink')"></button>
+                                </div>
+                            </template>
+                            <template x-if="!entry.linked">
+                                <div>
+                                    <div class="bot-task-actions">
+                                        <button type="button" class="messager-button" x-show="!['cancelled','failed','interrupted','timed_out','waiting_collaboration'].includes(entry.status)" @click="continueBotTask(entry)" x-text="ui('继续此任务','Continue task')"></button>
+                                        <button type="button" class="messager-button" x-show="taskActive({run:{status:entry.status}})||entry.status==='waiting_collaboration'" @click="stopBotSession(entry)" x-text="ui('停止任务','Stop task')"></button>
+                                    </div>
+                                    <details x-show="entry.runs?.length" class="bot-settings-help">
+                                        <summary x-text="ui('执行记录','Execution history')"></summary>
+                                        <template x-for="step in entry.runs||[]" :key="step.id">
+                                            <div class="bot-task-item">
+                                                <strong x-text="step.title"></strong><small x-text="botSessionLabel(step)"></small>
+                                                <a x-show="step.task_id" :href="todoTaskUrl({id:step.task_id})" target="_blank" rel="noopener" x-text="ui('在 Todo 中查看','View in Todo')"></a>
+                                            </div>
+                                        </template>
+                                        <p x-show="entry.run_count>100" x-text="ui('仅显示最近100次执行。','Showing the latest 100 executions.')"></p>
+                                    </details>
+                                    <details class="bot-settings-help">
+                                        <summary x-text="ui('更多操作','More actions')"></summary>
+                                        <div class="bot-task-actions">
+                                            <button type="button" class="messager-button" @click="manageBotTaskSession(entry,entry.pinned?'unpin':'pin')" x-text="entry.pinned?ui('取消固定','Unpin'):ui('固定','Pin')"></button>
+                                            <button type="button" class="messager-button" x-show="entry.archived||(!taskActive({run:{status:entry.status}})&&entry.status!=='waiting_collaboration')" @click="manageBotTaskSession(entry,entry.archived?'restore':'archive')" x-text="entry.archived?ui('恢复','Restore'):ui('归档','Archive')"></button>
+                                        </div>
+                                    </details>
+                                </div>
+                            </template>
+                        </article>
+                    </template>
+                    </div></details>
+                    <details class="bot-settings-group"><summary><span class="bot-settings-heading"><i data-lucide="user-round" aria-hidden="true"></i><span x-text="ui('Profile · 身份设定','Profile')"></span></span></summary><div class="bot-settings-group-body"><div class="bot-field-title" x-text="ui('Bot头像','Bot Avatar')"></div><div class="bot-avatar-editor" role="group" :aria-label="ui('Bot头像','Bot Avatar')" @dragover.prevent @drop="dropAvatar($event)"><img class="messager-avatar large" :src="botAvatar(currentBot)" alt=""><select x-model="avatarPreset" @change="presetAvatar()" :disabled="avatarBusy" :aria-label="ui('头像样式','Avatar style')"><option value="spark">Star</option><option value="robot">Robot</option><option value="orbit">Orbit</option><option value="flower">Flower</option><option value="sun">Sun</option><option value="moon">Moon</option><option value="cat">Cat</option><option value="owl">Owl</option><option value="leaf">Leaf</option><option value="rocket">Rocket</option><option value="compass">Compass</option><option value="heart">Heart</option></select><input type="color" x-model="avatarColor" @change="presetAvatar()" :disabled="avatarBusy" :aria-label="ui('头像颜色','Avatar color')">
+                        <div class="bot-avatar-actions">
+                            <input type="file" x-ref="botAvatarFile" accept="image/png,image/jpeg,image/webp" :disabled="avatarBusy"
+                                @change="uploadAvatar($event.target.files[0]);$event.target.value=''" hidden>
+                            <button type="button" class="messager-button" :disabled="avatarBusy" @click="$refs.botAvatarFile.click()"
+                                :aria-label="ui('上传头像','Upload avatar')">
+                                <i data-lucide="upload" aria-hidden="true"></i>
+                                <span class="messager-tip bot-avatar-tip" aria-hidden="true" x-text="ui('上传头像','Upload avatar')"></span>
+                            </button>
+                            <button type="button" class="messager-button" :disabled="avatarBusy" @click="galleryAvatar()"
+                                :aria-label="ui('从素材库选择','Choose from Gallery')">
+                                <i data-lucide="images" aria-hidden="true"></i>
+                                <span class="messager-tip bot-avatar-tip" aria-hidden="true" x-text="ui('从素材库选择','Choose from Gallery')"></span>
+                            </button>
+                        </div>
+                    </div><label><span>{{ t('messager.bot.name') }}</span><input required maxlength="64" x-model.trim="botEditName"></label><label><span>{{ t('messager.bot.duty') }}</span><textarea required maxlength="600" x-model.trim="botEditDuty"></textarea></label><button type="button" class="messager-button" x-show="currentBot?.template_id" :disabled="botSaving" @click="restoreTemplateRole()" x-text="ui('填入默认职责','Use default Role')"></button><label x-show="currentBot?.definition?.execution_mode === 'agent'"><span x-text="ui('对话模型','Conversation model')"></span><select x-model="botModel" x-effect="$el.value = botModel" @change="selectBotModel($event.target)" :disabled="botModelInstallBusy || botModelSaving"><option value="" disabled x-text="ui('请选择对话模型','Choose a conversation model')"></option><template x-for="model in botModels" :key="model.id"><option :value="model.id" x-text="model.name||model.id"></option></template><option value="__install_more__" x-text="ui('安装模型…','Install model…')"></option></select><small x-show="botModelNotice && !botModel" x-text="botModelNotice"></small><details x-show="botModelNotice && botModel"><summary x-text="ui('模型能力说明','Model capability details')"></summary><small x-text="botModelNotice"></small></details></label><label x-show="botModel && currentBot?.definition?.execution_mode === 'agent'"><span x-text="ui('思考档位','Thinking level')"></span><select :aria-label="ui('思考档位','Thinking level')" :disabled="botModelSaving || botModelInstallBusy || !botReasoningLevels.length" x-effect="botReasoningLevels; botModelSaving; const effort = botReasoningEffort; $nextTick(() => { $el.value = effort })" @change="selectBotReasoning($event.target.value)"><option value="" x-text="botReasoningLabel('')"></option><template x-for="level in botReasoningLevels" :key="level"><option :value="level" x-text="botReasoningLabel(level)"></option></template></select></label><button class="messager-button" :disabled="botSaving" x-text="ui('保存','Save')"></button>
+                    <button type="button" class="messager-button" :disabled="cleanupBusy||cleanupLoading" @click="reviewCleanup(currentBot.is_default?'reset':'archive')" x-text="cleanupLabel(currentBot.is_default?'reset':'archive')"></button></div></details>
+                    <details x-show="currentBot?.definition?.execution_mode !== 'app_shortcut'" class="bot-settings-group" data-bot-access-management><summary><span class="bot-settings-heading"><i data-lucide="shield-check" aria-hidden="true"></i><span x-text="ui('访问权限','Access')"></span></span></summary><div class="bot-settings-group-body">
+                        <p class="messager-help" x-text="ui('管理此 Bot 的 App、Mini-App 和 Bot 权限。','Manage this Bot’s App, Mini-App and Bot access.')"></p><details class="bot-settings-help"><summary x-text="ui('了解规则','How it works')"></summary><p x-text="ui('添加后允许访问；交易付款、敏感及特殊操作仍需单独确认；AI/API 用量遵循模型配置与预算。撤销权限会停止旧授权执行，原任务回执保留。','Added entries allow access; purchases, payments, sensitive and special operations still require confirmation. AI/API usage follows model settings and budgets. Revocation stops executions admitted under old permissions; receipts remain.')"></p></details>
+                        <template x-if="botApprovalRule && (!currentBot?.definition || currentBot.definition.execution_mode === 'agent')">
+                            <div>
+                                <label class="bot-approval-mode">
+                                    <span x-text="ui('访问审批模式','Access approval mode')"></span>
+                                    <select :value="botApprovalRule.mode" :disabled="botApprovalBusy"
+                                        @change="saveBotApprovalRule($event.target.value).finally(() => $el.value = botApprovalRule?.mode || 'manual')">
+                                        <option value="manual" x-text="ui('由我批准','Approve myself')"></option>
+                                        <option value="ai" x-text="ui('AI 批准','AI approval')"></option>
+                                        <option value="always" x-text="ui('总是批准','Always approve')"></option>
+                                    </select>
+                                </label>
+                                <p class="messager-help" x-text="ui('此模式适用于普通 App 和 Mini-App 工具的访问申请。首次获准使用其他 Bot 仍需你确认。','This mode applies to ordinary App and Mini-App tool access requests. First-time access to another Bot still requires your approval.')"></p>
+                                <p class="messager-help" x-text="ui('Task 按当前委派路径选用审批模式：总是批准优先，其次是 AI 批准，最后是人工批准。Task 新批准的权限仅在本次任务树内有效。','Tasks use the highest approval mode on their delegation path: Always, then AI, then manual. Access approved in a task applies to that task tree.')"></p>
+                            </div>
+                        </template>
+                        <section data-bot-use-access><h4>Bots</h4><template x-if="botUseAccess"><div>
+<template x-for="target in botUseAccess.outgoing" :key="target.id"><div class="bot-app-access-row bot-use-access-row">
+<img class="bot-use-access-avatar" :src="botAvatar(target)" alt="">
+<div class="bot-use-access-content"><div class="bot-use-access-heading"><span :title="target.name" x-text="target.name"></span><button type="button" class="bot-access-remove" :disabled="botUseBusy" @click="reviewRemoveBotUse(target)" :aria-label="ui('删除访问权限：','Remove access: ')+target.name"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6"/></svg></button></div><label class="bot-access-choice"><input type="checkbox" role="switch" x-model="target.enabled" :disabled="botUseBusy||!target.available" @change="setBotUse('targets',target.id,target.enabled)"><span x-text="ui('允许访问','Allow access')"></span></label></div>
+</div></template>
+<select x-model="botUseTarget" :disabled="botUseBusy" :aria-label="ui('选择要使用的 Bot','Choose a target Bot')"><option value="" x-text="ui('添加 Bot…','Add Bot…')"></option><template x-for="item in botUseAccess.candidates" :key="item.id"><option :value="item.id" x-text="item.name"></option></template></select><button type="button" class="messager-button" :disabled="botUseBusy||!botUseTarget" @click="setBotUse('targets',botUseTarget,true)" x-text="ui('添加 Bot','Add Bot')"></button>
+
+</div></template></section>
+                        <p x-show="!accessLoaded" x-text="ui('正在读取权限…','Loading access…')"></p>
+                        <div class="bot-access-section-title"><h4>App</h4><button type="button" :disabled="!accessLoaded||accessBusy" @click="openAccessChooser('app')" :aria-label="ui('添加 App','Add App')" :data-chat-tip="ui('添加 App','Add App')"><i data-lucide="plus" aria-hidden="true"></i></button></div>
+<template x-for="profile in selectedBotApps" :key="profile.app_id"><fieldset class="bot-app-access-row"><legend><i :data-lucide="profile.icon" aria-hidden="true"></i><span x-text="profile.name"></span><button type="button" class="bot-access-remove" :disabled="accessBusy" @click="reviewRemoveAccess(profile)" :aria-label="ui('删除访问权限：','Remove access: ')+profile.name" :data-chat-tip="ui('删除访问权限','Remove access')"><i data-lucide="trash-2" aria-hidden="true"></i></button></legend><div class="bot-access-switches"><label class="bot-access-choice"><input role="switch" type="checkbox" x-model="profile.enabled" :disabled="accessBusy||!profile.available" @change="saveBotAccess()"><span x-text="ui('允许访问','Allow access')"></span></label></div><small x-show="!profile.available" x-text="ui('当前不可用，可以删除授权。','Currently unavailable; access can be removed.')"></small></fieldset></template>
+                        <div class="bot-access-section-title bot-access-section-divider"><h4>Mini-App</h4><button type="button" :disabled="!accessLoaded||accessBusy" @click="openAccessChooser('mini-app')" :aria-label="ui('添加 Mini-App','Add Mini-App')" :data-chat-tip="ui('添加 Mini-App','Add Mini-App')"><i data-lucide="plus" aria-hidden="true"></i></button></div>
+<template x-for="profile in selectedBotMiniApps" :key="profile.app_id"><fieldset class="bot-app-access-row"><legend><i :data-lucide="profile.icon" aria-hidden="true"></i><span x-text="profile.name"></span><button type="button" class="bot-access-remove" :disabled="accessBusy" @click="reviewRemoveAccess(profile)" :aria-label="ui('删除访问权限：','Remove access: ')+profile.name" :data-chat-tip="ui('删除访问权限','Remove access')"><i data-lucide="trash-2" aria-hidden="true"></i></button></legend><div class="bot-access-switches"><label class="bot-access-choice"><input role="switch" type="checkbox" x-model="profile.enabled" :disabled="accessBusy||!profile.available" @change="saveBotAccess()"><span x-text="ui('允许访问','Allow access')"></span></label></div><small x-show="!profile.available" x-text="ui('当前不可用，可以删除授权。','Currently unavailable; access can be removed.')"></small></fieldset></template>
+                        <button type="button" class="messager-button" x-show="currentBot?.template_id" :disabled="!accessLoaded||accessBusy" @click="reviewRestoreTemplateAccess()" x-text="ui('恢复默认 App 权限','Restore default App access')"></button>
+                        <p x-show="accessLoaded&&!selectedBotMiniApps.length" x-text="ui('尚未添加 Mini-App','No Mini-Apps added')"></p>
+                        <dialog class="bot-access-dialog" x-ref="accessDialog" x-effect="accessChooserKind;accessQuery;$nextTick(()=>window.lucide?.createIcons())" @cancel.prevent="if(!accessBusy&&!botUseBusy)closeAccessDialog()">
+                        <template x-if="accessDialogMode==='add'"><div><h2 x-text="ui('添加访问权限','Add access')"></h2><p x-text="ui('选择一个 App 或 Mini-App，允许此 Bot 访问。','Choose an App or Mini-App to allow this Bot access.')"></p><div class="messager-tabs"><button type="button" :class="accessChooserKind==='app'&&'active'" @click="accessChooserKind='app'">App</button><button type="button" :class="accessChooserKind==='mini-app'&&'active'" @click="accessChooserKind='mini-app'">Mini-App</button></div><input class="messager-search" x-model="accessQuery" :placeholder="ui('搜索名称…','Search by name…')" :aria-label="ui('搜索 App 或 Mini-App','Search Apps or Mini-Apps')"><div class="bot-access-candidates"><template x-for="item in accessCandidates" :key="item.app_id"><button type="button" :disabled="accessBusy" @click="addBotAccess(item)"><i :data-lucide="item.icon" aria-hidden="true"></i><span><strong x-text="item.name"></strong><small x-show="item.kind==='mini-app'" x-text="(item.hosts||[]).join(' · ')"></small></span><span x-text="ui('允许访问','Allow access')"></span></button></template><p x-show="!accessCandidates.length" x-text="ui('没有可添加的项目','No entries available to add')"></p></div><button type="button" class="messager-button" :disabled="accessBusy" @click="closeAccessDialog()" x-text="ui('取消','Cancel')"></button></div></template>
+                        <template x-if="accessDialogMode==='restore-template'"><div>
+                        <h2 x-text="ui('恢复默认 App 权限','Restore default App access')"></h2>
+                        <p x-show="!accessRemoval?.changes?.length" x-text="ui('已使用默认权限。','Default access is already in use.')"></p>
+                        <ul><template x-for="change in (accessRemoval?.changes||[])" :key="change.id"><li x-text="(change.enabled?ui('允许：','Allow: '):ui('移除：','Remove: '))+change.name"></li></template></ul>
+                        <p x-show="accessRemoval?.changes?.some(c=>!c.enabled)" x-text="ui('撤销权限可能停止使用该权限的执行。','Revoking access can stop executions using those grants.')"></p>
+                        <div class="bot-access-dialog-actions"><button type="button" class="messager-button" autofocus :disabled="accessBusy" @click="closeAccessDialog()" x-text="ui('取消','Cancel')"></button><button type="button" class="messager-button" :disabled="accessBusy||!accessRemoval?.changes?.length" @click="restoreTemplateAccess()" x-text="ui('恢复默认','Restore defaults')"></button></div>
+                        </div></template>
+                        <template x-if="accessDialogMode==='remove-bot'"><div><h2 x-text="ui('删除 Bot 访问权限','Remove Bot access')"></h2><p x-text="ui('确定移除对以下 Bot 的访问权限？','Remove access to this Bot?')"></p><strong x-text="accessRemoval?.name"></strong><p x-text="ui('相关协作将停止。之后可以重新添加，但不会恢复旧任务。','Related collaboration will stop. You can add this Bot again later; old tasks will not resume.')"></p><div class="bot-access-dialog-actions"><button type="button" class="messager-button" data-bot-use-cancel :disabled="botUseBusy" @click="closeAccessDialog()" x-text="ui('取消','Cancel')"></button><button type="button" class="messager-button danger" :disabled="botUseBusy" @click="removeBotUse()" x-text="ui('撤销并删除','Revoke and remove')"></button></div></div></template>
+                        <template x-if="accessDialogMode==='remove'"><div><h2 x-text="ui('删除访问权限','Remove access')"></h2><p x-text="ui('确定撤销此 Bot 对以下项目的访问权限？','Revoke this Bot’s access to this entry?')"></p><strong x-text="accessRemoval?.name"></strong><p x-text="ui('使用旧授权的执行将停止。其它 App 和 Mini-App 的授权不变。','Executions using old permissions will stop. Grants for other Apps and Mini-Apps remain unchanged.')"></p><div class="bot-access-dialog-actions"><button type="button" class="messager-button" :disabled="accessBusy" @click="closeAccessDialog()" x-text="ui('取消','Cancel')"></button><button type="button" class="messager-button danger" :disabled="accessBusy" @click="removeBotAccess()" x-text="ui('撤销并删除','Revoke and remove')"></button></div></div></template>
+                        </dialog>
+                    </div></details>
+                    {% include 'system_apps/_bot_skills.html' %}
+                    <details x-show="currentBot?.definition?.execution_mode !== 'app_shortcut'" class="bot-settings-group" data-bot-exposure><summary><span class="bot-settings-heading"><i data-lucide="users-round" aria-hidden="true"></i><span x-text="ui('暴露与访问','Exposure & callers')"></span></span></summary><div class="bot-settings-group-body"><template x-if="botUseAccess"><div>
+<label><span x-text="ui('暴露等级','Visibility')"></span><select x-model="botUseAccess.mode" :disabled="botUseBusy" @change="setBotUse('exposure')"><option value="public">Public</option><option value="private">Private</option></select></label>
+<p class="messager-help" x-text="ui('Public：其它 Bot 可以发现，首次使用需批准。Private：仅已授权的 Bot 可发现和使用。已有授权不受模式切换影响。','Public: other Bots can discover this Bot; first use needs approval. Private: only authorized Bots can discover and use it. Existing grants survive visibility changes.')"></p>
+<h4 x-text="ui('允许使用我的 Bot','Bots allowed to use me')"></h4><template x-for="caller in botUseAccess.incoming" :key="caller.id"><div class="bot-app-access-row"><span x-text="caller.name"></span><button class="messager-button" type="button" :disabled="botUseBusy" @click="setBotUse('callers',caller.id,false)" x-text="ui('移除','Remove')"></button></div></template>
+<select x-model="botUseCaller" :disabled="botUseBusy" :aria-label="ui('选择允许使用者','Choose a caller')"><option value="" x-text="ui('选择 Bot…','Choose Bot…')"></option><template x-for="item in botUseAccess.caller_candidates" :key="item.id"><option :value="item.id" x-text="item.name"></option></template></select><button type="button" class="messager-button" :disabled="botUseBusy||!botUseCaller" @click="setBotUse('callers',botUseCaller,true)" x-text="ui('允许使用','Allow use')"></button>
+<p class="messager-help" x-text="ui('移除后，对方 Access 中的条目保留但关闭。撤销会停止相关协作；重新允许不会恢复旧任务。','Removal keeps a disabled entry in the caller’s Access list. Revocation stops related work; allowing again does not resume old tasks.')"></p>
+</div></template></div></details>
+                    <details x-show="currentBot?.definition?.execution_mode !== 'app_shortcut'" class="bot-settings-group"><summary><span class="bot-settings-heading"><i data-lucide="audio-lines" aria-hidden="true"></i><span x-text="ui('语音','Voice')"></span></span></summary><div class="bot-settings-group-body"><template x-if="voiceSettings"><div class="messager-bot-settings">
+<label><span x-text="ui('朗读声音','Read-aloud voice')"></span><select x-model="voiceSettings.mode" :disabled="voiceBusy||voiceInstallBusy" @change="changeVoiceMode()"><option value="default" x-text="ui('使用 Chat 默认设置','Use Chat defaults')"></option><option value="profile" x-text="ui('语音工坊角色','Voice Studio character')"></option><option value="model" x-text="ui('模型与预设音色','Model and preset voice')"></option></select></label>
+<p x-show="voiceSettings.mode==='default'" x-text="ui('跟随 Chat 的默认模型与音色。','Use the default Chat model and voice.')"></p>
+<label x-show="voiceSettings.mode==='profile'"><span x-text="ui('声音角色','Voice character')"></span><select x-model="voiceSettings.profile_id" :disabled="voiceBusy||voiceInstallBusy" @change="saveBotVoice()" x-effect="voiceProfiles;const value=voiceSettings.profile_id;$nextTick(()=>$el.value=value||'')"><option value="" x-text="ui('请选择角色','Choose a character')"></option><template x-for="profile in voiceProfiles" :key="profile.id"><option :value="profile.id" :disabled="profile.status!=='ready'" x-text="profile.name+(profile.status==='ready'?'':ui('（未就绪）',' (not ready)'))"></option></template></select></label>
+<p x-show="voiceSettings.mode==='profile'" x-text="ui('使用角色保存的模型与音色。','Use the character’s saved model and voice.')"></p>
+<label x-show="voiceSettings.mode==='model'"><span x-text="ui('朗读模型','Speech model')"></span><select x-model="voiceSettings.model_id" :disabled="voiceBusy||voiceInstallBusy" x-effect="voiceModels;const value=voiceSettings.model_id;$nextTick(()=>$el.value=value||'')" @change="changeVoiceModel()"><option value="" x-text="ui('请选择模型','Choose a model')"></option><template x-for="model in voiceModels" :key="model.id"><option :value="model.id" x-text="model.name"></option></template><option value="__install__" x-text="ui('安装模型…','Install model…')"></option></select></label>
+<label x-show="voiceSettings.mode==='model'&&botVoicePresets.length"><span x-text="ui('预设音色','Preset voice')"></span><select x-model="voiceSettings.voice" :disabled="voiceBusy||voiceInstallBusy" @change="saveBotVoice()" x-effect="botVoicePresets;const value=voiceSettings.voice;$nextTick(()=>$el.value=value||'')"><template x-for="voice in botVoicePresets" :key="voice"><option :value="voice" x-text="voice"></option></template></select></label>
+<p x-show="voiceCatalogNotice" x-text="ui('部分语音目录未能加载，请重试。','Some voice catalogs could not load. Please retry.')"></p><button type="button" class="messager-link" @click="loadBotVoice()" x-text="ui('刷新语音目录','Refresh voices')"></button><a href="/apps/ai2apps.readaloud" target="_top" x-text="ui('打开语音工坊','Open Voice Studio')"></a><p role="status" aria-live="polite" x-text="voiceSaveState==='saving'?ui('正在应用…','Applying…'):voiceSaveState==='incomplete'?ui('请选择完整的声音配置，期间继续使用原设置。','Complete the voice selection; the previous setting remains active.'):voiceSaveState==='error'?ui('未能应用，继续使用原设置。','Could not apply; using the previous setting.'):ui('自动生效；不可用时回退到可用声音。','Applies automatically, with fallback to an available voice.')"></p>
+</div></template>
+<section class="bot-realtime-settings" x-show="currentBot?.definition?.execution_mode==='agent'" aria-labelledby="bot-realtime-settings-title">
+<h4 id="bot-realtime-settings-title" x-text="ui('实时对话','Live conversation')"></h4>
+<p x-text="ui('流式语音 · 说话交给当前 Bot 处理，任务回复自动播报。','Streaming speech · The current Bot handles your requests and speaks its replies.')"></p>
+<template x-if="realtimeSettings"><div class="messager-bot-settings">
+<label><span x-text="ui('对话声音模型','Conversation speech model')"></span><select x-model="realtimeSettings.tts_model_id" :disabled="realtimeBusy" @change="changeRealtimeModel('tts_model_id')"><option value="" x-text="ui('仅输入，不读出','Input only (no readout)')"></option><template x-for="m in realtimeCatalog.tts" :key="m.id"><option :value="m.id" x-text="m.display_name||m.name||m.id"></option></template><option value="__install__" x-text="ui('安装模型…','Install model…')"></option></select></label>
+<label x-show="realtimeVoices.length"><span x-text="ui('音色','Voice')"></span><select x-model="realtimeSettings.voice" :disabled="realtimeBusy" @change="realtimeSettings.profile_id=null;saveRealtimeVoice()"><template x-for="v in realtimeVoices" :key="v"><option :value="v" x-text="v"></option></template></select></label>
+<label x-show="realtimeNeedsProfile||realtimeProfiles.length"><span x-text="ui('声音角色 / 参考声音','Voice character / reference')"></span><select x-model="realtimeSettings.profile_id" :disabled="realtimeBusy" @change="realtimeSettings.voice=null;saveRealtimeVoice()"><option value="" x-text="ui('请选择角色','Choose a character')"></option><template x-for="p in realtimeProfiles" :key="p.id"><option :value="p.id" x-text="p.name"></option></template></select></label>
+<label><span x-text="ui('识别模型','Recognition model')"></span><select x-model="realtimeSettings.stt_model_id" :disabled="realtimeBusy" @change="changeRealtimeModel('stt_model_id')"><option value="" x-text="ui('请选择模型','Choose a model')"></option><template x-for="m in realtimeCatalog.stt" :key="m.id"><option :value="m.id" x-text="m.display_name||m.name||m.id"></option></template><option value="__install__" x-text="ui('安装模型…','Install model…')"></option></select></label>
+<button type="button" class="messager-link" :disabled="realtimeBusy" @click="saveRealtimeVoice()" x-text="ui('应用实时对话设置','Apply conversation settings')"></button>
+</div></template>
+<p role="status" x-text="realtimeBusy?ui('正在配置…','Configuring…'):realtimeNotice||realtimeSettings?.reason||ui('先配置模型和声音，再在输入区开启。建议使用耳机。','Configure models and voice, then start in the composer. Headphones recommended.')"></p>
+<button type="button" class="messager-link" :disabled="realtimeBusy" @click="loadRealtimeVoice()" x-text="ui('刷新对话配置','Refresh conversation settings')"></button>
+</section></div></details>
+                    <details x-show="currentBot?.definition?.execution_mode !== 'app_shortcut'" class="bot-settings-group"><summary><span class="bot-settings-heading"><i data-lucide="lightbulb" aria-hidden="true"></i><span x-text="ui('记忆','Memory')"></span></span></summary><div class="bot-settings-group-body">
+                    <section class="bot-memory-section" aria-labelledby="bot-pending-memory-title">
+                        <div class="bot-memory-heading">
+                            <h4 id="bot-pending-memory-title" x-text="ui('待处理','Pending')"></h4>
+                            <button type="button" class="bot-task-link" x-show="pendingMemories?.length" @click="window.AI2AppsBotKnowledge.open(currentBot.id,'pending')" x-text="ui('查看待处理 ›','View pending ›')"></button>
+                        </div>
+                        <p class="messager-help" x-show="pendingMemories===null" x-text="ui('正在读取…','Loading…')"></p>
+                        <p class="messager-help" x-show="pendingMemories?.length===0" x-text="ui('暂无待处理记忆','Nothing pending')"></p>
+                        <template x-for="item in (pendingMemories||[]).slice(0,3)" :key="item.id">
+                            <button type="button" class="bot-memory-pending-row" @click="window.AI2AppsBotKnowledge.open(currentBot.id,'pending')">
+                                <span class="bot-memory-row-main">
+                                    <span class="bot-memory-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h12M6 22h12M7 2v4a5 5 0 0 0 2 4l3 2 3-2a5 5 0 0 0 2-4V2M7 22v-4a5 5 0 0 1 2-4l3-2 3 2a5 5 0 0 1 2 4v4"/></svg></span>
+                                    <span class="bot-memory-text" x-text="item.value.text"></span>
+                                </span>
+                                <small :class="item.state==='review'&&'bot-memory-needs-review'" x-text="item.state==='review'?ui('待确认','Review'):item.state==='running'?ui('整理中','Processing'):ui('排队中','Queued')"></small>
+                            </button>
+                        </template>
+                    </section>
+                    <section class="bot-memory-section" aria-labelledby="bot-current-memory-title">
+                        <div class="bot-memory-heading">
+                            <h4 id="bot-current-memory-title" x-text="ui('当前记忆','Current memories')"></h4>
+                            <small x-text="memories.filter(n=>!n.deleted).length"></small>
+                        </div>
+                        <p class="messager-help" x-show="!memories.some(n=>!n.deleted)" x-text="ui('尚无记忆','No memories yet')"></p>
+                        <template x-for="note in memories.filter(n=>!n.deleted)" :key="note.id">
+                            <details class="bot-memory-entry" x-data="{draft:null,revision:null,removing:null}">
+                                <summary>
+                                    <span class="bot-memory-row-main">
+                                        <span class="bot-memory-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6m-5 4h4M9 15c0-1-.5-1.5-1-2a6 6 0 1 1 8 0c-.5.5-1 1-1 2"/></svg></span>
+                                        <span class="bot-memory-text" x-text="note.text"></span>
+                                    </span>
+                                </summary>
+                                <p x-show="draft===null&&!removing" x-text="note.text"></p>
+                                <template x-if="draft!==null">
+                                    <textarea maxlength="2000" x-model="draft" :aria-label="ui('编辑记忆','Edit memory')"></textarea>
+                                </template>
+                                <div class="bot-task-actions" x-show="!removing">
+                                    <button type="button" class="bot-task-link" x-show="draft===null" @click="note.metadata?.kind==='model'?window.AI2AppsBotKnowledge.modelMemory(currentBot.id,note):(draft=note.text,revision=note.revision)" x-text="ui('编辑','Edit')"></button>
+                                    <button type="button" class="bot-task-link" x-show="draft===null" :disabled="memoryBusy" @click="removing={...note};$nextTick(()=>$refs.cancelMemoryRemoval.focus())" x-text="ui('移除','Remove')"></button>
+                                    <button type="button" class="messager-button" x-show="draft!==null" :disabled="memoryBusy||!draft?.trim()" @click="if(await saveMemory({...note,text:draft,revision})) draft=null" x-text="ui('保存','Save')"></button>
+                                    <button type="button" class="bot-task-link" x-show="draft!==null" @click="draft=null" x-text="ui('取消','Cancel')"></button>
+                                </div>
+                                <div class="bot-memory-remove-review" x-show="removing" x-cloak role="group" :aria-label="ui('确认移除记忆','Confirm memory removal')">
+                                    <p x-text="ui('移除这条记忆？','Remove this memory?')"></p>
+                                    <p x-text="removing?.text"></p>
+                                    <small x-text="ui('移除后可在“更多管理”中恢复。','You can restore it under More options.')"></small>
+                                    <div class="bot-task-actions">
+                                        <button type="button" class="messager-button" x-ref="cancelMemoryRemoval" :disabled="memoryBusy" @click="removing=null" x-text="ui('取消','Cancel')"></button>
+                                        <button type="button" class="messager-button danger" :disabled="memoryBusy" @click="if(await saveMemory(removing,true)) removing=null" x-text="ui('确认移除','Confirm removal')"></button>
+                                    </div>
+                                </div>
+                            </details>
+                        </template>
+                    </section>
+                    <div class="bot-memory-options">
+                    <details class="bot-settings-help bot-memory-secondary">
+                        <summary x-text="ui('新增记忆','Add memory')"></summary>
+                        <button type="button" class="messager-button" @click="window.AI2AppsBotKnowledge.modelMemory(currentBot.id)" x-text="ui('添加模型记忆','Add model memory')"></button>
+                        <textarea maxlength="2000" rows="2" x-model="memoryText" :aria-label="ui('新增记忆','Add memory')"></textarea>
+                        <button type="button" class="messager-button" :disabled="memoryBusy||!memoryText.trim()" @click="saveMemory(null)" x-text="ui('保存记忆','Save memory')"></button>
+                    </details>
+                    <details class="bot-settings-help bot-memory-secondary">
+                        <summary x-text="ui('更多管理','More options')"></summary>
+                        <div class="bot-memory-tools">
+                            <button type="button" class="bot-task-link" @click="window.AI2AppsBotKnowledge.open(currentBot.id,'memories')" x-text="ui('记忆版本与撤销','Memory versions and undo')"></button>
+                            <button type="button" class="bot-task-link" @click="window.AI2AppsBotKnowledge.open(currentBot.id)" x-text="ui('搜索任务和产物','Search task and output history')"></button>
+                            <details x-show="memories.some(n=>n.deleted)">
+                                <summary x-text="ui('已移除记忆','Removed memories')"></summary>
+                                <template x-for="note in memories.filter(n=>n.deleted)" :key="note.id">
+                                    <div class="bot-memory-removed">
+                                        <span x-text="note.text"></span>
+                                        <button type="button" class="bot-task-link" :disabled="memoryBusy" @click="saveMemory(note,false)" x-text="ui('恢复','Restore')"></button>
+                                    </div>
+                                </template>
+                            </details>
+                            <button type="button" class="bot-task-link" :disabled="cleanupBusy||cleanupLoading" @click="reviewCleanup('clear_memory')" x-text="cleanupLabel('clear_memory')"></button>
+                        </div>
+                    </details>
+                    </div></div></details>
+                    <details x-show="currentBot?.definition?.execution_mode !== 'app_shortcut'" class="bot-settings-group"><summary><span class="bot-settings-heading"><i data-lucide="bell" aria-hidden="true"></i><span x-text="ui('任务与提醒策略','Task notification settings')"></span></span></summary><div class="bot-settings-group-body"><p class="messager-help" x-text="ui('选择哪些情况需要提醒你。','Choose when you want to be notified.')"></p><details class="bot-settings-help"><summary x-text="ui('了解规则','How it works')"></summary><p x-text="ui('任务结果详情留在原对话；通知预览只显示通用提示。成功提醒还遵循单个任务的通知选择。主动创建提醒的权限在 App 访问权限中单独设置。','Task details stay in the original conversation; alert previews use generic text. Success also follows the individual task notification choice. Permission to create reminders is configured separately under App access.')"></p></details><template x-if="notificationPolicy"><div><template x-for="key in ['success','failure','waiting','reminder']" :key="key"><label class="bot-access-choice"><input type="checkbox" x-model="notificationPolicy[key]" :disabled="notificationBusy"><span x-text="({success:ui('执行完成时提醒','Notify on success'),failure:ui('失败或取消时提醒','Notify on failure or cancellation'),waiting:ui('等待回复或确认时提醒','Notify when input or approval is needed'),reminder:ui('允许已授权的主动提醒发出通知','Alert for authorized self reminders')})[key]"></span></label></template><button type="button" class="messager-button" :disabled="notificationBusy" @click="saveNotificationPolicy()" x-text="ui('保存提醒策略','Save notification settings')"></button></div></template></div></details>
+                    <details class="bot-settings-group" @toggle="if($event.target.open)loadBotStatistics(true)"><summary><span class="bot-settings-heading"><i data-lucide="chart-no-axes-column" aria-hidden="true"></i><span x-text="ui('统计与用量','Statistics & usage')"></span></span></summary><div class="bot-settings-group-body"><select class="bot-statistics-period" x-model="statisticsPeriod" @change="botStatistics=null;loadBotStatistics(true)" :aria-label="ui('统计时间范围','Statistics period')"><option value="today" x-text="ui('今日','Today')"></option><option value="7d" x-text="ui('过去7天','Past 7 days')"></option><option value="30d" x-text="ui('过去30天','Past 30 days')"></option><option value="all" x-text="ui('全部历史','All history')"></option></select><template x-if="botStatistics"><div class="bot-statistics"><dl><dt x-text="ui('执行的任务 / 次数','Tasks run / executions')"></dt><dd x-text="botStatistics.tasks+' / '+botStatistics.executions"></dd><dt x-text="ui('已完成 / 进行中','Completed / active')"></dt><dd x-text="botStatistics.completed+' / '+botStatistics.active"></dd><dt x-text="ui('失败 / 已取消','Failed / cancelled')"></dt><dd x-text="botStatistics.failed+' / '+botStatistics.cancelled"></dd><dt>Tokens</dt><dd x-text="(botStatistics.usage.unreported_model_calls?'≥ ':'')+formatUsageAmount(botStatistics.usage.input_tokens+botStatistics.usage.output_tokens,Boolean(botStatistics.usage.unreported_model_calls))"></dd><dt x-text="ui('输入 / 输出','Input / output')"></dt><dd x-text="formatUsageAmount(botStatistics.usage.input_tokens)+' / '+formatUsageAmount(botStatistics.usage.output_tokens)"></dd><dt>Cloud Points</dt><dd x-text="botStatistics.usage.known_charged_points==null?ui('未报告','Not reported'):formatUsageAmount(botStatistics.usage.known_charged_points)"></dd><dt x-text="ui('BYOK 货币费用','BYOK currency cost')"></dt><dd x-text="Object.entries(botStatistics.usage.currency_costs).map(([unit,value])=>unit+' '+value).join(' · ')||ui('未报告','Not reported')"></dd></dl><details class="bot-settings-help"><summary x-text="ui('统计范围','Coverage')"></summary><p x-text="statisticsRange()+' · '+statisticsTimezone"></p><p x-text="ui('仅汇总此 Bot 自己的对话与任务中已记录的模型用量和已结算 Points；不含其它 Bot 及未上报的工具费用。货币费用只展示服务商明确报告的金额，未报告不代表免费。','Recorded model usage and settled Points in this Bot’s own conversations and tasks only. Other Bots and unreported tool charges are excluded. Currency costs require an explicit provider report; unreported does not mean free.')"></p></details></div></template><p x-show="!botStatistics" class="messager-help" x-text="ui('正在读取统计…','Loading statistics…')"></p></div></details>
+                    <details x-show="currentBot?.definition?.execution_mode !== 'app_shortcut'" class="bot-settings-group"><summary><span class="bot-settings-heading"><i data-lucide="history" aria-hidden="true"></i><span x-text="ui('对话记录','Conversation history')"></span></span></summary><div class="bot-settings-group-body">
+                        <p class="messager-help" x-text="ui('对话清理与长期记忆清理分开处理；清理保留可恢复副本及任务审计。','Conversation and long-term memory are cleared separately. Recoverable copies and task audit receipts are retained.')"></p>
+                        <template x-for="action in ['clear_dialogue','restore_dialogue']" :key="action"><button type="button" class="messager-button" :disabled="cleanupBusy||cleanupLoading" @click="reviewCleanup(action)" x-text="cleanupLabel(action)"></button></template>
+                        </div></details></form></template></div>
+<div class="messager-gallery-tab" x-show="rightTab==='gallery' && tab==='bots'" x-cloak><p x-show="galleryLoading" x-text="ui('正在加载素材库…','Loading Gallery…')"></p><div x-show="galleryError"><p x-text="galleryError"></p><button type="button" class="messager-button" @click="mountBotGallery(true)" x-text="ui('重试','Retry')"></button></div><iframe x-show="galleryUrl" x-ref="botGallery" :src="galleryUrl||null" title="Gallery" class="messager-gallery-frame" allow="clipboard-write"></iframe></div>
+                <template x-if="selected && tab==='friends'"><div><h2 x-text="selected.displayName"></h2><p x-text="selected.publicHandle?'@'+selected.publicHandle:''"></p></div></template>
+            </aside>
         </section>
     </main>
 </div>
+<div x-data="galleryResultViewer()" @bot-preview-material.window="openResults($event.detail.items,$event.detail.index)" @keydown.window="handlePreviewKey($event)">{% include "system_apps/_gallery_preview_dialog.html" %}</div>
 {% endblock %}
 
-{% block scripts %}<script src="{{ static('js/messager.js') }}"></script>{% endblock %}
+{% block scripts %}<script src="{{ static('js/text_input_dialog.js') }}?v=system-dialog"></script><script src="{{ static('js/gallery.js') }}"></script><link rel="stylesheet" href="{{ static('css/bot_creation.css') }}?v=shortcut-actions"><script src="{{ static('js/bot_creation.js') }}?v=shortcut-actions"></script><script src="{{ static('js/gallery_picker.js') }}"></script><script src="{{ static('js/bot_avatars.js') }}"></script><script src="{{ static('js/purify.min.js') }}"></script><script src="{{ static('js/marked.umd.js') }}"></script><script src="{{ static('js/bot_task_feed.js') }}?v=task-tree-access"></script>
+<script src="{{ static('js/studio_audio_recorder.js') }}"></script><script src="{{ static('js/bot_composer.js') }}"></script><script src="{{ static('js/conversation_model_policy.js') }}"></script><script src="{{ static('js/bot_model_selection.js') }}"></script><script src="{{ static('js/chat_image_actions.js') }}"></script><script src="{{ static('js/chat_artifacts.js') }}"></script><script src="{{ static('js/bot_materials.js') }}"></script><script src="{{ static('js/agent_parameter_forms.js') }}?v=inline-setup-20261116"></script><script src="{{ static('js/bot_interactions.js') }}?v=task-tree-access"></script><script src="{{ static('js/capability_provisioning.js') }}"></script><script src="{{ static('js/bot_voice.js') }}"></script><script src="{{ static('js/bot_realtime_settings.js') }}"></script><script src="{{ static('js/bot_realtime_audio.js') }}"></script><script src="{{ static('js/bot_realtime.js') }}"></script><script src="{{ static('js/bot_knowledge.js') }}?v=memory-receipt-20261107"></script><script src="{{ static('js/bot_conversation_trim.js') }}"></script><script src="{{ static('js/bot_conversation.js') }}"></script><script src="{{ static('js/chat_message_feedback.js') }}"></script><script src="{{ static('js/streaming_tts.js') }}"></script><script src="{{ static('js/mini_app_chat.js') }}"></script><script src="{{ static('js/app_chat.js') }}"></script><script src="{{ static('js/messager_sidebar.js') }}"></script><script src="{{ static('js/messager_usage.js') }}"></script><script src="{{ static('js/messager.js') }}?v=compact-usage"></script>{% endblock %}

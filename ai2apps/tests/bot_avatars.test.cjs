@@ -1,0 +1,6 @@
+const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const window={};vm.runInNewContext(fs.readFileSync(require('node:path').join(__dirname,'../web/static/js/bot_avatars.js'),'utf8'),{window});
+test('preset SVG markup has a closed shape/color vocabulary',()=>{for(const preset of ['spark','robot','orbit','flower','sun','moon','cat','owl','leaf','rocket','compass','heart']){const svg=decodeURIComponent(window.AI2AppsBotAvatars.url({avatar:{preset,color:'#123456'}}).split(',')[1]);assert.ok(svg.includes('fill="#123456"'));assert.ok(!svg.includes('<script'));}
+ const bad=decodeURIComponent(window.AI2AppsBotAvatars.url({avatar:{preset:'<script>bad</script>',color:'" onload="bad'}}).split(',')[1]);assert.ok(!bad.includes('onload'));assert.ok(!bad.includes('<script>'));
+});
+test('avatar images use the authenticated Gallery content endpoint only',()=>{assert.equal(window.AI2AppsBotAvatars.url({avatar:{kind:'image',asset_id:'gala_123abc'}}),'/v1/platform/gallery/assets/gala_123abc/content');for(const asset_id of ['https://external.test/avatar','../private','gala_123/secret'])assert.ok(window.AI2AppsBotAvatars.url({avatar:{kind:'image',asset_id}}).startsWith('data:image/svg+xml,'));});

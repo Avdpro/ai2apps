@@ -1,0 +1,32 @@
+{
+  "status": "source_preparation_only_not_installable",
+  "source_hashes": {
+    "ai2apps.json": "fb71a32f6d6a7e361544f20db9caf41feb5a4ab8ba1eb8750a5816f59d29904b",
+    "service.yaml": "adfa80f7e0400b82734c83a72fd91488bb6f2d9788b1c756d2421f1ca3be0c6b",
+    "README.md": "bcbcf7c745804ea27558c69f8fa2299260159604950eca3049a0493b60c0f956",
+    "META/checkpoint-distribution-unet.json": "1815de6ca7b071ec9d92084559ef81f2eda05576b9611ed73adc8ffe33c06a1f",
+    "META/checkpoint-distribution-vae.json": "03a6be54a23302f9a5b0e6598b949a7ab595f7587676aa57e6aa7b12f476e7eb",
+    "META/sbom.spdx.json": "6e7e0f412333befcab82ecc4927afcb527b58f4268fc48df432e3c1127677bbf",
+    "META/video-capabilities.json": "ebbb7a44a555ebfc16174bb89ab90e72181fe0713167d06038313bf15abd6e65",
+    "META/checkpoint-distribution-whisper.json": "477adab70c435a2b035793584158769d43ec23727038e657ba415b761846458a",
+    "META/checkpoint-distribution-yunet.json": "8ea886c59f24cdbc656a7feb4362a6395dcc8f15eff85b0f949fcb37b1c804b7",
+    "META/checkpoints.lock.json": "4b8fa1d121a217bfe0a016a224d778194f39b0dce8486e8858a4551ffee4565e",
+    "META/NOTICE.md": "7595359f80b54820f96b1589a3b8011041ee58769f29b31c4d307fc1f64bb589",
+    "META/checkpoint-distribution-bisenet.json": "d9671a32aee97af1e869bb7f54322c05eedf3d21b6167151a727328fc9938166",
+    "src/worker_adapter.py": "f1f5dfc60b9cac3db4d5f4ded588c8d26632bf8419157fd6fb3d7c748c5771cd",
+    "META/licenses/Whisper-model-card.md": "57a3bbbbf1e79369e4d1ced790812a1723b43a256c1b43fc70cc2f3339ae9881",
+    "META/licenses/MuseTalk-checkpoint-LICENSE.txt": "992ec5fd1dd4964cfa003665196cd0c0c10a7a5aa10109991e964eebd2c7f116",
+    "META/licenses/LICENSE.bisenet": "28bce57c2f234bdaa1619d066248ebe182904902bd09897dc95adf8c951ea826",
+    "META/licenses/VAE-model-card.md": "8ac69483c18a45d0fee531e08b6ede97ee9b4c79e875659c1b0e6a5903ca3400",
+    "META/licenses/LICENSE.yunet": "c83b8120c50ccbd4c4f96edf53141bdd566ebb8f8e9227e415326aa1b1aba958"
+  },
+  "runtime_adapter_sha256": "54b465043ee9d15933f39459633608fa9a4cb4614faab7cacabbbf36c90cca8e",
+  "missing": [
+    "Published Runtime with current MuseTalk snapshot/parser/Host input support",
+    "Five published model-bound distributions",
+    "Published distribution bindings and released compatible Host version floor",
+    "Signed installation and real durable Host lifecycle acceptance"
+  ],
+  "signed_distributions": "spark/evidence/media/musetalk-core-distributions-signed-20261009.json",
+  "host_contract_status": "real_defaulting_and_media_freezing_to_adapter_pass_no_model_inference"
+}

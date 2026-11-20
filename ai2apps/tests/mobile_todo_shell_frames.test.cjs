@@ -7,7 +7,7 @@ function setup(){
  window:{addEventListener:(n,f)=>events[n]=f},crypto:{randomUUID:()=> 'detail-token'},document:{documentElement:{lang:'zh'},createElement:()=>({children:[],append(...nodes){this.children.push(...nodes)},setAttribute(){},hidden:false,contentWindow:{mobileTodoCanLeave:()=>true,postMessage(m){messages.push(m)}},remove(){this.removed=true}})},frameHost:{appendChild:f=>children.push(f)},history:{state:{appId:'ai2apps.todo'},pushState(s){this.state=s},back(){this.backCalled=true}},loading:{hidden:true},errorView:{hidden:true},stage:{hidden:false},showToast(){},openApp(){throw Error('must not reopen App')},showHome(){}};
  c.pendingAppNavigation=null;vm.createContext(c);
  vm.runInContext(source.slice(source.indexOf('    // Todo-only'),source.indexOf('    function sendBridgeResponse(')),c);
- const a=source.indexOf("    window.addEventListener('popstate',");vm.runInContext(source.slice(a,source.indexOf('    async function boot()',a)),c);
+ const a=source.indexOf("    window.addEventListener('popstate',");vm.runInContext(source.slice(a,source.indexOf('    let bootFlight =',a)),c);
  const send=(frame,token,type,extra={})=>events.message({origin:'https://device',source:frame.contentWindow,data:{type,mountToken:token,instanceId:'instance',...extra}});
  return {c,events,children,record,send,messages};
 }

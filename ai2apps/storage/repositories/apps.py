@@ -110,6 +110,7 @@ class AppRepository:
         *,
         app_definition_id: str,
         singleton_key: str | None = None,
+        replace_disabled_singleton: bool = False,
         owner_user_id: str | None = None,
         status: AppInstanceStatus = AppInstanceStatus.ACTIVE,
         state_schema_version: int = 1,
@@ -121,12 +122,28 @@ class AppRepository:
         try:
             with self.database.transaction(write=True) as connection:
                 definition = connection.execute(
-                    "SELECT id FROM app_definitions WHERE id = ?",
+                    "SELECT id, package_id, status FROM app_definitions WHERE id = ?",
                     (app_definition_id,),
                 ).fetchone()
                 if definition is None:
                     raise ResourceNotFoundError(
                         "app_definition", app_definition_id
+                    )
+                if replace_disabled_singleton and singleton_key is not None:
+                    if definition["status"] != "enabled":
+                        raise ResourceConflictError("App definition is no longer active")
+                    # A retired definition can keep its state and history without
+                    # reserving the singleton slot of the currently enabled one.
+                    connection.execute(
+                        """
+                        UPDATE app_instances
+                        SET singleton_key = 'retired:' || id, updated_at = ?, revision = revision + 1
+                        WHERE singleton_key = ? AND app_definition_id IN (
+                            SELECT id FROM app_definitions
+                            WHERE package_id = ? AND status = 'disabled'
+                        )
+                        """,
+                        (now, singleton_key, definition["package_id"]),
                     )
                 connection.execute(
                     """

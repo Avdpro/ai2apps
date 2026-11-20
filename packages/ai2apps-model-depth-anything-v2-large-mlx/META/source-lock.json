@@ -1,0 +1,13 @@
+{
+  "family": "da",
+  "repositoryName": "Depth-Anything-V2-Large-MLX",
+  "source": "https://huggingface.co/depth-anything/Depth-Anything-V2-Large",
+  "sourceCodeRevision": "a561b849ebae10a6f5ef49e26c83cbbcd36c71bf",
+  "weightFile": "da-large.safetensors",
+  "size": 1341306380,
+  "sha256": "f045446a0f6f9273f3d3e82fada9ca73d6e01c4229eb88b5c848e94510dce1f5",
+  "licenseId": "CC-BY-NC-4.0",
+  "licenseSha256": "41003d4a74749c0220e33dd415042164b5a1093ed401f36277234f772d22d3d0",
+  "precision": "float32",
+  "singleImageOnly": true
+}

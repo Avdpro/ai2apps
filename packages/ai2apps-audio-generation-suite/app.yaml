@@ -2,7 +2,7 @@ schema: ai2apps.app/v1
 id: ai2apps.audio-generation-suite
 name: Music and Sound Effects
 description: Generate music, sound effects and songs locally in Voice Studio.
-version: 0.2.3
+version: 0.2.4
 publisher:
   id: ai2apps
 instances:
@@ -21,10 +21,11 @@ mini_apps:
 - schema: ai2apps.mini-app/v1
   id: ai2apps.audio-generation.music
   name: Music Generation
-  version: 0.2.3
+  version: 0.2.4
   kind: clip
   icon: music
-  description: Create audio from a description. Results appear in the shared Preview & Output.
+  description: Create audio from a description. Results appear in the shared Preview
+    & Output.
   localizations:
     zh-CN:
       name: 音乐生成
@@ -54,8 +55,9 @@ mini_apps:
   chat:
     schema: ai2apps.mini-app-chat/v1
     enabled: true
-    system_prompt: Read and edit only declared current UI fields. Execute functions through the registered owner
-      AaAT, never through a UI run button. Preserve task, model, material and shared output ownership.
+    system_prompt: Read and edit only declared current UI fields. Execute functions
+      through the registered owner AaAT, never through a UI run button. Preserve task,
+      model, material and shared output ownership.
     context:
       transport: studio-bridge
       maxBytes: 40000
@@ -91,13 +93,110 @@ mini_apps:
             maximum: 100.0
         additionalProperties: false
       confirmation: never
+  aaat:
+    schema: ai2apps.mini-app-host-exports/v1
+    exports:
+    - name: voice.generate_music
+      host: ai2apps.readaloud
+      inputSchema:
+        type: object
+        additionalProperties: false
+        required:
+        - model
+        - prompt
+        - duration
+        properties:
+          model:
+            type: string
+            minLength: 1
+          prompt:
+            type: string
+            minLength: 1
+            maxLength: 2000
+          lyrics:
+            type: string
+            maxLength: 4096
+          duration:
+            type: number
+            minimum: 1
+            maximum: 120
+          seed:
+            type: integer
+            minimum: 0
+            maximum: 4294967295
+          steps:
+            type: integer
+            minimum: 1
+            maximum: 100
+          schema:
+            const: ai2apps.audio-generation/v1
+      fields:
+      - key: model
+        label:
+          zh: 模型
+          en: Model
+        type: text
+      - key: prompt
+        label:
+          zh: 描述
+          en: Description
+        type: text
+      - key: lyrics
+        label:
+          zh: 歌词
+          en: Lyrics
+        type: text
+      - key: duration
+        label:
+          zh: 时长
+          en: Duration
+        type: number
+      - key: seed
+        label:
+          zh: 随机种子
+          en: Seed
+        type: number
+      - key: steps
+        label:
+          zh: 步数
+          en: Steps
+        type: number
+      - key: schema
+        label:
+          zh: 请求版本
+          en: Request version
+        type: text
+      displayName:
+        zh: 生成音乐
+        en: Generate audio
+      summary:
+        zh: 使用原语音队列生成并发布到共享输出。
+        en: Generate using the original Voice queue and shared Output.
+      agentContext:
+        schema: ai2apps.aaat-declaration/v1
+        instructions:
+        - Use actual current Mini-App draft/model/material IDs. Never invent models
+          or raw paths. Reuse the original durable Studio task and host shared Output;
+          page closure is not cancellation. Missing models require Desktop configuration
+          with inputs preserved. Unknown submission outcomes must not be replayed.
+        result_semantics:
+          artifact: Actual owner-published media or output references; UI snapshots
+            are not generated artifacts.
+          shared_output: Only a completed published owner task proves an output exists.
+            Output references belong to the original Studio host.
+      selectionRequired: false
+      sdk: studio.audio-generation/v1
+      options:
+        capability: audio.music_generation
+      interfaceVersion: 1.0.0
 - schema: ai2apps.mini-app/v1
   id: ai2apps.audio-generation.sfx
   name: Sound Effects
-  version: 0.2.3
+  version: 0.2.4
   kind: clip
   icon: audio-waveform
-  description: Create audio from a description. Results appear in the shared Preview & Output.
+  description: Create audio from a description. Results appear in the shared Preview
+    & Output.
   localizations:
     zh-CN:
       name: 音效生成
@@ -127,8 +226,9 @@ mini_apps:
   chat:
     schema: ai2apps.mini-app-chat/v1
     enabled: true
-    system_prompt: Read and edit only declared current UI fields. Execute functions through the registered owner
-      AaAT, never through a UI run button. Preserve task, model, material and shared output ownership.
+    system_prompt: Read and edit only declared current UI fields. Execute functions
+      through the registered owner AaAT, never through a UI run button. Preserve task,
+      model, material and shared output ownership.
     context:
       transport: studio-bridge
       maxBytes: 40000
@@ -164,10 +264,106 @@ mini_apps:
             maximum: 100.0
         additionalProperties: false
       confirmation: never
+  aaat:
+    schema: ai2apps.mini-app-host-exports/v1
+    exports:
+    - name: voice.generate_sound_effects
+      host: ai2apps.readaloud
+      inputSchema:
+        type: object
+        additionalProperties: false
+        required:
+        - model
+        - prompt
+        - duration
+        properties:
+          model:
+            type: string
+            minLength: 1
+          prompt:
+            type: string
+            minLength: 1
+            maxLength: 2000
+          lyrics:
+            type: string
+            maxLength: 4096
+          duration:
+            type: number
+            minimum: 1
+            maximum: 120
+          seed:
+            type: integer
+            minimum: 0
+            maximum: 4294967295
+          steps:
+            type: integer
+            minimum: 1
+            maximum: 100
+          schema:
+            const: ai2apps.audio-generation/v1
+      fields:
+      - key: model
+        label:
+          zh: 模型
+          en: Model
+        type: text
+      - key: prompt
+        label:
+          zh: 描述
+          en: Description
+        type: text
+      - key: lyrics
+        label:
+          zh: 歌词
+          en: Lyrics
+        type: text
+      - key: duration
+        label:
+          zh: 时长
+          en: Duration
+        type: number
+      - key: seed
+        label:
+          zh: 随机种子
+          en: Seed
+        type: number
+      - key: steps
+        label:
+          zh: 步数
+          en: Steps
+        type: number
+      - key: schema
+        label:
+          zh: 请求版本
+          en: Request version
+        type: text
+      displayName:
+        zh: 生成音效
+        en: Generate audio
+      summary:
+        zh: 使用原语音队列生成并发布到共享输出。
+        en: Generate using the original Voice queue and shared Output.
+      agentContext:
+        schema: ai2apps.aaat-declaration/v1
+        instructions:
+        - Use actual current Mini-App draft/model/material IDs. Never invent models
+          or raw paths. Reuse the original durable Studio task and host shared Output;
+          page closure is not cancellation. Missing models require Desktop configuration
+          with inputs preserved. Unknown submission outcomes must not be replayed.
+        result_semantics:
+          artifact: Actual owner-published media or output references; UI snapshots
+            are not generated artifacts.
+          shared_output: Only a completed published owner task proves an output exists.
+            Output references belong to the original Studio host.
+      selectionRequired: false
+      sdk: studio.audio-generation/v1
+      options:
+        capability: audio.sound_effects_generation
+      interfaceVersion: 1.0.0
 - schema: ai2apps.mini-app/v1
   id: ai2apps.audio-generation.song
   name: Song Creation
-  version: 0.2.3
+  version: 0.2.4
   kind: project
   icon: music
   description: Compose songs with lyrics, musical planning and an optional ABC score.
@@ -200,8 +396,9 @@ mini_apps:
   chat:
     schema: ai2apps.mini-app-chat/v1
     enabled: true
-    system_prompt: Read and edit only declared current UI fields. Execute functions through the registered owner
-      AaAT, never through a UI run button. Preserve task, model, material and shared output ownership.
+    system_prompt: Read and edit only declared current UI fields. Execute functions
+      through the registered owner AaAT, never through a UI run button. Preserve task,
+      model, material and shared output ownership.
     context:
       transport: studio-bridge
       maxBytes: 40000
@@ -249,3 +446,137 @@ mini_apps:
             maximum: 10.0
         additionalProperties: false
       confirmation: never
+  aaat:
+    schema: ai2apps.mini-app-host-exports/v1
+    exports:
+    - name: voice.generate_song
+      host: ai2apps.readaloud
+      inputSchema:
+        type: object
+        additionalProperties: false
+        required:
+        - model
+        - prompt
+        - schema
+        - duration_mode
+        - generation
+        properties:
+          model:
+            type: string
+            minLength: 1
+          prompt:
+            type: string
+            minLength: 1
+            maxLength: 2000
+          lyrics:
+            type: string
+            maxLength: 4096
+          duration:
+            type: number
+            minimum: 1
+            maximum: 120
+          seed:
+            type: integer
+            minimum: 0
+            maximum: 4294967295
+          steps:
+            type: integer
+            minimum: 1
+            maximum: 100
+          schema:
+            const: ai2apps.audio-generation/v2
+          duration_mode:
+            const: auto
+          generation:
+            type: object
+            additionalProperties: false
+            properties:
+              planning_mode:
+                enum:
+                - full
+                - melody
+                - 'off'
+              abc:
+                type: string
+                maxLength: 131072
+              max_abc_tokens:
+                type: integer
+                minimum: 1
+                maximum: 4096
+              max_semantic_tokens:
+                type: integer
+                minimum: 1
+                maximum: 3000
+              guidance_scale:
+                type: number
+                minimum: 1
+                maximum: 10
+      fields:
+      - key: model
+        label:
+          zh: 模型
+          en: Model
+        type: text
+      - key: prompt
+        label:
+          zh: 描述
+          en: Description
+        type: text
+      - key: lyrics
+        label:
+          zh: 歌词
+          en: Lyrics
+        type: text
+      - key: duration
+        label:
+          zh: 时长
+          en: Duration
+        type: number
+      - key: seed
+        label:
+          zh: 随机种子
+          en: Seed
+        type: number
+      - key: steps
+        label:
+          zh: 步数
+          en: Steps
+        type: number
+      - key: schema
+        label:
+          zh: 请求版本
+          en: Request version
+        type: text
+      - key: duration_mode
+        label:
+          zh: 时长模式
+          en: Duration mode
+        type: text
+      - key: generation
+        label:
+          zh: 歌曲规划
+          en: Song planning
+        type: json
+      displayName:
+        zh: 生成歌曲
+        en: Generate audio
+      summary:
+        zh: 使用原语音队列生成并发布到共享输出。
+        en: Generate using the original Voice queue and shared Output.
+      agentContext:
+        schema: ai2apps.aaat-declaration/v1
+        instructions:
+        - Use actual current Mini-App draft/model/material IDs. Never invent models
+          or raw paths. Reuse the original durable Studio task and host shared Output;
+          page closure is not cancellation. Missing models require Desktop configuration
+          with inputs preserved. Unknown submission outcomes must not be replayed.
+        result_semantics:
+          artifact: Actual owner-published media or output references; UI snapshots
+            are not generated artifacts.
+          shared_output: Only a completed published owner task proves an output exists.
+            Output references belong to the original Studio host.
+      selectionRequired: false
+      sdk: studio.audio-generation/v1
+      options:
+        capability: audio.song_generation
+      interfaceVersion: 1.0.0

@@ -1,0 +1,81 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/model-sam21-cuda",
+    "type": "service",
+    "version": "0.1.0",
+    "displayName": "SAM 2.1 Video Cutout CUDA",
+    "description": "Official Meta SAM2.1 Small CUDA point-prompted video masks."
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": [
+      "linux"
+    ],
+    "architectures": [
+      "arm64"
+    ]
+  },
+  "entrypoints": [
+    {
+      "name": "model-worker",
+      "kind": "service",
+      "path": "service.yaml"
+    }
+  ],
+  "permissions": [
+    {
+      "capability": "model-weights.huggingface-cache.read",
+      "reason": "Read the fixed SAM2.1 checkpoint.",
+      "required": true
+    },
+    {
+      "capability": "accelerator.cuda",
+      "reason": "Run CUDA video segmentation.",
+      "required": true
+    }
+  ],
+  "dependencies": [
+    {
+      "packageId": "ai2apps/runtime-cuda-torch",
+      "version": ">=0.6.0 <1.0.0",
+      "optional": false
+    }
+  ],
+  "files": [],
+  "sbom": {
+    "format": "spdx-json-2.3",
+    "path": "META/sbom.spdx.json"
+  },
+  "discovery": {
+    "kind": "model",
+    "categories": [
+      "video"
+    ],
+    "tasks": [
+      "video-segmentation"
+    ]
+  },
+  "modelProfile": {
+    "sizeBytes": 184416285,
+    "minimumMemoryBytes": 4294967296,
+    "scores": {
+      "speed": 2,
+      "capability": 4
+    },
+    "benchmark": {
+      "label": "Estimated memory; original checkpoint exact tensor comparison verified, signed installation pending",
+      "device": "NVIDIA DGX Spark GB10"
+    }
+  },
+  "modelInstall": {
+    "serviceKey": "ai2apps.model.sam21-cuda",
+    "models": [
+      {
+        "id": "ai2apps.model.sam21-cuda/small",
+        "label": "SAM 2.1 Hiera Small CUDA",
+        "recommended": true
+      }
+    ]
+  }
+}

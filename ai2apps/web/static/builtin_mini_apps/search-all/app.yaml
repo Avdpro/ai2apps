@@ -1755,7 +1755,7 @@
             "agentContext": {
               "schema": "ai2apps.aaat-declaration/v1",
               "instructions": [
-                "Prepare and confirm source choices through the parameter form. Call confirmed searches with only their returned confirmation_id and provider; do not alter confirmed scope. Account timeline requests belong to the installed social account viewer. Return the completed report with source evidence and coverage limits."
+                "For scoped tasks, derive search terms and routine settings from the task. Use fast mode for ordinary lookups and custom mode when specifying sources. Ask only for essential information that cannot be inferred or for consent required by the selected route. If a parameter form is required, use its submitted confirmation_id and provider without altering the confirmed scope. Account timeline requests belong to the installed social account viewer. Return the completed report with source evidence and coverage limits."
               ]
             },
             "selectionRequired": true,

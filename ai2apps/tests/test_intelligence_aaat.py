@@ -2,15 +2,11 @@
 import json
 from datetime import datetime, timezone, timedelta
 from types import SimpleNamespace
-import httpx
 import pytest
-from fastapi import FastAPI
 from ai2apps.intelligence.aaat import discovery, news, PROVIDER, RESEARCH
 from ai2apps.intelligence.models import ChannelInput
 from ai2apps.intelligence.store import IntelligenceStore
 from ai2apps.services.aaat import principal_for
-from ai2apps.api.router import create_ai2apps_router
-from ai2apps.identity import IdentityRepository
 from test_aaat_execution_flow import runtime, new_run, response, wait
 
 
@@ -24,26 +20,35 @@ def seed(runtime, owner='flow-owner'):
     return store, channel
 
 
-def test_confirmation_rejects_changes_other_session_and_newer_cancellation():
-    from ai2apps.intelligence.aaat import confirmed_interaction
-    from ai2apps.services import ToolProviderError
-    args={'query':'topic','sources':['google']}
-    item=SimpleNamespace(status=SimpleNamespace(value='submitted'),ui_hints={'provider':PROVIDER,'provider_version':'1'},
-        response={'result':{'capability':RESEARCH,'user_confirmed':True,'arguments':{**args,'provider':PROVIDER}}})
-    items=[item]
-    fake=SimpleNamespace(agents=SimpleNamespace(get_run=lambda _:SimpleNamespace(id='run',session_id='session'),list_interactions=lambda _:items),
-        app_capability_router=SimpleNamespace(providers={PROVIDER:SimpleNamespace(version='1')}))
-    scope=SimpleNamespace(trace_id='run',session_id='session',invocation_id='call')
-    assert confirmed_interaction(fake,args,scope) is item
-    with pytest.raises(ToolProviderError): confirmed_interaction(fake,{**args,'sources':['bing']},scope)
-    scope.session_id='other'
-    with pytest.raises(ToolProviderError): confirmed_interaction(fake,args,scope)
-    scope.session_id='session'
-    fake.app_capability_router.providers[PROVIDER].version='2'
-    with pytest.raises(ToolProviderError): confirmed_interaction(fake,args,scope)
-    fake.app_capability_router.providers[PROVIDER].version='1'
-    items.append(SimpleNamespace(status=SimpleNamespace(value='cancelled'),ui_hints={'provider':PROVIDER},response=None))
-    with pytest.raises(ToolProviderError): confirmed_interaction(fake,args,scope)
+@pytest.mark.asyncio
+async def test_refresh_requires_channel_without_parameter_review(runtime):
+    from jsonschema import Draft202012Validator
+    from ai2apps.identity import RequestPrincipal
+
+    provider = runtime.app_capability_router.providers['ai2apps.intelligence.intelligence.refresh']
+    contract = await provider.describe(RequestPrincipal.legacy_local())
+    validator = Draft202012Validator(contract['effective_schema'])
+    assert not contract['selection_required']
+    assert validator.is_valid({'channel_id':'observed-channel'})
+    assert not validator.is_valid({})
+
+
+@pytest.mark.asyncio
+async def test_refresh_busy_is_a_definite_non_submission(runtime, monkeypatch):
+    from ai2apps.intelligence import aaat
+    from ai2apps.intelligence.store import ChannelRefreshBusy
+
+    monkeypatch.setattr(aaat, 'principal_for', lambda *_: SimpleNamespace(actor_user_id='flow-owner'))
+    def already_running(*args, **kwargs):
+        raise ChannelRefreshBusy('Channel already refreshing')
+    monkeypatch.setattr(runtime.intelligence_collector, 'submit', already_running)
+    async def unexpected_follow(*args, **kwargs):
+        pytest.fail('A rejected invocation must not follow or cancel another owner job')
+    monkeypatch.setattr(runtime.system_tasks, 'follow', unexpected_follow)
+    receipt = await aaat.refresh(runtime, {'channel_id':'channel'},
+                                 SimpleNamespace(invocation_id='invocation', session_id='session'))
+    assert receipt['status'] == 'already_refreshing'
+    assert receipt['submitted'] is False
 
 
 @pytest.mark.asyncio
@@ -73,52 +78,80 @@ async def test_watch_news_uses_dynamic_owned_channel_and_daily_coverage(runtime)
 
 
 @pytest.mark.asyncio
-async def test_military_research_waits_for_sources_survives_restart_and_binds_report(runtime, monkeypatch):
-    seed(runtime)
+async def test_temporary_research_runs_shared_search_without_parameter_form(runtime, monkeypatch):
+    from ai2apps.browser.builtin_mini_apps import definitions
     from ai2apps.browser.mini_apps import WebAgentMiniAppBroker
-    from ai2apps.research import search_preparation as prep, search_workflow as workflow
-    monkeypatch.setattr(WebAgentMiniAppBroker,'registered',lambda self,*a:SimpleNamespace())
-    monkeypatch.setattr(prep,'choices',lambda *a:[{'id':'google','name':'Google'},{'id':'bing','name':'Bing'}])
-    calls=[]
-    monkeypatch.setattr(prep,'begin',lambda *a,**k: {'id':'fixture-confirmation','status':'completed'})
-    def confirm(*a,**k):
-        calls.append(('confirm',a[4]));return {'confirmation_id':'fixture-confirmation'}
-    monkeypatch.setattr(prep,'confirm',confirm)
-    async def invoke(runtime,args,context):
-        calls.append(('execute',context.actor_user_id))
-        return {'markdown':'正文证据结论 [原始报道](https://example.com/military)',
-                'articles':[{'url':'https://example.com/military','text':'实际军事新闻正文'}],
-                'citations':[{'id':'1','url':'https://example.com/military','title':'原始报道'}]}
-    monkeypatch.setattr(workflow,'invoke',invoke)
-    values={'query':'军事新闻','days':1,'sources':['google'],'profile':'default','limit':3}
+    from ai2apps.identity import IdentityRepository, OrganizationType, RequestPrincipal
+    from ai2apps.messager.bots import REGISTRATION, install
+    from ai2apps.research.mini_apps import WebMiniAppAdapters
+    from ai2apps.research import search_workflow as workflow
+    from test_bot_dialogue import job_wait
+
+    IdentityRepository(runtime.database).bind_installation(
+        installation_id='local', cloud_device_id='local-device', organization_id='local',
+        organization_type=OrganizationType.HOUSEHOLD, core_user_id='local',
+        billing_account_id='local', access_epoch=1)
+    seed(runtime, 'local')
+    install(runtime)
+    actor = RequestPrincipal.legacy_local()
+    bot = runtime.messager_bots.create('local', 'News fixture', 'Find fresh AI news and cite original sources')
+    access = runtime.messager_bot_app_access
+    catalog = access.catalog('local', bot['id'])
+    provider = runtime.app_capability_router.providers[PROVIDER]
+    access.save('local', bot['id'], catalog['revision'], catalog['review_hash'],
+                [{'app_id': access.target(provider), 'enabled': True}])
+    session_id = runtime.app_chat.open(actor, REGISTRATION, {'bot_id': bot['id']}, {})
+    mini = next(item for item in definitions()[0] if item['id'] == 'ai2apps.search-all')
+    mounted = SimpleNamespace(declaration=mini, mount={'effective_digest': 'fixture'})
+    monkeypatch.setattr(WebAgentMiniAppBroker, 'registered', lambda *args: mounted)
+    monkeypatch.setattr(workflow, 'resolve_task_model', lambda *args: 'fixture')
+    calls = []
+    url = 'https://example.com/ai-news'
+
+    async def search(self, args, context):
+        calls.append(('search', args['query'], args['sources'], args['profile'], args['limit']))
+        return {'query': args['query'], 'results': [{'url': url, 'title': 'AI news',
+                    'browser_task_id': 'source', 'search_source': 'google'}]}
+
+    async def read(self, args, context):
+        calls.append(('read', args['url']))
+        return {'url': url, 'title': 'AI news', 'text': 'Original article body with a documented AI release.'}
+
     async def model(request):
-        results=[json.loads(m['content']) for m in request['messages'] if m['role']=='tool']
-        if any(r.get('temporary') for r in results): return response(text='模型改写链接 https://wrong.example/ignored')
-        return response(RESEARCH,values)
+        if 'Decide quickly' in request['messages'][0]['content']:
+            return response(text=json.dumps({'kind': 'task', 'title': '今日 AI 新闻', 'text': 'Queued'}))
+        if 'tools' not in request:
+            return response(text=json.dumps({'overview': 'AI news', 'points': [
+                {'text': 'A documented AI release', 'source_ids': ['1']}], 'limitations': ''}))
+        results = [json.loads(message['content']) for message in request['messages'] if message['role'] == 'tool']
+        if any(result.get('temporary') for result in results):
+            return response(text='Unverified link https://wrong.example/ignored')
+        if not any(tool['function']['name'].startswith('intelligence__research_') for tool in request['tools']):
+            return response('app.describe', {'capability': RESEARCH})
+        return response(RESEARCH, {'query': 'AI 新闻', 'provider': PROVIDER})
+
+    monkeypatch.setattr(WebMiniAppAdapters, 'search', search)
+    monkeypatch.setattr(WebMiniAppAdapters, 'fetch', read)
     runtime.agent_runtime.bind_model_provider(model)
     await runtime.start_background_tasks(retention_interval_seconds=60)
     try:
-        run=new_run(runtime,[RESEARCH,'app.collect_parameters'],prompt='今天有哪些军事新闻？')
-        await wait(runtime,run.id,'waiting_input')
-        assert not calls
-        item=runtime.agents.list_interactions(run.id)[0]
-        assert item.ui_hints['app_id']=='ai2apps.intelligence'
-        await runtime.agent_runtime.stop();await runtime.agent_runtime.start()
-        app=FastAPI();app.include_router(create_ai2apps_router(runtime_provider=lambda:runtime,
-            principal_provider=lambda:IdentityRepository(runtime.database).local_principal_for('flow-owner')))
-        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url='http://test') as client:
-            base=f'/v1/platform/agent-runs/{run.id}/interactions/{item.id}/parameters'
-            state=(await client.get(base)).json()
-            assert any(f['key']=='sources' and len(f['options'])==2 for f in state['descriptor']['fields'])
-            state=(await client.put(base,json={'revision':state['revision'],'values':values})).json()
-            submitted=await client.post(base+'/submit',json={'revision':state['revision'],'values':values})
-            assert submitted.status_code==200,submitted.text
-        done=await wait(runtime,run.id,'completed')
-        assert calls==[('confirm',{'query':values['query'],'sources':['google'],'profile':'default','limit':3,'mode':'custom','x_sort':'latest','xiaohongshu_sort':'latest','exclude_ads':True,'retain_pages':False}),('execute','flow-owner')]
-        assert 'https://example.com/military' in done.output['content']
-        assert 'wrong.example' not in done.output['content']
-        assert len(IntelligenceStore(runtime.config.paths.artifacts_path/'intelligence').snapshot('flow-owner')['channels'])==1
-    finally: await runtime.stop_background_tasks()
+        source = runtime.messager_dialogue.submit(actor, bot['id'], session_id, 'research-defaults',
+                                                  '看看今天有什么值得注意的AI新闻', 'fixture', [])
+        job = await job_wait(runtime, source, 'completed')
+        run_id = job['worker_run']
+        done = await wait(runtime, run_id, 'completed')
+        assert not runtime.agents.list_interactions(run_id)
+        assert calls == [('search', 'AI 新闻', ['google', 'bing'], 'default', 3), ('read', url)]
+        assert url in done.output['content'] and 'wrong.example' not in done.output['content']
+        child, = runtime.agents.list_children(run_id)
+        assert child.status.value == 'completed'
+        with runtime.database.transaction() as db:
+            task, = db.execute('SELECT * FROM intelligence_research_tasks').fetchall()
+        assert task['id'] == child.input['origin_invocation']
+        assert any(url in message['content'] for message in runtime.app_chat.message_page(actor, session_id)['items'])
+        assert len(IntelligenceStore(runtime.config.paths.artifacts_path/'intelligence').snapshot('local')['channels']) == 1
+    finally:
+        await runtime.stop_background_tasks()
 
 
 def test_owner_news_cards_use_owned_image_endpoint_and_original_source():
@@ -163,3 +196,89 @@ def test_legacy_source_presentation_upgrade_is_owner_scoped_and_idempotent(runti
     assert views[1]==records[1]
     upgrade_news_presentations(runtime)
     with runtime.database.transaction() as db:assert [dict(r) for r in db.execute('SELECT id,metadata_json FROM messages')]==after
+
+
+@pytest.mark.asyncio
+async def test_channel_html_aaat_defaults_actual_task_and_session_attachment(runtime,monkeypatch):
+    import asyncio
+    from ai2apps.intelligence import export_aaat
+    from ai2apps.agents.artifact_outputs import output_artifacts
+    from ai2apps.services import ToolProviderError
+    _,channel=seed(runtime)
+    seen=[];original=export_aaat.execute
+    async def capture(rt,args,context):
+        seen.append((dict(args),context));return await original(rt,args,context)
+    monkeypatch.setattr(export_aaat,'execute',capture)
+    async def model(request):
+        results=[json.loads(m['content']) for m in request['messages'] if m['role']=='tool']
+        if any(r.get('files') for r in results):return response(text='HTML file is ready.')
+        return response('intelligence.export_html',{'channel_id':channel['id']})
+    runtime.agent_runtime.bind_model_provider(model)
+    await runtime.start_background_tasks(retention_interval_seconds=60)
+    try:
+        run=new_run(runtime,['intelligence.export_html'],prompt='输出腕表频道HTML')
+        done=await wait(runtime,run.id,'completed')
+        steps=runtime.agents.list_steps(run.id)
+        output=next(s.output for s in reversed(steps) if s.tool_name=='intelligence.export_html' and s.output and s.output.get('files'))
+        task=runtime.system_tasks.get('flow-owner',output['export_id'])
+        assert task['status']=='completed' and task['kind']=='intelligence.export'
+        payload=task['payload'];assert payload['quality']=='reading' and payload['include_toc'] is False
+        assert (datetime.fromisoformat(payload['until'])-datetime.fromisoformat(payload['since'])).total_seconds()==86400
+        assert output['published'] is False and output['summary']['articles']==1
+        files=output_artifacts(steps,runtime.workspace,run.session_id)
+        assert len(files)==1 and files[0]['media_type']=='text/html'
+        assert b'<html' in runtime.workspace.artifact_path(runtime.workspace.get_artifact(run.session_id,files[0]['artifact_id'])).read_bytes()
+        args,context=seen[-1]
+        replay=await original(runtime,args,context)
+        assert replay['export_id']==output['export_id'] and replay['files']==output['files']
+        with pytest.raises(ToolProviderError,match='parameters changed'):await original(runtime,{**args,'hours':48},context)
+        with runtime.database.transaction() as db:
+            assert db.execute("select count(*) from system_tasks where kind='intelligence.export'").fetchone()[0]==1
+            assert db.execute('select count(*) from gallery_assets').fetchone()[0]==0
+    finally:await runtime.stop_background_tasks()
+
+
+@pytest.mark.asyncio
+async def test_html_export_cancellation_and_foreign_channel_do_not_create_outputs(runtime,monkeypatch):
+    from dataclasses import replace
+    from ai2apps.services.models import ToolCallContext
+    from ai2apps.intelligence.export_aaat import execute
+    from ai2apps.identity import IdentityRepository
+    import asyncio
+    _,channel=seed(runtime);_,foreign=seed(runtime,'other-owner')
+    run=new_run(runtime,['intelligence.export_html'])
+    principal=IdentityRepository(runtime.database).local_principal_for('flow-owner')
+    context=replace(ToolCallContext.from_principal(principal,caller_id='test',session_id=run.session_id,trace_id=run.id),invocation_id='cancel-fixture')
+    async def cancelled(*args,**kwargs):raise asyncio.CancelledError()
+    monkeypatch.setattr(runtime.system_tasks,'follow',cancelled)
+    with pytest.raises(KeyError):await execute(runtime,{'channel_id':foreign['id']},context)
+    with runtime.database.transaction() as db:assert db.execute("select count(*) from system_tasks where kind='intelligence.export'").fetchone()[0]==0
+    with pytest.raises(asyncio.CancelledError):await execute(runtime,{'channel_id':channel['id']},context)
+    await runtime.system_tasks.tick()
+    with runtime.database.transaction() as db:
+        row=db.execute("select status from system_tasks where kind='intelligence.export'").fetchone();assert row[0]=='cancelled'
+    assert not list(runtime.workspace.list_artifacts(run.session_id))
+
+
+@pytest.mark.asyncio
+async def test_failed_html_export_has_no_chat_attachment(runtime,monkeypatch):
+    from ai2apps.intelligence import html_export
+    from ai2apps.agents.artifact_outputs import output_artifacts
+    _,channel=seed(runtime)
+    async def failed(*args,**kwargs):raise ValueError('Fixture export failure')
+    monkeypatch.setattr(html_export,'build_html',failed)
+    async def model(request):
+        results=[json.loads(m['content']) for m in request['messages'] if m['role']=='tool']
+        if any(r.get('status')=='failed' for r in results):return response(text='Export failed; no file was created.')
+        return response('intelligence.export_html',{'channel_id':channel['id']})
+    runtime.agent_runtime.bind_model_provider(model)
+    await runtime.start_background_tasks(retention_interval_seconds=60)
+    try:
+        run=new_run(runtime,['intelligence.export_html'])
+        await wait(runtime,run.id,'completed')
+        steps=runtime.agents.list_steps(run.id)
+        output=next(s.output for s in reversed(steps) if s.tool_name=='intelligence.export_html' and s.output and s.output.get('status')=='failed')
+        assert output['aaat_context']['status']=='partial' and 'files' not in output
+        assert not output_artifacts(steps,runtime.workspace,run.session_id)
+        assert runtime.system_tasks.get('flow-owner',output['export_id'])['status']=='failed'
+    finally:await runtime.stop_background_tasks()

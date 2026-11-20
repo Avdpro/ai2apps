@@ -114,6 +114,10 @@ async def test_signed_mobile_end_to_end_real_general_form_restart_and_history(ru
             assert image.status_code==200,image.text
             assert image.headers['content-type']=='image/png'
             assert image.content==runtime.workspace.artifact_path(runtime.workspace.get_artifact(sid,aid)).read_bytes()
+            preview=await signed('GET',f'/v1/mobile/agent/artifacts/{rid}/{aid}?preview=mobile')
+            assert preview.status_code==200 and preview.headers['content-type']=='image/jpeg',preview.text
+            assert (await signed('GET',f'/v1/mobile/agent/files/{rid}/{aid}?preview=mobile')).headers['content-type']=='image/jpeg'
+            assert (await signed('GET',f'/v1/mobile/agent/artifacts/{rid}/art_unrecorded?preview=mobile')).status_code==404
             assert (await signed('GET',f'/v1/mobile/agent/artifacts/{rid}/art_unrecorded')).status_code==404
             file=await signed('GET',f'/v1/mobile/agent/files/{rid}/{aid}')
             assert file.status_code==200 and file.content==image.content

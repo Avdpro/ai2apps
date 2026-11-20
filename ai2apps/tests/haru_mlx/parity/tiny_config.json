@@ -1,0 +1,88 @@
+{
+  "model_type": "haru",
+  "dtype": "float32",
+  "sample_rate": 24000,
+  "frame_samples": 3200,
+  "latent_dim": 64,
+  "pad_token_id": 248076,
+  "eop_token_id": 248071,
+  "lm": {
+    "model_type": "qwen3_5_text",
+    "vocab_size": 248320,
+    "hidden_size": 64,
+    "intermediate_size": 128,
+    "num_hidden_layers": 4,
+    "num_attention_heads": 4,
+    "num_key_value_heads": 2,
+    "head_dim": 16,
+    "hidden_act": "silu",
+    "max_position_embeddings": 4096,
+    "rms_norm_eps": 1e-06,
+    "attn_output_gate": true,
+    "full_attention_interval": 4,
+    "layer_types": [
+      "linear_attention",
+      "linear_attention",
+      "linear_attention",
+      "full_attention"
+    ],
+    "linear_conv_kernel_dim": 4,
+    "linear_key_head_dim": 32,
+    "linear_value_head_dim": 16,
+    "linear_num_key_heads": 2,
+    "linear_num_value_heads": 4,
+    "rope_parameters": {
+      "rope_theta": 10000000,
+      "partial_rotary_factor": 0.25,
+      "rope_type": "default"
+    },
+    "tie_word_embeddings": true,
+    "eos_token_id": 248044
+  },
+  "codec": {
+    "latent_dim": 64,
+    "base_channels": 4,
+    "ratios": [
+      8,
+      5,
+      5,
+      4,
+      2,
+      2
+    ],
+    "encoder_depths": [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      2
+    ],
+    "decoder_depths": [
+      2,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "norm_eps": 1e-05,
+    "latent_std": 0.5
+  },
+  "head": {
+    "hidden_size": 64,
+    "latent_dim": 64,
+    "num_layers": 2,
+    "ffn_ratio": 3.0,
+    "norm_eps": 1e-05,
+    "interval_embed": 7.0,
+    "num_steps": 1,
+    "guidance_scale": 1.5,
+    "guidance_range": [
+      1.0,
+      2.0
+    ]
+  }
+}

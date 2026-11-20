@@ -1,0 +1,25 @@
+schema: ai2apps.capability-profiles/v1
+app_id: ai2apps.imagine-studio
+version: 1
+capabilities:
+  comic.translation:
+    trigger: on_feature_request
+    presentation:
+      title: 安装漫画文字识别模型 / Install comic OCR
+      description: 配置 SoMark OXR 以识别漫画原文。Set up SoMark OXR to recognize comic dialogue.
+      icon: languages
+      confirm_label: 下载并配置 / Download and configure
+      ready_label: SoMark OXR 已就绪 / SoMark OXR is ready
+    requirements: {operations: [image_recognition]}
+    profiles:
+      - id: apple-metal-comic-oxr
+        label: SoMark OXR 1.0 BF16
+        priority: 100
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator: {vendor: apple, api: metal, unified_memory_gib: {minimum: 16}}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.8.15,<2.0.0"}
+          provider: {package_id: ai2apps/model-oxr, service_key: ai2apps.model.oxr, version: ">=0.1.0,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.oxr/oxr-1.0-bf16}

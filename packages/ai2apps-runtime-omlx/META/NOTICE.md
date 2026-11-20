@@ -9,7 +9,7 @@ CosyVoice model code and weights originate from FunAudioLLM/CosyVoice and are
 distributed under Apache License 2.0. Model Packages carry their own model
 license and attribution notices.
 
-mflux 0.19.0 supplies the MLX-native FLUX.2 Klein and Z-Image implementations
+mflux 0.24.0 supplies the MLX-native FLUX.2 Klein and Z-Image implementations
 and is used under the MIT License. Runtime 1.5.3 installs the digest-pinned
 wheel without Torch/OpenCV and makes its conversion, ControlNet, and PiD-only
 imports lazy; normal generation, editing, quantization, compiled denoising, and
@@ -23,3 +23,9 @@ license and modification notice are retained beside the vendored source.
 IndexTTS model weights are not embedded in this Runtime and remain subject to
 the separate Bilibili Model Use License Agreement carried by their Model
 Package and checkpoint distribution.
+
+Haru MLX inference core is integrated from higurashi-ai/Haru commit
+7fe6b7665f8bf035998f401f8cb779fbe53f2751 under Apache-2.0, with MIT
+VibeVoice/mlx-lm derived components. License and THIRD_PARTY_NOTICES.md are
+retained under ai2apps/model_worker/haru_mlx inside the Runtime. Model weights
+and voice references are not embedded.

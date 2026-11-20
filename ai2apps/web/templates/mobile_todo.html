@@ -1,10 +1,10 @@
 {% extends "mobile_base.html" %}
 {% block title %}Todo · AI2Apps{% endblock %}
-{% block head %}<link rel="stylesheet" href="{{ mobile_static('css/system_tasks.css') }}"><link rel="stylesheet" href="{{ mobile_static('css/mobile_todo.css') }}">{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ mobile_static('css/app_state.css') }}"><script src="{{ mobile_static('js/app_state.js') }}"></script><script src="{{ mobile_static('js/app_shortcuts.js') }}"></script><link rel="stylesheet" href="{{ mobile_static('css/system_tasks.css') }}"><link rel="stylesheet" href="{{ mobile_static('css/mobile_todo.css') }}">{% endblock %}
 {% set todo_zh = (current_lang|default('zh', true)).lower().startswith('zh') %}
 {% block content %}
 <main id="mobile-todo">
-<header><div><small>AI2APPS</small><h1>Todo</h1></div><button id="refresh" type="button">{{ '刷新' if todo_zh else 'Refresh' }}</button></header>
+<header><div><small>AI2APPS</small><h1>Todo</h1></div><button id="todo-state-presets" type="button" hidden></button><button id="refresh" type="button">{{ '刷新' if todo_zh else 'Refresh' }}</button></header>
 <p id="notice" role="status" aria-live="polite"></p>
 <section id="list-view"><button id="system-tasks-entry" type="button">{{ '系统任务' if todo_zh else 'System tasks' }}</button>
 <label>{{ '目录' if todo_zh else 'Directory' }}<select id="directory" aria-label="{{ '目录' if todo_zh else 'Directory' }}"></select></label>

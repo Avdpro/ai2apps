@@ -1,0 +1,15 @@
+{
+  "status": "development_contract_not_published",
+  "source_hashes": {
+    "ai2apps.json": "a13784c2fe1cdfbb153b959acd575b3ae7541698c1c8e2734fc210cb67e3c237",
+    "service.yaml": "d55611fcead3ba81275ab965089ab7352f8611d9eeb522b91f4bbc173b6c4e20",
+    "META/checkpoint-distribution-4bit.json": "25058710b8ddbe3d70e70693510b176ce8559b94c8a1102b7bb3123c2d69d51f",
+    "META/sbom.spdx.json": "82dacbed66fb876a819836d9c7746a69208245cdfc3d7c79f049e053cacbc937",
+    "META/checkpoint-distribution-8bit.json": "e1a89f6dd6b448fc991eb4b57178785c49b9f6fa723af8b6f173434132ad2837",
+    "META/NOTICE.md": "76182eca96a4c64716ddc4834983c5777834eefbd15cf19d7243b1bcbed01d5d",
+    "src/worker_adapter.py": "b987517c84dea0fd0544ab0c91b8e70a42306e4004f3c1a781b0ff6edd6ed8b2",
+    "META/licenses/Apache-2.0.txt": "2b93f05188b150e3d6ce31fa7cb7654cde98b78d2b671c5689e334bf520d53c9"
+  },
+  "signed_installation_passed": false,
+  "checkpoint_publication_evidence": "spark/artifacts/media-batch-production-20261009.json"
+}

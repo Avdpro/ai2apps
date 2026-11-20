@@ -42,6 +42,7 @@ def _html_permissions_policy(path: str) -> bytes:
 
     if (
         path == "/"
+        or path.rstrip("/") in {"/mobile", "/mobile/home"}
         or path.startswith("/apps/")
         or path.rstrip("/") == "/admin/chat"
         or path.rstrip("/") == "/admin/app-content/ai2apps.video-studio"
@@ -73,6 +74,13 @@ class LocalBrowserSecurityHeadersMiddleware:
                     b"",
                 )
                 if content_type.startswith(b"text/html"):
+                    from ai2apps.web.mobile_app_gateway import microphone_document
+                    microphone = message.get('status') == 200 and microphone_document(scope)
+                    if microphone:
+                        # Opt-in comes from the authenticated trusted mount, never URL alone.
+                        headers = [(name, value) for name, value in headers if name.lower() != b'permissions-policy']
+                        headers.append((b'permissions-policy', _MICROPHONE_PERMISSIONS_POLICY))
+                        headers = [(name, value + b"; media-src 'self' blob:" if name.lower() == b'content-security-policy' and b'media-src' not in value else value) for name, value in headers]
                     existing = {name.lower() for name, _ in headers}
                     # Intelligence displays user-requested article covers. Limit the
                     # exception to its own HTML surface and image resources; never

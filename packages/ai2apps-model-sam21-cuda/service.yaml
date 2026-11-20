@@ -1,0 +1,94 @@
+schema: ai2apps.service/v1
+id: ai2apps.model.sam21-cuda
+name: SAM 2.1 Video Cutout CUDA
+description: Official Meta SAM2.1 Small CUDA point-prompted video masks.
+version: 0.1.0
+publisher:
+  id: ai2apps
+license:
+  name: Apache License 2.0
+  id: Apache-2.0
+  path: LICENSE
+attribution:
+  notice: META/NOTICE.md
+  source: https://github.com/facebookresearch/sam2
+  checkpoint: https://huggingface.co/facebook/sam2.1-hiera-small
+runtime:
+  mode: process
+  protocol: ai2apps-model-worker/v1
+  provider: ai2apps.runtime.cuda-torch
+  adapter: src/worker_adapter.py:create_adapter
+models:
+- id: ai2apps.model.sam21-cuda/small
+  display_name: SAM 2.1 Hiera Small CUDA
+  model_type: video_segmentation
+  upstream_id: facebook/sam2.1-hiera-small
+  capabilities:
+  - video_segmentation
+  - object_tracking
+  - mask_video
+  - point_prompt
+  - negative_points
+  weights:
+    provider: huggingface
+    repo_id: facebook/sam2.1-hiera-small
+    revision: ee5bba1d82bb8749febdf90f45e84b687142ba03
+    preparation:
+      recipe: native
+    distribution_id: dist_ai2apps_sam21_small_cuda_ee5bba1d_v1
+  metadata:
+    family: sam2.1
+    variant: hiera-small
+    implementation: official-meta-cuda
+    upstream_revision: 2b90b9f5ceec907a1c18123530e92e794ad901a4
+    checkpoint_file: sam2.1_hiera_small.pt
+    checkpoint_status: distribution-published
+    estimated_resident_bytes: 3221225472
+  video_segmentation_capabilities:
+    schema: ai2apps.video-segmentation-capabilities/v1
+    operations:
+    - video_segmentation
+    prompt_types:
+    - point
+    output_formats:
+    - mp4
+    maximum_seconds: 18.75
+    multi_object: false
+    bidirectional: false
+    soft_masks: true
+capabilities:
+- video-segmentation
+- object-tracking
+- mask-video
+requires:
+  services:
+  - id: ai2apps.runtime.cuda-torch
+    version: '>=0.6.0,<1.0.0'
+    optional: false
+    capabilities:
+    - cuda
+    - model-worker-v1
+    - sam21
+  python: '>=3.11,<3.14'
+permissions:
+  network:
+    outbound: false
+  model_weights:
+    huggingface_cache: read
+    reason: Read the fixed official SAM2.1 original checkpoint.
+  accelerator:
+    cuda: true
+    reason: Run Meta SAM2.1 video segmentation on CUDA.
+compatibility:
+  os:
+  - linux
+  architectures:
+  - arm64
+  - aarch64
+health:
+  path: /health
+  startup_timeout_seconds: 120
+restart:
+  max_attempts: 2
+  base_delay_seconds: 1
+tools: []

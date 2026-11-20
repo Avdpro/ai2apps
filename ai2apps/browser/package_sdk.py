@@ -42,9 +42,9 @@ async def normalize_search(runtime,args,context,mini,spec):
 
 def citation_policy(runtime):
     from ai2apps.services.aaat import AgentResultPolicy
-    from ai2apps.research.citations import citation_instruction,bind_final,report_preview,READ_TOOLS
+    from ai2apps.research.citations import citation_instruction,bind_final,report_preview,failure_receipt,READ_TOOLS
     if 'citation_binding' not in runtime.app_capability_router.result_policies:
-        runtime.app_capability_router.register_result_policy(AgentResultPolicy('citation_binding',citation_instruction,bind_final,report_preview,tuple(sorted(READ_TOOLS))))
+        runtime.app_capability_router.register_result_policy(AgentResultPolicy('citation_binding',citation_instruction,bind_final,report_preview,tuple(sorted(READ_TOOLS)),failure_receipt))
 def search_form(runtime,key,mini,spec):
     citation_policy(runtime)
     from ai2apps.agents.parameter_forms import FORMS
@@ -84,7 +84,7 @@ def install(binder):
     for key,execute,policy,form,effects in (
         ('browser.travel-research/v1',travel,None,None,('external_read','network')),
         ('browser.shopping-research/v1',shopping,None,shopping_form,('external_read','network')),
-        ('browser.cart-preparation/v1',shopping,None,shopping_form,('external_read','network','external_write')),
+        ('browser.cart-preparation/v1',shopping,None,shopping_form,('external_read','network','external')),
         ('browser.search-report/v1',search,confirmed_search,search_form,('external_read','network')),
         ('browser.article-reader/v1',reader,None,reader_form,('external_read','network'))):
         binder.register_protocol(HostProtocol(key,(HOST,),execute,policy=policy,form_setup=form,effects=effects,capabilities=('network.outbound',),normalize=normalize_search if execute is search else None,discovery=shopping_discovery if execute is shopping else None))

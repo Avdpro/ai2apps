@@ -1,0 +1,83 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/model-oxr",
+    "type": "service",
+    "version": "0.1.0",
+    "displayName": "SoMark OXR 1.0 BF16",
+    "description": "Local document-image OCR using SoMark OXR and the official oMLX Runtime."
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": [
+      "darwin"
+    ],
+    "architectures": [
+      "arm64"
+    ],
+    "minimumOsVersion": "26.2"
+  },
+  "entrypoints": [
+    {
+      "name": "model-worker",
+      "kind": "service",
+      "path": "service.yaml"
+    }
+  ],
+  "permissions": [
+    {
+      "capability": "model-weights.huggingface-cache.read",
+      "reason": "Read only the Host-selected pinned OXR checkpoint.",
+      "required": true
+    },
+    {
+      "capability": "accelerator.metal",
+      "reason": "Run OXR document recognition on Apple GPU.",
+      "required": true
+    }
+  ],
+  "dependencies": [
+    {
+      "packageId": "ai2apps/runtime-omlx",
+      "version": ">=1.8.15 <2.0.0",
+      "optional": false
+    }
+  ],
+  "files": [],
+  "sbom": {
+    "format": "spdx-json-2.3",
+    "path": "META/sbom.spdx.json"
+  },
+  "discovery": {
+    "kind": "model",
+    "categories": [
+      "multimodal"
+    ],
+    "tasks": [
+      "optical-character-recognition",
+      "document-understanding"
+    ]
+  },
+  "modelProfile": {
+    "sizeBytes": 3084746040,
+    "minimumMemoryBytes": 17179869184,
+    "scores": {
+      "speed": 4,
+      "capability": 3
+    },
+    "benchmark": {
+      "label": "Publisher OXR BF16 test; peak MLX 4.66 GB; RAM floor conservative, not 16GB-device tested",
+      "device": "Apple M5 Max 128 GiB"
+    }
+  },
+  "modelInstall": {
+    "serviceKey": "ai2apps.model.oxr",
+    "models": [
+      {
+        "id": "ai2apps.model.oxr/oxr-1.0-bf16",
+        "label": "SoMark OXR 1.0 BF16",
+        "recommended": true
+      }
+    ]
+  }
+}

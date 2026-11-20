@@ -216,8 +216,10 @@
             const img = document.createElement('img');img.className='mchat-generated-image';img.alt=image.filename||'Generated image';img.loading='lazy';
             const failure=document.createElement('small');failure.hidden=true;failure.textContent='图片读取失败，请重新连接后刷新。';node.append(img,failure);
             const failed=(error)=>{img.hidden=true;failure.hidden=false;if(error instanceof Error)failure.textContent=error.message;};img.onerror=failed;
-            if(signedAgent && options.runId && image.artifact_id){
-                window.AI2AppsAgentConnection.artifactImage(options.runId,image.artifact_id).then(asset=>{if(!img.isConnected){asset.dispose();return;}const canvas=document.createElement('canvas');canvas.className=img.className;canvas.setAttribute('role','img');canvas.setAttribute('aria-label',img.alt);asset.paint(canvas).then(()=>{if(img.isConnected)img.replaceWith(canvas);}).catch(failed).finally(asset.dispose);}).catch(failed);
+            if(signedAgent && (image.mobile_image_ref || options.runId && image.artifact_id)){
+                (image.mobile_image_ref?window.AI2AppsAgentConnection.chatImage(image.mobile_image_ref):window.AI2AppsAgentConnection.artifactImage(options.runId,image.artifact_id)).then(asset=>{if(!img.isConnected){asset.dispose();return;}const canvas=document.createElement('canvas');canvas.className=img.className;canvas.setAttribute('role','img');canvas.setAttribute('aria-label',img.alt);asset.paint(canvas).then(()=>{if(img.isConnected){canvas.setAttribute('role','button');canvas.tabIndex=0;canvas.onclick=asset.open;canvas.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();asset.open();}};img.replaceWith(canvas);}}).catch(failed).finally(asset.dispose);}).catch(failed);
+            }else if(image.mobile_image_ref && typeof image.mobile_original_url==='string' && image.url?.startsWith('/v1/mobile/chat/threads/')){
+                img.src=image.url;img.onclick=()=>window.AI2AppsMobileImages.open({alt:img.alt,load:async signal=>{const response=await fetch(image.mobile_original_url,{credentials:'same-origin',signal});if(!response.ok)throw Error('Image unavailable');const blob=await response.blob(),url=URL.createObjectURL(blob);return {url,dispose:()=>URL.revokeObjectURL(url)};}});
             }else if(typeof image.url==='string' && /^data:image\/(png|jpeg|webp);base64,/.test(image.url)){img.src=image.url;}
             else {failed();}
         }
@@ -232,7 +234,13 @@
         });
         if (options?.artifacts && window.AI2AppsChatArtifacts) {
             const assets=document.createElement('div');node.append(assets);
-            window.AI2AppsChatArtifacts.render(assets,options.artifacts,{signed:signedAgent,runId:options.runId,includeImages:true});
+            const threadId=current?.id;
+            const ownerFileRequest=(file,action,signal)=>{if(action==='gallery')return null;const ref=window.AI2AppsChatArtifacts.reference(file.url);if(!ref||!threadId)throw Error('File unavailable');let path;
+                if(ref.attachment){if(ref.session!==threadId)throw Error('Attachment belongs to another conversation');path='/v1/mobile/chat/threads/'+encodeURIComponent(threadId)+'/attachments/'+encodeURIComponent(ref.attachment);}
+                else{if(!options.runId)throw Error('File has no recorded Run');path='/v1/mobile/chat/threads/'+encodeURIComponent(threadId)+'/files/'+encodeURIComponent(options.runId)+'/'+encodeURIComponent(ref.artifact);}
+                return fetch(path+(action==='thumbnail'?'?preview=mobile':''),{credentials:'same-origin',signal});};
+            window.AI2AppsChatArtifacts.render(assets,options.artifacts,{signed:signedAgent,mobile:true,runId:options.runId,includeImages:true,request:signedAgent?null:ownerFileRequest,
+                openImage:file=>signedAgent?window.AI2AppsAgentConnection.openImage('/v1/mobile/agent/files/'+encodeURIComponent(options.runId)+'/'+encodeURIComponent(file.artifact_id)):window.AI2AppsMobileImages.open({alt:file.filename,load:async signal=>{const response=await ownerFileRequest(file,'read',signal);if(!response.ok)throw Error('Image unavailable');const url=URL.createObjectURL(await response.blob());return {url,dispose:()=>URL.revokeObjectURL(url)};}})});
         }
         if (options?.views && window.AI2AppsResultViews) {
             const views = document.createElement('div');

@@ -25,14 +25,75 @@ from .dom_visibility import page_function
 
 _ROOT = Path(__file__).resolve().parents[1]
 _HELPERS = json.loads(Path(__file__).with_name('dom_helpers.json').read_text())
+PAGE_OPEN_SECONDS = 10
+ARTICLE_BLOCKER_SECONDS = 15
+ARTICLE_EXTRACTION_SECONDS = 15
 logging.getLogger(__name__).info('Browser access preflight loaded from %s', __file__)
-logging.getLogger(__name__).info('WebAgent native input policy=visible-directed-dispatch-v2 loaded from %s', __file__)
+logging.getLogger(__name__).info('WebAgent native input policy=reveal-and-reobserve-v3 loaded from %s', __file__)
 logging.getLogger(__name__).info('Browser read-scoped CAPTCHA policy loaded from %s', __file__)
+logging.getLogger(__name__).info('Cookie read-scope policy v2 loaded from %s', __file__)
 
 
 class NativeInputNotDispatched(RuntimeError):
     """Window preparation failed before any content input was dispatched."""
     input_dispatched=False
+
+
+class PointerTargetUnavailable(NativeInputNotDispatched):
+    """The observed DOM target could not be made safely clickable."""
+
+
+_RESOLVE_POINTER = r'''async (ref, token, identity) => {
+    if (window.__ai2appsSnapshotDocument !== token) return null;
+    const roots = [document];
+    for (const root of roots) {
+        for (const el of root.querySelectorAll('*')) if (el.shadowRoot) roots.push(el.shadowRoot);
+    }
+    const matches = roots.flatMap(root => [...root.querySelectorAll('[data-ai2apps-ref]')])
+        .filter(el => window.__ai2appsElementRefs?.get(el) === ref);
+    if (matches.length !== 1) return null;
+    const node = matches[0];
+    const valid = () => {
+        if (!node.isConnected || node.disabled || node.getAttribute('aria-disabled') === 'true' ||
+            !ai2appsDOMVisible(node, {controlIcons: true})) return false;
+        const editable = node.matches('input,textarea,select,[contenteditable="true"]');
+        return JSON.stringify([node.tagName, node.getAttribute('role') || '',
+            node.getAttribute('type') || '', node.getAttribute('aria-label') || '',
+            node.getAttribute('placeholder') || '', node.tagName === 'A' ? node.href : '',
+            editable ? '' : String(node.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 300)]) === identity;
+    };
+    const point = () => {
+        if (!valid()) return null;
+        const r = node.getBoundingClientRect();
+        const left = Math.max(0, Math.ceil(r.left));
+        const right = Math.min(innerWidth - 1, Math.ceil(r.right) - 1);
+        const top = Math.max(0, Math.ceil(r.top));
+        const bottom = Math.min(innerHeight - 1, Math.ceil(r.bottom) - 1);
+        if (left > right || top > bottom) return null;
+        const x = Math.floor((left + right) / 2), y = Math.floor((top + bottom) / 2);
+        let hit = document.elementFromPoint(x, y);
+        while (hit?.shadowRoot) {
+            const next = hit.shadowRoot.elementFromPoint(x, y);
+            if (!next || next === hit) break;
+            hit = next;
+        }
+        return hit && (hit === node || node.contains(hit)) ? {x, y, width: innerWidth, height: innerHeight} : null;
+    };
+    if (!valid()) return null;
+    const current = point();
+    if (current) return current;
+    node.scrollIntoView({block: 'center', inline: 'nearest', behavior: 'instant'});
+    // Layout can change after scroll handlers, sticky headers or lazy rendering.
+    let previous = null;
+    for (let i = 0; i < 10; i++) {
+        await new Promise(resolve => setTimeout(resolve, 40));
+        const current = point();
+        if (current && previous && current.x === previous.x && current.y === previous.y &&
+            current.width === previous.width && current.height === previous.height) return current;
+        previous = current;
+    }
+    return null;
+}'''
 
 
 class BackgroundPage:
@@ -166,13 +227,13 @@ class BackgroundPage:
             await asyncio.sleep(.5)
         return {'stable': False, 'page': await self.snapshot()}
 
-    async def navigate(self, url, delay_ms=3000, *, wait_ready=True):
+    async def navigate(self, url, delay_ms=3000, *, wait_ready=True, navigation_wait='none'):
         from .background_bidi import BrowserTransportError
         recovered=False
         for attempt in range(2):
             try:
                 await self.connection.command('browsingContext.navigate', {
-                    'context':self.context_id,'url':url,'wait':'none'},timeout=30)
+                    'context':self.context_id,'url':url,'wait':navigation_wait},timeout=30)
                 break
             except RuntimeError as error:
                 if 'NS_ERROR_NET_HTTP3_PROTOCOL_ERROR' not in str(error) or attempt:
@@ -199,12 +260,25 @@ class BackgroundPage:
                     break
                 # Opening a URL is an explicit GET navigation. Retry once only
                 # after observing that it did not reach the requested location.
+        if navigation_wait == 'interactive':
+            return {'url': url, 'navigation_attempts': attempt + 1}
         await asyncio.sleep(min(30000, max(0, float(delay_ms))) / 1000)
         if not wait_ready:
             self.prefetched_url = url
             return {'url':url,'preloaded':True,'navigation_attempts':attempt+1}
         readiness = await self.wait_stable(require_content=True)
         return {'url': url, 'delay_ms': delay_ms, 'stable': readiness['stable'], 'navigation_recovered':recovered, 'navigation_attempts':attempt+1}
+
+    async def open_readable_page(self, url):
+        """Wait for the main document and a rendered body, without taking actions."""
+        async with asyncio.timeout(PAGE_OPEN_SECONDS):
+            result = await self.navigate(url, navigation_wait='interactive')
+            while not await self.call_json("""function(){
+                return /^https?:/.test(location.protocol) && document.readyState !== 'loading' &&
+                    Boolean(document.body && document.body.getClientRects().length);
+            }"""):
+                await asyncio.sleep(.2)
+            return result
 
     @serialized_input
     async def preload(self, url):
@@ -277,7 +351,8 @@ class BackgroundPage:
             return None
         requested_ref = next(iter(refs), None)
         query = re.sub('页面上的|按钮|输入框|the|button|field', '', str(intent).lower()).strip()
-        for item in (await self.snapshot(max_items=600 if requested_ref else 150))['items']:
+        snapshot = await self.snapshot(max_items=600 if requested_ref else 150)
+        for item in snapshot['items']:
             if item.get('disabled') or (operation == 'input' and not item.get('editable') and item.get('role') != 'textbox'):
                 continue
             if requested_ref and item.get('ref') != requested_ref:
@@ -290,7 +365,7 @@ class BackgroundPage:
                 score += 45
             if score and (best is None or score > best['score']):
                 x, y, width, height = item['rect']
-                best = {**item, 'name': name, 'score': score,
+                best = {**item, 'name': name, 'score': score, 'document_token': snapshot.get('document_token'),
                         'sensitive': item.get('sensitive') or bool(re.search('password|one.?time|otp|验证码', name, re.I)),
                         'rect': dict(x=x, y=y, width=width, height=height)}
             elif score and best is not None and score==best['score'] and item.get('ref')!=best.get('ref'):
@@ -334,8 +409,17 @@ class BackgroundPage:
         input_context = target.get('input_context') or self.context_id
         prior = self.pointer if input_context == self.context_id else (0, 0)
         rect = target['rect']
-        x = round(rect['x'] + rect['width'] * (.5 if target.get('_visual') else .5 + ((seed * 17) % 21 - 10) / 100))
-        y = round(rect['y'] + rect['height'] * (.5 if target.get('_visual') else .5 + ((seed * 29) % 21 - 10) / 100))
+        if target.get('document_token') and not (target.get('_visual') or target.get('_dom_binding')):
+            point = await self.call_json(_RESOLVE_POINTER,
+                [target['ref'], target['document_token'], target['identity']], context_id=input_context)
+            if not point:
+                raise PointerTargetUnavailable('The observed target is hidden, covered, or changed before clicking')
+            x, y = point['x'], point['y']
+            if not (0 <= prior[0] < point['width'] and 0 <= prior[1] < point['height']):
+                prior = (x, y)
+        else:
+            x = round(rect['x'] + rect['width'] * (.5 if target.get('_visual') else .5 + ((seed * 17) % 21 - 10) / 100))
+            y = round(rect['y'] + rect['height'] * (.5 if target.get('_visual') else .5 + ((seed * 29) % 21 - 10) / 100))
         count = 1 if mode == 'fast' else 12
         actions = []
         for i in range(1, count + 1):
@@ -1066,15 +1150,16 @@ return article?{title:article.title,text:article.textContent,source_blocks:ai2ap
         return result
 
     async def read_page(self, options):
-        # Plain article reading must never turn into an unbounded interaction.
         # Specialised media workflows retain their own declared budgets.
         if any(options.get(k) for k in ('x', 'weibo', 'youtube')) or options.get('phase'):
             return await self._read_page(options)
+        timing = {'stage': 'navigation', 'seconds': PAGE_OPEN_SECONDS}
         try:
-            async with asyncio.timeout(10):
-                return await self._read_page(options)
+            async with asyncio.timeout(None) as deadline:
+                return await self._read_page(options, deadline=deadline, timing=timing)
         except TimeoutError:
-            return {'outcome': 'failed', 'reason': 'article_read_timeout', 'timeout_seconds': 10}
+            return {'outcome': 'failed', 'reason': f"article_{timing['stage']}_timeout",
+                    'timeout_seconds': timing['seconds']}
 
     async def article_access(self, options):
         try:
@@ -1129,7 +1214,7 @@ return article?{title:article.title,text:article.textContent,source_blocks:ai2ap
                 pass  # No second visual action; the read deadline still applies.
         return access
 
-    async def _read_page(self, options):
+    async def _read_page(self, options, *, deadline=None, timing=None):
         original = self.context_id
         opened = options.get('opened', {})
         temporary = None
@@ -1151,7 +1236,11 @@ return article?{title:article.title,text:article.textContent,source_blocks:ai2ap
                     self.context_id = temporary
                     self.created_contexts[temporary] = original
                 destination=options.get('social_source_url') or options['url']
-                if getattr(self,'prefetched_url',None) == destination and not temporary:
+                if deadline is not None:
+                    await self.open_readable_page(destination)
+                    timing.update(stage='blocker', seconds=ARTICLE_BLOCKER_SECONDS)
+                    deadline.reschedule(asyncio.get_running_loop().time() + ARTICLE_BLOCKER_SECONDS)
+                elif getattr(self,'prefetched_url',None) == destination and not temporary:
                     await self.wait_stable(require_content=True)
                     self.prefetched_url = None
                 elif not options.get('x') or (await self.snapshot())['url'] != destination:
@@ -1180,6 +1269,9 @@ return article?{title:article.title,text:article.textContent,source_blocks:ai2ap
                     return dict(outcome='failed',reason='article_blocker_unresolved',access=access)
                 retained = bool(temporary and access['classification'] == 'needs_user')
                 return dict(outcome=access['classification'], reason=access.get('reason'), assistance_kind=access.get('assistance_kind'), access=access, context=self.context_id)
+            if deadline is not None:
+                timing.update(stage='extraction', seconds=ARTICLE_EXTRACTION_SECONDS)
+                deadline.reschedule(asyncio.get_running_loop().time() + ARTICLE_EXTRACTION_SECONDS)
             observed_url = urlsplit((await self.snapshot(100))['url'])
             bilibili_video = observed_url.hostname in ('www.bilibili.com', 'm.bilibili.com') and re.match(r'^/video/(BV\w+|av\d+)', observed_url.path, re.I)
             rule = None if bilibili_video else options.get('site_extraction')
@@ -1221,10 +1313,14 @@ return article?{title:article.title,text:article.textContent,source_blocks:ai2ap
             if options.get('observe_regions'):
                 result['observed_regions'] = await self.helper('observeExtractionRegions:0', 'article')
             retained = bool(temporary and options.get('close_tab') is False)
-            return {**result, 'outcome': 'success' if result.get('text', '').strip() else 'failed',
+            has_text = bool(result.get('text', '').strip())
+            return {**result, 'outcome': 'success' if has_text else 'failed',
+                    **({'reason': 'article_no_readable_text'} if not has_text and deadline is not None else {}),
                     'context': self.context_id if retained else original, 'read_context': self.context_id,
                     'tab_closed': bool(temporary and not retained)}
         finally:
+            if deadline is not None and not deadline.expired():
+                deadline.reschedule(None)
             if temporary and not retained:
                 try:
                     await self.connection.command('browsingContext.close', {'context': temporary})

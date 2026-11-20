@@ -1,0 +1,14 @@
+const test=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs'),crypto=require('node:crypto');
+const code=fs.readFileSync(require('node:path').join(__dirname,'../web/static/js/hook_monitor.js'),'utf8');
+function fixture(){const calls=[];const window={};const sandbox={window,crypto,fetch:async(url,options={})=>{const body=options.body?JSON.parse(options.body):null;calls.push({url,method:options.method||'GET',body});let value={};
+ if(url.endsWith('/preview'))value={preview_ref:'approved-preview',rule:body};
+ if(url.endsWith('/monitor'))value={rules:[],deliveries:[],summary:{}};
+ if(url.endsWith('/notices')||url.endsWith('/actions'))value={items:[]};
+ return {ok:true,json:async()=>value};}};vm.runInNewContext(code,sandbox);const state={...window.ai2appsHookMonitoring(),tr:k=>k,bots:[{id:'owned-bot',name:'Editor'}]};
+ state.hookDraft={bot:'owned-bot',channel:'owned-channel',model:'explicit-model',prompt:'Review',todo:true,notify:true,urgent:true,title:'Approved title',hours:1};return {state,calls,server:sandbox};}
+test('preview freezes exact self-only actions and does not enable until explicit confirmation',async()=>{const {state,calls}=fixture();await state.hooksPreviewPlan();assert.equal(calls.length,1);const request=calls[0].body;
+ assert.equal(request.consumer.binding.bot_id,'owned-bot');assert.equal(request.execution.settings.review,'urgency');assert.deepEqual(JSON.parse(JSON.stringify(request.execution.settings.actions)).map(a=>a.registration),['todo.create','notification.local']);assert.equal(request.execution.settings.actions[0].arguments.title,'Approved title');
+ state.hookDraft.todo=false;await state.hooksEnable();assert.equal(calls[1].url,'/v1/platform/hooks');assert.equal(calls[1].body.preview_ref,'approved-preview');assert.ok(calls[1].body.request_id);});
+test('pause is version bound; monitoring never submits work',async()=>{const {state,calls}=fixture();await state.hooksLoad();assert.ok(calls.every(x=>x.method==='GET'));await state.hooksChange({id:'owned-rule',revision:4},'pause');const post=calls.find(x=>x.method==='POST');assert.equal(post.url,'/v1/platform/hooks/owned-rule/pause');assert.equal(post.body.expected_revision,4);assert.ok(!calls.some(x=>x.url.includes('/turns')));});
+
+test('lost enable acknowledgement reuses the same admission key',async()=>{const {state,calls,server}=fixture();await state.hooksPreviewPlan();const original=server.fetch;let lose=true;server.fetch=async(...args)=>{const response=await original(...args);if(args[0]==='/v1/platform/hooks'&&lose){lose=false;throw Error('connection lost after admission');}return response;};await state.hooksEnable();assert.ok(state.hookPreview);await state.hooksEnable();const submissions=calls.filter(x=>x.url==='/v1/platform/hooks');assert.equal(submissions.length,2);assert.equal(submissions[0].body.request_id,submissions[1].body.request_id);});

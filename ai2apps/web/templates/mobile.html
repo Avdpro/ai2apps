@@ -4,17 +4,22 @@
 
 {% block head %}
 <link rel="stylesheet" href="{{ mobile_static('css/chat_artifacts.css') }}?v=1">
-<script src="{{ mobile_static('js/chat_artifacts.js') }}?v=1"></script>
+<script src="{{ mobile_static('js/chat_artifacts.js') }}?v=mobile-media-20261119-2"></script>
 <link rel="stylesheet" href="{{ mobile_static('css/chat_message_feedback.css') }}?v=20261026">
 <script src="{{ mobile_static('js/chat_message_feedback.js') }}?v=20261026"></script>
 
-<link rel="stylesheet" href="{{ mobile_static('css/mobile.css') }}?v=chat-keyboard-20261026">
+<link rel="stylesheet" href="{{ mobile_static('css/mobile.css') }}?v=stable-entry-20261119">
 {% if mobile_agent_home|default(false) %}<link rel="stylesheet" href="{{ mobile_static('css/mobile_chat.css') }}?v=message-contrast-20261026"><link rel="stylesheet" href="{{ mobile_static('css/aaat_result_views.css') }}?v=card-masonry-20261026">{% endif %}
 {% endblock %}
 
 {% block content %}
 {% set receiving_handoff = request.url.path in ["/mobile/member/complete", "/mobile/complete"] %}
-<div id="ai2apps-mobile" class="mobile-shell" data-view="home"{% if mobile_agent_home|default(false) %} data-agent-home="true"{% endif %}>
+<div id="ai2apps-mobile" class="mobile-shell mobile-booting" data-view="home" data-entry-state="loading" aria-busy="true"{% if mobile_agent_home|default(false) %} data-agent-home="true"{% endif %}>
+    <section class="mobile-boot-loading" role="status" aria-live="polite" aria-label="{{ '正在加载应用' if current_lang.startswith('zh') else 'Loading apps' }}">
+        <span class="mobile-boot-spinner" aria-hidden="true"></span>
+        <strong>{{ '正在连接 Desktop…' if current_lang.startswith('zh') else 'Connecting to Desktop…' }}</strong>
+        <p>{{ '正在准备应用列表，请稍候' if current_lang.startswith('zh') else 'Preparing your apps. Please wait.' }}</p>
+    </section>
     <header class="mobile-topbar">
         <button class="mobile-brand" type="button" data-mobile-action="home" aria-label="AI2Apps Home">
             <img src="{{ mobile_static('favicon.svg') }}" alt="">
@@ -71,8 +76,8 @@
         <button class="mobile-dock-item is-active" type="button" data-mobile-action="home">
             <span><i data-lucide="house"></i></span><small>Home</small>
         </button>
-        <button class="mobile-dock-item" type="button" data-mobile-app="ai2apps.general-chat">
-            <span><i data-lucide="message-square"></i></span><small>Chat</small>
+        <button class="mobile-dock-item" type="button" data-mobile-app="ai2apps.messager">
+            <span><i data-lucide="messages-square"></i></span><small>Messenger</small>
         </button>
         <div class="mobile-dock-recents" data-mobile-dock-recents></div>
         <button class="mobile-dock-item" type="button" data-mobile-action="launcher">
@@ -113,8 +118,8 @@
 
 {% block scripts %}
 
-<script src="{{ mobile_static('js/mobile_agent_connection.js') }}?v=chat-notifications-20261023"></script>
-<script src="{{ mobile_static('js/chat_context_handoff.js') }}?v=20261024-2"></script>{% if mobile_agent_home|default(false) %}<script src="{{ mobile_static('js/aaat_result_views.js') }}?v=card-masonry-20261026"></script><script src="{{ mobile_static('js/agent_parameter_forms.js') }}?v=approval-countdown-20261027"></script><script src="{{ mobile_static('js/conversation_model_policy.js') }}"></script><script src="{{ mobile_static('js/marked.umd.js') }}"></script><script src="{{ mobile_static('js/purify.min.js') }}"></script><script src="{{ mobile_static('js/mobile_agent_chat.js') }}?v=approval-countdown-20261027"></script><script src="{{ mobile_static('js/mobile_chat.js') }}?v=artifact-cards-20261029"></script>{% endif %}
-<script src="{{ mobile_static('js/mobile.js') }}?v=bounded-reading-20261024"></script>
+<script src="{{ mobile_static('js/mobile_agent_connection.js') }}?v=mobile-media-20261119-2"></script>
+<script src="{{ mobile_static('js/chat_context_handoff.js') }}?v=20261024-2"></script>{% if mobile_agent_home|default(false) %}<script src="{{ mobile_static('js/aaat_result_views.js') }}?v=mobile-media-20261119-2"></script><script src="{{ mobile_static('js/agent_parameter_forms.js') }}?v=inline-setup-20261116"></script><script src="{{ mobile_static('js/conversation_model_policy.js') }}"></script><script src="{{ mobile_static('js/marked.umd.js') }}"></script><script src="{{ mobile_static('js/purify.min.js') }}"></script><script src="{{ mobile_static('js/mobile_agent_chat.js') }}?v=approval-countdown-20261027"></script><script src="{{ mobile_static('js/mobile_chat.js') }}?v=mobile-media-20261119-2"></script>{% endif %}
+<script src="{{ mobile_static('js/mobile.js') }}?v=stable-entry-20261119"></script>
 <script src="{{ mobile_static('js/mobile_chat_keyboard.js') }}?v=20261026"></script>
 {% endblock %}

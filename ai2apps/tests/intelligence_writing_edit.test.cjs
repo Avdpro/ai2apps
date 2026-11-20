@@ -3,7 +3,7 @@ const source=fs.readFileSync(__dirname+'/../web/static/js/intelligence.js','utf8
 function setup(){
  const nodes=new Map(),calls=[];let id=0;
  const env={writingSession:{draft:{id:'d',revision:1,current:{title:'Old',content:'Old body'}},channelId:'c',pending:false},crypto:{randomUUID:()=>`request-${++id}`},lt:s=>s,confirm:()=>false,renderWriting:()=>{},loadDrafts:async()=>{},$:selector=>{if(!nodes.has(selector))nodes.set(selector,{value:'',textContent:'',focus(){},addEventListener(){}});return nodes.get(selector);},api:async(path,method,body)=>{calls.push(body);if(env.fail)throw Error('Conflict');return {...env.writingSession.draft,revision:body.revision+1,current:{title:body.title,content:body.content}};}};
- vm.createContext(env);vm.runInContext(source.slice(source.indexOf('function writingEditDirty('),source.indexOf("$('#writing-guidance').oninput=")),env);
+ vm.createContext(env);vm.runInContext(source.slice(source.indexOf('function writingEditDirty('),source.indexOf("$('#writing-revision-guidance').oninput=")),env);
  env.$('#writing-edit').onclick();return {env,calls};
 }
 test('manual edit saves exact user text and returns to reading',async()=>{

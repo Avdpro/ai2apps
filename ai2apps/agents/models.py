@@ -112,6 +112,15 @@ class StatusLineRecord:
     created_at: datetime
     updated_at: datetime
 
+    def progress_snapshot(self) -> dict[str, Any]:
+        return {
+            "phase": self.phase,
+            "revision": self.revision,
+            "fraction": self.progress,
+            **{key: self.content[key] for key in ("model_recovery", "task_progress")
+               if key in self.content},
+        }
+
 
 @dataclass(frozen=True, slots=True)
 class RunStepRecord:
@@ -160,6 +169,7 @@ class FailAction:
     code: str
     message: str
     retryable: bool = False
+    output: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -196,6 +206,7 @@ class ToolCallAction:
     recover_input_errors: bool = False
     recover_tool_errors: bool = False
     resolved_interaction_id: str | None = None
+    provider_binding: tuple[str, str, str, str | None] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -214,6 +225,7 @@ class ToolErrorAction:
     tool_name: str
     code: str
     message: str
+    arguments: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)

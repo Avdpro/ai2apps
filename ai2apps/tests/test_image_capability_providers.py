@@ -14,11 +14,16 @@ async def test_real_studio_job_fallback_preference_edit_and_ownership(runtime,mo
     image=io.BytesIO();Image.new('RGB',(16,16),'red').save(image,format='PNG')
     async def cloud(body,**kwargs):
         calls.append((body,kwargs))
-        return {'image':{'dataUrl':'data:image/png;base64,'+base64.b64encode(image.getvalue()).decode(),'format':'png'}}
-    monkeypatch.setattr('ai2apps.cloud_gateway.request_cloud_image',cloud)
+        return {'image':{'dataUrl':'data:image/png;base64,'+base64.b64encode(image.getvalue()).decode(),'format':'png'}, 'requestId':f'image-{len(calls)}',
+                'usage':{'inputTokens':32,'outputTokens':0,'imageOutputTokens':64,'unrelated':'discard'},
+                'points':{'charged':'2.5','balance':'discard'},'usageEstimated':len(calls)==2}
+    monkeypatch.setattr('ai2apps.images.cloud_gateway.request_cloud_image',cloud)
     from ai2apps.images.parameters import from_options
     async def catalog(*args):return [from_options('cloud/ai2apps/openai/gpt-image-2','GPT Image',{})],[]
     monkeypatch.setattr('ai2apps.images.parameters.models',catalog)
+    # The operation catalog is not a default-model policy. Configure the test's
+    # intended model explicitly; production must not pick a paid model by name.
+    runtime.model_manager.put_default_models({'image_generation':'cloud/ai2apps/openai/gpt-image-2'})
     monkeypatch.setattr(runtime,'cloud_ai_authorization_headers',lambda principal:{'X-Test-Actor':principal.actor_user_id})
     router=runtime.app_capability_router
     original=router.providers['ai2apps.images.generate']
@@ -34,11 +39,14 @@ async def test_real_studio_job_fallback_preference_edit_and_ownership(runtime,mo
         assert [x['status'] for x in result['provider_attempts']]==['unavailable','succeeded']
         assert calls[0][1]['cloud_headers']=={'X-Test-Actor':'local'}
         assert result['studio_run_id']
+        assert result['ai2apps_cloud']==[{'requestId':'image-1','usage':{'inputTokens':32,'outputTokens':0,'imageOutputTokens':64},
+                                         'points':{'charged':'2.5'}}]
         artifact=runtime.workspace.get_artifact(session,result['artifact']['id'])
         assert runtime.workspace.artifact_path(artifact).read_bytes()==image.getvalue()
         # Restore first provider: last success still selects Mini-App.
         router.providers[original.id]=original
         second=await router.invoke('image.generate',{'prompt':'green mug'},replace(ctx,invocation_id='test-inv-2'))
+        assert second['ai2apps_cloud']==[{'requestId':'image-2','points':{'charged':'2.5'}}]
         assert second['provider_attempts']==[{'provider':'ai2apps.imagine.text-to-image','status':'succeeded'}]
         edited=await router.invoke('image.edit',{'prompt':'make blue','artifact_id':artifact.id},replace(ctx,invocation_id='test-inv-3'))
         assert edited['mini_app_id']=='ai2apps.imagine.image-edit'
@@ -64,7 +72,8 @@ def test_generated_image_context_preserves_artifact_reference_not_local_url():
         "url": "/v1/platform/sessions/ses_test/artifacts/art_test/download", "artifact_id": "art_test"}}]}
     converted = _model_safe_artifact_message(message)
     assert converted["content"][0]["type"] == "text"
-    assert "art_test" in converted["content"][0]["text"]
+    assert "art_test" not in converted["content"][0]["text"]
+    assert converted["runtime_context"]["artifacts"]==[{"artifact_id":"art_test"}]
     assert message["content"][0]["type"] == "image_url"
     user_image = {**message, "role": "user"}
     assert _model_safe_artifact_message(user_image) is user_image

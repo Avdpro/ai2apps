@@ -1,0 +1,233 @@
+{% extends "base.html" %}
+{% set zh = (current_lang|default('en')).startswith('zh') %}
+{% block title %}Doc Studio - AI2Apps{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="{{ static('css/video_studio.css') }}">
+<link rel="stylesheet" href="{{ static('css/studio_mini_apps.css') }}">
+<link rel="stylesheet" href="{{ static('css/capability_provisioning.css') }}?v=studio-mini-picker-progress-20261117">
+<link rel="stylesheet" href="{{ static('css/system_dialog.css') }}">
+<link rel="stylesheet" href="{{ static('css/doc_studio.css') }}">
+{% endblock %}
+{% block content %}
+<div class="ds-app" data-app-id="ai2apps.doc-studio">
+    <header class="vs-header studio-header">
+        <div class="studio-header-brand"><span class="studio-header-logo"><i data-lucide="file-pen-line"></i></span><h1>Doc Studio</h1></div>
+        <div class="studio-header-actions">
+            <button id="ds-asc-bot" type="button" class="studio-header-button" aria-label="{{ '创建 ASCBot' if zh else 'Create an ASCBot' }}" title="{{ '创建 ASCBot' if zh else 'Create an ASCBot' }}" hidden><i data-lucide="bot"></i></button>
+            <button type="button" class="studio-header-button" data-ds-column="left" aria-controls="ds-sidebar" aria-expanded="true" aria-label="{{ t('studio.toggle_left') }}" title="{{ t('studio.toggle_left') }}"><i data-lucide="panel-left"></i></button>
+            <button type="button" class="studio-header-button" data-ds-column="right" aria-controls="ds-output" aria-expanded="true" aria-label="{{ t('studio.toggle_right') }}" title="{{ t('studio.toggle_right') }}"><i data-lucide="panel-right"></i></button>
+        </div>
+    </header>
+    <div class="ds-layout">
+        <aside id="ds-sidebar" class="ds-sidebar" aria-label="{{ '创作工具与素材库' if zh else 'Creation tools and Gallery' }}">
+            <div class="vs-sidebar-switch" role="tablist" aria-label="{{ '左栏视图' if zh else 'Sidebar views' }}">
+                <button id="ds-mini-apps-tab" class="active" type="button" role="tab" aria-selected="true" aria-controls="ds-mini-apps"><i data-lucide="layout-grid"></i>Mini-Apps</button>
+                <button id="ds-gallery-tab" type="button" role="tab" aria-selected="false" aria-controls="ds-gallery" tabindex="-1"><i data-lucide="images"></i>Gallery</button>
+                <button id="ds-chat-tab" type="button" role="tab" aria-selected="false" aria-controls="ds-chat" tabindex="-1"><i data-lucide="message-square"></i>Chat</button>
+            </div>
+            <section id="ds-mini-apps" class="studio-mini-library vs-sidebar-panel" role="tabpanel" aria-labelledby="ds-mini-apps-tab">
+                <div class="studio-mini-scroll">
+                    <div id="ds-package-list-error" class="vs-gallery-state error" role="status" hidden>
+                        <p></p><button id="ds-package-retry" type="button" class="vs-button">{{ '重试' if zh else 'Retry' }}</button>
+                    </div>
+                    <div class="vs-sidebar-heading"><span>{{ '已安装' if zh else 'Installed' }}</span><small id="ds-mini-app-count">2</small></div>
+                    <article class="vs-pipeline-card is-mini-app-card active" data-mini-app="ai2apps.doc-studio.write-article">
+                        <button id="ds-writer" class="is-mini-select" type="button" aria-controls="ds-workspace" aria-current="page">
+                            <span class="vs-pipeline-icon"><i data-lucide="square-pen"></i></span>
+                            <span><strong>{{ '撰写文章' if zh else 'Write article' }}</strong><small>X Post · HTML</small><em><span class="ds-mini-version">1.0.0</span><span class="ds-mini-status">{{ '就绪' if zh else 'Ready' }}</span></em></span>
+                        </button>
+                        <button class="is-mini-favorite" type="button" aria-pressed="false"><i data-lucide="star"></i></button>
+                    </article>
+                    <article class="vs-pipeline-card is-mini-app-card" data-mini-app="ai2apps.doc-studio.translate-document">
+                        <button id="ds-translator" class="is-mini-select" type="button" aria-controls="ds-workspace">
+                            <span class="vs-pipeline-icon"><i data-lucide="languages"></i></span>
+                            <span><strong>{{ '翻译文档' if zh else 'Translate document' }}</strong><small>TXT · Markdown · DOCX · PDF</small><em><span class="ds-mini-version">1.0.0</span><span class="ds-mini-status">{{ '就绪' if zh else 'Ready' }}</span></em></span>
+                        </button>
+                        <button class="is-mini-favorite" type="button" aria-pressed="false"><i data-lucide="star"></i></button>
+                    </article>
+                    <div id="ds-package-mini-apps"></div>
+                    <template id="ds-package-mini-card">
+                        <article class="vs-pipeline-card is-mini-app-card" data-mini-app="">
+                            <button class="is-mini-select" type="button" aria-controls="ds-workspace">
+                                <span class="vs-pipeline-icon"><i data-lucide="layers"></i></span>
+                                <span><strong></strong><small></small><em><span class="ds-mini-version"></span><span class="ds-mini-status">{{ '就绪' if zh else 'Ready' }}</span></em></span>
+                            </button>
+                            <button class="is-mini-favorite" type="button" aria-pressed="false"><i data-lucide="star"></i></button>
+                            <span class="is-mini-favorite studio-mini-status" title="{{ '需要配置' if zh else 'Setup required' }}" hidden><i data-lucide="download"></i></span>
+                        </article>
+                    </template>
+                </div>
+                {% with mini_app_more_dispatch=true %}{% include "system_apps/_mini_app_more.html" %}{% endwith %}
+            </section>
+            <section id="ds-gallery" role="tabpanel" aria-labelledby="ds-gallery-tab" hidden>
+                <div class="vs-sidebar-heading"><span>Gallery</span><button id="ds-open-gallery" type="button" aria-label="{{ '打开完整 Gallery' if zh else 'Open full Gallery' }}" title="{{ '打开完整 Gallery' if zh else 'Open full Gallery' }}"><i data-lucide="external-link"></i></button></div>
+                <p id="ds-gallery-status" role="status" hidden></p>
+                <button id="ds-gallery-retry" type="button" class="vs-button" hidden>{{ '重试' if zh else 'Retry' }}</button>
+                <iframe id="ds-gallery-frame" class="vs-gallery-mini" title="Gallery Mini Entry" hidden></iframe>
+            </section>
+            <section id="ds-chat" role="tabpanel" aria-labelledby="ds-chat-tab" hidden>
+                <p id="ds-chat-status" role="status"></p>
+                <button id="ds-chat-retry" type="button" class="vs-button" hidden>{{ '重试' if zh else 'Retry' }}</button>
+                <iframe id="ds-chat-frame" class="mini-app-chat-frame" title="{{ '撰写文章 Mini-Chat' if zh else 'Write article Mini-Chat' }}" hidden></iframe>
+            </section>
+        </aside>
+        <main id="ds-workspace" class="ds-workspace" data-mini-app-id="ai2apps.doc-studio.write-article">
+            <header class="vs-pipeline-header studio-mini-header"><h2 id="ds-workspace-title" tabindex="-1">{{ '撰写文章' if zh else 'Write article' }}</h2></header>
+            <div class="ds-workspace-body" id="ds-writer-body">
+                <div class="ds-project-bar">
+                    <label>{{ '文章工程' if zh else 'Article project' }} <select id="ds-project"></select></label>
+                    <div class="ds-actions">
+                        <button id="ds-create-project" type="button">{{ '新建' if zh else 'New' }}</button>
+                        <button id="ds-rename-project" type="button" disabled>{{ '改名' if zh else 'Rename' }}</button>
+                        <button id="ds-delete-project" type="button" disabled>{{ '删除' if zh else 'Delete' }}</button>
+                    </div>
+                </div>
+                <p id="ds-error" role="alert" hidden></p>
+                <section id="ds-incoming" hidden>
+                    <h2>{{ '导入情报中心素材' if zh else 'Import Intel Center materials' }}</h2>
+                    <ul id="ds-pack-entries"></ul>
+                    <form id="ds-import">
+                        <label>{{ '目标工程' if zh else 'Destination' }} <select name="project_id"></select></label>
+                        <label id="ds-import-title">{{ '新工程名称' if zh else 'New project name' }} <input name="title" maxlength="160"></label>
+                        <div class="ds-actions">
+                            <button class="ds-primary" type="submit">{{ '导入素材' if zh else 'Import materials' }}</button>
+                            <button type="button" id="ds-dismiss">{{ '关闭' if zh else 'Dismiss' }}</button>
+                        </div>
+                    </form>
+                </section>
+                <p id="ds-empty">{{ '新建一个文章工程，或从情报中心发送素材。' if zh else 'Create an article project, or send materials from Intel Center.' }}</p>
+                <section id="ds-author" hidden>
+                    <details class="ds-project-materials">
+                        <summary>{{ '工程素材' if zh else 'Project materials' }}</summary>
+                        <div id="ds-materials"></div>
+                    </details>
+                    <p id="ds-no-materials" hidden>{{ '请先从情报中心把素材导入此工程。' if zh else 'Import materials from Intel Center into this project first.' }}</p>
+                    <form id="ds-generate">
+                        <div class="ds-fields">
+                            <label>{{ '风格' if zh else 'Style' }}
+                                <select name="style">
+                                    <option value="summary">{{ '总结' if zh else 'Summary' }}</option>
+                                    <option value="analysis">{{ '分析' if zh else 'Analysis' }}</option>
+                                    <option value="commentary">{{ '转发点评' if zh else 'Repost commentary' }}</option>
+                                    <option value="news">{{ '新聞稿' if (current_lang|default('en')) == 'zh-TW' else '新闻稿' if zh else 'News report' }}</option>
+                                </select>
+                            </label>
+                            <label>{{ '形式' if zh else 'Format' }}
+                                <select name="target">
+                                    <option value="x-post">{{ 'X 普通帖（280）' if zh else 'X Standard Post (280)' }}</option>
+                                    <option value="x-long-post">{{ 'X 长帖（25,000）' if zh else 'X Long Post (25,000)' }}</option>
+                                    <option value="html">HTML</option>
+                                </select>
+                            </label>
+                            <label>{{ '语言' if zh else 'Language' }}
+                                <select name="language">
+                                    <option value="zh">简体中文</option><option value="zh-TW">繁體中文</option>
+                                    <option value="en">English</option><option value="ja">日本語</option><option value="ko">한국어</option>
+                                    <option value="fr">Français</option><option value="de">Deutsch</option>
+                                    <option value="es">Español</option><option value="pt-BR">Português</option><option value="ru">Русский</option>
+                                </select>
+                            </label>
+                        </div>
+                        <label>{{ '改写自（可选）' if zh else 'Revise from (optional)' }} <select name="base_version_id"></select></label>
+                        <label>{{ '写作指令（可选）' if zh else 'Writing instructions (optional)' }} <textarea name="guidance" rows="3" maxlength="4000"></textarea></label>
+                        <div class="ds-actions"><button class="ds-primary" type="submit">{{ '生成稿件' if zh else 'Generate draft' }}</button></div>
+                    </form>
+                    <form id="ds-editor" hidden>
+                        <label>{{ '稿件版本' if zh else 'Draft version' }} <select id="ds-version"></select></label>
+                        <label>{{ '标题' if zh else 'Title' }} <input name="title" required maxlength="160"></label>
+                        <h3 id="ds-blocks-title">{{ '逐段编写' if zh else 'Edit by paragraph' }}</h3>
+                        <small id="ds-layout-editor-note">{{ '可从 Gallery 或工程素材拖图。放在段落之间会另起一行，放到图片上会并排。使用 [1] 标注来源。' if zh else 'Drag an image from Gallery or project materials. Drop between paragraphs for a new row or on an image to place them side by side. Use [1] for citations.' }}</small>
+                        <small id="ds-legacy-editor-note" hidden>{{ '当前 Local 服务支持手动逐段编辑。AI 改写和图片排版需要重启 Local 以加载新版。' if zh else 'Manual paragraph editing is available. Restart Local to load AI rewrites and image layout.' }}</small>
+                        <small id="ds-text-output-note" hidden>{{ 'X 帖导出为纯文本。' if zh else 'X posts export as plain text.' }}</small>
+                        <details id="ds-editor-materials" hidden>
+                            <summary>{{ '工程素材图片' if zh else 'Project material images' }}</summary>
+                            <div id="ds-editor-material-images"></div>
+                        </details>
+                        <div id="ds-blocks" role="group" aria-labelledby="ds-blocks-title"></div>
+                        <div class="ds-actions">
+                            <button type="submit">{{ '保存为新版本' if zh else 'Save new version' }}</button>
+                            <button type="button" id="ds-export" class="ds-primary">{{ '导出已保存版本' if zh else 'Export saved version' }}</button>
+                        </div>
+                    </form>
+                </section>
+            </div>
+            <div class="ds-workspace-body" id="ds-translation-body" hidden>
+                <p id="ds-translation-error" role="alert" hidden></p>
+                <form id="ds-translation-form">
+                    <label>{{ '上传文档' if zh else 'Upload document' }}
+                        <input name="file" type="file" accept=".txt,.md,.markdown,.docx,.pdf">
+                    </label>
+                    <label>{{ '或粘贴长文本' if zh else 'Or paste text' }}
+                        <textarea name="text" rows="10" maxlength="120000"></textarea>
+                    </label>
+                    <label class="ds-checkbox"><input name="markdown" type="checkbox">
+                        {{ '粘贴的文本使用 Markdown' if zh else 'Pasted text uses Markdown' }}
+                    </label>
+                    <small>{{ '文件上限 12 MiB，正文上限 120,000 字符。PDF 需要可选文字，版式导出最多 100 页。图片不翻译。' if zh else 'Up to 12 MiB per file and 120,000 characters. PDF layout output supports up to 100 source pages with selectable text. Images are not translated.' }}</small>
+                    <small id="ds-translation-legacy-format" hidden>{{ '当前 Local 会导出 Markdown。更新并重启 Local 后可保留版式。' if zh else 'The current Local exports Markdown. Update and restart Local to enable layout output.' }}</small>
+                    <div class="ds-fields">
+                        <label>{{ '目标语言' if zh else 'Translate into' }} <select name="language"></select></label>
+                        <label>{{ '翻译模型' if zh else 'Translation model' }} <select name="model_id"></select></label>
+                        <label id="ds-translation-format" hidden>{{ '输出格式' if zh else 'Output format' }}
+                            <select name="output_format">
+                                <option value="layout">{{ '保留版式' if zh else 'Keep layout' }}</option>
+                                <option value="form" hidden>{{ '保留表单' if zh else 'Keep form' }}</option>
+                                <option value="markdown">Markdown</option>
+                            </select>
+                        </label>
+                    </div>
+                    <div class="ds-project-bar">
+                        <label>{{ '指导方案' if zh else 'Guidance profile' }} <select name="profile_id"></select></label>
+                        <div class="ds-actions">
+                            <button id="ds-profile-create" type="button">{{ '新建' if zh else 'New' }}</button>
+                            <button id="ds-profile-edit" type="button" disabled>{{ '修改' if zh else 'Edit' }}</button>
+                            <button id="ds-profile-delete" type="button" disabled>{{ '删除' if zh else 'Delete' }}</button>
+                        </div>
+                    </div>
+                    <div class="ds-actions"><button type="submit" class="ds-primary">{{ '开始翻译' if zh else 'Translate' }}</button></div>
+                </form>
+            </div>
+            <div id="ds-package-body" hidden>
+                <p id="ds-package-status" role="status" hidden></p>
+                <iframe id="ds-package-frame" class="vs-package-mini-app-frame" title="Mini-App" sandbox="allow-scripts allow-forms allow-downloads" hidden></iframe>
+            </div>
+        </main>
+        {% include "system_apps/_studio_document_output.html" %}
+    </div>
+</div>
+<dialog id="ds-delete-dialog" class="ai2apps-dialog ai2apps-text-dialog" aria-labelledby="ds-delete-title">
+    <form>
+        <h2 id="ds-delete-title">{{ '删除文章工程？' if zh else 'Delete this article project?' }}</h2>
+        <p id="ds-delete-description"></p>
+        <p id="ds-delete-error" class="ai2apps-text-dialog-error" role="alert" hidden></p>
+        <div class="ai2apps-dialog-actions">
+            <button type="button" id="ds-delete-cancel" autofocus>{{ '取消' if zh else 'Cancel' }}</button>
+            <button type="submit" class="primary">{{ '删除工程' if zh else 'Delete project' }}</button>
+        </div>
+    </form>
+</dialog>
+<dialog id="ds-profile-dialog" class="ai2apps-dialog ai2apps-text-dialog" aria-labelledby="ds-profile-title">
+    <form>
+        <h2 id="ds-profile-title">{{ '翻译指导方案' if zh else 'Translation guidance profile' }}</h2>
+        <label>{{ '名称' if zh else 'Name' }} <input name="name" required maxlength="160"></label>
+        <label>{{ '术语、语气和翻译要求' if zh else 'Terminology, tone and translation instructions' }}
+            <textarea name="guidance" rows="5" maxlength="4000"></textarea>
+        </label>
+        <p id="ds-profile-error" class="ai2apps-text-dialog-error" role="alert" hidden></p>
+        <div class="ai2apps-dialog-actions">
+            <button id="ds-profile-cancel" type="button">{{ '取消' if zh else 'Cancel' }}</button>
+            <button type="submit" class="primary">{{ '保存' if zh else 'Save' }}</button>
+        </div>
+    </form>
+</dialog>
+{% endblock %}
+{% block scripts %}
+<script src="{{ static('js/text_input_dialog.js') }}"></script>
+<script src="{{ static('js/mini_app_chat.js') }}"></script>
+<script src="{{ static('js/app_chat.js') }}"></script>
+<script src="{{ static('js/capability_provisioning.js') }}?v=studio-mini-picker-progress-20261117"></script>
+<script src="{{ static('js/studio_mini_apps.js') }}?v=portable-archive-20261121"></script>
+<script src="{{ static('js/studio_document_output.js') }}?v=2"></script>
+<script src="{{ static('js/doc_studio_translation.js') }}"></script>
+<script src="{{ static('js/doc_studio.js') }}?v=studio-package-reentry-20261117"></script>
+{% endblock %}

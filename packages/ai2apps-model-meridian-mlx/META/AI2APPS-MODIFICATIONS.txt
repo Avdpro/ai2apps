@@ -1,0 +1,32 @@
+AI2Apps Meridian MLX 0.1.2 — 2026-10-11
+
+0.1.2 permits 32-aligned camera reference axes up to 768 pixels, supporting
+full-resolution references in Frozen Time. Frame counts, fps, aspect-ratio
+checks, checkpoints, H3 dependency and Runtime dependency remain unchanged.
+0.1.1 added length-specific embeddings for 73/90/107/124/141/158/175/243 frames.
+
+Experimental pure-Python/MLX adaptation of Viggle Meridian inference.
+Upstream: https://modelscope.cn/models/Viggle/Meridian
+Base architecture: MiniMax H3, https://github.com/MiniMax-AI/MiniMax-H3
+Powered by MiniMax H3.
+
+This Package does not redistribute the H3 base checkpoint. It requires the
+separately signed ai2apps/model-minimax-h3 0.11.0 Package and its FL2VA 8-bit
+checkpoint. The Host must support model.checkpoint-dependencies.v1, enforce
+the dependency digest lock, and provide both read-only checkpoint roots.
+
+The Meridian distribution selects only teacher/turbo LoRA, fixed 73-frame
+embeddings (losslessly converted to safetensors), and upstream notices from
+the immutable mirrors. Other H3 files in those mirror repositories are NOT
+included in this distribution. The original notices remain unmodified.
+
+Changes: MLX operations and staged loading; live LoRA over an 8-bit base;
+fixed 73-frame/3-step reference refinement; bounded multipart input and MP4
+output; no runtime custom Metal compilation, PyTorch, or model downloads.
+The 8-bit output is not claimed identical to the official BF16 implementation.
+This Package consumes a supplied camera reference video; it does not bundle
+DA or VGGT or implement Apple Live Photo pairing.
+
+Model weights remain subject to the MiniMax H3 Community License, including
+territorial restrictions, consent, and attribution. Code licensing and upstream
+copyright are retained in LICENSE and META/LICENSE-CODE / META/NOTICE.

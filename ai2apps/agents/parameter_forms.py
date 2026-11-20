@@ -36,6 +36,44 @@ class ParameterForm:
 
 
 FORMS = {}
+
+def review_form_bindings():
+    """Pin trusted configure-only App continuations for discovery admission.
+
+    These identities permit opening the owner's review UI, never executing its
+    business operation. Execution forms still require their registered Provider.
+    Callback implementations follow the owner's existing version contract.
+    """
+    import hashlib
+    from .form_continuation import ADAPTERS
+    result = {}
+    for form in FORMS.values():
+        if form.mode != 'configure' or not form.continuation or form.continuation not in ADAPTERS:
+            continue
+        contract = {key: getattr(form, key) for key in (
+            'key', 'app_id', 'mini_app_id', 'version', 'provider_version',
+            'capability', 'mode', 'schema', 'fields', 'continuation',
+            'configuration_app_id', 'agent_context',
+        )}
+        result[form.key] = hashlib.sha256(json.dumps(
+            contract, sort_keys=True, separators=(',', ':'), ensure_ascii=False,
+        ).encode()).hexdigest()
+    return result
+
+def admitted_review_form(arguments, bindings, *, database=None, scope=None):
+    """Validate a captured review target without granting business execution."""
+    from ai2apps.services import ToolAuthorizationError
+    try:
+        form=resolve_form(arguments,database=database,scope=scope)
+    except ValueError as error:
+        raise ToolAuthorizationError('provider_not_authorized','No admitted review form exists for this target; no operation was submitted') from error
+    admitted=bindings.get(form.key)
+    if not admitted:
+        raise ToolAuthorizationError('provider_not_authorized','Review form is outside this execution authorization; no operation was submitted')
+    if review_form_bindings().get(form.key)!=admitted:
+        raise ToolAuthorizationError('provider_binding_changed','Review form contract changed; start a new turn before continuing')
+    return form
+
 def register_form(form):
     if form.key in FORMS: raise ValueError('Form already registered')
     from ai2apps.services.aaat import validate_declaration
@@ -179,7 +217,7 @@ def claim_form_invocation(database, interaction_id, call_id):
         db.execute('INSERT OR IGNORE INTO agent_parameter_invocations(interaction_id,call_id) VALUES (?,?)',(interaction_id,call_id))
         return db.execute('SELECT call_id FROM agent_parameter_invocations WHERE interaction_id=?',(interaction_id,)).fetchone()['call_id']==call_id
 
-def form_action(context, arguments, *, database=None, scope=None):
+def form_action(context, arguments, *, database=None, scope=None, contract_version=None):
     Draft202012Validator(tool_schema()).validate(arguments)
     prior=context.interaction('form:'+arguments['request_id'])
     form=resolve_form(arguments,prior.ui_hints.get('provider') if prior else None,database,scope)
@@ -196,7 +234,8 @@ def form_action(context, arguments, *, database=None, scope=None):
     return InteractionAction(request_key='form:'+arguments['request_id'],kind=InteractionKind.FORM,
         prompt=(prompt_labels.get('en','Complete parameters') if prompt_labels else form.prompt),request=request,
         response_schema={'type':'object','properties':{'status':{'enum':['completed','cancelled']},'result':{'type':'object'}},'required':['status','result'],'additionalProperties':False},
-        ui_hints={'control':'parameter_form','prompt_labels':prompt_labels,'app_id':form.app_id,'mini_app_id':form.mini_app_id,'provider':form.key,'provider_version':form.provider_version})
+        ui_hints={'control':'parameter_form','prompt_labels':prompt_labels,'app_id':form.app_id,'mini_app_id':form.mini_app_id,'provider':form.key,'provider_version':form.provider_version,
+                  **({'parameter_contract_version': contract_version} if contract_version else {})})
 
 def install_parameter_forms(agents,services,registry,*,service_id,provider_key,capability_router=None):
     with agents.database.transaction() as db:

@@ -10,22 +10,17 @@
     "usagePolicy": "license_terms",
     "accessPolicy": "public",
     "redistributionPolicy": "allowed",
-    "termsUrl": "https://huggingface.co/Avdpro/DeepSeek-V4.1-Flash-SSD/blob/efb7e03fd718ebbeb3e0d7e60ed037a920d8e441/LICENSE",
+    "termsUrl": "https://huggingface.co/Avdpro/DeepSeek-V4.1-Flash-SSD/blob/70e98d9bb1d0daf07dca9d4adadca638afc8a840/LICENSE",
     "termsHash": "sha256:f2c6c602815669d292889e5be8c802f2ed950653b77999b1584e8e6aed25d040"
   },
-  "distributionId": "dist_ai2apps_deepseek_v41_flash_ssd_efb7e03f_v1",
+  "distributionId": "dist_ai2apps_deepseek_v41_flash_ssd_1017_70e98d9b_v1",
   "repoId": "Avdpro/DeepSeek-V4.1-Flash-SSD",
-  "revision": "efb7e03fd718ebbeb3e0d7e60ed037a920d8e441",
+  "revision": "70e98d9bb1d0daf07dca9d4adadca638afc8a840",
   "includePatterns": [
-    ".gitattributes",
-    "DeepSeek_V41_Tech_Report.pdf",
     "LICENSE",
     "README.md",
     "README.upstream.md",
-    "assets/dsv41_agentic_performance.png",
-    "assets/dsv41_kv_cache.png",
     "config.json",
-    "configuration.json",
     "encoding/README.md",
     "encoding/encoding.py",
     "encoding/test_encoding.py",
@@ -186,21 +181,21 @@
     "model-00048-of-00048.safetensors",
     "model.safetensors.index.json",
     "source-tensor-sha256.json",
+    "ssd-checkpoint.json",
     "tokenizer.json",
-    "tokenizer_config.json",
-    "ssd-checkpoint.json"
+    "tokenizer_config.json"
   ],
   "sourceRepositories": [
     {
       "type": "huggingface",
       "repoId": "Avdpro/DeepSeek-V4.1-Flash-SSD",
-      "revision": "efb7e03fd718ebbeb3e0d7e60ed037a920d8e441",
+      "revision": "70e98d9bb1d0daf07dca9d4adadca638afc8a840",
       "access": "public_anonymous"
     },
     {
       "type": "modelscope",
       "repoId": "ai2apps/DeepSeek-V4.1-Flash-SSD",
-      "revision": "f06bb1c499bf38694d84f8b5f3e345a84b8e44d3",
+      "revision": "61b67ae792319c25018b33767f50c2953d78abc1",
       "access": "public_anonymous"
     }
   ]

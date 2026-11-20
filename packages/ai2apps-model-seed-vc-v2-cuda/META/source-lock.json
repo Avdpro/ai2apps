@@ -1,0 +1,27 @@
+{
+  "schema": "ai2apps.source-lock/v1",
+  "implementation": {
+    "repository": "omlx-moe-cache",
+    "path": "packages/omlx-model-seed-vc-v2"
+  },
+  "upstream": {
+    "repository": "https://github.com/Plachtaa/seed-vc",
+    "commit": "51383efd921027683c89e5348211d93ff12ac2a8"
+  },
+  "checkpoint_layout": "ai2apps.mlx-seed-vc-v2-composite/v1",
+  "checkpoint_publication": {
+    "status": "uploaded",
+    "local_root": "/private/tmp/ai2apps-seed-vc-v2-package-upload",
+    "payload_size_bytes": 2236578835,
+    "files": 16,
+    "layout_manifest_sha256": "6569ff0e836e459df3bb277d2661622c27929ec1e65bbf207d838af52ae92526",
+    "huggingface": {
+      "repo_id": "Avdpro/MLX-Seed-VC-v2",
+      "revision": "2122cee1aff2b0e17a843dfa7cdc0464271c43b4"
+    },
+    "modelscope": {
+      "repo_id": "ai2apps/MLX-Seed-VC-v2",
+      "revision": "f1c5ab39dbea53e68829d0c3ff8321acdcee16fa"
+    }
+  }
+}

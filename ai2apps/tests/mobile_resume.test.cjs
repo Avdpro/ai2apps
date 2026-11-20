@@ -41,8 +41,9 @@ async function bootFixture(retained=false, options={}){
  window:{addEventListener(name,handler){assert.ok(['ai2apps-agent-connection-ready','pageshow'].includes(name));assert.equal(typeof handler,'function');},ai2appsMobilePosition:()=>options.noPosition?null:({read:()=>Object.hasOwn(options,'saved')?options.saved:({app,mini:'mini'}),save(){}})},notificationID:null,position:null,positionReady:false,savePosition(){events.push('save');},
  showHome(){events.push('home');},openApp:async(id,push)=>{events.push(push===false?'reuse-app-history':'open-app');c.frames.set(id,record);},
  mobileMiniAppNavigation:(id,sender,token,instance,action,mini)=>{assert.equal(action,'open');assert.equal(mini,'mini');assert.equal(sender,record.frame.contentWindow);events.push('open-mini');}};
- vm.createContext(c);const start=shell.indexOf('    async function boot()');const end=shell.indexOf('\n    boot();',start);
- assert.ok(end>start);vm.runInContext(shell.slice(start,end),c);await c.boot();return events;
+ const nodes=new Map();c.root={dataset:{},classList:{add(){},remove(){}},setAttribute(){},querySelector(selector){if(!nodes.has(selector))nodes.set(selector,{});return nodes.get(selector);}};c.document.documentElement={lang:'en'};
+ vm.createContext(c);const start=shell.indexOf('    let bootFlight =');const end=shell.indexOf('\n    boot();',start);
+ assert.ok(start>=0 && end>start);vm.runInContext(shell.slice(start,end),c);await c.boot();assert.equal(c.root.dataset.entryState,'ready');return events;
 }
 test('fresh authorized document restores App then Mini-App without business requests',async()=>{
  assert.deepEqual(await bootFixture(),['home-history','home','open-app','open-mini','save']);

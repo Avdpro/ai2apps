@@ -1,0 +1,60 @@
+{
+  "schema": "ai2apps.checkpoint-build/v1",
+  "distributionId": "dist_ai2apps_minimax_h3_fl2va_int8_cuda_e5eb578a_v1",
+  "modelId": "ai2apps.model.minimax-h3-cuda/fl2va-int8",
+  "repoId": "Comfy-Org/MiniMax-H3",
+  "revision": "e5eb578a89295337b8ff433a035929ce0279e0b6",
+  "format": "safetensors",
+  "quantization": "int8-convrot-nvfp4-awq",
+  "pieceSize": 8388608,
+  "license": {
+    "id": "LicenseRef-MiniMax-H3-Community",
+    "name": "MiniMax H3 Community License Agreement",
+    "termsUrl": "https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/42ed227ee7df40d41602854ae760620d6eb651fe/LICENSE",
+    "termsHash": "sha256:59b99642b95ea21630e311198ddbfffbfe05aadba0c2f5d884cbdf4efcc90f44",
+    "usagePolicy": "territory_restricted_license_terms",
+    "accessPolicy": "public",
+    "redistributionPolicy": "conditional",
+    "redistributionConditions": {
+      "termsAcceptance": "required",
+      "licenseDelivery": "required",
+      "downstreamTerms": "license_terms",
+      "commercialUse": "allowed",
+      "attribution": {
+        "required": true,
+        "noticeText": "MiniMax H3 is licensed under the MiniMax H3 Community License Agreement, Copyright \u00a9 2026 MiniMax. All Rights Reserved.",
+        "noticeFile": "NOTICE",
+        "productDisplay": "required"
+      },
+      "modifiedFilesNotice": "required"
+    },
+    "downloadConsent": {
+      "required": true,
+      "attestationText": "I confirm that I am in an Applicable Territory under the MiniMax H3 Community License Agreement and accept its terms and use restrictions, or that I have obtained separate written authorization from MiniMax for my location and intended use.",
+      "acceptanceOptions": [
+        "accepted_license_terms",
+        "obtained_separate_license"
+      ]
+    }
+  },
+  "includePatterns": [
+    "diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+    "text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+    "vae/minimax_h3_audio_vae_fp32.safetensors",
+    "vae/minimax_h3_video_vae_fp16.safetensors"
+  ],
+  "sourceRepositories": [
+    {
+      "type": "huggingface",
+      "repoId": "Comfy-Org/MiniMax-H3",
+      "revision": "e5eb578a89295337b8ff433a035929ce0279e0b6",
+      "access": "public_anonymous"
+    },
+    {
+      "type": "modelscope",
+      "repoId": "Comfy-Org/MiniMax-H3",
+      "revision": "0077c66202e33410bce8c9a2aa2660ae675cf2c8",
+      "access": "public_anonymous"
+    }
+  ]
+}

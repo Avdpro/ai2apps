@@ -63,6 +63,13 @@ class QuickReadRequest(BaseModel):
     voice: str | None = Field(default=None, max_length=255)
 
 
+class ProfileSpeechRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid', strict=True)
+    text: str = Field(min_length=1, max_length=2000)
+    model_id: str = Field(min_length=1, max_length=255)
+    expected_updated_at: str = Field(min_length=1, max_length=100)
+
+
 class ProjectCreateRequest(BaseModel):
     mini_app_id: Literal["ai2apps.audio.quick-read", "ai2apps.audio.audiobook", "ai2apps.audio.ensemble-drama"] = "ai2apps.audio.audiobook"
     title: str = Field(min_length=1, max_length=160)
@@ -265,7 +272,7 @@ def _voice_rights_scope(
     return scope
 
 
-async def render_quick_read(runtime, request, principal, *, background=False, snapshot=None, snapshot_materials=None):
+async def render_quick_read(runtime, request, principal, *, background=False, snapshot=None, snapshot_materials=None, transient=False):
     repository = lambda: ReadAloudRepository(runtime.database, runtime.events)
     materials = lambda: snapshot_materials or VoiceMaterials(runtime.database, runtime.config.paths.artifacts_path)
     render_manager = lambda: runtime.readaloud_tasks
@@ -349,6 +356,8 @@ async def render_quick_read(runtime, request, principal, *, background=False, sn
             raise HTTPException(status_code=502, detail="Could not adjust speech speed") from error
     if background:
         return content, {"title": text[:80], "model_label": getattr(model, "display_name", model.id), "voice": profile["name"] if profile else voice or "", "warnings": warnings}
+    if transient:
+        return Response(content, media_type='audio/wav', headers={'Cache-Control': 'no-store'})
     manager = render_manager()
     if isinstance(manager, JSONResponse):
         return manager
@@ -699,6 +708,22 @@ def create_readaloud_router(
         principal: RequestPrincipal = principal_dependency,
     ):
         return await render_quick_read(runtime_provider(), request, principal)
+
+    @router.post('/voice-profiles/{profile_id}/speech')
+    async def transient_profile_speech(profile_id: str, request: ProfileSpeechRequest,
+                                       principal: RequestPrincipal = principal_dependency):
+        # Temporary conversation playback remains owner-validated speech, not a
+        # new Studio output producer/history. Ordinary Quick Read is unchanged.
+        runtime = runtime_provider()
+        try:
+            profile = ReadAloudRepository(runtime.database, runtime.events).get_voice_profile(principal.actor_user_id, profile_id)
+        except RepositoryError as error:
+            raise HTTPException(404, 'Voice character unavailable') from error
+        if profile['model_id'] != request.model_id or profile['updated_at'] != request.expected_updated_at:
+            raise HTTPException(409, 'Voice character changed; restart the conversation')
+        return await render_quick_read(runtime, QuickReadRequest(text=request.text,
+            model_id=request.model_id, voice_profile_id=profile_id), principal,
+            transient=True, snapshot={'profile': profile})
 
     @router.get("/providers")
     def providers(principal: RequestPrincipal = principal_dependency):

@@ -81,6 +81,9 @@ def export_backup(store, owner, directory_id=None):
             if not directories:
                 raise KeyError('Directory not found')
             tasks = [t for t in tasks if t['directory_id'] == directory_id]
+        bindings={r['task_id']:r['registration'] for r in db.execute('SELECT task_id,registration FROM task_execution_bindings WHERE owner=?',(owner,))}
+        for task in tasks:
+            if task['id'] in bindings:task['execution_owner']=bindings[task['id']]
         task_ids = {t['id'] for t in tasks}
         attachments = [a for a in attachments if a['task_id'] in task_ids]
         total = 0
@@ -133,6 +136,7 @@ def parse_backup(content):
                 raise ValueError('Too many projects')
             paths(data['directories'], tasks)
             for task in tasks:
+                if task.get('execution_owner') is not None and (not isinstance(task['execution_owner'],str) or not 1<=len(task['execution_owner'])<=200):raise ValueError('Invalid execution owner marker')
                 clean = TaskInput.model_validate({k: task[k] for k in TaskInput.model_fields if k in task}).model_dump()
                 if not clean['title'].strip() or clean['completed'] != (clean['status'] == 'completed') or (clean['completed'] and clean['progress'] != 100):
                     raise ValueError('Invalid project state')
@@ -207,7 +211,11 @@ def merge_backup(store, owner, content, expected=None):
                 payload.update({k: t[k] for k in ('updated_at', 'update_time_estimated', 'archived_at', 'deleted_at', 'completed_at', 'archive_batch', 'trash_batch') if k in t})
                 payload['directory_id'] = dir_ids[t['directory_id']]
                 payload['parent_id'] = mapping.get(t['parent_id'])
-                due = None if payload.get('archived_at') or payload.get('deleted_at') else next_due(payload['schedule'], now)
+                managed=db.execute('SELECT 1 FROM task_execution_bindings WHERE owner=? AND task_id=?',(owner,task_id)).fetchone()
+                if t.get('execution_owner') and not managed:
+                    db.execute('INSERT INTO task_execution_bindings VALUES(?,?,?,?)',(owner,task_id,'owner-review-required',json.dumps({'source_registration':t['execution_owner']})))
+                    managed=True
+                due = None if managed or payload.get('archived_at') or payload.get('deleted_at') else next_due(payload['schedule'], now)
                 db.execute('INSERT INTO tasks VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data,revision=excluded.revision,next_due=excluded.next_due,created_at=excluded.created_at', (task_id, owner, json.dumps(payload), old['revision']+1 if old else 1, due.isoformat() if due else None, t['created_at']))
                 db.execute('DELETE FROM attachments WHERE owner=? AND task_id=?', (owner, task_id))
             # Immutable old blobs remain available to existing execution snapshots.

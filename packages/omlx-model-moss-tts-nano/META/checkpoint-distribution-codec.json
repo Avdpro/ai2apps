@@ -1,0 +1,39 @@
+{
+  "schema": "ai2apps.checkpoint-build/v1",
+  "distributionId": "dist_ai2apps_moss_audio_tokenizer_nano_6aa02b01_v1",
+  "modelId": "ai2apps.model.moss-tts-nano/codec",
+  "repoId": "OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano",
+  "revision": "6aa02b01e445cc585582cf0ba480bc3ea6c8dd68",
+  "format": "safetensors",
+  "quantization": "bf16",
+  "pieceSize": 8388608,
+  "license": {
+    "id": "Apache-2.0",
+    "name": "Apache License 2.0",
+    "termsUrl": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+    "termsText": "Apache License, Version 2.0. See https://www.apache.org/licenses/LICENSE-2.0\n\n",
+    "termsHash": "sha256:2b93f05188b150e3d6ce31fa7cb7654cde98b78d2b671c5689e334bf520d53c9",
+    "usagePolicy": "permissive",
+    "accessPolicy": "public",
+    "redistributionPolicy": "allowed"
+  },
+  "includePatterns": [
+    "config.json",
+    "model-00001-of-00001.safetensors",
+    "model.safetensors.index.json"
+  ],
+  "sourceRepositories": [
+    {
+      "type": "huggingface",
+      "repoId": "OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano",
+      "revision": "6aa02b01e445cc585582cf0ba480bc3ea6c8dd68",
+      "access": "public_anonymous"
+    },
+    {
+      "type": "modelscope",
+      "repoId": "openmoss/MOSS-Audio-Tokenizer-Nano",
+      "revision": "69915402104d7b86c89867be84e677bc173d5714",
+      "access": "public_anonymous"
+    }
+  ]
+}

@@ -1,12 +1,13 @@
 const test=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs');
 const source=fs.readFileSync(__dirname+'/../web/static/js/mobile.js','utf8');
 function fixture(appId='ai2apps.ai-browser'){
- const list={src:'https://device.test/mobile/app-content/browser#ai2apps-mount=t&ai2apps-instance=i',contentWindow:{},hidden:false};
+ const activations=[];
+ const list={src:'https://device.test/mobile/app-content/browser#ai2apps-mount=t&ai2apps-instance=i',contentWindow:{postMessage:(data,origin)=>activations.push({data,origin})},hidden:false};
  const record={frame:list,token:'t',instanceId:'i',renderer:'trusted'},children=[],states=[];
- const c={window:{},URL,URLSearchParams,location:{href:'https://device.test/mobile#app=ai2apps.ai-browser',origin:'https://device.test'},frames:new Map([[appId,record]]),activeAppId:appId,document:{createElement:()=>({contentWindow:{},remove(){this.removed=true}})},frameHost:{appendChild:f=>children.push(f)},history:{state:{appId:'ai2apps.ai-browser'},pushState(s){this.state=s;states.push(s)},back(){states.push('back')}},loading:{},errorView:{}};
+ const c={window:{},URL,URLSearchParams,location:{href:'https://device.test/mobile#app=ai2apps.ai-browser',origin:'https://device.test'},frames:new Map([[appId,record]]),activeAppId:appId,document:{createElement:()=>({contentWindow:{postMessage:(data,origin)=>activations.push({data,origin})},remove(){this.removed=true}})},frameHost:{appendChild:f=>children.push(f)},history:{state:{appId:'ai2apps.ai-browser'},pushState(s){this.state=s;states.push(s)},back(){states.push('back')}},loading:{},errorView:{}};
  c.pendingAppNavigation=null;vm.createContext(c);const a=source.indexOf('    function mobileMiniAppNavigation(');vm.runInContext(source.slice(a,source.indexOf('    // Todo-only',a)),c);
  const b=source.indexOf("        const browserRecord=frames.get(appId);");vm.runInContext('function pop(event){const appId=event.state.appId;'+source.slice(b,source.indexOf("        const intelRecord=",b))+'}',c);
- return {c,list,record,children,states,nav:(action,id,sender=list.contentWindow,token='t')=>(appId!=='ai2apps.ai-browser'?c.window.ai2appsMobileStudioNavigation:c.window.ai2appsMobileBrowserNavigation)(sender,token,'i',action,id,appId)};
+ return {c,list,record,children,states,activations,nav:(action,id,sender=list.contentWindow,token='t')=>(appId!=='ai2apps.ai-browser'?c.window.ai2appsMobileStudioNavigation:c.window.ai2appsMobileBrowserNavigation)(sender,token,'i',action,id,appId)};
 }
 test('Shell sibling frame retains library; native back/forward only changes outer visibility',()=>{
  const f=fixture();assert.equal(f.nav('open','search-all'),true);const detail=f.record.browserDetail.frame;
@@ -66,3 +67,23 @@ for(const appId of ['ai2apps.video-studio','ai2apps.readaloud']){
   f.c.pop({state:{appId,browserMiniApp:'chosen',studioInline:true}});assert.equal(restored.at(-1),'create');
  });
 }
+
+
+test('tap and native forward notify a retained Mini-App detail, without replacing the Studio frame',()=>{
+ const f=fixture('ai2apps.video-studio');
+ f.nav('open','chosen');
+ assert.equal(f.activations.length,0);
+ f.nav('ready',null,f.record.browserDetail.frame.contentWindow);
+ for(const method of ['tap','history']){
+  f.c.pop({state:{appId:'ai2apps.video-studio'}});
+  if(method==='tap') f.nav('open','chosen');
+  else f.c.pop({state:{appId:'ai2apps.video-studio',browserMiniApp:'chosen'}});
+ }
+ assert.equal(f.children.length,1);
+ assert.equal(f.activations.length,2);
+ for(const {data,origin} of f.activations){
+  assert.equal(data.type,'ai2apps.host.activate');
+  assert.equal(data.mountToken,'t');
+  assert.equal(origin,'https://device.test');
+ }
+});

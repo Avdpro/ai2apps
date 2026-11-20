@@ -1,0 +1,38 @@
+{
+  "schema": "ai2apps.checkpoint-build/v1",
+  "distributionId": "dist_ai2apps_punctuation_restorer_5cccf43a_v1",
+  "modelId": "ai2apps.model.punctuation-restorer/default",
+  "repoId": "ranger810/sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8",
+  "revision": "5cccf43af83e4fc50d1d55b8410312e87709be70",
+  "format": "onnx",
+  "quantization": "int8",
+  "pieceSize": 8388608,
+  "license": {
+    "id": "Apache-2.0",
+    "name": "Apache License 2.0",
+    "termsUrl": "https://www.apache.org/licenses/LICENSE-2.0",
+    "termsHash": "sha256:59df539296ae6da58dc5b1ffb9971147429c2a8f2fb6ab862ef8322b655df025",
+    "usagePolicy": "license_terms",
+    "accessPolicy": "public",
+    "redistributionPolicy": "allowed"
+  },
+  "includePatterns": [
+    "config.yaml",
+    "model.int8.onnx",
+    "tokens.json"
+  ],
+  "sourceRepositories": [
+    {
+      "type": "huggingface",
+      "repoId": "ranger810/sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8",
+      "revision": "5cccf43af83e4fc50d1d55b8410312e87709be70",
+      "access": "public_anonymous"
+    },
+    {
+      "type": "modelscope",
+      "repoId": "ranger810/sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8",
+      "revision": "8177426a1240345bd35b21616475ddcf425d5288",
+      "access": "public_anonymous"
+    }
+  ]
+}

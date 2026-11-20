@@ -1,0 +1,65 @@
+{
+  "code": {
+    "url": "https://github.com/NVlabs/Sana",
+    "revision": "670482d8a857d578ac8a2ea89b052d0fb47badba"
+  },
+  "weights": {
+    "repo": "Efficient-Large-Model/SoL-Refiner-LTX-2.3-One-Step",
+    "revision": "c69c2a543997fe12c1ae24c776df6188e5d2248a",
+    "bytes": 71179439481
+  },
+  "reference_diffusers": {
+    "url": "https://github.com/huggingface/diffusers",
+    "revision": "e0abab83b5df05de9e7abd788643c1a7c1e42e28"
+  },
+  "inference_versions": {
+    "shellingham": "1.5.4",
+    "numpy": "2.5.3",
+    "click": "8.5.0",
+    "packaging": "26.3",
+    "protobuf": "7.36.2",
+    "transformers": "5.18.0",
+    "Pygments": "2.21.0",
+    "mlx-metal": "0.32.0",
+    "mlx-lm": "0.31.3",
+    "hf-xet": "1.6.0",
+    "rich": "15.0.0",
+    "av": "19.0.0",
+    "sentencepiece": "0.2.2",
+    "tokenizers": "0.23.2",
+    "httpcore": "1.0.9",
+    "safetensors": "0.8.0",
+    "tqdm": "4.70.1",
+    "h11": "0.16.0",
+    "mdurl": "0.1.2",
+    "filelock": "4.0.8",
+    "PyYAML": "6.0.3",
+    "fsspec": "2026.9.0",
+    "mlx": "0.32.0",
+    "certifi": "2026.7.22",
+    "Jinja2": "3.1.6",
+    "regex": "2026.9.29",
+    "markdown-it-py": "4.2.0",
+    "annotated-doc": "0.0.5",
+    "MarkupSafe": "3.0.3",
+    "httpx": "0.28.1",
+    "typing_extensions": "4.16.0",
+    "typer": "0.27.2",
+    "pillow": "12.3.0",
+    "anyio": "4.15.1",
+    "huggingface_hub": "1.33.0",
+    "idna": "3.20"
+  },
+  "derived_checkpoint": {
+    "huggingface": {
+      "repo": "Avdpro/SoL-Refiner-LTX-2.3-MLX-BF16",
+      "revision": "751edf5618ccfb8b9e6cae557de9071694cb6ec7"
+    },
+    "modelscope": {
+      "repo": "ai2apps/SoL-Refiner-LTX-2.3-MLX-BF16",
+      "revision": "5e7be6dc59c6c6e58402bcf7408215f86dc85c16"
+    },
+    "transformation": "Removed unused tensors, preserved BF16 tensor bytes, added fixed default-prompt context",
+    "verification": "metadata_verified; user authorized deferral of first MS full readback"
+  }
+}

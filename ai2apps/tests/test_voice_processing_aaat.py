@@ -177,3 +177,56 @@ async def test_changed_reference_during_execution_never_publishes_success(runtim
         assert final['status']=='failed' and 'changed' in str(final['error'])
         assert not runtime.readaloud_tasks.output_history('local')
     finally:await runtime.studio_jobs.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_audio_replacement_staged_configuration_and_ready_quality(monkeypatch):
+    from jsonschema import Draft202012Validator
+    from ai2apps.studio.package_sdk import media_descriptor
+    spec = {'host': owner.APP, 'options': {'mode': 'replace_audio'}}
+    principal = RequestPrincipal.legacy_local()
+    monkeypatch.setattr(owner, 'readiness', lambda _: (set(), set(), True))
+    analyze = await media_descriptor(None, principal, 'analyze', {}, spec)
+    assert not analyze['configuration_required']
+    assert analyze['install']['capability'] == owner.TRANSCRIBE
+    replace_form = await media_descriptor(None, principal, 'replace', {}, spec)
+    assert replace_form['configuration_required']
+    assert replace_form['missing_requirements'] == ['dialogue_background_separation', 'voice_conversion']
+    assert len(replace_form['warnings']) == 3
+    assert replace_form['install']['appId'] == owner.APP
+    assert replace_form['install']['capability'] == owner.REPLACE
+
+    monkeypatch.setattr(owner, 'readiness', lambda _: ({'dialogue_background'}, {'voice_quality'}, True))
+    form = await media_descriptor(None, principal, 'replace', {}, spec)
+    assert not form['configuration_required']
+    quality = form['effective_schema']['properties']['conversion_profile']
+    assert quality['enum'] == ['voice_quality'] and quality['default'] == 'voice_quality'
+    assert [v['value'] for v in form['fields'][0]['options']] == ['voice_quality']
+    args = dict(media_id='source', action='replace', analysis_id='observed',
+                target_speaker='speaker', reference_id='reference', consent=True,
+                conversion_profile='voice_quality')
+    validator = Draft202012Validator(form['effective_schema'])
+    validator.validate(args)
+    assert list(validator.iter_errors({**args, 'conversion_profile': 'timbre_fast'}))
+    assert list(validator.iter_errors({**args, 'consent': False}))
+    analyze = await media_descriptor(None, principal, 'analyze', {}, spec)
+    Draft202012Validator(analyze['effective_schema']).validate(
+        dict(media_id='source', action='analyze', conversion_profile='timbre_fast'))
+
+    monkeypatch.setattr(owner, 'readiness', lambda _: (set(), set(), False))
+    form = await media_descriptor(None, principal, 'analyze', {}, spec)
+    assert form['configuration_required']
+    assert form['missing_requirements'] == ['detailed_transcription']
+    assert form['install']['capability'] == owner.TRANSCRIBE
+    assert 'transcription' in form['warnings'][-1]['en']
+
+
+@pytest.mark.asyncio
+async def test_audio_quality_refinement_does_not_change_other_placements(monkeypatch):
+    from ai2apps.studio.package_sdk import media_descriptor
+    monkeypatch.setattr(owner, 'readiness', lambda _: ({'dialogue_background'}, {'voice_quality'}, True))
+    for host, mode in [('ai2apps.video', 'replace_video'), (owner.APP, 'separate')]:
+        form = await media_descriptor(None, RequestPrincipal.legacy_local(), 'replace', {},
+                                      {'host': host, 'options': {'mode': mode}})
+        assert 'fields' not in form
+        assert form['install']['appId'] == host

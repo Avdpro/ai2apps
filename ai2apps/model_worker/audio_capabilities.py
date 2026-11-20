@@ -16,6 +16,7 @@ _OPERATIONS_BY_MODEL_TYPE = {
     "audio_tts": "audio_speech",
     "audio_processing": "audio_process",
     "audio_detailed_transcription": "audio_detailed_transcription",
+    "audio_realtime": "audio_realtime",
 }
 _CAPABILITY_ID = re.compile(r"^[a-z][a-z0-9]*(?:[_-][a-z0-9]+)*$")
 
@@ -351,6 +352,18 @@ def validate_audio_capabilities(value: Any, *, model_type: str) -> dict[str, Any
         "input": sorted(set(formats.get("input", []))),
         "output": sorted(set(formats.get("output", []))),
     }
+    if model_type == 'audio_realtime':
+        from .audio_duplex import validate_duplex
+        try:
+            normalized['duplex'] = validate_duplex(normalized.get('duplex'))
+        except ValueError as exc:
+            raise AudioCapabilitiesError(str(exc)) from exc
+        if (normalized['formats'] != {'input': ['pcm'], 'output': ['pcm']}
+                or normalized['streaming'].get('mode') != normalized['duplex']['mode']
+                or stream_formats != ['pcm']):
+            raise AudioCapabilitiesError('Realtime v1 requires explicit streaming mono PCM')
+        if any(normalized['duplex'][key] for key in ('text_input', 'async_result_injection', 'response_cancel')):
+            raise AudioCapabilitiesError('Realtime v1 does not implement text/result injection or model response cancel')
     return normalized
 
 

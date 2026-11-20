@@ -1,13 +1,14 @@
-# Notice
+These Fish Audio Materials are licensed under the Fish Audio Community License, Version 1.0. Copyright © 39 AI, INC. All Rights Reserved.
 
-This Package integrates the MLX conversion of Fish Audio S2 Pro.
+Changes by Daniel Sticker (https://github.com/stickerdaniel), who converted fishaudio/drama-3 (revision 78e5ab79e49aa9a25abe8799eff2c4d73a1c3216, released 2026-10-29) for MLX with mlx-audio's fish_drama3 converter (https://github.com/Blaizzy/mlx-audio/pull/1018):
 
-This model is licensed under the Fish Audio Research License, Copyright © 39 AI, INC. All Rights Reserved.
+- The block-FP8 routed experts were dequantized, stacked per layer, and requantized to 4-bit MLX affine quantization (group size 64).
+- The attention, linear-attention and shared-expert projections, the semantic head, and the audio tower projections were quantized to 8 bits (group size 64).
+- Zero-centered RMSNorm weights are stored as 1 + w in float32.
+- The language-model head keeps only the rows of the semantic tokens and EOS.
+- The codec (codec.pth) was converted to safetensors in float32, without its causal-mask buffers.
+- Tensors were renamed to mlx-audio's layout.
 
+
+AI2Apps adds only Package declarations and a Worker adapter; no checkpoint bytes modified.
 Built with Fish Audio.
-
-Sources:
-
-- https://github.com/fishaudio/fish-speech
-- https://huggingface.co/mlx-community/fish-audio-s2-pro-bf16
-- https://github.com/Blaizzy/mlx-audio

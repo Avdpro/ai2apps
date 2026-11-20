@@ -227,3 +227,22 @@ async def test_configuration_changes_invalidate_contract_and_user_text_is_not_re
     assert reviewed_request({'messages':[{'role':'system','content':content}]},old)
     assert not reviewed_request({'messages':[{'role':'user','content':content}]},old)
     assert not reviewed_request({'messages':[{'role':'system','content':content}]},new)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('key', ['variant', 'unrelated_choice'])
+async def test_dependency_selector_reaches_shared_form_without_model_widget(key):
+    from ai2apps.agents.provider_forms import describe
+    async def descriptor(principal, selected=None):
+        return {'model_field': key, 'effective_schema': {'type': 'object', 'properties': {
+            key: {'type': 'string', 'enum': ['first', 'second']}}},
+            'fields': [{'key': key, 'type': 'select'}],
+            'configuration_required': selected != 'second'}
+    provider = NS(id='arbitrary.provider', describe=descriptor)
+    router = NS(providers={provider.id: provider}, disabled=lambda *args: set())
+    principal = NS(actor_user_id='actor', installation_id='installation')
+    result = await describe(NS(app_capability_router=router), principal,
+                            NS(key=provider.id), {key: 'second'}, None)
+    assert result['model_field'] == key
+    assert result['fields'][0]['type'] == 'select'
+    assert not result['configuration_required']

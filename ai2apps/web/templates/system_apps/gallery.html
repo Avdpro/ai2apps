@@ -6,6 +6,7 @@
 {% block content %}
 <div class="gallery-app" x-data="galleryApp()" @scroll.window.capture="cancelAssetHold()" @blur.window="cancelAssetHold()" x-init="init()" data-app-id="ai2apps.gallery" data-client-environment="{{ client_environment|default('browser') }}" data-gallery-surface="{{ request.query_params.get('surface', 'full') }}" data-preview-asset-id="{{ request.query_params.get('assetId', '') }}" data-preview-collection-id="{{ request.query_params.get('collectionId', '') }}" data-preview-kind="{{ request.query_params.get('kind', '') }}" data-preview-search="{{ request.query_params.get('search', '') }}" @click="closeAssetContextMenu()">
     <header class="gallery-header">
+        <button type="button" x-show="appStateBinding" @click="openAppState()" x-text="(document.documentElement.lang||'').startsWith('zh')?'状态预设':'State presets'"></button>
         <div class="gallery-brand"><span class="gallery-mark"><i data-lucide="gallery-stacked-horizontal"></i></span><div><h1>{{ t('gallery.title') }}</h1><p>{{ t('gallery.subtitle') }}</p></div></div>
         <div class="gallery-search"><i data-lucide="search"></i><input x-model="search" @input.debounce.250ms="loadAssets()" placeholder="{{ t('gallery.search.placeholder') }}"></div>
         <label class="gallery-button primary"><i data-lucide="upload"></i><span>{{ t('gallery.action.import') }}</span><input type="file" multiple @change="importFiles($event.target.files);$event.target.value=''" hidden></label>
@@ -29,7 +30,7 @@
             <div class="gallery-toolbar" :class="selectedIds.length&&'selection-mode'">
                 <div x-show="!selectedIds.length" class="gallery-toolbar-summary"><span class="gallery-eyebrow" x-text="tr(selectedCollection?.kind==='project'?'gallery.kicker.project':'gallery.kicker.collection')"></span><h2 x-text="selectedCollectionName"></h2><p x-text="tr('gallery.assets_count',{count:assets.length})"></p></div>
                 <div x-show="!selectedIds.length" class="gallery-toolbar-actions">
-                    <select x-model="kind" @change="loadAssets()" aria-label="{{ t('gallery.filter.kind') }}"><option value="">{{ t('gallery.filter.all') }}</option><option value="image">{{ t('gallery.kind.image') }}</option><option value="video">{{ t('gallery.kind.video') }}</option><option value="audio">{{ t('gallery.kind.audio') }}</option><option value="web">{{ t('gallery.kind.web') }}</option><option value="document">{{ t('gallery.kind.document') }}</option><option value="file">{{ t('gallery.kind.file') }}</option></select>
+                    <select x-model="kind" @change="loadAssets()" aria-label="{{ t('gallery.filter.kind') }}"><option value="">{{ t('gallery.filter.all') }}</option><option value="image">{{ t('gallery.kind.image') }}</option><option value="video">{{ t('gallery.kind.video') }}</option><option value="audio">{{ t('gallery.kind.audio') }}</option><option value="web">{{ t('gallery.kind.web') }}</option><option value="document">{{ t('gallery.kind.document') }}</option><option value="sticker-pack">{{ t('gallery.kind.sticker_pack') }}</option><option value="file">{{ t('gallery.kind.file') }}</option></select>
                     <button :class="view==='grid'&&'active'" @click="view='grid'" title="{{ t('gallery.view.grid') }}"><i data-lucide="grid-2x2"></i></button><button :class="view==='list'&&'active'" @click="view='list'" title="{{ t('gallery.view.list') }}"><i data-lucide="list"></i></button>
                 </div>
                 <div x-show="selectedIds.length" x-cloak class="gallery-selection-bar gallery-toolbar-selection">
@@ -62,4 +63,4 @@
 </div>
 {% endblock %}
 
-{% block scripts %}<script src="{{ static('js/gallery.js') }}?v=session-artifact-drop-20261020"></script>{% endblock %}
+{% block scripts %}<script src="{{ static('js/gallery.js') }}?v=session-artifact-drop-20261020-sticker-packs"></script>{% endblock %}

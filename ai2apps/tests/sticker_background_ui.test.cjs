@@ -1,0 +1,15 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const ctx={window:{},document:{documentElement:{lang:'en'}},structuredClone,console};
+vm.createContext(ctx);vm.runInContext(fs.readFileSync(__dirname+'/../web/static/js/imagine_studio.js','utf8'),ctx);
+const a=ctx.window.imagineStudioApp();a.miniAppId='ai2apps.imagine.sticker-workshop';
+a.models=[{id:'fixture',operations:['image_edit'],formats:['png','jpeg','webp'],backgrounds:['transparent']}];a.modelId='fixture';
+a.stickerCatalog=[{id:'happy',instruction:'Smile'}];
+assert.equal(a.stickerBackground,'white');assert.match(a.stickerPrompt(),/plain white background/);
+a.stickerBackground='transparent';a.format='png';
+assert.match(a.stickerPrompt(),/true transparent alpha background/);
+assert.equal(a.stickerImageParameters().background,'transparent');
+assert.equal(a.stickerBackgroundError,'');assert.deepEqual(Array.from(a.formatOptions),['png','webp']);
+assert.equal(a.draftPayload().stickerBackground,'transparent');
+a.models[0].backgrounds=[];assert.match(a.stickerBackgroundError,/does not declare/);
+a.stickerBackground='white';assert.equal(a.stickerBackgroundError,'');assert.equal(Object.keys(a.stickerImageParameters()).length,0);
+console.log('Sticker background UI checks passed');

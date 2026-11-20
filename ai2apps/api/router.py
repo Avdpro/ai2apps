@@ -16,6 +16,9 @@ from ai2apps.api.cloud import create_cloud_router
 from ai2apps.api.coder import create_coder_router
 from ai2apps.api.documents import create_document_router
 from ai2apps.api.event_stream import create_event_stream_router
+from ai2apps.api.business_events import create_business_event_router
+from ai2apps.api.hooks import create_hook_router
+from ai2apps.api.package_hooks import create_package_hook_router
 from ai2apps.api.extensions import create_extension_router
 from ai2apps.api.gallery import create_gallery_router
 from ai2apps.api.health import (
@@ -44,6 +47,7 @@ from ai2apps.api.video_studio import create_video_studio_router
 from ai2apps.api.workers import create_worker_router
 from ai2apps.api.workspace import create_workspace_router
 from ai2apps.api.intelligence import create_intelligence_router
+from ai2apps.api.share_works import create_share_works_router
 from ai2apps.api.todo import create_todo_router
 from ai2apps.api.model_profiles import create_model_profiles_router
 from ai2apps.api.codex import create_codex_router
@@ -86,12 +90,26 @@ def create_ai2apps_router(
         )
     )
     if runtime_provider is not None:
+        from ai2apps.api.credential_import import create_credential_import_router
+        router.include_router(create_credential_import_router(runtime_provider, effective_principal_provider))
+        from ai2apps.api.app_state import create_app_state_router
+        from ai2apps.api.skills import create_skill_router
+        router.include_router(create_skill_router(runtime_provider, effective_principal_provider))
+        router.include_router(create_app_state_router(runtime_provider, effective_principal_provider))
+        from ai2apps.api.app_shortcuts import create_app_shortcuts_router
+        router.include_router(create_app_shortcuts_router(runtime_provider, effective_principal_provider))
         router.include_router(create_model_profiles_router(runtime_provider, effective_principal_provider))
         router.include_router(create_codex_router(runtime_provider, effective_principal_provider))
         router.include_router(create_todo_router(runtime_provider, effective_principal_provider))
+        from ai2apps.api.mail import create_mail_router
+        router.include_router(create_mail_router(runtime_provider, effective_principal_provider))
+        from ai2apps.api.comapps import create_comapps_router
+        router.include_router(create_comapps_router(runtime_provider, effective_principal_provider))
         from ai2apps.api.app_chat import create_app_chat_router
         router.include_router(create_app_chat_router(runtime_provider, effective_principal_provider))
         router.include_router(create_intelligence_router(runtime_provider, effective_principal_provider))
+        from ai2apps.api.doc_studio import create_doc_studio_router
+        router.include_router(create_doc_studio_router(runtime_provider, effective_principal_provider))
         from ai2apps.api.parameter_forms import create_parameter_forms_router
         router.include_router(create_parameter_forms_router(runtime_provider, effective_principal_provider))
         router.include_router(
@@ -142,6 +160,9 @@ def create_ai2apps_router(
         router.include_router(
             create_event_stream_router(runtime_provider, effective_principal_provider)
         )
+        router.include_router(create_business_event_router(runtime_provider, effective_principal_provider))
+        router.include_router(create_hook_router(runtime_provider, effective_principal_provider))
+        router.include_router(create_package_hook_router(runtime_provider, effective_principal_provider))
         router.include_router(
             create_extension_router(runtime_provider, effective_principal_provider)
         )
@@ -181,6 +202,7 @@ def create_ai2apps_router(
         router.include_router(
             create_document_router(runtime_provider, effective_principal_provider)
         )
+        router.include_router(create_share_works_router(runtime_provider, effective_principal_provider))
         router.include_router(create_browser_router(runtime_provider))
         router.include_router(create_notification_router(runtime_provider, effective_principal_provider))
         router.include_router(

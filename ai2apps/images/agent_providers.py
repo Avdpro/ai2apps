@@ -10,6 +10,32 @@ from ai2apps.studio.extended_jobs import submit
 STUDIO = 'ai2apps.imagine-studio'
 
 
+def reference_payload(workspace, context, refs):
+    """Read only caller-Session images; shared by preflight and dispatch."""
+    payload={'imageDataUrls':[]}
+    for reference_id in refs:
+        reference=workspace.get_artifact(context.session_id,reference_id)
+        if reference.media_type not in ('image/png','image/jpeg','image/webp'):
+            raise ToolProviderError('Reference must be a PNG, JPEG or WebP image')
+        if reference.size_bytes>20*1024*1024:raise ToolProviderError('Reference exceeds 20 MiB')
+        payload['imageDataUrls'].append('data:'+reference.media_type+';base64,'+
+            base64.b64encode(workspace.artifact_path(reference).read_bytes()).decode())
+    from ai2apps.api.studio_background import validate_image_references
+    validate_image_references(payload)
+    return payload
+
+
+def preflight_references(workspace, context, refs):
+    if not refs or not context.session_id:return
+    from ai2apps.services.capability_routing import ProviderIncompatible
+    from ai2apps.core.errors import ResourceNotFoundError
+    from fastapi import HTTPException
+    try:reference_payload(workspace,context,refs)
+    except (ResourceNotFoundError,FileNotFoundError,ToolProviderError,HTTPException) as error:
+        detail=error.detail if isinstance(error,HTTPException) else str(error)
+        raise ProviderIncompatible(str(detail)+'; no image job was submitted. Inspect the current Session with artifact.list and use its verified reference IDs.') from error
+
+
 def principal_for(runtime, context):
     principal = (RequestPrincipal.legacy_local() if context.actor_user_id == 'local'
                  else IdentityRepository(runtime.database).local_principal_for(context.actor_user_id))
@@ -19,7 +45,7 @@ def principal_for(runtime, context):
 
 
 def mini_app_handler(runtime_provider, workspace, model_selector, *, edit=False, mini_id=None):
-    async def execute(arguments, context):
+    async def execute(arguments, context, *, reference_artifact_ids=None):
         runtime=runtime_provider()
         if runtime is None or getattr(runtime,'studio_jobs',None) is None:
             raise ProviderUnavailable('Imagine Studio job service is unavailable')
@@ -34,15 +60,13 @@ def mini_app_handler(runtime_provider, workspace, model_selector, *, edit=False,
         prompt=compose(mini,arguments) if workflow else arguments['prompt']
         body={'model':model,'prompt':prompt,'size':arguments.get('size','1024x1024'),
               'quality':arguments.get('quality','auto'),'outputFormat':arguments.get('format','png')}
-        refs=reference_ids(mini,arguments) if workflow else [arguments['artifact_id']] if edit else []
+        if arguments.get('background_mode') is not None:
+            body['background']=arguments['background_mode']
+        refs = reference_artifact_ids
+        if refs is None:
+            refs = reference_ids(mini,arguments) if workflow else [arguments['artifact_id']] if edit else []
         if refs:
-            body['imageDataUrls']=[]
-            for reference_id in refs:
-                reference=workspace.get_artifact(context.session_id,reference_id)
-                if reference.media_type not in ('image/png','image/jpeg','image/webp'):
-                    raise ToolProviderError('Reference must be a PNG, JPEG or WebP image')
-                if reference.size_bytes>20*1024*1024:raise ToolProviderError('Reference exceeds 20 MiB')
-                body['imageDataUrls'].append('data:'+reference.media_type+';base64,'+base64.b64encode(workspace.artifact_path(reference).read_bytes()).decode())
+            body.update(reference_payload(workspace,context,refs))
         local=runtime.model_invocations.model(model)
         body['source']='local' if local is not None else 'cloud'
         if local is not None:
@@ -65,7 +89,7 @@ def mini_app_handler(runtime_provider, workspace, model_selector, *, edit=False,
             run=repo.get_run(old['run_id'],**scope)
         else:
             run=repo.create_run(**scope,mini_app_id=mini,mini_app_version='1.0.0',placement='main',
-                                title=prompt[:160],input_data={'agentRunId':context.trace_id,'capability':WORKFLOWS.get(mini,'image.edit' if edit else 'image.generate')})
+                                title=prompt[:160],input_data={'agentRunId':context.trace_id,'capability':WORKFLOWS.get(mini,'image.edit' if edit else 'image.generate'),'sourceArtifactIds':list(refs)})
             job=submit(runtime,principal,instance.id,STUDIO,mini,'cloud-image',{'body':body},run_id=run['id'],key=key)
         # Unknown/cancelled/failed jobs never trigger another provider: the job may
         # already have generated or billed. Its ID remains available for recovery.
@@ -80,8 +104,10 @@ def mini_app_handler(runtime_provider, workspace, model_selector, *, edit=False,
         source=workspace.get_artifact(output['workspaceSessionId'],output['workspaceArtifactId'])
         existing=next((a for a in workspace.list_artifacts(context.session_id) if a.metadata.get('studioJobId')==job['id']),None)
         artifact=existing or workspace.import_artifact(context.session_id,workspace.artifact_path(source),name=source.name,media_type=source.media_type,
-            metadata={'studioJobId':job['id'],'studioRunId':run['id'],'miniAppId':mini,'model':model})
-        return {'model':model,'studio_run_id':run['id'],'studio_job_id':job['id'],'mini_app_id':mini,
+            metadata={'studioJobId':job['id'],'studioRunId':run['id'],'miniAppId':mini,'model':model,'sourceArtifactIds':list(refs)})
+        receipt=(job.get('result') or {}).get('usage_receipt') or {}
+        accounting=({'ai2apps_cloud':[receipt]} if receipt.get('requestId') else receipt)
+        return {**accounting,'model':model,'studio_run_id':run['id'],'studio_job_id':job['id'],'mini_app_id':mini,
                 'artifact':{'id':artifact.id,'uri':artifact.uri,'name':artifact.name,'media_type':artifact.media_type,
                             'size_bytes':artifact.size_bytes,'download_url':f'/v1/platform/sessions/{context.session_id}/artifacts/{artifact.id}/download'}}
     return execute

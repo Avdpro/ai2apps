@@ -2,7 +2,7 @@ schema: ai2apps.service/v1
 id: ai2apps.model.deepseek-v41-flash
 name: DeepSeek V4.1 Flash
 description: Lossless multimodal DeepSeek V4.1 Flash SSD Cached-MoE Worker.
-version: 0.1.1
+version: 0.1.2
 publisher:
   id: ai2apps
 runtime:
@@ -22,8 +22,8 @@ models:
   weights:
     provider: huggingface
     repo_id: Avdpro/DeepSeek-V4.1-Flash-SSD
-    revision: efb7e03fd718ebbeb3e0d7e60ed037a920d8e441
-    distribution_id: dist_ai2apps_deepseek_v41_flash_ssd_efb7e03f_v1
+    revision: 70e98d9bb1d0daf07dca9d4adadca638afc8a840
+    distribution_id: dist_ai2apps_deepseek_v41_flash_ssd_1017_70e98d9b_v1
     preparation:
       recipe: ai2apps/cache-moe/v1
       install_id: deepseek-v41-flash
@@ -73,7 +73,7 @@ capabilities: []
 requires:
   services:
   - id: ai2apps.runtime.omlx
-    version: '>=1.7.5,<2.0.0'
+    version: '>=1.8.12,<2.0.0'
     optional: false
     capabilities:
     - mlx

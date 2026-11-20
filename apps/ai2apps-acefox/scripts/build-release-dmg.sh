@@ -56,3 +56,6 @@ fi
 hdiutil verify "${OUTPUT_DMG}"
 "${SCRIPT_DIR}/verify-dmg-contents.sh" "${APP}" "${OUTPUT_DMG}"
 print "Built release image ${OUTPUT_DMG}"
+
+# Prune only after the release image passes verification.
+python3 "${SCRIPT_DIR}/prune-build-history.py" releases

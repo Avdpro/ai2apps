@@ -2,6 +2,7 @@ import asyncio
 import json
 import time
 from dataclasses import replace
+from datetime import timedelta
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -11,6 +12,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from ai2apps.api.remote import create_remote_router
+from ai2apps.core import utc_now
 from ai2apps.identity import MemberRole
 from ai2apps.remote.notifications import NotificationProducer
 from test_ai2apps_remote import _projection_manager
@@ -59,6 +61,19 @@ async def test_restart_replays_same_body_and_no_cookie(tmp_path):
     assert requests[0].content == requests[1].content
     assert row(resumed)['notification_id'] == notification
     assert row(resumed)['state'] == 'submitted'
+    await cloud.close()
+
+
+@pytest.mark.asyncio
+async def test_expired_credentials_never_submit_event(tmp_path):
+    calls = []
+    p, remote, _, cloud, _ = setup(tmp_path, lambda request: calls.append(request))
+    device = remote.require_device(p.identity()['device_id'])
+    remote.repository.get = lambda _: replace(device, credential_expires_at=utc_now() - timedelta(seconds=1))
+    enqueue(p)
+    await p.drain_once()
+    assert not calls
+    assert row(p)['state'] == 'credentials_required'
     await cloud.close()
 
 

@@ -35,6 +35,9 @@ const controlStructure = el => {
 if (!Number.isSafeInteger(window.__ai2appsNextElementRef)) {
   window.__ai2appsNextElementRef = 1;
 }
+if (!window.__ai2appsSnapshotDocument) {
+  window.__ai2appsSnapshotDocument = crypto.getRandomValues(new Uint32Array(4)).join('-');
+}
 if (!(window.__ai2appsElementRefs instanceof WeakMap)) {
   window.__ai2appsElementRefs = new WeakMap();
 }
@@ -140,6 +143,7 @@ for (const el of orderedCandidates) {
     ['current-password', 'new-password', 'one-time-code'].includes(el.autocomplete);
   items.push({
     ref,
+    identity: window.__ai2appsElementIdentities.get(el),
     tag: el.tagName.toLowerCase(),
     structure: controlStructure(el),
     role: el.getAttribute('role'),
@@ -295,6 +299,7 @@ if (htmlMode === 'full') {
 }
 return {
   url: location.href,
+  document_token: window.__ai2appsSnapshotDocument,
   title: document.title,
   items, file_inputs:fileInputs,
   controls_truncated: orderedCandidates.filter(el=>visible(el)).length > items.length,

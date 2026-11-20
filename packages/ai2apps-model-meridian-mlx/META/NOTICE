@@ -1,0 +1,22 @@
+MiniMax H3 is licensed under the MiniMax H3 Community License Agreement,
+Copyright © 2026 MiniMax. All Rights Reserved.
+
+---
+
+Meridian is a Model Derivative of MiniMax H3, as that term is defined in
+Section I.11 of the MiniMax H3 Community License Agreement. It is distributed
+under that same Agreement, a copy of which is included in this repository as
+LICENSE. See MODIFICATIONS.md for the list of files that were modified.
+
+Powered by MiniMax H3.
+
+Modifications and additions Copyright © 2026 Viggle AI.
+
+The code in recam/, inference/ and service/ is licensed under the Apache
+License 2.0 (LICENSE-CODE). The model weights are not.
+
+This repository does not contain VGGT-Omega. Inference depends on it, and it is
+distributed by Meta under the FAIR Noncommercial Research License; see README.md.
+
+The two clips in examples/media/ are Wikimedia Commons material released under
+CC0 1.0; see examples/CREDITS.md.

@@ -21,6 +21,10 @@
 </head>
 <body class="font-sans bg-white text-neutral-900 antialiased selection:bg-neutral-900 selection:text-white">
     {% block content %}{% endblock %}
+    <link rel="stylesheet" href="{{ mobile_static('css/app_state.css') }}">
+    <script src="{{ mobile_static('js/app_state.js') }}"></script>
+    <script src="{{ static('js/bot_avatars.js') }}"></script>
+    <script src="{{ mobile_static('js/app_shortcuts.js') }}"></script>
     {% block scripts %}{% endblock %}
 </body>
 </html>

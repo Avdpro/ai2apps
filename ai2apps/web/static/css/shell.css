@@ -93,6 +93,14 @@ body {
 }
 .dock-app-button:hover { background: rgba(23,23,23,.06); transform: translateY(-1px); }
 .dock-app-button svg { width: 22px; height: 22px; stroke-width: 1.7; }
+.comapps-icon {
+    display: inline-block;
+    width: 22px;
+    height: 22px;
+    flex: none;
+    background-color: currentColor;
+    mask: url("/admin/static/comapps/icon.svg") center / contain no-repeat;
+}
 .dock-app-wrap.is-current .dock-app-button { background: #171717; color: white; }
 .dock-app-wrap.is-running:not(.is-current)::after {
     content: "";
@@ -173,6 +181,8 @@ body {
 @keyframes dock-menu-in { from { opacity: 0; transform: scale(.97) translateY(-2px); } }
 .dock-context-heading { display: flex; align-items: center; gap: 9px; min-width: 0; padding: 8px 9px 9px; color: #737373; font-size: 11px; font-weight: 700; }
 .dock-context-heading svg { width: 16px; height: 16px; flex: none; }
+.dock-context-heading [data-context-icon] { display: flex; flex: none; }
+.dock-context-heading .comapps-icon { width: 16px; height: 16px; }
 .dock-context-heading span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dock-context-menu button { width: 100%; height: 34px; padding: 0 9px; display: flex; align-items: center; gap: 9px; border: 0; border-radius: 8px; color: #262626; background: transparent; font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
 .dock-context-menu button:hover,
@@ -241,7 +251,7 @@ body {
 .desktop-home-app.is-locked { opacity: .48; filter: grayscale(1); cursor: not-allowed; }
 .desktop-home-app.is-locked:hover { transform: none; border-color: rgba(23,23,23,.08); box-shadow: none; }
 .desktop-home-app-icon { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 14px; color: white; background: #171717; }
-.desktop-home-app-icon svg { width: 21px; height: 21px; }
+.desktop-home-app-icon svg, .desktop-home-app-icon .comapps-icon { width: 21px; height: 21px; }
 .desktop-home-app-copy { min-width: 0; padding-top: 2px; }
 .desktop-home-app-copy strong, .desktop-home-app-copy small { display: block; }
 .desktop-home-app-copy strong { font-size: 14px; }
@@ -268,7 +278,7 @@ body {
 .app-frame.is-ready { opacity: 1; }
 .app-loading { position: absolute; inset: 0; z-index: 2; display: grid; place-content: center; gap: 12px; justify-items: center; color: var(--shell-muted); font-size: 13px; background: white; }
 .app-loading[hidden] { display: none; }
-.app-frame.is-ready + .app-loading { display: none; }
+.app-loading-name { color: var(--shell-ink); font-size: 15px; font-weight: 600; }
 .shell-gallery-preview { position: absolute; inset: 0; z-index: 20; opacity: 0; pointer-events: none; background: #111; transition: opacity 280ms cubic-bezier(.4,0,.2,1); }
 .shell-gallery-preview[hidden] { display: none; }
 .shell-gallery-preview.is-ready { opacity: 1; pointer-events: auto; }
@@ -445,3 +455,19 @@ body {
 .desktop-pair-actions button { border: 1px solid #d4d4d4; border-radius: 10px; padding: 9px 14px; font: inherit; cursor: pointer; }
 .desktop-pair-actions button:first-child { background: #171717; color: white; }
 .desktop-pair-actions button:disabled { opacity: .4; cursor: default; }
+
+/* Primary Bot entry, immediately below the Home hero. */
+.desktop-home-bot-entry { margin: 24px 0; width: 100%; display: flex; align-items: center; gap: 18px; padding: 24px; border: 1px solid #dedcff; border-radius: 22px; background: #f3f2ff; color: #171717; font: inherit; text-align: left; cursor: pointer; }
+.desktop-home-bot-entry:hover { background: #eae8ff; border-color: #b9b3ff; }
+.desktop-home-bot-entry .desktop-home-app-icon { background: #6259ed; flex-shrink: 0; }
+.desktop-home-bot-copy { flex: 1; min-width: 0; }
+.desktop-home-bot-copy strong { display: block; font-size: 20px; }
+.desktop-home-bot-copy small { display: block; margin-top: 6px; color: #666; font-size: 14px; line-height: 1.5; }
+.desktop-home-bot-action { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; }
+.desktop-home-bot-action svg { width: 18px; height: 18px; }
+@media (max-width: 600px) { .desktop-home-bot-entry { flex-wrap: wrap; padding: 20px; gap: 14px; } .desktop-home-bot-action { margin-left: 58px; } }
+
+.desktop-owner-reauth{border:1px solid #e5e7eb;border-radius:18px;padding:24px;width:min(440px,calc(100vw - 32px));color:#171717;background:#fff;box-shadow:0 20px 80px #0003}
+.desktop-owner-reauth::backdrop{background:#0006}
+.desktop-owner-reauth form{display:grid;gap:16px}.desktop-owner-reauth h3{margin:0;font-size:19px}.desktop-owner-reauth p{margin:0;font-size:14px;line-height:1.6}
+.desktop-owner-reauth label{display:grid;gap:8px;font-size:14px}.desktop-owner-reauth input{border:1px solid #d4d4d4;border-radius:8px;padding:10px;width:100%;box-sizing:border-box}.desktop-owner-reauth form>div{display:flex;justify-content:flex-end;gap:10px}.desktop-owner-reauth button{border:1px solid #d4d4d4;border-radius:8px;padding:9px 12px;cursor:pointer}.desktop-owner-reauth button[type=submit]{background:#171717;color:white}

@@ -48,10 +48,16 @@ async def descriptor(runtime, principal, model=None):
     broker=StudioCapabilityBroker(runtime)
     ready=any(broker._detailed_model_for_profile(p) for p in ('compact','quality'))
     text_ready=bool(resolve_task_model(runtime,'standard'))
+    missing=(["detailed_transcription"] if not ready else [])+(["standard_task_model_route"] if not text_ready else [])
+    warnings=[]
+    if not ready:warnings.append({'zh':'详细转写模型未就绪；请配置视频字幕所需模型。','en':'Detailed transcription is not ready; configure the video subtitle models.'})
+    if not text_ready:warnings.append({'zh':'标准任务模型路由未配置；请打开「模型 → 默认使用」，选择并保存标准任务模型，然后重新检查。重复安装转写模型不能解决此问题。',
+                                      'en':'The standard task model route is missing. Open Models > Default Usage, select and save a standard task model, then recheck.'})
     return {'effective_schema':deepcopy(SCHEMA),'selection_required':True,
-        'configuration_required':not ready or not text_ready,
-        'warnings':([{'zh':'请在 Desktop 视频工坊配置转写模型，并在模型 App 配置标准任务模型。参数和视频会保留。','en':'Configure transcription in Desktop Video Studio and a standard task model in Models. Parameters and video are preserved.'}] if not ready or not text_ready else []),
-        'install':{'appId':APP,'capability':CAPABILITY,'requirements':{}}}
+        'configuration_required':bool(missing),'missing_requirements':missing,
+        'constraints':{'missing_requirements':missing},
+        'warnings':warnings,
+        'install':{'appId':APP,'capability':CAPABILITY,'requirements':{}} if not ready else None}
 
 
 async def execute(runtime, args, context, *, mini_app_id=None):

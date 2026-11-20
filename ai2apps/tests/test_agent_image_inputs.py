@@ -64,6 +64,7 @@ def test_memory_pressure_and_summary_use_model_image_projection(runtime, monkeyp
     request = {'model': 'test', 'messages': executor._project_model_messages(messages, session)}
     assert len(json.dumps(messages)) > 524288
     assert len(json.dumps(request)) < 100000
+    assert len(request['messages'])>len(messages)  # media runtime context expands one source node
     # A few turns with a large original must not trigger automatic compression.
     assert memory.action(context, None, request) is None
     action = memory.action(context, None, request, force=True)

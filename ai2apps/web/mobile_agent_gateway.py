@@ -12,6 +12,7 @@ PREFIX='/v1/mobile/agent'
 _ID=r'[A-Za-z0-9_-]{1,256}'
 
 def business_target(method,path):
+    if method=='GET' and re.fullmatch(r'/chat/threads/'+_ID+r'/images/'+_ID+r'/\d+',path):return path
     if method=='POST' and re.fullmatch(r'/chat/threads/'+_ID+r'/manage',path):return path
     if method in ('PATCH','DELETE') and re.fullmatch(r'/chat/threads/'+_ID,path):return path
     if method=='POST' and re.fullmatch(r'/chat/threads/'+_ID+r'/speech',path):return path
@@ -54,11 +55,14 @@ async def dispatch(runtime,principal,method,path,body,headers,query=''):
     from ai2apps.api import create_ai2apps_router
     app=FastAPI(openapi_url=None,docs_url=None,redoc_url=None)
     app.include_router(create_ai2apps_router(runtime_provider=lambda:runtime,principal_provider=lambda:principal))
+    from ai2apps.chat.mobile_images import prepare_request,project_response
+    if body and (method=='PUT' and re.fullmatch(r'/chat/threads/'+_ID+r'/content',path) or method=='POST' and re.fullmatch(r'/chat/threads/'+_ID+r'/turns',path)):
+        payload=json.loads(body);body=json.dumps(prepare_request(runtime,principal,method,path,payload)).encode()
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url='http://agent.internal',timeout=None) as client:
         result=await client.request(method,'/v1/platform'+path+('?' +query if query else ''),content=body,headers=headers)
-    return Response(result.content,status_code=result.status_code,media_type=result.headers.get('content-type','application/json'),headers={'Cache-Control':'no-store'})
+    return Response(project_response(path,result.status_code,result.content),status_code=result.status_code,media_type=result.headers.get('content-type','application/json'),headers={'Cache-Control':'no-store'})
 
-async def result_image(runtime,principal,path):
+async def result_image(runtime,principal,path,*,preview=False):
     from ai2apps.api.ownership import authorize_agent_run
     from ai2apps.remote.mobile_apps import app_enabled
     from ai2apps.web.mobile_app_gateway import api_response
@@ -78,10 +82,13 @@ async def result_image(runtime,principal,path):
     if parsed.scheme or parsed.netloc or not url.startswith('/v1/platform/') or parsed.fragment:raise HTTPException(403,'Result image requires an owner resource adapter')
     response=await api_response(runtime,principal,spec,{'verb':'GET','path':url,'body':'','headers':{}})
     if not response.headers.get('content-type','').split(';')[0] in ('image/jpeg','image/png','image/webp','image/avif','image/gif'):raise HTTPException(422,'Owner resource is not a raster image')
+    if preview and response.status_code==200:
+        from ai2apps.web.mobile_image_preview import preview_bytes,response as preview_response
+        return preview_response(await preview_bytes(response.content))
     return Response(response.content,status_code=response.status_code,media_type=response.headers.get('content-type'),headers={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'})
 
 
-async def generated_file(runtime, principal, path):
+async def generated_file(runtime, principal, path,*,preview=False):
     """Only an artifact explicitly recorded by a successful Tool in this Run."""
     from ai2apps.api.ownership import authorize_agent_run, authorize_session
     from starlette.responses import FileResponse
@@ -91,6 +98,10 @@ async def generated_file(runtime, principal, path):
     run=runtime.agents.get_run(rid);authorize_session(runtime,principal,run.session_id)
     file = recorded_artifact(runtime, principal, run, aid)
     artifact=runtime.workspace.get_artifact(file['session_id'],aid)
+    if preview:
+        from ai2apps.web.mobile_image_preview import RASTER,preview_file,response
+        if artifact.media_type not in RASTER:raise HTTPException(422,'Mobile preview requires a raster image')
+        return response(await preview_file(runtime.workspace.artifact_path(artifact)))
     return FileResponse(runtime.workspace.artifact_path(artifact),filename=artifact.name,
         media_type=artifact.media_type,headers={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'})
 
@@ -118,7 +129,7 @@ async def import_generated_artifact(runtime, principal, path):
     return await dispatch(runtime,principal,'POST',f"/gallery/assets/import-artifact/{file['session_id']}/{aid}",b'{}',{'Content-Type':'application/json'})
 
 
-async def generated_image(runtime,principal,path):
+async def generated_image(runtime,principal,path,*,preview=False):
     from ai2apps.api.ownership import authorize_agent_run
     m=re.fullmatch(r'/artifacts/('+_ID+r')/('+_ID+r')',path)
     if not m:raise HTTPException(404)
@@ -132,6 +143,9 @@ async def generated_image(runtime,principal,path):
     if response.status_code!=200:return response
     if response.headers.get('content-type','').split(';')[0] not in ('image/png','image/jpeg','image/webp','image/avif','image/gif'):
         raise HTTPException(422,'Artifact is not a raster image')
+    if preview:
+        from ai2apps.web.mobile_image_preview import preview_bytes,response as preview_response
+        return preview_response(await preview_bytes(response.body))
     return Response(response.body,media_type=response.headers['content-type'],headers={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'})
 
 async def application(scope,receive,send,runtime,device):
@@ -177,10 +191,10 @@ async def application(scope,receive,send,runtime,device):
                 return JSONResponse(result.model_dump(mode='json') if hasattr(result,'model_dump') else result)
             if relative.startswith('/files/'):
                 if method=='POST' and relative.endswith('/gallery'):return await import_generated_artifact(runtime,principal,relative)
-                if method=='GET':return await generated_file(runtime,principal,relative)
+                if method=='GET':return await generated_file(runtime,principal,relative,preview=request.query_params.get('preview')=='mobile')
                 raise HTTPException(403)
-            if relative.startswith('/artifacts/'):return await generated_image(runtime,principal,relative)
-            if relative.startswith('/assets/'):return await result_image(runtime,principal,relative)
+            if relative.startswith('/artifacts/'):return await generated_image(runtime,principal,relative,preview=request.query_params.get('preview')=='mobile')
+            if relative.startswith('/assets/'):return await result_image(runtime,principal,relative,preview=request.query_params.get('preview')=='mobile')
             routed=business_target(method,relative)
             if routed is None:raise HTTPException(403,'Agent route denied')
             headers={k:request.headers[k] for k in ('content-type','idempotency-key') if k in request.headers}

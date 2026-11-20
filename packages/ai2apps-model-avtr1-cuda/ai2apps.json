@@ -1,0 +1,82 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/model-avtr1-cuda",
+    "type": "service",
+    "version": "0.1.0",
+    "displayName": "AVTR-1 CUDA",
+    "description": "CUDA talking portrait with standard/fast inference and source-canvas composition."
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": [
+      "linux"
+    ],
+    "architectures": [
+      "arm64"
+    ]
+  },
+  "entrypoints": [
+    {
+      "name": "model-worker",
+      "kind": "service",
+      "path": "service.yaml"
+    }
+  ],
+  "permissions": [
+    {
+      "capability": "model-weights.huggingface-cache.read",
+      "reason": "Read the Host-selected AVTR-1 MLX checkpoint.",
+      "required": true
+    },
+    {
+      "capability": "accelerator.cuda",
+      "reason": "Run AVTR locally on CUDA.",
+      "required": true
+    }
+  ],
+  "dependencies": [
+    {
+      "packageId": "ai2apps/runtime-cuda-torch",
+      "version": ">=0.6.0 <1.0.0",
+      "optional": false
+    }
+  ],
+  "files": [],
+  "sbom": {
+    "format": "spdx-json-2.3",
+    "path": "META/sbom.spdx.json"
+  },
+  "discovery": {
+    "kind": "model",
+    "categories": [
+      "video"
+    ],
+    "tasks": [
+      "video-generation",
+      "avatar-animation"
+    ]
+  },
+  "modelProfile": {
+    "sizeBytes": 2549026222,
+    "minimumMemoryBytes": 17179869184,
+    "scores": {
+      "speed": 2,
+      "capability": 3
+    },
+    "benchmark": {
+      "label": "Estimated memory; standard and fast development inference verified, signed installation pending",
+      "device": "NVIDIA DGX Spark GB10"
+    }
+  },
+  "modelInstall": {
+    "serviceKey": "ai2apps.model.avtr1-cuda",
+    "models": [
+      {
+        "id": "ai2apps.model.avtr1-cuda/default",
+        "label": "AVTR-1 CUDA",
+        "recommended": true
+      }
+    ]
+  }
+}

@@ -6,6 +6,7 @@ import inspect
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from .effects import EXACT_EFFECT_CONFIRMATION, can_remember_unknown_risk, requires_exact_confirmation, unknown_effects
 from .models import CapabilityDecision, PolicyEffect
 from .repository import CapabilityRepository
 from .risk import sanitize_value
@@ -33,14 +34,37 @@ class CapabilityPolicyEngine:
         effects: tuple[str, ...],
         arguments: dict[str, Any],
         invocation_key: str = "",
+        remembered_capabilities: frozenset[str] = frozenset(),
+        owner_rule: Callable[[], dict] | None = None,
     ) -> CapabilityDecision:
         leases = self.repository.active_leases_for_run(run_id, tool_name, arguments)
+        leases = tuple(lease for lease in leases if not lease.evidence.get('bound_invocation_key')
+                       or lease.evidence['bound_invocation_key'] == invocation_key)
+        exact = requires_exact_confirmation(effects)
+        remembered = EXACT_EFFECT_CONFIRMATION in remembered_capabilities and can_remember_unknown_risk(effects)
+        if exact:
+            for capability in capabilities:
+                policies = self.repository.matching_policies(
+                    agent_key=agent_key, tool_name=tool_name, capability=capability)
+                if policies and any(policy.effect is PolicyEffect.DENY
+                                    for policy in policies if policy.priority == policies[0].priority):
+                    return CapabilityDecision(PolicyEffect.DENY, 'policy', capabilities, (),
+                                              matched_policy_ids=tuple(policy.id for policy in policies))
+            if remembered:
+                exact = False
+                effects = tuple(value for value in effects if value not in unknown_effects(effects))
+            else:
+                leases = tuple(lease for lease in leases if
+                               lease.issued_by == 'user' and lease.evidence.get('single_use') is True
+                               and invocation_key and lease.evidence.get('exact_invocation_key') == invocation_key)
         leased = {
             capability
             for lease in leases
             for capability in lease.capabilities
             if capability in capabilities
         }
+        if remembered and EXACT_EFFECT_CONFIRMATION in capabilities:
+            leased.add(EXACT_EFFECT_CONFIRMATION)
         unresolved = tuple(sorted(set(capabilities) - leased))
         if not unresolved:
             return CapabilityDecision(
@@ -51,6 +75,10 @@ class CapabilityPolicyEngine:
                 matched_lease_ids=tuple(x.id for x in leases),
                 evidence={"lease_count": len(leases)},
             )
+
+        if exact:
+            return CapabilityDecision(PolicyEffect.REQUIRE_APPROVAL, 'effect_confirmation',
+                                      capabilities, tuple(sorted(leased)))
 
         matched = []
         effects_by_capability: dict[str, PolicyEffect] = {}
@@ -73,14 +101,20 @@ class CapabilityPolicyEngine:
                     and all(p.policy_key == "builtin.default-require-approval" for p in top)
                 )
                 effects_by_capability[capability] = (
-                    PolicyEffect.ALLOW if ordinary_read else PolicyEffect.DENY
+                    PolicyEffect.ALLOW if ordinary_read or (
+                        remembered and capability in remembered_capabilities
+                        and all(p.policy_key == "builtin.default-require-approval" for p in top)
+                    ) else PolicyEffect.DENY
                     if PolicyEffect.DENY in values
                     else PolicyEffect.REQUIRE_APPROVAL
                     if PolicyEffect.REQUIRE_APPROVAL in values
                     else PolicyEffect.ALLOW
                 )
             else:
-                effects_by_capability[capability] = PolicyEffect.REQUIRE_APPROVAL
+                effects_by_capability[capability] = (
+                    PolicyEffect.ALLOW if remembered and capability in remembered_capabilities
+                    else PolicyEffect.REQUIRE_APPROVAL
+                )
         if PolicyEffect.DENY in effects_by_capability.values():
             effect = PolicyEffect.DENY
         elif PolicyEffect.REQUIRE_APPROVAL in effects_by_capability.values():
@@ -94,7 +128,10 @@ class CapabilityPolicyEngine:
         }
         source = "policy"
 
-        session_id, rule = self.repository.approval_rule_for_run(run_id)
+        if owner_rule is None:
+            session_id, rule = self.repository.approval_rule_for_run(run_id)
+        else:
+            session_id, rule = None, owner_rule()
         if effect is PolicyEffect.REQUIRE_APPROVAL and rule['mode'] != 'manual':
             evidence['session_rule'] = {**rule, 'session_id':session_id}
             if rule['mode'] == 'always':
@@ -105,11 +142,17 @@ class CapabilityPolicyEngine:
                         'run_id':run_id, 'session_id':session_id, 'rule_revision':rule['revision'],
                         'tool_name':tool_name, 'capabilities':unresolved, 'effects':effects,
                         'arguments':sanitize_value(arguments), 'invocation_key':invocation_key,
+                        **({'owner_rule': rule} if owner_rule else {}),
                     })
                     # A changed rule cannot authorize an in-flight review.
-                    if self.repository.session_approval_rule(session_id) == rule:
+                    current_rule = owner_rule() if owner_rule else self.repository.session_approval_rule(session_id)
+                    if current_rule == rule:
                         evidence['session_review'] = review
-                        if review.get('necessary') is True and review.get('risk') in {'none','low'}:
+                        intent_ok = (review.get('necessary') is True or
+                                     (rule.get('allow_unclear_intent') is True
+                                      and review.get('necessary') is False
+                                      and review.get('intent_unclear') is True))
+                        if intent_ok and review.get('risk') in {'none','low'}:
                             effect, source = PolicyEffect.ALLOW, 'session_ai'
                 except Exception as exc:
                     evidence['session_review'] = {'error':type(exc).__name__}
@@ -119,7 +162,7 @@ class CapabilityPolicyEngine:
                 matched_policy_ids=tuple(dict.fromkeys(p.id for p in matched)),
                 matched_lease_ids=tuple(x.id for x in leases),evidence=evidence)
 
-        if effect is PolicyEffect.REQUIRE_APPROVAL and self._auditor is not None:
+        if effect is PolicyEffect.REQUIRE_APPROVAL and self._auditor is not None and owner_rule is None:
             request = {
                 "run_id": run_id,
                 "agent_key": agent_key,

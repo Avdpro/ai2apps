@@ -819,6 +819,33 @@ async def test_inspection_can_finish_from_actual_initial_read_without_invented_c
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('keep_partial', [True, False])
+async def test_action_limit_keeps_only_successful_scoped_observations_for_read_only_goal(keep_partial):
+    from types import SimpleNamespace as NS
+    from unittest.mock import AsyncMock
+    url='https://catalog.fixture.test/detail'
+    initial={'url':url,'text':'Visible product summary'}
+    page=NS(context_id='owned',observation=AsyncMock(return_value=initial),related_windows=AsyncMock(return_value=[]))
+    step={'operation':'inspect','arguments':{'read_only':True,'return_partial_on_action_limit':keep_partial}}
+    executor=BackgroundExecutor(None)
+    executor.access_blocker=AsyncMock(return_value=None)
+    executor.planner=NS(next=AsyncMock(return_value={'decision':'act','step':{'operation':'scroll'},
+        'compiled_step':{'operation':'scroll','browser_context':'owned'}}))
+    executor.compiled=AsyncMock(return_value={'outcome':'success','evidence':{
+        'before':{'url':'https://elsewhere.test','text':'outside scope'},
+        'after':{'url':url,'text':'Visible technical specifications'}}})
+    result=await executor.adaptive(page,{'step':step,'site_scope':['https://catalog.fixture.test/**']},None)
+    assert executor.compiled.await_count==8
+    if keep_partial:
+        assert result['outcome']=='success'
+        assert result['evidence']['result']=={'coverage':'partial','reason':'ai_step_action_limit','observations':[
+            {'url':url,'title':'','text':'Visible technical specifications'},
+            {'url':url,'title':'','text':'Visible product summary'}]}
+    else:
+        assert result['outcome']=='failed' and result['evidence']['reason']=='ai_step_action_limit'
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize('operation,url',[('click','https://workspace.fixture.test/form'),('inspect','https://different.fixture.test/form')])
 async def test_initial_observation_cannot_prove_effectful_or_out_of_scope_completion(operation,url):
     from types import SimpleNamespace as NS

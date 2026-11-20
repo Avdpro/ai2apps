@@ -1,7 +1,7 @@
 schema: ai2apps.app/v1
 id: ai2apps.avatar-studio-suite
 name: Avatar Studio Suite
-version: 0.1.4
+version: 0.1.5
 description: Create talking portrait videos locally.
 publisher:
   id: ai2apps
@@ -45,7 +45,7 @@ mini_apps:
 - schema: ai2apps.mini-app/v1
   id: ai2apps.avatar.photo-speaking
   name: Talking Portrait
-  version: 0.1.4
+  version: 0.1.5
   kind: clip
   icon: user-round
   description: Animate a portrait with speech using a compatible local avatar model.
@@ -109,8 +109,9 @@ mini_apps:
   chat:
     schema: ai2apps.mini-app-chat/v1
     enabled: true
-    system_prompt: Read and edit only declared current UI fields. Execute functions through the registered owner
-      AaAT, never through a UI run button. Preserve task, model, material and shared output ownership.
+    system_prompt: Read and edit only declared current UI fields. Execute functions
+      through the registered owner AaAT, never through a UI run button. Preserve task,
+      model, material and shared output ownership.
     context:
       transport: studio-bridge
       maxBytes: 40000
@@ -134,3 +135,104 @@ mini_apps:
             maxLength: 8000
         additionalProperties: false
       confirmation: never
+  aaat:
+    schema: ai2apps.mini-app-host-exports/v1
+    exports:
+    - name: video.avatar
+      host: ai2apps.video-studio
+      inputSchema:
+        type: object
+        additionalProperties: false
+        required:
+        - image_id
+        - audio_id
+        - model_id
+        - preset
+        - resolution
+        properties:
+          image_id:
+            type: string
+            minLength: 1
+            maxLength: 256
+            x-ai2apps-asset:
+              storage: artifact
+              accept: image/*
+              references: true
+          audio_id:
+            type: string
+            minLength: 1
+            maxLength: 256
+            x-ai2apps-asset:
+              storage: artifact
+              accept: audio/*
+              references: true
+          model_id:
+            type: string
+            minLength: 1
+          preset:
+            type: string
+            minLength: 1
+          resolution:
+            type: string
+            minLength: 1
+      fields:
+      - key: image_id
+        label:
+          zh: 人像图片
+          en: Portrait
+        type: asset
+        storage: artifact
+        accept: image/*
+        references: true
+        multiple: false
+        minItems: 0
+        maxItems: 1
+      - key: audio_id
+        label:
+          zh: 驱动音频
+          en: Driving audio
+        type: asset
+        storage: artifact
+        accept: audio/*
+        references: true
+        multiple: false
+        minItems: 0
+        maxItems: 1
+      - key: model_id
+        label:
+          zh: 模型
+          en: Model
+        type: text
+      - key: preset
+        label:
+          zh: 生成档位
+          en: Preset
+        type: text
+      - key: resolution
+        label:
+          zh: 分辨率
+          en: Resolution
+        type: text
+      displayName:
+        zh: 照片说话
+        en: Talking portrait
+      summary:
+        zh: 通过原视频队列生成照片说话，结果进入共享输出。
+        en: Generate talking portraits through the original video queue and shared
+          Output.
+      agentContext:
+        schema: ai2apps.aaat-declaration/v1
+        instructions:
+        - Use actual current Mini-App draft/model/material IDs. Never invent models
+          or raw paths. Reuse the original durable Studio task and host shared Output;
+          page closure is not cancellation. Missing models require Desktop configuration
+          with inputs preserved. Unknown submission outcomes must not be replayed.
+        result_semantics:
+          artifact: Actual owner-published media or output references; UI snapshots
+            are not generated artifacts.
+          shared_output: Only a completed published owner task proves an output exists.
+            Output references belong to the original Studio host.
+      selectionRequired: false
+      sdk: studio.talking-portrait/v1
+      options: {}
+      interfaceVersion: 1.0.0

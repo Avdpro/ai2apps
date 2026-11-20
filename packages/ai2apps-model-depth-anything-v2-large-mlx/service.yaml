@@ -1,0 +1,116 @@
+{
+  "schema": "ai2apps.service/v1",
+  "id": "ai2apps.model.depth-anything-v2-large-mlx",
+  "name": "Depth Anything V2 Large MLX",
+  "description": "Single-image relative inverse depth. Noncommercial weights; not an image editor.",
+  "version": "0.1.0",
+  "publisher": {
+    "id": "ai2apps"
+  },
+  "license": {
+    "name": "CC-BY-NC-4.0",
+    "id": "CC-BY-NC-4.0",
+    "path": "LICENSE"
+  },
+  "attribution": {
+    "notice": "META/NOTICE",
+    "source": "https://huggingface.co/depth-anything/Depth-Anything-V2-Large"
+  },
+  "runtime": {
+    "mode": "process",
+    "protocol": "ai2apps-model-worker/v1",
+    "provider": "ai2apps.runtime.omlx",
+    "adapter": "src/worker_adapter.py:create_adapter"
+  },
+  "models": [
+    {
+      "id": "ai2apps.model.depth-anything-v2-large-mlx/large",
+      "display_name": "Depth Anything V2 Large MLX",
+      "model_type": "depth_estimation",
+      "upstream_id": "Avdpro/Depth-Anything-V2-Large-MLX",
+      "capabilities": [
+        "depth_estimation"
+      ],
+      "weights": {
+        "provider": "huggingface",
+        "repo_id": "Avdpro/Depth-Anything-V2-Large-MLX",
+        "revision": "108ca030a8ef54cf099608813d8cc679f46f4174",
+        "distribution_id": "dist_ai2apps_depth_anything_v2_large_mlx_108ca030_v1",
+        "preparation": {
+          "recipe": "native"
+        }
+      },
+      "metadata": {
+        "family": "depth-anything-v2-large",
+        "implementation": "native-mlx",
+        "precision": "fp32",
+        "single_image_only": true,
+        "depth_kind": "relative_inverse_depth",
+        "depth_estimation": {
+          "schema": "ai2apps.depth-estimation-capabilities/v1",
+          "input_sizes": [
+            518,
+            756,
+            1036
+          ],
+          "default_input_size": 1036,
+          "maximum_input_pixels": 16000000,
+          "maximum_aspect_ratio": 4,
+          "output_formats": [
+            "npz"
+          ]
+        }
+      }
+    }
+  ],
+  "capabilities": [
+    "depth-estimation"
+  ],
+  "requires": {
+    "services": [
+      {
+        "id": "ai2apps.runtime.omlx",
+        "version": ">=1.8.11,<2.0.0",
+        "optional": false,
+        "capabilities": [
+          "mlx",
+          "model-worker-v1",
+          "metal",
+          "depth-estimation-v1"
+        ]
+      }
+    ],
+    "python": ">=3.11,<3.14"
+  },
+  "permissions": {
+    "network": {
+      "outbound": false
+    },
+    "model_weights": {
+      "huggingface_cache": "read",
+      "reason": "Read only the pinned depth checkpoint."
+    },
+    "accelerator": {
+      "metal": true,
+      "reason": "Run pure MLX depth estimation on the local GPU."
+    }
+  },
+  "compatibility": {
+    "os": [
+      "macos"
+    ],
+    "architectures": [
+      "arm64"
+    ],
+    "minimum_os_version": "26.2"
+  },
+  "health": {
+    "path": "/health",
+    "startup_timeout_seconds": 120
+  },
+  "restart": {
+    "max_attempts": 2,
+    "base_delay_seconds": 1
+  },
+  "tools": []
+}

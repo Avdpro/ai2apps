@@ -1,4 +1,5 @@
 import AI2AppsContracts
+import Darwin
 import Foundation
 import Testing
 @testable import AI2AppsSupervisorCore
@@ -157,6 +158,52 @@ private func instanceID(_ value: String = "default") throws -> InstanceID {
 @Test func automaticModeDoesNotProbeOrReserveAPort() throws {
     let conflict = try LoopbackPortInspector().conflict(for: LocalConfiguration())
     #expect(conflict == nil)
+}
+
+@Test func fixedPortWaitsForOldListenerButPreservesPersistentConflict() async throws {
+    let listener = socket(AF_INET, SOCK_STREAM, 0)
+    guard listener >= 0 else { Issue.record("socket creation failed"); return }
+    var address = sockaddr_in()
+    address.sin_family = sa_family_t(AF_INET)
+    address.sin_addr.s_addr = inet_addr("127.0.0.1")
+    let bound = withUnsafePointer(to: &address) { pointer in
+        pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+            bind(listener, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+        }
+    }
+    guard bound == 0, listen(listener, 1) == 0 else {
+        close(listener)
+        Issue.record("could not listen on an ephemeral loopback port")
+        return
+    }
+    var actual = sockaddr_in()
+    var length = socklen_t(MemoryLayout<sockaddr_in>.size)
+    let resolved = withUnsafeMutablePointer(to: &actual) { pointer in
+        pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+            getsockname(listener, $0, &length)
+        }
+    }
+    guard resolved == 0 else {
+        close(listener)
+        Issue.record("could not resolve the listener port")
+        return
+    }
+    let port = Int(UInt16(bigEndian: actual.sin_port))
+    let configuration = LocalConfiguration(portMode: .fixed, configuredPort: port)
+    let inspector = LoopbackPortInspector()
+    #expect(try await inspector.conflictAfterWaiting(
+        for: configuration, attempts: 2, interval: .milliseconds(25)
+    )?.port == port)
+
+    let release = Task {
+        try? await Task.sleep(for: .milliseconds(75))
+        close(listener)
+    }
+    let cleared = try await inspector.conflictAfterWaiting(
+        for: configuration, attempts: 10, interval: .milliseconds(25)
+    )
+    await release.value
+    #expect(cleared == nil)
 }
 
 @Test func lifecycleReachesReadyForMatchingInstanceAndBoot() throws {

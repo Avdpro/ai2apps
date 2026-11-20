@@ -404,7 +404,7 @@ class RemoteAccessManager:
         try:
             role = MemberRole(str(detail["role"]))
             organization_type = OrganizationType(str(detail["organizationType"]))
-            self.identity_repository.bind_installation(
+            await asyncio.to_thread(self.identity_repository.bind_installation,
                 installation_id=str(detail["installationId"]),
                 cloud_device_id=device_id,
                 organization_id=str(detail["organizationId"]),
@@ -440,7 +440,7 @@ class RemoteAccessManager:
         active_device_ids: list[str] = []
         for device in payload.get("items", []):
             if device.get("id") in local:
-                self.repository.update_cloud_state(device)
+                await asyncio.to_thread(self.repository.update_cloud_state, device)
                 if device.get("status") == "active":
                     active_device_ids.append(str(device["id"]))
         if self.identity_repository is not None and active_device_ids:
@@ -488,7 +488,7 @@ class RemoteAccessManager:
         )
         try:
             if response.status_code == 304:
-                self.identity_repository.touch_access_projection(installation.id)
+                await asyncio.to_thread(self.identity_repository.touch_access_projection, installation.id)
                 return False
             payload = await self._payload(response)
             try:
@@ -517,7 +517,7 @@ class RemoteAccessManager:
                 ]
                 if len(memberships) != len(raw_memberships):
                     raise ValueError("membership entry is invalid")
-                self.identity_repository.apply_access_projection(
+                await asyncio.to_thread(self.identity_repository.apply_access_projection,
                     installation_id=installation.id,
                     cloud_device_id=installation.cloud_device_id,
                     organization_id=installation.organization_id,
@@ -540,7 +540,7 @@ class RemoteAccessManager:
             self._access_projection_etag = etag if etag else None
             return True
         except RemoteAccessError as error:
-            self._deactivate_for_access_error(error)
+            await asyncio.to_thread(self._deactivate_for_access_error, error)
             raise
         finally:
             await response.aclose()
@@ -596,7 +596,8 @@ class RemoteAccessManager:
                 )
 
     async def rotate(
-        self, device_id: str, *, cloud: AI2AppsCloudClient | None = None
+        self, device_id: str, *, cloud: AI2AppsCloudClient | None = None,
+        owner_reauth_grant: str | None = None,
     ) -> RemoteDeviceRecord:
         device = self.require_device(device_id)
         restart_after_rotation = device.enabled
@@ -606,12 +607,17 @@ class RemoteAccessManager:
                 "POST",
                 f"/v1/remote/devices/{device_id}/credentials/rotate",
                 cloud=cloud,
+                headers={"X-Owner-Reauth-Grant": owner_reauth_grant} if owner_reauth_grant else None,
             )
         except (httpx.TimeoutException, httpx.TransportError):
+            # Purpose-bound grants are single-use; an uncertain rotation must not be replayed.
+            if owner_reauth_grant:
+                raise
             payload = await self._request(
                 "POST",
                 f"/v1/remote/devices/{device_id}/credentials/rotate",
                 cloud=cloud,
+                headers={"X-Owner-Reauth-Grant": owner_reauth_grant} if owner_reauth_grant else None,
             )
         secret = self._validate_credential(device_id, payload)
         try:

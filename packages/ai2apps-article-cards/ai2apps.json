@@ -1,0 +1,89 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/article-cards",
+    "type": "app",
+    "version": "0.1.2",
+    "displayName": "Article Cards",
+    "description": "Turn articles into editable, paginated image cards."
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": [
+      "darwin"
+    ],
+    "architectures": [
+      "arm64"
+    ]
+  },
+  "entrypoints": [
+    {
+      "name": "main",
+      "kind": "app",
+      "path": "web/index.html"
+    }
+  ],
+  "permissions": [],
+  "dependencies": [],
+  "files": [],
+  "sbom": {
+    "format": "spdx-json-2.3",
+    "path": "META/sbom.spdx.json"
+  },
+  "capabilityCatalog": {
+    "schemaVersion": "ai2apps.package-capabilities.v1",
+    "entries": [
+      {
+        "kind": "mini-app",
+        "identity": "ai2apps.imagine.article-cards",
+        "provides": [
+          "doc_studio.export_article_cards"
+        ],
+        "tasks": [
+          "Export article cards",
+          "导出文章卡片"
+        ],
+        "inputTypes": [
+          "text"
+        ],
+        "outputTypes": [
+          "image",
+          "archive"
+        ],
+        "requirements": {
+          "capabilities": []
+        },
+        "agent": {
+          "mode": "aaat",
+          "declarationVersion": "1.0.0",
+          "exports": [
+            {
+              "name": "doc_studio.export_article_cards",
+              "interfaceVersion": "1.0.0",
+              "inputTypes": [
+                "text"
+              ],
+              "outputTypes": [
+                "image",
+                "archive"
+              ]
+            }
+          ]
+        },
+        "scope": "Installed Doc Studio Host SDK renders article cards to shared Output.",
+        "processing": "local",
+        "pricing": "unknown",
+        "localizations": {
+          "en": {
+            "displayName": "Article Cards",
+            "description": "Paginate an article and export PNG cards."
+          },
+          "zh": {
+            "displayName": "文章卡片",
+            "description": "将文章分页并导出 PNG 卡片。"
+          }
+        }
+      }
+    ]
+  }
+}

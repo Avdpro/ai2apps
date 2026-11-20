@@ -1,0 +1,4 @@
+Converted checkpoint of https://huggingface.co/depth-anything/Depth-Anything-V2-Large. Original authors retain their rights.
+License: CC-BY-NC-4.0. Conversion does not remove upstream restrictions.
+AI2Apps modification: lossless tensor serialization to safetensors; original names and FP32 layout retained.
+Research-only release; not a grant of commercial rights.

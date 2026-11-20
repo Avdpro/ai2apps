@@ -5,6 +5,8 @@ import json
 from .service import TaskHandler
 from .sessions import execution_principal
 
+CLEANUP_TIMEOUT_SECONDS = 60
+
 
 def register_intelligence(runtime):
     service=runtime.system_tasks
@@ -60,11 +62,22 @@ def register_intelligence(runtime):
                     progress={**run.get('progress',{}),'root_id':'collection:'+run_id,'collection_run_id':run_id})
                 await asyncio.wait({worker},timeout=2)
             await worker
-            # Browser task-tree reconciliation owns page cleanup and completion.
-            while collector.tree.get(ctx.owner,'collection:'+run_id)['status'] not in ('completed','failed','cancelled'):
-                ctx.report(message='等待子任务和页面清理',progress={**collector.store.get('runs',ctx.owner,run_id).get('progress',{}),'root_id':'collection:'+run_id})
-                await asyncio.sleep(1)
-            collector.store.complete_pending(ctx.owner,run_id)
+            # The business task can settle while the browser monitor still
+            # owns and reconciles the exact pending page leases.
+            root_id = 'collection:' + run_id
+            try:
+                async with asyncio.timeout(CLEANUP_TIMEOUT_SECONDS):
+                    while collector.tree.get(ctx.owner,root_id)['status'] not in ('completed','failed','cancelled'):
+                        ctx.report(state='waiting_resource',message='等待子任务和页面清理',
+                            progress={**collector.store.get('runs',ctx.owner,run_id).get('progress',{}),'root_id':root_id})
+                        await asyncio.sleep(1)
+            except TimeoutError:
+                collector.store.fail_finalization(ctx.owner,run_id,
+                    '页面清理超时；已保存的情报仍可查看，后台将继续核验清理',
+                    timeout_seconds=CLEANUP_TIMEOUT_SECONDS, reason='cleanup_timeout')
+                collector.changed(ctx.owner,run_id)
+            else:
+                collector.store.complete_pending(ctx.owner,run_id)
             run=collector.store.get('runs',ctx.owner,run_id)
             ctx.report(message=run.get('message',''),progress={**run.get('progress',{}),
                 'root_id':'collection:'+run_id,'collection_run_id':run_id})
@@ -96,3 +109,6 @@ def register_intelligence(runtime):
 
     from ai2apps.intelligence import article_chat
     article_chat.register(runtime,principal_for,authorize)
+
+    from ai2apps.intelligence import export_jobs
+    export_jobs.register(runtime, principal_for)

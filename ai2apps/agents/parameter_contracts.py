@@ -5,6 +5,12 @@ import json
 from jsonschema import Draft202012Validator
 
 PREFIX = "Trusted selected parameter contracts: "
+STATIC_PREFIX = "tool:"
+
+
+def static_contract_version(tool):
+    value = {'name': tool.qualified_name, 'revision': tool.revision, 'schema': tool.input_schema}
+    return STATIC_PREFIX + hashlib.sha256(json.dumps(value, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
 
 async def resolve_contract(provider, principal, values=None):
     values=values or {}
@@ -24,6 +30,8 @@ async def resolve_contract(provider, principal, values=None):
         'selection_required':bool(descriptor.get('selection_required')),
         'install':deepcopy(descriptor.get('install')),
         'collection_tool':'app.collect_parameters'}
+    if descriptor.get('auto_continue_after_setup') is True:
+        contract['auto_continue_after_setup']=True
     contract['contract_version']=hashlib.sha256(json.dumps(contract,sort_keys=True,separators=(',',':')).encode()).hexdigest()
     return contract
 

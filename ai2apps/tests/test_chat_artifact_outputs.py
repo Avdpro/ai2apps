@@ -34,8 +34,12 @@ def test_arbitrary_providers_types_ownership_and_dedup(runtime,tmp_path):
 def test_cards_use_shared_renderer_and_no_untrusted_html():
     root=Path(__file__).resolve().parents[1]/'web'
     script=(root/'static/js/chat_artifacts.js').read_text()
-    for tag in ('audio','video','iframe','textContent','sandbox','signedFetch','import-artifact','revokeObjectURL'):
+    for tag in ('audio','video','iframe','textContent','sandbox','signedFetch','revokeObjectURL'):
         assert tag in script
+    # Shared image work now composes both owned artifact and attachment routes.
+    assert "'/v1/platform/gallery/assets/import-'" in script
+    assert "(ref.attachment?'attachment':'artifact')" in script
+    assert "(ref.attachment||ref.artifact)" in script
     assert 'innerHTML' not in script and 'autoplay' not in script
     assert 'AI2AppsChatArtifacts.render' in (root/'templates/chat.html').read_text()
     assert 'AI2AppsChatArtifacts.render' in (root/'static/js/mobile_chat.js').read_text()

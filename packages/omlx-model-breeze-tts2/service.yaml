@@ -1,0 +1,127 @@
+schema: ai2apps.service/v1
+id: ai2apps.model.breeze-tts2
+name: Breeze TTS 2 (Experimental)
+description: 'Breeze TTS 2 (Experimental): local speech and reference cloning. Experimental
+  quality; emotion control is not enabled.'
+version: 0.1.0
+publisher:
+  id: ai2apps
+license:
+  name: BreezeBlue Research and Non-Commercial License
+  id: LicenseRef-BreezeBlue-Research-NonCommercial
+  path: META/licenses/LICENSE.txt
+attribution:
+  notice: META/NOTICE.md
+  source: https://huggingface.co/mlx-community/Breeze-TTS-2-mlx
+runtime:
+  mode: process
+  protocol: ai2apps-model-worker/v1
+  provider: ai2apps.runtime.omlx
+  adapter: src/worker_adapter.py:create_adapter
+models:
+- id: ai2apps.model.breeze-tts2/bf16
+  display_name: Breeze TTS 2 (Experimental)
+  model_type: audio_tts
+  upstream_id: mlx-community/Breeze-TTS-2-mlx
+  capabilities:
+  - speech_generation
+  - reference_voice
+  - voice_cloning
+  metadata:
+    family: breeze-tts2
+    experimental: true
+    quantization: bf16
+    license_use: research_noncommercial_only
+  weights:
+    provider: huggingface
+    repo_id: mlx-community/Breeze-TTS-2-mlx
+    revision: 3c8829fb7fd335818f085cd2ef49b4100c0e46c8
+    distribution_id: dist_ai2apps_breeze_tts2_3c8829fb_v1
+    preparation:
+      recipe: native
+  audio_capabilities:
+    schema: ai2apps.audio-capabilities/v1
+    operations:
+    - audio_speech
+    languages:
+    - auto
+    - zh
+    - en
+    formats:
+      input:
+      - wav
+      - pcm
+      - mp3
+      - m4a
+      - aac
+      - flac
+      - ogg
+      - opus
+      - webm
+      output:
+      - wav
+      - pcm
+      - mp3
+      - m4a
+      - aac
+      - flac
+      - ogg
+      - opus
+      - webm
+    streaming:
+      mode: unsupported
+      formats: []
+    tts:
+      named_voices:
+        mode: unsupported
+        voices: []
+      speed:
+        mode: unsupported
+      emotion:
+        mode: unsupported
+        values: []
+      instructions:
+        mode: unsupported
+      voice_profiles:
+        mode: native
+        reference_audio: true
+        reference_transcript: required
+        transcript_effect: higher_fidelity
+      multi_speaker:
+        mode: unsupported
+capabilities: []
+requires:
+  services:
+  - id: ai2apps.runtime.omlx
+    version: '>=1.8.20,<2.0.0'
+    optional: false
+    capabilities:
+    - mlx
+    - model-worker-v1
+    - audio-tts
+    - audio-processing
+    - audio-codecs
+    - breeze-tts2
+  python: '>=3.11,<3.14'
+permissions:
+  network:
+    outbound: false
+  model_weights:
+    huggingface_cache: read
+    reason: Read only Host-selected pinned checkpoints.
+  accelerator:
+    metal: true
+    reason: Run local MLX speech synthesis.
+compatibility:
+  os:
+  - macos
+  architectures:
+  - arm64
+  minimum_os_version: '26.2'
+health:
+  path: /health
+  startup_timeout_seconds: 120
+restart:
+  max_attempts: 2
+  base_delay_seconds: 1
+tools: []

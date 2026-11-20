@@ -1,0 +1,27 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "ai2apps-model-vibevoice-cuda-0.1.0",
+  "documentNamespace": "https://ai2apps.com/spdx/ai2apps-model-vibevoice-cuda/0.1.0",
+  "packages": [
+    {
+      "name": "Microsoft VibeVoice safe voice presets",
+      "SPDXID": "SPDXRef-VibeVoice",
+      "versionInfo": "1541f590c7099820f10ea012f48d2399282df69f",
+      "downloadLocation": "https://github.com/microsoft/VibeVoice/tree/1541f590c7099820f10ea012f48d2399282df69f",
+      "licenseDeclared": "MIT",
+      "licenseConcluded": "MIT",
+      "copyrightText": "Copyright (c) Microsoft Corporation"
+    },
+    {
+      "name": "Qwen tokenizer assets",
+      "SPDXID": "SPDXRef-QwenTokenizer",
+      "versionInfo": "060db6499f32faf8b98477b0a26969ef7d8b9987",
+      "downloadLocation": "https://huggingface.co/Qwen/Qwen2.5-0.5B",
+      "licenseDeclared": "Apache-2.0",
+      "licenseConcluded": "Apache-2.0",
+      "copyrightText": "NOASSERTION"
+    }
+  ]
+}

@@ -49,6 +49,33 @@ async def test_admission_limits_and_queue(service):
     assert all(service.get('alice',t['id'])['status']=='completed' for t in tasks)
 
 @pytest.mark.asyncio
+async def test_dependency_can_run_under_same_owner_and_app_with_one_slot(service):
+    service.max_running = service.max_per_app = service.max_per_owner = 1
+    child_done = asyncio.Event()
+    trace = []
+
+    async def parent(ctx):
+        async with service.yield_slot(ctx.owner, ctx.id):
+            submit(service, dedup_key='child')
+            await child_done.wait()
+        trace.append('parent resumed')
+
+    async def child(ctx):
+        trace.append('child completed')
+        child_done.set()
+
+    service.register('test.parent', TaskHandler('test.app', parent))
+    register(service, child)
+    ticket = service.submit('alice','test.app','test.parent','Parent',{})
+    await service.tick()
+    await asyncio.sleep(0)
+    await service.tick()
+    await asyncio.wait_for(drain(service), 2)
+    assert trace == ['child completed','parent resumed']
+    assert service.get('alice',ticket['id'])['status']=='completed'
+    assert not service.yielded_slots
+
+@pytest.mark.asyncio
 async def test_schedule_coalesces_missed_slots_manual_keeps_next_due(service):
     register(service);service.clock=lambda:1000
     service.schedule('alice','test.app','schedule','test.job','Scheduled',{},next_run=100,interval_seconds=100)
@@ -198,13 +225,13 @@ def test_v94_trigger_variants_upgrade_without_losing_tasks_or_schedules(tmp_path
     if has_trigger:db.execute("UPDATE system_tasks SET trigger='schedule' WHERE id='saved'")
     db.execute("INSERT INTO system_task_schedules(id,owner,app_id,kind,name,payload_json,next_run,updated_at) VALUES('daily','alice','test.app','test.job','Daily','{}',9999999999,1)")
     db.commit();db.close()
-    database=PlatformDatabase(path);assert database.initialize().schema_version==100
+    database=PlatformDatabase(path);assert database.initialize().schema_version==MIGRATIONS[-1].version
     runtime=NS(database=database,events=EventStore(database),notifications=EventNotificationBus())
     service=SystemTaskService(runtime);register(service)
     assert service.get('alice','saved')['trigger']==('schedule' if has_trigger else 'manual')
     assert service.snapshot('alice')['schedules'][0]['id']=='daily'
     assert service.start_schedule('alice','daily')['status']=='queued'
-    assert database.initialize().schema_version==100
+    assert database.initialize().schema_version==MIGRATIONS[-1].version
 
 
 def test_history_retention_age_count_owner_and_active(service):
@@ -240,3 +267,34 @@ def test_snapshot_source_app_identity(service):
     assert apps['ai2apps.intelligence']['name']=='Intel Center'
     assert apps['test.app']=={'name':'test.app','icon':'app-window'}
     assert service.snapshot('bob')['apps']=={}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('app,kind',[('arbitrary.alpha','calendar.one'),('unrelated.beta','clock.two')])
+async def test_trusted_calendar_callback_disable_and_slot_receipt(service,app,kind):
+    started=[];disabled=[]
+    async def execute(ctx):
+        # Workflow checkpoints belong to the handler, including on first dispatch.
+        assert ctx.checkpoint == {}
+        started.append(ctx.id)
+        return {}
+    service.register(kind,TaskHandler(app,execute,next_schedule=lambda owner,payload,now:now+300,disable_schedule=lambda owner,payload:disabled.append(owner)))
+    service.clock=lambda:1000
+    service.schedule('alice',app,'calendar-key',kind,'Calendar',{},next_run=999)
+    await service.tick();await drain(service)
+    assert len(started)==1
+    row=service.snapshot('alice')['schedules'][0];assert row['next_run']==1300 and row['can_disable']
+    # A repeated admission for the same due slot reuses the original receipt,
+    # even if its dispatch already completed.
+    with service.database.transaction(write=True) as db:db.execute('UPDATE system_task_schedules SET next_run=999 WHERE id=?',('calendar-key',))
+    await service.tick();await drain(service);assert len(started)==1
+    service.disable_schedule('alice','calendar-key');assert disabled==['alice']
+    assert not service.snapshot('alice')['schedules']
+
+
+@pytest.mark.asyncio
+async def test_owner_cancelled_result_remains_cancelled(service):
+    async def execute(ctx):return {'_status':'cancelled'}
+    register(service,execute)
+    task=submit(service);await service.tick();await drain(service)
+    assert service.get('alice',task['id'])['status']=='cancelled'

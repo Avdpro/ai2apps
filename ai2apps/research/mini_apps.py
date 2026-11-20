@@ -18,17 +18,19 @@ from .provider import SafeHttpClient, _source_id
 HOST='ai2apps.ai-browser'
 SEARCH='ai2apps.search-all'
 READER='ai2apps.web-reader'
+ARTICLE_TASK_SECONDS = 60
 
 
 def search_execution_policy(mounted, capability, mode):
     """Fast search opts out of vision; other callers keep owner/default policy."""
-    if mode != 'fast':return {'allow_user_intervention':False,'timeout_seconds':10}
+    timeout = ARTICLE_TASK_SECONDS if capability == 'article' else 10
+    if mode != 'fast':return {'allow_user_intervention':False,'timeout_seconds':timeout}
     from ai2apps.agent_builder.execution_policy import combine_minimum, resolve_policy
     entry=next(c for c in mounted.declaration['web_agent']['capabilities'] if c['id']==capability)
     minimum=combine_minimum(mounted.declaration['web_agent'].get('minimum_execution_policy'),entry.get('minimum_execution_policy'))
     minimum=combine_minimum(minimum,entry['source'].get('minimum_execution_policy'))
     requested={'visual_locating':False,'visual_review':'off','allow_user_intervention':False,
-        'timeout_seconds':10}
+        'timeout_seconds':timeout}
     effective=resolve_policy(requested,minimum)
     if effective['visual_locating'] or effective['visual_review']!='off':
         raise ToolProviderError('Fast search cannot use a capability requiring visual assistance')
@@ -251,7 +253,7 @@ class WebMiniAppAdapters:
             'app_id':HOST,'mini_app_id':SEARCH,'provider_package_id':mounted.mount['app_key'],'untrusted':True}
 
     async def fetch(self,args,context):
-        async with asyncio.timeout(10):
+        async with asyncio.timeout(ARTICLE_TASK_SECONDS + 15):
             return await self._fetch(args,context)
 
     async def _fetch(self,args,context):
@@ -270,12 +272,25 @@ class WebMiniAppAdapters:
         key=hashlib.sha256(str(context.invocation_id or context.trace_id or repr(args)).encode()).hexdigest()[:32]
         task=self.broker.submit_declared(mounted,principal,capability='article',parameters=parameters,profile=args.get('profile','default'),request_id='aaat-'+key,
             execution_policy=search_execution_policy(mounted,'article',args.get('mode')))
-        observed=await wait_task(self.runtime,self.broker,mounted,principal,task,context,time.monotonic()+10,True)
+        try:
+            observed=await wait_task(self.runtime,self.broker,mounted,principal,task,context,
+                                     time.monotonic()+ARTICLE_TASK_SECONDS+5,True)
+        except WebMiniAppTaskError as error:
+            failure=error.details['failure']
+            destination=failure.get('cause',{}).get('url')
+            if failure.get('code') != 'article_no_readable_text' or not destination or not scope_allows(destination,entry['source']['site_scope']):
+                raise
+            return {'status':'partial','coverage':'page_opened','url':destination,'text':'',
+                    'next_capability':'browser.complete_goal',
+                    'limitations':'The page opened but no article body was verified. If the goal requires site interaction, investigate from this URL.',
+                    'browser_task_id':task['id'],'untrusted':True}
         raw=observed.get('result') or {}
         text=raw.get('text') or raw.get('content') or raw.get('article',{}).get('text') or ''
         unavailable_titles={'not found','404 not found','page not found','document not found','403 forbidden','access denied','service unavailable'}
         status=raw.get('status_code') or raw.get('http_status')
-        if str(raw.get('title','')).strip().lower() in unavailable_titles or (isinstance(status,int) and status>=400):
+        title = str(raw.get('title','')).strip().lower()
+        retired = title.startswith('no longer available') and isinstance(text,str) and len(text.strip()) < 100
+        if title in unavailable_titles or retired or (isinstance(status,int) and status>=400):
             raise ToolProviderError('Web Reader page unavailable ('+str(raw.get('title') or status)+'): '+url+'; task '+observed['id'])
         if not isinstance(text,str) or not text.strip():raise ToolProviderError('Web Reader returned no readable article text: '+observed['id'])
         maximum=args.get('max_chars',60000)
@@ -290,8 +305,8 @@ class WebMiniAppAdapters:
 
 def install_mini_app_providers(runtime_provider,router):
     from ai2apps.services.aaat import AgentResultPolicy, InvocationPolicyError
-    from .citations import citation_instruction, bind_final, report_preview, READ_TOOLS
-    router.register_result_policy(AgentResultPolicy('citation_binding',citation_instruction,bind_final,report_preview,tuple(sorted(READ_TOOLS))))
+    from .citations import citation_instruction, bind_final, report_preview, failure_receipt, READ_TOOLS
+    router.register_result_policy(AgentResultPolicy('citation_binding',citation_instruction,bind_final,report_preview,tuple(sorted(READ_TOOLS)),failure_receipt))
     async def confirmed_invocation(arguments,context):
         if not arguments.get('confirmation_id'):return False
         from .search_preparation import require_confirmation

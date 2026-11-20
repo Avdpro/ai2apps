@@ -60,11 +60,19 @@ async def principal(request: Request):
     path = request.url.path
     module_apps = {'imagine_studio': 'ai2apps.imagine-studio',
                    'video_studio': 'ai2apps.video-studio', 'readaloud': 'ai2apps.readaloud',
-                   'client':'ai2apps.ai-browser', 'agent_platform':'ai2apps.ai-browser', 'agent_builder':'ai2apps.ai-browser', 'agents':'ai2apps.ai-browser'}
+                   'client':'ai2apps.ai-browser', 'agent_platform':'ai2apps.ai-browser', 'agent_builder':'ai2apps.ai-browser', 'agents':'ai2apps.ai-browser','app_shortcuts':'ai2apps.messager'}
     required = None
     for route in ROUTES:
         if route['method'] == request.method and compile_path(route['path'])[0].fullmatch(path):
             required = module_apps.get(route['module'])
+            if route['module']=='app_state':
+                from ai2apps.core import RepositoryError
+                from ai2apps.extensions import ExtensionError
+                try:
+                    instance=runtime.extension_manager.require_instance_access(request.path_params['instance'],actor)
+                    required=instance['package_id']
+                except (KeyError,PermissionError,RepositoryError,ExtensionError):
+                    raise HTTPException(404,'App-State target unavailable') from None
             break
     if path == '/v1/platform/notifications/resolve-target':
         payload=await request.json()

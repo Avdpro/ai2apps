@@ -7,6 +7,35 @@ let appHandoff = null;
 let channelHandoff = null;
 let openingHandoff = false;
 const handoffText=(zh,en)=>document.documentElement.lang.startsWith('zh')?zh:en;
+const docSelection = new Set();
+const docBar = $('#doc-studio-intake');
+let docSelectionChannel = null;
+function docSelectionStatus() {
+ const inArticles = tab === 'articles' && Boolean(channelId);
+ if (!inArticles || docSelectionChannel !== channelId) {
+  docSelectionChannel = null;
+  docSelection.clear();
+ }
+ const choosing = docSelectionChannel !== null;
+ docBar.hidden = !inArticles;
+ docBar.querySelector('[data-doc-start]').hidden = choosing;
+ docBar.querySelector('[data-doc-clear]').hidden = !choosing;
+ const confirm = docBar.querySelector('[data-doc-open]');
+ confirm.hidden = !choosing;
+ confirm.disabled = !docSelection.size;
+ const prompt = docBar.querySelector('[data-doc-prompt]');
+ prompt.hidden = !choosing;
+ prompt.textContent = choosing ? handoffText(
+  `请选择参与撰写的文章（已选 ${docSelection.size} 篇）`,
+  `Select articles to include (${docSelection.size} selected)`
+ ) : '';
+}
+function endDocSelection() {
+ docSelectionChannel = null;
+ docSelection.clear();
+ renderContent();
+ icons();
+}
 const handoffPanel=document.createElement('aside');
 handoffPanel.className='intel-help';handoffPanel.hidden=true;
 document.querySelector('.intel-main').prepend(handoffPanel);
@@ -157,7 +186,7 @@ function mobilePush(page,beforeReveal){
  if(mobileHosted())mobileNavigation('ai2apps.intelligence.push',{depth:mobileStack.length});
 }
 function mobileBack(fromHistory=false){
- if(!mobileQuery.matches||(!fromHistory&&document.querySelector('dialog[open]')))return;
+ if(!mobileQuery.matches||(!fromHistory&&document.querySelector('dialog[open]:not(.app-state-dialog)')))return;
  if(!mobileStack.length)return;
  if(mobileHosted()&&!fromHistory){if(!mobileBackPending){mobileBackPending=true;mobileNavigation('ai2apps.intelligence.back');}return;}
  const previous=mobileStack.pop();if(!previous)return;
@@ -264,7 +293,7 @@ function initMobile(){
  // System edge gestures use Shell history. Content swipes exclude horizontal controls.
  let swipe=null;
  const layout=$('.intel-layout');
- layout.addEventListener('touchstart',event=>{const t=event.touches[0],nativeEdge=mobileHosted()&&t.clientX-layout.getBoundingClientRect().left<=24;swipe=!nativeEdge&&mobileQuery.matches&&mobilePage!=='channels'&&event.touches.length===1&&!event.target.closest('.intel-sections,input,textarea,select,.intel-mobile-menu')&&!document.querySelector('dialog[open]')?{x:t.clientX,y:t.clientY}:null;},{passive:true});
+ layout.addEventListener('touchstart',event=>{const t=event.touches[0],nativeEdge=mobileHosted()&&t.clientX-layout.getBoundingClientRect().left<=24;swipe=!nativeEdge&&mobileQuery.matches&&mobilePage!=='channels'&&event.touches.length===1&&!event.target.closest('.intel-sections,input,textarea,select,.intel-mobile-menu')&&!document.querySelector('dialog[open]:not(.app-state-dialog)')?{x:t.clientX,y:t.clientY}:null;},{passive:true});
  layout.addEventListener('touchend',event=>{if(!swipe)return;const t=event.changedTouches[0],dx=t.clientX-swipe.x,dy=t.clientY-swipe.y;swipe=null;if(dx>72&&dx>Math.abs(dy)*1.5){if(event.cancelable)event.preventDefault();mobileBack();}},{passive:false});
  layout.addEventListener('touchcancel',()=>{swipe=null;},{passive:true});
  mobileQuery.addEventListener('change',()=>{mobileStack.length=0;mobilePage='channels';if(mobileQuery.matches&&!['articles','topics','drafts'].includes(tab))tab='articles';render();safe(refresh)();});
@@ -275,7 +304,7 @@ const channelChatPlaceholder=$('#channel-chat-question').placeholder;
 const channelChatSendLabel=$('#send-channel-chat').textContent;
 channelChatHost.replaceChildren();
 const channelSurface=window.AI2AppsMiniAppChat.createConversationSurface({root:channelChatHost,placeholder:channelChatPlaceholder,sendLabel:channelChatSendLabel});
-channelSurface.header.hidden=true;channelSurface.model.disabled=true;
+channelSurface.header.hidden=true;
 channelSurface.beforeInput.textContent=channelChatHelp;
 channelSurface.messages.id='channel-chat-messages';channelSurface.messages.setAttribute('role','log');
 channelSurface.form.id='channel-chat-form';channelSurface.input.id='channel-chat-question';channelSurface.input.required=true;
@@ -283,7 +312,8 @@ channelSurface.send.id='send-channel-chat';channelSurface.status.id='channel-cha
 const channelChatContext=document.createElement('label');channelChatContext.id='channel-chat-context';channelChatContext.htmlFor='channel-chat-question';channelChatContext.className='intel-help';channelSurface.beforeInput.append(channelChatContext);
 
 const conversations=new Map();
-const conversationState=id=>{if(!conversations.has(id))conversations.set(id,{turns:[],draft:'',loading:false,loaded:false,sending:false,error:'',requestId:null});return conversations.get(id);};
+const conversationState=id=>{if(!conversations.has(id))conversations.set(id,{turns:[],draft:'',loading:false,loaded:false,sending:false,error:'',requestId:null,model:'',models:null});return conversations.get(id);};
+channelSurface.model.onchange=()=>{if(!channelId)return;const chat=conversationState(channelId);chat.model=channelSurface.model.value;chat.requestId=null;chat.requestArticle=undefined;chat.requestModel=undefined;};
 channelSurface.reset.onclick=async()=>{const id=channelId;if(!id||conversationState(id).sending)return;try{await api('/channels/'+id+'/conversation/reset','POST',{});conversations.delete(id);await loadConversation(id);renderChannelChat();}catch(error){notice(error.message);}};
 
 const channel = () => state.channels.find(c => c.id === channelId);
@@ -342,6 +372,7 @@ function setChannelLoadState(value){
  $('#channel-loading-retry').hidden=value!=='failed';
 }
 async function refresh(){
+ if(appStateRestoring)return;
  if(refreshInFlight)return refreshInFlight;
  if(!hasSnapshot)setChannelLoadState('loading');
  refreshInFlight=refreshSnapshot();
@@ -418,7 +449,7 @@ function initMobilePullRefresh(main,directory=false){
  main.querySelector(directory?'.intel-section-label':'.intel-mobile-bar').after(indicator);
  const label=indicator.querySelector('.intel-pull-refresh-label');
  let gesture=null,refreshing=false,distance=0,suppressClickUntil=0;
- const eligible=()=>mobileQuery.matches&&(directory?mobilePage==='channels':mobilePage==='channel'&&tab==='articles')&&!document.querySelector('dialog[open]');
+ const eligible=()=>mobileQuery.matches&&(directory?mobilePage==='channels':mobilePage==='channel'&&tab==='articles')&&!document.querySelector('dialog[open]:not(.app-state-dialog)');
  function show(height,text){indicator.style.height=height+'px';indicator.hidden=height===0;if(label.textContent!==(text||''))label.textContent=text||'';}
  function reset(){gesture=null;distance=0;if(!refreshing){indicator.classList.remove('is-pulling','is-ready');show(0);}}
  async function reload(){
@@ -667,6 +698,7 @@ function renderContent(){
  if(preserve)scroll.scrollTop=top;
 }
 function renderContentBody(){
+ docSelectionStatus();
  const root=$('#intel-content');window.IntelligenceCards.clearLayout(root,tab==='articles');root.onclick=null;root.onsubmit=null;
  root.classList.toggle('intel-article-grid',tab==='articles'&&!!channel());
  root.classList.toggle('intel-draft-grid',tab==='drafts'&&!!channel());
@@ -679,7 +711,7 @@ function renderContentBody(){
   const remote=state.progressive?mobileArticleLists.get(mobileArticleScope()):null;
   if(state.progressive&&(!remote?.loaded||remote.promise&&!remote.ids.length)){setHTML(root,remote?.error?it`<p class="intel-form-error">${esc(remote.error)}</p><button data-mobile-articles-retry>${lt('重试')}</button>`:it`<p class="intel-help" role="status">${lt('正在加载文章…')}</p>`);return;}
   const page=state.progressive?{items:(remote?.ids||[]).map(id=>state.articles.find(a=>a.id===id)).filter(a=>a&&(filter!=='unread'||!a.read)&&(filter!=='more'||a.feedback==='more')&&(sectionId!=='$favorites'||a.favorite)),more:!!remote?.next}:window.IntelligencePagination.page('articles',JSON.stringify([channelId,sectionId,q,filter,typeFilter]),articles);
-  setHTML(root,page.items.map(a=>window.IntelligenceCards.render(a,{selected:a.id===selectedId,section:sectionName(a),updated:when(a.updated_at),failedImages:failedCovers,compact:true})).join('')+window.IntelligencePagination.button('articles',page.more)||empty('newspaper',q||filter!=='all'||typeFilter!=='all'||sectionId?sectionId==='$favorites'?lt('暂无收藏的文章'):lt('没有匹配的文章'):lt('等待第一份情报'),sectionId==='$favorites'?lt('点击文章上方的星标即可收藏。'):inChannel('sources').length?lt('点击“立即更新”，读取信息源并整理值得关注的内容。没有新变化时，不会生成重复文章。'):lt('先添加信息源，或让 AI 根据你的兴趣推荐网站。'),lt('<button data-action="sources">管理信息源 →</button>')));
+  setHTML(root,page.items.map(a=>window.IntelligenceCards.render(a,{selected:a.id===selectedId,section:sectionName(a),updated:when(a.updated_at),failedImages:failedCovers,compact:true,docStudioSelected:docSelectionChannel===channelId?docSelection.has(a.id):null})).join('')+window.IntelligencePagination.button('articles',page.more)||empty('newspaper',q||filter!=='all'||typeFilter!=='all'||sectionId?sectionId==='$favorites'?lt('暂无收藏的文章'):lt('没有匹配的文章'):lt('等待第一份情报'),sectionId==='$favorites'?lt('点击文章上方的星标即可收藏。'):inChannel('sources').length?lt('点击“立即更新”，读取信息源并整理值得关注的内容。没有新变化时，不会生成重复文章。'):lt('先添加信息源，或让 AI 根据你的兴趣推荐网站。'),lt('<button data-action="sources">管理信息源 →</button>')));
   window.IntelligenceCards.layout(root);
  }else if(tab==='drafts'){
   renderDraftList(root);
@@ -731,7 +763,7 @@ function renderReader(){
  if(readerMode==='article'&&selectedId&&articleOpening===selectedId){root.classList.add('open');setHTML(root,it`<div class="intel-article-loading" role="status" aria-live="polite"><p>${lt('正在加载文章…')}</p><div class="intel-loading-title" aria-hidden="true"></div><div class="intel-loading-cover" aria-hidden="true"></div><div class="intel-loading-line" aria-hidden="true"></div><div class="intel-loading-line" aria-hidden="true"></div></div>`);return;}
  if(previewDraft?.channel_id===channelId){renderDraftPreview(root,previewDraft);return;}
  if(!a){root.classList.remove('open');setHTML(root,lt('<div class="intel-reader-empty"><span><i data-lucide="book-open-text"></i></span><h2>每一条情报，都有来处</h2><p>选一篇文章，查看摘要、变化与原始来源。</p><div class="intel-reader-principles"><p>01　只关注与你有关的信息</p><p>02　合并重复报道，保留新进展</p><p>03　阅读文章，也能追溯原文</p></div></div>'));return;}
- root.classList.add('open');setHTML(root,it`<div class="intel-article-head"><span>${esc(sectionName(a))} · ${a.ai_translation?lt('AI 翻译'):a.image_ai_summary?lt('AI 图片总结'):a.manual_import?lt('手动收录'):lt('AI 整理')} · ${when(a.updated_at)}</span><button type="button" class="intel-favorite" data-favorite="${esc(a.id)}" aria-pressed="false"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m12 3 2.8 5.7 6.3.9-4.55 4.45 1.07 6.28L12 17.36l-5.62 2.97 1.07-6.28L2.9 9.6l6.3-.9Z"/></svg><span data-favorite-label hidden></span></button><button type="button" data-article-chat="${esc(a.id)}" title="${esc(window.IntelligenceI18n.format('chat.mini.title',{}))}" aria-label="${esc(window.IntelligenceI18n.format('chat.mini.title',{}))}" data-action-tip="${esc(window.IntelligenceI18n.format('chat.mini.title',{}))}"><i data-lucide="messages-square" aria-hidden="true"></i></button><button type="button" data-article-chat="${esc(a.id)}" data-article-chat-purpose="research" title="${esc(window.IntelligenceI18n.format('intelligence.article_chat.research_title',{}))}" aria-label="${esc(window.IntelligenceI18n.format('intelligence.article_chat.research_title',{}))}" data-action-tip="${esc(window.IntelligenceI18n.format('intelligence.article_chat.research_title',{}))}"><i data-lucide="telescope" aria-hidden="true"></i></button><button data-write="article" data-scope-id="${esc(a.id)}" title="${esc(lt('撰写稿件'))}" aria-label="${esc(lt('撰写稿件'))}" data-action-tip="${esc(lt('撰写稿件'))}"><i data-lucide="square-pen" aria-hidden="true"></i></button></div>${coverHTML(a,true)}<h1>${esc(a.title)}</h1><div class="intel-lead">${esc(a.summary)}</div>${a.sources.some(s=>s.coverage==='preview')?it`<p class="intel-help">基于部分预览内容整理，可能不完整。请通过下方原始来源查看全文；原站可能要求登录或订阅。</p>`:''}<div class="intel-body">${articleBodyHTML(a)}</div>${a.post_evidence?.length?it`<details class="intel-help"><summary>事件相关帖子 · ${a.post_evidence.length}</summary>${a.post_evidence.map(p=>it`<section><strong>${esc(p.author||p.source_name)} · ${p.role==='supplementary'?lt('补充证据'):lt('主要证据')}</strong><div class="intel-body">${esc(p.text)}</div><a href="${link(p.url)}" target="_blank" rel="noopener noreferrer">查看原帖 ↗</a></section>`).join('')}</details>`:''}${a.original_content?it`<details class="intel-help"><summary>查看原文</summary><h3>${esc(a.original_content.title)}</h3><div class="intel-body">${esc(a.original_content.body)}</div></details>`:''}<section class="intel-citations"><h3>原始来源 · ${a.sources.length}</h3>${a.sources.map((s,i)=>it`<a href="${link(s.url)}" target="_blank" rel="noopener noreferrer">[${i+1}] ${esc(s.title||s.source_name)} ↗<small>${esc(s.source_name)} · 采集于 ${when(s.retrieved_at)}${s.coverage?' · '+(s.coverage==='preview'?lt('不完整预览 · 原文可能需要登录或订阅'):s.coverage==='transcript'?lt('网页文字稿'):lt('仅标题与简介')):''}</small></a>`).join('')}</section>${eventOtherSourcesHTML(a)}${articleImagesHTML(a)}<div class="intel-feedback"><button data-action="extract-images" ${busy?'disabled':''}>提取文章图片</button><button data-action="extract-cover" ${busy?'disabled':''}>${a.cover_image?lt('重新提取标题图'):lt('提取标题图')}</button><button data-feedback="more" class="${a.feedback==='more'?'active':''}" aria-pressed="${a.feedback==='more'}">👍 顶</button><button data-feedback="less" class="${a.feedback==='less'?'active':''}" aria-pressed="${a.feedback==='less'}">👎 踩</button>${a.feedback==='less'?lt('<button data-action="edit-feedback">修改理由</button>'):''}</div>${a.feedback_reasons?.length?it`<p class="intel-help">踩的理由：${a.feedback_reasons.map(esc).join('；')}</p>`:''}<p class="intel-help">反馈保存在本机作为你的偏好，再次点击可撤销。AI 整理可能存在遗漏，关键事实请核对原文。</p>${a.versions?.length?it`<details class="intel-help"><summary>历史版本（${a.versions.length}）</summary>${a.versions.map(v=>it`<p>${when(v.updated_at)} · ${esc(v.title)}</p><div style="white-space:pre-wrap">${esc(v.body)}</div>`).join('<hr>')}</details>`:''}<section id="article-entities" class="intel-article-entities"></section>`);
+ root.classList.add('open');setHTML(root,it`<div class="intel-article-head"><span>${esc(sectionName(a))} · ${a.ai_translation?lt('AI 翻译'):a.image_ai_summary?lt('AI 图片总结'):a.manual_import?lt('手动收录'):lt('AI 整理')} · ${when(a.updated_at)}</span><button type="button" class="intel-favorite" data-favorite="${esc(a.id)}" aria-pressed="false"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m12 3 2.8 5.7 6.3.9-4.55 4.45 1.07 6.28L12 17.36l-5.62 2.97 1.07-6.28L2.9 9.6l6.3-.9Z"/></svg><span data-favorite-label hidden></span></button><button type="button" data-article-chat="${esc(a.id)}" title="${esc(window.IntelligenceI18n.format('chat.mini.title',{}))}" aria-label="${esc(window.IntelligenceI18n.format('chat.mini.title',{}))}" data-action-tip="${esc(window.IntelligenceI18n.format('chat.mini.title',{}))}"><i data-lucide="messages-square" aria-hidden="true"></i></button><button type="button" data-article-chat="${esc(a.id)}" data-article-chat-purpose="research" title="${esc(window.IntelligenceI18n.format('intelligence.article_chat.research_title',{}))}" aria-label="${esc(window.IntelligenceI18n.format('intelligence.article_chat.research_title',{}))}" data-action-tip="${esc(window.IntelligenceI18n.format('intelligence.article_chat.research_title',{}))}"><i data-lucide="telescope" aria-hidden="true"></i></button><button data-write="article" data-scope-id="${esc(a.id)}" title="${esc(lt('撰写稿件'))}" aria-label="${esc(lt('撰写稿件'))}" data-action-tip="${esc(lt('撰写稿件'))}"><i data-lucide="square-pen" aria-hidden="true"></i></button></div>${coverHTML(a,true)}<h1>${esc(a.title)}</h1><div class="intel-lead">${esc(a.summary)}</div>${a.sources.some(s=>s.coverage==='preview')?it`<p class="intel-help">基于部分预览内容整理，可能不完整。请通过下方原始来源查看全文；原站可能要求登录或订阅。</p>`:''}<div class="intel-body">${articleBodyHTML(a)}</div>${a.post_evidence?.length?it`<details class="intel-help"><summary>事件相关帖子 · ${a.post_evidence.length}</summary>${a.post_evidence.map(p=>it`<section><strong>${esc(p.author||p.source_name)} · ${p.role==='supplementary'?lt('补充证据'):lt('主要证据')}</strong><div class="intel-body">${esc(p.text)}</div><a href="${link(p.url)}" target="_blank" rel="noopener noreferrer">查看原帖 ↗</a></section>`).join('')}</details>`:''}${a.original_content?it`<details class="intel-help"><summary>查看原文</summary><h3>${esc(a.original_content.title)}</h3><div class="intel-body">${esc(a.original_content.body)}</div></details>`:''}<section class="intel-citations"><h3>原始来源 · ${a.sources.length}</h3>${a.sources.map((s,i)=>it`<a href="${link(s.url)}" target="_blank" rel="noopener noreferrer">[${i+1}] ${esc(s.title||s.source_name)} ↗<small>${esc(s.source_name)} · 采集于 ${when(s.retrieved_at)}${s.coverage?' · '+(s.coverage==='preview'?lt('不完整预览 · 原文可能需要登录或订阅'):s.coverage==='transcript'?lt('网页文字稿'):lt('仅标题与简介')):''}</small></a>`).join('')}</section>${eventOtherSourcesHTML(a)}${articleImagesHTML(a)}<div class="intel-feedback"><button data-action="extract-images" ${busy?'disabled':''}>提取文章图片</button><button data-action="extract-cover" ${busy?'disabled':''}>${a.cover_image?lt('重新提取标题图'):lt('提取标题图')}</button><button data-feedback="more" class="${a.feedback==='more'?'active':''}" aria-pressed="${a.feedback==='more'}">👍 顶</button><button data-feedback="less" class="${a.feedback==='less'?'active':''}" aria-pressed="${a.feedback==='less'}">👎 踩</button>${a.feedback==='less'?lt('<button data-action="edit-feedback">修改理由</button>'):''}</div>${a.feedback_reasons?.length?it`<p class="intel-help">踩的理由：${a.feedback_reasons.map(esc).join('；')}</p>`:''}<p class="intel-help">反馈保存在本机作为你的偏好，再次点击可撤销。AI 整理可能存在遗漏，关键事实请核对原文。</p>${a.versions?.length?it`<details class="intel-help"><summary>历史版本（${a.versions.length}）</summary>${a.versions.map(v=>it`<p>${when(v.updated_at)} · ${esc(v.title)}</p><div style="white-space:pre-wrap">${esc(v.body)}</div>`).join('<hr>')}</details>`:''}${a._transfer_conflicts?.length?`<details class="intel-help"><summary>${esc(handoffText("导入冲突版本","Imported conflict versions"))} (${a._transfer_conflicts.length})</summary>${a._transfer_conflicts.map(v=>`<h3>${esc(v.data.title||"")}</h3><div style="white-space:pre-wrap">${esc(v.data.body||v.data.current?.content||"")}</div>`).join("<hr>")}</details>`:""}<section id="article-entities" class="intel-article-entities"></section>`);
  syncArticleFavorite();
  window.IntelligenceEntities.renderArticle?.($('#article-entities'),a);
 }
@@ -892,7 +924,7 @@ async function loadDrafts(id,append=false){
 
 function renderDraftList(root){
  const drafts=draftLists.get(channelId),page=window.IntelligencePagination.page('drafts',channelId,window.IntelligencePagination.newest(drafts||[]));
- setHTML(root,drafts===undefined?lt('<p class="intel-help">正在读取稿件…</p>'):page.items.map(d=>it`<section class="intel-topic intel-draft-card" data-draft-preview="${esc(d.id)}" tabindex="0" role="button">${d.images?.[0]?it`<img class="intel-draft-cover" src="${esc(window.IntelligenceCards.imageURL({id:d.images[0].article_id},d.images[0].url))}" alt="${esc(d.title)}" loading="lazy">`: ''}<div class="intel-story-meta">${esc(writingKinds[d.kind])} · 第 ${d.revision} 版 · ${when(d.updated_at)}</div><h2>${esc(d.title)}</h2><p class="intel-help">${esc(d.scope_label)}</p></section>`).join('')+window.IntelligencePagination.button('drafts',page.more||draftOffsets.get(channelId)!=null)||empty('file-pen-line',lt('从情报写成稿件'),lt('选择文章、栏目、热点或整个频道，填写指导后开始撰写。'),''));
+ setHTML(root,drafts===undefined?lt('<p class="intel-help">正在读取稿件…</p>'):page.items.map(d=>it`<section class="intel-topic intel-draft-card" data-draft-preview="${esc(d.id)}" tabindex="0" role="button">${d.images?.[0]?it`<img class="intel-draft-cover" src="${esc(window.IntelligenceCards.imageURL({id:d.images[0].article_id},d.images[0].url))}" alt="${esc(d.title)}" loading="lazy">`: ''}<div class="intel-story-meta">${esc(writingKinds[d.kind])} · 第 ${d.revision} 版 · ${when(d.updated_at)}</div><h2>${esc(d.title)}</h2><p class="intel-help">${esc(d.scope_label)}</p></section>`).join('')+window.IntelligencePagination.button('drafts',page.more||draftOffsets.get(channelId)!=null)||empty('file-pen-line',lt('从情报写成稿件'),lt('选择文章、栏目、热点或频道，准备素材并在文档工坊撰写。'),''));
 }
 
 async function showDraftPreview(id){
@@ -908,11 +940,103 @@ function renderDraftPreview(root,d){
 }
 document.addEventListener('keydown',event=>{if(['Enter',' '].includes(event.key)&&event.target.matches('[data-draft-preview]')){event.preventDefault();safe(showDraftPreview)(event.target.dataset.draftPreview);}});
 
-function startWriting(scope,scopeId){
+async function startWriting(scope,scopeId,articleIds){
  const c=channel();if(!c)return;
- const label=scope==='article'?state.articles.find(a=>a.id===scopeId)?.title:scope==='topic'?c.hot_topics?.items.find(t=>t.id===scopeId)?.title:scope==='section'?(c.sections?.find(s=>s.id===scopeId)?.name||lt('待归类')):c.name;
- writingSession={channelId:c.id,scope,scopeId,label,pending:false,requestId:null,draft:null};
- $('#writing-create-form').reset();$('#writing-error').textContent='';$('#writing-status').textContent='';$('#writing-revision-guidance').value='';renderWriting();$('#writing-dialog').showModal();
+ const text=handoffText;
+ const dialog=document.createElement('dialog');dialog.id='intel-material-pack-dialog';dialog.className='intel-dialog';
+ dialog.setAttribute('aria-labelledby','intel-material-pack-heading');
+ const heading=document.createElement('h2');heading.id='intel-material-pack-heading';
+ heading.textContent=text('文章素材包','Article material pack');
+ const summary=document.createElement('p');summary.className='intel-help';
+ const list=document.createElement('ul');
+ const status=document.createElement('p');status.setAttribute('role','status');
+ const error=document.createElement('p');error.className='intel-form-error';error.setAttribute('role','alert');
+ const actions=document.createElement('div');actions.style.display='grid';actions.style.gap='8px';
+ const projectPicker=document.createElement('label');
+ projectPicker.textContent=text('选择文章工程','Choose an article project');projectPicker.hidden=true;
+ const projects=document.createElement('select');projectPicker.append(projects);
+ const footer=document.createElement('footer');
+ let busy=true,pack,receipt;
+ const requests=new Map();
+ const doc=(path,body)=>requestJSON('/v1/platform/doc-studio'+path,{
+  credentials:'same-origin',...(body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{})
+ });
+ function button(parent,zh,en,action){
+  const b=document.createElement('button');b.type='button';b.textContent=text(zh,en);
+  b.onclick=action;parent.append(b);return b;
+ }
+ const close=button(footer,'关闭','Close',()=>dialog.close());
+ const run=action=>async()=>{
+  if(busy||!dialog.open)return;
+  busy=true;error.textContent='';sync();
+  try{await action();}catch(e){error.textContent=e.message;}
+  finally{busy=false;sync();}
+ };
+ function sync(){
+  actions.hidden=!pack||!!receipt;
+  for(const b of actions.querySelectorAll('button'))b.disabled=busy;
+  newProject.disabled=existing.disabled=busy||!!window.AI2APPS_MOBILE_SURFACE;
+  projects.disabled=busy;
+  confirmExisting.hidden=projectPicker.hidden;
+  confirmExisting.disabled=busy||!projects.value;
+  openStudio.hidden=receipt?.kind!=='project';
+  openStudio.disabled=busy;
+  close.disabled=busy&&!!pack;
+ }
+ button(actions,'加入 Gallery','Add to Gallery',run(async()=>{
+  status.textContent=text('正在保存素材包和图片…','Saving material pack and images…');
+  try{
+   const result=await api('/material-packs/'+encodeURIComponent(pack.id)+'/gallery','POST');
+   receipt={kind:'gallery'};
+   status.textContent=text('素材包已加入 Gallery。','Material pack saved to Gallery.')
+    +(result.missing_images?text(' 未能内嵌的图片：',' Images not embedded: ')+result.missing_images:'');
+  }finally{if(!receipt)status.textContent='';}
+ }));
+ async function submitProject(projectId){
+  const target=projectId||null;
+  if(!requests.has(target))requests.set(target,crypto.randomUUID());
+  const task=await doc('/imports',{pack_id:pack.id,project_id:target,
+   ...(target?{}:{title:pack.title}),request_id:requests.get(target)});
+  receipt={kind:'project',task};
+  projectPicker.hidden=true;
+  status.textContent=text('素材导入已提交，可在文档工坊查看进度。','Import submitted. View progress in Doc Studio.');
+ }
+ const newProject=button(actions,'在文档工坊建立新文章工程','Create a project in Doc Studio',run(()=>submitProject(null)));
+ const existing=button(actions,'加入已有的文章工程','Add to an existing project',run(async()=>{
+  const items=await doc('/projects');
+  if(!items.length)throw Error(text('还没有文章工程。你可以先建立一个新工程。','No article projects yet. Create a new project first.'));
+  projects.replaceChildren(...items.map(item=>{
+   const option=document.createElement('option');option.value=item.id;option.textContent=item.title;return option;
+  }));
+  projectPicker.hidden=false;projects.focus();
+ }));
+ const confirmExisting=button(footer,'加入所选工程','Add to selected project',run(()=>submitProject(projects.value)));
+ const openStudio=button(footer,'打开文档工坊','Open Doc Studio',run(async()=>{
+  const appId='ai2apps.doc-studio';
+  const taskId=receipt.task.id;
+  sessionStorage.setItem('ai2apps.doc-studio.import-pack',pack.id);
+  sessionStorage.setItem('ai2apps.doc-studio.import-task',taskId);
+  if(window.ai2appsShell?.openEntry)await window.ai2appsShell.openEntry({appId});
+  else window.location.assign('/admin/app-content/'+appId);
+  dialog.close();
+ }));
+ openStudio.className=confirmExisting.className='intel-primary';
+ dialog.append(heading,summary,list,actions,projectPicker,status,error,footer);document.body.append(dialog);
+ dialog.addEventListener('cancel',event=>{if(busy&&pack)event.preventDefault();});
+ dialog.addEventListener('close',()=>dialog.remove());
+ status.textContent=text('正在准备素材包…','Preparing the material pack…');sync();dialog.showModal();
+ try{
+  pack=await api('/channels/'+encodeURIComponent(c.id)+'/material-packs','POST',
+   articleIds?{scope:'selection',article_ids:articleIds}:{scope,scope_id:scopeId});
+  summary.textContent=pack.title+' · '+pack.articles.length+text(' 篇文章',' articles');
+  for(const article of pack.articles){
+   const item=document.createElement('li');item.textContent=article.title;list.append(item);
+  }
+  status.textContent=(pack.limited?text('已选最近更新的 20 篇。','The 20 most recently updated articles were selected. ')+' ':'')
+   +(window.AI2APPS_MOBILE_SURFACE?text('请在桌面端把素材加入文档工坊工程。','Use the desktop app to add materials to a Doc Studio project.'):
+    text('素材包已准备好，选择下一步。','The material pack is ready. Choose what to do next.'));
+ }catch(e){status.textContent='';error.textContent=e.message;}
+ finally{busy=false;sync();}
 }
 async function openDraft(id){
  const draft=await api('/drafts/'+id);if(state.progressive)await Promise.all(draft.evidence.map(e=>ensureArticle(e.id)));writingSession={channelId:draft.channel_id,label:draft.scope_label,draft,pending:false,requestId:null};
@@ -1008,19 +1132,18 @@ function writingMarkdown(d){
 }
 
 function renderWriting(){
- const session=writingSession;if(!session)return;const draft=session.draft;
- $('#writing-heading').textContent=draft?lt('稿件 · ')+writingKinds[draft.kind]:lt('撰写稿件');
- $('#writing-scope').textContent=lt('资料范围：')+session.label+(draft?lt(' · 已选 ')+draft.evidence.length+' / '+draft.total_articles+lt(' 篇情报'):'');
- $('#writing-create-form').hidden=Boolean(draft);$('#writing-workspace').hidden=!draft;
- $('#writing-create-form button[type=submit]').disabled=session.pending;$('#writing-revise-form button[type=submit]').disabled=session.pending;
+ const session=writingSession,draft=session?.draft;if(!draft)return;
+ $('#writing-heading').textContent=lt('稿件 · ')+writingKinds[draft.kind];
+ $('#writing-scope').textContent=lt('资料范围：')+session.label + lt(' · 已选 ')+draft.evidence.length+' / '+draft.total_articles+lt(' 篇情报');
+ $('#writing-workspace').hidden=false;
+ $('#writing-revise-form button[type=submit]').disabled=session.pending;
  $('#writing-copy').disabled=session.pending||session.editing;
  $('#writing-edit').disabled=session.pending||session.editing;
  $('#writing-text-form').hidden=!session.editing;$('#writing-title').hidden=!!session.editing;$('#writing-content').hidden=!!session.editing;
  $('#writing-text-form button[type=submit]').disabled=session.pending;$('#writing-edit-cancel').disabled=session.pending;
  $('#writing-edit-title').disabled=session.pending;$('#writing-edit-content').disabled=session.pending;
  if(session.editing){$('#writing-revise-form button[type=submit]').disabled=true;$('#writing-revision-guidance').disabled=true;return;}
- $('#writing-guidance').disabled=session.pending;$('#writing-kind').disabled=session.pending;$('#writing-revision-guidance').disabled=session.pending;
- if(!draft)return;
+ $('#writing-revision-guidance').disabled=session.pending;
  $('#writing-version').textContent=lt('第 ')+draft.revision+lt(' 版 · 自动保存于 ')+when(draft.updated_at);$('#writing-title').textContent=draft.current.title;renderWritingImages(draft);
  const used=new Set(draft.current.evidence_ids);
  $('#writing-references').innerHTML=draft.evidence.filter(e=>used.has(e.evidence_id)).map(e=>it`<button data-writing-article="${esc(e.id)}">[${e.evidence_id}] ${esc(e.title)}</button>`).join('');
@@ -1040,19 +1163,18 @@ $('#writing-text-form').onsubmit=async event=>{
  finally{s.pending=false;if(writingSession===s)renderWriting();}
 };
 $('#writing-dialog').addEventListener('cancel',event=>{if(!discardWritingEdit())event.preventDefault();});
-$('#writing-guidance').oninput=$('#writing-kind').onchange=$('#writing-revision-guidance').oninput=()=>{if(writingSession&&!writingSession.pending)writingSession.requestId=null;};
-async function submitWriting(event,revise){
- event.preventDefault();const session=writingSession;if(!session||session.pending||session.editing)return;
- const guidance=$(revise?'#writing-revision-guidance':'#writing-guidance').value.trim();if(!guidance)return;
- session.requestId||=crypto.randomUUID();session.pending=true;$('#writing-error').textContent='';$('#writing-status').textContent=revise?lt('AI 正在修改，原稿保留…'):lt('AI 正在根据所选情报撰写…');renderWriting();
- try{const body={request_id:session.requestId,guidance,...(revise?{revision:session.draft.revision}:{scope:session.scope,scope_id:session.scopeId,kind:$('#writing-kind').value})};
-  const result=await api(revise?'/drafts/'+session.draft.id+'/revise':'/channels/'+session.channelId+'/drafts','POST',body);
+$('#writing-revision-guidance').oninput=()=>{if(writingSession&&!writingSession.pending)writingSession.requestId=null;};
+$('#writing-revise-form').onsubmit=async event=>{
+ event.preventDefault();const session=writingSession;if(!session?.draft||session.pending||session.editing)return;
+ const guidance=$('#writing-revision-guidance').value.trim();if(!guidance)return;
+ session.requestId||=crypto.randomUUID();session.pending=true;$('#writing-error').textContent='';$('#writing-status').textContent=lt('AI 正在修改稿件…');renderWriting();
+ try{
+  const result=await api('/drafts/'+session.draft.id+'/revise','POST',{request_id:session.requestId,guidance,revision:session.draft.revision});
   if(state.progressive)await Promise.all(result.evidence.map(e=>ensureArticle(e.id)));session.draft=result;session.requestId=null;await loadDrafts(session.channelId);
   if(writingSession===session){$('#writing-status').textContent=lt('稿件已保存，可继续提出修改要求');$('#writing-revision-guidance').value='';}
  }catch(error){if(writingSession===session){$('#writing-error').textContent=error.message;$('#writing-status').textContent=lt('可重试；已有稿件保留。');}}
  finally{session.pending=false;if(writingSession===session)renderWriting();}
-}
-$('#writing-create-form').onsubmit=event=>submitWriting(event,false);$('#writing-revise-form').onsubmit=event=>submitWriting(event,true);
+};
 $('#writing-copy').onclick=safe(async()=>{const d=writingSession?.draft;if(d){await navigator.clipboard.writeText(writingMarkdown(d));$('#writing-status').textContent=lt('已复制稿件');}});
 let feedbackDraft=null;
 function reasonOptions(reasons, selected=[]){
@@ -1172,6 +1294,12 @@ async function loadConversation(id){
  try{const result=await api('/channels/'+id+'/conversation');chat.turns=result.turns;chat.loaded=true;chat.error='';}
  catch(error){chat.error=error.message;}finally{chat.loading=false;if(channelId===id)renderChannelChat();}
 }
+async function loadChannelModels(id){
+ const chat=conversationState(id);if(chat.modelsLoading)return;chat.modelsLoading=true;
+ try{const catalog=await api('/channels/'+id+'/conversation/models');chat.models=catalog.models||[];}
+ catch(error){chat.modelError=error.message;}
+ finally{chat.modelsLoading=false;if(channelId===id)renderChannelChat();}
+}
 function renderChannelChat(){
  syncMobile();
  const c=channel(),chat=c?conversationState(c.id):null;
@@ -1189,6 +1317,18 @@ function renderChannelChat(){
  $('#intel-reader').classList.toggle('article-chat-visible',readerMode==='article-chat');
  $('#show-channel-article').disabled=!selectedId&&previewDraft?.channel_id!==channelId;
  const input=$('#channel-chat-question');
+ // Collection jobs belong to their own channels and never own Chat controls.
+ // Only this conversation's request can lock its composer/model selection.
+ const modelKey=JSON.stringify([c?.id,chat?.models]);
+ if(channelSurface.model.dataset.catalog!==modelKey){
+  const fallback=channelSurface.model.options[0].cloneNode(true);fallback.value='';
+  channelSurface.model.replaceChildren(fallback,...(chat?.models||[]).map(m=>{const o=document.createElement('option');o.value=m.id;o.textContent=m.name||m.id;return o;}));
+  channelSurface.model.dataset.catalog=modelKey;
+ }
+ channelSurface.model.value=chat?.model||'';
+ channelSurface.model.disabled=!c||!!chat?.sending||!chat?.models;
+ channelSurface.model.title=chat?.modelError||'';
+ channelSurface.reset.disabled=!c||!!chat?.sending;
  if(input.dataset.channel!==channelId){input.value=chat?.sending?'':chat?.draft||'';input.dataset.channel=channelId||'';}
  input.disabled=!c||!!chat?.sending;
  $('#send-channel-chat').disabled=!c||!!chat?.sending||!!chat?.loading||!chat?.loaded;
@@ -1200,8 +1340,9 @@ function renderChannelChat(){
   refs.innerHTML=references.map(r=>r.kind==='knowledge'?it`<details><summary>[${r.number}] 知识库 · ${esc(r.title)}</summary><p>${esc(r.excerpt||'')}</p></details>`:it`<button type="button" data-article="${esc(r.article_id)}">[${r.number}] ${esc(r.title)}</button>`).join('');return refs;
  },chat?.sending?{question:chat.draft,status:lt('正在阅读频道资料并回答…')}:chat?.error?{question:chat.failedQuestion,error:chat.error}:null);
  if(c&&!chat.loaded&&!chat.loading&&!chat.error&&(!progressiveData()||mobilePage==='reader'&&readerMode==='chat'))loadConversation(c.id);
+ if(c&&chat.models===null&&!chat.modelsLoading&&!chat.modelError&&(!mobileQuery.matches||mobilePage==='reader'&&readerMode==='chat'))loadChannelModels(c.id);
 }
-$('#channel-chat-question').oninput=()=>{if(channel()){const chat=conversationState(channelId);chat.draft=$('#channel-chat-question').value;chat.requestId=null;chat.requestArticle=undefined;}};
+$('#channel-chat-question').oninput=()=>{if(channel()){const chat=conversationState(channelId);chat.draft=$('#channel-chat-question').value;chat.requestId=null;chat.requestArticle=undefined;chat.requestModel=undefined;}};
 $('#show-entity-detail').onclick=()=>{readerMode='entity';mobilePanel=true;renderChannelChat();};
 $('#show-channel-chat').onclick=()=>{readerMode='chat';renderReader();};
 $('#show-channel-article').onclick=showArticleDetails;
@@ -1213,10 +1354,11 @@ $('#channel-chat-form').onsubmit=async event=>{
  chat.draft=question;chat.requestId=chat.requestId||crypto.randomUUID();chat.sending=true;chat.error='';chat.failedQuestion='';$('#channel-chat-question').value='';
  // Keep retry identity and article context stable even if the user navigates while waiting.
  chat.requestArticle=chat.requestArticle===undefined?selectedId:chat.requestArticle;
+ chat.requestModel=chat.requestModel===undefined?chat.model:chat.requestModel;
  renderChannelChat();
- try{const turn=await api('/channels/'+id+'/conversation','POST',{question,request_id:chat.requestId,article_id:chat.requestArticle});
+ try{const turn=await api('/channels/'+id+'/conversation','POST',{question,request_id:chat.requestId,article_id:chat.requestArticle,...(chat.requestModel?{model:chat.requestModel}:{})});
   if(!chat.turns.some(t=>t.id===turn.id))chat.turns.push(turn);
-  chat.draft='';chat.requestId=null;chat.requestArticle=undefined;
+  chat.draft='';chat.requestId=null;chat.requestArticle=undefined;chat.requestModel=undefined;
   if(channelId===id)$('#channel-chat-question').value='';
  }catch(error){chat.error=error.message+lt('；可点击发送重试');chat.failedQuestion=question;if(channelId===id)$('#channel-chat-question').value=question;}
  finally{chat.sending=false;if(channelId===id)renderChannelChat();}
@@ -1233,6 +1375,38 @@ document.addEventListener('keydown',event=>{if(['Enter',' '].includes(event.key)
 document.addEventListener('click',safe(async event=>{
  if(cardMenu&&!cardMenu.contains(event.target)&&!event.target.closest('[data-card-menu]'))closeCardMenu();
  const b=event.target.closest('button,[data-article],[data-draft-preview]');if(!b||b.disabled)return;
+ if(b.hasAttribute('data-doc-start')||b.dataset.write==='channel'){
+  if(!channelId||docSelectionChannel===channelId)return;
+  const changedTab=tab!=='articles';
+  tab='articles';
+  docSelectionChannel=channelId;
+  render();
+  if(changedTab&&progressiveData())await loadMobileChannel();
+  docBar.querySelector('[data-doc-clear]').focus();
+  return;
+ }
+ if(b.dataset.docSelect){
+  if(docSelectionChannel!==channelId)return;
+  const id=b.dataset.docSelect;
+  if(docSelection.has(id))docSelection.delete(id);
+  else if(docSelection.size<20)docSelection.add(id);
+  else{notice(handoffText('每个素材包最多 20 篇文章','A material pack can contain up to 20 articles'));return;}
+  renderContent();icons();
+  [...document.querySelectorAll('[data-doc-select]')].find(button=>button.dataset.docSelect===id)?.focus();
+  return;
+ }
+ if(b.hasAttribute('data-doc-clear')){
+  endDocSelection();
+  docBar.querySelector('[data-doc-start]').focus();
+  return;
+ }
+ if(b.hasAttribute('data-doc-open')){
+  if(!docSelection.size)return;
+  const ids=[...docSelection];
+  endDocSelection();
+  await startWriting(null,'',ids);
+  return;
+ }
  if(b.dataset.cardMenu){openCardMenu(b);return;}
  if(b.dataset.cardRead||b.dataset.cardFavorite){
   const id=b.dataset.cardRead||b.dataset.cardFavorite,article=state.articles.find(a=>a.id===id);if(!article)return;
@@ -1261,7 +1435,7 @@ document.addEventListener('click',safe(async event=>{
  if(b.dataset.action==='extract-images'){await extractArticleImages();return;}
  if(b.dataset.action==='extract-cover'){await extractArticleCover();return;}
  if(b.dataset.action==='create-sections'){await createSections();return;}
- if(b.dataset.write){startWriting(b.dataset.write,b.dataset.scopeId||'');return;}
+ if(b.dataset.write){await startWriting(b.dataset.write,b.dataset.scopeId||'');return;}
  if(b.dataset.draftPreview){await showDraftPreview(b.dataset.draftPreview);return;}
  if(b.dataset.draft){await openDraft(b.dataset.draft);return;}
  if(b.dataset.writingArticle){if(!discardWritingEdit())return;$('#writing-dialog').close();await readArticle(b.dataset.writingArticle);return;}
@@ -1461,7 +1635,90 @@ window.addEventListener('pagehide',()=>clearInterval(runClock));
 
 window.IntelligenceArticleChat?.init({api,getArticle:ensureArticle,openArticle:readArticle,notice,panelRoot:$('#intel-reader'),showPanel:showArticleDiscussion,showArticle:showArticleDetails});
 if($('#show-article-chat'))$('#show-article-chat').onclick=showArticleDiscussion;
+function initExportOptions(){
+ const text=handoffText;
+ const dialog=document.createElement('dialog');dialog.className='intel-dialog intel-export-dialog';
+ const title=document.createElement('h2');title.tabIndex=-1;title.textContent=text('导出频道','Export channels');dialog.append(title);
+ const form=document.createElement('form');dialog.append(form);
+ const select=(label,options)=>{const l=document.createElement('label'),s=document.createElement('select');l.textContent=label;for(const [value,name] of options){const o=document.createElement('option');o.value=value;o.textContent=name;s.append(o);}l.append(s);form.append(l);return s;};
+ const scope=select(text('频道范围','Channels'),[['current',text('当前频道','Current channel')],['all',text('全部频道','All channels')]]);
+ const period=select(text('内容范围','Content range'),[['all',text('全部','All')],['24',text('最近 24 小时','Last 24 hours')],['168',text('最近 7 天','Last 7 days')],['custom',text('自定义时间','Custom dates')]]);
+ const dates=document.createElement('div');dates.hidden=true;form.append(dates);
+ const dateInput=label=>{const l=document.createElement('label'),i=document.createElement('input');l.textContent=label;i.type='datetime-local';l.append(i);dates.append(l);return i;};
+ const since=dateInput(text('开始时间','Start')),until=dateInput(text('结束时间（可留空）','End (optional)'));
+ const changes=select(text('变化类型','Changes'),[['updated',text('新增及内容更新','New and updated content')],['created',text('仅新增','New articles only')]]);
+ const format=select(text('文件格式','Format'),[['zip',text('可导入 ZIP','Importable ZIP')],['html',text('离线阅读 HTML（单频道）','Offline HTML (one channel)')]]);
+ const quality=select(text('图片质量','Image quality'),[['reading',text('阅读版（压缩）','Reading (compressed)')],['original',text('原图版','Original images')]]);
+ const coverLabel=document.createElement('label'),shareCover=document.createElement('input');coverLabel.textContent=text('分享封面（可选）','Share cover (optional)');shareCover.type='file';shareCover.accept='image/png,image/jpeg,image/webp,image/gif';coverLabel.append(shareCover);const coverHint=document.createElement('small');coverHint.textContent=text('未指定时使用第一篇有封面的文章；没有则使用 AI2Apps Logo。图片最大 8 MiB。','Defaults to the first article cover, then the AI2Apps logo. Maximum 8 MiB.');coverLabel.append(coverHint);const defaultCover=document.createElement('button');defaultCover.type='button';defaultCover.textContent=text('使用默认封面','Use default cover');coverLabel.append(defaultCover);form.append(coverLabel);
+ const tocLabel=document.createElement('label'),toc=document.createElement('input');toc.type='checkbox';toc.checked=true;tocLabel.className='intel-export-toc';tocLabel.append(toc,document.createTextNode(text('包含目录（不包含时文章默认折叠）','Include contents (otherwise collapse articles)')));form.append(tocLabel);
+ const help=document.createElement('p');help.className='intel-help';help.textContent=text('最近导出按内容时间筛选，不包括阅读或收藏操作。HTML 会读取并内嵌图片；无法读取的图片列入缺失清单。关闭窗口不取消导出。','Recent exports use content timestamps, excluding read/favorite actions. HTML embeds images and lists unavailable images. Closing this window does not cancel the export.');form.append(help);
+ const progress=document.createElement('p');progress.setAttribute('role','status');form.append(progress);
+ const issues=document.createElement('details');issues.hidden=true;const issueTitle=document.createElement('summary'),issueList=document.createElement('ul');issues.append(issueTitle,issueList);form.append(issues);
+ const footer=document.createElement('footer');form.append(footer);
+ const close=document.createElement('button');close.type='button';close.textContent=text('关闭','Close');close.onclick=()=>dialog.close();footer.append(close);
+ const cancel=document.createElement('button');cancel.type='button';cancel.textContent=text('取消导出','Cancel export');cancel.hidden=true;footer.append(cancel);
+ const download=document.createElement('a');download.textContent=text('下载文件','Download file');download.hidden=true;download.download='intelligence-export';download.className='intel-primary';footer.append(download);
+ const submit=document.createElement('button');submit.type='submit';submit.textContent=text('开始导出','Export');submit.className='intel-primary';footer.append(submit);document.body.append(dialog);
+ const saveGallery=document.createElement('button');saveGallery.type='button';saveGallery.textContent=text('保存到 Gallery','Save to Gallery');saveGallery.hidden=true;footer.insertBefore(saveGallery,submit);
+ let target=null,job=null,timer=null,active=false,savingGallery=false,savedGalleryFor=null;
+ form.addEventListener('change',()=>{if(!active&&!download.hidden){download.hidden=true;saveGallery.hidden=true;issues.hidden=true;progress.textContent=text('选项已变化，请开始导出生成新文件。','Options changed. Export again to create a new file.');}});
+ saveGallery.onclick=safe(async()=>{if(!job||active||savingGallery||download.hidden)return;const selected=job;savingGallery=true;sync();try{await requestJSON('/v1/platform/intelligence/exports/'+encodeURIComponent(selected)+'/gallery',{method:'POST',credentials:'same-origin'});savedGalleryFor=selected;}finally{savingGallery=false;sync();}});
+ const storageKey='intelligence-export-v1';
+ const persist=id=>{try{if(id)sessionStorage.setItem(storageKey,id);else sessionStorage.removeItem(storageKey);}catch(_){}};
+ const sync=()=>{dates.hidden=period.value!=='custom';changes.parentElement.hidden=period.value==='all';quality.parentElement.hidden=format.value==='zip';tocLabel.hidden=format.value==='zip';coverLabel.hidden=format.value==='zip';format.options[1].disabled=scope.value==='all';if(scope.value==='all'&&format.value!=='zip'){format.value='zip';quality.parentElement.hidden=true;tocLabel.hidden=true;coverLabel.hidden=true;}defaultCover.disabled=active||!shareCover.files.length;for(const i of [scope,period,since,until,changes,format,quality,toc,shareCover])i.disabled=active;submit.disabled=active;cancel.hidden=!active;saveGallery.hidden=download.hidden||active;saveGallery.disabled=savingGallery||savedGalleryFor===job;saveGallery.textContent=savedGalleryFor===job?text('已保存到 Gallery','Saved to Gallery'):savingGallery?text('正在保存…','Saving…'):text('保存到 Gallery','Save to Gallery');};
+ shareCover.onchange=sync;defaultCover.onclick=()=>{shareCover.value='';sync();form.dispatchEvent(new Event('change',{bubbles:true}));};
+ for(const input of [scope,period,format])input.onchange=sync;
+ const poll=async()=>{if(!job)return;clearTimeout(timer);try{const value=await requestJSON('/v1/platform/intelligence/exports/'+encodeURIComponent(job),{credentials:'same-origin'});active=['queued','running','waiting_resource','waiting_user','cancelling'].includes(value.status);const p=value.progress||{};progress.textContent=value.status==='queued'?text('等待导出','Queued'):value.status==='cancelling'?text('正在取消','Cancelling'):value.status==='cancelled'?text('导出已取消','Export cancelled'):['failed','interrupted'].includes(value.status)?text('导出失败','Export failed')+' · '+value.message:p.stage==='images'?text('正在内嵌图片','Embedding images'):p.stage==='snapshot'?text('正在准备导出','Preparing export'):value.message||value.status;if(p.images_total!==undefined)progress.textContent+=` · ${p.images_done||0}/${p.images_total} · `+text(`缺失 ${p.images_failed||0}`,`Missing ${p.images_failed||0}`);if(value.status==='completed'&&!['zip','html'].includes(value.result?.format)){download.hidden=true;persist(null);progress.textContent=text('此导出格式已移除，请重新导出 ZIP 或 HTML。','This export format was removed. Export ZIP or HTML instead.');sync();return;}if(value.status==='completed'){issueList.replaceChildren();const missing=value.result.missing_images||[];issues.hidden=!missing.length;issueTitle.textContent=text(`未能嵌入 ${missing.length} 张图片`,`${missing.length} images could not be embedded`);for(const item of missing){const row=document.createElement('li');row.textContent=item.url+' · '+item.reason;issueList.append(row);}const fileURL='/v1/platform/intelligence/exports/'+encodeURIComponent(job)+'/file';download.href=window.MobileAppResource?window.MobileAppResource(fileURL):fileURL;download.download='intelligence-export.'+value.result.format;download.textContent=text('下载文件','Download file');download.hidden=false;progress.textContent=text('导出完成','Export ready')+(value.result.channel_name?' · '+value.result.channel_name:'')+` · ${(value.result.size/1024/1024).toFixed(1)} MiB`+(value.result.images_failed?text(` · ${value.result.images_failed} 张图片未能内嵌，详情见下方。`,` · ${value.result.images_failed} images missing; see details below.`):'')+(value.result.author_name_missing?text(' · 未能获取登录用户名，本次使用 AI2Apps 署名。',' · Account name unavailable; credited to AI2Apps.'): '')+(value.result.images_recovered?text(` · 已恢复 ${value.result.images_recovered} 张原图`,` · Recovered ${value.result.images_recovered} original images`):'')+(value.result.images_compacted?text(` · 已压缩 ${value.result.images_compacted} 张正文图片`,` · Compacted ${value.result.images_compacted} body images`):'');}sync();if(active)timer=setTimeout(poll,1500);}catch(error){active=false;progress.textContent=error.message;sync();}};
+ cancel.onclick=safe(async()=>{if(!job)return;cancel.disabled=true;try{await requestJSON('/v1/platform/intelligence/exports/'+encodeURIComponent(job)+'/cancel',{method:'POST',credentials:'same-origin'});await poll();}finally{cancel.disabled=false;}});
+ form.onsubmit=async event=>{event.preventDefault();if(active)return;let start=null,end=null;try{if(period.value==='custom'){if(!since.value)throw Error(text('请选择开始时间','Choose a start time'));start=new Date(since.value).toISOString();end=until.value?new Date(until.value).toISOString():new Date().toISOString();}else if(period.value!=='all'){end=new Date().toISOString();start=new Date(Date.now()-Number(period.value)*3600000).toISOString();}if(start&&start>=end)throw Error(text('开始时间必须早于结束时间','Start must precede end'));if(scope.value==='current'&&!target)throw Error(text('请先选择频道','Select a channel first'));active=true;sync();download.hidden=true;issues.hidden=true;progress.textContent=text('正在提交导出…','Submitting export…');let coverURL=null;if(format.value==='html'&&shareCover.files[0]){const file=shareCover.files[0];if(file.size>8*1024*1024)throw Error(text('封面图片最大 8 MiB','Cover image must be at most 8 MiB'));const upload=new FormData();upload.append('file',file);coverURL=(await requestJSON('/v1/platform/intelligence/exports/cover',{method:'POST',credentials:'same-origin',body:upload})).url;}const result=await requestJSON('/v1/platform/intelligence/exports',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({channel_id:scope.value==='current'?target:null,format:format.value,since:start,until:end,changes:changes.value,quality:quality.value,include_toc:toc.checked,share_cover:coverURL,request_id:crypto.randomUUID()})});job=result.id;persist(job);await poll();}catch(error){active=false;progress.textContent=error.message;sync();}};
+ sync();
+ try{job=sessionStorage.getItem(storageKey);}catch(_){}
+ if(job)void poll();else void(async()=>{try{const history=await requestJSON('/v1/platform/intelligence/exports',{credentials:'same-origin'});const latest=history.items?.find(t=>['queued','running','waiting_resource','cancelling'].includes(t.status))||history.items?.find(t=>t.status==='completed'&&['zip','html'].includes(t.result?.format));if(latest&&!job){job=latest.id;persist(job);await poll();}}catch(_){}})();
+ return id=>{if(!active){target=id;scope.value=id?'current':'all';sync();}dialog.showModal();title.focus({preventScroll:true});dialog.scrollTop=0;};
+}
+
+function initBackupTransfer(){
+ const text=handoffText;
+ const menu=document.createElement('details');menu.className='intel-backup-menu';
+ const summary=document.createElement('summary');summary.textContent=text('导入 / 导出','Import / Export');menu.append(summary);
+ const actions=document.createElement('div');menu.append(actions);
+ const add=(label,fn)=>{const b=document.createElement('button');b.type='button';b.textContent=label;b.onclick=safe(async()=>{menu.open=false;await fn();});actions.append(b);};
+ const download=initExportOptions();
+ add(text('导出全部频道','Export all channels'),()=>download(null));
+ add(text('导出当前频道','Export current channel'),()=>{if(!channelId)throw Error(text('请先选择频道','Select a channel first'));download(channelId);});
+ const input=document.createElement('input');input.type='file';input.accept='.zip,application/zip';input.hidden=true;document.body.append(input);
+ add(text('导入 ZIP','Import ZIP'),()=>input.click());
+ $('.intel-top').insertBefore(menu,$('#refresh-view'));
+ const mobileMenu=$('.intel-mobile-menu>div');if(mobileMenu){for(const [label,fn] of [[text('导出当前频道','Export current channel'),()=>download(channelId)],[text('导入 ZIP','Import ZIP'),()=>input.click()]]){const b=document.createElement('button');b.type='button';b.textContent=label;b.onclick=()=>{mobileMenu.parentElement.open=false;fn();};mobileMenu.append(b);}}
+ const dialog=document.createElement('dialog');dialog.className='intel-dialog intel-backup-dialog';
+ const heading=document.createElement('h2');heading.textContent=text('导入频道备份','Import channel backup');dialog.append(heading);
+ const description=document.createElement('p');description.className='intel-help';description.textContent=text('同名频道合并。冲突保留本地内容，导入版本另存。新频道自动更新和信息源将暂停；远程图片仍需联网。','Matching channel names are merged. Local content wins conflicts; imported versions are retained. New schedules and sources are paused. Remote images still require a connection.');dialog.append(description);
+ const report=document.createElement('p');report.setAttribute('role','status');dialog.append(report);
+ const list=document.createElement('div');list.className='intel-backup-items';dialog.append(list);
+ const footer=document.createElement('footer'),cancel=document.createElement('button'),confirm=document.createElement('button');
+ cancel.textContent=text('取消','Cancel');confirm.textContent=text('确认导入','Import');confirm.className='intel-primary';footer.append(cancel,confirm);dialog.append(footer);document.body.append(dialog);
+ let file=null,preview=null;
+ cancel.onclick=()=>dialog.close();
+ const upload=(path,expected)=>{const body=new FormData();body.append('file',file);if(expected)body.append('expected',expected);return requestJSON('/v1/platform/intelligence/backup/'+path,{method:'POST',credentials:'same-origin',body});};
+ input.onchange=safe(async()=>{file=input.files[0];input.value='';if(!file)return;if(file.size>128*1024*1024)throw Error(text('ZIP 不得超过 128 MiB','ZIP must not exceed 128 MiB'));preview=null;confirm.disabled=true;report.textContent=text('正在检查备份…','Checking backup…');list.replaceChildren();dialog.showModal();try{preview=await upload('preview');report.textContent=text(`新增 ${preview.create}，合并 ${preview.update}，保留 ${preview.keep}，冲突另存 ${preview.conflict}。`,`Create ${preview.create}, merge ${preview.update}, keep ${preview.keep}, retain ${preview.conflict} conflicts.`);for(const item of preview.items.slice(0,200)){const line=document.createElement('p');line.textContent=(item.action==='create'?text('新增','Create'):item.action==='update'?text('合并','Merge'):text('冲突另存','Retain conflict'))+' · '+item.title;list.append(line);}confirm.disabled=false;}catch(error){report.textContent=error.message;}});
+ confirm.onclick=safe(async()=>{if(!preview)return;confirm.disabled=true;cancel.disabled=true;try{await upload('import',preview.expected);dialog.close();mobileChannelViews.clear();mobileArticleLists.clear();await refresh();notice(text('频道导入完成','Channel import complete'));}catch(error){preview=null;report.textContent=error.message+' '+text('请重新选择文件预览。','Select the file again to preview.');}finally{cancel.disabled=false;}});
+ dialog.addEventListener('cancel',event=>{if(cancel.disabled)event.preventDefault();});
+}
+initBackupTransfer();
+
 initMobilePullRefresh($('.intel-main'));
 initMobilePullRefresh($('.intel-sidebar'),true);
-safe(async()=>{observeCollections();if(progressiveData())await refresh();else await Promise.all([refresh(),loadProfiles()]);})();
+let appStateBinding=null,appStateRestoring=false;
+function mountIntelligenceAppState(){
+ if(!window.AI2AppsAppState||appStateBinding)return;
+ const sdk=window.AI2AppsAppState,instanceId=new URLSearchParams(location.hash.slice(1)).get('ai2apps-instance');if(!sdk||!instanceId)return;
+ const capture=()=>({channel_id:channelId,tab,article_filter:$('#article-filter').value,article_type:$('#article-type-filter').value});
+ appStateBinding=sdk.register({instanceId,target:{app_id:'ai2apps.intelligence',mini_app_id:null,contract_version:1},capture,
+  revision:()=>JSON.stringify({settings:capture(),selectedId,sectionId,search:$('#search-articles').value,question:$('#channel-chat-question').value,busy,refreshing:!!refreshInFlight}),dirty:()=>Boolean($('#search-articles').value),setBusy:v=>{appStateRestoring=v;$('#intel-app').inert=v;},
+  validate:async v=>{if(busy||refreshInFlight||appHandoff||document.querySelector('dialog[open]:not(.app-state-dialog)')||$('#channel-chat-question').value.trim())throw Error(handoffText('请先完成当前编辑或对话，再恢复视图','Finish current edits or conversation before restoring this view'));const data=await api('?view=channels');if(v.channel_id&&!data.channels.some(c=>c.id===v.channel_id))throw Error(handoffText('预设频道不存在或不可访问','The saved channel is unavailable'));},
+  apply:async v=>{const old={channelId,tab,sectionId,selectedId,readerMode,mobilePanel,mobilePage,previewDraft,state,filter:$('#article-filter').value,type:$('#article-type-filter').value};try{const fresh=await api(progressiveData()?'?view=channels':'');if(v.channel_id&&!fresh.channels.some(c=>c.id===v.channel_id))throw Error('The saved channel is unavailable');state=fresh;channelId=v.channel_id;tab=v.tab;sectionId='';selectedId=null;readerMode='chat';mobilePanel=false;previewDraft=null;$('#article-filter').value=v.article_filter;$('#article-type-filter').value=v.article_type;if(progressiveData()&&channelId){mobilePage='channel';await loadMobileChannel();}render();}catch(e){({channelId,tab,sectionId,selectedId,readerMode,mobilePanel,mobilePage,previewDraft,state}=old);$('#article-filter').value=old.filter;$('#article-type-filter').value=old.type;render();throw e;}}
+ });
+ const b=$('#intel-state-presets');b.hidden=false;b.textContent=handoffText('状态预设','State presets');b.onclick=safe(()=>sdk.panel(appStateBinding));window.addEventListener('pagehide',event=>{if(!event.persisted)appStateBinding?.dispose();});
+}
+safe(async()=>{observeCollections();if(progressiveData())await refresh();else await Promise.all([refresh(),loadProfiles()]);mountIntelligenceAppState();})();
 })();

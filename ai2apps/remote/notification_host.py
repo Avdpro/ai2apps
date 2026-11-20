@@ -9,6 +9,7 @@ class NotificationRoutes:
     def __init__(self, runtime):
         self.runtime = runtime
         self.handlers = {}
+        self.register('ai2apps.todo','system-task',self._system_task)
         self.register('ai2apps.intelligence','channel',self._channel)
         self.register('ai2apps.intelligence','article',self._article)
         self.register('ai2apps.general-chat','conversation',self._conversation)
@@ -47,6 +48,12 @@ class NotificationRoutes:
         if any(k in ('app','notification-id') for k in params):
             raise ValueError('Reserved notification route parameter')
         return {'type':'app_route','app_id':destination['app_id'],'parameters':params}
+
+    def _system_task(self, principal, id):
+        task = self.runtime.system_tasks.get(principal.actor_user_id, id)
+        if task['app_id'] != 'ai2apps.todo':
+            raise ValueError('Task does not belong to Todo')
+        return {'system-task': id}
 
     def _channel(self, principal, id):
         self.runtime.intelligence_collector.store.get('channels',principal.actor_user_id,id)

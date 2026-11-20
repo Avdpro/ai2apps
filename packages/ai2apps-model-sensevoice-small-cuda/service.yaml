@@ -1,0 +1,137 @@
+schema: ai2apps.service/v1
+id: ai2apps.model.sensevoice-small-cuda
+name: SenseVoice Small CUDA
+description: Official FunASR SenseVoice Small CUDA transcription with a pinned CPU
+  FSMN VAD helper for long audio.
+version: 0.1.0
+publisher:
+  id: ai2apps
+license:
+  name: FunASR Model Open Source License Agreement 1.1
+  id: LicenseRef-FunASR-Model-1.1
+  path: META/licenses/FunASR-MODEL-LICENSE-1.1.txt
+  url: https://github.com/modelscope/FunASR/blob/main/MODEL_LICENSE
+attribution:
+  notice: META/NOTICE.md
+  original_model: https://huggingface.co/FunAudioLLM/SenseVoiceSmall
+  source: https://github.com/FunAudioLLM/SenseVoice
+runtime:
+  mode: process
+  protocol: ai2apps-model-worker/v1
+  provider: ai2apps.runtime.cuda-torch
+  adapter: src/worker_adapter.py:create_adapter
+models:
+- id: ai2apps.model.sensevoice-small-cuda/default
+  display_name: SenseVoice Small
+  model_type: audio_stt
+  upstream_id: FunAudioLLM/SenseVoiceSmall
+  capabilities:
+  - speech_recognition
+  - timestamps
+  - word_timestamps
+  - language_detection
+  metadata:
+    family: sensevoice
+    precision: float32
+    required_model_ids:
+    - ai2apps.model.sensevoice-small-cuda/vad
+    maximum_audio_seconds: 3600
+    vad_threshold_seconds: 30
+  weights:
+    provider: huggingface
+    repo_id: FunAudioLLM/SenseVoiceSmall
+    revision: 3847d57b6bdf2dd8875cb1508d2af43d80a16bf7
+    preparation:
+      recipe: native
+    distribution_id: dist_ai2apps_sensevoice_small_cuda_3847d57b_v1
+  audio_capabilities:
+    schema: ai2apps.audio-capabilities/v1
+    operations:
+    - audio_transcription
+    languages:
+    - auto
+    - zh
+    - en
+    - ja
+    - ko
+    - yue
+    formats:
+      input:
+      - wav
+      - pcm
+      - mp3
+      - m4a
+      - aac
+      - flac
+      - ogg
+      - opus
+      - webm
+      output: []
+    streaming:
+      mode: unsupported
+      formats: []
+    stt:
+      timestamps:
+        mode: native
+        segment: true
+        word: true
+      diarization:
+        mode: unsupported
+      speaker_recognition:
+        mode: unsupported
+      speech_rate:
+        mode: unsupported
+      emotion:
+        mode: unsupported
+        values: []
+- id: ai2apps.model.sensevoice-small-cuda/vad
+  display_name: FSMN VAD (internal long-audio helper)
+  model_type: audio_processing
+  upstream_id: funasr/fsmn-vad
+  capabilities:
+  - voice_activity_detection
+  metadata:
+    internal: true
+    family: fsmn-vad
+    precision: float32
+    device: cpu
+  weights:
+    provider: huggingface
+    repo_id: funasr/fsmn-vad
+    revision: df20e6b30c653645fa4ff125cacfcabd1020a669
+    preparation:
+      recipe: native
+    distribution_id: dist_ai2apps_sensevoice_small_cuda_vad_df20e6b3_v1
+capabilities: []
+requires:
+  services:
+  - id: ai2apps.runtime.cuda-torch
+    version: '>=0.6.0,<1.0.0'
+    optional: false
+    capabilities:
+    - cuda
+    - model-worker-v1
+    - sensevoice
+  python: '>=3.12,<3.13'
+permissions:
+  network:
+    outbound: false
+  model_weights:
+    huggingface_cache: read
+    reason: Read only the Host-selected pinned SenseVoice checkpoint cache.
+  accelerator:
+    cuda: true
+    reason: Run SenseVoice transcription on CUDA; FSMN VAD executes on CPU.
+compatibility:
+  os:
+  - linux
+  architectures:
+  - arm64
+  - aarch64
+health:
+  path: /health
+  startup_timeout_seconds: 120
+restart:
+  max_attempts: 2
+  base_delay_seconds: 1
+tools: []

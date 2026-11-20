@@ -48,22 +48,25 @@ def catalog(runtime,principal):
 
 async def descriptor(runtime,principal,model=None,*,replacement=False):
     if replacement:
-        result=await voice_aaat.descriptor(runtime,principal,replacement=True)
-        result.update(effective_schema=deepcopy(REPLACE_SCHEMA),install={'appId':APP,'capability':REPLACE,'requirements':{}},
+        result=await voice_aaat.descriptor(runtime,principal,replacement=True,action=model)
+        capability='audio.detailed_transcription' if model!='replace' else REPLACE
+        result.update(effective_schema=deepcopy(REPLACE_SCHEMA),install={'appId':APP,'capability':capability,'requirements':{}},
             warnings=[{'zh':'先分析视频说话人，再按真实编号选择角色；换声需要参考音频及明确使用权确认。','en':'Analyze video speakers first, then select an observed ID. Replacement needs reference audio and explicit usage rights.'}])
         separation,conversion,_=voice_aaat.readiness(runtime)
         schema=result['effective_schema']
-        if conversion:
+        if conversion and model=='replace':
             profiles=[p for p in schema['properties']['conversion_profile']['enum'] if p in conversion]
             schema['properties']['conversion_profile'].update(enum=profiles,default=profiles[0])
         if not conversion or 'dialogue_background' not in separation:
-            # Analysis remains available; replacement drafts survive ACPF but
-            # cannot enter effectful execution while its prerequisites are absent.
-            schema['properties']['action']['enum']=['analyze']
             result['warnings'].append({'zh':'指定角色换声尚缺就绪的分离或换声模型。当前可分析；如需换声，点击“配置所需能力”，配置后重新检查，原参数保留。',
                 'en':'Speaker replacement needs ready separation and voice-conversion models. Analysis is available. Use Configure required capability, then recheck; the replacement draft is retained.'})
         return result
     characters,clones,base_ready=catalog(runtime,principal)
+    from ai2apps.task_llm import resolve_task_model
+    separation,_,transcription=voice_aaat.readiness(runtime)
+    speech_missing=[]
+    if not transcription:speech_missing.append('detailed_transcription')
+    if 'dialogue_background' not in separation:speech_missing.append('dialogue_background_separation')
     choices=[c['id'] for c in characters if c['ready']]
     if any(c['ready'] for c in clones):choices.append(ORIGINAL)
     schema=deepcopy(DUB_SCHEMA)
@@ -77,10 +80,21 @@ async def descriptor(runtime,principal,model=None,*,replacement=False):
         if field['key'] in ('voice_profile_id','voice_clone_model_id'):
             for option in field.get('options',[]):
                 option['label']=({'zh':'临时克隆原声','en':'Temporarily clone original voice'} if option['value']==ORIGINAL else names.get(option['value'],option['value']))
+    route_ready=bool(resolve_task_model(runtime,'standard'))
+    missing=[*speech_missing]
+    if not route_ready:missing.append('standard_task_model_route')
+    if not choices:missing.append('ready_voice_character_or_clone')
+    if not base_ready and not missing:missing.append('dubbing_model_stack')
+    warnings=[{'zh':'仅支持单旁白，不保留多个角色音色。请选择已就绪的语音角色或临时克隆原声；缺少模型请到 Desktop 配置，参数保留。','en':'Single narrator only; multiple speaker identities are not preserved. Select a ready Character or temporarily clone the original voice. Missing models require Desktop setup; parameters are retained.'}]
+    if not route_ready:warnings.append({'zh':'标准任务模型路由未配置；请打开「模型 → 默认使用」，选择并保存标准任务模型，再重新检查。重复安装转写或分离模型不能解决此问题。',
+                                       'en':'The standard task model route is missing. Open Models > Default Usage, select and save a standard task model, then recheck.'})
+    if not choices:warnings.append({'zh':'尚无已就绪的配音 Character 或临时克隆模型；请在 Voice Studio 配置角色或安装支持克隆的语音模型。',
+                                    'en':'No ready dubbing Character or temporary voice clone model. Configure a Character in Voice Studio or install a clone-capable voice model.'})
     return {'effective_schema':schema,'fields':fields,'selection_required':True,'characters':characters,'clone_models':clones,
-        'configuration_required':not (base_ready and choices),
-        'install':{'appId':APP,'capability':DUB,'requirements':{}},
-        'warnings':[{'zh':'仅支持单旁白，不保留多个角色音色。请选择已就绪的语音角色或临时克隆原声；缺少模型请到Desktop配置，参数保留。','en':'Single narrator only; multiple speaker identities are not preserved. Select a ready Character or temporarily clone the original voice. Missing models require Desktop setup; parameters are retained.'}]}
+        'missing_requirements':missing,'constraints':{'missing_requirements':missing},
+        'configuration_required':bool(missing),
+        'install':{'appId':APP,'capability':DUB,'requirements':{}} if speech_missing else None,
+        'warnings':warnings}
 
 
 async def dub(runtime,args,context,*,mini_app_id=None):

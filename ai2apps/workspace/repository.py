@@ -730,8 +730,38 @@ class WorkspaceRepository:
             raise ResourceNotFoundError("artifact", artifact_id)
         return self._artifact(row)
 
+    @_serialize_artifact_files
+    def materialize_artifact(self, session_id: str, artifact_id: str, path: str):
+        """Copy immutable bytes into a new workspace file without model/base64 transport."""
+        artifact = self.get_artifact(session_id, artifact_id)
+        destination = self._resolve(session_id, path, missing=True)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination = self._resolve(session_id, path, missing=True)
+        if destination.exists():
+            raise FileExistsError("Workspace destination already exists")
+        self._check_quota(session_id, 0, artifact.size_bytes)
+        descriptor, temporary = tempfile.mkstemp(prefix=".materialize-", dir=destination.parent)
+        try:
+            h = hashlib.sha256()
+            with os.fdopen(descriptor, "wb") as output, self.artifact_path(artifact).open("rb") as source:
+                while chunk := source.read(1024 * 1024):
+                    output.write(chunk); h.update(chunk)
+                output.flush(); os.fsync(output.fileno())
+            if "sha256:" + h.hexdigest() != artifact.content_hash:
+                raise WorkspaceError("integrity_error", "Artifact content hash mismatch")
+            os.link(temporary, destination)
+        finally:
+            os.unlink(temporary)
+        self._sync_usage(session_id)
+        return {"path": path, "artifact_id": artifact.id, "size_bytes": artifact.size_bytes,
+                "sha256": h.hexdigest(), "verified": True}
+
     def list_artifacts(self, session_id: str):
         self.ensure_sandbox(session_id)
+        return self.list_existing_artifacts(session_id)
+
+    def list_existing_artifacts(self, session_id: str):
+        """Read existing material without provisioning or writing a workspace."""
         with self.database.transaction() as connection:
             rows = connection.execute(
                 """SELECT * FROM artifacts WHERE session_id = ? AND status = 'active'
@@ -749,7 +779,8 @@ class WorkspaceRepository:
         self, session_id: str, artifact_id: str, limit: int = 256 * 1024
     ):
         artifact = self.get_artifact(session_id, artifact_id)
-        data = self.artifact_path(artifact).read_bytes()[: limit + 1]
+        with self.artifact_path(artifact).open("rb") as source:
+            data = source.read(limit + 1)
         truncated = len(data) > limit
         data = data[:limit]
         if artifact.media_type.startswith("text/") or artifact.media_type in {

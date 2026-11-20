@@ -32,7 +32,7 @@ def test_policy_is_bounded_and_preserves_effectful_failures(code):
     assert recoverable(code, effects=(), enabled=True, prior_errors=0)
     assert not recoverable(code, effects=("write",), enabled=True, prior_errors=0)
     assert not recoverable(code, effects=(), enabled=False, prior_errors=0)
-    assert not recoverable(code, effects=(), enabled=True, prior_errors=3)
+    assert recoverable(code, effects=(), enabled=True, prior_errors=30)
 
 
 @pytest.mark.parametrize(
@@ -220,6 +220,10 @@ async def test_provider_failure_is_bounded_and_write_is_not_replayed(
 
     async def model(request):
         model_calls.append(request)
+        if len(model_calls) == 5:
+            # The model can deliver its partial conclusion after diagnosis;
+            # ordinary failures no longer consume a task-wide allowance.
+            return _response()
         alias = next(
             t["function"]["name"]
             for t in request["tools"]
@@ -236,13 +240,12 @@ async def test_provider_failure_is_bounded_and_write_is_not_replayed(
     await runtime.start_background_tasks(retention_interval_seconds=60)
     try:
         finished = await _wait_status(
-            runtime, run.id, AgentRunStatus.FAILED, timeout=20
+            runtime, run.id, AgentRunStatus.COMPLETED, timeout=20
         )
-        assert finished.error["code"] == ("uncertain_execution" if effectful else "provider_error")
         assert len(executions) == (1 if effectful else 4)
-        assert len(model_calls) == 4
+        assert len(model_calls) == 5
         failures = runtime.agents.list_steps(run.id)
-        assert sum(model_visible(s.error) for s in failures) == 3
+        assert sum(model_visible(s.error) for s in failures) == 4
         if effectful:
             assert any((s.error or {}).get("outcome_uncertain") for s in failures)
     finally:

@@ -1,0 +1,41 @@
+{
+  "schema": "ai2apps.checkpoint-build/v1",
+  "distributionId": "dist_ai2apps_moss_tts_nano_229a9c51_v1",
+  "modelId": "ai2apps.model.moss-tts-nano/100m",
+  "repoId": "mlx-community/MOSS-TTS-Nano-100M",
+  "revision": "229a9c51bb0ffff6fd0dbe53b5bf0c441e438a79",
+  "format": "safetensors",
+  "quantization": "bf16",
+  "pieceSize": 8388608,
+  "license": {
+    "id": "Apache-2.0",
+    "name": "Apache License 2.0",
+    "termsUrl": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+    "termsText": "Apache License, Version 2.0. See https://www.apache.org/licenses/LICENSE-2.0\n\n",
+    "termsHash": "sha256:2b93f05188b150e3d6ce31fa7cb7654cde98b78d2b671c5689e334bf520d53c9",
+    "usagePolicy": "permissive",
+    "accessPolicy": "public",
+    "redistributionPolicy": "allowed"
+  },
+  "includePatterns": [
+    "config.json",
+    "model.safetensors",
+    "special_tokens_map.json",
+    "tokenizer.model",
+    "tokenizer_config.json"
+  ],
+  "sourceRepositories": [
+    {
+      "type": "huggingface",
+      "repoId": "mlx-community/MOSS-TTS-Nano-100M",
+      "revision": "229a9c51bb0ffff6fd0dbe53b5bf0c441e438a79",
+      "access": "public_anonymous"
+    },
+    {
+      "type": "modelscope",
+      "repoId": "mlx-community/MOSS-TTS-Nano-100M",
+      "revision": "7f20b57fea0c5fcc4a5efe222e90abb590fe5c5c",
+      "access": "public_anonymous"
+    }
+  ]
+}

@@ -25,6 +25,9 @@ from ai2apps.config import DEFAULT_RESOURCE_IMPORT_LIMIT_BYTES
 from ai2apps.core import RepositoryError
 from ai2apps.extensions import ExtensionError
 from ai2apps.gallery import GalleryError, GalleryRepository
+from ai2apps.gallery.characters import Characters, CharacterInput
+from ai2apps.gallery.sticker_packs import Character, StickerEntry, StickerPacks
+from ai2apps.gallery.repository import STICKER_PACK_MIME
 from ai2apps.identity import RequestPrincipal
 
 
@@ -42,12 +45,14 @@ class ArtifactImportRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     collection_id: str | None = Field(default=None, alias="collectionId")
-    name: str | None = Field(default=None, max_length=255)
+    name: str | None = Field(default=None, min_length=1, max_length=512)
+    description: str | None = Field(default=None, max_length=4000)
     source_app_id: str = Field(default="ai2apps.video-studio", alias="sourceAppId")
 
 
 class AssetUpdateRequest(BaseModel):
-    name: str = Field(min_length=1, max_length=512)
+    name: str | None = Field(default=None, min_length=1, max_length=512)
+    description: str | None = Field(default=None, max_length=4000)
 
 
 class AssetHandleRequest(BaseModel):
@@ -137,6 +142,71 @@ def create_gallery_router(
         return {
             "items": list(selected.list_collections(principal.actor_user_id))
         }
+
+    @router.get("/characters")
+    def list_characters(principal: RequestPrincipal = principal_dependency):
+        selected = repository()
+        if isinstance(selected, JSONResponse): return selected
+        return guarded(lambda: {"items": Characters(selected, principal.actor_user_id).list()})
+
+    @router.get("/characters/definitions")
+    def character_definitions(principal: RequestPrincipal = principal_dependency):
+        selected = repository()
+        if isinstance(selected, JSONResponse): return selected
+        return guarded(lambda: {"items": Characters(selected, principal.actor_user_id).definitions()})
+
+    @router.get('/characters/{character_id}/archive')
+    def export_character_archive(character_id: str, appearance_id: str | None = None, principal: RequestPrincipal = principal_dependency):
+        selected = repository()
+        if isinstance(selected, JSONResponse): return selected
+        def export():
+            from ai2apps.gallery.character_archive import export_character
+            try: data = export_character(Characters(selected,principal.actor_user_id),character_id,appearance_id)
+            except ValueError as error: raise GalleryError('character_archive_invalid',str(error)) from error
+            return Response(data,media_type='application/zip',headers={'Cache-Control':'private, no-store'})
+        return guarded(export)
+
+    @router.post('/characters/archive/{action}')
+    async def import_character_archive(action: str, file: UploadFile = File(), principal: RequestPrincipal = principal_dependency):
+        selected = repository()
+        if isinstance(selected, JSONResponse): return selected
+        from ai2apps.gallery.character_archive import preview_character, import_character
+        from ai2apps.studio.portable_archive import MAX_BYTES
+        data = await file.read(MAX_BYTES+1)
+        def perform():
+            try:
+                if action=='inspect': return preview_character(data)
+                if action=='import': return import_character(Characters(selected,principal.actor_user_id),data)
+                raise ValueError('Unknown archive action')
+            except (ValueError, OSError, TypeError, KeyError) as error: raise GalleryError('character_archive_invalid',str(error)) from error
+        return guarded(perform)
+
+    @router.post("/characters", status_code=201)
+    def create_character(request: CharacterInput, principal: RequestPrincipal = principal_dependency):
+        selected = repository()
+        if isinstance(selected, JSONResponse): return selected
+        return guarded(lambda: Characters(selected, principal.actor_user_id).save(request))
+
+    @router.put("/characters/{character_id}")
+    def update_character(character_id: str, request: CharacterInput, principal: RequestPrincipal = principal_dependency):
+        selected = repository()
+        if isinstance(selected, JSONResponse): return selected
+        return guarded(lambda: Characters(selected, principal.actor_user_id).save(request, character_id))
+
+    @router.post("/sticker-packs", status_code=201)
+    def create_sticker_pack(request: Character, principal: RequestPrincipal = principal_dependency):
+        selected = repository()
+        if isinstance(selected, JSONResponse):
+            return selected
+        return guarded(lambda: StickerPacks(selected, principal.actor_user_id).create(request))
+
+    @router.post("/sticker-packs/{pack_id}/stickers", status_code=201)
+    def append_sticker(pack_id: str, request: StickerEntry,
+                       principal: RequestPrincipal = principal_dependency):
+        selected = repository()
+        if isinstance(selected, JSONResponse):
+            return selected
+        return guarded(lambda: StickerPacks(selected, principal.actor_user_id).append(pack_id, request))
 
     @router.post("/collections", status_code=201)
     def create_collection(
@@ -245,30 +315,39 @@ def create_gallery_router(
             return selected
 
         def import_artifact():
-            artifact = workspace.get_artifact(session_id, artifact_id)
-            path = workspace.artifact_path(artifact)
-            with path.open("rb") as stream:
-                return selected.import_stream(
-                    principal.actor_user_id,
-                    stream,
-                    name=request.name or artifact.name,
-                    media_type=artifact.media_type,
-                    collection_id=request.collection_id,
-                    source_app_id=request.source_app_id,
-                    source_ref=artifact.uri,
-                    metadata={
-                        "artifact_id": artifact.id,
-                        "artifact_session_id": artifact.session_id,
-                        "artifact_run_id": artifact.run_id,
-                    },
-                    max_bytes=DEFAULT_RESOURCE_IMPORT_LIMIT_BYTES,
-                )
+            from ai2apps.gallery.materials import save_artifact
+            return save_artifact(selected, workspace, principal.actor_user_id, session_id,
+                                 artifact_id, name=request.name, description=request.description,
+                                 collection_id=request.collection_id,
+                                 source_app_id=request.source_app_id)
 
         result = guarded(import_artifact)
         if isinstance(result, JSONResponse):
             return result
         asset, created = result
         return {"asset": asset, "created": created}
+
+    @router.post('/assets/import-attachment/{session_id}/{attachment_id}',status_code=201)
+    def import_session_attachment(session_id:str,attachment_id:str,request:ArtifactImportRequest,
+        principal:RequestPrincipal=principal_dependency,_session_access:None=session_access_dependency):
+        runtime=runtime_provider();selected=repository()
+        if isinstance(selected,JSONResponse):return selected
+        def adopt():
+            item=runtime.documents.get(session_id,attachment_id)
+            path=runtime.documents.source_path(session_id,attachment_id)
+            with path.open('rb') as stream:
+                return selected.import_stream(principal.actor_user_id,stream,name=request.name if request.name is not None else item.filename,
+                    description=request.description,
+                    media_type=item.media_type,collection_id=request.collection_id,
+                    source_app_id=request.source_app_id,source_ref='attachment:'+session_id+':'+attachment_id,
+                    metadata={'attachment_id':attachment_id,'attachment_session_id':session_id},
+                    max_bytes=DEFAULT_RESOURCE_IMPORT_LIMIT_BYTES)
+        try:result=guarded(adopt)
+        except ValueError:
+            return platform_error_response(status_code=409,code='attachment_unavailable',message='The selected attachment changed or is no longer available.')
+        if isinstance(result,JSONResponse):return result
+        asset,created=result
+        return {'asset':asset,'created':created}
 
     @router.get("/assets/{asset_id}")
     def get_asset(
@@ -290,8 +369,8 @@ def create_gallery_router(
         if isinstance(selected, JSONResponse):
             return selected
         return guarded(
-            lambda: selected.rename_asset(
-                principal.actor_user_id, asset_id, request.name
+            lambda: selected.update_asset(
+                principal.actor_user_id, asset_id, name=request.name, description=request.description
             )
         )
 
@@ -311,6 +390,16 @@ def create_gallery_router(
             return result
         asset, path = result
         disposition = "attachment" if download else "inline"
+        if asset["media_type"] == STICKER_PACK_MIME:
+            manifest = guarded(lambda: StickerPacks.manifest(asset))
+            if isinstance(manifest, JSONResponse):
+                return manifest
+            from urllib.parse import quote
+            return JSONResponse(manifest, media_type=STICKER_PACK_MIME, headers={
+                "Cache-Control": "private, no-store",
+                "Content-Disposition": f"{disposition}; filename*=UTF-8''{quote(asset['name'], safe='')}",
+                "X-Content-Type-Options": "nosniff",
+            })
         return FileResponse(
             path,
             media_type=asset["media_type"],

@@ -120,6 +120,21 @@ class DocumentRepository:
                     os.unlink(temporary)
         return self.get(session_id, attachment_id)
 
+    def retire(self, session_id: str, attachment_id: str) -> None:
+        """Remove this Session's input, never the user's picked file or Gallery original."""
+        with self.database.transaction(write=True) as db:
+            row = db.execute('SELECT a.blob_id,b.storage_key FROM attachments a JOIN document_blobs b ON b.id=a.blob_id WHERE a.id=? AND a.session_id=?',
+                             (attachment_id, session_id)).fetchone()
+            if row is None:
+                return
+            db.execute('DELETE FROM attachments WHERE id=? AND session_id=?', (attachment_id, session_id))
+            if not db.execute('SELECT 1 FROM attachments WHERE blob_id=?', (row['blob_id'],)).fetchone():
+                # Reference storage holds only a manifest; never follow it on deletion.
+                path = (self.root / row['storage_key']).resolve()
+                path.relative_to(self.root.resolve())
+                path.unlink(missing_ok=True)
+                db.execute('DELETE FROM document_blobs WHERE id=?', (row['blob_id'],))
+
     def create_reference(self, session_id: str, path: Path, *, filename=None, media_type=None, source="desktop_picker", gallery_asset_id=None, owner_user_id=None) -> AttachmentRecord:
         """Register selected bytes by identity; never copy, read or content-hash them."""
         if not path.is_absolute():
@@ -247,6 +262,19 @@ class DocumentRepository:
     def get(self, session_id: str, attachment_id: str) -> AttachmentRecord:
         with self.database.transaction() as connection:
             return self._record(self._row(connection, session_id, attachment_id))
+
+    def link_selected(self, source_session: str, target_session: str, attachment_id: str) -> AttachmentRecord:
+        """Bind a verified selection to another trusted Session without copying its blob."""
+        target_id = "attc_" + uuid.uuid5(uuid.NAMESPACE_URL, f"ai2apps:attachment:{target_session}:{attachment_id}").hex
+        with self.database.transaction(write=True) as db:
+            source = self._row(db, source_session, attachment_id)
+            db.execute(
+                """INSERT INTO attachments(id,session_id,blob_id,filename,media_type,metadata_json,created_at)
+                   VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING""",
+                (target_id, target_session, source["blob_id"], source["filename"],
+                 source["media_type"], source["metadata_json"], utc_now_text()),
+            )
+            return self._record(self._row(db, target_session, target_id))
 
     def list(self, session_id: str) -> tuple[AttachmentRecord, ...]:
         with self.database.transaction() as connection:

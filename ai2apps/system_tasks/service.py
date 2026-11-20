@@ -10,6 +10,7 @@ import json
 import logging
 import time
 import uuid
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Awaitable, Callable
 
@@ -29,6 +30,8 @@ class TaskHandler:
     retry_payload: Callable[[dict], dict] | None = None
     # One owner presentation is shared by task observers, including AaAT.
     progress_view: Callable[[dict], dict] | None = None
+    next_schedule: Callable[[str, dict, float], float | None] | None = None
+    disable_schedule: Callable[[str, dict], None] | None = None
 
 
 class TaskContext:
@@ -48,6 +51,10 @@ class TaskContext:
         if progress is not None: changes['progress_json'] = json.dumps(progress)
         self.service._update(self.owner, self.id, changes, unless_cancelling=True)
 
+    async def areport(self, **changes):
+        """Persist progress without waiting for a SQLite writer on the loop."""
+        await asyncio.to_thread(self.report, **changes)
+
 
 class SystemTaskService:
     poll_seconds = 1
@@ -57,6 +64,7 @@ class SystemTaskService:
         self.max_running, self.max_per_app, self.max_per_owner = max_running, max_per_app, max_per_owner
         self.handlers: dict[str, TaskHandler] = {}
         self.jobs: dict[str, asyncio.Task] = {}
+        self.yielded_slots: set[str] = set()
         self.loop_task = None
         self.stopping = False
 
@@ -66,6 +74,42 @@ class SystemTaskService:
 
     def _wake(self):
         self.runtime.notifications.notify()
+
+    def _slot_holders(self, db):
+        return [dict(row) for row in db.execute(
+            "SELECT id,owner,app_id,status FROM system_tasks WHERE status IN ('running','waiting_resource','waiting_user','cancelling')"
+        ) if row['status'] == 'cancelling' or row['id'] not in self.yielded_slots]
+
+    def _slot_available(self, active, owner, app_id):
+        return (len(active) < self.max_running
+                and sum(t['app_id'] == app_id for t in active) < self.max_per_app
+                and sum(t['owner'] == owner for t in active) < self.max_per_owner)
+
+    @asynccontextmanager
+    async def yield_slot(self, owner, task_id, *, finishing=False):
+        """A trusted handler can yield admission while its dependency runs."""
+        if not task_id:
+            yield
+            return
+        task = self.get(owner, task_id)
+        if task_id in self.yielded_slots or task['status'] not in ('queued', *EXECUTING[:-1]):
+            yield
+            return
+        self.yielded_slots.add(task_id)
+        self._wake()
+        try:
+            yield
+            while not finishing:
+                with self.database.transaction() as db:
+                    state = db.execute("SELECT status FROM system_tasks WHERE owner=? AND id=?", (owner,task_id)).fetchone()
+                    if state is None or state['status'] not in EXECUTING[:-1]:
+                        break
+                    if self._slot_available(self._slot_holders(db), owner, task['app_id']):
+                        break
+                await asyncio.sleep(.1)
+        finally:
+            self.yielded_slots.discard(task_id)
+            self._wake()
 
     @staticmethod
     def _decode(row):
@@ -159,7 +203,7 @@ class SystemTaskService:
         self.runtime.events.append_in_transaction(db, event_type='system.task.changed',
             subject_id='system-tasks:'+owner, payload={'task_id':id})
 
-    def submit(self, owner, app_id, kind, name, payload, *, dedup_key='', priority=0, run_after=None, checkpoint=None, trigger='manual'):
+    def submit(self, owner, app_id, kind, name, payload, *, dedup_key='', priority=0, run_after=None, checkpoint=None, trigger='manual', receipt_key=None):
         handler = self.handlers.get(kind)
         if handler is None or handler.app_id != app_id: raise ValueError('Unregistered Task kind for App')
         if trigger not in ('manual','schedule'):raise ValueError('Invalid Task trigger')
@@ -169,6 +213,14 @@ class SystemTaskService:
         if handler.authorize: handler.authorize(owner, json.loads(frozen))
         now=self.clock(); id='stask_'+uuid.uuid4().hex
         with self.database.transaction(write=True) as db:
+            if receipt_key:
+                signature=json.dumps({'kind':kind,'payload':json.loads(frozen)},sort_keys=True,separators=(',',':'))
+                accepted=db.execute('SELECT * FROM system_task_acceptances WHERE owner=? AND app_id=? AND receipt_key=?',(owner,app_id,receipt_key)).fetchone()
+                if accepted:
+                    if accepted['signature']!=signature:raise ValueError('Task receipt input conflict')
+                    row=db.execute('SELECT * FROM system_tasks WHERE id=? AND owner=?',(accepted['task_id'],owner)).fetchone()
+                    if row is None:raise ValueError('Accepted Task has expired; automatic resubmission denied')
+                    return self._decode(row)
             if dedup_key:
                 existing=db.execute("SELECT * FROM system_tasks WHERE owner=? AND app_id=? AND dedup_key=? AND status IN ('queued','running','waiting_resource','waiting_user','cancelling')",(owner,app_id,dedup_key)).fetchone()
                 if existing: return self._decode(existing)
@@ -176,6 +228,8 @@ class SystemTaskService:
             if count>=1000: raise ValueError('System Task queue is full')
             db.execute('INSERT INTO system_tasks(id,owner,app_id,kind,name,payload_json,checkpoint_json,status,dedup_key,priority,run_after,created_at,updated_at,trigger) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
                 (id,owner,app_id,kind,str(name)[:500],frozen,json.dumps(checkpoint or {}),'queued',dedup_key,int(priority),run_after or now,now,now,trigger))
+            if receipt_key:
+                db.execute('INSERT INTO system_task_acceptances VALUES(?,?,?,?,?)',(owner,app_id,receipt_key,signature,id))
             self._event(db,owner,id)
         self._wake()
         return self.get(owner,id)
@@ -186,9 +240,19 @@ class SystemTaskService:
         if interval_seconds is not None and interval_seconds<60: raise ValueError('Schedule interval must be at least 60 seconds')
         if handler.authorize: handler.authorize(owner,payload)
         with self.database.transaction(write=True) as db:
-            db.execute('INSERT INTO system_task_schedules(id,owner,app_id,kind,name,payload_json,next_run,interval_seconds,enabled,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(owner,app_id,id) DO UPDATE SET kind=excluded.kind,name=excluded.name,payload_json=excluded.payload_json,next_run=excluded.next_run,interval_seconds=excluded.interval_seconds,enabled=excluded.enabled,updated_at=excluded.updated_at',
-                (key,owner,app_id,kind,name,json.dumps(payload),next_run,interval_seconds,int(enabled),self.clock()))
+            self._write_schedule(db,owner,app_id,key,kind,name,payload,next_run=next_run,
+                interval_seconds=interval_seconds,enabled=enabled,now=self.clock())
         self._wake()
+
+    @staticmethod
+    def _write_schedule(db,owner,app_id,key,kind,name,payload,*,next_run,interval_seconds,enabled,now):
+        """Persistence only for already authorized trusted compositions.
+
+        Allows an immutable owner recipe and its timer to commit atomically in
+        one DB transaction. External callers still use schedule() and its guards.
+        """
+        db.execute('INSERT INTO system_task_schedules(id,owner,app_id,kind,name,payload_json,next_run,interval_seconds,enabled,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(owner,app_id,id) DO UPDATE SET kind=excluded.kind,name=excluded.name,payload_json=excluded.payload_json,next_run=excluded.next_run,interval_seconds=excluded.interval_seconds,enabled=excluded.enabled,updated_at=excluded.updated_at,error=\'\'',
+            (key,owner,app_id,kind,name,json.dumps(payload),next_run,interval_seconds,int(enabled),now))
 
     def prune_history(self):
         cutoff = self.clock() - 48 * 60 * 60
@@ -209,6 +273,9 @@ class SystemTaskService:
             rows=db.execute("SELECT * FROM system_tasks WHERE owner=? AND status IN ('queued','running','waiting_resource','waiting_user','cancelling') ORDER BY created_at DESC LIMIT ?",(owner,limit)).fetchall()
             rows+=db.execute("SELECT * FROM system_tasks WHERE owner=? AND status IN ('completed','partial','failed','cancelled','interrupted') ORDER BY COALESCE(finished_at,updated_at) DESC,id DESC LIMIT 100",(owner,)).fetchall()
             schedules=[dict(row) for row in db.execute('SELECT id,app_id,kind,name,next_run,interval_seconds,enabled,last_task_id,error FROM system_task_schedules WHERE owner=? AND enabled=1 ORDER BY next_run LIMIT ?',(owner,limit))]
+        for schedule in schedules:
+            handler=self.handlers.get(schedule['kind'])
+            schedule['can_disable']=bool(handler and handler.disable_schedule)
         # Input and checkpoints can contain private evidence. UI receives metadata only.
         tasks=[]
         for row in rows:
@@ -247,7 +314,20 @@ class SystemTaskService:
             row=db.execute('SELECT * FROM system_task_schedules WHERE owner=? AND id=?',(owner,id)).fetchone()
         if row is None:raise KeyError('Schedule not found')
         # Manual invocation does not move or disable the recurring schedule.
-        return self.submit(owner,row['app_id'],row['kind'],row['name'],json.loads(row['payload_json']),dedup_key='schedule:'+id,trigger='schedule' if scheduled else 'manual')
+        return self.submit(owner,row['app_id'],row['kind'],row['name'],json.loads(row['payload_json']),dedup_key='schedule:'+id,trigger='schedule' if scheduled else 'manual',
+            receipt_key=('schedule:'+id+':'+str(row['next_run'])) if scheduled else None)
+
+    def disable_schedule(self,owner,id):
+        with self.database.transaction() as db:row=db.execute('SELECT * FROM system_task_schedules WHERE owner=? AND id=?',(owner,id)).fetchone()
+        if row is None:raise KeyError('Schedule not found')
+        if not row['enabled']:return {'id':id,'enabled':False}
+        handler=self.handlers.get(row['kind'])
+        if not handler or not handler.disable_schedule:raise ValueError('Disable this schedule in its owning App')
+        handler.disable_schedule(owner,json.loads(row['payload_json']))
+        with self.database.transaction(write=True) as db:
+            changed=db.execute('UPDATE system_task_schedules SET enabled=0 WHERE owner=? AND id=? AND updated_at=?',(owner,id,row['updated_at'])).rowcount
+        if not changed:raise ValueError('Schedule changed; refresh before disabling')
+        self._wake();return {'id':id,'enabled':False}
 
     def cancel(self, owner, id, *, force=False):
         task=self.get(owner,id)
@@ -284,14 +364,11 @@ class SystemTaskService:
     async def _run(self, task):
         context=TaskContext(self,task); handler=self.handlers[task['kind']]
         try:
-            if handler.authorize:handler.authorize(task['owner'],task['payload'])
+            if handler.authorize:await asyncio.to_thread(handler.authorize,task['owner'],task['payload'])
             result=await handler.execute(context) or {}
-            current=self.get(task['owner'],task['id'])
-            if current['status']=='cancelling':return
             status=result.pop('_status','completed')
-            if status not in ('completed','partial','failed'):raise ValueError('Invalid Task result state')
-            self._update(task['owner'],task['id'],dict(status=status,result_json=json.dumps(result),finished_at=self.clock()))
-            self._finish_attempt(task,status)
+            if status not in ('completed','partial','failed','cancelled'):raise ValueError('Invalid Task result state')
+            await asyncio.to_thread(self._settle_execution,task,status,result=result)
         except asyncio.CancelledError:
             if self.stopping:
                 # Leave a durable recoverable state. Do not cancel shared resources
@@ -300,18 +377,34 @@ class SystemTaskService:
             raise
         except Exception as error:
             log.exception('System Task failed: %s',task['id'])
-            self._update(task['owner'],task['id'],dict(status='failed',message=str(error)[:2000],finished_at=self.clock()))
-            self._finish_attempt(task,'failed',str(error)[:2000])
+            await asyncio.to_thread(self._settle_execution,task,'failed',error=str(error)[:2000])
         finally:
             self.jobs.pop(task['id'],None)
             self._wake()
+
+    def _settle_execution(self, task, status, *, result=None, error=''):
+        # Completion now runs on a worker. Recheck cancellation and the attempt
+        # in the same transaction as both terminal records, rather than relying
+        # on a pre-await read that can become stale while waiting for the lock.
+        with self.database.transaction(write=True) as db:
+            before=db.execute('SELECT status,attempt,result_json FROM system_tasks WHERE owner=? AND id=?',
+                (task['owner'],task['id'])).fetchone()
+            if (before is None or before['attempt']!=task['attempt']
+                    or before['status'] in (*TERMINAL,'cancelling')):
+                return
+            now=self.clock()
+            db.execute('UPDATE system_tasks SET status=?,result_json=?,message=?,finished_at=?,updated_at=? WHERE owner=? AND id=?',
+                (status,json.dumps(result) if result is not None else before['result_json'],error,now,now,task['owner'],task['id']))
+            db.execute('UPDATE system_task_attempts SET status=?,finished_at=?,error=? WHERE owner=? AND task_id=? AND number=?',
+                (status,now,error,task['owner'],task['id'],task['attempt']))
+            self._event(db,task['owner'],task['id'])
+        self._wake()
 
     def _finish_attempt(self, task, status, error=''):
         with self.database.transaction(write=True) as db:
             db.execute('UPDATE system_task_attempts SET status=?,finished_at=?,error=? WHERE owner=? AND task_id=? AND number=?',(status,self.clock(),error,task['owner'],task['id'],task['attempt']))
 
-    async def tick(self):
-        now=self.clock()
+    def _advance_schedules(self, now):
         if now - getattr(self, '_last_history_cleanup', 0) >= 60:
             self.prune_history()
             self._last_history_cleanup = now
@@ -319,17 +412,25 @@ class SystemTaskService:
             due=[dict(r) for r in db.execute('SELECT * FROM system_task_schedules WHERE enabled=1 AND next_run<=?',(now,))]
         for schedule in due:
             try:
-                task=self.start_schedule(schedule['owner'],schedule['id'],scheduled=True)
                 interval=schedule['interval_seconds']
                 # Coalesce missed slots into one run, never replay a catch-up storm.
-                next_run=schedule['next_run']+(int((now-schedule['next_run'])//interval)+1)*interval if interval else schedule['next_run']
+                handler=self.handlers.get(schedule['kind'])
+                future=handler.next_schedule(schedule['owner'],json.loads(schedule['payload_json']),now) if handler and handler.next_schedule else (schedule['next_run']+(int((now-schedule['next_run'])//interval)+1)*interval if interval else None)
+                next_run=future if future is not None else schedule['next_run']
+                task=self.start_schedule(schedule['owner'],schedule['id'],scheduled=True)
                 with self.database.transaction(write=True) as db:
-                    db.execute("UPDATE system_task_schedules SET next_run=?,enabled=?,last_task_id=?,error='' WHERE owner=? AND app_id=? AND id=? AND next_run=?",(next_run,int(bool(interval)),task['id'],schedule['owner'],schedule['app_id'],schedule['id'],schedule['next_run']))
+                    db.execute("UPDATE system_task_schedules SET next_run=?,enabled=?,last_task_id=?,error='' WHERE owner=? AND app_id=? AND id=? AND next_run=?",(next_run,int(future is not None),task['id'],schedule['owner'],schedule['app_id'],schedule['id'],schedule['next_run']))
             except Exception as error:
                 with self.database.transaction(write=True) as db:
                     db.execute('UPDATE system_task_schedules SET error=?,next_run=? WHERE owner=? AND app_id=? AND id=?',(str(error)[:500],now+60,schedule['owner'],schedule['app_id'],schedule['id']))
+    def _cancelling_tasks(self):
         with self.database.transaction() as db:
-            cancelling=[self._decode(r) for r in db.execute("SELECT * FROM system_tasks WHERE status='cancelling'")]
+            return [self._decode(r) for r in db.execute("SELECT * FROM system_tasks WHERE status='cancelling'")]
+
+    async def tick(self):
+        now=self.clock()
+        await asyncio.to_thread(self._advance_schedules, now)
+        cancelling=await asyncio.to_thread(self._cancelling_tasks)
         for task in cancelling:
             job=self.jobs.get(task['id'])
             if job is not None:
@@ -345,28 +446,37 @@ class SystemTaskService:
                     done,_=await asyncio.wait({job},timeout=2)
                     if not done:continue
                 if clean:
-                    self._update(task['owner'],task['id'],dict(status='cancelled',finished_at=now))
-                    self._finish_attempt(task,'cancelled')
+                    await asyncio.to_thread(self._update,task['owner'],task['id'],dict(status='cancelled',finished_at=now))
+                    await asyncio.to_thread(self._finish_attempt,task,'cancelled')
             except (Exception, TimeoutError) as error:
-                self._update(task['owner'],task['id'],dict(message='等待资源清理：'+str(error)[:500]))
+                await asyncio.to_thread(self._update,task['owner'],task['id'],dict(message='等待资源清理：'+str(error)[:500]))
         if self.stopping:return
+        # The transaction returns plain records; coroutine creation and resource
+        # ownership stay on the loop. A cancelled admission remains recoverable
+        # at startup, without issuing an untracked external operation.
+        admitted=await asyncio.to_thread(self._admit, now, frozenset(self.yielded_slots))
+        for task in admitted:
+            self.jobs[task['id']]=asyncio.create_task(self._run(task),name='system-'+task['id'])
+
+    def _admit(self, now, yielded):
         with self.database.transaction(write=True) as db:
-            active=[dict(r) for r in db.execute("SELECT owner,app_id FROM system_tasks WHERE status IN ('running','waiting_resource','waiting_user','cancelling')")]
+            active=[dict(row) for row in db.execute(
+                "SELECT id,owner,app_id,status FROM system_tasks WHERE status IN ('running','waiting_resource','waiting_user','cancelling')"
+            ) if row['status']=='cancelling' or row['id'] not in yielded]
             queued=db.execute("SELECT * FROM system_tasks WHERE status='queued' AND run_after<=? ORDER BY (priority + CAST((?-created_at)/60 AS INTEGER)) DESC,created_at",(now,now)).fetchall()
             admitted=[]
             for row in queued:
                 task=self._decode(row)
                 if task['kind'] not in self.handlers:continue
-                if len(active)>=self.max_running:break
-                if sum(t['app_id']==task['app_id'] for t in active)>=self.max_per_app:continue
-                if sum(t['owner']==task['owner'] for t in active)>=self.max_per_owner:continue
+                if len(active)>=self.max_running and task['id'] not in yielded:continue
+                if task['id'] not in yielded and not self._slot_available(active,task['owner'],task['app_id']):continue
                 number=task['attempt']+1
                 db.execute("UPDATE system_tasks SET status='running',attempt=?,started_at=?,updated_at=?,message='' WHERE id=? AND status='queued'",(number,now,now,task['id']))
                 db.execute('INSERT INTO system_task_attempts(task_id,owner,number,status,started_at) VALUES(?,?,?,?,?)',(task['id'],task['owner'],number,'running',now))
-                task.update(status='running',attempt=number);admitted.append(task);active.append(task)
+                task.update(status='running',attempt=number);admitted.append(task)
+                if task['id'] not in yielded:active.append(task)
                 self._event(db,task['owner'],task['id'])
-        for task in admitted:
-            self.jobs[task['id']]=asyncio.create_task(self._run(task),name='system-'+task['id'])
+        return admitted
 
     async def _loop(self):
         while not self.stopping:

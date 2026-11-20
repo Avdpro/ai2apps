@@ -119,7 +119,8 @@ dependencies = [
     "mlx-vlm==0.6.3",
     "Pillow>=9.0.0",
     # mflux uses this on every generated-image save path. It is intentionally
-    # kept while torch/opencv conversion-only dependencies remain stripped.
+    # kept while torch conversion-only dependencies remain stripped.
+    # OpenCV from mlx-vlm is retained for native bounded video decoding.
     "piexif>=1.1.3,<2",
     # mflux VersionUtil imports the legacy toml module on every image pipeline
     # import, even when the wheel metadata supplies the installed version.
@@ -144,6 +145,13 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+haru-duplex = [
+    # Native Haru frame inference uses the existing pinned MLX Runtime.
+    "numpy>=1.26,<2.4",
+    "tokenizers>=0.21",
+    "scipy>=1.13",
+    "soundfile>=0.13",
+]
 # Dependencies embedded in the inference-free AI2Apps Base App. Keep native
 # model runtimes (MLX, transformers, tokenizers, audio, grammar) out of this
 # list: they are delivered by signed Runtime Packages and launched as managed
@@ -189,6 +197,11 @@ control-plane = [
     "zeroconf>=0.147,<1",
     "selenium>=4.35.0,<5",
     "mcp>=1.5.0",
+]
+knowledge-vector-base = [
+    # Shared MLX Runtime: vector storage only; preserve existing MLX/Transformers pins.
+    "lancedb==0.37.1",
+    "pyarrow==25.0.1",
 ]
 knowledge-rag-runtime = [
     # Installed only through the on-demand Knowledge Runtime Package. Neither
@@ -322,6 +335,7 @@ version = {attr = "ai2apps._version.__version__"}
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["ai2apps*", "omlx*"]
+exclude = ["ai2apps.experiments.comfyui_studio*"]
 namespaces = false
 
 [tool.setuptools.package-data]
@@ -336,6 +350,7 @@ namespaces = false
 ]
 "ai2apps.browser" = ["readability.js"]
 "ai2apps.model_worker" = ["flux2_klein_9b_scheduler.json", "flux2_klein_9b_provenance.json", "flux2_klein_9b_LICENSE.md"]
+"ai2apps.model_worker.haru_mlx" = ["LICENSE", "THIRD_PARTY_NOTICES.md", "README.ai2apps.md", "UPSTREAM.json", "assets/**/*.json", "assets/*.json"]
 "ai2apps.provisioning" = ["profiles/*.yaml"]
 "ai2apps.web" = [
     "owner_studio_routes.json",
@@ -362,6 +377,11 @@ namespaces = false
 # directly into build/lib after this filtering step.
 [tool.setuptools.exclude-package-data]
 "*" = ["*.metallib", "*.dylib", "*.so"]
+"ai2apps.web" = [
+    "templates/system_apps/_comfyui*.html",
+    "static/js/studio_comfyui.js",
+    "static/css/studio_comfyui.css",
+]
 
 [tool.uv]
 # Keep the runtime ABI fixed and override older transitive mlx-lm pins.

@@ -199,7 +199,7 @@ def install(runtime,register):
                 schema['properties']['history_mode']={'type':'string','enum':['incremental','cache'],'default':'incremental','title':'历史记录 / History','description':'增量检查新订单，或只使用本地缓存。全量重读仅可在 Shopping Pro 内操作。'}
             if 'source_tasks' in schema['properties']:schema['properties']['source_tasks']['title']='观察记录任务 / Observed history tasks'
             if 'selected' in schema['properties']:schema['properties']['selected']['title']='确认商品与目标数量 / Confirm products and target quantities'
-            return {'effective_schema':schema,'fields':present_fields(schema_fields(schema),FORM_LABELS,{'history_mode':{'incremental':{'zh':'增量刷新','en':'Incremental refresh'},'cache':{'zh':'仅用本地缓存','en':'Local cache only'}},'locale':{'zh':{'zh':'中文','en':'Chinese'},'en':{'zh':'英文','en':'English'}}}),'selection_required':operation in ('history','refresh_list','prepare_cart','gift_recommend')}
+            return {'effective_schema':schema,'fields':present_fields(schema_fields(schema),FORM_LABELS,{'history_mode':{'incremental':{'zh':'增量刷新','en':'Incremental refresh'},'cache':{'zh':'仅用本地缓存','en':'Local cache only'}},'locale':{'zh':{'zh':'中文','en':'Chinese'},'en':{'zh':'英文','en':'English'}}}),'selection_required':operation in ('refresh_list','prepare_cart','gift_recommend')}
         async def execute(args,context,operation=operation):
             return await execute_operation(runtime,args,context,operation)
         capability='shopping.'+operation
@@ -209,7 +209,7 @@ def install(runtime,register):
              'prepare_cart':'After user confirmation of products and quantities, prepare and verify the Amazon cart. Never checkout or pay.'}.get(operation,'Shopping Pro '+operation+' using observed purchases.'),
             {'type':'object','properties':{'profile':{'type':'string','default':'default'}},'additionalProperties':False},
             execute,mini=MINI,descriptor=describe,agent_context=DECLARATION,
-            effects=('network','external_read','external_write') if operation=='prepare_cart' else ('network','external_read'),
+            effects=('network','external_read','external') if operation=='prepare_cart' else ('network','external_read'),
             timeout_ms=900000,open_parameters=True,discovery_context=discover,form_summary={'zh':'依据购物历史生成建议；准备购物车需确认商品和数量，不下单或付款。','en':'Use observed purchases for recommendations; cart preparation requires product and quantity confirmation and never checks out or pays.'},form_name={'zh':{'history':'购物历史','refresh_list':'生成补货清单','recommend':'补货建议','revise':'调整补货清单','prepare_cart':'准备购物车','gift_recommend':'礼物推荐'}[operation],'en':{'history':'Purchase history','refresh_list':'Replenishment list','recommend':'Replenishment recommendations','revise':'Revise replenishment list','prepare_cart':'Prepare cart','gift_recommend':'Gift recommendations'}[operation]})
         if operation=='prepare_cart':
             async def cart_form(runtime,principal,form,values,item):

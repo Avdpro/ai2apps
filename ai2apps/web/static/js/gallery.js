@@ -29,6 +29,37 @@
         return bytes;
     }
 
+    // One read-only, schema-checked view shared by Output and Gallery.
+    window.characterDocumentViewer = function () { return {
+        document: null, loading: false, error: '', requestId: 0, loadedUrl: '',
+        async loadCharacter(url) {
+            if (url === this.loadedUrl) return;
+            this.loadedUrl = url; const id = ++this.requestId;
+            this.document = null; this.error = ''; this.loading = !!url;
+            if (!url) return;
+            try {
+                const target = new URL(url, window.location.origin);
+                if (target.origin !== window.location.origin || !['http:', 'https:'].includes(target.protocol)) throw Error('Invalid document URL');
+                const response = await fetch(target.href, {credentials:'same-origin'});
+                if (!response.ok) throw Error('HTTP ' + response.status);
+                if (Number(response.headers.get('Content-Length')) > 70*1024*1024) throw Error('Document too large');
+                const raw = await response.text();
+                if (raw.length > 70*1024*1024) throw Error('Document too large');
+                const value = JSON.parse(raw);
+                if (value.schema !== 'ai2apps.character-appearance/v1' || !value.character || !value.appearance || !Array.isArray(value.images)) throw Error('Unsupported character settings');
+                if (id === this.requestId) this.document = value;
+            } catch (error) { if (id === this.requestId) this.error = error.message; }
+            finally { if (id === this.requestId) this.loading = false; }
+        },
+        get images() { return (this.document?.images || []).filter(image => typeof image.data_url === 'string' && /^data:image\/(png|jpeg|webp|avif|gif);base64,[A-Za-z0-9+/=\s]+$/.test(image.data_url)); },
+        get settings() { const d=this.document; if (!d) return []; return [
+            ['角色 / Character',d.character.name], ['身份 / Identity',d.character.description],
+            ['形象 / Appearance',d.appearance.name], ['风格 / Style',d.appearance.style],
+            ['比例 / Proportions',d.appearance.proportions], ['衣着 / Outfit',d.appearance.outfit],
+            ['其它要求 / Requirements',d.appearance.description], ['形象说明 / Guide',d.appearance.summary]
+        ].filter(item => item[1]); },
+    }; };
+
     window.galleryApp = function () { return {
         tr,
         collections: [], assets: [], selectedCollectionId: 'recent', selectedIds: [], selectionOperation: 'copy', targetCollectionId: '', search: '', kind: '', view: 'grid', loading: true, busy: false, notice: '', noticeTone: '', noticeTimer: null, creatingCollection: false, newCollectionName: '', newCollectionKind: 'custom', draggedAssetId: null, dragStartedAt: 0, hostMessageHandler: null, keyboardHandler: null, clipboardStorageHandler: null, clientEnvironment: 'browser', surface: 'full',
@@ -37,6 +68,7 @@
         pageContext: null, isBrowserSidebar: false, pageClient: null, browserDrag: null, browserMediaImportPromise: null, browserImportStage: '', browserImportProgress: 0,
         previewReadOnly: false,
         previewAsset: null, previewZoom: 1, previewPanX: 0, previewPanY: 0, previewPanStart: null, previewPointers: {}, previewRenaming: false, previewName: '', previewSavingName: false,
+        appStateBinding: null, appStateRestoring: false,
         initialized: false,
         async init() {
             // Alpine calls init automatically; legacy templates also use x-init.
@@ -74,7 +106,20 @@
             this.readAssetClipboard();
             await this.refresh();
             if (this.surface === 'preview') await this.openRequestedPreview();
+            if(this.surface==='full')this.mountAppState();
         },
+        mountAppState() {
+            if(!window.AI2AppsAppState||this.appStateBinding)return;
+            const sdk=window.AI2AppsAppState,instanceId=new URLSearchParams(location.hash.slice(1)).get('ai2apps-instance');if(!sdk||!instanceId)return;
+            const capture=()=>({collection_id:this.selectedCollectionId,kind:this.kind,view:this.view});
+            this.appStateBinding=sdk.register({instanceId,target:{app_id:'ai2apps.gallery',mini_app_id:null,contract_version:1},capture,
+                revision:()=>JSON.stringify({settings:capture(),search:this.search,selected:this.selectedIds,busy:this.busy,loading:this.loading,preview:!!this.previewAsset}),
+                dirty:()=>Boolean(this.search||this.selectedIds.length),setBusy:v=>{this.appStateRestoring=v;this.$root.inert=v;},
+                validate:async v=>{if(this.busy||this.loading||this.previewAsset||this.creatingCollection)throw Error('Close active operations or dialogs before restoring Gallery settings');const items=(await request('/collections')).items||[];if(!items.some(x=>x.id===v.collection_id))throw Error('The saved collection is unavailable on this installation');},
+                apply:async v=>{const collections=(await request('/collections')).items||[];if(!collections.some(x=>x.id===v.collection_id))throw Error('The saved collection is unavailable');const params=new URLSearchParams({collectionId:v.collection_id,...(v.kind?{kind:v.kind}:{}),...(this.search.trim()?{search:this.search.trim()}:{})});const payload=await request('/assets?'+params);Object.assign(this,{collections,selectedCollectionId:v.collection_id,kind:v.kind,view:v.view,assets:payload.items||[],selectedIds:[],targetCollectionId:''});this.notifyActiveCollection();await this.$nextTick();}
+            });
+        },
+        openAppState(){return window.AI2AppsAppState.panel(this.appStateBinding).catch(e=>this.fail(e));},
         get selectedCollection() { return this.collections.find(item => item.id === this.selectedCollectionId) || this.collections[0]; },
         get selectedCollectionName() { return this.collectionName(this.selectedCollection); },
         get systemCollections() { return this.collections.filter(item => item.kind === 'system'); },
@@ -94,7 +139,7 @@
         get previewImageTransform() { return `transform:translate3d(${this.previewPanX}px,${this.previewPanY}px,0) scale(${this.previewZoom});cursor:${this.previewPanStart ? 'grabbing' : 'grab'}`; },
         async refresh() { await this.loadCollections(); await this.loadAssets(); },
         async loadCollections() { try { this.collections = (await request('/collections')).items || []; if (!this.collections.some(item => item.id === this.selectedCollectionId)) this.selectedCollectionId = 'recent'; if (this.selectedIds.length) this.ensureSelectionTarget(); this.$nextTick(() => window.lucide?.createIcons()); } catch (error) { this.fail(error); } },
-        async loadAssets() { this.loading = true; this.selectedIds = []; this.targetCollectionId = ''; this.notifyActiveCollection(); const params = new URLSearchParams({ collectionId: this.selectedCollectionId, ...(this.kind ? { kind: this.kind } : {}), ...(this.search.trim() ? { search: this.search.trim() } : {}) }); try { this.assets = (await request('/assets?' + params)).items || []; } catch (error) { this.fail(error); } finally { this.loading = false; this.$nextTick(() => window.lucide?.createIcons()); } },
+        async loadAssets() { if(this.appStateRestoring)return; this.loading = true; this.selectedIds = []; this.targetCollectionId = ''; this.notifyActiveCollection(); const params = new URLSearchParams({ collectionId: this.selectedCollectionId, ...(this.kind ? { kind: this.kind } : {}), ...(this.search.trim() ? { search: this.search.trim() } : {}) }); try { this.assets = (await request('/assets?' + params)).items || []; } catch (error) { this.fail(error); } finally { this.loading = false; this.$nextTick(() => window.lucide?.createIcons()); } },
         async selectCollection(collection) { this.selectedCollectionId = collection.id; this.selectionOperation = 'copy'; this.targetCollectionId = ''; await this.loadAssets(); },
         async createCollection() { if (!this.newCollectionName || this.busy) return; this.busy = true; try { const created = await request('/collections', { method: 'POST', body: { name: this.newCollectionName, kind: this.newCollectionKind } }); this.newCollectionName = ''; this.creatingCollection = false; await this.loadCollections(); await this.selectCollection(created); this.success(tr('gallery.success.collection_created')); } catch (error) { this.fail(error); } finally { this.busy = false; } },
         async deleteCollection(collection) {
@@ -149,6 +194,10 @@
             return candidates;
         },
         async dropFiles(event) {
+            const existing=event.dataTransfer?.getData('application/x-ai2apps-gallery-asset');
+            if(existing){try{if(this.selectedCollectionId==='recent')await request(`/assets/${encodeURIComponent(existing)}`);else await request(`/collections/${encodeURIComponent(this.selectedCollectionId)}/assets/${encodeURIComponent(existing)}`,{method:'POST'});await this.loadCollections();await this.loadAssets();}catch(error){this.fail(error);}return;}
+            const attachment=event.dataTransfer?.getData('application/x-ai2apps-session-attachment');
+            if(attachment){try{const ref=JSON.parse(attachment);if(!ref.sessionId||!ref.attachmentId)throw Error(tr('gallery.error.artifact_invalid'));this.busy=true;await request(`/assets/import-attachment/${encodeURIComponent(ref.sessionId)}/${encodeURIComponent(ref.attachmentId)}`,{method:'POST',body:{collectionId:this.selectedCollectionId==='recent'?null:this.selectedCollectionId,sourceAppId:'ai2apps.messager'}});await this.loadCollections();await this.loadAssets();}catch(error){this.fail(error);}finally{this.busy=false;}return;}
             const studioReference=event.dataTransfer?.getData('application/x-ai2apps-studio-artifact');
             if(studioReference){try{const ref=JSON.parse(studioReference);if(ref.studioId!=='ai2apps.imagine-studio'||!ref.artifactId||!ref.appInstanceId)throw new Error(tr('gallery.error.artifact_invalid'));this.busy=true;const response=await fetch(`/v1/platform/imagine-studio/artifacts/${encodeURIComponent(ref.artifactId)}/gallery`,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-AI2Apps-App-Instance':ref.appInstanceId},body:JSON.stringify({collectionId:this.selectedCollectionId==='recent'?null:this.selectedCollectionId})});if(!response.ok)throw new Error(tr('gallery.error.request_failed'));await this.loadCollections();await this.loadAssets();}catch(error){this.fail(error);}finally{this.busy=false;}return;}
             const raw = event.dataTransfer?.getData('application/x-ai2apps-session-artifact') || event.dataTransfer?.getData('application/x-ai2apps-audio-artifact') || event.dataTransfer?.getData('application/x-ai2apps-video-artifact');
@@ -314,6 +363,7 @@
                 asset: { id: asset.id, name: asset.name, kind: asset.kind, mediaType: asset.media_type || asset.mediaType || '' },
             }, window.location.origin);
         },
+        destroy(){this.appStateBinding?.dispose();},
         cleanup() {
             this.cancelAssetHold();
             if (this.hostMessageHandler) window.removeEventListener('message', this.hostMessageHandler);
@@ -425,6 +475,16 @@
             this.previewName = this.previewAsset?.name || '';
             this.previewRenaming = true;
             this.$nextTick(() => { this.$refs.previewNameInput?.focus(); this.$refs.previewNameInput?.select(); window.lucide?.createIcons(); });
+        },
+        async savePreviewDescription(description) {
+            if (!this.previewAsset || this.previewReadOnly || this.previewSavingName) return;
+            this.previewSavingName = true;
+            try {
+                const updated = await request(`/assets/${encodeURIComponent(this.previewAsset.id)}`, { method: 'PATCH', body: { description } });
+                const index = this.assets.findIndex(item => item.id === updated.id);
+                if (index >= 0) this.assets[index] = updated;
+                this.previewAsset = updated;
+            } catch (error) { this.fail(error); } finally { this.previewSavingName = false; }
         },
         async savePreviewName() {
             if (!this.previewAsset || !this.previewName.trim() || this.previewSavingName) return;
@@ -769,7 +829,7 @@
         contentUrl(asset, download = false) { return `${API}/assets/${encodeURIComponent(asset.id)}/content${download ? '?download=true' : ''}`; },
         collectionName(collection) { return collection?.system_key ? tr(`gallery.collection.${collection.system_key}`) : (collection?.name || ''); },
         collectionIcon(collection) { return collection.system_key === 'recent' ? 'clock-3' : collection.system_key === 'downloads' ? 'download' : collection.system_key === 'public' ? 'globe-2' : collection.system_key === 'personal' ? 'user-round' : collection.system_key === 'trash' ? 'trash-2' : 'folder'; },
-        assetIcon(asset) { return asset.kind === 'audio' ? 'audio-lines' : asset.kind === 'web' ? 'panel-top' : asset.kind === 'document' ? 'file-text' : 'file'; },
+        assetIcon(asset) { return asset.kind === 'sticker-pack' ? 'smile' : asset.kind === 'audio' ? 'audio-lines' : asset.kind === 'web' ? 'panel-top' : asset.kind === 'document' ? 'file-text' : 'file'; },
         kindLabel(kind) { return kind ? tr(`gallery.kind.${kind}`) : ''; },
         extension(name) { const part = String(name || '').split('.').pop(); return part && part !== name ? part.slice(0, 8).toUpperCase() : 'FILE'; },
         formatSize(value) { const bytes = Number(value || 0); if (bytes < 1024) return bytes + ' B'; if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB'; if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + ' MB'; return (bytes / 1073741824).toFixed(1) + ' GB'; },
@@ -797,21 +857,37 @@
             returnFocus: null,
             previousOverflow: '',
             init() {},
-            openResult(artifact) {
-                if (!artifact?.previewUrl) return;
-                const url = new URL(artifact.previewUrl, window.location.origin);
-                if (url.origin !== window.location.origin || !['http:', 'https:'].includes(url.protocol)) return;
-                let download = url.href;
-                if (artifact.downloadUrl) {
-                    const candidate = new URL(artifact.downloadUrl, window.location.origin);
-                    if (candidate.origin === url.origin && ['http:', 'https:'].includes(candidate.protocol)) download = candidate.href;
+            openResult(artifact) { this.openResults([artifact], 0); },
+            openResults(artifacts, selected = 0) {
+                const assets = [];
+                let selectedAsset = null;
+                for (const [index, artifact] of (Array.isArray(artifacts) ? artifacts : []).entries()) {
+                    if (!artifact?.previewUrl) continue;
+                    let url, download;
+                    try {
+                        url = new URL(artifact.previewUrl, window.location.origin);
+                        const inlineImage = artifact.kind === 'image' && artifact.previewUrl.length < 12 * 1024 * 1024 && /^data:image\/(png|jpeg|webp|avif|gif);base64,[A-Za-z0-9+/=\s]+$/.test(artifact.previewUrl);
+                        if (!inlineImage && (url.origin !== window.location.origin || !['http:', 'https:'].includes(url.protocol))) continue;
+                        download = url.href;
+                        if (artifact.downloadUrl) {
+                            const candidate = new URL(artifact.downloadUrl, window.location.origin);
+                            if (candidate.origin === url.origin && ['http:', 'https:'].includes(candidate.protocol)) download = candidate.href;
+                        }
+                    } catch (_) { continue; }
+                    const identity = artifact.id || url.href;
+                    const asset = { id: assets.some(item => item.id === identity) ? identity + '#' + index : identity, name: artifact.name || 'Image',
+                        kind: ['image', 'audio', 'video'].includes(artifact.kind) ? artifact.kind : (artifact.kind || 'image'),
+                        media_type: artifact.mediaType || '', size_bytes: artifact.sizeBytes || artifact.size_bytes || 0, previewUrl: url.href, downloadUrl: download };
+                    assets.push(asset);
+                    if (index === selected) selectedAsset = asset;
                 }
+                if (!assets.length || !selectedAsset) return;
                 if (!this.previewAsset) {
                     this.returnFocus = document.activeElement;
                     this.previousOverflow = document.body.style.overflow;
                 }
-                this.assets = [{ id: artifact.id, name: artifact.name || 'Image', kind: 'image', size_bytes: artifact.sizeBytes || artifact.size_bytes || 0, previewUrl: url.href, downloadUrl: download }];
-                this.openPreview(this.assets[0]);
+                this.assets = assets;
+                this.openPreview(selectedAsset);
                 this.$nextTick(() => this.$refs.previewDialog?.focus({ preventScroll: true }));
             },
             contentUrl(asset, download = false) { return (download ? asset?.downloadUrl : asset?.previewUrl) || ''; },

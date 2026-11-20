@@ -14,12 +14,20 @@
         </header>
 
         <div class="gallery-preview-stage">
+            <details class="gallery-description" x-show="!previewReadOnly" x-data="{ draft: '' }" x-effect="draft = previewAsset?.description || ''">
+                <summary>{{ t('gallery.description.label') }}</summary>
+                <form @submit.prevent="savePreviewDescription(draft)">
+                    <textarea x-model="draft" maxlength="4000" aria-label="{{ t('gallery.description.label') }}"></textarea>
+                    <button type="submit" :disabled="previewSavingName">{{ t('gallery.description.save') }}</button>
+                </form>
+            </details>
             <button type="button" class="gallery-preview-nav previous" @click="movePreview(-1)" :disabled="!hasPreviousPreview" title="{{ t('gallery.action.previous') }}"><i data-lucide="chevron-left"></i></button>
             <div class="gallery-preview-media" :class="previewAsset?.kind" @pointerdown="startPreviewPan($event)" @pointermove="movePreviewPan($event)" @pointerup="endPreviewPan($event)" @pointercancel="endPreviewPan($event)" @lostpointercapture="endPreviewPan($event)">
                 <template x-if="previewAsset?.kind==='image'"><img x-ref="previewImage" :src="contentUrl(previewAsset)" :alt="previewAsset.name" :style="previewImageTransform" draggable="false" @dblclick.prevent="togglePreviewZoom()" @wheel.prevent="wheelPreview($event)"></template>
                 <template x-if="previewAsset?.kind==='video'"><video x-ref="previewVideo" :src="contentUrl(previewAsset)" controls playsinline autoplay></video></template>
                 <template x-if="previewAsset?.kind==='audio'"><div class="gallery-audio-preview"><span><i data-lucide="audio-lines"></i></span><strong x-text="previewAsset.name"></strong><audio x-ref="previewAudio" :src="contentUrl(previewAsset)" controls autoplay></audio></div></template>
-                <template x-if="previewAsset&&!['image','video','audio'].includes(previewAsset.kind)"><div class="gallery-generic-preview"><span><i :data-lucide="assetIcon(previewAsset)"></i></span><strong x-text="previewAsset.name"></strong><p>{{ t('gallery.preview.unavailable') }}</p></div></template>
+                <template x-if="previewAsset && (previewAsset.media_type==='application/json' || /\.(charector|character)\.json$/i.test(previewAsset.name))"><div class="character-document-container" x-data="{get characterDocumentUrl(){return contentUrl(previewAsset)}}">{% include "system_apps/_character_document_preview.html" %}</div></template>
+                <template x-if="previewAsset&&!['image','video','audio'].includes(previewAsset.kind)&&previewAsset.media_type!=='application/json'&&!/\.(charector|character)\.json$/i.test(previewAsset.name)"><div class="gallery-generic-preview"><span><i :data-lucide="assetIcon(previewAsset)"></i></span><strong x-text="previewAsset.name"></strong><p>{{ t('gallery.preview.unavailable') }}</p></div></template>
             </div>
             <button type="button" class="gallery-preview-nav next" @click="movePreview(1)" :disabled="!hasNextPreview" title="{{ t('gallery.action.next') }}"><i data-lucide="chevron-right"></i></button>
         </div>

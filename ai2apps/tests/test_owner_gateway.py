@@ -271,6 +271,36 @@ def test_declared_host_bridge_is_mount_bound_and_revoked(env,monkeypatch):
     assert client.post(url,json={'method':'request','path':'/v1/platform/fixture'}).status_code==401
 
 
+def test_mail_uses_the_owner_mobile_mount_and_device_switch(env, monkeypatch):
+    from ai2apps.apps.system import SYSTEM_APP_MANIFESTS
+    from ai2apps.remote.mobile_apps import MobileAppPolicy
+    from ai2apps.web import mobile_app_gateway as host
+
+    client, record, shell, _, actor = env
+    app_id = "ai2apps.mail"
+    spec = next(item["mobile"]["gateway"] for item in SYSTEM_APP_MANIFESTS if item["id"] == app_id)
+    policy = MobileAppPolicy(gateway._runtime().database)
+    monkeypatch.setenv("AI2APPS_MOBILE_PACKAGE_GATEWAY_READY", "1")
+    monkeypatch.setattr(host, "descriptor", lambda manager, mount: spec)
+    shell.list_mobile_apps.return_value = [{"app_key": app_id, "mobile_renderer": "host", "mobile_gateway": True}]
+    shell.mount_entry.return_value = {
+        "id": "mount", "app_key": app_id, "app_instance_id": "instance",
+        "renderer": "host", "placement": "mobile", "source": "builtin",
+    }
+    base = "/mobile/app-resource/mount/instance/"
+    assert client.get(base + "entry").status_code == 403
+    policy.set_enabled(actor.installation_id, app_id, True)
+    entry = client.get(base + "entry")
+    assert entry.status_code == 200
+    assert 'data-mobile-screen="list"' in entry.text and "mobile-app-gateway" in entry.text
+    assert "browser_bidi_client.js" not in entry.text
+    for asset in spec["assets"]:
+        assert client.get(base + "assets/" + asset).status_code == 200
+    assert client.get(base + "assets/js/browser_bidi_client.js").status_code == 404
+    record.revoked = True
+    assert client.get(base + "entry").status_code == 401
+
+
 def test_intelligence_uses_declared_entry_and_assets(env,monkeypatch):
     from ai2apps.remote.mobile_apps import MobileAppPolicy
     from ai2apps.web import mobile_app_gateway as host

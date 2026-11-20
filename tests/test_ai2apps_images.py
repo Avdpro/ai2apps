@@ -24,7 +24,7 @@ async def test_image_tool_uses_default_model_and_creates_session_artifact(tmp_pa
         assert payload["idempotencyKey"].startswith("imagine-run-strun_")
         calls.append(payload)
         return {"image": {"dataUrl": "data:image/png;base64," + base64.b64encode(image.getvalue()).decode(), "format": "png"}}
-    monkeypatch.setattr("ai2apps.cloud_gateway.request_cloud_image", fake_image_request)
+    monkeypatch.setattr("ai2apps.images.cloud_gateway.request_cloud_image", fake_image_request)
     runtime = PlatformRuntime(PlatformConfig.from_base_path(tmp_path))
     runtime.start()
     async def catalog_request(method, path, **kwargs):

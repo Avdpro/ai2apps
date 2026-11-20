@@ -1,0 +1,427 @@
+BREEZEBLUE RESEARCH AND NON-COMMERCIAL LICENSE AGREEMENT
+
+Version 1.0
+Last Updated: August 25, 2026
+
+This BreezeBlue Research and Non-Commercial License Agreement (the
+"Agreement") is entered into between RESONIA, INC., doing business as
+BreezeBlue ("BreezeBlue," "Licensor," "we," or "us"), and the individual or
+entity accessing, using, modifying, or distributing any Model Materials
+("You," "Your," or "Licensee").
+
+By accessing, downloading, using, modifying, or distributing any portion of
+the Model Materials or a Derivative Model, You acknowledge that You have read,
+understood, and agreed to this Agreement. If You act on behalf of an entity,
+You represent that You have authority to bind that entity, and "You" includes
+both You and that entity.
+
+This Agreement permits research and non-commercial use of the Model Materials
+free of charge. It does not grant any commercial rights and is not an open
+source license. Commercial use requires a separate written license from
+BreezeBlue.
+
+
+1. DEFINITIONS
+
+1.1 "Model" means the Breeze TTS 2 model.
+
+1.2 "Model Materials" means the Model weights, checkpoints, parameters,
+adapters, model-specific tokenizer or codec weights, embeddings, and other
+machine-learning artifacts that BreezeBlue expressly makes available under
+this Agreement, together with any accompanying documentation expressly
+designated as part of the Model Materials.
+
+Model Materials do not include source code expressly licensed under the
+Apache License, Version 2.0, or any third-party component made available under
+its own license.
+
+1.3 "Derivative Model" means any modification, adaptation, fine-tune, LoRA,
+merge, quantization, distillation, or other model that is based on or derived
+from the Model Materials, including a model created using the weights,
+parameters, activations, embeddings, or Outputs of the Model Materials to
+replicate or materially transfer their speech or audio generation
+capabilities. Outputs themselves are not Derivative Models.
+
+1.4 "Output" means audio, speech, text, metadata, or other content generated
+by the Model Materials or a Derivative Model in response to an input.
+
+1.5 "Research Purpose" means academic or scientific research that is not
+primarily intended for commercial advantage or monetary compensation,
+including peer-reviewed research, reproducibility studies, benchmarking,
+evaluation, security testing, and red-teaming.
+
+1.6 "Non-Commercial Purpose" means personal, educational, hobbyist, or other
+use that is not primarily intended for commercial advantage or monetary
+compensation, including limited evaluation and testing.
+
+1.7 "Commercial Purpose" means any use primarily intended for or directed
+toward commercial advantage, business benefit, or monetary compensation,
+whether direct or indirect. Commercial Purpose includes, without limitation:
+
+(a) production use or use in a product, service, or business operation;
+
+(b) hosting or making the Model Materials, a Derivative Model, or their
+functionality available through an API, SaaS offering, application, plug-in,
+website, or other service;
+
+(c) creating or providing content, products, or services for a fee, for a
+client, in connection with advertising, sponsorship, subscription revenue,
+or any other monetized activity;
+
+(d) using the Model Materials, a Derivative Model, or Outputs for an
+organization's internal operations beyond limited evaluation; or
+
+(e) distributing, licensing, selling, or otherwise commercializing the Model
+Materials or a Derivative Model.
+
+The status of a Licensee as a for-profit entity does not, by itself, make
+limited internal research, benchmarking, evaluation, security testing, or
+red-teaming a Commercial Purpose, provided that the use is not deployed in
+production, made available to customers or other external end users, used to
+generate revenue, or used to train or improve a non-BreezeBlue generative
+model.
+
+1.8 "Affiliate" means an entity that directly or indirectly controls, is
+controlled by, or is under common control with a party, where "control" means
+ownership or control of more than fifty percent (50%) of the voting interests
+of that entity.
+
+
+2. RESEARCH AND NON-COMMERCIAL LICENSE
+
+Subject to Your continued compliance with this Agreement, BreezeBlue grants
+You a limited, non-exclusive, worldwide, non-transferable, non-sublicensable,
+royalty-free license under BreezeBlue's intellectual property rights in the
+Model Materials to:
+
+(a) access, use, reproduce, and modify the Model Materials;
+
+(b) create Derivative Models; and
+
+(c) distribute the Model Materials and Derivative Models as expressly
+permitted by Section 4,
+
+in each case solely for a Research Purpose or Non-Commercial Purpose.
+
+No rights are granted except as expressly stated in this Agreement.
+
+
+3. COMMERCIAL USE
+
+No Commercial Purpose is permitted under this Agreement. Any Commercial
+Purpose involving the Model Materials, a Derivative Model, or an Output
+requires a separate written commercial license from BreezeBlue.
+
+For clarity, this Agreement does not include a creator, content monetization,
+small-business, revenue-threshold, or other implied commercial-use exception.
+
+This Agreement governs only the open-weight Model Materials and their
+self-hosted use. Outputs generated through BreezeBlue's hosted products or
+APIs are governed by the applicable Terms of Service, plan terms, and any
+separate written agreement, rather than this Agreement.
+
+For commercial licensing inquiries, contact:
+
+Website: https://breezeblue.ai
+Email: contact@breeze.blue
+
+
+4. DISTRIBUTION AND ATTRIBUTION
+
+You may distribute the Model Materials or a Derivative Model solely for a
+Research Purpose or Non-Commercial Purpose and only if You:
+
+(a) provide every recipient with a complete copy of this Agreement and any
+NOTICE file accompanying the Model Materials;
+
+(b) retain all copyright, attribution, provenance, and proprietary notices;
+
+(c) include the following notice in a NOTICE file distributed with the Model
+Materials or Derivative Model:
+
+"Breeze TTS 2 is licensed under the BreezeBlue Research and Non-Commercial
+License Agreement. Copyright (c) 2026 RESONIA, INC. All Rights Reserved.";
+
+(d) clearly identify any modifications You made and, for a Derivative Model,
+state prominently in its model card, repository, and documentation:
+
+"Derived from Breeze TTS 2 by BreezeBlue and licensed for research and
+non-commercial use only.";
+
+(e) license the distributed Model Materials or Derivative Model under this
+Agreement without adding terms that conflict with or reduce the protections
+of this Agreement; and
+
+(f) ensure that each recipient independently accepts this Agreement before
+accessing or using the Model Materials or Derivative Model.
+
+You may not use "BreezeBlue," "Breeze TTS 2," or any confusingly similar name
+as the primary name of a Derivative Model, product, or service, or in any way
+that suggests endorsement, affiliation, official status, or successor status.
+Reasonable descriptive attribution required by this Section is permitted.
+
+Publication of non-commercial research results, benchmark results, and
+illustrative samples in papers, reports, conference presentations, model
+cards, repositories, or non-monetized demonstrations is permitted, provided
+that You reasonably acknowledge Breeze TTS 2 and comply with this Agreement.
+
+
+5. USE RESTRICTIONS
+
+You will not, and will not permit any third party to:
+
+(a) use the Model Materials, a Derivative Model, or any Output for a
+Commercial Purpose without a separate written commercial license;
+
+(b) use the Model Materials, a Derivative Model, or any Output to create,
+train, fine-tune, distill, evaluate for training selection, or otherwise
+improve any non-BreezeBlue foundational or generative speech, audio,
+language, or multimodal model, except for creating a Derivative Model solely
+for a Research Purpose or Non-Commercial Purpose under this Agreement;
+
+(c) use the Model Materials, a Derivative Model, or any Output to clone,
+simulate, imitate, or impersonate a real person's voice, identity, likeness,
+or persona without that person's explicit and legally sufficient consent;
+
+(d) submit or use reference audio, speaker embeddings, voice prompts,
+recordings, performances, or other materials unless You have all rights,
+licenses, permissions, and consents necessary for that use;
+
+(e) use the Model Materials, a Derivative Model, or any Output to defraud,
+deceive, harass, stalk, threaten, defame, exploit, or cause harm to any person;
+
+(f) generate or distribute sexual, exploitative, or otherwise harmful content
+involving a minor;
+
+(g) engage in deceptive political persuasion, election interference, voter
+suppression, synthetic robocalls, or false impersonation of a candidate,
+public official, or other person in a political context;
+
+(h) identify, authenticate, track, surveil, or profile a person using voice or
+other biometric characteristics without a lawful basis and all consent
+required by applicable law;
+
+(i) distribute synthetic audio in circumstances where a reasonable person
+would be materially misled about its origin or authenticity, or fail to make
+any disclosure required by applicable law;
+
+(j) remove, obscure, alter, or circumvent any copyright notice, attribution,
+watermark, provenance signal, safety mechanism, or other proprietary notice
+included in the Model Materials or Outputs;
+
+(k) attempt to extract or reconstruct non-public training data, source data,
+trade secrets, or proprietary components from the Model Materials, except to
+the extent such a restriction is prohibited by applicable law; or
+
+(l) use, export, re-export, transfer, or make available the Model Materials or
+a Derivative Model in violation of any applicable law, regulation, export
+control, or trade sanction.
+
+Nothing in Section 5(k) prohibits ordinary inspection, loading, conversion,
+quantization, modification, or fine-tuning of the released Model Materials as
+expressly permitted by this Agreement.
+
+
+6. LEGAL COMPLIANCE AND THIRD-PARTY RIGHTS
+
+You are solely responsible for ensuring that Your use of the Model Materials,
+Derivative Models, inputs, and Outputs complies with all applicable laws and
+regulations and does not infringe or violate any third-party right, including
+intellectual property, privacy, publicity, biometric privacy,
+recording-consent, consumer-protection, election, and other applicable rights.
+
+This Agreement grants no right to use, reproduce, clone, simulate, imitate,
+or otherwise exploit any third-party voice, identity, likeness, persona,
+performance, recording, copyrighted work, trademark, or other protected
+material. You are solely responsible for obtaining all necessary rights,
+licenses, permissions, notices, and consents.
+
+BreezeBlue does not represent or warrant that any Model Material or Output is
+cleared for Your intended use, unique, accurate, non-infringing, or suitable
+for any particular purpose.
+
+
+7. INTELLECTUAL PROPERTY
+
+7.1 Model Materials. BreezeBlue and its licensors retain all right, title, and
+interest in and to the Model Materials. Except for the limited license granted
+in Section 2, no right or interest in the Model Materials is transferred to
+You.
+
+7.2 Derivative Models. As between You and BreezeBlue, You own the original
+modifications You contribute to a Derivative Model, to the extent permitted by
+applicable law. That ownership is subject to BreezeBlue's ownership of the
+underlying Model Materials and to every restriction in this Agreement. A
+Derivative Model remains governed by this Agreement.
+
+7.3 Outputs. As between You and BreezeBlue, and to the extent permitted by
+applicable law, You own Outputs You lawfully generate. Output ownership does
+not remove or limit the non-commercial restrictions in this Agreement, grant
+rights in third-party material, or authorize any use prohibited by this
+Agreement.
+
+7.4 Trademarks. No trademark license is granted except the limited right to
+make accurate descriptive references required for attribution under Section
+4. All goodwill arising from permitted use of BreezeBlue's marks belongs to
+BreezeBlue.
+
+7.5 Feedback. If You voluntarily provide suggestions, comments, or other
+feedback about the Model Materials, You grant BreezeBlue a perpetual,
+irrevocable, worldwide, royalty-free, fully paid, transferable, sublicensable,
+non-exclusive license to use and exploit that feedback without restriction or
+compensation.
+
+7.6 Intellectual Property Claims. If You or Your Affiliate brings a claim or
+legal proceeding alleging that the Model Materials, a Derivative Model, or an
+Output infringes intellectual property rights owned or licensable by You or
+Your Affiliate, the licenses granted to You under this Agreement terminate
+automatically when the claim or proceeding is filed.
+
+
+8. REPRESENTATIONS
+
+You represent and warrant that:
+
+(a) You have legal capacity and authority to enter into this Agreement;
+
+(b) You will use and distribute the Model Materials, Derivative Models, and
+Outputs only as permitted by this Agreement;
+
+(c) You have all necessary rights and consents for Your inputs and intended
+uses; and
+
+(d) You are not prohibited from receiving or using the Model Materials under
+applicable export-control, sanctions, or other laws.
+
+
+9. DISCLAIMER OF WARRANTIES
+
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, THE MODEL MATERIALS,
+DERIVATIVE MODELS, OUTPUTS, AND ALL RELATED MATERIALS ARE PROVIDED "AS IS" AND
+"AS AVAILABLE," WITH ALL FAULTS AND WITHOUT WARRANTIES OF ANY KIND, WHETHER
+EXPRESS, IMPLIED, STATUTORY, OR OTHERWISE.
+
+BREEZEBLUE DISCLAIMS ALL WARRANTIES, INCLUDING WARRANTIES OF TITLE,
+NON-INFRINGEMENT, MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE,
+ACCURACY, RELIABILITY, SECURITY, AND ANY WARRANTY THAT THE MODEL MATERIALS OR
+OUTPUTS WILL BE ERROR-FREE, UNINTERRUPTED, UNIQUE, OR SUITABLE FOR YOUR USE.
+
+YOU ARE SOLELY RESPONSIBLE FOR DETERMINING THE APPROPRIATENESS AND LAWFULNESS
+OF YOUR USE AND ASSUME ALL RISKS ARISING FROM THAT USE.
+
+
+10. LIMITATION OF LIABILITY
+
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, BREEZEBLUE AND ITS
+AFFILIATES, LICENSORS, OFFICERS, DIRECTORS, EMPLOYEES, CONTRACTORS, AND AGENTS
+WILL NOT BE LIABLE UNDER ANY THEORY OF LIABILITY FOR ANY INDIRECT, INCIDENTAL,
+SPECIAL, CONSEQUENTIAL, EXEMPLARY, OR PUNITIVE DAMAGES, OR FOR ANY LOSS OF
+PROFITS, REVENUE, BUSINESS, GOODWILL, DATA, OR USE, ARISING OUT OF OR RELATING
+TO THIS AGREEMENT, THE MODEL MATERIALS, ANY DERIVATIVE MODEL, OR ANY OUTPUT,
+EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
+
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, BREEZEBLUE'S TOTAL
+AGGREGATE LIABILITY ARISING OUT OF OR RELATING TO THIS AGREEMENT WILL NOT
+EXCEED ONE HUNDRED U.S. DOLLARS (US$100).
+
+
+11. INDEMNIFICATION
+
+You agree to defend, indemnify, and hold harmless BreezeBlue and its
+Affiliates, licensors, officers, directors, employees, contractors, and agents
+from and against any third-party claim, demand, action, proceeding, damage,
+loss, liability, judgment, settlement, cost, or expense, including reasonable
+attorneys' fees, arising out of or relating to:
+
+(a) Your access to, use, modification, or distribution of the Model Materials
+or a Derivative Model;
+
+(b) Your inputs or Outputs;
+
+(c) Your violation of this Agreement or applicable law; or
+
+(d) Your infringement, misappropriation, or violation of any third-party
+right.
+
+
+12. TERM AND TERMINATION
+
+This Agreement begins when You first access or use the Model Materials and
+continues until terminated.
+
+BreezeBlue may terminate this Agreement if You materially breach it. For a
+material breach that is reasonably capable of cure, BreezeBlue will provide
+written notice and at least thirty (30) days to cure before termination.
+BreezeBlue may terminate immediately for a breach of Section 3, Section 5, or
+applicable law, or where delay would reasonably create legal, security, fraud,
+or safety risk.
+
+Upon termination, You must immediately cease using and distributing the Model
+Materials and Derivative Models, delete all copies under Your control, and,
+upon reasonable request, confirm deletion in writing. Termination does not
+require deletion of an Output lawfully created before termination, but no
+Output may be used in violation of this Agreement or applicable law.
+
+BreezeBlue may stop distributing the Model Materials prospectively. Such
+discontinuation alone does not terminate rights already granted to a Licensee
+that remains in compliance with this Agreement.
+
+Sections 3, 5, 6, 7, 9, 10, 11, 12, and 13 survive termination to the extent
+necessary to give them effect.
+
+
+13. GOVERNING LAW AND JURISDICTION
+
+This Agreement is governed by and construed in accordance with the laws of the
+State of Delaware, without regard to its conflict-of-laws principles. The
+United Nations Convention on Contracts for the International Sale of Goods
+does not apply.
+
+To the extent permitted by applicable law, any dispute arising out of or
+relating to this Agreement shall be brought exclusively in the state or
+federal courts located in the State of Delaware, and each party consents to
+the personal jurisdiction and venue of those courts.
+
+
+14. MISCELLANEOUS
+
+14.1 Entire Agreement. This Agreement and any NOTICE file accompanying the
+Model Materials constitute the entire agreement concerning the Model
+Materials and supersede prior or contemporaneous understandings concerning
+the same subject matter.
+
+14.2 Separate Software Licenses. Source code and third-party components may be
+made available under separate licenses. Those separate licenses govern only
+the materials expressly identified as subject to them and do not grant any
+right to use the Model Materials.
+
+14.3 Assignment. You may not assign or transfer this Agreement or any right
+under it without BreezeBlue's prior written consent. BreezeBlue may assign
+this Agreement in connection with a merger, acquisition, reorganization, sale
+of assets, or operation of law.
+
+14.4 Severability. If any provision is held invalid or unenforceable, it will
+be enforced to the maximum extent permitted, and the remaining provisions
+will remain in effect.
+
+14.5 No Waiver. Failure to enforce a provision is not a waiver of the right to
+enforce it later.
+
+14.6 No Endorsement. Nothing in this Agreement creates an agency,
+partnership, joint venture, employment, fiduciary, sponsorship, or endorsement
+relationship between the parties.
+
+14.7 Updates. BreezeBlue may publish new versions of this Agreement. A new
+version applies only if You expressly accept it or access Model Materials
+released under that new version. Your continued use of a previously obtained
+version of the Model Materials remains governed by the version You accepted,
+unless applicable law requires otherwise.
+
+
+15. CONTACT
+
+Questions and commercial licensing requests may be sent to:
+
+RESONIA, INC., doing business as BreezeBlue
+Website: https://breezeblue.ai
+Email: contact@breeze.blue

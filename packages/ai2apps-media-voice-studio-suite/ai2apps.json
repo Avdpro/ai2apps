@@ -3,7 +3,7 @@
   "package": {
     "id": "ai2apps/media-voice-studio-suite",
     "type": "app",
-    "version": "0.2.3",
+    "version": "0.2.4",
     "displayName": "Media Voice Studio Suite",
     "description": "Six local-first Mini-Apps for transcription, source separation, voice replacement, video dubbing, and subtitles.",
     "localizations": {
@@ -76,7 +76,7 @@
             }
           ]
         },
-        "scope": "Requires a Desktop host implementing these declared AaAT exports. UI bridge edits drafts only; execution uses host-owned durable tasks and shared output.",
+        "scope": "Package-owned signed AaAT declarations bind to versioned native Host SDK protocols. Requires a host supporting ai2apps.mini-app-host-exports/v1; no catalog-only execution. Native tasks and shared Output remain host-owned.",
         "processing": "local",
         "pricing": "unknown",
         "localizations": {
@@ -130,7 +130,7 @@
             }
           ]
         },
-        "scope": "Requires a Desktop host implementing these declared AaAT exports. UI bridge edits drafts only; execution uses host-owned durable tasks and shared output.",
+        "scope": "Package-owned signed AaAT declarations bind to versioned native Host SDK protocols. Requires a host supporting ai2apps.mini-app-host-exports/v1; no catalog-only execution. Native tasks and shared Output remain host-owned.",
         "processing": "local",
         "pricing": "unknown",
         "localizations": {
@@ -187,7 +187,7 @@
             }
           ]
         },
-        "scope": "Requires a Desktop host implementing these declared AaAT exports. UI bridge edits drafts only; execution uses host-owned durable tasks and shared output.",
+        "scope": "Package-owned signed AaAT declarations bind to versioned native Host SDK protocols. Requires a host supporting ai2apps.mini-app-host-exports/v1; no catalog-only execution. Native tasks and shared Output remain host-owned.",
         "processing": "local",
         "pricing": "unknown",
         "localizations": {
@@ -243,7 +243,7 @@
             }
           ]
         },
-        "scope": "Requires a Desktop host implementing these declared AaAT exports. UI bridge edits drafts only; execution uses host-owned durable tasks and shared output.",
+        "scope": "Package-owned signed AaAT declarations bind to versioned native Host SDK protocols. Requires a host supporting ai2apps.mini-app-host-exports/v1; no catalog-only execution. Native tasks and shared Output remain host-owned.",
         "processing": "local",
         "pricing": "unknown",
         "localizations": {
@@ -302,7 +302,7 @@
             }
           ]
         },
-        "scope": "Requires a Desktop host implementing these declared AaAT exports. UI bridge edits drafts only; execution uses host-owned durable tasks and shared output.",
+        "scope": "Package-owned signed AaAT declarations bind to versioned native Host SDK protocols. Requires a host supporting ai2apps.mini-app-host-exports/v1; no catalog-only execution. Native tasks and shared Output remain host-owned.",
         "processing": "local",
         "pricing": "unknown",
         "localizations": {
@@ -364,7 +364,7 @@
             }
           ]
         },
-        "scope": "Requires a Desktop host implementing these declared AaAT exports. UI bridge edits drafts only; execution uses host-owned durable tasks and shared output.",
+        "scope": "Package-owned signed AaAT declarations bind to versioned native Host SDK protocols. Requires a host supporting ai2apps.mini-app-host-exports/v1; no catalog-only execution. Native tasks and shared Output remain host-owned.",
         "processing": "local",
         "pricing": "unknown",
         "localizations": {

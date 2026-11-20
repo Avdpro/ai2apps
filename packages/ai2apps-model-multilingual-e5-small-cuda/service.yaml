@@ -1,0 +1,81 @@
+schema: ai2apps.service/v1
+id: ai2apps.model.multilingual-e5-small-cuda
+name: Multilingual E5 Small CUDA
+description: Official FP32 CUDA multilingual embeddings with masked mean pooling and
+  normalized 384-dimensional output.
+version: 0.1.0
+publisher:
+  id: ai2apps
+runtime:
+  mode: process
+  protocol: ai2apps-model-worker/v1
+  provider: ai2apps.runtime.cuda-torch
+  adapter: src/worker_adapter.py:create_adapter
+models:
+- id: ai2apps.model.multilingual-e5-small-cuda/default
+  display_name: Multilingual E5 Small
+  model_type: embedding
+  upstream_id: intfloat/multilingual-e5-small
+  capabilities:
+  - text_embeddings
+  endpoints:
+    embeddings: /v1/embeddings
+  weights:
+    provider: huggingface
+    repo_id: intfloat/multilingual-e5-small
+    revision: 614241f622f53c4eeff9890bdc4f31cfecc418b3
+    preparation:
+      recipe: native
+    distribution_id: dist_ai2apps_multilingual_e5_small_cuda_614241f6_v1
+  metadata:
+    dimension: 384
+    internal: true
+    family: multilingual-e5
+    precision: float32
+    input_types:
+    - query
+    - passage
+    maximum_batch_size: 256
+    maximum_tokens: 512
+capabilities:
+- text-embeddings
+requires:
+  services:
+  - id: ai2apps.runtime.cuda-torch
+    version: '>=0.6.0,<1.0.0'
+    optional: false
+    capabilities:
+    - cuda
+    - model-worker-v1
+    - e5
+  python: '>=3.12,<3.13'
+permissions:
+  network:
+    outbound: false
+  model_weights:
+    huggingface_cache: read
+    reason: Read only the Host-selected immutable E5 checkpoint.
+  accelerator:
+    cuda: true
+    reason: Generate embeddings on CUDA.
+compatibility:
+  os:
+  - linux
+  architectures:
+  - arm64
+  - aarch64
+health:
+  path: /health
+  startup_timeout_seconds: 30
+restart:
+  max_attempts: 2
+  base_delay_seconds: 1
+tools: []
+attribution:
+  notice: META/NOTICE.md
+  original_model: https://huggingface.co/intfloat/multilingual-e5-small
+license:
+  id: MIT
+  name: MIT License
+  path: META/licenses/MIT.txt
+  url: https://spdx.org/licenses/MIT.txt

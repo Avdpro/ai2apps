@@ -136,6 +136,69 @@ def test_rejected_alias_history_has_no_executable_authority():
     assert retained==projected
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize('tool_name, invalid_name, repeat, other_tool', [
+    ('fixture.alpha', 'fixture__alpha', False, None),
+    ('alternate.beta', 'alternate.beta', False, None),
+    ('fixture.alpha', 'fixture__alpha', True, None),
+    ('fixture.alpha', 'fixture__alpha', False, 'fixture/alpha'),
+])
+async def test_invalid_tool_name_requests_one_model_correction(runtime, tool_name, invalid_name, repeat, other_tool):
+    from test_aaat_execution_flow import register, new_run, response
+    from test_app_interactions import wait
+    from ai2apps.agents.general import _tool_alias
+
+    arguments = {'query': 'original'}
+    alias = _tool_alias(tool_name)
+    calls = []
+    attempts = []
+
+    async def execute(args, context):
+        calls.append(args)
+        return {'observed': True}
+
+    register(runtime, tool_name, execute, invocation_policy=lambda a,c: True)
+    if other_tool:
+        async def wrong_tool(args, context):
+            pytest.fail('The ambiguous name must not execute the other tool')
+
+        register(runtime, other_tool, wrong_tool)
+
+    async def model(request):
+        attempts.append(request)
+        if len(attempts) == 1 or repeat:
+            if len(attempts) == 2:
+                assert not calls
+            value = response(tool_name, arguments)
+            value['choices'][0]['message']['tool_calls'][0]['function']['name'] = invalid_name
+            return value
+        if calls:
+            return response(text='done')
+        messages = request['messages']
+        assert any(alias in str(message.get('content')) and 'No operation was submitted' in str(message.get('content')) for message in messages)
+        if other_tool:
+            assert any('ambiguous' in str(message.get('content')) and _tool_alias(other_tool) in str(message.get('content')) for message in messages)
+        if '.' in invalid_name:
+            assert all(call['function']['name'] != invalid_name for message in messages for call in message.get('tool_calls', []))
+        return response(tool_name, arguments)
+
+    runtime.agent_runtime.bind_model_provider(model)
+    await runtime.start_background_tasks(retention_interval_seconds=60)
+    try:
+        run = new_run(runtime, [tool_name, other_tool] if other_tool else [tool_name])
+        if repeat:
+            failed = await wait(runtime, run.id, 'failed')
+            assert failed.error['code'] == 'tool_name_correction_exhausted'
+            assert len(attempts) == 2 and not calls
+        else:
+            await wait(runtime, run.id, 'completed')
+            assert calls == [arguments]
+        rejected = next(step for step in runtime.agents.list_steps(run.id) if (step.error or {}).get('code') == 'tool_not_available')
+        assert rejected.error['submitted'] is False and alias in rejected.error['message']
+    finally:
+        await runtime.stop_background_tasks()
+
+
 def test_prior_run_calls_are_stable_evidence_not_unloaded_wire_calls():
     from copy import deepcopy
     from ai2apps.agents.tool_loading import historical_evidence
@@ -315,3 +378,29 @@ def test_settled_controls_select_schema_without_promoting_arbitrary_result_field
         step('tool',{'capability':'cancelled.execute'},{'status':'cancelled'},'app.collect_parameters'),
         step('tool',{}, {'capability':'untrusted.execute'},'external.fetch')])
     assert selected=={'owner.execute','second.execute'}
+
+
+def test_new_run_restores_order_only_with_current_schemas_and_visibility():
+    import json
+    from contextlib import contextmanager
+    from datetime import datetime, timezone
+    from ai2apps.agents.tool_loading import session_catalog
+    for names in [('arbitrary.alpha','vendor.beta'),('unrelated.gamma','package.delta')]:
+        tools=[tool('app.describe'),*(tool(n) for n in names)]
+        _,definitions=_tool_catalog(tools)
+        by_name={d['function']['name']:d for d in definitions}
+        old=list(reversed(definitions));old[0]={**old[0],'function':{**old[0]['function'],'description':'obsolete'}}
+        class DB:
+            @contextmanager
+            def transaction(self):yield self
+            def execute(self,sql,args):
+                assert "r.status='completed'" in sql and 'r.session_id=?' in sql
+                return NS(fetchone=lambda: {'tools_json':json.dumps(old)})
+        context=NS(run=NS(session_id='owned',agent_definition_id='agent',created_at=datetime.now(timezone.utc)))
+        allowed=set(by_name)-{old[-1]['function']['name']}
+        seed=session_catalog(NS(database=DB()),context,definitions,allowed)
+        assert [d['function']['name'] for d in seed]==[d['function']['name'] for d in old if d['function']['name'] in allowed]
+        assert all(d==by_name[d['function']['name']] for d in seed)
+        assert 'obsolete' not in json.dumps(seed)
+        projected=project_catalog(tools,definitions,[],selected=names,seed=seed)
+        assert projected[:len(seed)]==seed

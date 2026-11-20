@@ -87,9 +87,9 @@ capabilities:
             - {id: provider, kind: package, phase: provider, package_id: ai2apps/model-z-image-base-mlx, service_key: ai2apps.model.z-image-base-mlx, version: ">=0.1.0,<1.0.0"}
             - {id: checkpoint, kind: checkpoint, model_id: ai2apps.model.z-image-base-mlx/base}
             - {id: verify, kind: verify, service_key: ai2apps.model.z-image-base-mlx, capabilities: [image-generation]}
-      - id: apple-metal-qwen-image-2512
-        label: Qwen Image 2512 MLX
-        description: 高质量文生图与多语言文字渲染；至少需要 32 GiB 统一内存。此 Checkpoint 专用于文生图。
+      - id: apple-metal-qwen-image-21
+        label: Qwen Image 2.1 MLX
+        description: 文生图、多语言文字与透明 PNG。与图片编辑共用 Qwen Image 2.1 权重。
         priority: 80
         recommended: false
         device:
@@ -98,9 +98,9 @@ capabilities:
           accelerator: {vendor: apple, api: metal, unified_memory_gib: {minimum: 32}}
         stack:
           components:
-            - {id: runtime, kind: package, phase: runtime, package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.5.2,<2.0.0"}
-            - {id: provider, kind: package, phase: provider, package_id: ai2apps/model-qwen-image-mlx, service_key: ai2apps.model.qwen-image-mlx, version: ">=0.1.1,<1.0.0"}
-            - {id: checkpoint, kind: checkpoint, model_id: ai2apps.model.qwen-image-mlx/2512}
+            - {id: runtime, kind: package, phase: runtime, package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.8.17,<2.0.0"}
+            - {id: provider, kind: package, phase: provider, package_id: ai2apps/model-qwen-image-mlx, service_key: ai2apps.model.qwen-image-mlx, version: ">=0.1.3,<1.0.0"}
+            - {id: checkpoint, kind: checkpoint, model_id: ai2apps.model.qwen-image-mlx/2.1}
             - {id: verify, kind: verify, service_key: ai2apps.model.qwen-image-mlx, capabilities: [image-generation]}
   image.edit:
     trigger: on_feature_request
@@ -146,18 +146,18 @@ capabilities:
           runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.7.8,<2.0.0"}
           provider: {package_id: ai2apps/model-flux2-klein-9b-mlx, service_key: ai2apps.model.flux2-klein-9b-mlx, version: ">=0.1.0,<1.0.0"}
           checkpoint: {model_id: ai2apps.model.flux2-klein-9b-mlx/9b}
-      - id: apple-metal-qwen-image-edit-2511
-        label: Qwen Image Edit 2511 MLX
-        description: 图片编辑、多参考图创作与人物一致性；至少需要 48 GiB 统一内存，与文生图 Checkpoint 分别安装。
+      - id: apple-metal-qwen-image-edit-21
+        label: Qwen Image 2.1 MLX
+        description: 指令式图片编辑，支持 1–3 张参考图。与文生图共用 Qwen Image 2.1 权重。
         priority: 70
         recommended: false
         device:
           os: [macos]
           architectures: [arm64]
-          accelerator: {vendor: apple, api: metal, unified_memory_gib: {minimum: 48}}
+          accelerator: {vendor: apple, api: metal, unified_memory_gib: {minimum: 32}}
         stack:
           components:
-            - {id: runtime, kind: package, phase: runtime, package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.5.2,<2.0.0"}
-            - {id: provider, kind: package, phase: provider, package_id: ai2apps/model-qwen-image-mlx, service_key: ai2apps.model.qwen-image-mlx, version: ">=0.1.1,<1.0.0"}
-            - {id: checkpoint, kind: checkpoint, model_id: ai2apps.model.qwen-image-mlx/edit-2511}
+            - {id: runtime, kind: package, phase: runtime, package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.8.17,<2.0.0"}
+            - {id: provider, kind: package, phase: provider, package_id: ai2apps/model-qwen-image-mlx, service_key: ai2apps.model.qwen-image-mlx, version: ">=0.1.3,<1.0.0"}
+            - {id: checkpoint, kind: checkpoint, model_id: ai2apps.model.qwen-image-mlx/2.1}
             - {id: verify, kind: verify, service_key: ai2apps.model.qwen-image-mlx, capabilities: [image-edit]}

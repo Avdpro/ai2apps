@@ -63,6 +63,17 @@ def test_compiler_requires_export_reference_and_rejects_injected_ir():
     assert not compile_source(source([step])).valid
 
 
+def test_generated_exports_must_use_platform_effect_vocabulary():
+    candidate = source([{"name":"read","operation":"inspect","on":{"success":"done"}}],
+                       capability_exports=[{"name":"site.action","effects":["fictional.effect"]}])
+    result = compile_source(candidate)
+    assert not result.valid
+    assert any(error["path"] == "capability_exports.0.effects" and error["code"] == "invalid_effects"
+               for error in result.report["errors"])
+    candidate["capability_exports"][0]["effects"] = ["publish"]
+    assert compile_source(candidate).valid
+
+
 def test_bindings_keep_files_and_encode_query():
     files = [{"asset_id":"asset-1","url":"https://example.com/a.png"}]
     assert bind_values("${input.attachments}", {"attachments":files}) == files

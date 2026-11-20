@@ -6,10 +6,21 @@ import pytest
 from ai2apps.identity import RequestPrincipal, MemberRole
 from ai2apps.storage import PlatformDatabase
 from ai2apps.studio.background import StudioBackgroundJobs
+from ai2apps.api.studio_background import LocalImageEditInput, LocalImageInput
+from pydantic import ValidationError
 
 
 def principal(actor='owner'):
     return RequestPrincipal(actor, 'installation', 'organization', 'billing', MemberRole.OWNER, 1)
+
+
+def test_denoiser_residency_is_an_optional_boolean_for_local_images():
+    request = {'model': 'example/image', 'prompt': 'A fox'}
+    assert 'keep_dit_resident' not in LocalImageInput(**request).model_dump(exclude_none=True)
+    for schema, extra in ((LocalImageInput, {}), (LocalImageEditInput, {'imageDataUrls': ['reference']})):
+        assert schema(**request, **extra, keep_dit_resident=True).model_dump()['keep_dit_resident'] is True
+        with pytest.raises(ValidationError):
+            schema(**request, **extra, keep_dit_resident='true')
 
 
 def service(tmp_path):

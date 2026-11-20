@@ -89,7 +89,7 @@ test('inner history traversal leaves the visible loaded App mounted',()=>{
  const c={window:{addEventListener:(_,fn)=>handler=fn},URLSearchParams,location:{hash:'#app=todo'},frames:new Map([['todo',record]]),todoDetail:null,activeAppId:'todo',stage:{hidden:false},mounts:new Map(),appsById:new Map(),openApp(){opens++},showHome(){homes++}};
  c.pendingAppNavigation=null;c.agentHome=false;c.agentConnected=false;c.homePath='/mobile';vm.createContext(c);
  const start=source.indexOf("    window.addEventListener('popstate',");
- vm.runInContext(source.slice(start,source.indexOf('\n    async function boot()',start)),c);
+ vm.runInContext(source.slice(start,source.indexOf('\n    let bootFlight =',start)),c);
  handler({state:{appId:'todo'}});assert.equal(opens,0);assert.equal(homes,0);
  record.failed=true;handler({state:{appId:'todo'}});assert.equal(opens,1);
  record.failed=false;c.activeAppId=null;handler({state:{appId:'todo'}});assert.equal(opens,2);
@@ -108,7 +108,7 @@ test('history restores a warm App synchronously without focus or spinner',()=>{
  const record={loaded:true,failed:false,frame:{hidden:true}},app={id:'browser'},mount={id:'mount'};
  const c={window:{addEventListener:(_,fn)=>handler=fn},URLSearchParams,location:{hash:'#app=browser'},frames:new Map([['browser',record]]),mounts:new Map([['browser',mount]]),appsById:new Map([['browser',app]]),todoDetail:null,activeAppId:null,stage:{hidden:true},sequence:5,
  displayMount(a,m,push){assert.equal(a,app);assert.equal(m,mount);assert.equal(push,false);restored++;},openApp(){throw Error('no network focus on warm history');},showHome(){}};
- c.pendingAppNavigation=null;c.agentHome=false;c.agentConnected=false;c.homePath='/mobile';vm.createContext(c);const start=source.indexOf("    window.addEventListener('popstate',");vm.runInContext(source.slice(start,source.indexOf('\n    async function boot()',start)),c);
+ c.pendingAppNavigation=null;c.agentHome=false;c.agentConnected=false;c.homePath='/mobile';vm.createContext(c);const start=source.indexOf("    window.addEventListener('popstate',");vm.runInContext(source.slice(start,source.indexOf('\n    let bootFlight =',start)),c);
  handler({state:{appId:'browser'}});assert.equal(restored,1);assert.equal(c.sequence,6);
 });
 

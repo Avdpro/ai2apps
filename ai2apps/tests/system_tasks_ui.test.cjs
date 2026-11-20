@@ -34,3 +34,26 @@ for(const mobile of [false,true])test(`system tasks ${mobile?'Mobile':'Desktop'}
  await page.click('[data-system-close]');assert.ok(await page.locator('#system-task-panel').isHidden());
  }finally{await browser.close();}
 });
+
+test('Agent task requires a reviewed preview and only confirms its server id',async()=>{
+ const browser=await chromium.launch({headless:true,channel:'chrome'});
+ try{
+ const page=await browser.newPage();
+ await page.setContent('<html lang="en"><div id="todo-workspace"><button id="system-tasks-entry"></button><main class="todo-main"></main></div>');
+ await page.evaluate(()=>{
+   window.calls=[];window.fetch=async(url,opts)=>{const body=opts.body?JSON.parse(opts.body):null;calls.push({url,body});
+   const result=url.endsWith('/preview')?{id:'flow_fixture',name:'Reviewed Flow',steps:[{type:'model',instruction:'Summarize',complexity:'simple',profile:'privacy',model:'fixture',inputs:[]}]}:{tasks:[],schedules:[]};
+   return {ok:true,json:async()=>result};};
+ });
+ await page.addScriptTag({path:path.join(__dirname,'../web/static/js/system_tasks.js')});
+ await page.click('#system-tasks-entry');await page.click('[data-agent-flow]');
+ await page.fill('textarea[name=prompt]','Give me a summary');await page.check('[name=notify]');
+ await page.click('.agent-flow-dialog [type=submit]');await page.waitForSelector('.flow-review h3');
+ assert.match(await page.locator('.flow-review').innerText(),/simple \/ privacy/);
+ assert.equal(await page.evaluate(()=>calls.some(c=>c.url.endsWith('/confirm'))),false);
+ await page.fill('textarea[name=prompt]','Changed task');assert.equal(await page.locator('.flow-review h3').count(),0);
+ await page.click('.agent-flow-dialog [type=submit]');await page.waitForSelector('.flow-review h3');
+ await page.click('.agent-flow-dialog [type=submit]');await page.waitForSelector('dialog',{state:'detached'});
+ assert.deepEqual(await page.evaluate(()=>calls.filter(c=>c.url.endsWith('/confirm'))),[{url:'/v1/platform/todo/agent-flows/flow_fixture/confirm',body:{}}]);
+ }finally{await browser.close();}
+});

@@ -45,8 +45,12 @@ HELPER_APP=${APP}/Contents/Library/LoginItems/AI2AppsHelper.app
 RUNTIME_ROOT=${HELPER_APP}/Contents/Resources/AI2AppsLocal
 [[ -x ${RUNTIME_ROOT}/bin/ai2apps-person-mask ]] || fail "missing Apple Vision person-mask tool"
 SHELL_APP=${APP}/Contents/Applications/AI2Apps.app
+EXPECTED_SHELL_NAME=AI2Apps
+if [[ $(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "${APP}/Contents/Info.plist") == com.ai2apps.desktop.miniappdev ]]; then
+  EXPECTED_SHELL_NAME=AI2Apps-MiniApp
+fi
 for name_key in CFBundleName CFBundleDisplayName; do
-  [[ $(/usr/libexec/PlistBuddy -c "Print :${name_key}" "${SHELL_APP}/Contents/Info.plist") == AI2Apps ]] || \
+  [[ $(/usr/libexec/PlistBuddy -c "Print :${name_key}" "${SHELL_APP}/Contents/Info.plist") == ${EXPECTED_SHELL_NAME} ]] || \
     fail "Shell system display name must be AI2Apps"
 done
 [[ -x ${RUNTIME_ROOT}/bin/omlx ]] || fail "missing Helper-owned Local entrypoint"
@@ -112,6 +116,9 @@ EXPECTED_ICON_CONTRACT=standard
 if [[ ${INSTANCE_ID} == test && ${BUNDLE_ID} == com.ai2apps.desktop.test && \
       ${DISPLAY_NAME} == AI2Apps-test ]]; then
   EXPECTED_ICON_CONTRACT=test
+elif [[ ${INSTANCE_ID} == miniapp-dev && ${BUNDLE_ID} == com.ai2apps.desktop.miniappdev && \
+        ${DISPLAY_NAME} == AI2Apps-MiniApp ]]; then
+  EXPECTED_ICON_CONTRACT=app-dev
 elif [[ ${INSTANCE_ID} == app-dev && ${BUNDLE_ID} == com.ai2apps.desktop.appdev && \
         ${DISPLAY_NAME} == AI2Apps-App-Dev ]]; then
   EXPECTED_ICON_CONTRACT=app-dev

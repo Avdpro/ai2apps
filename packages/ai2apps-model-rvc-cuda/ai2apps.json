@@ -1,0 +1,82 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/model-rvc-cuda",
+    "type": "service",
+    "version": "0.1.0",
+    "displayName": "RVC CUDA",
+    "description": "CUDA RVC preset voice conversion and local voice training with voice-bundle export."
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": [
+      "linux"
+    ],
+    "architectures": [
+      "arm64"
+    ]
+  },
+  "entrypoints": [
+    {
+      "name": "model-worker",
+      "kind": "service",
+      "path": "service.yaml"
+    }
+  ],
+  "permissions": [
+    {
+      "capability": "model-weights.huggingface-cache.read",
+      "reason": "Read the fixed RVC composite checkpoint.",
+      "required": true
+    },
+    {
+      "capability": "accelerator.cuda",
+      "reason": "Run local voice conversion and training.",
+      "required": true
+    }
+  ],
+  "dependencies": [
+    {
+      "packageId": "ai2apps/runtime-cuda-torch",
+      "version": ">=0.6.0 <1.0.0",
+      "optional": false
+    }
+  ],
+  "files": [],
+  "sbom": {
+    "format": "spdx-json-2.3",
+    "path": "META/sbom.spdx.json"
+  },
+  "discovery": {
+    "kind": "model",
+    "categories": [
+      "speech"
+    ],
+    "tasks": [
+      "voice-conversion",
+      "voice-training"
+    ]
+  },
+  "modelInstall": {
+    "serviceKey": "ai2apps.model.rvc-cuda",
+    "models": [
+      {
+        "id": "ai2apps.model.rvc-cuda/serena-e70",
+        "label": "Serena e70 synthetic test voice",
+        "recommended": true
+      }
+    ]
+  },
+  "modelProfile": {
+    "sizeBytes": 1410906582,
+    "minimumMemoryBytes": 17179869184,
+    "scores": {
+      "speed": 3,
+      "capability": 3
+    },
+    "benchmark": {
+      "label": "Conservative estimated memory for conversion/training; not a signed installation benchmark",
+      "device": "NVIDIA DGX Spark GB10"
+    }
+  }
+}

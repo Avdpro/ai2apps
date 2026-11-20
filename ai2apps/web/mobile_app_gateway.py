@@ -114,4 +114,32 @@ async def bridge(runtime, principal, spec, body):
 
 async def api_resource(runtime, principal, spec, resource, query):
     result = await api_response(runtime, principal, spec, {'verb':'GET', 'path':spec['api']['prefix'] + '/' + resource.removeprefix('api/') + (('?' + query) if query else '')})
-    return Response(result.content, result.status_code, media_type=result.headers.get('content-type'), headers={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'})
+    headers={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}
+    # Download metadata belongs to the trusted App response, not the resource URL.
+    # Preserve the disposition so HTML exports are saved rather than navigated to.
+    if result.headers.get('content-disposition'):
+        headers['Content-Disposition']=result.headers['content-disposition']
+    return Response(result.content, result.status_code, media_type=result.headers.get('content-type'), headers=headers)
+
+
+def microphone_document(scope):
+    """Only a validated built-in Mobile mount may opt into microphone capture."""
+    match=re.fullmatch(r'/mobile/app-resource/([A-Za-z0-9_-]+)/([A-Za-z0-9_-]+)/entry',scope.get('path',''))
+    if not match:return False
+    try:
+        from ai2apps.web import owner_home_gateway
+        from ai2apps.remote.security import RemoteTokenError
+        try:grant=owner_home_gateway.authority(Request(scope))
+        except RemoteTokenError:return False
+        if grant is None:return False
+        runtime=owner_home_gateway._runtime()
+        principal=grant[0].principal(grant[1])
+        from ai2apps.core import RepositoryError
+        try:mount=runtime.extension_manager.mount_entry(match[1],principal=principal)
+        except RepositoryError:return False
+        if mount.get('placement')!='mobile' or mount.get('renderer')!='host' or mount.get('app_instance_id')!=match[2]:return False
+        from ai2apps.remote.mobile_apps import app_enabled
+        if not app_enabled(runtime,principal,mount['app_key']):return False
+        spec=descriptor(runtime.extension_manager,mount)
+        return bool(spec and spec.get('microphone') is True)
+    except (HTTPException,KeyError,ValueError,AttributeError):return False

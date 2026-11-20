@@ -1,0 +1,32 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "ai2apps/model-vggt-omega-mlx-0.1.0",
+  "documentNamespace": "https://ai2apps.com/spdx/model-vggt-omega-mlx/0.1.0",
+  "creationInfo": {
+    "created": "2026-10-09T00:00:00Z",
+    "creators": [
+      "Organization: AI2Apps"
+    ]
+  },
+  "packages": [
+    {
+      "name": "VGGT-Omega 1B 512 MLX",
+      "SPDXID": "SPDXRef-Package",
+      "versionInfo": "0.1.0",
+      "downloadLocation": "NOASSERTION",
+      "licenseConcluded": "LicenseRef-FAIR-Noncommercial-Research",
+      "licenseDeclared": "LicenseRef-FAIR-Noncommercial-Research",
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "name": "Depth Anything V2 inference architecture",
+      "SPDXID": "SPDXRef-DA-Code",
+      "versionInfo": "a561b849ebae10a6f5ef49e26c83cbbcd36c71bf",
+      "downloadLocation": "https://github.com/DepthAnything/Depth-Anything-V2",
+      "licenseDeclared": "Apache-2.0",
+      "copyrightText": "NOASSERTION"
+    }
+  ]
+}

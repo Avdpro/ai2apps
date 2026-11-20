@@ -15,16 +15,18 @@
         pinned: 'ai2apps.shell.pinnedApps',
         order: 'ai2apps.shell.dockOrder',
         warm: 'ai2apps.shell.warmApps',
+        primaryEntry: 'ai2apps.shell.messagerPrimary.v1',
     };
     // Product Dock order is independent of catalog order and translated names.
     const defaultDockOrder = [
-        'ai2apps.general-chat',
+        'ai2apps.messager',
         'ai2apps.intelligence',
         'ai2apps.imagine-studio',
         'ai2apps.readaloud',
         'ai2apps.video-studio',
         'ai2apps.gallery',
         'ai2apps.ai-browser',
+        'ai2apps.general-chat',
         'ai2apps.todo',
         'ai2apps.discover',
         'ai2apps.knowledge',
@@ -44,6 +46,7 @@
     let frame = root.querySelector('.app-frame');
     let spareFrame = frame;
     const loading = root.querySelector('.app-loading');
+    const loadingAppName = loading.querySelector('.app-loading-name');
     const dockApps = root.querySelector('.dock-apps');
     const currentName = root.querySelector('.dock-current-name');
     const accountButton = root.querySelector('.dock-account');
@@ -73,6 +76,7 @@
     let dockOrder = [];
     let warmApps = [];
     let currentId = shellStart === 'home' ? '' : boot.initialAppId || '';
+    let pendingAppId = null;
     let currentInstanceId = shellStart === 'home' ? null : boot.initialInstanceId || null;
     let currentMountToken = null;
     let homeAppsLocked = false;
@@ -210,7 +214,32 @@
     }
 
     function iconMarkup(name) {
+        if (name === 'comapps') {
+            return '<span class="comapps-icon" aria-hidden="true"></span>';
+        }
         return '<i data-lucide="' + safeIcon(name) + '"></i>';
+    }
+
+    // Preserve all other relative positions, and allow subsequent user reordering.
+    function primaryAppOrder(ids) {
+        const result = ids.filter((id) => id !== 'ai2apps.messager' && id !== 'ai2apps.general-chat');
+        if (ids.includes('ai2apps.messager')) result.unshift('ai2apps.messager');
+        if (ids.includes('ai2apps.general-chat')) {
+            const browser = result.indexOf('ai2apps.ai-browser');
+            result.splice(browser < 0 ? result.length : browser + 1, 0, 'ai2apps.general-chat');
+        }
+        return result;
+    }
+
+    function migratePrimaryEntry() {
+        if (localStorage.getItem(storage.primaryEntry) || byId.get('ai2apps.messager')?.status !== 'active') return;
+        const pins = readPins();
+        if (!pins.includes('ai2apps.messager')) pins.push('ai2apps.messager');
+        localStorage.setItem(storage.pinned, JSON.stringify(primaryAppOrder(pins)));
+        const order = readDockOrder();
+        if (!order.includes('ai2apps.messager')) order.push('ai2apps.messager');
+        localStorage.setItem(storage.order, JSON.stringify(primaryAppOrder(order)));
+        localStorage.setItem(storage.primaryEntry, '1');
     }
 
     function readPins() {
@@ -263,12 +292,15 @@
         });
         if (!response.ok) {
             let detail = 'HTTP ' + response.status;
+            let code = null;
             try {
                 const body = await response.json();
+                code = body.error?.code || body.detail?.code || body.code || null;
                 detail = typeof body.detail === 'string' ? body.detail : body.detail?.message || body.error?.message || detail;
             } catch (_) { /* retain status */ }
             const error = new Error(detail);
             error.status = response.status;
+            error.code = code;
             throw error;
         }
         return response.json();
@@ -314,6 +346,44 @@
     let homeRemoteBusy = false;
     let homeRemoteReading = false;
     let offlineMode = false;
+    let homeRemoteSessionRecovery = null;
+    function recoverHomeRemoteSession() {
+        // Only re-establish the current browser's existing Cloud identity. Never replay rotation.
+        if (!homeRemoteSessionRecovery) {
+            homeRemoteSessionRecovery = jsonRequest('/v1/platform/auth/cloud-member/activate', 'POST');
+        }
+        return homeRemoteSessionRecovery;
+    }
+    async function homeRemoteStatus() {
+        try { return await request('/v1/platform/remote/status'); }
+        catch (error) {
+            if (error.status !== 401 || error.code !== 'local_session_required') throw error;
+            await recoverHomeRemoteSession();
+            return request('/v1/platform/remote/status');
+        }
+    }
+
+
+    function requestRemoteOwnerPassword() {
+        return new Promise(resolve => {
+            const dialog = document.createElement('dialog');
+            const form = document.createElement('form');form.method = 'dialog';
+            const title = document.createElement('h3');title.textContent = tr('shell.home.remote.verify_title');
+            const note = document.createElement('p');note.textContent = tr('shell.home.remote.rotate_confirm');
+            const label = document.createElement('label');label.textContent = tr('shell.home.remote.owner_password');
+            const input = document.createElement('input');input.type = 'password';input.autocomplete = 'current-password';input.required = true;
+            input.setAttribute('aria-label', tr('shell.home.remote.owner_password'));label.append(input);
+            const cancel = document.createElement('button');cancel.type = 'button';cancel.textContent = tr('shell.home.remote.cancel');
+            const submit = document.createElement('button');submit.type = 'submit';submit.textContent = tr('shell.home.remote.verify_enable');
+            const actions = document.createElement('div');actions.append(cancel,submit);
+            dialog.className = 'desktop-owner-reauth';form.append(title,note,label,actions);dialog.append(form);
+            const finish = value => {input.value = '';dialog.remove();resolve(value);};
+            cancel.onclick = () => finish(null);
+            dialog.oncancel = event => {event.preventDefault();finish(null);};
+            form.onsubmit = event => {event.preventDefault();if(input.value)finish(input.value);};
+            document.body.append(dialog);dialog.showModal();input.focus();
+        });
+    }
 
     async function refreshHomeRemote() {
         if (!homeRemote || homeRemoteReading || homeRemoteBusy) return;
@@ -325,7 +395,7 @@
         }
         homeRemoteReading = true;
         try {
-            const status = await request('/v1/platform/remote/status');
+            const status = await homeRemoteStatus();
             // Cloud reports whether the public proxy is connected; enabled alone is not online.
             let synchronized = status;
             let cloudUnavailable = false;
@@ -364,8 +434,29 @@
                     state.textContent = tr('shell.home.remote.updating');
                     let failure = null;
                     try {
-                        await jsonRequest('/v1/platform/remote/devices/' + encodeURIComponent(device.deviceId)
-                            + (device.enabled ? '/stop' : '/start'), 'POST');
+                        const path = '/v1/platform/remote/devices/' + encodeURIComponent(device.deviceId);
+                        const rotateAndStart = async () => {
+                            let password = await requestRemoteOwnerPassword();
+                            if (password === null) return;
+                            state.textContent = tr('shell.home.remote.rotating');
+                            try { await jsonRequest(path + '/credentials/rotate', 'POST', {ownerPassword: password}); }
+                            finally { password = ''; }
+                            homeRemoteSessionRecovery = null;
+                            await recoverHomeRemoteSession();
+                            state.textContent = tr('shell.home.remote.updating');
+                            await jsonRequest(path + '/start', 'POST');
+                        };
+                        const expires = Date.parse(device.credentialExpiresAt);
+                        if (device.enabled) await jsonRequest(path + '/stop', 'POST');
+                        else if (Number.isFinite(expires) && expires <= Date.now() + 7 * 86400000) {
+                            await rotateAndStart();
+                        } else {
+                            try { await jsonRequest(path + '/start', 'POST'); }
+                            catch (error) {
+                                if (error.code !== 'remote_credential_rotation_required') throw error;
+                                await rotateAndStart();
+                            }
+                        }
                     } catch (error) { failure = error; }
                     finally {
                         homeRemoteBusy = false;
@@ -379,8 +470,10 @@
                 row.append(copy, toggle);
                 homeRemote.append(row);
             }
-        } catch (_) {
+        } catch (error) {
             homeRemote.textContent = tr('shell.home.remote.refresh_error');
+            homeRemoteError.textContent = error.message;
+            homeRemoteError.hidden = false;
         } finally { homeRemoteReading = false; }
     }
 
@@ -526,6 +619,7 @@
             if (!options || !options.quiet) showToast('App Runtime unavailable: ' + error.message);
         }
         byId = new Map(apps.map((app) => [app.id, app]));
+        migratePrimaryEntry();
         if (!pinned.length) pinned = readPins();
         else pinned = pinned.filter((id) => byId.get(id)?.status === 'active');
         if (!dockOrder.length) dockOrder = readDockOrder();
@@ -608,6 +702,8 @@
 
     function renderHomeApps() {
         const preferred = [
+            'ai2apps.messager',
+            'ai2apps.ai-browser',
             'ai2apps.general-chat',
             'ai2apps.imagine-studio',
             'ai2apps.readaloud',
@@ -669,7 +765,7 @@
             const classes = [
                 'dock-app-wrap',
                 app.instances.length ? 'is-running' : '',
-                id === currentId ? 'is-current' : '',
+                id === (pendingAppId || currentId) ? 'is-current' : '',
             ].filter(Boolean).join(' ');
             const count = app.instances.length > 1
                 ? '<span class="dock-instance-count">' + app.instances.length + '</span>' : '';
@@ -682,7 +778,7 @@
                 '" aria-label="Open ' + escapeHtml(app.name) + '" data-dock-tooltip="' +
                 escapeHtml(app.name) + '">' + iconMarkup(app.icon) + count + badgeMarkup + '</button></span>';
         }).join('');
-        closeButton.disabled = !currentInstanceId;
+        closeButton.disabled = Boolean(pendingAppId) || !currentInstanceId;
         refreshIcons();
     }
 
@@ -690,15 +786,15 @@
         dockApps.querySelectorAll('[data-dock-drag-id]').forEach((wrap) => {
             wrap.classList.toggle(
                 'is-current',
-                wrap.dataset.dockDragId === currentId
+                wrap.dataset.dockDragId === (pendingAppId || currentId)
             );
         });
-        closeButton.disabled = !currentInstanceId;
+        closeButton.disabled = Boolean(pendingAppId) || !currentInstanceId;
     }
 
     function launcherApps() {
         const term = search.value.trim().toLowerCase();
-        return apps.filter((app) => {
+        return primaryAppOrder(apps.map((app) => app.id)).map((id) => byId.get(id)).filter((app) => {
             const inCategory = activeCategory === 'All' || app.category === activeCategory;
             const haystack = (app.name + ' ' + app.description + ' ' + app.category).toLowerCase();
             return inCategory && (!term || haystack.includes(term));
@@ -1075,7 +1171,7 @@
     function markFrameReady(record) {
         record.loaded = true;
         record.frame.classList.add('is-ready');
-        if (record.instanceId === currentInstanceId) {
+        if (record.instanceId === currentInstanceId && !pendingAppId) {
             loading.hidden = true;
             sendHostContext();
             postFrameLifecycle(record, 'ai2apps.host.activate');
@@ -1136,6 +1232,7 @@
             postFrameLifecycle(previous, 'ai2apps.host.background');
         }
         currentId = '';
+        pendingAppId = null;
         currentInstanceId = null;
         currentMountToken = null;
         home.hidden = false;
@@ -1160,6 +1257,7 @@
             postFrameLifecycle(previous, 'ai2apps.host.background');
         }
         currentId = app.id;
+        pendingAppId = null;
         currentInstanceId = record.instanceId;
         currentMountToken = record.mountToken;
         home.hidden = true;
@@ -1170,6 +1268,7 @@
         currentName.textContent = app.name;
         closeButton.disabled = false;
         frame.title = app.name;
+        loadingAppName.textContent = app.name;
         loading.hidden = Boolean(record.loaded);
         // Firefox can restore a same-origin iframe before the refreshed outer shell
         // reattaches its load listener. Treat that already-complete document as ready.
@@ -1247,7 +1346,13 @@
             record.frame.removeAttribute('sandbox');
         }
         record.frame.classList.remove('is-ready');
-        record.frame.src = framedUrl(entry.content_url, record.mountToken, record.instanceId);
+        const contentUrl = new URL(entry.content_url, window.location.origin);
+        if (app.id === 'ai2apps.comapps' && entry.renderer === 'sandbox') {
+            // Firefox may restore the previous iframe on Shell reload. A
+            // fragment-only change would leave its old mount script running.
+            contentUrl.searchParams.set('mount', record.mountToken);
+        }
+        record.frame.src = framedUrl(contentUrl.href, record.mountToken, record.instanceId);
         activateFrameRecord(app, record, options);
         watchFrameReadiness(record);
         enforceFrameCacheLimit();
@@ -1267,16 +1372,27 @@
             showToast(tr('shell.launcher.in_development'));
             return;
         }
+        if (pendingAppId === appId && !(options && options.newInstance)) return;
         const requestedInstanceId = options && options.instanceId;
         if (currentMountToken && frame.getAttribute('src') &&
                 !(options && options.newInstance) && appId === currentId &&
                 (!requestedInstanceId || requestedInstanceId === currentInstanceId)) {
+            if (pendingAppId) {
+                ++launchSequence;
+                pendingAppId = null;
+                loading.hidden = true;
+                updateDockSelection();
+            }
             closeLauncher();
             closeDockContextMenu();
             setDockVisible(true);
             return;
         }
         const sequence = ++launchSequence;
+        pendingAppId = appId;
+        loadingAppName.textContent = app.name;
+        loading.hidden = false;
+        updateDockSelection();
         try {
             let instanceId = options && options.instanceId;
             if (!instanceId && !(options && options.newInstance) && app.instances.length) {
@@ -1324,6 +1440,8 @@
                 }
             }
             loading.hidden = true;
+            pendingAppId = null;
+            updateDockSelection();
             showToast('Unable to open ' + app.name + ': ' + error.message);
         }
     }
@@ -1364,6 +1482,9 @@
     }
 
     // Persist navigation hints only; all authority and completion state live on Local.
+    let appStateIntents={};
+    try{appStateIntents=JSON.parse(sessionStorage.getItem('ai2apps.app-state-intents')||'{}');}catch(_){}
+    function saveAppStateIntent(instance,id){if(id)appStateIntents[instance]=id;else delete appStateIntents[instance];try{sessionStorage.setItem('ai2apps.app-state-intents',JSON.stringify(appStateIntents));}catch(_){}}
     let appInteractionIntents = {};
     const chatThreadIntents = {};
     const browserTaskIntents = {};
@@ -1380,6 +1501,7 @@
         return {
             type: 'ai2apps.host.context',
             appInteraction: appInteractionIntents[currentInstanceId] || null,
+            appStateLaunch: appStateIntents[currentInstanceId] || null,
             chatThread: chatThreadIntents[currentInstanceId] || null,
             browserTask: browserTaskIntents[currentInstanceId] || null,
             mountToken: currentMountToken,
@@ -1458,6 +1580,7 @@
     }
 
     function showDockTooltip(button) {
+        if (dockDraggingId) return;
         hideDockTooltip();
         dockTooltipTimer = setTimeout(() => {
             if (!button.isConnected) return;
@@ -1505,7 +1628,7 @@
         contextAppId = appId;
         dockContextMenu.querySelector('[data-context-name]').textContent = app.name;
         const icon = dockContextMenu.querySelector('[data-context-icon]');
-        icon.setAttribute('data-lucide', safeIcon(app.icon));
+        icon.innerHTML = iconMarkup(app.icon);
         dockContextMenu.querySelector('[data-context-pin-label]').textContent =
             pinned.includes(appId) ? 'Remove from Dock' : 'Keep in Dock';
         dockContextMenu.querySelector('[data-context-warm-label]').textContent =
@@ -1649,6 +1772,7 @@
             launch(homeAppButton.dataset.homeAppId);
             return;
         }
+        if(event.target.closest('[data-hook-permissions]')){window.AI2AppsHookConsent.manage().catch(e=>showToast(e.message));return;}
         const controlTabButton = event.target.closest('[data-control-tab]');
         if (controlTabButton) {
             controlTab = controlTabButton.dataset.controlTab;
@@ -1780,9 +1904,22 @@
         if (accountButton.dataset.dockTooltip) showDockTooltip(accountButton);
     });
     accountButton.addEventListener('pointerleave', hideDockTooltip);
+    function clearDockDropMarkers(keep = null) {
+        dockApps.querySelectorAll('.drop-before, .drop-after').forEach(item => {
+            if (item !== keep) item.classList.remove('drop-before', 'drop-after');
+        });
+    }
+    function finishDockDrag() {
+        dockDraggingId = null;
+        dockApps.querySelectorAll('.is-dragging, .drop-before, .drop-after')
+            .forEach(item => item.classList.remove('is-dragging', 'drop-before', 'drop-after'));
+        hideDockTooltip();
+        setTimeout(() => { suppressDockClick = false; }, 0);
+    }
     dockApps.addEventListener('dragstart', (event) => {
         const item = event.target.closest('[data-dock-drag-id]');
         if (!item) return;
+        clearDockDropMarkers();
         dockDraggingId = item.dataset.dockDragId;
         suppressDockClick = true;
         item.classList.add('is-dragging');
@@ -1793,7 +1930,10 @@
     });
     dockApps.addEventListener('dragover', (event) => {
         const target = event.target.closest('[data-dock-drag-id]');
-        if (!target || !dockDraggingId || target.dataset.dockDragId === dockDraggingId) return;
+        const valid = target && dockDraggingId && target.dataset.dockDragId !== dockDraggingId;
+        // dragleave is not guaranteed when crossing nested SVGs or replaced nodes.
+        clearDockDropMarkers(valid ? target : null);
+        if (!valid) return;
         event.preventDefault();
         event.dataTransfer.dropEffect = 'move';
         const bounds = target.getBoundingClientRect();
@@ -1801,14 +1941,18 @@
         target.classList.toggle('drop-before', event.clientX <= bounds.left + bounds.width / 2);
     });
     dockApps.addEventListener('dragleave', (event) => {
-        const target = event.target.closest('[data-dock-drag-id]');
-        if (target) target.classList.remove('drop-before', 'drop-after');
+        if (!dockApps.contains(event.relatedTarget)) clearDockDropMarkers();
+        else {
+            const target = event.target.closest('[data-dock-drag-id]');
+            if (target && !target.contains(event.relatedTarget)) target.classList.remove('drop-before', 'drop-after');
+        }
     });
     dockApps.addEventListener('drop', (event) => {
         const target = event.target.closest('[data-dock-drag-id]');
         if (!target || !dockDraggingId) return;
         event.preventDefault();
         const targetId = target.dataset.dockDragId;
+        if (targetId === dockDraggingId) return;
         const visibleIds = Array.from(dockApps.querySelectorAll('[data-dock-drag-id]'))
             .map((item) => item.dataset.dockDragId).filter((id) => id !== dockDraggingId);
         let index = visibleIds.indexOf(targetId);
@@ -1818,13 +1962,12 @@
         dockOrder = [...visibleIds, ...dockOrder.filter((id) => !visibleIds.includes(id))];
         persist();
         renderDock();
-        setTimeout(() => { suppressDockClick = false; }, 0);
     });
-    dockApps.addEventListener('dragend', () => {
-        dockDraggingId = null;
-        dockApps.querySelectorAll('.is-dragging, .drop-before, .drop-after')
-            .forEach((item) => item.classList.remove('is-dragging', 'drop-before', 'drop-after'));
-        setTimeout(() => { suppressDockClick = false; }, 0);
+    // Keep cleanup alive even if renderDock replaces the original drag source.
+    document.addEventListener('dragend', finishDockDrag);
+    document.addEventListener('drop', finishDockDrag);
+    document.addEventListener('dragover', event => {
+        if (dockDraggingId && !dockApps.contains(event.target)) clearDockDropMarkers();
     });
     document.addEventListener('pointerdown', (event) => {
         hideDockTooltip();
@@ -1875,7 +2018,73 @@
             requestId: message.requestId,
         };
         try {
-            if (message.type === 'ai2apps.shell.ready') {
+            if (['ai2apps.shell.events.request','ai2apps.shell.events.list','ai2apps.shell.events.details','ai2apps.shell.events.ack'].includes(message.type)) {
+                const base='/v1/platform/package-hooks/apps/'+encodeURIComponent(bridgeTarget.instanceId);
+                let result;
+                if(message.type==='ai2apps.shell.events.request'){
+                    const pending=await jsonRequest(base+'/requests','POST',message.proposal||{});
+                    // A detached frame cannot open a new permission dialog.
+                    if(frame.contentWindow!==bridgeTarget.source || currentMountToken!==bridgeTarget.mountToken)return;
+                    result=await window.AI2AppsHookConsent.review(pending.request_id);
+                }else if(message.type==='ai2apps.shell.events.list')result=await jsonRequest(base+'/inbox','GET');
+                else{
+                    if(!/^hd_[0-9a-f]{32}$/.test(message.deliveryId||''))throw new Error('Invalid event receipt');
+                    const operation=message.type.endsWith('.ack')?'ack':'details';
+                    result=await jsonRequest(base+'/deliveries/'+encodeURIComponent(message.deliveryId)+'/'+operation,'POST',{});
+                }
+                respondToBridgeTarget(bridgeTarget,true,result);
+            }
+            else if (message.type === 'ai2apps.comapps.request') {
+                if (currentId !== 'ai2apps.comapps') return;
+                const operation = message.operation;
+                if (!['state', 'ilink-start', 'ilink-poll', 'ilink-inbox', 'ilink-reply', 'ilink-disconnect',
+                    'ilink-auto-enable', 'ilink-auto-disable', 'ilink-logoff',
+                    'cli-configure', 'cli-profiles', 'cli-profile-create', 'cli-profile-launch',
+                    'cli-bind', 'cli-friends', 'cli-groups',
+                    'cli-conversations', 'cli-messages', 'cli-search', 'cli-disconnect', 'cli-workers',
+                    'cli-worker-save', 'cli-worker-delete', 'cli-worker-image-test',
+                    'cli-image-monitor-start', 'cli-image-monitor-stop', 'cli-image-monitor-status',
+                    'cli-recall-status', 'cli-draft-poll', 'cli-draft-models', 'cli-draft-model-save'].includes(operation)) {
+                    throw new Error('ComApps operation unavailable');
+                }
+                const args = message.arguments || {};
+                const prompt = {
+                    'ilink-logoff': '退出本机微信连接？自动回复会停止，分身会保留，重新连接时需要扫码。',
+                    'ilink-disconnect': '移除 WeChat-iLink 分身并解除本机微信绑定？',
+                    'cli-disconnect': '移除 WeChat-CLI 分身和本机连接配置？',
+                }[operation];
+                if (prompt) {
+                    if (!window.confirm(prompt)) {
+                        respondToBridgeTarget(bridgeTarget, true, { cancelled: true });
+                        return;
+                    }
+                }
+                if (operation === 'cli-configure') {
+                    if (typeof args.path !== 'string' || !args.path.startsWith('/') || args.path.length > 1024
+                        || /[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/.test(args.path)) {
+                        throw new Error('Enter the absolute path to your local wechat-agent');
+                    }
+                    if (!window.confirm('Allow Local to run this executable on your Mac?\n\n' + args.path)) {
+                        respondToBridgeTarget(bridgeTarget, false, null, 'wechat_cli_configuration_cancelled');
+                        return;
+                    }
+                }
+                if (operation === 'ilink-reply') {
+                    if (typeof args.text !== 'string' || !args.text.trim() || args.text.length > 1800) {
+                        throw new Error('Enter a reply of up to 1,800 characters');
+                    }
+                    if (!window.confirm('Send this reply as the AI2Apps bot to your bound WeChat account?\n\n' + args.text)) {
+                        respondToBridgeTarget(bridgeTarget, false, null, 'ilink_reply_cancelled');
+                        return;
+                    }
+                }
+                const result = await jsonRequest('/v1/platform/comapps/instances/'
+                    + encodeURIComponent(bridgeTarget.instanceId) + '/' + operation, 'POST', args);
+                if (frame.contentWindow === bridgeTarget.source && currentMountToken === bridgeTarget.mountToken) {
+                    respondToBridgeTarget(bridgeTarget, true, result);
+                }
+            }
+            else if (message.type === 'ai2apps.shell.ready') {
                 const activeRecord = framePool.get(currentInstanceId);
                 if (activeRecord) markFrameReady(activeRecord);
                 else sendHostContext();
@@ -1949,9 +2158,17 @@
                 sendHostContext();
                 respondToBridgeTarget(bridgeTarget,true,{threadId:thread.id});
             } else if (message.type === 'ai2apps.shell.open-entry') {
-                const appId = String(message.appId || currentId);
+                let appId = String(message.appId || currentId);
+                if(message.appStateLaunch){
+                    if(!/^ascl_[0-9a-f]{32}$/.test(message.appStateLaunch))throw Error('Invalid App-State launch');
+                    const value=await jsonRequest('/v1/platform/app-shortcuts/launches/'+message.appStateLaunch,'GET');appId=value.target.app_id;
+                }
                 await launch(appId, { instanceId: message.targetInstanceId || null });
-                respondToFrame(message, true, { appId: appId, instanceId: currentInstanceId });
+                if(currentId!==appId)throw Error('Target App did not open');
+                if(message.appStateLaunch){saveAppStateIntent(currentInstanceId,message.appStateLaunch);sendHostContext();}
+                respondToBridgeTarget(bridgeTarget,true,{appId,instanceId:currentInstanceId});
+            } else if(message.type==='ai2apps.shell.ack-app-state'){
+                if(appStateIntents[currentInstanceId]===message.launchId)saveAppStateIntent(currentInstanceId,null);
             } else if (message.type === 'ai2apps.shell.open-gallery-preview') {
                 openGalleryPreview(message);
                 respondToFrame(message, true, { status: 'opened', assetId: String(message.assetId || '') });
@@ -2008,7 +2225,7 @@
                 }
             }
         } catch (error) {
-            respondToFrame(message, false, null, error.message || String(error));
+            respondToBridgeTarget(bridgeTarget, false, null, error.message || String(error));
             showToast(error.message || String(error));
         }
     });

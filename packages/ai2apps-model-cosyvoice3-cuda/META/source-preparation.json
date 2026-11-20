@@ -1,0 +1,16 @@
+{
+  "status": "development_source_not_published",
+  "source_hashes": {
+    "ai2apps.json": "4b22500259b30464c889cc486d5ab221c7b7671f895a2e50ca64a948a3cf0bd7",
+    "service.yaml": "118be7bd874d2213a8c2379ebf4edcf34fbaa661f894ac2b6494b56006967324",
+    "README.md": "4661efaccce4aeb0272f22a8905ff1a2c3edc51862e0081de643def5e667bdea",
+    "META/checkpoint-distribution-original.json": "fdc6779688e673bb5c0ef80ae1455980dcc86cd476ce86179af928ee6107b65e",
+    "META/sbom.spdx.json": "2153bc6c6d659387541605d244ada1e5597876afad6abdbca659808fbfd0faaf",
+    "META/NOTICE.md": "eed7916f9f0347ccd2d964b2768f63e5d5331dac398dfb9fd09c587ca1aa9a78",
+    "src/worker_adapter.py": "8b00a19b0514c2460f7f60a724cd8d4397b216273eead6a2d1e08374c10df72e",
+    "src/cuda_cosyvoice_adapter.py": "08d072568e94429e8d8972f3ad9f84daa53824f6c3b8c0a0b8815eb124634983",
+    "META/licenses/Apache-2.0.txt": "2b93f05188b150e3d6ce31fa7cb7654cde98b78d2b671c5689e334bf520d53c9"
+  },
+  "signed_installation_passed": false,
+  "checkpoint_publication_evidence": "spark/artifacts/media-batch-production-20261009.json"
+}

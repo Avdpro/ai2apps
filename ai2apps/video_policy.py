@@ -43,6 +43,8 @@ def _model_identity(model: Any) -> tuple[str, Mapping[str, Any]]:
 
 def is_h3_video_model(model: Any) -> bool:
     model_id, metadata = _model_identity(model)
+    if metadata.get("source") == "byok":
+        return False
     family = str(metadata.get("family", "")).lower().replace("_", "-")
     return (
         family in {"minimax-h3", "h3"}

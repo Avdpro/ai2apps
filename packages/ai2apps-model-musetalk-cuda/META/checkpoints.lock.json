@@ -1,0 +1,62 @@
+{
+  "source": {
+    "repo": "https://github.com/TMElyralab/MuseTalk",
+    "commit": "0a89dec45a0192b824e3cf4daf96c239440c5ed8"
+  },
+  "models": [
+    {
+      "repo": "TMElyralab/MuseTalk",
+      "revision": "2bcb936e2fddb4d86db4c62fd45b387d0c061571",
+      "files": [
+        {
+          "path": "musetalkV15/musetalk.json",
+          "size": 748,
+          "sha256": "5b6923aee04d71692e0e9846c471e0a4ea07a4f686d39545e472bd4ba17e1b47"
+        },
+        {
+          "path": "musetalkV15/unet.pth",
+          "size": 3400074924,
+          "sha256": "7ebf6c98c181e20838e4c0054e96e944ac60d5d692cc01db42839fe11b787007"
+        }
+      ]
+    },
+    {
+      "repo": "stabilityai/sd-vae-ft-mse",
+      "revision": "31f26fdeee1355a5c34592e401dd41e45d25a493",
+      "files": [
+        {
+          "path": "config.json",
+          "size": 547,
+          "sha256": "92d3dfb746fca211a2c9e019e285f8597412211728dce3c5bcf4eda0f2d62e7e"
+        },
+        {
+          "path": "diffusion_pytorch_model.safetensors",
+          "size": 334643276,
+          "sha256": "a1d993488569e928462932c8c38a0760b874d166399b14414135bd9c42df5815"
+        }
+      ]
+    },
+    {
+      "repo": "openai/whisper-tiny",
+      "revision": "169d4a4341b33bc18d8881c4b69c2e104e1cc0af",
+      "files": [
+        {
+          "path": "config.json",
+          "size": 1983,
+          "sha256": "ffdccec4f3211f4c63310f2b7098f309fe70f3952cedc5e4d11e43f5b2379b98"
+        },
+        {
+          "path": "model.safetensors",
+          "size": 151061672,
+          "sha256": "7ebd0e69e78190ffe1438491fa05cc1f5c1aa3a4c4db3bc1723adbb551ea2395"
+        },
+        {
+          "path": "preprocessor_config.json",
+          "size": 184990,
+          "sha256": "9b5cd03a36fbb8a627c64d98a5b5b126ead95a77720723944487311f0110b666"
+        }
+      ]
+    }
+  ],
+  "scope": "Core fixed snapshots only; YuNet/BiSeNet preprocessing distributions, dual-source verification and Registry publication still required"
+}

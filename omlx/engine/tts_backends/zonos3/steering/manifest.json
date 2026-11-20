@@ -1,0 +1,15 @@
+{
+  "upstream": "https://github.com/Zyphra/ZONOS3-Mini",
+  "revision": "a50e14117d99181ba7f28047b451ba03ba1a09a9",
+  "source": "assets/steering/ears_moods_mect60k_x10",
+  "space": "attnres_source",
+  "source_index": 19,
+  "dim": 1024,
+  "fit_checkpoint": "mect_60k",
+  "sha256": {
+    "angry.npy": "460d6f0d4ef01b1ff68cc94012671507b7801e3e5e9b19e2e056659c284f8a4c",
+    "happy.npy": "e560ff601bd6b7fb3847572c683d755731e8ec90f8437e659f7bc7c733fdebf5",
+    "sad.npy": "26de452a82775d25d74bd8b0939960358071d672efad472cf8521aaee7ac1f6d",
+    "scared.npy": "22104774d25fdf19f6b199b084b397a3c3d43d5d4800f6f3ae3a13596a4f3130"
+  }
+}

@@ -4741,6 +4741,290 @@ MIGRATIONS = (*MIGRATIONS, Migration(version=99, name="knowledge_grouped_records
 
 MIGRATIONS = (*MIGRATIONS, Migration(version=100, name="knowledge_screenshot_overlap", statements=("ALTER TABLE knowledge_import_jobs ADD COLUMN detect_overlap INTEGER NOT NULL DEFAULT 1",)))
 
+
+MIGRATIONS = (*MIGRATIONS, Migration(version=101, name="business_event_facts", statements=(
+    '''CREATE TABLE business_event_facts(
+        event_id TEXT PRIMARY KEY REFERENCES events(id), sequence INTEGER NOT NULL UNIQUE,
+        owner TEXT NOT NULL, producer TEXT NOT NULL, type TEXT NOT NULL, subject_id TEXT NOT NULL,
+        occurrence_key TEXT NOT NULL, signature TEXT NOT NULL, data_json TEXT NOT NULL, cause_root_id TEXT NOT NULL, recorded_at TEXT NOT NULL, declaration_revision TEXT NOT NULL,
+        UNIQUE(owner,producer,type,occurrence_key))''',
+    'CREATE INDEX business_event_owner_cursor ON business_event_facts(owner,sequence)',
+)))
+
+MIGRATIONS = (*MIGRATIONS, Migration(version=102, name="readonly_event_hooks", statements=(
+    "CREATE TABLE hook_previews(id TEXT PRIMARY KEY,owner TEXT NOT NULL,spec_json TEXT NOT NULL,expires REAL NOT NULL,consumed INTEGER NOT NULL)",
+    "CREATE TABLE hook_rules(id TEXT PRIMARY KEY,owner TEXT NOT NULL,status TEXT NOT NULL,revision INTEGER NOT NULL,error TEXT,created REAL NOT NULL)",
+    "CREATE INDEX hook_rule_owner ON hook_rules(owner,status)",
+    """CREATE TABLE hook_rule_revisions(rule_id TEXT NOT NULL REFERENCES hook_rules(id),revision INTEGER NOT NULL,
+        spec_json TEXT NOT NULL,start_sequence INTEGER NOT NULL,cursor INTEGER NOT NULL,end_sequence INTEGER,
+        created REAL NOT NULL,scan_state TEXT NOT NULL,PRIMARY KEY(rule_id,revision))""",
+    """CREATE TABLE hook_deliveries(id TEXT PRIMARY KEY,rule_id TEXT NOT NULL REFERENCES hook_rules(id),
+        event_id TEXT NOT NULL,event_sequence INTEGER NOT NULL,rule_revision INTEGER NOT NULL,state TEXT NOT NULL,
+        created REAL NOT NULL,UNIQUE(rule_id,event_id))""",
+    "CREATE TABLE hook_requests(owner TEXT NOT NULL,request_id TEXT NOT NULL,signature TEXT NOT NULL,result_json TEXT NOT NULL,PRIMARY KEY(owner,request_id))",
+    "CREATE TABLE business_event_retention(id INTEGER PRIMARY KEY CHECK(id=1),floor_sequence INTEGER NOT NULL)",
+    "INSERT INTO business_event_retention VALUES(1,0)",
+)))
+
+MIGRATIONS = (*MIGRATIONS, Migration(version=103, name="hook_consumer_execution", statements=(
+    "ALTER TABLE business_event_facts ADD COLUMN cause_json TEXT",
+    "CREATE TABLE hook_executions(delivery_id TEXT PRIMARY KEY,state TEXT NOT NULL,task_id TEXT,result_json TEXT,error TEXT,created REAL NOT NULL,updated REAL NOT NULL)",
+    "CREATE TABLE hook_run_bindings(run_id TEXT PRIMARY KEY,delivery_id TEXT NOT NULL)",
+    "CREATE TABLE hook_root_claims(owner TEXT NOT NULL,root_id TEXT NOT NULL,rule_id TEXT NOT NULL,delivery_id TEXT NOT NULL,PRIMARY KEY(owner,root_id,rule_id))",
+    "CREATE TABLE hook_steps(delivery_id TEXT NOT NULL,step TEXT NOT NULL,signature TEXT NOT NULL,result_json TEXT NOT NULL,PRIMARY KEY(delivery_id,step))",
+    "CREATE TABLE system_task_acceptances(owner TEXT NOT NULL,app_id TEXT NOT NULL,receipt_key TEXT NOT NULL,signature TEXT NOT NULL,task_id TEXT NOT NULL,PRIMARY KEY(owner,app_id,receipt_key))",
+    "CREATE TABLE hook_consumer_acks(delivery_id TEXT PRIMARY KEY,owner TEXT NOT NULL)",
+    "CREATE TABLE hook_reports(delivery_id TEXT PRIMARY KEY,owner TEXT NOT NULL,consumer_json TEXT NOT NULL,result_json TEXT NOT NULL,created REAL NOT NULL)",
+)))
+
+MIGRATIONS = (*MIGRATIONS, Migration(version=104, name="hook_effect_receipts_and_monitoring", statements=(
+    "CREATE TABLE hook_action_steps(delivery_id TEXT NOT NULL,step TEXT NOT NULL,signature TEXT NOT NULL,registration TEXT NOT NULL,version TEXT NOT NULL,state TEXT NOT NULL,result_json TEXT,error TEXT,created REAL NOT NULL,updated REAL NOT NULL,PRIMARY KEY(delivery_id,step))",
+    "CREATE TABLE hook_local_notices(id TEXT PRIMARY KEY,owner TEXT NOT NULL,operation_key TEXT NOT NULL,delivery_id TEXT NOT NULL,content_json TEXT NOT NULL,created REAL NOT NULL,read_at REAL,UNIQUE(owner,operation_key))",
+    "CREATE INDEX hook_notice_owner ON hook_local_notices(owner,created)",
+    "ALTER TABLE hook_executions ADD COLUMN started REAL",
+)))
+
+MIGRATIONS = (*MIGRATIONS, Migration(version=105, name="package_hook_user_consent", statements=(
+    "CREATE TABLE package_hook_requests(id TEXT PRIMARY KEY,owner TEXT NOT NULL,installation_id TEXT NOT NULL,identity_json TEXT NOT NULL,request_key TEXT NOT NULL,signature TEXT NOT NULL,preview_ref TEXT NOT NULL,spec_json TEXT NOT NULL,state TEXT NOT NULL,created REAL NOT NULL,expires REAL NOT NULL,result_json TEXT,UNIQUE(owner,identity_json,request_key))",
+    "CREATE TABLE package_hook_grants(id TEXT PRIMARY KEY,owner TEXT NOT NULL,installation_id TEXT NOT NULL,rule_id TEXT NOT NULL UNIQUE,scope_hash TEXT NOT NULL,spec_json TEXT NOT NULL,accepted_release_json TEXT NOT NULL,state TEXT NOT NULL,expires REAL NOT NULL,approved_by TEXT NOT NULL,approved REAL NOT NULL,error TEXT)",
+    "CREATE TABLE package_hook_audit(sequence INTEGER PRIMARY KEY AUTOINCREMENT,owner TEXT NOT NULL,grant_id TEXT,request_id TEXT,action TEXT NOT NULL,data_json TEXT NOT NULL,created REAL NOT NULL)",
+    "CREATE TABLE package_hook_detail_reads(delivery_id TEXT PRIMARY KEY,owner TEXT NOT NULL,attempts INTEGER NOT NULL,result_json TEXT)",
+    "CREATE INDEX package_hook_request_owner ON package_hook_requests(owner,state,created)",
+    "CREATE INDEX package_hook_grant_owner ON package_hook_grants(owner,state,expires)",
+)))
+
+MIGRATIONS = (*MIGRATIONS, Migration(version=106, name="unknown_tool_risk_reviews", statements=(
+    """CREATE TABLE tool_risk_classifications (
+        binding TEXT PRIMARY KEY, risk TEXT NOT NULL, reason TEXT NOT NULL
+    )""",
+    """CREATE TABLE tool_risk_preferences (
+        app_instance_id TEXT NOT NULL REFERENCES app_instances(id) ON DELETE CASCADE,
+        agent_definition_id TEXT NOT NULL REFERENCES agent_definitions(id) ON DELETE CASCADE,
+        actor TEXT NOT NULL, binding TEXT NOT NULL, risk TEXT NOT NULL,
+        interaction_id TEXT NOT NULL,
+        PRIMARY KEY(app_instance_id, agent_definition_id, actor, binding)
+    )""",
+)))
+
+MIGRATIONS = (*MIGRATIONS, Migration(version=107, name="doc_studio_projects", statements=(
+    """CREATE TABLE doc_studio_packs (
+        owner TEXT NOT NULL,id TEXT NOT NULL,manifest TEXT NOT NULL,
+        PRIMARY KEY(owner,id)
+    )""",
+    """CREATE TABLE doc_studio_projects (
+        owner TEXT NOT NULL,id TEXT NOT NULL,title TEXT NOT NULL,
+        created_at TEXT NOT NULL,PRIMARY KEY(owner,id)
+    )""",
+    """CREATE TABLE doc_studio_imports (
+        owner TEXT NOT NULL,project_id TEXT NOT NULL,pack_id TEXT NOT NULL,
+        created_at TEXT NOT NULL,PRIMARY KEY(owner,project_id,
+        pack_id)
+    )""",
+    """CREATE TABLE doc_studio_import_items (
+        owner TEXT NOT NULL,project_id TEXT NOT NULL,pack_id TEXT NOT NULL,
+        material_id TEXT NOT NULL,PRIMARY KEY(owner,project_id,
+        pack_id,material_id)
+    )""",
+    """CREATE TABLE doc_studio_materials (
+        owner TEXT NOT NULL,project_id TEXT NOT NULL,id TEXT NOT NULL,
+        source_id TEXT NOT NULL,data TEXT NOT NULL,PRIMARY KEY(owner,
+        project_id,id)
+    )""",
+    """CREATE TABLE doc_studio_images (
+        owner TEXT NOT NULL,project_id TEXT NOT NULL,id TEXT NOT NULL,
+        mime TEXT NOT NULL,data BLOB NOT NULL,PRIMARY KEY(owner,
+        project_id,id)
+    )""",
+    """CREATE TABLE doc_studio_versions (
+        owner TEXT NOT NULL,project_id TEXT NOT NULL,id TEXT NOT NULL,
+        created_at TEXT NOT NULL,data TEXT NOT NULL,PRIMARY KEY(owner,
+        project_id,id)
+    )""",
+    """CREATE TABLE doc_studio_outputs (
+        owner TEXT NOT NULL,project_id TEXT NOT NULL,id TEXT NOT NULL,
+        created_at TEXT NOT NULL,metadata TEXT NOT NULL,data BLOB NOT NULL,
+        PRIMARY KEY(owner,project_id,id)
+    )""",
+)))
+
+
+MIGRATIONS = (*MIGRATIONS, Migration(version=108, name="doc_studio_project_deletion", statements=(
+    "ALTER TABLE doc_studio_projects ADD COLUMN deleted_at TEXT",
+)))
+
+
+MIGRATIONS = (*MIGRATIONS, Migration(version=109, name="mail_accounts_and_inbox", statements=(
+    """CREATE TABLE mail_accounts (
+        id TEXT PRIMARY KEY, owner TEXT NOT NULL, installation TEXT NOT NULL,
+        provider TEXT NOT NULL, address TEXT NOT NULL, display_name TEXT NOT NULL,
+        host TEXT NOT NULL, port INTEGER NOT NULL, username TEXT NOT NULL,
+        smtp_host TEXT NOT NULL, smtp_port INTEGER NOT NULL, smtp_username TEXT NOT NULL,
+        smtp_tls TEXT NOT NULL, smtp_status TEXT NOT NULL, secret_key TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'connected', revision INTEGER NOT NULL DEFAULT 1,
+        synced_at TEXT, uidvalidity INTEGER, capped INTEGER NOT NULL DEFAULT 0
+    )""",
+    "CREATE INDEX mail_account_scope ON mail_accounts(owner, installation)",
+    """CREATE TABLE mail_messages (
+        account_id TEXT NOT NULL REFERENCES mail_accounts(id) ON DELETE CASCADE,
+        uid INTEGER NOT NULL, subject TEXT NOT NULL, sender TEXT NOT NULL,
+        received_at TEXT NOT NULL, seen INTEGER NOT NULL,
+        PRIMARY KEY(account_id, uid)
+    )""",
+)))
+
+
+MIGRATIONS = (*MIGRATIONS, Migration(version=110, name="mail_gmail_oauth", statements=(
+    "ALTER TABLE mail_accounts ADD COLUMN auth_mode TEXT NOT NULL DEFAULT 'password' "
+    "CHECK (auth_mode IN ('password', 'xoauth2'))",
+)))
+
+MIGRATIONS = (*MIGRATIONS, Migration(version=111, name="mail_smart_folders", statements=(
+    """CREATE TABLE mail_smart_folders (
+        id TEXT PRIMARY KEY, owner TEXT NOT NULL, installation TEXT NOT NULL,
+        name TEXT NOT NULL, rule TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 1
+    )""",
+    "CREATE INDEX mail_smart_folder_scope ON mail_smart_folders(owner, installation)",
+    """CREATE TABLE mail_analysis (
+        account_id TEXT NOT NULL REFERENCES mail_accounts(id) ON DELETE CASCADE,
+        uidvalidity INTEGER NOT NULL, uid INTEGER NOT NULL, signature TEXT NOT NULL,
+        matches TEXT NOT NULL, priority INTEGER NOT NULL, reason TEXT NOT NULL, evidence TEXT NOT NULL,
+        PRIMARY KEY(account_id, uidvalidity, uid)
+    )""",
+    """CREATE TABLE mail_classification_overrides (
+        account_id TEXT NOT NULL REFERENCES mail_accounts(id) ON DELETE CASCADE,
+        uidvalidity INTEGER NOT NULL, uid INTEGER NOT NULL,
+        folder_id TEXT NOT NULL REFERENCES mail_smart_folders(id) ON DELETE CASCADE,
+        included INTEGER NOT NULL,
+        PRIMARY KEY(account_id, uidvalidity, uid, folder_id)
+    )""",
+    """CREATE TABLE mail_priority_dismissals (
+        account_id TEXT NOT NULL REFERENCES mail_accounts(id) ON DELETE CASCADE,
+        uidvalidity INTEGER NOT NULL, uid INTEGER NOT NULL,
+        PRIMARY KEY(account_id, uidvalidity, uid)
+    )""",
+)))
+
+MIGRATIONS = (*MIGRATIONS, Migration(version=112, name="mail_smart_folder_presets", statements=(
+    """CREATE TABLE mail_smart_folder_presets (
+        owner TEXT NOT NULL, installation TEXT NOT NULL, previous_folders TEXT NOT NULL,
+        PRIMARY KEY(owner, installation)
+    )""",
+)))
+
+MIGRATIONS = (*MIGRATIONS, Migration(version=113, name="mail_local_reads", statements=(
+    """CREATE TABLE mail_local_reads (
+        account_id TEXT NOT NULL REFERENCES mail_accounts(id) ON DELETE CASCADE,
+        uidvalidity INTEGER NOT NULL, uid INTEGER NOT NULL,
+        PRIMARY KEY(account_id, uidvalidity, uid)
+    )""",
+)))
+
+_MAIL_FINANCE_PRESET_CANDIDATES = """
+    SELECT old.id FROM mail_smart_folders old
+    WHERE old.id GLOB 'preset-*' AND old.revision=1 AND old.name IN ('投资','Investing')
+    AND NOT EXISTS (SELECT 1 FROM mail_smart_folders other
+        WHERE other.owner=old.owner AND other.installation=old.installation
+        AND other.name COLLATE NOCASE IN ('财务','Finance'))
+"""
+
+MIGRATIONS = (*MIGRATIONS, Migration(version=114, name="mail_finance_preset", statements=(
+    "ALTER TABLE mail_smart_folder_presets ADD COLUMN finance_previous_folders TEXT",
+    f"""UPDATE mail_smart_folder_presets AS history
+        SET finance_previous_folders=(SELECT json_group_object(folder.id,folder.revision)
+            FROM mail_smart_folders folder
+            WHERE folder.owner=history.owner AND folder.installation=history.installation)
+        WHERE EXISTS (SELECT 1 FROM mail_smart_folders candidate
+            WHERE candidate.owner=history.owner AND candidate.installation=history.installation
+            AND candidate.id IN ({_MAIL_FINANCE_PRESET_CANDIDATES}))""",
+    f"""UPDATE mail_smart_folders SET
+        name=CASE name WHEN '投资' THEN '财务' ELSE 'Finance' END,
+        rule=CASE name WHEN '投资' THEN
+            '收录信用卡结单、银行对账单、Firstrade 交易通知、其他券商交易确认、投资账户对账单、持仓和公司行动通知。排除广告、营销邮件和财经新闻。'
+            ELSE 'Include credit card statements, bank statements, Firstrade trade notices, trade confirmations from other brokers, investment account statements, holdings, and corporate actions. Exclude ads, marketing emails, and financial news.' END,
+        revision=revision+1 WHERE id IN ({_MAIL_FINANCE_PRESET_CANDIDATES})""",
+)))
+
+
+MIGRATIONS = (*MIGRATIONS, Migration(version=115, name="mail_message_markers", statements=(
+    "ALTER TABLE mail_messages ADD COLUMN answered INTEGER NOT NULL DEFAULT 0",
+    """CREATE TABLE mail_message_markers (
+        account_id TEXT NOT NULL REFERENCES mail_accounts(id) ON DELETE CASCADE,
+        uidvalidity INTEGER NOT NULL, uid INTEGER NOT NULL,
+        subject TEXT NOT NULL, sender TEXT NOT NULL, received_at TEXT NOT NULL,
+        seen INTEGER NOT NULL, answered INTEGER NOT NULL, preview TEXT NOT NULL,
+        pinned_at TEXT, flagged INTEGER NOT NULL DEFAULT 0, todo_id TEXT,
+        PRIMARY KEY(account_id, uidvalidity, uid)
+    )""",
+)))
+
+
+MIGRATIONS = (*MIGRATIONS, Migration(version=116, name="mail_image_permissions", statements=(
+    """CREATE TABLE mail_image_permissions (
+        account_id TEXT NOT NULL REFERENCES mail_accounts(id) ON DELETE CASCADE,
+        uidvalidity INTEGER NOT NULL, uid INTEGER NOT NULL,
+        PRIMARY KEY(account_id, uidvalidity, uid)
+    )""",
+)))
+
+
+MIGRATIONS = (*MIGRATIONS, Migration(version=117, name="mail_local_replies", statements=(
+    """CREATE TABLE mail_local_replies (
+        account_id TEXT NOT NULL REFERENCES mail_accounts(id) ON DELETE CASCADE,
+        uidvalidity INTEGER NOT NULL, uid INTEGER NOT NULL,
+        PRIMARY KEY(account_id, uidvalidity, uid)
+    )""",
+)))
+
+
+MIGRATIONS = (*MIGRATIONS, Migration(version=118, name="mail_drafts", statements=(
+    """CREATE TABLE mail_drafts (
+        id TEXT PRIMARY KEY, account_id TEXT NOT NULL REFERENCES mail_accounts(id) ON DELETE CASCADE,
+        data TEXT NOT NULL, updated_at TEXT NOT NULL, revision INTEGER NOT NULL,
+        status TEXT NOT NULL DEFAULT 'draft'
+    )""",
+    "CREATE INDEX mail_drafts_account ON mail_drafts(account_id, updated_at)",
+)))
+
+
+MIGRATIONS = (*MIGRATIONS, Migration(version=119, name="doc_studio_translation", statements=(
+    """CREATE TABLE doc_studio_translation_profiles (
+        owner TEXT NOT NULL, id TEXT NOT NULL, name TEXT NOT NULL, guidance TEXT NOT NULL,
+        PRIMARY KEY(owner, id)
+    )""",
+    """CREATE TABLE doc_studio_translation_outputs (
+        owner TEXT NOT NULL, id TEXT NOT NULL, created_at TEXT NOT NULL, metadata TEXT NOT NULL, data BLOB NOT NULL,
+        PRIMARY KEY(owner, id)
+    )""",
+)))
+
+
+MIGRATIONS = (*MIGRATIONS, Migration(version=120, name="doc_studio_translation_layout", statements=(
+    """CREATE TABLE doc_studio_translation_sources (
+        owner TEXT NOT NULL, id TEXT NOT NULL, data BLOB NOT NULL, PRIMARY KEY(owner,id)
+    )""",
+)))
+
+
+MIGRATIONS = (*MIGRATIONS, Migration(version=121, name="doc_studio_translation_source_retention",
+    statements=(), ensure_columns=(("doc_studio_translation_sources", "last_used", "REAL NOT NULL DEFAULT 0"),)))
+
+MIGRATIONS = (*MIGRATIONS, Migration(version=122, name="mail_smart_folder_filters", statements=(
+    "ALTER TABLE mail_smart_folders ADD COLUMN excluded_senders TEXT NOT NULL DEFAULT '[]' CHECK(json_valid(excluded_senders))",
+    "ALTER TABLE mail_smart_folders ADD COLUMN guidance TEXT NOT NULL DEFAULT ''",
+)))
+
+MIGRATIONS = (*MIGRATIONS, Migration(version=123, name="mail_smart_view_sender_blocks", statements=(
+    "ALTER TABLE mail_smart_folders ADD COLUMN analysis_revision INTEGER",
+    """CREATE TABLE mail_smart_view_sender_blocks (
+        owner TEXT NOT NULL, installation TEXT NOT NULL,
+        folder_id TEXT NOT NULL CHECK(folder_id IN ('top5','answered')),
+        excluded_senders TEXT NOT NULL CHECK(json_valid(excluded_senders)),
+        revision INTEGER NOT NULL,
+        PRIMARY KEY(owner,installation,folder_id)
+    )""",
+)))
+
+
 def apply_migrations(
     connection: sqlite3.Connection,
     migrations: Sequence[Migration] = MIGRATIONS,

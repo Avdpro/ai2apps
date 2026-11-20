@@ -1,0 +1,82 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/model-depth-anything-v2-large-mlx",
+    "type": "service",
+    "version": "0.1.0",
+    "displayName": "Depth Anything V2 Large MLX",
+    "description": "Single-image relative inverse depth. Noncommercial weights; not an image editor."
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": [
+      "darwin"
+    ],
+    "architectures": [
+      "arm64"
+    ],
+    "minimumOsVersion": "26.2"
+  },
+  "entrypoints": [
+    {
+      "name": "model-worker",
+      "kind": "service",
+      "path": "service.yaml"
+    }
+  ],
+  "permissions": [
+    {
+      "capability": "model-weights.huggingface-cache.read",
+      "reason": "Read the pinned depth checkpoint.",
+      "required": true
+    },
+    {
+      "capability": "accelerator.metal",
+      "reason": "Local MLX depth estimation.",
+      "required": true
+    }
+  ],
+  "dependencies": [
+    {
+      "packageId": "ai2apps/runtime-omlx",
+      "version": ">=1.8.11 <2.0.0",
+      "optional": false
+    }
+  ],
+  "files": [],
+  "sbom": {
+    "format": "spdx-json-2.3",
+    "path": "META/sbom.spdx.json"
+  },
+  "discovery": {
+    "kind": "model",
+    "categories": [
+      "image"
+    ],
+    "tasks": [
+      "depth-estimation"
+    ]
+  },
+  "modelProfile": {
+    "sizeBytes": 1341326620,
+    "minimumMemoryBytes": 34359738368,
+    "scores": {
+      "speed": 4,
+      "capability": 4
+    },
+    "benchmark": {
+      "label": "Publisher parity QA; conservative memory requirement, not measured minimum",
+      "device": "Apple Silicon, 128 GiB unified memory"
+    }
+  },
+  "modelInstall": {
+    "serviceKey": "ai2apps.model.depth-anything-v2-large-mlx",
+    "models": [
+      {
+        "id": "ai2apps.model.depth-anything-v2-large-mlx/large",
+        "label": "Depth Anything V2 Large MLX",
+        "recommended": true
+      }
+    ]
+  }
+}

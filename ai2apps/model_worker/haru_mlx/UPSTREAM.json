@@ -1,0 +1,151 @@
+{
+  "repository": "https://github.com/higurashi-ai/Haru",
+  "commit": "7fe6b7665f8bf035998f401f8cb779fbe53f2751",
+  "source_directory": "haru_mlx/haru_mlx",
+  "license": "Apache-2.0",
+  "checkpoint": {
+    "repo_id": "higurashi-ai/Haru-4B",
+    "revision": "8d6e83bcd3701a76fc27a764965665da1df7da78"
+  },
+  "local_changes": [
+    "Relocated package to ai2apps.model_worker.haru_mlx",
+    "prompt.py uses __package__ for assets"
+  ],
+  "files": [
+    {
+      "path": "__init__.py",
+      "upstream_sha256": "94f34a10f6203dddf000e7fac91d327e04fd90a7c9dcdcca72008adb003ff376",
+      "integrated_sha256": "94f34a10f6203dddf000e7fac91d327e04fd90a7c9dcdcca72008adb003ff376"
+    },
+    {
+      "path": "assets/card_templates.json",
+      "upstream_sha256": "99f90f68fcbd1dd67dc7ee84b8d655c11bdfeb322657959b86e407a1a7254d46",
+      "integrated_sha256": "99f90f68fcbd1dd67dc7ee84b8d655c11bdfeb322657959b86e407a1a7254d46"
+    },
+    {
+      "path": "assets/cards/de.json",
+      "upstream_sha256": "6672851b03d52cebf708dd25c128be869b125f758de6e3d7c6d2f21b40f61496",
+      "integrated_sha256": "6672851b03d52cebf708dd25c128be869b125f758de6e3d7c6d2f21b40f61496"
+    },
+    {
+      "path": "assets/cards/en.json",
+      "upstream_sha256": "c6e05bf62d690fc1620e0e339095f03c63cd95dededb484356da8e79e8980484",
+      "integrated_sha256": "c6e05bf62d690fc1620e0e339095f03c63cd95dededb484356da8e79e8980484"
+    },
+    {
+      "path": "assets/cards/es.json",
+      "upstream_sha256": "7d7a97da3ce2864cba59f750b4ee00d922b5f25f0c628cdf4ebd8cb17c0cec45",
+      "integrated_sha256": "7d7a97da3ce2864cba59f750b4ee00d922b5f25f0c628cdf4ebd8cb17c0cec45"
+    },
+    {
+      "path": "assets/cards/fr.json",
+      "upstream_sha256": "edb4e91c8d864b341ec4e4124487de2b4b7fbe9971e43a0ff2b62e95756af804",
+      "integrated_sha256": "edb4e91c8d864b341ec4e4124487de2b4b7fbe9971e43a0ff2b62e95756af804"
+    },
+    {
+      "path": "assets/cards/ja.json",
+      "upstream_sha256": "e1fb741a239b0396e82666ec0cd6a9af6b0222e60693b4573097e94cbc3cd44f",
+      "integrated_sha256": "e1fb741a239b0396e82666ec0cd6a9af6b0222e60693b4573097e94cbc3cd44f"
+    },
+    {
+      "path": "assets/cards/ko.json",
+      "upstream_sha256": "2b11faf3a36afdd62e1fff8a990a999f575442fb6d2eb13754e90db546de52ca",
+      "integrated_sha256": "2b11faf3a36afdd62e1fff8a990a999f575442fb6d2eb13754e90db546de52ca"
+    },
+    {
+      "path": "assets/cards/pt.json",
+      "upstream_sha256": "75ddc021484fed7aac97441b7a1404af47f92e722328eb333be3b471efbcb8ad",
+      "integrated_sha256": "75ddc021484fed7aac97441b7a1404af47f92e722328eb333be3b471efbcb8ad"
+    },
+    {
+      "path": "assets/cards/ru.json",
+      "upstream_sha256": "c70e7b2e66c76ca83c9b3ad0acd01f5219b9eb91bbac6590f5c962e1ce9f9325",
+      "integrated_sha256": "c70e7b2e66c76ca83c9b3ad0acd01f5219b9eb91bbac6590f5c962e1ce9f9325"
+    },
+    {
+      "path": "assets/cards/zh.json",
+      "upstream_sha256": "96c25577062bda1622355901ca068b739cb6bc29ce3d1b027472b5c3295ff1ca",
+      "integrated_sha256": "96c25577062bda1622355901ca068b739cb6bc29ce3d1b027472b5c3295ff1ca"
+    },
+    {
+      "path": "audio.py",
+      "upstream_sha256": "cde6acd2be2b24dfdc32ef80d707f2bcd6699312d6d5215ec9639c7aa29aa76b",
+      "integrated_sha256": "cde6acd2be2b24dfdc32ef80d707f2bcd6699312d6d5215ec9639c7aa29aa76b"
+    },
+    {
+      "path": "config.py",
+      "upstream_sha256": "c3ace58fb4d3fcc5ae8d157e751c4afb9836d858c30356386f77ed5857aa8f01",
+      "integrated_sha256": "c3ace58fb4d3fcc5ae8d157e751c4afb9836d858c30356386f77ed5857aa8f01"
+    },
+    {
+      "path": "frames.py",
+      "upstream_sha256": "bd7e5f970d6cdbac3d9325c6e6e8edfa473ae069062b6f12d4c76b39a69d2fd8",
+      "integrated_sha256": "bd7e5f970d6cdbac3d9325c6e6e8edfa473ae069062b6f12d4c76b39a69d2fd8"
+    },
+    {
+      "path": "hub.py",
+      "upstream_sha256": "cced58c410fdc180dd18da195730bd2c9aeb1feefeb13f440828aa83821d5b4d",
+      "integrated_sha256": "cced58c410fdc180dd18da195730bd2c9aeb1feefeb13f440828aa83821d5b4d"
+    },
+    {
+      "path": "lm_config.py",
+      "upstream_sha256": "3cdc1a2521d370750db99002892a571f1529d667f3c600f4088e119b68ab7735",
+      "integrated_sha256": "3cdc1a2521d370750db99002892a571f1529d667f3c600f4088e119b68ab7735"
+    },
+    {
+      "path": "models/__init__.py",
+      "upstream_sha256": "e86ba3c795c6889b8b884fb51ba6a172fb34884b3471c13344e5e7d535c902c0",
+      "integrated_sha256": "e86ba3c795c6889b8b884fb51ba6a172fb34884b3471c13344e5e7d535c902c0"
+    },
+    {
+      "path": "models/gated_delta.py",
+      "upstream_sha256": "67a48fcda6b8fc3b192a8cee1d15de0d4fde03f1b8a484008de277568826d251",
+      "integrated_sha256": "67a48fcda6b8fc3b192a8cee1d15de0d4fde03f1b8a484008de277568826d251"
+    },
+    {
+      "path": "models/haru.py",
+      "upstream_sha256": "19ce175a2f783f48558778762881bf46a0ecfc70ba1bffb438a3550ba95b369c",
+      "integrated_sha256": "19ce175a2f783f48558778762881bf46a0ecfc70ba1bffb438a3550ba95b369c"
+    },
+    {
+      "path": "models/loaders.py",
+      "upstream_sha256": "82239e06640717dd4f70480419576164c44d46e7a5018b3ffb1fcbaa0cea3eed",
+      "integrated_sha256": "82239e06640717dd4f70480419576164c44d46e7a5018b3ffb1fcbaa0cea3eed"
+    },
+    {
+      "path": "models/meanflow_head.py",
+      "upstream_sha256": "90a8f950207805743c3d4e00b2279163b755d1d1d4daea25f01ccb844a8c1380",
+      "integrated_sha256": "90a8f950207805743c3d4e00b2279163b755d1d1d4daea25f01ccb844a8c1380"
+    },
+    {
+      "path": "models/qwen3_5.py",
+      "upstream_sha256": "5526d7579faf7dffa4f7bfaf6eb68325c57ed8f6eee43705d349ae0237434339",
+      "integrated_sha256": "5526d7579faf7dffa4f7bfaf6eb68325c57ed8f6eee43705d349ae0237434339"
+    },
+    {
+      "path": "models/vibevoice_codec.py",
+      "upstream_sha256": "a341a3b9526d95954227edc16eb89cd2912594ec88371ed631d872db8ded6811",
+      "integrated_sha256": "a341a3b9526d95954227edc16eb89cd2912594ec88371ed631d872db8ded6811"
+    },
+    {
+      "path": "prompt.py",
+      "upstream_sha256": "da05e2cf1f694a842a5c2df16059f3cfcd68e5b0af170a37639b042860302ee5",
+      "integrated_sha256": "fe42ba501491f9cd727935a9c15d066a5387556ef8b4b3d76ed3fa730d83296d"
+    },
+    {
+      "path": "sampling.py",
+      "upstream_sha256": "8752bc59deb76023ce536ac4cd5f434f603b5b9f4aec1f327dda012374dbf03f",
+      "integrated_sha256": "8752bc59deb76023ce536ac4cd5f434f603b5b9f4aec1f327dda012374dbf03f"
+    },
+    {
+      "path": "session.py",
+      "upstream_sha256": "cffdc920fcd6405563ff68210c118ed0050c10ac3eaf2c80d31fe4b16702f1ab",
+      "integrated_sha256": "cffdc920fcd6405563ff68210c118ed0050c10ac3eaf2c80d31fe4b16702f1ab"
+    },
+    {
+      "path": "weights.py",
+      "upstream_sha256": "2352db07c08855b7155f454ed3c785b4c175f04b98ecbaf872480c93835fc643",
+      "integrated_sha256": "2352db07c08855b7155f454ed3c785b4c175f04b98ecbaf872480c93835fc643"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "schema": "ai2apps.source-lock/v1",
+  "upstream": {
+    "repository": "https://github.com/ace-step/ACE-Step-1.5",
+    "commit": "ca1e85fe9430179831e6bc6be790c332190a3866",
+    "archive_sha256": "9c4740a17bdb82a33715e375ddaedacaf9f97c0f82fe4bd2dc689931cc15fab1"
+  },
+  "checkpoint": {
+    "repository": "ACE-Step/Ace-Step1.5",
+    "revision": "19671f406d603126926c1b7e2adc169acbcade22"
+  },
+  "adapter_sha256": "16cbc102807b1ca5e33c467b24a4fd55a0eadedcfd7f3f46dae04112784557c6"
+}

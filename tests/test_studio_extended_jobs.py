@@ -56,7 +56,7 @@ async def test_cloud_image_checkpoint_retry_no_second_request(tmp_path,monkeypat
     m,app,scope,run=setup(tmp_path);calls=[]
     async def cloud(body,**kw):
         calls.append((body,kw));return {'image':{'dataUrl':'data:image/png;base64,'+base64.b64encode(png()).decode(),'format':'png'}}
-    monkeypatch.setattr('ai2apps.cloud_gateway.request_cloud_image',cloud)
+    monkeypatch.setattr('ai2apps.images.cloud_gateway.request_cloud_image',cloud)
     m.runtime.cloud=object();m.runtime.cloud_ai_authorization_headers=lambda p:{}
     body={'model':'cloud/test','prompt':'test','size':'1024x1024','source':'cloud'}
     if edit:body['imageDataUrls']=['data:image/png;base64,'+base64.b64encode(png()).decode()]

@@ -170,7 +170,18 @@ class VideoTaskManager:
         if self._running:
             await asyncio.gather(*tuple(self._running.values()), return_exceptions=True)
 
-    def _model(self, model_id: str) -> PackageModel:
+    def _model(self, model_id: str, actor_id: str | None = None) -> PackageModel:
+        from ai2apps.video.byok import catalog_model, provider_for_model
+
+        byok_provider = provider_for_model(model_id)
+        if byok_provider is not None:
+            model = catalog_model(self.runtime, byok_provider, actor_id or "", model_id)
+            if not model.checkpoint_ready:
+                raise VideoGenerationError(
+                    "byok_key_missing", "Configure this provider's API key in Video Studio",
+                    status_code=503,
+                )
+            return model
         invocations = getattr(self.runtime, "model_invocations", None)
         model = None if invocations is None else invocations.model(model_id)
         if model is None:
@@ -345,14 +356,15 @@ class VideoTaskManager:
         model_id = str(payload.get("model") or "").strip()
         if not model_id:
             raise VideoGenerationError("invalid_request", "model is required")
-        model = self._model(model_id)
+        model = self._model(model_id, actor_id)
         effective = self._effective_request(payload, model)
         task_id = f"vgt_{uuid.uuid4().hex}"
         task_root = self.root / task_id
         task_root.mkdir(mode=0o700)
         try:
             worker, manifest = await self._freeze_inputs(
-                effective, task_root, uploads or {}
+                effective, task_root, uploads or {},
+                max_reference_seconds=float((effective_video_capabilities(model).get("media_limits") or {}).get("reference_duration_seconds", 15)) + .1,
             )
             from ai2apps.avatar.segmented_inference import supports_segments, model_identity
             if supports_segments(model):
@@ -424,6 +436,7 @@ class VideoTaskManager:
         payload: dict[str, Any],
         task_root: Path,
         uploads: dict[str, tuple[str, bytes, str]],
+        *, max_reference_seconds: float = 15.1,
     ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
         inputs_root = task_root / "inputs"
         inputs_root.mkdir()
@@ -477,7 +490,7 @@ class VideoTaskManager:
             filename, data, media_type = await self._resolve_input(url, uploads)
             if len(data) > MAX_INPUT_BYTES:
                 raise VideoGenerationError("input_too_large", "Input exceeds 100 MiB", status_code=413)
-            self._validate_media(data, media_type, item_type, role)
+            self._validate_media(data, media_type, item_type, role, max_reference_seconds=max_reference_seconds)
             suffix = Path(filename).suffix or mimetypes.guess_extension(media_type) or ".bin"
             destination = inputs_root / f"{index:02d}-{part_name}{suffix[:12]}"
             destination.write_bytes(data)
@@ -490,6 +503,7 @@ class VideoTaskManager:
                     "media_type": media_type,
                     "size": len(data),
                     "sha256": digest,
+                    **({"source_url": url} if role == "reference_video" and url.startswith("https://") else {}),
                 }
             )
         if prompt is not None:
@@ -569,7 +583,8 @@ class VideoTaskManager:
         raise VideoGenerationError("input_download_failed", "Input redirected too many times")
 
     @staticmethod
-    def _validate_media(data: bytes, media_type: str, item_type: str, role: str) -> None:
+    def _validate_media(data: bytes, media_type: str, item_type: str, role: str,
+                        *, max_reference_seconds: float = 15.1) -> None:
         if item_type == "image_url":
             if media_type not in {"image/png", "image/jpeg", "image/webp"}:
                 raise VideoGenerationError("unsupported_media_type", "Image must be PNG, JPEG, or WebP")
@@ -625,10 +640,10 @@ class VideoTaskManager:
                     )
                     if role == "source_video" and duration is not None and duration <= 0:
                         raise VideoGenerationError("invalid_media", "Source video duration must be positive")
-                    if role != "source_video" and duration is not None and not 2.0 <= duration <= 15.1:
+                    if role != "source_video" and duration is not None and not 2.0 <= duration <= max_reference_seconds:
                         raise VideoGenerationError(
                             "unsupported_parameter",
-                            "Reference video and audio duration must be between 2 and 15 seconds",
+                            f"Reference video and audio duration must be between 2 and {int(max_reference_seconds)} seconds",
                         )
             except VideoGenerationError:
                 raise
@@ -655,7 +670,7 @@ class VideoTaskManager:
         if row is None:
             return
         try:
-            model = self._model(row["model_id"])
+            model = self._model(row["model_id"], row["actor_id"])
             request = json.loads(row["request_json"])
             manifest = json.loads(row["input_manifest_json"])
             output = await self._invoke(task_id, model, request, manifest)
@@ -699,6 +714,25 @@ class VideoTaskManager:
         request: dict[str, Any],
         manifest: list[dict[str, Any]],
     ) -> Path:
+        from ai2apps.video.byok import generate as generate_byok
+        from ai2apps.video.byok import provider_for_model
+
+        if provider_for_model(model.id) is not None:
+            from ai2apps.video.temporary_input import revoke_task
+            output = self.root / task_id / "result.mp4"
+            self._update(task_id, status="running", started_at=utc_now_text(),
+                         progress={"phase": "provider_submit", "current": 0, "total": 1})
+            try:
+                await generate_byok(
+                    self.runtime, model, request, output,
+                    actor_id=self._row(task_id)["actor_id"],
+                    cancelled=lambda: bool((row := self._row(task_id)) and row["cancel_requested_at"]),
+                    progress=lambda value: self._update(task_id, progress=value),
+                    manifest=manifest, task_root=self.root / task_id, task_id=task_id,
+                )
+            finally:
+                revoke_task(task_id)
+            return output
         task_root = self.root / task_id
         output = task_root / "result.mp4"
         body = dict(request)
@@ -982,6 +1016,13 @@ class VideoTaskManager:
                 f"UPDATE video_generation_tasks SET {assignments} WHERE id=?",
                 (*values.values(), task_id),
             )
+            if status == "succeeded":
+                publisher = getattr(getattr(self.runtime, "events", None), "business_publishers", {}).get("studio.video_output.published")
+                row = connection.execute("SELECT * FROM video_generation_tasks WHERE id=?", (task_id,)).fetchone()
+                if publisher and row is not None and row['artifact_id']:
+                    publisher.publish(connection, owner=row['actor_id'], subject_id=row['artifact_id'],
+                        occurrence_key=row['artifact_id'], data={'task_id':task_id, 'output_id':row['artifact_id'],
+                                                               'production_kind':'generation'})
 
     def get(self, task_id: str, *, actor_id: str) -> dict[str, Any]:
         row = self._row(task_id, actor_id)
@@ -1092,7 +1133,9 @@ class VideoTaskManager:
                 str(descriptor.get("filename") or part_name), data,
                 str(descriptor.get("media_type") or "application/octet-stream"),
             )
-            content.append({item_type: {"url": f"multipart://{part_name}"}, "type": item_type, "role": role})
+            source_url = descriptor.get("source_url")
+            locator = source_url if role == "reference_video" and isinstance(source_url, str) else f"multipart://{part_name}"
+            content.append({item_type: {"url": locator}, "type": item_type, "role": role})
         payload["content"] = content
         payload.pop("prompt", None)
         payload.pop("reference_parts", None)
@@ -1144,7 +1187,8 @@ class VideoTaskManager:
                     await running
                 return self.get(task_id, actor_id=row["actor_id"])
             invocations = getattr(self.runtime, "model_invocations", None)
-            if invocations is not None:
+            from ai2apps.video.byok import provider_for_model
+            if invocations is not None and provider_for_model(row["model_id"]) is None:
                 await invocations.cancel_request(row["model_id"], task_id)
             if shutdown:
                 running.cancel()

@@ -6,3 +6,17 @@
 [data-copy-success="true"]{color:#16803c!important}
 .chat-copy-notice{position:fixed;bottom:calc(100px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);z-index:10000;padding:9px 16px;border-radius:10px;background:#252525;color:#fff;box-shadow:0 4px 18px #0002;font-size:13px;pointer-events:none}
 .chat-copy-notice[hidden]{display:none}
+.bot-trim-action svg{width:18px;height:18px;display:block}
+.bot-trim-dialog{width:min(520px,calc(100vw - 32px));max-height:min(640px,calc(100dvh - 48px));padding:0;border:1px solid #ddd;border-radius:18px;color:inherit;background:var(--bg-primary,#fff);box-shadow:0 18px 60px #0002}
+.bot-trim-dialog::backdrop{background:#0005}
+.bot-trim-dialog[open]{display:flex;flex-direction:column}
+.bot-trim-dialog header,.bot-trim-dialog footer{flex:none;padding:18px 22px}
+.bot-trim-dialog h2{margin:0;font-size:18px}
+.bot-trim-dialog section{overflow:auto;min-height:0;padding:0 22px}
+.bot-trim-dialog p{line-height:1.6;font-size:14px}
+.bot-trim-dialog blockquote{margin:12px 0;padding:12px;border-radius:10px;background:#8881;overflow-wrap:anywhere;white-space:pre-wrap;font-size:14px}
+.bot-trim-dialog footer{display:flex;gap:10px;justify-content:flex-end;border-top:1px solid #8882}
+.bot-trim-dialog footer button{border:1px solid #ddd;border-radius:10px;padding:9px 14px;background:transparent;color:inherit;cursor:pointer}
+.bot-trim-dialog footer .danger{background:#b42318;color:white;border-color:#b42318}
+.bot-trim-dialog footer button:disabled{opacity:.5;cursor:default}
+.bot-trim-dialog [role=alert]{color:#b42318}

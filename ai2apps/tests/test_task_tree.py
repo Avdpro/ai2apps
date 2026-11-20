@@ -127,3 +127,14 @@ def test_source_finish_waits_for_reusable_page_cleanup(repositories):
     tasks.update('owner',task['id'],browser_context_json=json.dumps(context))
     tree.reconcile()
     assert tree.get('owner','root')['status']=='completed'
+
+
+def test_cancelled_before_start_does_not_require_reuse_cleanup(repositories):
+    tree,tasks = repositories
+    tree.create('owner','root','Update')
+    tree.create('owner','source','Source',parent_id='root')
+    task = tasks.enqueue('owner','default','','','','Read',{},parent_task_id='source',reuse_page=True)
+    assert not task['run_id'] and task['browser_context']['reuse_scope']=='source'
+    assert tree.cancel('owner','root') == []
+    tree.reconcile()
+    assert tree.get('owner','root')['status']=='cancelled'

@@ -218,6 +218,47 @@ def create_chat_router(
             return await synthesize(runtime_provider(),principal,thread,body.text)
         except RepositoryError as error:return repository_error_response(error)
 
+    @router.get('/threads/{thread_id}/files/{run_id}/{artifact_id}')
+    async def mobile_recorded_file(thread_id:str,run_id:str,artifact_id:str,preview:Literal['mobile']|None=None,principal:RequestPrincipal=principal_dependency):
+        repository=repository_or_error(principal)
+        if isinstance(repository,JSONResponse):return repository
+        from fastapi import HTTPException
+        from fastapi.responses import FileResponse
+        from ai2apps.api.ownership import authorize_agent_run
+        from ai2apps.web.mobile_agent_gateway import recorded_artifact
+        from ai2apps.web.mobile_image_preview import RASTER,preview_file,response
+        try:repository.get_thread(thread_id)
+        except RepositoryError as error:raise HTTPException(404,'Chat file unavailable') from error
+        runtime=runtime_provider();authorize_agent_run(runtime,principal,run_id);run=runtime.agents.get_run(run_id)
+        if run.session_id!=thread_id:raise HTTPException(404,'Chat file unavailable')
+        file=recorded_artifact(runtime,principal,run,artifact_id)
+        artifact=runtime.workspace.get_artifact(file['session_id'],artifact_id);path=runtime.workspace.artifact_path(artifact)
+        if preview:
+            if artifact.media_type not in RASTER:raise HTTPException(422,'Mobile preview requires a raster image')
+            return response(await preview_file(path))
+        return FileResponse(path,filename=artifact.name,media_type=artifact.media_type,headers={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'})
+
+    @router.get('/threads/{thread_id}/attachments/{attachment_id}')
+    async def mobile_thread_attachment(thread_id:str,attachment_id:str,preview:Literal['mobile']|None=None,principal:RequestPrincipal=principal_dependency):
+        repository=repository_or_error(principal)
+        if isinstance(repository,JSONResponse):return repository
+        from fastapi import HTTPException
+        from fastapi.responses import FileResponse
+        from ai2apps.web.mobile_image_preview import RASTER,preview_file,response
+        try:
+            repository.get_thread(thread_id);runtime=runtime_provider()
+            item=runtime.documents.get(thread_id,attachment_id);path=runtime.documents.source_path(thread_id,attachment_id)
+        except RepositoryError as error:raise HTTPException(404,'Chat attachment unavailable') from error
+        if preview:
+            if item.media_type not in RASTER:raise HTTPException(422,'Mobile preview requires a raster image')
+            return response(await preview_file(path))
+        return FileResponse(path,filename=item.filename,media_type=item.media_type,headers={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'})
+
+    @router.get('/threads/{thread_id}/images/{message_id}/{part_index}')
+    async def image_resource(thread_id:str,message_id:str,part_index:int,digest:str=Query(pattern=r'^[a-f0-9]{64}$'),preview:Literal['mobile']|None=None,principal:RequestPrincipal=principal_dependency):
+        from ai2apps.chat.mobile_images import image_response
+        return await image_response(runtime_provider(),principal,thread_id,message_id,part_index,digest,preview=preview=='mobile')
+
     @router.get("", response_model=ChatAppResponse)
     def get_chat_app(
         principal: RequestPrincipal = principal_dependency,

@@ -1,0 +1,86 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/model-minimax-h3-cuda",
+    "type": "service",
+    "version": "0.1.0",
+    "displayName": "MiniMax H3 CUDA",
+    "description": "Fixed official mixed-precision FL2VA and Ref2VA CUDA video with generated audio."
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": [
+      "linux"
+    ],
+    "architectures": [
+      "arm64"
+    ]
+  },
+  "entrypoints": [
+    {
+      "name": "model-worker",
+      "kind": "service",
+      "path": "service.yaml"
+    }
+  ],
+  "permissions": [
+    {
+      "capability": "model-weights.huggingface-cache.read",
+      "reason": "Read Host-selected fixed H3 checkpoints.",
+      "required": true
+    },
+    {
+      "capability": "accelerator.cuda",
+      "reason": "Run H3 CUDA video inference.",
+      "required": true
+    }
+  ],
+  "dependencies": [
+    {
+      "packageId": "ai2apps/runtime-cuda-torch",
+      "version": ">=0.6.0 <1.0.0",
+      "optional": false
+    }
+  ],
+  "files": [],
+  "sbom": {
+    "format": "spdx-json-2.3",
+    "path": "META/sbom.spdx.json"
+  },
+  "discovery": {
+    "kind": "model",
+    "categories": [
+      "video"
+    ],
+    "tasks": [
+      "video-generation"
+    ]
+  },
+  "modelProfile": {
+    "sizeBytes": 84941170942,
+    "minimumMemoryBytes": 68719476736,
+    "scores": {
+      "speed": 2,
+      "capability": 4
+    },
+    "benchmark": {
+      "label": "Estimated memory; development native/Worker evidence, formal installation pending",
+      "device": "NVIDIA DGX Spark GB10"
+    }
+  },
+  "modelInstall": {
+    "serviceKey": "ai2apps.model.minimax-h3-cuda",
+    "models": [
+      {
+        "id": "ai2apps.model.minimax-h3-cuda/fl2va-int8",
+        "label": "MiniMax H3 FL2VA CUDA",
+        "recommended": true
+      },
+      {
+        "id": "ai2apps.model.minimax-h3-cuda/ref2va-int8",
+        "label": "MiniMax H3 REF2VA CUDA",
+        "recommended": false
+      }
+    ]
+  }
+}

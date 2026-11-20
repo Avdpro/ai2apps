@@ -38,7 +38,7 @@ function describe(article){
 }
 function duration(value){return Number.isFinite(value)&&value>0?it`${Math.floor(value/60)}:${String(Math.floor(value%60)).padStart(2,'0')}`:'';}
 function images(article,failed){const seen=new Set();return [article.cover_image,...(article.images||[]).filter(i=>!article.primary_source_url||i.source_url===article.primary_source_url)].filter(Boolean).filter(i=>safeURL(i.url)&&!isAvatar(i.url)&&!failed?.has(i.url)&&!seen.has(i.url)&&seen.add(i.url));}
-function render(article,{selected=false,section='',updated='',failedImages=new Set(),compact=false}={}){
+function render(article,{selected=false,section='',updated='',failedImages=new Set(),compact=false,docStudioSelected=null}={}){
  const {kind,formats,mixed,ref,refs}=describe(article),info=types[kind],photos=images(article,failedImages);
  const img=(photo,cls='')=>it`<img class="${cls}" src="${esc(imageURL(article,photo.url))}" alt="${esc(photo.alt||article.title)}" loading="lazy" decoding="async" referrerpolicy="no-referrer">`;
  const glyph=icon=>it`<i data-lucide="${icon}" aria-hidden="true"></i>`;
@@ -47,7 +47,8 @@ function render(article,{selected=false,section='',updated='',failedImages=new S
  const unread=article.read?'':it`<span class="intel-unread-ribbon" aria-hidden="true"><span>${lt('未读')}</span></span>`;
  const favorite=article.favorite?`<span class="intel-card-favorite" aria-hidden="true">★</span>`:'';
  const corner=it`<button type="button" class="intel-card-corner" data-card-menu="${esc(article.id)}" aria-label="${esc(lt('更多'))}" aria-haspopup="menu" aria-expanded="false"></button>`;
- if(compact)return it`<article class="intel-story intel-story-compact${selected?' selected':''}" data-article="${esc(article.id)}" tabindex="0" role="button" aria-label="${esc(article.title)}${article.read?'':' · '+esc(lt('未读'))}${article.favorite?' · '+esc(lt('已收藏')):''}"><div class="intel-card-content">${cover}<h2><span>${esc(article.title)}</span></h2>${article.summary?it`<p class="intel-card-summary">${esc(article.summary)}</p>`: ''}</div>${favorite}${unread}${corner}</article>`;
+ const docSelection=docStudioSelected===null?'':`<button type="button" class="intel-doc-select" data-doc-select="${esc(article.id)}" aria-pressed="${docStudioSelected}" aria-label="${esc((docStudioSelected?lt('从创作素材移除'):lt('选为创作素材'))+' · '+article.title)}"><span aria-hidden="true"></span></button>`;
+ if(compact)return it`<article class="intel-story intel-story-compact${selected?' selected':''}" data-article="${esc(article.id)}" tabindex="0" role="button" aria-label="${esc(article.title)}${article.read?'':' · '+esc(lt('未读'))}${article.favorite?' · '+esc(lt('已收藏')):''}"><div class="intel-card-content">${cover}<h2><span>${esc(article.title)}</span></h2>${article.summary?it`<p class="intel-card-summary">${esc(article.summary)}</p>`: ''}</div>${favorite}${unread}${corner}${docSelection}</article>`;
  const badge=it`<span class="intel-format-badge">${glyph(info.icon)}${mixed?lt('混合来源'):info.label}</span>`;
  const provenance=it`<span>${article.image_ai_summary?lt('AI 图片总结'):article.manual_import?lt('手动收录'):refs.length>1?lt('AI 综合'):lt('AI 摘要')}${article.versions?.length?lt(' · 后续进展'):''}</span>`;
  const sourceLine=refs.length>1?it`${refs.length} 个引用来源 · ${[...new Set(refs.map(platform))].join(' / ')}`:[ref.author,platform(ref)].filter(Boolean).join(' · ');

@@ -3,9 +3,11 @@ from types import SimpleNamespace
 
 import httpx
 import pytest
+from fastapi import HTTPException
 
 from ai2apps.cloud_client import AI2AppsCloudClient, CloudSessionStore
-from ai2apps.cloud_gateway import proxy_cloud_chat_completion, request_cloud_image
+from ai2apps.cloud_gateway import proxy_cloud_chat_completion
+from ai2apps.images.cloud_gateway import request_cloud_image
 from ai2apps.model_manager import ModelManagerStore
 from ai2apps.secrets import MemorySecretBackend
 
@@ -272,6 +274,32 @@ def _ai2apps_client(handler):
         session_store=CloudSessionStore(MemorySecretBackend(), "https://coder.ai2apps.test"),
         transport=httpx.MockTransport(handler),
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("managed", [False, True])
+async def test_model_rate_limit_headers_reach_the_agent_transport(tmp_path, managed):
+    def handler(_):
+        return httpx.Response(429, headers={"Retry-After": "8", "X-Request-ID": "model-attempt"},
+                              json={"error": {"code": "rate_limit_exceeded", "message": "Try again later"}})
+
+    cloud = _ai2apps_client(handler) if managed else None
+    request = _ai2apps_request() if managed else Request()
+    if not managed:
+        store = ModelManagerStore(tmp_path)
+        store.put_cloud("openai", {"api_key": "test-secret", "models": ["gpt-test"]})
+        store.set_cloud_model_enabled("openai", "gpt-test", True)
+    try:
+        with pytest.raises(HTTPException) as caught:
+            await proxy_cloud_chat_completion(request, base_path=tmp_path, cloud_client=cloud,
+                                              transport=httpx.MockTransport(handler))
+        assert caught.value.status_code == 429
+        assert caught.value.detail["code"] == "rate_limit_exceeded"
+        assert caught.value.headers["retry-after"] == "8"
+        assert caught.value.headers["x-request-id"] == "model-attempt"
+    finally:
+        if cloud is not None:
+            await cloud.close()
 
 
 @pytest.mark.asyncio

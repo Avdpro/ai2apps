@@ -41,11 +41,15 @@ class AgentScheduleRunner:
 
     async def _loop(self) -> None:
         while not self._stop.is_set():
+            # Keep a wake posted while the worker pass is in flight, including
+            # shutdown. Clearing it afterwards loses that signal and delays stop.
+            self._wake.clear()
             try:
-                self._pass()
+                await asyncio.to_thread(self._pass)
             except Exception:
                 logger.exception("Agent Schedule dispatch pass failed")
-            self._wake.clear()
+            if self._stop.is_set():
+                break
             with suppress(TimeoutError):
                 await asyncio.wait_for(self._wake.wait(), timeout=2.0)
 

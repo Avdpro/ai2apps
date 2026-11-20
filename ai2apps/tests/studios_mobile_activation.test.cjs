@@ -1,6 +1,10 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
-function studio(name,width=390,force=false,fetcher=async()=>({ok:true,json:async()=>({items:[],draft:{}})})){
+function studio(name,width=390,force=false,fetcher=async()=>({ok:true,json:async()=>({items:[],draft:{}})}),sdk){
  const c={fetch:fetcher,window:{innerWidth:width,AI2APPS_MOBILE_SURFACE:force,t:k=>k,matchMedia:()=>({matches:width<=760}),addEventListener(){},location:{origin:'http://localhost'}},document:{documentElement:{lang:'en'},querySelector:()=>({dataset:{appInstanceId:"test"}})},crypto:{randomUUID:()=> 'test'},localStorage:{getItem:()=>null,setItem(){}},URL,console,setTimeout,clearTimeout,setInterval:()=>1,clearInterval(){}};
+ if(sdk){
+  vm.runInNewContext(fs.readFileSync(__dirname+'/../web/static/js/studio_mini_apps.js','utf8'),c);
+  c.window.AI2AppsStudioMiniApps=sdk;
+ }
  vm.runInNewContext(fs.readFileSync(__dirname+'/../web/static/js/'+name+'.js','utf8'),c);
  return c.window[name==='readaloud'?'readAloudApp':'videoStudioApp']();
 }
@@ -76,3 +80,36 @@ test('Voice keeps editing locked until all parallel draft reads settle after fai
  await new Promise(resolve=>setImmediate(resolve));assert.equal(app.starting,true);
  release();await pending;assert.equal(app.starting,false);assert.equal(app.mobileWorkspaceReady,false);assert.equal(app.startupError,'offline');
 });
+
+
+for (const name of ['video_studio', 'readaloud']) {
+    test(name + ' remounts a changed Package once and preserves the current frame at the same revision', async () => {
+        let revision = 'first';
+        let mounts = 0;
+        const id = 'fixture.package';
+        const list = async () => ({items: [{id, name: 'Fixture', mode: 'fixture', source: 'package',
+            version: '1.0.0', provider: {digest: revision}}]});
+        const sdk = {list, localize: item => item, readiness: async () => ({}), probe: async () => ({items: []}),
+            mount: async () => ({id: 'mount-' + ++mounts, content_url: '/package/' + revision, effective_digest: revision})};
+        const app = studio(name, 390, false, async () => ({ok: true, json: list}), sdk);
+        app.$root = {dataset: {smPage: 'create'}};
+        app.icons = app.emitBridge = app.persistShellState = () => {};
+        app.fail = error => assert.fail(error.message);
+        await app.refreshPackageMiniApps();
+        await app.selectMiniApp(id);
+        await app.selectMiniApp(id);
+        assert.equal(mounts, 1);
+        revision = 'second';
+        app.$root.dataset.smPage = 'library';
+        await app.refreshActivePackageMiniApp();
+        assert.equal(app.packageMiniAppUrl, '/package/first');
+        await app.selectMiniApp(id);
+        assert.equal(app.packageMiniAppUrl, '/package/second');
+        app.$root.dataset.smPage = 'create';
+        revision = 'third';
+        await app.refreshActivePackageMiniApp();
+        await app.refreshActivePackageMiniApp();
+        assert.equal(app.packageMiniAppUrl, '/package/third');
+        assert.equal(mounts, 3);
+    });
+}

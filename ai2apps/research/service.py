@@ -127,6 +127,11 @@ def install_web_research_service(
     for name, title, description, schema, handler in definitions:
         if router:
             from ai2apps.services.capability_routing import CapabilityProvider
+            description = (
+                'Search the public web for candidate sources or a starting URL. For a known website entry point that requires navigation, filtering, or opening product detail pages, use browser.complete_goal.'
+                if name == 'web.search' else
+                'Read text from a single, known final public webpage. For navigation from a homepage, category, or other starting URL, or to expand controls to find evidence, use browser.complete_goal.'
+            )
             legacy_name, legacy_summary = legacy_labels.get(name, (None, None))
             router.register(CapabilityProvider('ai2apps.web-research.'+name.rsplit('.',1)[-1],name,'ai2apps.web-research',handler,priority=0,
                 display_name=legacy_name, summary=legacy_summary))

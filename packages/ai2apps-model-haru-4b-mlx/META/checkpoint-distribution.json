@@ -1,0 +1,39 @@
+{
+  "schema": "ai2apps.checkpoint-build/v1",
+  "distributionId": "dist_ai2apps_haru4b_bf16_8d6e83bc_v1",
+  "modelId": "ai2apps.model.haru-4b-mlx/realtime-8bit",
+  "repoId": "higurashi-ai/Haru-4B",
+  "revision": "8d6e83bcd3701a76fc27a764965665da1df7da78",
+  "format": "safetensors",
+  "quantization": "bf16",
+  "pieceSize": 8388608,
+  "license": {
+    "id": "Apache-2.0",
+    "name": "Apache License 2.0",
+    "termsUrl": "https://www.apache.org/licenses/LICENSE-2.0",
+    "termsHash": "sha256:2b93f05188b150e3d6ce31fa7cb7654cde98b78d2b671c5689e334bf520d53c9",
+    "usagePolicy": "license_terms",
+    "accessPolicy": "public",
+    "redistributionPolicy": "allowed"
+  },
+  "includePatterns": [
+    "config.json",
+    "model.safetensors",
+    "tokenizer.json",
+    "tokenizer_config.json"
+  ],
+  "sourceRepositories": [
+    {
+      "type": "huggingface",
+      "repoId": "higurashi-ai/Haru-4B",
+      "revision": "8d6e83bcd3701a76fc27a764965665da1df7da78",
+      "access": "public_anonymous"
+    },
+    {
+      "type": "modelscope",
+      "repoId": "higurashi-ai/Haru-4B",
+      "revision": "914ce75b196aba3432b51150d25d418281d86abb",
+      "access": "public_anonymous"
+    }
+  ]
+}

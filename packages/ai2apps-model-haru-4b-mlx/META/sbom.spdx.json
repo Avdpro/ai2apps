@@ -1,0 +1,25 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "ai2apps.model.haru-4b-mlx-0.1.0",
+  "documentNamespace": "https://ai2apps.com/spdx/haru-4b-mlx/0.1.0",
+  "packages": [
+    {
+      "name": "higurashi-ai/Haru-4B",
+      "SPDXID": "SPDXRef-HaruWeights",
+      "versionInfo": "8d6e83bcd3701a76fc27a764965665da1df7da78",
+      "downloadLocation": "https://huggingface.co/higurashi-ai/Haru-4B",
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0"
+    },
+    {
+      "name": "Haru official MLX implementation (in Runtime dependency)",
+      "SPDXID": "SPDXRef-HaruMLX",
+      "versionInfo": "7fe6b7665f8bf035998f401f8cb779fbe53f2751",
+      "downloadLocation": "https://github.com/higurashi-ai/Haru",
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0"
+    }
+  ]
+}

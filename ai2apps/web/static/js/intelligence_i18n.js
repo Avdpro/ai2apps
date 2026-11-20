@@ -2,6 +2,11 @@
 (() => {
 'use strict';
 const keys={
+"选择文章、栏目、热点或频道，准备素材并在文档工坊撰写。":"intelligence.doc_studio.material_hint",
+"AI 正在修改稿件…":"intelligence.draft.revising",
+"从创作素材移除":"intelligence.material.remove",
+"选为创作素材":"intelligence.material.select",
+
 "重试":"intelligence.action.retry",
 "不完整预览 · 原文可能需要登录或订阅":"intelligence.source_history.preview_notice",
 "并行生成":"intelligence.progress.parallel",

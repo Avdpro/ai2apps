@@ -4,7 +4,7 @@ test('mobile starts with Mini-App list and ignores desktop panel collapse',()=>{
 test('shared Output returns to the origin without resetting inputs or results',()=>{const a=app();a.prompt='保留输入';a.runs=[{id:'run'}];a.mobileSurface='create';a.openMobileOutput();assert.equal(a.mobileSurface,'output');a.openMobileOutput();a.mobileBack();assert.equal(a.mobileSurface,'create');assert.equal(a.prompt,'保留输入');assert.equal(a.runs[0].id,'run');a.mobileBack();assert.equal(a.mobileSurface,'library');a.openMobileOutput();a.mobileBack();assert.equal(a.mobileSurface,'library');});
 test('reopening active Mini-App while generating does not remount or clear draft',async()=>{const a=app();a.miniAppId='ai2apps.imagine.text-to-image';a.generating=true;a.prompt='Keep';a.saveDraft=()=>assert.fail('must not save/remount');await a.selectMiniApp(a.miniAppId);assert.equal(a.mobileSurface,'create');assert.equal(a.prompt,'Keep');assert.equal(a.generating,true);});
 test('cold mobile library does not preload Package or Chat frames; selection mounts once',async()=>{
- const a=app();Object.defineProperty(a,'currentMiniApp',{value:{id:'package',source:'package'}});let mounts=0,chats=0;
+ const a=app();a.miniApps.push({id:'package',source:'package',status:'ready'});let mounts=0,chats=0;
  a.mountPackageMiniApp=async()=>{mounts++;a.packageMiniAppId='package';a.packageMiniAppUrl='/package';};a.setupMiniAppChat=()=>chats++;
  await a.initializeMiniAppFrames();assert.equal(mounts,0);assert.equal(chats,0);
  a.miniAppId='package';await a.selectMiniApp('package');assert.equal(mounts,1);assert.equal(a.mobileSurface,'create');

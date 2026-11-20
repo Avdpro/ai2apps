@@ -2,7 +2,7 @@
   "schema": "ai2apps.app/v1",
   "id": "ai2apps.trip-planner",
   "name": "Trip Planner",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publisher": {
     "id": "ai2apps"
   },
@@ -22,7 +22,7 @@
       "schema": "ai2apps.mini-app/v1",
       "id": "ai2apps.trip-planner",
       "name": "Trip Planner",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "kind": "project",
       "icon": "map",
       "description": "Arrange flights, hotels and things to do for your trip.",
@@ -1628,6 +1628,1306 @@
               "additionalProperties": false
             },
             "confirmation": "never"
+          }
+        ]
+      },
+      "aaat": {
+        "schema": "ai2apps.mini-app-host-exports/v1",
+        "exports": [
+          {
+            "name": "travel.flights",
+            "host": "ai2apps.ai-browser",
+            "inputSchema": {
+              "type": "object",
+              "properties": {
+                "locale": {
+                  "type": "string",
+                  "maxLength": 32,
+                  "default": "zh"
+                },
+                "model_profile": {
+                  "type": "string",
+                  "enum": [
+                    "normal",
+                    "privacy"
+                  ],
+                  "default": "normal"
+                },
+                "profile": {
+                  "type": "string",
+                  "maxLength": 100,
+                  "default": "default"
+                },
+                "retain_pages": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "destination": {
+                  "type": "string",
+                  "maxLength": 300
+                },
+                "adults": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 6,
+                  "default": 1
+                },
+                "purpose": {
+                  "type": "string",
+                  "enum": [
+                    "leisure",
+                    "business",
+                    "mixed"
+                  ],
+                  "default": "leisure"
+                },
+                "preferences": {
+                  "type": "string",
+                  "maxLength": 2000,
+                  "default": ""
+                },
+                "origin": {
+                  "type": "string",
+                  "maxLength": 300
+                },
+                "departure": {
+                  "type": "string",
+                  "maxLength": 10
+                },
+                "return_date": {
+                  "type": "string",
+                  "maxLength": 10
+                },
+                "flight_cabin": {
+                  "type": "string",
+                  "enum": [
+                    "economy",
+                    "premium_economy",
+                    "business",
+                    "first"
+                  ],
+                  "default": "economy"
+                },
+                "nonstop_only": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "airline_preference": {
+                  "type": "string",
+                  "maxLength": 300,
+                  "default": ""
+                },
+                "origin_airport": {
+                  "type": "string",
+                  "maxLength": 100,
+                  "default": ""
+                },
+                "destination_airport": {
+                  "type": "string",
+                  "maxLength": 100,
+                  "default": ""
+                },
+                "excluded_airports": {
+                  "type": "array",
+                  "maxItems": 10,
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "default": []
+                },
+                "direction": {
+                  "type": "string",
+                  "enum": [
+                    "both",
+                    "outbound",
+                    "return"
+                  ],
+                  "default": "outbound"
+                },
+                "sources": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "auto",
+                      "ctrip_flights",
+                      "google_flights",
+                      "expedia_flights"
+                    ]
+                  },
+                  "minItems": 1,
+                  "maxItems": 3,
+                  "uniqueItems": true,
+                  "default": [
+                    "auto"
+                  ]
+                }
+              },
+              "required": [
+                "destination",
+                "departure",
+                "origin"
+              ],
+              "additionalProperties": false,
+              "allOf": [
+                {
+                  "if": {
+                    "properties": {
+                      "direction": {
+                        "enum": [
+                          "both",
+                          "return"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "direction"
+                    ]
+                  },
+                  "then": {
+                    "required": [
+                      "return_date"
+                    ],
+                    "properties": {
+                      "return_date": {
+                        "minLength": 10
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "fields": [
+              {
+                "key": "locale",
+                "label": {
+                  "zh": "结果语言",
+                  "en": "Result language"
+                },
+                "type": "text",
+                "default": "zh"
+              },
+              {
+                "key": "model_profile",
+                "label": {
+                  "zh": "模型配置",
+                  "en": "Model profile"
+                },
+                "type": "select",
+                "options": [
+                  {
+                    "value": "normal",
+                    "label": {
+                      "zh": "普通配置",
+                      "en": "Normal"
+                    }
+                  },
+                  {
+                    "value": "privacy",
+                    "label": {
+                      "zh": "隐私配置",
+                      "en": "Privacy"
+                    }
+                  }
+                ],
+                "default": "normal"
+              },
+              {
+                "key": "profile",
+                "label": {
+                  "zh": "浏览器分身",
+                  "en": "Browser Profile"
+                },
+                "type": "text",
+                "default": "default"
+              },
+              {
+                "key": "retain_pages",
+                "label": {
+                  "zh": "保留查询页面",
+                  "en": "Keep search pages"
+                },
+                "type": "boolean",
+                "default": false
+              },
+              {
+                "key": "destination",
+                "label": {
+                  "zh": "目的地",
+                  "en": "Destination"
+                },
+                "type": "text"
+              },
+              {
+                "key": "adults",
+                "label": {
+                  "zh": "成人数",
+                  "en": "Adults"
+                },
+                "type": "number",
+                "default": 1
+              },
+              {
+                "key": "purpose",
+                "label": {
+                  "zh": "出行目的",
+                  "en": "Trip purpose"
+                },
+                "type": "select",
+                "options": [
+                  {
+                    "value": "leisure",
+                    "label": {
+                      "zh": "旅游",
+                      "en": "Leisure"
+                    }
+                  },
+                  {
+                    "value": "business",
+                    "label": {
+                      "zh": "商务",
+                      "en": "Business"
+                    }
+                  },
+                  {
+                    "value": "mixed",
+                    "label": {
+                      "zh": "商务与旅游",
+                      "en": "Mixed"
+                    }
+                  }
+                ],
+                "default": "leisure"
+              },
+              {
+                "key": "preferences",
+                "label": {
+                  "zh": "预算与其他偏好",
+                  "en": "Budget and preferences"
+                },
+                "type": "text",
+                "default": ""
+              },
+              {
+                "key": "origin",
+                "label": {
+                  "zh": "出发城市 / 已确认机场",
+                  "en": "Origin city / confirmed airport"
+                },
+                "type": "text"
+              },
+              {
+                "key": "departure",
+                "label": {
+                  "zh": "出发日期",
+                  "en": "Departure date"
+                },
+                "type": "text"
+              },
+              {
+                "key": "return_date",
+                "label": {
+                  "zh": "返回日期",
+                  "en": "Return date"
+                },
+                "type": "text"
+              },
+              {
+                "key": "flight_cabin",
+                "label": {
+                  "zh": "舱位",
+                  "en": "Cabin"
+                },
+                "type": "select",
+                "options": [
+                  {
+                    "value": "economy",
+                    "label": {
+                      "zh": "经济舱",
+                      "en": "Economy"
+                    }
+                  },
+                  {
+                    "value": "premium_economy",
+                    "label": {
+                      "zh": "超级经济舱",
+                      "en": "Premium economy"
+                    }
+                  },
+                  {
+                    "value": "business",
+                    "label": {
+                      "zh": "商务舱",
+                      "en": "Business"
+                    }
+                  },
+                  {
+                    "value": "first",
+                    "label": {
+                      "zh": "头等舱",
+                      "en": "First"
+                    }
+                  }
+                ],
+                "default": "economy"
+              },
+              {
+                "key": "nonstop_only",
+                "label": {
+                  "zh": "只看直飞",
+                  "en": "Nonstop only"
+                },
+                "type": "boolean",
+                "default": false
+              },
+              {
+                "key": "airline_preference",
+                "label": {
+                  "zh": "航空公司偏好",
+                  "en": "Airline preference"
+                },
+                "type": "text",
+                "default": ""
+              },
+              {
+                "key": "origin_airport",
+                "label": {
+                  "zh": "指定出发机场",
+                  "en": "Origin airport"
+                },
+                "type": "text",
+                "default": ""
+              },
+              {
+                "key": "destination_airport",
+                "label": {
+                  "zh": "指定到达机场",
+                  "en": "Destination airport"
+                },
+                "type": "text",
+                "default": ""
+              },
+              {
+                "key": "excluded_airports",
+                "label": {
+                  "zh": "排除机场",
+                  "en": "Excluded airports"
+                },
+                "type": "json",
+                "default": []
+              },
+              {
+                "key": "direction",
+                "label": {
+                  "zh": "航程方向",
+                  "en": "Flight directions"
+                },
+                "type": "select",
+                "options": [
+                  {
+                    "value": "both",
+                    "label": {
+                      "zh": "去程和返程",
+                      "en": "Outbound and return"
+                    }
+                  },
+                  {
+                    "value": "outbound",
+                    "label": {
+                      "zh": "仅去程",
+                      "en": "Outbound only"
+                    }
+                  },
+                  {
+                    "value": "return",
+                    "label": {
+                      "zh": "仅返程",
+                      "en": "Return only"
+                    }
+                  }
+                ],
+                "default": "outbound"
+              },
+              {
+                "key": "sources",
+                "label": {
+                  "zh": "查询网站",
+                  "en": "Sources"
+                },
+                "type": "json",
+                "default": [
+                  "auto"
+                ]
+              }
+            ],
+            "displayName": {
+              "zh": "查询航班",
+              "en": "Find flights"
+            },
+            "summary": {
+              "zh": "条件齐全时直接查询。仅提供报价与建议。",
+              "en": "Run the lookup directly when required criteria are known. Provides quotes and suggestions only."
+            },
+            "agentContext": {
+              "schema": "ai2apps.aaat-declaration/v1",
+              "instructions": [
+                "Trip Planner researches travel only: never reserve, select a fare/room, book or pay.",
+                "When sources are omitted or auto, prefer Ctrip for flights wholly within China and hotels in China; explicit sources always win. For other destinations use Google Flights/Booking. Do not treat Chinese input language as proof of domestic travel.",
+                "Use travel.flights for flight quotes, travel.hotels for lodging, travel.guide for sightseeing research and itinerary suggestions. Resolve required cities and dates from the current task and prior conversation. Ask only for unresolved required cities or dates. Omit optional airport fields unless the user specified an airport. Invoke directly when required inputs are known.",
+                "Use explicit origin_airport, destination_airport and excluded_airports for airport restrictions. An excluded airport must not be inferred as a different requested airport; preserve user scope and verify actual candidate airport evidence.",
+                "Flights default to outbound only. Do not assume a return journey or date; require return_date only for explicitly selected both/return directions. Outbound quotes can be round-trip references; independent return one-way quotes cannot be added to them as a paired total.",
+                "Use travel.refine with recent same-Session source_tasks to filter observed offers or propose changed criteria. A requery proposal is not execution or authority: review changes with the user, then call the affected flight/hotel capability with the reviewed parameters.",
+                "Hotel area, bed, transit and breakfast constraints require native evidence. Missing evidence is unknown, not satisfied. Cheapest means cheapest among loaded comparable offers, not the whole market.",
+                "Keep actual source Task IDs and links, partial failures, quote basis/currency and verification status. Sightseeing snippets are leads, not verified opening hours/tickets. Normal/privacy/system privacy use the common Mini-App model mechanism.",
+                "Browser waiting_input without requires_user is normal execution. Resume human assistance through the existing Task; never submit a replacement for uncertain work."
+              ],
+              "workflows": [
+                {
+                  "intent": "Compare flights and hotels, then plan sightseeing",
+                  "capabilities": [
+                    "travel.flights",
+                    "travel.hotels",
+                    "travel.guide"
+                  ]
+                },
+                {
+                  "intent": "Refine observed offers and review changed search criteria",
+                  "capabilities": [
+                    "travel.refine",
+                    "travel.flights",
+                    "travel.hotels"
+                  ]
+                }
+              ],
+              "result_semantics": {
+                "coverage": "Only observed candidates; partial/empty/unverified are not successful live availability.",
+                "authority": "Read-only research; no result or next action authorizes booking."
+              }
+            },
+            "selectionRequired": false,
+            "sdk": "browser.travel-research/v1",
+            "options": {
+              "operation": "flights"
+            },
+            "interfaceVersion": "1.0.0"
+          },
+          {
+            "name": "travel.hotels",
+            "host": "ai2apps.ai-browser",
+            "inputSchema": {
+              "type": "object",
+              "properties": {
+                "locale": {
+                  "type": "string",
+                  "maxLength": 32,
+                  "default": "zh"
+                },
+                "model_profile": {
+                  "type": "string",
+                  "enum": [
+                    "normal",
+                    "privacy"
+                  ],
+                  "default": "normal"
+                },
+                "profile": {
+                  "type": "string",
+                  "maxLength": 100,
+                  "default": "default"
+                },
+                "retain_pages": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "destination": {
+                  "type": "string",
+                  "maxLength": 300
+                },
+                "adults": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 6,
+                  "default": 1
+                },
+                "purpose": {
+                  "type": "string",
+                  "enum": [
+                    "leisure",
+                    "business",
+                    "mixed"
+                  ],
+                  "default": "leisure"
+                },
+                "preferences": {
+                  "type": "string",
+                  "maxLength": 2000,
+                  "default": ""
+                },
+                "hotel_checkin": {
+                  "type": "string",
+                  "maxLength": 10
+                },
+                "hotel_checkout": {
+                  "type": "string",
+                  "maxLength": 10
+                },
+                "hotel_area": {
+                  "type": "string",
+                  "maxLength": 200,
+                  "default": ""
+                },
+                "hotel_bed": {
+                  "type": "string",
+                  "enum": [
+                    "any",
+                    "large_double",
+                    "twin"
+                  ],
+                  "default": "any"
+                },
+                "hotel_breakfast": {
+                  "type": "string",
+                  "enum": [
+                    "any",
+                    "included",
+                    "not_required"
+                  ],
+                  "default": "any"
+                },
+                "hotel_near_transit": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "sources": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "auto",
+                      "ctrip_hotels",
+                      "booking",
+                      "expedia_hotels"
+                    ]
+                  },
+                  "minItems": 1,
+                  "maxItems": 3,
+                  "uniqueItems": true,
+                  "default": [
+                    "auto"
+                  ]
+                }
+              },
+              "required": [
+                "destination",
+                "hotel_checkin",
+                "hotel_checkout"
+              ],
+              "additionalProperties": false
+            },
+            "fields": [
+              {
+                "key": "locale",
+                "label": {
+                  "zh": "结果语言",
+                  "en": "Result language"
+                },
+                "type": "text",
+                "default": "zh"
+              },
+              {
+                "key": "model_profile",
+                "label": {
+                  "zh": "模型配置",
+                  "en": "Model profile"
+                },
+                "type": "select",
+                "options": [
+                  {
+                    "value": "normal",
+                    "label": {
+                      "zh": "普通配置",
+                      "en": "Normal"
+                    }
+                  },
+                  {
+                    "value": "privacy",
+                    "label": {
+                      "zh": "隐私配置",
+                      "en": "Privacy"
+                    }
+                  }
+                ],
+                "default": "normal"
+              },
+              {
+                "key": "profile",
+                "label": {
+                  "zh": "浏览器分身",
+                  "en": "Browser Profile"
+                },
+                "type": "text",
+                "default": "default"
+              },
+              {
+                "key": "retain_pages",
+                "label": {
+                  "zh": "保留查询页面",
+                  "en": "Keep search pages"
+                },
+                "type": "boolean",
+                "default": false
+              },
+              {
+                "key": "destination",
+                "label": {
+                  "zh": "目的地",
+                  "en": "Destination"
+                },
+                "type": "text"
+              },
+              {
+                "key": "adults",
+                "label": {
+                  "zh": "成人数",
+                  "en": "Adults"
+                },
+                "type": "number",
+                "default": 1
+              },
+              {
+                "key": "purpose",
+                "label": {
+                  "zh": "出行目的",
+                  "en": "Trip purpose"
+                },
+                "type": "select",
+                "options": [
+                  {
+                    "value": "leisure",
+                    "label": {
+                      "zh": "旅游",
+                      "en": "Leisure"
+                    }
+                  },
+                  {
+                    "value": "business",
+                    "label": {
+                      "zh": "商务",
+                      "en": "Business"
+                    }
+                  },
+                  {
+                    "value": "mixed",
+                    "label": {
+                      "zh": "商务与旅游",
+                      "en": "Mixed"
+                    }
+                  }
+                ],
+                "default": "leisure"
+              },
+              {
+                "key": "preferences",
+                "label": {
+                  "zh": "预算与其他偏好",
+                  "en": "Budget and preferences"
+                },
+                "type": "text",
+                "default": ""
+              },
+              {
+                "key": "hotel_checkin",
+                "label": {
+                  "zh": "入住日期",
+                  "en": "Check-in"
+                },
+                "type": "text"
+              },
+              {
+                "key": "hotel_checkout",
+                "label": {
+                  "zh": "退房日期",
+                  "en": "Check-out"
+                },
+                "type": "text"
+              },
+              {
+                "key": "hotel_area",
+                "label": {
+                  "zh": "住宿区域 / 地标",
+                  "en": "Hotel area / landmark"
+                },
+                "type": "text",
+                "default": ""
+              },
+              {
+                "key": "hotel_bed",
+                "label": {
+                  "zh": "床型",
+                  "en": "Bed preference"
+                },
+                "type": "select",
+                "options": [
+                  {
+                    "value": "any",
+                    "label": {
+                      "zh": "不限",
+                      "en": "Any"
+                    }
+                  },
+                  {
+                    "value": "large_double",
+                    "label": {
+                      "zh": "大床",
+                      "en": "Large double"
+                    }
+                  },
+                  {
+                    "value": "twin",
+                    "label": {
+                      "zh": "双床",
+                      "en": "Twin"
+                    }
+                  }
+                ],
+                "default": "any"
+              },
+              {
+                "key": "hotel_breakfast",
+                "label": {
+                  "zh": "早餐",
+                  "en": "Breakfast"
+                },
+                "type": "select",
+                "options": [
+                  {
+                    "value": "any",
+                    "label": {
+                      "zh": "不限",
+                      "en": "Any"
+                    }
+                  },
+                  {
+                    "value": "included",
+                    "label": {
+                      "zh": "含早餐",
+                      "en": "Included"
+                    }
+                  },
+                  {
+                    "value": "not_required",
+                    "label": {
+                      "zh": "不要求早餐",
+                      "en": "Not required"
+                    }
+                  }
+                ],
+                "default": "any"
+              },
+              {
+                "key": "hotel_near_transit",
+                "label": {
+                  "zh": "靠近地铁",
+                  "en": "Near metro"
+                },
+                "type": "boolean",
+                "default": false
+              },
+              {
+                "key": "sources",
+                "label": {
+                  "zh": "查询网站",
+                  "en": "Sources"
+                },
+                "type": "json",
+                "default": [
+                  "auto"
+                ]
+              }
+            ],
+            "displayName": {
+              "zh": "查询酒店",
+              "en": "Find hotels"
+            },
+            "summary": {
+              "zh": "条件齐全时直接查询。仅提供报价与建议。",
+              "en": "Run the lookup directly when required criteria are known. Provides quotes and suggestions only."
+            },
+            "agentContext": {
+              "schema": "ai2apps.aaat-declaration/v1",
+              "instructions": [
+                "Trip Planner researches travel only: never reserve, select a fare/room, book or pay.",
+                "When sources are omitted or auto, prefer Ctrip for flights wholly within China and hotels in China; explicit sources always win. For other destinations use Google Flights/Booking. Do not treat Chinese input language as proof of domestic travel.",
+                "Use travel.flights for flight quotes, travel.hotels for lodging, travel.guide for sightseeing research and itinerary suggestions. Resolve required cities and dates from the current task and prior conversation. Ask only for unresolved required cities or dates. Omit optional airport fields unless the user specified an airport. Invoke directly when required inputs are known.",
+                "Use explicit origin_airport, destination_airport and excluded_airports for airport restrictions. An excluded airport must not be inferred as a different requested airport; preserve user scope and verify actual candidate airport evidence.",
+                "Flights default to outbound only. Do not assume a return journey or date; require return_date only for explicitly selected both/return directions. Outbound quotes can be round-trip references; independent return one-way quotes cannot be added to them as a paired total.",
+                "Use travel.refine with recent same-Session source_tasks to filter observed offers or propose changed criteria. A requery proposal is not execution or authority: review changes with the user, then call the affected flight/hotel capability with the reviewed parameters.",
+                "Hotel area, bed, transit and breakfast constraints require native evidence. Missing evidence is unknown, not satisfied. Cheapest means cheapest among loaded comparable offers, not the whole market.",
+                "Keep actual source Task IDs and links, partial failures, quote basis/currency and verification status. Sightseeing snippets are leads, not verified opening hours/tickets. Normal/privacy/system privacy use the common Mini-App model mechanism.",
+                "Browser waiting_input without requires_user is normal execution. Resume human assistance through the existing Task; never submit a replacement for uncertain work."
+              ],
+              "workflows": [
+                {
+                  "intent": "Compare flights and hotels, then plan sightseeing",
+                  "capabilities": [
+                    "travel.flights",
+                    "travel.hotels",
+                    "travel.guide"
+                  ]
+                },
+                {
+                  "intent": "Refine observed offers and review changed search criteria",
+                  "capabilities": [
+                    "travel.refine",
+                    "travel.flights",
+                    "travel.hotels"
+                  ]
+                }
+              ],
+              "result_semantics": {
+                "coverage": "Only observed candidates; partial/empty/unverified are not successful live availability.",
+                "authority": "Read-only research; no result or next action authorizes booking."
+              }
+            },
+            "selectionRequired": false,
+            "sdk": "browser.travel-research/v1",
+            "options": {
+              "operation": "hotels"
+            },
+            "interfaceVersion": "1.0.0"
+          },
+          {
+            "name": "travel.guide",
+            "host": "ai2apps.ai-browser",
+            "inputSchema": {
+              "type": "object",
+              "properties": {
+                "locale": {
+                  "type": "string",
+                  "maxLength": 32,
+                  "default": "zh"
+                },
+                "model_profile": {
+                  "type": "string",
+                  "enum": [
+                    "normal",
+                    "privacy"
+                  ],
+                  "default": "normal"
+                },
+                "profile": {
+                  "type": "string",
+                  "maxLength": 100,
+                  "default": "default"
+                },
+                "retain_pages": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "destination": {
+                  "type": "string",
+                  "maxLength": 300
+                },
+                "adults": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 6,
+                  "default": 1
+                },
+                "purpose": {
+                  "type": "string",
+                  "enum": [
+                    "leisure",
+                    "business",
+                    "mixed"
+                  ],
+                  "default": "leisure"
+                },
+                "preferences": {
+                  "type": "string",
+                  "maxLength": 2000,
+                  "default": ""
+                },
+                "departure": {
+                  "type": "string",
+                  "maxLength": 10
+                },
+                "return_date": {
+                  "type": "string",
+                  "maxLength": 10
+                }
+              },
+              "required": [
+                "destination",
+                "departure",
+                "return_date"
+              ],
+              "additionalProperties": false
+            },
+            "fields": [
+              {
+                "key": "locale",
+                "label": {
+                  "zh": "结果语言",
+                  "en": "Result language"
+                },
+                "type": "text",
+                "default": "zh"
+              },
+              {
+                "key": "model_profile",
+                "label": {
+                  "zh": "模型配置",
+                  "en": "Model profile"
+                },
+                "type": "select",
+                "options": [
+                  {
+                    "value": "normal",
+                    "label": {
+                      "zh": "普通配置",
+                      "en": "Normal"
+                    }
+                  },
+                  {
+                    "value": "privacy",
+                    "label": {
+                      "zh": "隐私配置",
+                      "en": "Privacy"
+                    }
+                  }
+                ],
+                "default": "normal"
+              },
+              {
+                "key": "profile",
+                "label": {
+                  "zh": "浏览器分身",
+                  "en": "Browser Profile"
+                },
+                "type": "text",
+                "default": "default"
+              },
+              {
+                "key": "retain_pages",
+                "label": {
+                  "zh": "保留查询页面",
+                  "en": "Keep search pages"
+                },
+                "type": "boolean",
+                "default": false
+              },
+              {
+                "key": "destination",
+                "label": {
+                  "zh": "目的地",
+                  "en": "Destination"
+                },
+                "type": "text"
+              },
+              {
+                "key": "adults",
+                "label": {
+                  "zh": "成人数",
+                  "en": "Adults"
+                },
+                "type": "number",
+                "default": 1
+              },
+              {
+                "key": "purpose",
+                "label": {
+                  "zh": "出行目的",
+                  "en": "Trip purpose"
+                },
+                "type": "select",
+                "options": [
+                  {
+                    "value": "leisure",
+                    "label": {
+                      "zh": "旅游",
+                      "en": "Leisure"
+                    }
+                  },
+                  {
+                    "value": "business",
+                    "label": {
+                      "zh": "商务",
+                      "en": "Business"
+                    }
+                  },
+                  {
+                    "value": "mixed",
+                    "label": {
+                      "zh": "商务与旅游",
+                      "en": "Mixed"
+                    }
+                  }
+                ],
+                "default": "leisure"
+              },
+              {
+                "key": "preferences",
+                "label": {
+                  "zh": "预算与其他偏好",
+                  "en": "Budget and preferences"
+                },
+                "type": "text",
+                "default": ""
+              },
+              {
+                "key": "departure",
+                "label": {
+                  "zh": "出发日期",
+                  "en": "Departure date"
+                },
+                "type": "text"
+              },
+              {
+                "key": "return_date",
+                "label": {
+                  "zh": "返回日期",
+                  "en": "Return date"
+                },
+                "type": "text"
+              }
+            ],
+            "displayName": {
+              "zh": "旅行攻略",
+              "en": "Travel guide"
+            },
+            "summary": {
+              "zh": "仅查询与建议，不预订或付款；缺少条件时先补齐并确认。",
+              "en": "Research and suggestions only. Review missing criteria first; never book or pay."
+            },
+            "agentContext": {
+              "schema": "ai2apps.aaat-declaration/v1",
+              "instructions": [
+                "Trip Planner researches travel only: never reserve, select a fare/room, book or pay.",
+                "When sources are omitted or auto, prefer Ctrip for flights wholly within China and hotels in China; explicit sources always win. For other destinations use Google Flights/Booking. Do not treat Chinese input language as proof of domestic travel.",
+                "Use travel.flights for flight quotes, travel.hotels for lodging, travel.guide for sightseeing research and itinerary suggestions. Ask for missing dates/cities; never infer an airport code or exact location.",
+                "Use explicit origin_airport, destination_airport and excluded_airports for airport restrictions. An excluded airport must not be inferred as a different requested airport; preserve user scope and verify actual candidate airport evidence.",
+                "Flights default to outbound only. Do not assume a return journey or date; require return_date only for explicitly selected both/return directions. Outbound quotes can be round-trip references; independent return one-way quotes cannot be added to them as a paired total.",
+                "Use travel.refine with recent same-Session source_tasks to filter observed offers or propose changed criteria. A requery proposal is not execution or authority: review changes with the user, then call the affected flight/hotel capability with the reviewed parameters.",
+                "Hotel area, bed, transit and breakfast constraints require native evidence. Missing evidence is unknown, not satisfied. Cheapest means cheapest among loaded comparable offers, not the whole market.",
+                "Keep actual source Task IDs and links, partial failures, quote basis/currency and verification status. Sightseeing snippets are leads, not verified opening hours/tickets. Normal/privacy/system privacy use the common Mini-App model mechanism.",
+                "Browser waiting_input without requires_user is normal execution. Resume human assistance through the existing Task; never submit a replacement for uncertain work."
+              ],
+              "workflows": [
+                {
+                  "intent": "Compare flights and hotels, then plan sightseeing",
+                  "capabilities": [
+                    "travel.flights",
+                    "travel.hotels",
+                    "travel.guide"
+                  ]
+                },
+                {
+                  "intent": "Refine observed offers and review changed search criteria",
+                  "capabilities": [
+                    "travel.refine",
+                    "travel.flights",
+                    "travel.hotels"
+                  ]
+                }
+              ],
+              "result_semantics": {
+                "coverage": "Only observed candidates; partial/empty/unverified are not successful live availability.",
+                "authority": "Read-only research; no result or next action authorizes booking."
+              }
+            },
+            "selectionRequired": true,
+            "sdk": "browser.travel-research/v1",
+            "options": {
+              "operation": "guide"
+            },
+            "interfaceVersion": "1.0.0"
+          },
+          {
+            "name": "travel.refine",
+            "host": "ai2apps.ai-browser",
+            "inputSchema": {
+              "type": "object",
+              "properties": {
+                "locale": {
+                  "type": "string",
+                  "maxLength": 32,
+                  "default": "zh"
+                },
+                "model_profile": {
+                  "type": "string",
+                  "enum": [
+                    "normal",
+                    "privacy"
+                  ],
+                  "default": "normal"
+                },
+                "profile": {
+                  "type": "string",
+                  "maxLength": 100,
+                  "default": "default"
+                },
+                "retain_pages": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "request": {
+                  "type": "string",
+                  "maxLength": 3000,
+                  "minLength": 1
+                },
+                "source_tasks": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "maxLength": 100,
+                    "minLength": 1
+                  },
+                  "minItems": 1,
+                  "maxItems": 10,
+                  "uniqueItems": true
+                },
+                "previous_refinement": {
+                  "type": "string",
+                  "maxLength": 100
+                }
+              },
+              "required": [
+                "request",
+                "source_tasks"
+              ],
+              "additionalProperties": false
+            },
+            "fields": [
+              {
+                "key": "locale",
+                "label": {
+                  "zh": "结果语言",
+                  "en": "Result language"
+                },
+                "type": "text",
+                "default": "zh"
+              },
+              {
+                "key": "model_profile",
+                "label": {
+                  "zh": "模型配置",
+                  "en": "Model profile"
+                },
+                "type": "select",
+                "options": [
+                  {
+                    "value": "normal",
+                    "label": {
+                      "zh": "普通配置",
+                      "en": "Normal"
+                    }
+                  },
+                  {
+                    "value": "privacy",
+                    "label": {
+                      "zh": "隐私配置",
+                      "en": "Privacy"
+                    }
+                  }
+                ],
+                "default": "normal"
+              },
+              {
+                "key": "profile",
+                "label": {
+                  "zh": "浏览器分身",
+                  "en": "Browser Profile"
+                },
+                "type": "text",
+                "default": "default"
+              },
+              {
+                "key": "retain_pages",
+                "label": {
+                  "zh": "保留查询页面",
+                  "en": "Keep search pages"
+                },
+                "type": "boolean",
+                "default": false
+              },
+              {
+                "key": "request",
+                "label": {
+                  "zh": "优化要求",
+                  "en": "Refinement request"
+                },
+                "type": "text"
+              },
+              {
+                "key": "source_tasks",
+                "label": {
+                  "zh": "已有结果引用",
+                  "en": "Existing result references"
+                },
+                "type": "json"
+              },
+              {
+                "key": "previous_refinement",
+                "label": {
+                  "zh": "上次优化引用",
+                  "en": "Previous refinement reference"
+                },
+                "type": "text"
+              }
+            ],
+            "displayName": {
+              "zh": "优化出行结果",
+              "en": "Refine travel results"
+            },
+            "summary": {
+              "zh": "仅查询与建议，不预订或付款；缺少条件时先补齐并确认。",
+              "en": "Research and suggestions only. Review missing criteria first; never book or pay."
+            },
+            "agentContext": {
+              "schema": "ai2apps.aaat-declaration/v1",
+              "instructions": [
+                "Trip Planner researches travel only: never reserve, select a fare/room, book or pay.",
+                "When sources are omitted or auto, prefer Ctrip for flights wholly within China and hotels in China; explicit sources always win. For other destinations use Google Flights/Booking. Do not treat Chinese input language as proof of domestic travel.",
+                "Use travel.flights for flight quotes, travel.hotels for lodging, travel.guide for sightseeing research and itinerary suggestions. Ask for missing dates/cities; never infer an airport code or exact location.",
+                "Use explicit origin_airport, destination_airport and excluded_airports for airport restrictions. An excluded airport must not be inferred as a different requested airport; preserve user scope and verify actual candidate airport evidence.",
+                "Flights default to outbound only. Do not assume a return journey or date; require return_date only for explicitly selected both/return directions. Outbound quotes can be round-trip references; independent return one-way quotes cannot be added to them as a paired total.",
+                "Use travel.refine with recent same-Session source_tasks to filter observed offers or propose changed criteria. A requery proposal is not execution or authority: review changes with the user, then call the affected flight/hotel capability with the reviewed parameters.",
+                "Hotel area, bed, transit and breakfast constraints require native evidence. Missing evidence is unknown, not satisfied. Cheapest means cheapest among loaded comparable offers, not the whole market.",
+                "Keep actual source Task IDs and links, partial failures, quote basis/currency and verification status. Sightseeing snippets are leads, not verified opening hours/tickets. Normal/privacy/system privacy use the common Mini-App model mechanism.",
+                "Browser waiting_input without requires_user is normal execution. Resume human assistance through the existing Task; never submit a replacement for uncertain work."
+              ],
+              "workflows": [
+                {
+                  "intent": "Compare flights and hotels, then plan sightseeing",
+                  "capabilities": [
+                    "travel.flights",
+                    "travel.hotels",
+                    "travel.guide"
+                  ]
+                },
+                {
+                  "intent": "Refine observed offers and review changed search criteria",
+                  "capabilities": [
+                    "travel.refine",
+                    "travel.flights",
+                    "travel.hotels"
+                  ]
+                }
+              ],
+              "result_semantics": {
+                "coverage": "Only observed candidates; partial/empty/unverified are not successful live availability.",
+                "authority": "Read-only research; no result or next action authorizes booking."
+              }
+            },
+            "selectionRequired": false,
+            "sdk": "browser.travel-research/v1",
+            "options": {
+              "operation": "refine"
+            },
+            "interfaceVersion": "1.0.0"
           }
         ]
       }

@@ -140,7 +140,7 @@ class MessagerRepository:
                 ),
             )
             if self.events is not None:
-                self.events.append_in_transaction(
+                event=self.events.append_in_transaction(
                     connection,
                     event_type="messager.message.received",
                     subject_id=message_id,
@@ -152,6 +152,8 @@ class MessagerRepository:
                         "remote_message_id": remote_message_id,
                     },
                 )
+                from .event_details import index_incoming
+                index_incoming(self.events,connection,event.id,message_id,owner_user_id,"cloud_offline")
             row = connection.execute(
                 "SELECT * FROM messager_messages WHERE id=?", (message_id,)
             ).fetchone()
@@ -316,7 +318,7 @@ class MessagerRepository:
                 ),
             )
             if self.events is not None:
-                self.events.append_in_transaction(
+                event=self.events.append_in_transaction(
                     connection,
                     event_type="messager.message.received",
                     subject_id=message_id,
@@ -328,6 +330,8 @@ class MessagerRepository:
                         "remote_message_id": remote_message_id,
                     },
                 )
+                from .event_details import index_incoming
+                index_incoming(self.events,connection,event.id,message_id,owner_user_id,"local_e2ee")
             row = connection.execute(
                 "SELECT * FROM messager_messages WHERE id=?", (message_id,)
             ).fetchone()

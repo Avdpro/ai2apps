@@ -30,7 +30,7 @@ RECIPE = {
         "id": "huggingface",
         "label": "Hugging Face",
         "repo_id": "Avdpro/DeepSeek-V4.1-Flash-SSD",
-        "revision": "efb7e03fd718ebbeb3e0d7e60ed037a920d8e441",
+        "revision": "70e98d9bb1d0daf07dca9d4adadca638afc8a840",
     },),
     "scope_name": "standard",
     "conversion": {

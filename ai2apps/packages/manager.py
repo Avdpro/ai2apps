@@ -102,7 +102,12 @@ def _package_checkpoint_repositories(manifest: dict) -> set[str]:
     return repositories
 
 
-HOST_PACKAGE_FEATURES = frozenset({"avatar.segmented-jobs.v1", "model.checkpoint-dependencies.v1"})
+HOST_PACKAGE_FEATURES = frozenset({
+    "avatar.segmented-jobs.v1",
+    "model.checkpoint-dependencies.v1",
+    # Catalog + isolated Worker lifecycle only; no browser audio Gateway/UI.
+    "model.audio-realtime.v1",
+})
 
 
 class ServicePackageManager:
@@ -740,10 +745,27 @@ class ServicePackageManager:
             package.verification.get("signature", {}).get("trust")
             == "ai2apps-cloud-registry-v1"
         )
-        if cloud_contract:
+        signed_candidate = package.verification.get("signature", {}).get("trust") == "publisher-signed-contract-v1"
+        if cloud_contract or signed_candidate:
             from .contract_v1 import inspect_package as inspect_contract_package
 
-            inspected_contract = inspect_contract_package(archive)
+            if signed_candidate:
+                # Offline candidates have no published Repository record.
+                # Reverify their real detached signature against the trusted
+                # Publisher; never label them Registry-verified or inspect
+                # them as a legacy archive based on an ambiguous trust flag.
+                from .contract_v1 import verify_signed_package
+                publisher = self.packages.get_publisher(package.publisher_key)
+                envelope = package.verification["signature"]["envelope"]
+                payload = envelope.get("payload", {})
+                expected = f"registry.{payload.get('publisherId')}.{payload.get('publisherKeyId')}"
+                if (publisher.trust_status.value != "trusted"
+                        or publisher.key_id != payload.get("publisherKeyId")
+                        or package.publisher_key != expected):
+                    raise PackageError("publisher_key_mismatch", "Offline candidate Publisher trust or key differs")
+                inspected_contract = verify_signed_package(archive, envelope, publisher.public_key)
+            else:
+                inspected_contract = inspect_contract_package(archive)
             if f"sha256:{inspected_contract.sha256}" != package.package_digest:
                 raise PackageError(
                     "installed_package_tampered",
@@ -769,7 +791,7 @@ class ServicePackageManager:
             if item.is_file()
             and item.relative_to(root).as_posix() != "package.ai2service"
             and (
-                not cloud_contract
+                not (cloud_contract or signed_candidate)
                 or item.relative_to(root).as_posix() != "ai2apps.json"
             )
             and item.relative_to(root).as_posix() != "META/files.json"
@@ -1375,7 +1397,7 @@ class ServicePackageManager:
             raise ResourceNotFoundError("active_service_package", service_key)
         if package.protocol != "ai2apps-model-worker/v1":
             raise PackageError("not_model_worker", "Service is not a Model Worker")
-        operation_id = self.packages.begin_operation(
+        operation_id = await asyncio.to_thread(self.packages.begin_operation,
             service_key,
             # Eviction is a policy-driven stop. Keep the persisted operation
             # compatible with the stable service_operations contract and put
@@ -1397,15 +1419,15 @@ class ServicePackageManager:
             )
             service = self.services.get_service(service_key)
             instance = self.services.get_instance_for_service(service.id)
-            self.services.set_instance_status(
+            await asyncio.to_thread(self.services.set_instance_status,
                 instance.id,
                 ServiceInstanceStatus.STOPPED,
                 health={"status": "evicted", "reason": reason},
             )
-            self.packages.settle_operation(operation_id, "completed")
+            await asyncio.to_thread(self.packages.settle_operation, operation_id, "completed")
             return result
         except BaseException as error:
-            self.packages.settle_operation(
+            await asyncio.to_thread(self.packages.settle_operation,
                 operation_id,
                 "failed",
                 {"code": "eviction_failed", "message": str(error)},

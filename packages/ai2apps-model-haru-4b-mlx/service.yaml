@@ -1,0 +1,100 @@
+schema: ai2apps.service/v1
+id: ai2apps.model.haru-4b-mlx
+name: Haru-4B MLX (Experimental)
+description: Native full-duplex Chinese speech; 8-bit backbone loaded from pinned
+  BF16 checkpoint. Requires a compatible Host audio gateway.
+version: 0.1.0
+publisher:
+  id: ai2apps
+license:
+  name: Apache License 2.0
+  id: Apache-2.0
+  path: META/licenses/Apache-2.0.txt
+attribution:
+  notice: META/NOTICE.md
+  source: https://github.com/higurashi-ai/Haru
+runtime:
+  mode: process
+  protocol: ai2apps-model-worker/v1
+  provider: ai2apps.runtime.omlx
+  adapter: src/worker_adapter.py:create_adapter
+models:
+- id: ai2apps.model.haru-4b-mlx/realtime-8bit
+  display_name: Haru-4B MLX realtime (8-bit backbone)
+  model_type: audio_realtime
+  upstream_id: higurashi-ai/Haru-4B
+  capabilities:
+  - speech_duplex
+  metadata:
+    family: haru
+    haru_precision: '8'
+    experimental: true
+    resident_memory_bytes: 8589934592
+  weights:
+    provider: huggingface
+    repo_id: higurashi-ai/Haru-4B
+    revision: 8d6e83bcd3701a76fc27a764965665da1df7da78
+    preparation:
+      recipe: native
+    distribution_id: dist_ai2apps_haru4b_bf16_8d6e83bc_v1
+  audio_capabilities:
+    schema: ai2apps.audio-capabilities/v1
+    operations:
+    - audio_realtime
+    languages:
+    - zh
+    formats:
+      input:
+      - pcm
+      output:
+      - pcm
+    streaming:
+      mode: native
+      formats:
+      - pcm
+    duplex:
+      protocol: ai2apps-audio-duplex/v1
+      mode: native
+      sample_rate: 24000
+      frame_samples: 3200
+      text_output: true
+      text_input: false
+      async_result_injection: false
+      response_cancel: false
+      voice_reference: true
+      maximum_session_seconds: 600
+capabilities: []
+requires:
+  services:
+  - id: ai2apps.runtime.omlx
+    version: '>=1.8.18,<2.0.0'
+    optional: false
+    capabilities:
+    - mlx
+    - model-worker-v1
+    - audio-duplex-v1
+  python: '>=3.11,<3.14'
+permissions:
+  network:
+    outbound: false
+  model_weights:
+    huggingface_cache: read
+    reason: Read only the selected pinned Haru checkpoint.
+  accelerator:
+    metal: true
+    reason: Run Haru full-duplex inference with MLX.
+compatibility:
+  os:
+  - macos
+  architectures:
+  - arm64
+  minimum_os_version: '26.2'
+  features:
+  - model.audio-realtime.v1
+health:
+  path: /health
+  startup_timeout_seconds: 120
+restart:
+  max_attempts: 2
+  base_delay_seconds: 1
+tools: []

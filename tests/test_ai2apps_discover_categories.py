@@ -229,10 +229,13 @@ def test_discover_client_uses_shared_cursor_pagination():
     assert "@click=\"loadMore()\"" in template
 
 
-def test_installed_legacy_app_projects_mini_apps_without_reinstall(tmp_path):
+@pytest.mark.parametrize("cached_components", [False, True])
+@pytest.mark.parametrize("launcher", [False, True])
+def test_installed_legacy_app_projects_mini_apps_without_reinstall(tmp_path, cached_components, launcher):
     app_manifest = yaml.safe_load(
         (_mini_app_source(tmp_path) / "app.yaml").read_text(encoding="utf-8")
     )
+    app_manifest["navigation"] = {"launcher": launcher}
     extension_manager = SimpleNamespace(
         repository=SimpleNamespace(
             effective=lambda _kind, _key: SimpleNamespace(manifest=app_manifest)
@@ -253,6 +256,7 @@ def test_installed_legacy_app_projects_mini_apps_without_reinstall(tmp_path):
                     "packageId": "example/studio-suite",
                     "packageType": "app",
                     "runtimeKey": "example.studio-suite",
+                    "miniApps": [{"componentId": "stale.fixture"}] if cached_components else [],
                     "displayName": "Studio Suite",
                     "version": "1.0.0",
                 }
@@ -263,6 +267,7 @@ def test_installed_legacy_app_projects_mini_apps_without_reinstall(tmp_path):
     installed = manager.installed()
 
     assert installed[0]["miniApps"][0]["componentId"] == "example.audio.transcribe"
+    assert installed[0]["appNavigation"]["launcher"] is launcher
 
 
 def test_new_model_package_requires_signed_discovery_metadata(tmp_path):

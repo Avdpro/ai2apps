@@ -16,7 +16,17 @@ App/Mini-App 负责业务名词、对象关系、定位、参数约束、操作�
 - 平台保留的控制协议（如参数收集、App 交接）与媒体传输格式可以由核心识别；明确专用的工作流可以拥有领域合同。它们不能成为把业务规则复制进 General Agent 的理由。注册组合层可以知道正在注册哪个 App，通用执行层不得靠这个身份推断业务行为。
 - 单个 Case 可以暴露通用缺口。核心改造必须说明缺失的抽象，使用与业务身份无关的输入/输出和生命周期规则，并以不同或任意 Provider 身份验证；不要求把所有修复都限制在 App 侧。
 
+## 宿主执行回合的检查点与审批范围
+
+App Chat owner 可通过可信 `execution_checkpoint` 在已提交步骤边界返回 CompleteAction 结束当前回合；该回调在当前执行授权复核后运行，不能返回新的 Tool/模型动作，逻辑任务的持久等待、恢复和权限仍由所属 owner 管理。共享执行器不识别 owner 的业务名词，也不重新执行旧步骤。`approval_scopes` owner 回调只能收窄既有审批范围，不能将 once/run 扩大为 session/agent/app。两个无关 Provider 的运行回归见 `tests/test_app_chat_checkpoints.py`；Bot 协作适配见 [C2 实施说明](bot-delegation-c2-implementation.md)。
+
+可信 owner 可在执行前通过 `select_model_context` 选择当前 Run 的额外上下文。一个 owner 可以使用多个具名选择步骤；这些步骤计入用量，选择结果不得作为任务答复或 Tool 调用重放。通用 Harness 只区分步骤类别；目录、路径解析、版本固定、授权复核和文本投影由 owner 实现。投影的外部文本仍是普通输入数据。
+
 ## 标准执行流程
+
+普通工具失败作为与原调用配对的错误结果返回模型，Run 的步骤、时间和 token 预算限制恢复，不使用全任务累计三次错误作为终止条件。已明确未提交的相同拒绝在派发前抑制，保留原参数和原因；新的 request_id 不是修复。权限拒绝、取消、身份错误与未确认的副作用仍遵守原保护，错误结果不授予重放权限。命令型 owner 应在其结果中一并返回退出码和诊断输出，要求先修正参数，再评估其他执行路径。
+
+`agent.ask_user` 的普通决策问题可在 `options` 中提供结构化建议，客户端显示可点击条目和独立自由输入。选择条目只填写回答，明确提交才恢复原 Run；回答不授予工具权限。Desktop 与 Mobile Messager 共享回答组件，Mobile owner 入口复核原 Bot 对话、Run、question request key 和响应 schema，不提供任意 Agent 审批代理。
 
 Local 启动时，核心 API 可以先于独立 Service Package 的启动完成而接受连接。Agent 的恢复和派发必须等待 Package 提供者注册完毕，不能把这个短暂的启动窗口解释为 Provider 永久不可用，也不能在窗口内自动改走其他有副作用的能力。核心 API 的 bootstrap 成功只表示基础服务可访问，不表示所有 Package 已就绪；调用方仍以当前 Service/Provider 状态判断具体能力。
 
@@ -87,6 +97,8 @@ content=...)` 通道。新增标准快照置于 `content.task_progress`，schema
 - App/Mini-App 适配器负责将业务进度映射为该结构，须保留阶段/计数/等待原因及所属任务引用。通用等待器不得猜测 Mini-App 身份或丢弃标准快照。Chat 仅以通用文本、计数和进度条展示，不识别业务字段。
 - 旧 Tool 的 phase/text/progress/content 继续兼容；迁移时新增标准快照，不要求重建独立事件总线。Package 导出适用同一协议，通过已授权的隔离实例桥接，不能用状态消息替代确认、结果或权限检查。
 
+模型 Provider 明确返回可重试的 HTTP 429 时，Agent Runtime 在原 Run 的当前模型步骤内等待后重试。每个步骤最多尝试三次，每次等待最多 30 秒，并受 Run 剩余时间限制。使用 Provider 给出的 `Retry-After`，取消 Run 会取消等待。账户额度错误和已收到部分模型输出的请求按原失败路径处理。尝试和 Provider 请求 ID 写入 Run 事件。Bot 与界面从同一个状态行读取阶段、等待原因、下一次尝试时间和已确认的进度计数，断线恢复继续读取原会话和 Run。
+
 ## 业务结果 Context（结构）
 
 App 可以返回 `aaat_context`：
@@ -108,6 +120,7 @@ App 可以返回 `aaat_context`：
 
 - `invocation_policy(arguments, ToolCallContext)`：可信 Provider 的 Agent 调用前决策。返回 true 表示此调用已由 App 验证所需确认，通用循环不重复收集；false 继续原有声明表单选择。可以返回明确的输入/确认错误。该钩子不代替业务入口的授权与确认校验；直接 Tool 调用仍由业务入口守卫。
 - `AgentResultPolicy`：由所属组件注册 instruction/finalize/preview 回调，并声明 capability 范围。仅在本 Run 确实调用了范围内工具后启用，不能给不相关任务施加 App 约束。回调来自宿主代码，不接收模型指定的模块路径、脚本或函数。
+- 可选的 `failure_receipt(steps, zh=...)` 从本 Run 的已记录步骤投影进度和已有证据。Bot 在失败时将它与宿主记录的卡点合并。此回调只生成展示数据，不调用模型或工具，不恢复任务，也不授予权限。
 - 结果裁剪调用所属策略的 preview，作为有大小上限的 app_context 数据保留；原始结果仍通过同 Run 的 agent.read_tool_result 按需读取。
 - `ServiceRegistry.set_agent_visibility`：所属组件声明内部工具可供哪些执行器发现。通用循环只消费该表，不识别 App 命名空间。这是目录投影，不替代 Tool/Run/Session 的执行授权。
 
@@ -125,7 +138,11 @@ Todo 语义与业务操作位于 `todo/aaat.py`，中央 Service 只做注册组
 
 不同 capability 由 AS 对照用户目标、声明支持范围、输入条件、副作用和产物选择；同一 capability 的多个 Provider 保留当前成功偏好、优先级、启用/冷却和显式用户选择规则。不为每个候选执行一次来试错。只有存在用户需要决定的实质差别时才询问；模型仍可能选错，因此业务入口必须按参数 schema/prepare 再次校验支持范围。
 
+Agent 新调用在创建表单或审批前，从当前 Session 可见、启用且未冷却的 Provider 中选择。唯一候选由宿主绑定，多候选返回 `provider_selection_required`，由 Agent 用具体 ID 重提，尚未提交操作。表单可由用户显式改选并重新查看参数合同。审批记录和派发携带具体 Provider 及版本，动态合同再携带 `contract_version`。提交前发现版本变化时保留输入并回到重新选择或确认。旧表单与非 Agent 的直接 Router 调用沿用原入口的合同。
+
 Provider 明确在提交前报告 incompatible/unavailable，可在其声明范围与现有授权内换 Provider，或者由下一轮模型考虑其他 capability。权限拒绝、取消、登录和确认不能通过切换路径绕过。未知执行失败会返回 outcome_uncertain；通用执行器和 Runtime 拦截后续有副作用的调用，先以只读工具查状态或告知用户决定，不能把超时当成未发布。Web Use 是否能用于发帖取决于其实际声明、授权和执行约束，不是发布 Tool 失败后必然可用的后门。
+
+模型调用使用本轮工具定义中的完整函数名。提交前发现名称不匹配时，执行器只从本轮已提供且当前仍可选的定义中给出匹配名称。模型以新调用提交修正后的参数和名称，继续经过原有声明、权限和参数校验。同一错误名称在收到纠正反馈后的下一轮再次出现时，任务结束并记录原因。模型回复中的非法协议名称以历史证据形式回传，避免模型接口在纠正前再次拒绝这条历史。
 
 表单/交接等待继续使用 Run/Session/actor 归属、版本、取消和重复完成守卫。configure_only 的返回参数用于下一次工具调用；executed_in_app 的完成结果不再重复执行。结果状态、scope、coverage 和 next_actions 作为数据返回模型；大正文分页时单独保留有界的 aaat_context 与 Provider 版本，不能把 partial/ambiguous 当成完整成功。业务统计、证据和结果校验继续由 App 提供；AS 不添加 Todo 或发布平台特例。
 
@@ -138,6 +155,7 @@ Provider 明确在提交前报告 incompatible/unavailable，可在其声明范�
 3. 发现摘要、选定声明/版本、参数与交互、结果 Context/证据是否齐全？是否正确处理表单改选目标、部分结果和已在 App 执行的结果？
 4. 是否保留权限、actor/Installation/Session/Run、版本、确认、取消和幂等守卫？是否区分未提交与执行结果未知？
 5. 通用机制是否有任意/不同 Provider 身份的测试，覆盖无关 App 不受影响、声明版本变化与禁止业务文本提升？受影响的交互/失败路径是否有定向回归和端到端记录？真实执行与模型/外部服务夹具必须分别说明。
+6. 使用模型时，是否由 owner 按实际选择、默认值和执行阶段检查依赖？是否区分缺模型、缺默认路由和缺参数，配置入口是否属于当前可信宿主，能否保留原素材/参数并在配置后重新检查？许可、Access 和结果未知保护不能由安装完成代替。详见[接入指南的模型需求必查项](app-mini-app-agent-tool-integration.md#模型需求与缺项配置新接入和修改的必查项2026-11-18)。
 
 不满足所有权边界的变更应修改设计后再合入，不以“先打补丁、以后抽象”作为默认接入路径。目录名或字符串搜索只能帮助审查，不能替代语义评审。
 
@@ -210,10 +228,14 @@ Session 身份获取观测，只调用当前可用 Tool 对应且未禁用的 Pr
 情报中心提供有数量上限的频道 ID、名称、主题、设置更新时间、最后采集尝试及最后
 成功时间，并声明截断状态。首轮只含摘要，不含文章正文。`intelligence.news` 返回
 所选频道的日期范围、本地设备时区及 UTC 偏移、已知发表时间与收录时间的区别；无已存文章不
-等于全网无新闻。`intelligence.research` 经来源确认后创建一次性持久课题，复用既有
-搜索准备、搜索、正文阅读及绑定引用的工作流；不创建长期频道、定时订阅或额外浏览
-权限。确认须属于同一 Run/Session、Provider 版本和完整参数；较新取消覆盖旧确认。
-检索词逐字保留确认值，不隐式拼接跨来源未定义的日期运算符。临时课题的回看天数
+等于全网无新闻。`intelligence.research` 在情报中心授权范围内直接创建一次性持久课题。
+必填项是课题，未指定来源时使用可用的 Google 和 Bing。用户也可通过参数表单调整设置。
+情报中心复用 Search All 的搜索准备、来源和浏览器分身校验、正文阅读及引用工作流。
+搜索参数绑定原 Tool invocation 与 Run/Session，沿用搜索路由的付费校验和取消机制。
+同一个私有读取工作流可以注册多个公开 Provider。每一步复核原调用的 Provider、
+版本及当前 App 授权。只有能力唯一对应一个已注册入口时，才可解析旧的无 Provider 调用。
+临时采集只生成本次结果，频道和订阅由各自的入口管理。
+检索词使用本次提交的课题。临时课题的回看天数
 记录为请求范围；目前正文工作流不逐条核实发表日期，最终报告必须明确这一限制，
 不能把请求范围冒充严格筛选结果。
 
@@ -328,6 +350,24 @@ WebAgent Agent/Task execution_policy 与 owner minimum_execution_policy 采用
 适用于启用视觉复检的恢复路径；视觉关闭时仍保留真实结果回读。
 
 ### 提交前参数错误与 AI 纠错（2026-10-21）
+
+宿主授权错误区分 `provider_not_authorized`（Provider 不在本执行的准入快照）与
+`provider_binding_changed`（准入版本与当前注册版本不同）。两者均不授予权限，
+不能通过改换工具绕过。提交前的受信任拒绝保留 `phase=prepare`、`submitted=false`；
+权限拒绝仍停止执行，不再笼统记录为运行器异常或“已经提交但结果未知”。
+Provider 的身份/角色/证据预检应在所属适配器的 `prepare` 中完成，handler 仍需复核
+以防并发撤权。只有 Router 确认仍处于提交前时才保留未提交证据；handler 内即便抛出
+带 prepare 字样的错误，也按 execute 处理，不能清除未知副作用保护。
+
+图像 owner 在 prepare 中读取当前 Session 的参考图并复用提交路径的媒体/大小校验，
+缺失或跨 Session 引用明确表示未提交；handler 再读一次以防预检后资源变化。
+该检查不能通过在 handler 抛出 prepare 错误来替代，提交后的故障继续保留结果未知。
+
+可信 `AgentResultPolicy.completion_check(steps, artifacts)` 可在模型结束报告时核对
+本 owner 的必需交付物，返回空值或有界 code/message 拒绝完成。作用域由已注册
+capabilities 决定，结果 JSON 与模型文字不能注册或覆盖检查。拒绝时 Run 为 failed，
+保留原报告、已核实产物与用量；它不授权恢复、重放或清除原 Tool 的未知标记。
+图像 owner 在最后一次图像操作仍失败时使用此机制；修正后成功则正常完成。
 
 通用 Capability 路由在 Provider prepare/handler 之前拒绝的重复公共/parameters
 字段、parameters 类型错误及未知显式 Provider，返回 invalid_tool_arguments、
@@ -467,6 +507,8 @@ WebAgent owner SDK 可以持久保存已验证的定位修正提示；它不是�
 预算续额不改变取消、执行超时、资源归属、工具授权及确认约束；不得依据响应中的任意数值提高额度。嵌套 owner 任务通过原有任务引用与交互守卫向 Chat 投影预算等待，不创建新业务任务或另一个浏览器。
 
 
+Messager 即时协作的 owner 在已结算检查点复用持久预算菜单，将续额投影到原对话。每轮初始预留 64,000 tokens，继续从实际用量追加 64,000。追加只计入当前轮次，权限和单轮步骤预算仍由协作 owner 检查。等待续额决定期间暂停协作时钟。App Chat 的通用检查点允许受信任 owner 返回原 Run 的持久输入请求，不识别 Bot 或业务身份。
+
 General Agent 默认每轮步骤额度为 36（2026-10-26 起，原为 24）。显式 Run/委派额度继续作为更低上限；Token 默认额度与现有续额、权限、超时守卫不变。
 
 ### App/Mini-App 内持久 Chat v2（2026-10-27）
@@ -518,6 +560,19 @@ toward round and delegated budgets. They never enter business model transcripts.
 After a new review the ordinary loop rechecks budgets before effectful dispatch.
 Rule updates, review and automatic capability decisions are auditable. No owner name
 or business Tool identity determines the rule.
+
+An App Chat owner can declare a trusted per-invocation rule and an AI approval
+callback. The shared policy reuses the same bounded review and rechecks the
+owner rule before dispatch. If an approval interaction already exists, its
+original lifecycle applies. The owner decides whether a successful review can
+save an access entry.
+
+Messager stores the mode per standard Agent Bot. It applies to ordinary AaATs in
+interactive user requests. Always approval covers the current invocation. AI
+approval records the App or Mini-App in that Bot's Access list using the
+existing access service. Disabled entries and special operations remain subject
+to explicit user approval. Scheduled runs, Hook runs and delegated children
+continue to use their admitted authorization and confirmation rules.
 
 ### Parameter receipts alongside owner invocation policy (2026-10-28)
 
@@ -654,3 +709,248 @@ not be looked up only in the BYOK catalog. Literal supported/unsupported and
 undeclared/not_found/disabled/lookup_failed remain separate observations; missing
 or failed metadata never proves no vision. No model-name heuristic grants image
 input. Owner results report this diagnostic; General AS adds no business policy.
+
+### Read-only channel host entry (2026-11-01 MVP)
+
+Trusted built-in Provider registration may supply optional read-only channel bindings.
+The authenticated system-management channel host projects only executable visible
+Tools and dispatches through the existing Tool Gateway with an exact host-owned
+Provider/version pin. Channel data grants no permission. The new entry refuses
+selection/configuration and owner-policy interactions; it does not consume or mint
+Run confirmation receipts. Legacy Agent-Chat discovery, model correction, form
+claims, invocation keys and recovery remain unchanged. This is not general
+App-to-App delegation or the proposed system AI repair protocol. Scope and
+verification: [Channels MVP v1](aaat-channels-mvp-v1.md).
+
+### Chat snapshot and durable message identity (2026-11-01)
+
+Chat UI snapshot persistence must retain runtime-owned input/output message IDs,
+idempotency keys and original parts. A UI anchor referencing the same persisted
+root Run and role is a presentation alias, not a second execution input; only
+server-owned Run bindings establish this association. An in-flight or interrupted
+input cannot be deleted by a stale snapshot. Completed-history explicit truncation
+retains its existing behavior. Legacy duplicate aliases can be folded in Chat read
+projection without bulk rewriting history or changing Run/confirmation/recovery keys.
+Identical text belonging to different Runs is never a deduplication criterion.
+
+### 独立只读频道系统纠错 v2（2026-11-01）
+
+仅显式 channels/v2 的 `read-with-repair` 入口允许系统协调确定性规范化与一次有界 AI 参数候选。owner 通过可信 read_repair 声明字段，候选复核不授予权限；最终 Gateway/Router 绑定原 Provider 与契约指纹。当前 Agent-Chat、普通 channels/v1、参数表单与现有模型纠错路径继续执行原规范中的“无内层 AI 映射／宿主不重放”限制，不自动迁移。handler 内校验错误、取消和未知结果不能用新路径重试。具体预算、owner 范围、隐私及未实现恢复边界见 [系统只读参数纠错 v2](aaat-read-parameter-repair-v2.md)。
+
+
+Package Event Hook 的声明、返回内容和事件通知不授予 AaAT 权限。独立的用户 grant 冻结事件详情 Provider/version 与事件范围；后台仅使用宿主固定处理器和审阅后的动作计划。详见 [Package Hook 用户授权](package-event-hooks-user-consent-v1.md)。
+
+### Bot 按需能力发现与原 Run 授权（2026-11-03）
+
+AppChatOwner 可由可信宿主显式声明 allow_tool_approval，且必须同时提供 capture_authorization/validate_authorization。默认关闭，原受限 App Chat 保持原界面范围与免逐次审批语义。打开后，owner 验证回调返回 False 表示范围可被发现但本次调用没有预授权；AppChatService 将调用交给原 CapabilityPolicyEngine/GrantLease，不以目录展示充当授权。其他返回值保留旧预授权语义。范围验证失败仍直接拒绝。
+
+Bot owner 在用户前台 Run 准入时冻结可发现 Tool revision、Provider identity/version 与原 Bot 权限 revision。读取受信任声明并按需加载 schema，缺参使用原 parameter_form，App 交接使用原 handoff。原 AgentRuntime 保持唯一执行权、交互身份、未知副作用、取消与重启恢复协议。控制交互在创建前经过相同范围验证，参数表单每次宿主访问也重新检查当前 Run/owner/provider 范围。
+
+额外调用遵循 Agent-Chat 的原策略与明确拒绝；没有自动授予 Bot 持久权限。新审批限定 once/run（本次调用/本次请求），避免跨 Run Provider 升级沿用旧授权，不能创建共享 AppChat Agent 或 App 级授权；前端不默认同意、不自动提交审批。已授予的 Bot 前台接口继续原策略；后台 Hook/Todo 不带发现快照，仍仅可用其冻结的后台授权。按需批准只对当前原 Run 生效，不授予其他 Bot、后续新 Run 或 Session；长期权限仍在 Bot 的 App 访问设置中单独管理。
+
+AppChat 状态投影包含原 Interaction 的 kind、response_schema、ui_hints、request 与 deadline_at。Bot UI 复用 AI2AppsParameterForms，而非另造素材、模型、安装与参数提交协议；审批回接与参数提交均继续原 Run 和 Session。Gallery 产物沿现有会话附件/输出投影。没有按画图、音频或某个 Mini-App 名称修改共享 General 的业务逻辑。
+
+按需调用还要求通用 app-chat.invoke 权限，由原 CapabilityPolicyEngine/GrantLease 审批。它补足只靠旧 App Chat 范围守卫、required_capabilities 为空的接口；不把 effects 或名称猜成业务授权。Gateway 与 Router/owner 的实际调用复查必须同时验证额外权限，目录和参数准备不授予它。Todo 所属适配器仅在其自身 Todo Chat 中应用 directory_id/UI 脏编辑限制，Bot 等其他已授权调用仍走 Todo 的自有数据访问校验。
+
+### Bot 按 App/Mini-App 授权访问（2026-11-04）
+
+Bot 对每个 App/Mini-App 只有 `enabled`：允许访问或不能访问；不区分读取/写入授权。设置页每项一个“允许访问”开关，添加即启用，关闭保留条目，删除移除条目。App 和 Mini-App 独立，父 App 不自动授权其 Mini-App，兄弟组件互不授权。新 Bot 沿用 Gallery、Messager、Todo、AI Browser 四个默认 App，均为允许访问。
+
+可信宿主从实际 pending Interaction 的原 Run/Session/Tool/Provider 推导目标；不接受前端指定 App、Tool 或模型自报授权。申请卡展示实际 App/Mini-App 图标、名称、当前任务与申请原因，按钮为“允许此 Bot 访问 / 拒绝”，不再展示 Read/Write 选项。POST 只提交原 `request_hash`；宿主保存目标访问权限，再批准原普通 Interaction 一次继续原请求。未知对象不提供授权；取消、失效或 Provider/Tool 版本变化不能授权并启动操作。
+
+开启覆盖目标全部普通 AaAT，包含读取、普通写入和配置内 AI/API 用量。Tool effects 与 Provider access_policy 仍用于副作用和特殊确认判断，不是 Bot 的第二级授权。付款/购买、敏感/破坏性、未知效果、含义不明的 billing，以及显式 confirm，继续单次确认。配置内 ai.usage 遵循既有预算，不等于购买或自动充值。原 owner 参数表单、invocation_policy、资源归属及明确 deny 均保留。General/Chat 的授权模式不变。
+
+授权归属 actor+Bot；后续对话与新任务捕获当前 Provider/version，已有排队或后台任务不因开关开启而扩展冻结权限。关闭/移除先使旧权限 epoch 失效并停止相关执行，保留任务/回执；重新开启不重跑旧任务。Bot 间使用授权、协作审阅和记忆回传审阅独立。
+
+Messager 新审阅的即时和定时 Todo 计划在每次 Run 启动时继承当前 Bot 的 App、Mini-App 与有向 Bot 授权。计划审阅可向 Bot 追加授权。委派复用 Messager 子任务 owner，沿任务树继承访问权限，结果作为数据回接原 Run。仍逐次确认特殊操作。详见 [Bot 计划 Access](bot-plan-access-preflight-v1.md)。
+
+设置 API 的 apps 项只接受 `{app_id, enabled}`；授权申请入口仍要求同源 Desktop、精确 actor/Bot/原 pending Run 和当前 request_hash。本轮按开发阶段要求直接采用新格式，不添加旧 Read/Write 升级、迁移或兼容字段。有限接口的系统/Hook owner 权限仍属于独立执行契约；关闭 App 访问也撤销该 App 的已有接口授权，不能作为旁路。
+
+### 任务树内的 App Access
+
+- 前台任务和继承模式的 Todo 执行冻结根 Bot 已有的 App/Mini-App 权限。每层子任务合并父任务的冻结权限和接收 Bot 在委派时的权限。新增的接收方权限只沿该分支继续传递。接收方显式关闭的目标阻断继承。Bot 使用授权、声明版本、已获批的进一步委派、深度与预算仍各自校验。
+- 普通 App/Mini-App 访问缺失时，沿当前任务从根到接收方选审批模式，优先级为总是批准、AI 批准、人工批准。审批器可看根目标、当前要求，以及同一前台 Task 的标题、步骤、原始请求和前一步结果的有限摘录。上下文仅用于理解意图，不授予权限。已声明为计量生成会话产物的普通调用，在 AI 独立判定为低风险、且唯一不确定项是意图时，可通过 AI 审批；目标明确冲突、安全风险不明或需单独确认的动作仍适用原有规则。
+- 需要人工处理时，在根 Bot 对话中审批。设置按每次调用复核，修改后等待中的 AI 审核会失效。批准绑定用户与根执行 ID，覆盖该目标在准入目录中的匹配 Provider/Tool 版本。本树等待的普通请求复用该批准；同一前台 Task 后续执行也可查找之前执行的有效批准。独立任务和下一次定时运行重新计算。授权不写入 Bot 设置；显式撤权和声明版本变化使对应授权失效。特殊操作仍确认原 Run 的确切动作。已审阅的固定范围和 Hook 协作继续遵循其原范围。
+- 可信 Provider 注册支持 `access_required=False`。仅适用于完全使用显式输入的纯计算等能力，不能读取私有数据、联网、产生副作用或产生计费用量。宿主额外要求 Tool 无 effects、required_capabilities 或 capability_rules，且 Provider 无表单、交接或单独确认。仍执行通常的可见性、资源及调用限制。Package 和模型的运行时数据不能设置这个标记。
+
+Harness 作为内置 App 注册 Provider，普通 Bot 通过同一个 App Access 目录发现、申请并调用。操作仍使用当前会话的工作区和现有沙箱；Shell 命令关闭网络，不接受自定义环境，并由宿主逐次确认确切命令。`resource.read` 保留用户已选资源的限制；产物创建复用现有会话服务。
+
+### Bot 规划目录性能与权限即时性（2026-11-03）
+
+实际 Dev Run 从准入到等待 image.generate 授权约58.16秒，两次模型步骤合计约4.35秒。逐 Tool 校验反复 capture/export 整个权限目录，逐 Provider 可见性检查再次重建全部 exports，而 App 导出又在未授权目标上查询 manifest，多层调用放大了目录/权限查询。
+
+Bot owner 改为只验证当前调用的准入路由、冻结 Provider/version 与当前授权，未选 Provider 时覆盖所有准入候选，不能因同名能力的一个 Provider 获准就放行另一个。App Access 先筛选已授予目标，在单次 export 中按目标复用身份读取。复用只在当前调用局部，不缓存跨请求授权或撤权结果。
+
+AppChatOwner 新增可选受信任 provider_visibility(scope,provider) 点查询；共享宿主先验证 Session 的 Provider/version pin 与当前注册对象，再交由 owner 判断可见性。默认 owner 仍执行原 exports membership。回调不授予 Tool 执行权，不替代 validate_authorization、GrantLease、付费或参数确认。Bot 注册组合层提供点查询；共享执行器不按业务 App 名分支。
+
+新增 test_bot_planning_cost.py：125 Tool目录检查约0.03秒，首次 ModelCallAction 准备约0.05秒（无模型/网络/业务执行）；断言一次目录扫描、零递归 capture、零逐 Provider 全 exports 重建，当场撤权仍拒绝。两组不同 owner/capability 验证显式关闭、当前注册对象和升级 pin 拒绝，原 owner 保持旧规则。时间是夹具测量，不等于真实用户完整绘图耗时。
+
+- 完成证据：后端 AaAT 门禁 987 项通过，规划成本夹具 5 项通过，Bot 前端单元检查 33 项通过。前端收到 `/state` 后先更新授权/运行状态，再读取 `/work`；任务列表慢不会继续遮住授权提示。Dev 与 App-Dev 已通过标准 Helper 加载并核验导入路径/资源，Dev 原生界面恢复输入；未执行真实绘图或替用户授权。详见 `docs/acceptance/messager-planning-cost-20261103/receipt.json`。性能数字仅为无真实模型的夹具。
+
+
+### AI 服务用量与交易付款的确认边界（2026-11-03）
+
+- `ai.usage` 表示已配置 AI 模型/API 的正常推理用量，包括 Token、绘图、语音等。Bot 已获目标 App/Mini-App 的访问权限时，它本身不构成逐次人工确认理由；仍遵循既有模型配置、账户限额和执行预算。本次不新增或扩大预算，也不购买额度、开通订阅或自动充值。
+- `purchase` / `payment` 表示购买商品、预订酒店/机票、外卖下单、支付等交易，必须单次明确确认。费用对应 AI 产品的充值、订阅购买也属于交易付款，不能标成正常推理用量。
+- 旧的 `billing` 语义不明确，继续保守要求确认；新接入必须区分上述类型。不能把所有 billing 视为允许，也不能让模型或不受信任参数自行降级确认要求。
+- Owner 声明实际副作用；原生文生图/编辑及其 Mini-App 改为 `ai.usage`，保留 network、workspace.write、artifact.create。Bot 将 ai.usage 视为普通有副作用操作，未授权、撤权和冻结权限校验照常生效；显式 confirm、敏感、删除、未知副作用仍单独确认。
+- ai.usage 不等于只读或无副作用；网络故障/不确定结果不因此自动重试，避免重复生成及重复消耗。声明与 Provider 版本仍按原契约复核；历史待审批不会由页面自动批准，新声明也不自动恢复旧任务。
+
+
+### Bot 短回合/执行任务与标准消息产物（2026-11-03）
+
+Messager owner 可以使用自身无 Tool 的短回合决定直接回答或创建持久 Todo 执行任务。该协调器不属于 General 的业务分支，不改共享发现/路由/授权规则。独立执行 Session 只接受由原 Todo 适配器提交的精确请求和模型，沿用原 App Chat scoped executor、前台权限/目录快照、现有审批及参数表单。排队/重启/新对话均不扩权，不把新消息当成审批。Hook/计划任务原有后台授权仍独立。
+
+App Chat 的消息投影可包含标准 artifacts 元数据；每项必须重新解析到该消息 Session 的实际 Workspace 资源并生成规范 URL、名称和 MIME，不能信任元数据自报的远程 URL 或格式。接收方按消息展示素材，不从模型文本猜资源身份。owner 如需把执行 Session 的产物回主对话，应在受信任 owner 中验证来源并导入，不在共享 Agent 增加业务字段解释。
+
+
+### Runtime resource context 与用户内容分离（2026-11-03）
+
+标准助手媒体块进入后续模型请求时，Session 本地资源不能作为外部图片 URL 发送。转换器保留助手文字，受管 artifact 引用放到独立 `ai2apps.runtime-resources/v1` 数据对象，并由共享模型投影器放入明确标注 data-only/not-authority 的运行上下文；不向助手历史正文拼接英文操作指令。不接受用户自报的 runtime_context 作为系统消息。资源引用不改变权限、Provider 声明复核或 owner 的资源归属检查，不能凭 ID 获得读取/写入权限。该协议不含 App/Tool/站点名称分支。
+
+用户消息投影只消费正文和标准产物，运行上下文不参与显示/复制/TTS。兼容旧固定资源提示只能针对当前已验证产物身份精确匹配；常规用户文字和未知 ID 不做模式删除。Bot owner 可以根据持久队列生成用户反馈，不改 General 的业务语义；原执行输出、授权和 Tool 回执完整保留。
+
+
+### 会话记忆中的一对多模型投影（2026-11-03）
+
+历史 Node 的身份与投影后的模型消息数量不等价。一个助手媒体消息可展开为正文和独立运行上下文。SessionMemory 必须按原 Node ID 保存完整投影 bundle，按 bundle 总体计算成本，只在构造摘要请求时展平消息；不得通过输出位置 zip 配对。持久 source/hash/CAS 仍以原始历史内容为准，不把模型投影反写成原始历史。生成图片后继续执行以及强制/非强制压缩路径须纳入 AaAT 门禁。
+
+### Bot 记忆维护与有界召回（2026-11-04）
+
+Messager owner 可在其已验证用户主对话的既有判断回合中产生有界记忆候选；候选和历史内容都是数据，不授予业务执行权。来源必须绑定真实用户消息、选择附件或确切已观察产物；通信/工具结果、任意图片和未知资源 ID 不可自动成为用户身份。确定性合并/替换通过受限的独立 Todo 维护适配器提交，不使用 General 的业务分支或新增内层模型映射。
+
+Todo 的可信执行适配器可声明 normal/maintenance 队列类别。调度保持已领取 lane（包括等待审批）不可抢占，限定连续维护次数并为老化普通任务让行。任意 TaskInput priority 或返回内容不能取得该类别。仅确实未创建原执行 Run 的 owner 恢复片段可声明 requeue_unstarted；有原 Run 的工作不得借此重放不确定副作用。参见 `bot-memory-automatic-v1.md`。
+
+记忆候选实际提交时复核原 actor/Bot/消息、取消、遗忘水位和版本；候选 applied 状态与变更回执同事务提交。任务准入采用已选记忆版本并将验证资源转入当前 Session；记忆更新不会改写正在执行的上下文或已审阅计划。后续 Tool 调用仍执行原 App/Mini-App 权限、Provider/版本、付费敏感确认。
+
+### 发现快照与缓存前缀（2026-11-08）
+
+通用执行每步继续取得当前作用域的 owner 发现观测；模型 Context 保留 Run 首个快照位置。
+仅宿主顶层 `observed_at` 刷新、业务数据与版本不变时不改写已发送前缀；业务时间字段不忽略。
+真实变化在执行历史末尾追加新快照，后续在其原位置回放；空快照明确撤回旧覆盖范围。
+所有快照仍为不可信数据，当前可见性、权限、版本和参数审阅守卫不缓存、不跳过。
+JSON 分隔符可紧凑序列化，但不删减字段、schema 或用户字符串，不改写已持久的原始记录。
+实测及限制见 [DeepSeek Cache 核查](deepseek-cache-context-investigation-20261108.md)。
+
+
+### 工具历史参数与结果的稳定有界投影（2026-11-08）
+
+General 只对已有终态 Tool 回执对应的历史 assistant 调用参数做投影；
+执行中的原始模型消息、真实执行参数和审计回执不变。输入与持久 Tool input
+不一致时不生成原文引用。超 8 KiB 文本和超 256 字节 DataURL 使用结构化
+value reference，保留字段位置、SHA-256、长度、少量预览及原文读取入口；
+短值、素材标识、错误及调用顺序保留。DataURL 不回显编码正文。
+结果中的 DataURL 同样支持 value reference；其它大型结果继续既有的整结果
+8 KiB 分页投影与 owner 的受限结果 Context。没有每轮滑动删除最近调用。
+
+`agent.read_tool_result` 仍限定当前 Run/Session，可用 `source=input|output`
+和精确 JSON Pointer `path` 读取原始叶子值。字符串片段按原文 Unicode 字符
+计数；省略 path 时保留原有 JSON 分页及偏移定义。重复读取按 source/path/hash
+和范围去重，reread 保留。只有完成结果可以读取 output，完成或失败调用可读取
+input。引用只是历史数据，不能作为真实参数直接重放；需要使用省略正文时先读取
+原文，不把预览当完整内容。媒体理解仍须通过原素材访问/模型输入机制。
+
+此投影从历史调用首次进入下一轮 Context 起确定性生成，不随调用年龄变化；
+新增模型轮次只追加过程，不为保留最近 N 次而重写前缀。不增加摘要模型调用。
+
+### 新 Run 续接的稳定 Context（2026-11-08）
+
+新 Run 可以从同 Session、同 Agent、先前已完成执行恢复工具排列，但必须使用当前可见的定义和 Schema，不沿用历史权限或旧声明。变化的 UI/owner 快照与 discovery 观测放在已有历史之后、本次请求之前；仍为数据，不是授权。Run 内原始观测与变化追加协议保持不变。
+
+任务 owner 应避免把其本身的排队/开始通知回灌执行历史。只有明确来源、已在执行会话存在的相同结果才能去重；不得按文本相似度删除错误、素材或用户重复表达的意图。原始记录、调用链、失败诊断和原文读取入口保持可追溯。详见 [续接优化与证据](continuation-context-20261108.md)。
+
+### 新 Task 的稳定历史投影（2026-11-08）
+
+受信任 owner 可在新建 worker Session 时选择稳定历史策略；已有 Task 不自动切换。终态工具参数与结果的首次模型投影固定，后续 Run 沿用同一引用。原始执行参数、结果、失败调用和诊断留在持久记录；同一策略 Session 的原文 reader 可读取既有终态 Run，不扩展到其它 Session 或未终结执行。历史 UI/discovery 快照按原位置保存，本轮新数据追加，当前可见性、声明版本与授权仍重新验证。不得因缓存命中而恢复旧 Schema/权限。实现与证据见 [稳定 Task Context](stable-task-context-20261108.md)。
+
+### 新 Run 的 UI/owner 状态增量
+
+对启用稳定历史策略的 Session，新的状态快照可以按完整可见基准链追加无损 set/remove/splice 变化。基准及所有依赖必须仍在当前模型消息中；缺失、压缩或增量更大时发送完整快照。完整源数据保存在宿主事件里，已发送的消息固定不变。此优化只作用于非可信数据，不缓存/扩大权限，不改变声明版本复核，不删除失败工具回合。通用机制必须用任意 owner 身份验证新增、修改、删除、数组变化、重启恢复与压缩后完整值回退。详见 [连续任务 Context 验收](stable-task-context-20261108.md)。
+
+### Harness 时间读取
+
+`agent.current_time` 是宿主注册的无副作用控制工具。它在调用时采样 UTC，并使用经验证的 IANA 时区返回当地日期、时间、UTC 偏移和星期。参数只可选择时区，不能提供时钟值。App Chat owner 可通过 `host_clock` 启用该工具及执行时间快照。调用仍校验活动 Run、Session、actor 和已冻结的 owner 授权，时钟不需要把任何业务 App 加入计划权限。
+
+执行时间快照进入原有状态投影。任务等候或恢复后，可再次读取时钟计算当前窗口。用户消息的时间快照用于解释原始相对时间，单独放在当前请求旁。应用拥有业务排程和执行回执，时钟工具不计算排程或读取业务状态。
+
+### 平台效果词表与审批
+
+`ai2apps/capabilities/effects.py` 定义 Tool 声明可使用的效果。AaAT 生成器使用同一词表约束输出，编译和 Tool 注册分别校验。未知标签会返回具体字段和可用值。现有工具可由原 Service 保留同一条记录中已存在的旧标签，以便分阶段迁移。未知历史标签仍按高风险处理并逐次确认。
+
+普通本地写入使用 `write`、`workspace.write` 或相应产物效果。Gallery 保存属于普通本地写入，继续检查当前会话和素材归属。浏览器交互、剪贴板、模型生命周期、外部导出和取消任务各自声明其实际操作。Share Works 保留发布表单对快照、目标、标题和摘要的精确确认，并声明外部效果。
+
+`publish` 和 `send` 表示实际对外发布和发送。`settings.network.read` 表示非敏感的网络设置读取，`settings.network.write` 表示代理、DNS、VPN、防火墙等配置变更。读取密钥等敏感凭据使用 `credential.read`。发布、发送、网络配置变更和凭据读取在 Agent 调用中要求用户单次确认，批准绑定到当前 Run 中具体调用的完整参数和 Tool 版本。会话级自动批准、AI 审批和普通 App 授权都不能替代该确认。效果声明不安装工具，也不授予资源访问权限。
+
+词表未覆盖的新效果可显式声明为 `unclassified`，同时保留所有适用的已知效果。运行时用当前 Run 的模型评估这种声明或历史遗留的未知标签。分类只读取工具元数据，保存在 Local，按工具声明、提供方和所需权限的版本复用。模型建议只用于解释风险，首次调用仍由用户确认。用户可以在批准卡保存低、中、高风险。中、高风险后续继续逐次确认。低风险在同一用户、发起 App 和 Agent 定义内复用，跳过同一版本的未知效果确认。用户主动执行才可使用此偏好，App 访问、明确拒绝和特殊效果审批照常执行。重置全部授权同时清空已保存的风险偏好。
+
+AI 也可以辅助能力作者选择现有效果或提出词表扩展建议。词表扩展由维护者评审并通过代码更新。Tool 注册依然使用系统词表校验。
+
+### Private read steps in scoped workflows
+
+A trusted owner may register an executor's private read steps against its public
+Provider. App Chat checks the active parent invocation, exact Session and parent
+Run, live Provider and current parent authorization before allowing a private
+step. The owner validates the step's own inputs and receipt. Private steps are
+absent from model discovery and carry no separate grant. This registration
+supports only network and read effects and does not transfer per-operation
+approval, create a generic delegation grant or authorize retries.
+
+### 2026-11-18 原始用户请求投影与指定目录读取
+
+App Chat owner 可通过受信任 `source_user_requests` 返回当前逻辑任务的原始人类请求。
+宿主复核 Run/Session、owner scope、执行授权及取消，再调用该回调；默认不提供。
+这是源证据投影，不是新的授权入口。Harness owner 仅从这些原始文本解析明确命名的
+目录范围，再与调用参数比对；助手历史、工具结果、任务摘要和模型生成委派不能扩展范围。
+普通 App Provider、Access/AI 审核、当前 Provider/合同、身份和执行保护仍完整适用。
+
+Harness 的 `host.directory.list` 和 `host.directory.import` 以同一只读目录守卫执行。
+macOS 用 O_NOFOLLOW_ANY 原子拒绝所有路径分量中的链接，其它平台逐层用禁止符号链接的
+文件描述符打开，拒绝上级跳转和链接逃逸；源文件只读快照，
+每文件64 MiB、单批64文件/256 MiB，先验证全部快照再导入任务产物。原进程隔离不变。
+通用执行器不识别目录业务或这些工具名。任意 Knowledge/Gallery owner 及实际 Bot
+Task 的临时文件回归见 `tests/test_harness_local_directories.py`；模型决策是夹具。
+
+### 2026-11-18 Harness 产物保存与文档读取
+
+Harness owner 扩展同一目录范围守卫，提供检查、创建子目录、批量导出、复制、移动/重命名及 Finder 定位。
+路径范围不授予写权限：保留 App Access、effect 审核及原任务身份校验。默认重名自动改名；覆盖另需原始用户请求中的明确覆盖指令及已观察的目标 SHA-256。禁止链接及递归删除，批量返回逐文件回执和 partial，不能将部分成功当成全部完成。
+
+已有 artifact.list/preview/export 及 attachment/document 读取 Services 通过 Harness Provider 暴露；新增 artifact.materialize、pack/unpack、document.import_artifact 只处理当前自有 Session 的实际产物。结构化文档解析复用 DocumentRepository，不把 PDF 扫描页误报为已完成 OCR。压缩格式、限制及调用流程见 [Harness 文件能力](harness-file-utilities.md)。业务规则留在 Harness owner，General/共享路由不按工具名增加分支。
+
+### 仅审核表单的 Bot 准入（2026-11-18）
+
+可信 owner 可以只注册 configure parameter form 与 App continuation，而不暴露独立执行 Tool。
+前台 Bot 捕获范围时，为这种已注册入口冻结 owner、capability、form/provider version、schema、
+fields、continuation identity 和声明的指纹。打开表单及每次宿主访问均核对当前注册与该快照；
+后注册、移除、换 owner、改契约、改为 execute 或移除 continuation 都不能沿用原准入。
+execute 表单仍需原 Provider 准入。此目录只允许打开原 owner 审核流程，不新增 Tool、Provider、
+Bot Access 或 GrantLease，不跳过 App 的目标来源验证、用户确认、取消、权限和结果未知保护。
+后台 Hook 不捕获这些前台入口。拒绝使用 typed prepare/submitted=false 错误，用户回执区分
+范围未准入和契约变化，不把这两类已知拒绝描述为“没有具体原因”。
+
+### 缺失运行能力与参数确认的展示（2026-11-18）
+
+owner 的 configuration_required 表示运行环境缺项，不等于用户未确认业务参数。
+共享参数宿主应显示原 ACPF 配置请求、保留素材和参数，不把它标成普通参数确认。
+签名 schema 中的 enum 可补齐同一字段未重复声明的 select options；客户端还应容忍
+缺失 options，以免一个字段中断后续字段和取消/配置按钮。这个展示修复不能跳过
+configuration_required、安装许可确认、资源归属、Access 或结果未知保护。
+就绪后的直接执行仍以当前 owner 的 selection_required、完整必填参数、契约版本和
+原权限策略为准。模型需求的审计范围及已发现缺口见 model-requirements-aaat-audit-20261118.md。
+
+可信 owner 可显式声明 auto_continue_after_setup=true；该选项进入参数契约指纹，并通过
+原 Provider form 投影到共享 UI。只有 ACPF 明确返回 ready、当前输入完整合法、配置不再
+缺失、owner 未禁止自动提交、没有必需的肯定式确认字段、原视图仍可见且未提交过时，
+才经原 /parameters/submit 返回原 Run 继续。取消、配置失败、缺参或权利确认不自动提交；
+安装本身不授予执行 Access，真正执行仍复核当前权限与契约。默认未声明不自动续接。
+## Structured model defaults
+
+Bot model preferences are bounded purpose/profile data captured by a trusted
+owner, never authorization or instructions from a declaration. Shared App Chat
+execution transports and scopes the snapshot; Model App supplies categories and
+readiness, and each operation owner retains compatibility and invocation checks.
+Explicit arguments win; missing or stale preferences use the same-profile system
+default. Privacy never inherits Normal. See [model memory routing and lifetime](bot-model-memories.md).
+Registered private read workflow Runs inherit the validated active parent
+invocation's model scope, not a fresh Bot admission. Provider, executor, Session,
+version and cancellation checks remain mandatory; arbitrary child Runs gain no scope.

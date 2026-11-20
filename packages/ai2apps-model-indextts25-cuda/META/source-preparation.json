@@ -1,0 +1,14 @@
+{
+  "status": "development_source_distribution_draft",
+  "source_hashes": {
+    "ai2apps.json": "4d2e12f03f88531ffc00c84a4c5c6afd1591b0db8b8cee80c1473d89b44ca2b6",
+    "service.yaml": "77f1278214528e14b5d715335dec5388d1d07c1952e050e134a8880f893c45cc",
+    "META/checkpoint-distribution.json": "1afd5b9324dc98b0c7a9c46102e34fac133cfedfdeac696e9131fbc07cd377e1",
+    "META/sbom.spdx.json": "710b63307086466905bec65085a16bd6cfb19e34e1e366b1aa0507b2f83dbd98",
+    "META/NOTICE.md": "533488d571bced36cdd7fa7a7e1623c82ca701ed43054df7a991226bc62928a3",
+    "src/worker_adapter.py": "9cf799d652fac8b8445a7aefcf5572153e3db227eb1f9eebfc5cd44fa9c8da7e",
+    "META/licenses/WIndexTTS-Apache-2.0.txt": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "META/licenses/IndexTTS-2.5-LICENSE.txt": "cc7da9ea0f8a97ef15ab3bf0389e636ce79ffca1aef5489520796ac87d87a87b"
+  },
+  "signed_installation_passed": false
+}

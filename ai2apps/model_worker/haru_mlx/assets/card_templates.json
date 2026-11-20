@@ -1,0 +1,231 @@
+{
+ "languages": [
+  {
+   "code": "ja",
+   "label": "日本語"
+  },
+  {
+   "code": "en",
+   "label": "English"
+  },
+  {
+   "code": "zh",
+   "label": "中文"
+  },
+  {
+   "code": "ko",
+   "label": "한국어"
+  },
+  {
+   "code": "es",
+   "label": "Español"
+  },
+  {
+   "code": "fr",
+   "label": "Français"
+  },
+  {
+   "code": "de",
+   "label": "Deutsch"
+  },
+  {
+   "code": "pt",
+   "label": "Português"
+  },
+  {
+   "code": "ru",
+   "label": "Русский"
+  }
+ ],
+ "templates": {
+  "ja": {
+   "lead": "あなたは以下の人物として、相手と音声で会話します。",
+   "headers": {
+    "persona": "【あなたの人物設定】",
+    "name": "【あなたの名前】",
+    "gender": "【あなたの性別】",
+    "backchannel": "【あなたの相づち】",
+    "other_name": "【相手の名前】",
+    "relationship": "【関係性】",
+    "situation": "【状況】"
+   },
+   "gender": {
+    "female": "女性",
+    "male": "男性"
+   },
+   "backchannel": {
+    "low": "少なめ",
+    "mid": "普通",
+    "high": "多め"
+   }
+  },
+  "en": {
+   "lead": "You are the person described below, talking with the other person by voice.",
+   "headers": {
+    "persona": "[Your Persona]",
+    "name": "[Your Name]",
+    "gender": "[Your Gender]",
+    "backchannel": "[Your Backchannels]",
+    "other_name": "[The Other Person's Name]",
+    "relationship": "[Relationship]",
+    "situation": "[Situation]"
+   },
+   "gender": {
+    "female": "female",
+    "male": "male"
+   },
+   "backchannel": {
+    "low": "sparse",
+    "mid": "moderate",
+    "high": "frequent"
+   }
+  },
+  "zh": {
+   "lead": "你是下面描述的人物，正在和对方进行语音对话。",
+   "headers": {
+    "persona": "【你的人物设定】",
+    "name": "【你的名字】",
+    "gender": "【你的性别】",
+    "backchannel": "【你的附和】",
+    "other_name": "【对方的名字】",
+    "relationship": "【关系】",
+    "situation": "【情境】"
+   },
+   "gender": {
+    "female": "女性",
+    "male": "男性"
+   },
+   "backchannel": {
+    "low": "少",
+    "mid": "适量",
+    "high": "多"
+   }
+  },
+  "ko": {
+   "lead": "당신은 아래에 설명된 인물이며, 상대방과 음성으로 대화합니다.",
+   "headers": {
+    "persona": "[당신의 인물 설정]",
+    "name": "[당신의 이름]",
+    "gender": "[당신의 성별]",
+    "backchannel": "[당신의 맞장구]",
+    "other_name": "[상대방의 이름]",
+    "relationship": "[관계]",
+    "situation": "[상황]"
+   },
+   "gender": {
+    "female": "여성",
+    "male": "남성"
+   },
+   "backchannel": {
+    "low": "적음",
+    "mid": "보통",
+    "high": "많음"
+   }
+  },
+  "es": {
+   "lead": "Eres la persona descrita a continuación y conversas de viva voz con la otra persona.",
+   "headers": {
+    "persona": "[Tu perfil]",
+    "name": "[Tu nombre]",
+    "gender": "[Tu género]",
+    "backchannel": "[Tus respuestas breves]",
+    "other_name": "[Nombre de la otra persona]",
+    "relationship": "[Relación]",
+    "situation": "[Situación]"
+   },
+   "gender": {
+    "female": "mujer",
+    "male": "hombre"
+   },
+   "backchannel": {
+    "low": "pocas",
+    "mid": "moderadas",
+    "high": "muchas"
+   }
+  },
+  "fr": {
+   "lead": "Vous êtes la personne décrite ci-dessous et vous parlez de vive voix avec l'autre personne.",
+   "headers": {
+    "persona": "[Votre profil]",
+    "name": "[Votre nom]",
+    "gender": "[Votre genre]",
+    "backchannel": "[Vos réactions d'écoute]",
+    "other_name": "[Nom de l'autre personne]",
+    "relationship": "[Relation]",
+    "situation": "[Situation]"
+   },
+   "gender": {
+    "female": "femme",
+    "male": "homme"
+   },
+   "backchannel": {
+    "low": "peu",
+    "mid": "modérées",
+    "high": "fréquentes"
+   }
+  },
+  "de": {
+   "lead": "Du bist die unten beschriebene Person und sprichst mit der anderen Person.",
+   "headers": {
+    "persona": "[Deine Persona]",
+    "name": "[Dein Name]",
+    "gender": "[Dein Geschlecht]",
+    "backchannel": "[Deine kurzen Rückmeldungen]",
+    "other_name": "[Name der anderen Person]",
+    "relationship": "[Beziehung]",
+    "situation": "[Situation]"
+   },
+   "gender": {
+    "female": "weiblich",
+    "male": "männlich"
+   },
+   "backchannel": {
+    "low": "wenige",
+    "mid": "mittel",
+    "high": "häufig"
+   }
+  },
+  "pt": {
+   "lead": "Você é a pessoa descrita abaixo e conversa por voz com a outra pessoa.",
+   "headers": {
+    "persona": "[Seu perfil]",
+    "name": "[Seu nome]",
+    "gender": "[Seu gênero]",
+    "backchannel": "[Suas respostas curtas]",
+    "other_name": "[Nome da outra pessoa]",
+    "relationship": "[Relação]",
+    "situation": "[Situação]"
+   },
+   "gender": {
+    "female": "mulher",
+    "male": "homem"
+   },
+   "backchannel": {
+    "low": "poucas",
+    "mid": "moderadas",
+    "high": "muitas"
+   }
+  },
+  "ru": {
+   "lead": "Вы — человек, описанный ниже, и разговариваете вслух с собеседником.",
+   "headers": {
+    "persona": "[Ваш образ]",
+    "name": "[Ваше имя]",
+    "gender": "[Ваш пол]",
+    "backchannel": "[Ваши короткие реплики]",
+    "other_name": "[Имя собеседника]",
+    "relationship": "[Отношения]",
+    "situation": "[Ситуация]"
+   },
+   "gender": {
+    "female": "женщина",
+    "male": "мужчина"
+   },
+   "backchannel": {
+    "low": "мало",
+    "mid": "умеренно",
+    "high": "много"
+   }
+  }
+ }
+}

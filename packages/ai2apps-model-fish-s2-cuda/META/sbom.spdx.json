@@ -1,0 +1,25 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "ai2apps-model-fish-s2-cuda-0.1.0",
+  "documentNamespace": "https://ai2apps.com/spdx/model-fish-s2-cuda/0.1.0",
+  "packages": [
+    {
+      "name": "ai2apps-model-fish-s2-cuda-adapter",
+      "SPDXID": "SPDXRef-Adapter",
+      "versionInfo": "0.1.0",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "LicenseRef-Fish-Audio-Research",
+      "licenseDeclared": "LicenseRef-Fish-Audio-Research"
+    }
+  ],
+  "hasExtractedLicensingInfos": [
+    {
+      "licenseId": "LicenseRef-Fish-Audio-Research",
+      "name": "Fish Audio Research License",
+      "extractedText": "See META/licenses/Fish-Audio-Research-License.md; commercial use requires a separate written license from Fish Audio."
+    }
+  ]
+}

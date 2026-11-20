@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Authentication utilities for the AI2Apps Web administration surface."""
 
+import asyncio
 import hashlib
 import os
 import secrets
@@ -321,7 +322,7 @@ async def require_admin(request: Request) -> bool:
         ... async def get_settings(is_admin: bool = Depends(require_admin)):
         ...     return {"settings": "..."}
     """
-    principal = active_local_principal(request)
+    principal = await asyncio.to_thread(active_local_principal, request)
     if principal is not None:
         if principal.is_core:
             return True
@@ -333,7 +334,7 @@ async def require_admin(request: Request) -> bool:
             },
         )
 
-    if not verify_session(request):
+    if not await asyncio.to_thread(verify_session, request):
         # Browser requests (Accept: text/html) get redirected to login page
         accept = request.headers.get("accept", "")
         if "text/html" in accept:

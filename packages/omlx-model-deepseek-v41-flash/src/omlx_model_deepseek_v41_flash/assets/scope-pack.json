@@ -2,7 +2,7 @@
   "format": "ai2apps-scope-pack",
   "version": 1,
   "id": "deepseek-v41-flash-runtime-profile",
-  "pack_version": "2026.09.17.1",
+  "pack_version": "2026.10.21.1",
   "family": "deepseek_v41",
   "engine": "deepseek-v41-ssd",
   "profile": {
@@ -20,7 +20,7 @@
       "deepseek-v41-flash"
     ],
     "source_revisions": {
-      "deepseek-v41-flash": "efb7e03fd718ebbeb3e0d7e60ed037a920d8e441"
+      "deepseek-v41-flash": "70e98d9bb1d0daf07dca9d4adadca638afc8a840"
     },
     "memory_tiers": [
       40
@@ -28,6 +28,7 @@
   },
   "provenance": {
     "kind": "validated-runtime-defaults",
-    "benchmark_document": "docs/dsv41f-standard-inference-engine-2026-09-17.md"
+    "benchmark_document": "docs/dsv41f-standard-inference-engine-2026-09-17.md",
+    "validation_receipt": "ai2apps/.build/runtime-1.8.12/candidate-compatibility.json"
   }
 }

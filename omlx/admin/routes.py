@@ -1285,6 +1285,10 @@ shell_router = APIRouter(tags=["apps"])
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 static_dir = STATIC_DIR
 MOBILE_STATIC_FILES = frozenset({
+    'css/app_state.css',
+    'js/app_state.js',
+    'js/app_shortcuts.js',
+    'js/imagine_app_state.js',
     'css/chat_artifacts.css',
     'js/chat_artifacts.js',
     'css/asset_slot.css',
@@ -1439,7 +1443,9 @@ _SYSTEM_APP_MANIFESTS_BY_ID = {
 }
 _DASHBOARD_APP_TABS = {
     "ai2apps.intelligence": "intelligence",
+    "ai2apps.doc-studio": "doc-studio",
     "ai2apps.todo": "todo",
+    "ai2apps.mail": "mail",
     "ai2apps.dashboard": "status",
     "ai2apps.account": "account",
     "ai2apps.ai-browser": "ai-browser",
@@ -1464,7 +1470,9 @@ _DASHBOARD_APP_TABS = {
 }
 _DASHBOARD_APP_TEMPLATES = {
     "ai2apps.intelligence": "system_apps/intelligence.html",
+    "ai2apps.doc-studio": "system_apps/doc_studio.html",
     "ai2apps.todo": "system_apps/todo.html",
+    "ai2apps.mail": "system_apps/mail.html",
     "ai2apps.dashboard": "system_apps/dashboard.html",
     "ai2apps.account": "system_apps/account.html",
     "ai2apps.ai-browser": "system_apps/ai_browser.html",
@@ -1492,7 +1500,9 @@ _LEGACY_DASHBOARD_TAB_APPS = {
 }
 _HOST_APP_ENTRIES = {
     "ai2apps:system/intelligence": "/admin/app-content/ai2apps.intelligence",
+    "ai2apps:system/doc-studio": "/admin/app-content/ai2apps.doc-studio",
     "ai2apps:system/todo": "/admin/app-content/ai2apps.todo",
+    "ai2apps:system/mail": "/admin/app-content/ai2apps.mail",
     "ai2apps:system/dashboard": "/admin/app-content/ai2apps.dashboard",
     "ai2apps:system/account": "/admin/app-content/ai2apps.account",
     "ai2apps:system/ai-browser": "/admin/app-content/ai2apps.ai-browser",
@@ -2050,7 +2060,7 @@ async def login_page(request: Request):
     # Redirect to dashboard if already authenticated
     from .auth import verify_session
 
-    if verify_session(request):
+    if await asyncio.to_thread(verify_session, request):
         return RedirectResponse(url="/admin/dashboard", status_code=302)
 
     runtime = _get_platform_runtime() if _get_platform_runtime is not None else None
@@ -2098,7 +2108,7 @@ async def _require_shell_access(request: Request) -> RequestPrincipal:
         else getattr(runtime, "local_session_token_from_cookies", None)
     )
     token = cookie_reader(request.cookies) if cookie_reader is not None else None
-    principal = authorizer(token) if token and authorizer is not None else None
+    principal = await asyncio.to_thread(authorizer, token) if token and authorizer is not None else None
     if principal is None:
         await require_admin(request)
         resolver = (
@@ -2370,9 +2380,9 @@ async def _require_mobile_access(request: Request) -> RequestPrincipal:
     grant = authority(request)
     if grant is not None:
         return grant[0].principal(grant[1])
-    if _local_mobile_admin(request):
+    if await asyncio.to_thread(_local_mobile_admin, request):
         request.state.ai2apps_mobile_local_session = None
-        return _local_mobile_principal(request)
+        return await asyncio.to_thread(_local_mobile_principal, request)
     manager = _remote_manager()
     session = await manager.authorize_session(request.cookies.get(MOBILE_SESSION_COOKIE))
     if session is None:
@@ -3903,6 +3913,7 @@ async def shell_app_resource(
         origin = str(request.base_url).rstrip("/")
         development = (
             entry.get("source") == "development"
+            and not (mount_id and (entry.get("context") or {}).get("studioId"))
             and not request.url.path.startswith("/mobile/")
             and os.environ.get("AI2APPS_ALLOW_DEVELOPMENT_RUNTIME") == "1"
         )
@@ -4082,7 +4093,7 @@ def _terminal_websocket_same_origin(websocket: WebSocket) -> bool:
 @router.websocket("/api/terminal/sessions/{session_id}/stream")
 async def terminal_session_stream(websocket: WebSocket, session_id: str):
     """Attach one authenticated browser to a terminal byte stream."""
-    if not _terminal_websocket_authorized(websocket):
+    if not await asyncio.to_thread(_terminal_websocket_authorized, websocket):
         await websocket.close(code=4401, reason="Admin authentication required")
         return
     if not _terminal_websocket_same_origin(websocket):
@@ -5067,7 +5078,7 @@ async def _ai2apps_cloud_provider(
                     exc_info=True,
                 )
     if principal is None and request is not None:
-        principal = active_local_principal(request)
+        principal = await asyncio.to_thread(active_local_principal, request)
     if principal is None and runtime is not None:
         resolver = getattr(runtime, "legacy_api_key_principal", None)
         if resolver is not None:
@@ -5766,6 +5777,7 @@ async def delete_fusion_model(model_id: str, is_admin: bool = Depends(require_ad
 async def put_cloud_provider(
     provider_id: str,
     request: CloudProviderRequest,
+    http_request: Request,
     is_admin: bool = Depends(require_admin),
 ):
     if provider_id == "ai2apps":
@@ -5773,6 +5785,15 @@ async def put_cloud_provider(
     store = _model_manager_store()
     try:
         provider = store.put_cloud(provider_id, request.model_dump())
+        if request.api_key:
+            runtime = _get_platform_runtime() if _get_platform_runtime else None
+            principal = getattr(http_request.state, "ai2apps_principal", None)
+            if runtime is not None and principal is not None and principal.authentication_type != "legacy_api_key":
+                from ai2apps.credential_import import service, account_id, origin
+                transfer = service(runtime)
+                transfer.mark_owner({"actor_id": principal.actor_user_id,
+                    "user_id": account_id(principal.actor_user_id),
+                    "cloud_origin": origin(runtime.cloud.base_url)}, "cloud:" + provider_id)
         if request.api_key:
             try:
                 provider = await asyncio.to_thread(store.sync_cloud, provider_id)

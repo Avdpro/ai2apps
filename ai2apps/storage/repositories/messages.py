@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+import hashlib
 from collections.abc import Sequence
 from typing import Any
 
@@ -59,6 +60,12 @@ class MessageRepository:
             message=message_from_row(row),
             parts=tuple(message_part_from_row(part) for part in part_rows),
         )
+
+    @staticmethod
+    def _request_digest(*, role, status, metadata, parts) -> str:
+        value = {'role': role.value, 'status': status.value, 'metadata': metadata,
+                 'parts': [(part.kind, part.content) for part in parts]}
+        return hashlib.sha256(canonical_json(value).encode()).hexdigest()
 
     @staticmethod
     def _same_request(
@@ -123,6 +130,13 @@ class MessageRepository:
                     if existing_row is not None:
                         existing = self._load(connection, existing_row["id"])
                         assert existing is not None
+                        if existing.message.metadata.get('retired') is True:
+                            # Preserve exact idempotency after content is removed.
+                            digest = self._request_digest(role=role, status=status,
+                                metadata=metadata_value, parts=parts)
+                            if digest != existing.message.metadata.get('retired_request_digest'):
+                                raise IdempotencyConflictError(session_id, idempotency_key)
+                            return AppendMessageResult(value=existing, event=None, created=False)
                         if not self._same_request(
                             existing,
                             role=role,
@@ -281,6 +295,7 @@ class MessageRepository:
                 f"""
                 SELECT id FROM messages
                 WHERE session_id = ? AND sequence > ?
+                  AND COALESCE(json_extract(metadata_json, '$.retired'), 0) = 0
                   AND (? IS NULL OR sequence <= ?)
                 ORDER BY sequence {order} LIMIT ?
                 """,

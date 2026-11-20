@@ -1,0 +1,83 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/model-haru-4b-mlx",
+    "type": "service",
+    "version": "0.1.0",
+    "displayName": "Haru-4B MLX (Experimental)",
+    "description": "Native full-duplex Chinese speech; 8-bit backbone loaded from pinned BF16 checkpoint. Requires a compatible Host audio gateway."
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": [
+      "darwin"
+    ],
+    "architectures": [
+      "arm64"
+    ],
+    "minimumOsVersion": "26.2"
+  },
+  "entrypoints": [
+    {
+      "name": "model-worker",
+      "kind": "service",
+      "path": "service.yaml"
+    }
+  ],
+  "permissions": [
+    {
+      "capability": "model-weights.huggingface-cache.read",
+      "reason": "Read pinned Haru checkpoint selected by the Host.",
+      "required": true
+    },
+    {
+      "capability": "accelerator.metal",
+      "reason": "Run native MLX full-duplex audio inference.",
+      "required": true
+    }
+  ],
+  "dependencies": [
+    {
+      "packageId": "ai2apps/runtime-omlx",
+      "version": ">=1.8.18 <2.0.0",
+      "optional": false
+    }
+  ],
+  "files": [],
+  "sbom": {
+    "format": "spdx-json-2.3",
+    "path": "META/sbom.spdx.json"
+  },
+  "discovery": {
+    "kind": "model",
+    "categories": [
+      "speech"
+    ],
+    "tasks": [
+      "audio-realtime",
+      "speech-duplex"
+    ]
+  },
+  "modelProfile": {
+    "sizeBytes": 10560106066,
+    "minimumMemoryBytes": 17179869184,
+    "scores": {
+      "speed": 4,
+      "capability": 2
+    },
+    "benchmark": {
+      "label": "Experimental recorded Chinese: p95 29.42ms per 133ms frame; no live microphone/AEC acceptance",
+      "device": "Apple M5 Max 128GiB"
+    }
+  },
+  "modelInstall": {
+    "serviceKey": "ai2apps.model.haru-4b-mlx",
+    "models": [
+      {
+        "id": "ai2apps.model.haru-4b-mlx/realtime-8bit",
+        "label": "Haru-4B realtime 8-bit backbone",
+        "recommended": true
+      }
+    ]
+  }
+}

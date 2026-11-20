@@ -9,14 +9,14 @@ from omlx.patches.deepseek_v41.engine import DeepseekV41Engine
 ROOT = Path(__file__).parents[1]
 
 
-def test_dsv41_package_binds_ssd_distribution_and_runtime_175():
+def test_dsv41_package_binds_ssd_distribution_and_runtime_1812():
     manifest = json.loads((ROOT / "ai2apps.json").read_text())
     service = yaml.safe_load((ROOT / "service.yaml").read_text())
     distribution = json.loads((ROOT / "META/checkpoint-distribution.json").read_text())
     model = service["models"][0]
-    assert manifest["package"]["version"] == service["version"] == "0.1.1"
-    assert manifest["dependencies"][0]["version"] == ">=1.7.5 <2.0.0"
-    assert service["requires"]["services"][0]["version"] == ">=1.7.5,<2.0.0"
+    assert manifest["package"]["version"] == service["version"] == "0.1.2"
+    assert manifest["dependencies"][0]["version"] == ">=1.8.12 <2.0.0"
+    assert service["requires"]["services"][0]["version"] == ">=1.8.12,<2.0.0"
     assert model["metadata"]["reasoning"] == {
         "schema": "ai2apps.reasoning/v1",
         "mode": "optional",

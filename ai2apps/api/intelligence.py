@@ -3,13 +3,15 @@ from typing import Literal
 from threading import RLock
 from starlette.concurrency import run_in_threadpool
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, Form, Query
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, Response, JSONResponse
 from pydantic import BaseModel, Field, field_validator
 from ai2apps.api.identity import require_app_capability
 from ai2apps.intelligence.models import ChannelInput, SourceInput, Page, Candidate, ChannelQuestion, ArticleCover, ArticleImages, public_url
 from ai2apps.intelligence.store import IntelligenceStore, stamp
+from ai2apps.intelligence import writing_handoff
 from ai2apps.intelligence import entity_categories, entities, post_filter, service, site_agents, knowledge_sync, topics, writing, feedback as article_feedback
 from ai2apps.browser.profiles import BrowserProfileRepository
+from ai2apps.doc_studio.models import PackSelection
 
 
 class AttributeBackfill(BaseModel):
@@ -133,6 +135,9 @@ def create_intelligence_router(runtime_provider, principal_provider):
     import logging
     from ai2apps.intelligence import entity_attributes
     logging.getLogger(__name__).info('Intelligence routes loaded from %s; entity attributes from %s',__file__,entity_attributes.__file__)
+    logging.getLogger(__name__).info('Channel chat model selection v1 loaded from %s',__file__)
+    logging.getLogger(__name__).info('Intelligence ZIP transfer v1 loaded from %s', __file__)
+    logging.getLogger(__name__).info('Intelligence recent/offline exports v1 loaded from %s', __file__)
     router = APIRouter(prefix='/intelligence', tags=['intelligence'], dependencies=[
         Depends(require_app_capability(principal_provider, 'app.use'))])
     dep = Depends(principal_provider)
@@ -191,6 +196,14 @@ def create_intelligence_router(runtime_provider, principal_provider):
             store_cache[str(root)] = IntelligenceStore(root)
         return store_cache[str(root)]
 
+    @router.post('/doc-studio-packs')
+    def create_doc_studio_pack(body: PackSelection, principal=dep):
+        from ai2apps.api.doc_studio import errors
+        from ai2apps.doc_studio.repository import Repository
+        from ai2apps.doc_studio.service import create_pack
+        with errors():
+            return create_pack(Repository(runtime_provider().database), store(), principal, body)
+
     def present_runs(owner, result):
         # Older collectors may have saved a terminal business result before
         # their system Task released the channel. Present the actual lifecycle.
@@ -220,6 +233,114 @@ def create_intelligence_router(runtime_provider, principal_provider):
     def check_profile(owner, key):
         if key != 'default':
             checked(BrowserProfileRepository(runtime_provider().database).require, owner, key)
+
+    def export_task(principal, id):
+        task = checked(runtime_provider().system_tasks.get, principal.actor_user_id, id)
+        if task['app_id'] != 'ai2apps.intelligence' or task['kind'] != 'intelligence.export':
+            raise HTTPException(404, 'Export not found')
+        return task
+
+    @router.post('/exports/cover')
+    async def upload_export_cover(file: UploadFile = File(...), principal=dep):
+        import hashlib,io
+        from PIL import Image,ImageOps
+        from ai2apps.intelligence.manual_import import asset_path
+        try:
+            raw=await file.read(8*1024*1024+1)
+        finally:await file.close()
+        if not raw or len(raw)>8*1024*1024:raise HTTPException(422,'Cover must be an image up to 8 MiB')
+        def encode():
+            with Image.open(io.BytesIO(raw)) as image:
+                if image.width*image.height>40_000_000:raise ValueError()
+                image=ImageOps.exif_transpose(image).convert('RGB');image.thumbnail((600,600))
+                out=io.BytesIO();image.save(out,format='JPEG',quality=82,optimize=True);return out.getvalue()
+        try:data=await run_in_threadpool(encode)
+        except (ValueError,OSError,Image.DecompressionBombError):raise HTTPException(422,'Invalid cover image')
+        token=hashlib.sha256(data).hexdigest();path=asset_path(store(),principal.actor_user_id,token)
+        path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(data)
+        return {'url':'/v1/platform/intelligence/imports/'+token+'/share-cover.jpg'}
+
+    @router.post('/exports')
+    async def create_export(request: Request, principal=dep):
+        from ai2apps.intelligence.export_jobs import ExportRequest, export_author_name
+        try:
+            body = ExportRequest.model_validate(await request.json())
+        except ValueError as error:
+            raise HTTPException(422, 'Invalid export options: ' + str(error)[:500]) from error
+        from ai2apps.intelligence.export_jobs import existing_export, submit_export
+        runtime=runtime_provider()
+        existing=existing_export(runtime,principal.actor_user_id,body.request_id)
+        author_name=None
+        if body.format=='html' and not existing:
+            reader=getattr(runtime,'cloud_browser_session_from_cookies',None)
+            resolver=getattr(runtime,'cloud_for_browser',None)
+            browser_id=reader(request.cookies) if reader else None
+            cloud=resolver(browser_id) if browser_id and resolver else None
+            author_name=await export_author_name(runtime,principal.actor_user_id,cloud=cloud)
+        task=checked(submit_export,runtime,principal,body,author_name=author_name)
+        return {'id':task['id'],'status':task['status']}
+
+    @router.post('/exports/{id}/gallery')
+    async def export_to_gallery(id: str, principal=dep):
+        from ai2apps.intelligence.export_jobs import save_export_to_gallery
+        export_task(principal,id)
+        return await run_in_threadpool(checked,save_export_to_gallery,runtime_provider(),principal,id)
+
+    @router.get('/exports')
+    def recent_exports(principal=dep):
+        with runtime_provider().database.transaction() as db:
+            rows=db.execute("SELECT id FROM system_tasks WHERE owner=? AND app_id='ai2apps.intelligence' AND kind='intelligence.export' ORDER BY created_at DESC LIMIT 20",(principal.actor_user_id,)).fetchall()
+        items=[export_task(principal,row['id']) for row in rows]
+        return {'items':[{k:task[k] for k in ('id','status','created_at','result')} for task in items]}
+
+    @router.get('/exports/{id}')
+    def export_status(id: str, principal=dep):
+        task=export_task(principal,id)
+        return {k:task[k] for k in ('id','status','message','progress','result','created_at')}
+
+    @router.post('/exports/{id}/cancel')
+    def cancel_export(id: str, principal=dep):
+        export_task(principal,id)
+        task=checked(runtime_provider().system_tasks.cancel,principal.actor_user_id,id)
+        return {'id':task['id'],'status':task['status']}
+
+    @router.get('/exports/{id}/file')
+    def export_file(id: str, principal=dep):
+        from ai2apps.intelligence.export_jobs import file_path
+        task=export_task(principal,id)
+        if task['status']!='completed': raise HTTPException(409,'Export is not ready')
+        format=task['result']['format']
+        if format not in ('zip','html'): raise HTTPException(410,'Export format retired; create a ZIP or HTML export')
+        path=file_path(store(),principal.actor_user_id,id,format)
+        if not path.is_file(): raise HTTPException(410,'Export expired; create a new export')
+        return FileResponse(path,media_type={'html':'text/html; charset=utf-8','zip':'application/zip'}[format],
+            filename='intelligence-export.'+format,headers={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff',
+            'Content-Security-Policy':"sandbox; default-src 'none'"})
+
+    @router.get('/backup')
+    async def backup_export(channel_id: str | None = None, since: str | None = None, until: str | None = None, changes: Literal['created','updated'] = 'updated', principal=dep):
+        from ai2apps.intelligence.transfer import export_backup
+        payload = await run_in_threadpool(checked, export_backup, store(), principal.actor_user_id, channel_id, since=since, until=until, changes=changes)
+        return Response(payload, media_type='application/zip', headers={'Content-Disposition': 'attachment; filename="intelligence-backup.zip"', 'Cache-Control': 'no-store'})
+
+    async def backup_payload(file):
+        from ai2apps.intelligence.transfer import MAX_BYTES
+        try:
+            payload = await file.read(MAX_BYTES + 1)
+        finally:
+            await file.close()
+        if len(payload) > MAX_BYTES: raise HTTPException(413, 'Backup exceeds 128 MiB')
+        return payload
+
+    @router.post('/backup/preview')
+    async def backup_preview(file: UploadFile = File(...), principal=dep):
+        from ai2apps.intelligence.transfer import merge_backup
+        return await run_in_threadpool(checked, merge_backup, store(), principal.actor_user_id, await backup_payload(file))
+
+    @router.post('/backup/import')
+    async def backup_import(file: UploadFile = File(...), expected: str = Form(...), principal=dep):
+        from ai2apps.intelligence.transfer import merge_backup
+        return await run_in_threadpool(checked, merge_backup, store(), principal.actor_user_id, await backup_payload(file), expected)
 
     @router.get('/browser-profiles')
     def mobile_browser_profiles(principal=dep):
@@ -365,6 +486,21 @@ def create_intelligence_router(runtime_provider, principal_provider):
             sync(principal, id)
             if getattr(runtime_provider(),'system_tasks',None):collector.sync_system_schedules(principal.actor_user_id)
             return result
+
+    @router.post('/channels/{id}/material-packs')
+    def prepare_material_pack(id: str, body: writing_handoff.Selection, principal=dep):
+        return checked(writing_handoff.prepare, runtime_provider(), store(), principal.actor_user_id, id, body)
+
+    @router.post('/material-packs/{id}/gallery')
+    async def save_material_pack(id: str, principal=dep):
+        from ai2apps.gallery import GalleryError
+
+        try:
+            return await writing_handoff.save_gallery(runtime_provider(), store(), principal.actor_user_id, id)
+        except KeyError as error:
+            raise HTTPException(404, str(error)) from error
+        except GalleryError as error:
+            raise HTTPException(409, str(error)) from error
 
     @router.get('/channels/{id}/drafts')
     def list_drafts(id: str, offset: int = Query(0, ge=0), principal=dep):
@@ -624,6 +760,12 @@ def create_intelligence_router(runtime_provider, principal_provider):
     def conversation(id: str, principal=dep):
         return {'turns': checked(store().conversation, principal.actor_user_id, id)}
 
+    @router.get('/channels/{id}/conversation/models')
+    async def channel_conversation_models(id: str, principal=dep):
+        checked(store().get, 'channels', principal.actor_user_id, id)
+        from ai2apps.intelligence.article_chat import conversation_models
+        return await conversation_models(runtime_provider(),principal)
+
     @router.post('/channels/{id}/conversation/reset')
     def reset_channel_conversation(id:str,principal=dep):
         owner=principal.actor_user_id
@@ -638,22 +780,29 @@ def create_intelligence_router(runtime_provider, principal_provider):
         channel = checked(store().get, 'channels', owner, id)
         previous = checked(store().conversation_turn, owner, id, body.request_id)
         if previous:
-            if previous['question'] != body.question or previous.get('article_id') != body.article_id:
+            if previous['question'] != body.question or previous.get('article_id') != body.article_id or previous.get('model') != body.model:
                 raise HTTPException(409, '请求编号已被使用，请重新提问')
             return previous
         if (owner,id) in chatting:
             raise HTTPException(409, '此频道正在回答，请稍后重试')
+        if body.model:
+            from ai2apps.intelligence.article_chat import conversation_models
+            catalog=await conversation_models(runtime_provider(),principal)
+            if body.model not in {m['id'] for m in catalog['models']}:
+                raise HTTPException(409, 'Conversation model is unavailable')
         if body.article_id:
             selected = checked(store().get, 'articles', owner, body.article_id)
             if selected['channel_id'] != id:
                 raise HTTPException(422, '所选文章不属于当前频道')
+        if (owner,id) in chatting:
+            raise HTTPException(409, '此频道正在回答，请稍后重试')
         chatting.add((owner,id))
         try:
             articles = [a for a in store().snapshot(owner)['articles'] if a['channel_id']==id]
             history = store().conversation(owner,id)
-            answer = await service.converse(runtime_provider(),request,principal,channel,body.question,articles,history,body.article_id)
+            answer = await service.converse(runtime_provider(),request,principal,channel,body.question,articles,history,body.article_id,**({'model_id':body.model} if body.model else {}))
             return checked(store().save_conversation, owner,id,
-                {'id':body.request_id,'question':body.question,'article_id':body.article_id,'created_at':stamp(),**answer})
+                {'id':body.request_id,'question':body.question,'article_id':body.article_id,'model':body.model,'created_at':stamp(),**answer})
         except TimeoutError as error:
             raise HTTPException(504, '回答超时，请重试；问题不会重复保存') from error
         finally:

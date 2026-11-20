@@ -4,10 +4,7 @@
 
 from __future__ import annotations
 
-import base64
-import binascii
 import json
-import re
 import time
 import uuid
 from typing import Any
@@ -19,6 +16,7 @@ from fastapi.responses import StreamingResponse
 from .model_manager import ModelManagerStore
 from .model_worker.reasoning_capabilities import adapt_reasoning_effort, ReasoningEffortError, validate_reasoning_effort
 from .fusion.provider_errors import redacted_provider_error as _redacted_error
+from .fusion.provider_errors import provider_retry_headers, rate_limit_detail
 
 _OPENAI_CHAT_FIELDS = {
     "model",
@@ -40,9 +38,8 @@ _OPENAI_CHAT_FIELDS = {
 
 AI2APPS_CLOUD_PROVIDER_ID = "ai2apps"
 AI2APPS_CLOUD_MODEL_PREFIX = f"cloud/{AI2APPS_CLOUD_PROVIDER_ID}/"
-_IMAGE_DATA_URL = re.compile(
-    r"^data:(image/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=\s]+)$"
-)
+
+
 _MODERN_TOKEN_PARAMETER_MODELS: set[tuple[str, str]] = set()
 _RESPONSES_TOOL_MODELS: set[tuple[str, str]] = set()
 
@@ -77,18 +74,6 @@ def _modern_openai_chat_body(body: dict[str, Any]) -> dict[str, Any]:
     return modern
 
 
-def _decode_image_data_url(value: Any, label: str) -> tuple[bytes, str, str]:
-    match = _IMAGE_DATA_URL.fullmatch(str(value or ""))
-    if match is None:
-        raise HTTPException(status_code=400, detail=f"{label} must be a PNG, JPEG, or WebP Data URL")
-    try:
-        data = base64.b64decode("".join(match.group(2).split()), validate=True)
-    except (binascii.Error, ValueError) as exc:
-        raise HTTPException(status_code=400, detail=f"{label} contains invalid base64") from exc
-    extension = "jpg" if match.group(1) == "image/jpeg" else match.group(1).split("/", 1)[1]
-    return data, match.group(1), extension
-
-
 def _managed_model_id(model: str) -> str | None:
     if not model.startswith("cloud/"):
         return None
@@ -96,194 +81,6 @@ def _managed_model_id(model: str) -> str | None:
     if value.startswith(f"{AI2APPS_CLOUD_PROVIDER_ID}/"):
         value = value[len(AI2APPS_CLOUD_PROVIDER_ID) + 1 :]
     return value if "/" in value else None
-
-
-def _local_image_url(provider: dict[str, Any], edit: bool) -> str:
-    root = provider["base_url"].rstrip("/")
-    return f"{root}/images/{'edits' if edit else 'generations'}"
-
-
-async def request_cloud_image(
-    payload: dict[str, Any],
-    *,
-    edit: bool,
-    base_path: Any,
-    cloud_client: Any | None = None,
-    cloud_headers: dict[str, str] | None = None,
-    model_manager: ModelManagerStore | None = None,
-    transport: httpx.AsyncBaseTransport | None = None,
-) -> dict[str, Any]:
-    """Generate or edit one image through the selected local/account route."""
-
-    model = str(payload.get("model") or "").strip()
-    if not model:
-        raise HTTPException(status_code=400, detail="Image model is required")
-    store = model_manager or ModelManagerStore(base_path)
-    provider = store.resolve_cloud_model(model)
-    managed_model = _managed_model_id(model)
-    if provider is None and managed_model is not None:
-        provider_id = managed_model.split("/", 1)[0]
-        local_provider = next(
-            (item for item in store.list_cloud() if item["id"] == provider_id), None
-        )
-        if model.startswith(AI2APPS_CLOUD_MODEL_PREFIX) or local_provider is None or not local_provider["configured"]:
-            if cloud_client is None:
-                raise HTTPException(status_code=503, detail="AI2Apps Cloud client is not ready")
-            cloud_body = {
-                key: value
-                for key, value in payload.items()
-                if key
-                in {
-                    "prompt",
-                    "size",
-                    "quality",
-                    "outputFormat",
-                    "outputCompression",
-                    "n",
-                    "imageDataUrls",
-                    "maskDataUrl",
-                }
-            }
-            cloud_body["model"] = managed_model
-            # Generation schemas reject edit-only fields even when model_dump
-            # supplied an empty default. Both Studio and Mini-Chat use this
-            # adapter; keep image/mask inputs exclusively on the edits route.
-            if not edit:
-                cloud_body.pop("imageDataUrls", None)
-                cloud_body.pop("maskDataUrl", None)
-            request_headers = dict(cloud_headers or {})
-            request_headers["Idempotency-Key"] = str(
-                payload.get("idempotencyKey") or f"local-image-{uuid.uuid4()}"
-            )
-            try:
-                upstream = await cloud_client.request(
-                    "POST",
-                    f"/v1/ai/images/{'edits' if edit else 'generations'}",
-                    json=cloud_body,
-                    headers=request_headers,
-                )
-            except httpx.TimeoutException as exc:
-                raise HTTPException(status_code=504, detail="AI2Apps Cloud timed out") from exc
-            except httpx.HTTPError as exc:
-                raise HTTPException(status_code=502, detail="AI2Apps Cloud is unavailable") from exc
-            try:
-                if upstream.status_code >= 400:
-                    try:
-                        error_payload = upstream.json()
-                    except ValueError:
-                        error_payload = {}
-                    error = (
-                        error_payload.get("error", {})
-                        if isinstance(error_payload, dict)
-                        else {}
-                    )
-                    raise HTTPException(
-                        status_code=upstream.status_code,
-                        detail={
-                            "code": str(
-                                error.get("code")
-                                or "AI2APPS_CLOUD_IMAGE_REQUEST_FAILED"
-                            ),
-                            "message": str(
-                                error.get("message")
-                                or "AI2Apps Cloud image request failed"
-                            )[:1000],
-                            "retryable": bool(error.get("retryable", False)),
-                        },
-                    )
-                result = upstream.json()
-                if not isinstance(result, dict) or not isinstance(result.get("image"), dict):
-                    raise HTTPException(status_code=502, detail="AI2Apps Cloud returned an invalid image response")
-                return result
-            finally:
-                await upstream.aclose()
-    if provider is None:
-        raise HTTPException(status_code=404, detail="Image model is not enabled")
-    if provider.get("protocol") != "openai":
-        raise HTTPException(status_code=400, detail="Selected provider does not support the image API")
-
-    model_id = str(provider["model_id"])
-    common = {
-        "model": model_id,
-        "prompt": str(payload.get("prompt") or ""),
-        "size": str(payload.get("size") or "1024x1024"),
-        "quality": str(payload.get("quality") or "auto"),
-        "n": 1,
-    }
-    output_format = str(payload.get("outputFormat") or "png")
-    normalized_model_id = model_id.lower()
-    is_gpt_image = normalized_model_id.startswith("gpt-image-") or normalized_model_id == "chatgpt-image-latest"
-    if is_gpt_image:
-        common["output_format"] = output_format
-        if payload.get("outputCompression") is not None:
-            common["output_compression"] = payload["outputCompression"]
-    else:
-        # DALL-E endpoints still use the legacy response_format switch. GPT Image
-        # models return b64_json without it and reject the parameter entirely.
-        common["response_format"] = "b64_json"
-    headers = {"Authorization": f"Bearer {provider['api_key']}"}
-    client = httpx.AsyncClient(
-        timeout=httpx.Timeout(connect=15.0, read=3600.0, write=120.0, pool=30.0),
-        transport=transport,
-    )
-    try:
-        if edit:
-            values = payload.get("imageDataUrls")
-            if not isinstance(values, list) or not 1 <= len(values) <= 4:
-                raise HTTPException(status_code=400, detail="imageDataUrls must contain 1 to 4 images")
-            files = []
-            for index, value in enumerate(values):
-                data, media_type, extension = _decode_image_data_url(value, f"imageDataUrls[{index}]")
-                files.append(("image[]", (f"image-{index + 1}.{extension}", data, media_type)))
-            if payload.get("maskDataUrl") is not None:
-                data, media_type, extension = _decode_image_data_url(payload["maskDataUrl"], "maskDataUrl")
-                files.append(("mask", (f"mask.{extension}", data, media_type)))
-            request = client.build_request(
-                "POST", _local_image_url(provider, True), headers=headers, data=common, files=files
-            )
-        else:
-            request = client.build_request(
-                "POST", _local_image_url(provider, False), headers={**headers, "Content-Type": "application/json"}, json=common
-            )
-        upstream = await client.send(request)
-        if upstream.status_code >= 400:
-            detail = _redacted_error(upstream, provider["api_key"])
-            raise HTTPException(status_code=upstream.status_code, detail=detail)
-        result = upstream.json()
-        images = result.get("data") if isinstance(result, dict) else None
-        image = images[0] if isinstance(images, list) and images else None
-        if not isinstance(image, dict):
-            raise HTTPException(status_code=502, detail="Image provider returned no image")
-        value = image.get("b64_json")
-        data_url = (
-            f"data:image/{'jpeg' if output_format == 'jpeg' else output_format};base64,{value}"
-            if value
-            else image.get("url")
-        )
-        if not data_url:
-            raise HTTPException(status_code=502, detail="Image provider returned an invalid image")
-        return {
-            "image": {
-                "dataUrl": data_url,
-                "size": common["size"],
-                "quality": common["quality"],
-                "format": output_format,
-            },
-            "usage": result.get("usage"),
-            "provider": "local",
-            "model": model,
-        }
-    except httpx.TimeoutException as exc:
-        raise HTTPException(status_code=504, detail="Image provider timed out") from exc
-    except httpx.HTTPError as exc:
-        raise HTTPException(status_code=502, detail="Image provider is unavailable") from exc
-    finally:
-        await client.aclose()
-
-
-async def proxy_cloud_image_request(payload: dict[str, Any], **kwargs: Any) -> Response:
-    result = await request_cloud_image(payload, **kwargs)
-    return Response(content=json.dumps(result), media_type="application/json")
 
 
 def _content_parts(content: Any) -> list[dict[str, str]]:
@@ -313,6 +110,8 @@ def _ai2apps_request_body(request: Any) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail=str(error)) from error
     if effort is not None:
         raise HTTPException(status_code=400, detail="Managed Cloud API does not yet declare reasoning_effort support")
+    from .cloud_structured_output import requested_format
+    response_format = requested_format(request)
     system: list[str] = []
     messages: list[dict[str, Any]] = []
     for message in request.messages:
@@ -340,6 +139,8 @@ def _ai2apps_request_body(request: Any) -> dict[str, Any]:
         "maxOutputTokens": request.max_tokens or 1024,
         "stream": bool(request.stream),
     }
+    if response_format is not None:
+        body["responseFormat"] = response_format
     if system:
         body["system"] = "\n\n".join(system)
     if request.temperature is not None:
@@ -366,6 +167,21 @@ def _openai_usage(value: Any) -> dict[str, Any]:
         result['prompt_tokens_details']={'cached_tokens':cached}
     for key in ('cacheUsageReported','cacheUsageSource','providerCurrencyCost'):
         if key in usage:result[key]=usage[key]
+    observation=usage.get('cacheObservation')
+    if isinstance(observation,dict) and observation.get('schemaVersion') == 'ai2apps.cache-observation.v1':
+        result['cacheObservation']={k:observation[k] for k in (
+            'schemaVersion','inputTokens','hitTokens','missTokens','integrity','source','hitSource','missSource') if k in observation}
+        counts=[observation.get(k) for k in ('inputTokens','hitTokens','missTokens')]
+        valid=(observation.get('integrity')=='valid'
+               and all(type(v) is int and v>=0 for v in counts)
+               and counts[0]==prompt and counts[1]+counts[2]==prompt)
+        if valid and usage.get('cacheUsageReported') is True:
+            result['prompt_tokens_details']={'cached_tokens':counts[1]}
+        else:
+            result.pop('prompt_tokens_details',None)
+            result['cacheUsageReported']=False
+    if result.get('cacheUsageReported') is False:
+        result.pop('prompt_tokens_details',None)
     return result
 
 
@@ -444,6 +260,8 @@ async def _proxy_ai2apps_chat_completion(
     if cloud_client is None:
         raise HTTPException(status_code=503, detail="AI2Apps Cloud client is not ready")
     body = _ai2apps_request_body(request)
+    from .cloud_structured_output import check_capability, validate_complete, MAX_BYTES
+    structured_limit = await check_capability(cloud_client, body, authorization_headers)
     await _check_ai2apps_tool_limit(cloud_client, body, authorization_headers)
     try:
         upstream = await cloud_client.request(
@@ -474,7 +292,7 @@ async def _proxy_ai2apps_chat_completion(
                 "message": str(
                     error.get("message") or "AI2Apps Cloud request failed"
                 )[:1000],
-                "retryable": bool(error.get("retryable", False)),
+                "retryable": bool(error.get("retryable", upstream.status_code == 429)),
             }
             for field in ("param", "details"):
                 if field in error:
@@ -483,24 +301,35 @@ async def _proxy_ai2apps_chat_completion(
             detail = {
                 "code": "AI2APPS_CLOUD_REQUEST_FAILED",
                 "message": f"AI2Apps Cloud returned HTTP {upstream.status_code}",
-                "retryable": False,
+                "retryable": upstream.status_code == 429,
             }
         status = upstream.status_code
         await upstream.aclose()
-        raise HTTPException(status_code=status, detail=detail)
+        raise HTTPException(status_code=status, detail=detail, headers=provider_retry_headers(upstream))
 
     gateway_model = request.model
     if not request.stream:
         try:
-            payload = upstream.json()
+            try:
+                payload = upstream.json()
+            except ValueError:
+                if structured_limit is not None:
+                    from .cloud_structured_output import reject
+                    reject('AI_STRUCTURED_OUTPUT_INCOMPLETE','Cloud did not return a confirmed structured result.',status=502)
+                raise
         finally:
             await upstream.aclose()
         output = payload.get("output", []) if isinstance(payload, dict) else []
+        if structured_limit is not None and not isinstance(output,list):
+            from .cloud_structured_output import reject
+            reject('AI_STRUCTURED_OUTPUT_INCOMPLETE','Cloud structured output was invalid.',status=502)
         text = "".join(
             str(item.get("text") or "")
             for item in output
             if isinstance(item, dict) and item.get("type") == "output_text"
         )
+        if structured_limit is not None:
+            validate_complete(payload, text, structured_limit)
         tool_calls = [
             {
                 "id": str(item.get("callId") or ""),
@@ -535,6 +364,8 @@ async def _proxy_ai2apps_chat_completion(
                     "points",
                     "status",
                     "stopReason",
+                    "responseFormat",
+                    "structuredOutput",
                 )
                 if payload.get(key) is not None
             },
@@ -545,9 +376,14 @@ async def _proxy_ai2apps_chat_completion(
         buffer = ""
         request_id = f"chatcmpl-{uuid.uuid4().hex}"
         tool_indices: dict[str, int] = {}
+        structured_text = ""
+        terminal = False
         try:
             async for chunk in upstream.aiter_text():
                 buffer += chunk.replace("\r\n", "\n")
+                if structured_limit is not None and len(buffer.encode('utf-8'))>MAX_BYTES*2:
+                    from .cloud_structured_output import reject
+                    reject('AI_STRUCTURED_OUTPUT_TOO_LARGE','Cloud event exceeded the structured-output size limit.',status=502)
                 while "\n\n" in buffer:
                     frame, buffer = buffer.split("\n\n", 1)
                     event = "message"
@@ -563,6 +399,9 @@ async def _proxy_ai2apps_chat_completion(
                         data = json.loads("\n".join(data_lines))
                     except json.JSONDecodeError:
                         continue
+                    if structured_limit is not None and not isinstance(data,dict):
+                        from .cloud_structured_output import reject
+                        reject('AI_STRUCTURED_OUTPUT_INCOMPLETE','Invalid Cloud event.',status=502)
                     if event == "response.created" and data.get("requestId"):
                         request_id = str(data["requestId"])
                         yield _chat_chunk(
@@ -578,8 +417,17 @@ async def _proxy_ai2apps_chat_completion(
                             },
                         )
                     elif event == "output_text.delta":
-                        yield _chat_chunk(gateway_model, request_id, {"content": str(data.get("delta") or "")})
+                        if structured_limit is not None:
+                            structured_text += str(data.get("delta") or "")
+                            if len(structured_text.encode('utf-8')) > structured_limit:
+                                from .cloud_structured_output import reject
+                                reject('AI_STRUCTURED_OUTPUT_TOO_LARGE','Structured output exceeded the declared size limit.',status=502)
+                        else:
+                            yield _chat_chunk(gateway_model, request_id, {"content": str(data.get("delta") or "")})
                     elif event == "tool_call.delta":
+                        if structured_limit is not None:
+                            from .cloud_structured_output import reject
+                            reject('AI_STRUCTURED_OUTPUT_INCOMPLETE','Unexpected tool output in a structured response.',status=502)
                         call_id = str(data.get("callId") or "")
                         index = tool_indices.setdefault(call_id, len(tool_indices))
                         function: dict[str, Any] = {"arguments": str(data.get("argumentsDelta") or "")}
@@ -587,6 +435,13 @@ async def _proxy_ai2apps_chat_completion(
                             function["name"] = str(data["name"])
                         yield _chat_chunk(gateway_model, request_id, {"tool_calls": [{"index": index, "id": call_id, "type": "function", "function": function}]})
                     elif event == "response.completed":
+                        if structured_limit is not None and terminal:
+                            from .cloud_structured_output import reject
+                            reject('AI_STRUCTURED_OUTPUT_INCOMPLETE','Duplicate Cloud terminal event.',status=502)
+                        if structured_limit is not None:
+                            validate_complete(data, structured_text, structured_limit)
+                            yield _chat_chunk(gateway_model, request_id, {"content": structured_text})
+                        terminal = True
                         yield _chat_chunk(
                             gateway_model,
                             request_id,
@@ -595,6 +450,7 @@ async def _proxy_ai2apps_chat_completion(
                             data.get("usage"),
                         )
                     elif event == "response.failed":
+                        terminal = True
                         error = data.get("error") if isinstance(data.get("error"), dict) else {}
                         yield _chat_chunk(
                             gateway_model,
@@ -608,6 +464,18 @@ async def _proxy_ai2apps_chat_completion(
                             },
                             "stop",
                         )
+            if structured_limit is not None and not terminal:
+                from .cloud_structured_output import reject
+                reject('AI_STRUCTURED_OUTPUT_INCOMPLETE','Cloud stream ended without a successful terminal event.',status=502)
+            yield b"data: [DONE]\n\n"
+        except httpx.HTTPError:
+            if structured_limit is None:
+                raise
+            yield _chat_chunk(gateway_model, request_id, {"ai2apps_cloud":{"phase":"failed","error":{"code":"AI_STRUCTURED_OUTPUT_INCOMPLETE","message":"Cloud stream disconnected before a confirmed result.","retryable":False}}}, "stop")
+            yield b"data: [DONE]\n\n"
+        except HTTPException as error:
+            detail = error.detail if isinstance(error.detail,dict) else {"code":"AI_STRUCTURED_OUTPUT_INCOMPLETE","message":"Structured output failed.","retryable":False}
+            yield _chat_chunk(gateway_model, request_id, {"ai2apps_cloud":{"phase":"failed","error":detail}}, "stop")
             yield b"data: [DONE]\n\n"
         finally:
             await upstream.aclose()
@@ -726,7 +594,8 @@ async def proxy_cloud_chat_completion(
                     _RESPONSES_TOOL_MODELS.clear()
                 _RESPONSES_TOOL_MODELS.add(modern_parameter_key)
                 return response
-            raise HTTPException(status_code=status, detail=detail)
+            raise HTTPException(status_code=status, detail=rate_limit_detail(upstream, detail),
+                                headers=provider_retry_headers(upstream))
 
     content_type = upstream.headers.get(
         "content-type", "text/event-stream" if request.stream else "application/json"

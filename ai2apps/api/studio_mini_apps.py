@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ai2apps.apps.access import has_app_capability
 from typing import Literal
 
 import asyncio
@@ -50,6 +51,10 @@ from ai2apps.studio import (
     StudioRepository,
 )
 from ai2apps.studio.repository import StudioRepositoryError
+from ai2apps.studio.visual_sequence import CAPABILITY as VISUAL_SEQUENCE_CAPABILITY
+from ai2apps.studio.visual_sequence import HOST_STUDIOS as VISUAL_SEQUENCE_HOST_STUDIOS
+from ai2apps.studio.visual_sequence import MAX_BYTES as MAX_VISUAL_SEQUENCE_BYTES
+from ai2apps.studio.visual_sequence import render_visual_sequence
 
 BUILTIN_MINI_APPS = {
     VIDEO_STUDIO_ID: VIDEO_MINI_APPS,
@@ -100,6 +105,7 @@ class AudioGenerationRequest(BaseModel):
 class MiniAppDraftRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     value: str = Field(max_length=4 * 1024 * 1024)
+    expected_updated_at: str | None = Field(default=None, max_length=100)
 
 
 def _phase_percent(capability: str, phase_index: int, status: str, percent: int) -> int:
@@ -870,7 +876,8 @@ def create_studio_mini_app_router(
     def get_package_draft(studio_id: str, mount_id: str, principal: RequestPrincipal = principal_dependency):
         repository, scope = draft_scope(studio_id, mount_id, principal)
         row = repository.get_draft(**scope)
-        return {"value": json.dumps(row["draft"], ensure_ascii=False) if row else None}
+        return {"value": json.dumps(row["draft"], ensure_ascii=False) if row else None,
+                "updatedAt": row['updatedAt'] if row else ''}
 
     @router.put("/{studio_id}/mini-app-mounts/{mount_id}/draft")
     def put_package_draft(studio_id: str, mount_id: str, body: MiniAppDraftRequest, principal: RequestPrincipal = principal_dependency):
@@ -897,8 +904,11 @@ def create_studio_mini_app_router(
                     row=c.execute('SELECT message FROM browser_tasks WHERE owner=? AND id=?',(principal.actor_user_id,task_id)).fetchone()
                     if row and row['message']=='Shopping data permanently deleted':
                         raise HTTPException(409,'Shopping data was permanently deleted; reload before saving')
-        repository.save_draft(**scope, draft=draft)
-        return {"value": None}
+        try:
+            saved=repository.save_draft(**scope, draft=draft, expected_updated_at=body.expected_updated_at)
+        except StudioRepositoryError as error:
+            raise HTTPException(error.status_code, str(error)) from error
+        return {"value": None, "updatedAt": saved['updatedAt']}
 
     @router.delete("/{studio_id}/mini-app-mounts/{mount_id}/draft")
     def delete_package_draft(studio_id: str, mount_id: str, principal: RequestPrincipal = principal_dependency):
@@ -928,6 +938,47 @@ def create_studio_mini_app_router(
             raise HTTPException(404,'Notification caller unavailable') from None
         except ExtensionError:
             raise HTTPException(409,'Notification caller changed or unavailable') from None
+
+    @router.post("/{studio_id}/mini-app-mounts/{mount_id}/events/preview")
+    async def preview_mini_events(studio_id: str,mount_id: str,request: Request,principal: RequestPrincipal=principal_dependency):
+        runtime,_=manager()
+        if principal.client_scope!='desktop':
+            raise HTTPException(403,'Event delegation requires the desktop host')
+        raw=bytearray()
+        async for chunk in request.stream():
+            raw.extend(chunk)
+            if len(raw)>16000:raise HTTPException(413,'Event proposal too large')
+        try:
+            mounted=StudioCapabilityBroker(runtime).mounted_mini_app(studio_id,mount_id,principal=principal)
+            if mounted.declaration.get('source')!='builtin':
+                return runtime.package_hooks.request_mini(principal,studio_id,mount_id,json.loads(raw))
+            if not has_app_capability(principal,'app.coder.use'):raise PermissionError('Development access required')
+            return runtime.mini_app_hooks.preview(principal,studio_id,mount_id,json.loads(raw))
+        except (ValueError,PermissionError,KeyError,ExtensionError) as exc:
+            raise HTTPException(403,'Mini-App event proposal unavailable') from exc
+        except StudioCapabilityError as exc:raise capability_error(exc) from exc
+
+    @router.get("/{studio_id}/mini-app-mounts/{mount_id}/events")
+    async def mini_events(studio_id: str,mount_id: str,principal: RequestPrincipal=principal_dependency):
+        runtime,_=manager()
+        try:
+            mounted=StudioCapabilityBroker(runtime).mounted_mini_app(studio_id,mount_id,principal=principal)
+            if mounted.declaration.get('source')!='builtin':
+                return await runtime.package_hooks.inbox(principal,runtime.package_hooks.mini_binding(principal,studio_id,mount_id))
+            return runtime.mini_app_hooks.inbox(principal,studio_id,mount_id)
+        except (ValueError,PermissionError,KeyError,ExtensionError):raise HTTPException(403,'Mini-App events unavailable') from None
+        except StudioCapabilityError as exc:raise capability_error(exc) from exc
+
+    @router.post("/{studio_id}/mini-app-mounts/{mount_id}/events/{delivery_id}/ack")
+    async def ack_mini_event(studio_id: str,mount_id: str,delivery_id: str,principal: RequestPrincipal=principal_dependency):
+        runtime,_=manager()
+        try:
+            mounted=StudioCapabilityBroker(runtime).mounted_mini_app(studio_id,mount_id,principal=principal)
+            if mounted.declaration.get('source')!='builtin':
+                return await runtime.package_hooks.inbox(principal,runtime.package_hooks.mini_binding(principal,studio_id,mount_id),ack=delivery_id)
+            return runtime.mini_app_hooks.inbox(principal,studio_id,mount_id,ack=delivery_id)
+        except (ValueError,PermissionError,KeyError,ExtensionError):raise HTTPException(403,'Mini-App delivery unavailable') from None
+        except StudioCapabilityError as exc:raise capability_error(exc) from exc
 
     @router.get("/{studio_id}/mini-app-mounts/{mount_id}/capabilities")
     def probe_mini_app_capabilities(
@@ -1276,6 +1327,78 @@ def create_studio_mini_app_router(
         )
         return {"downloadUrl": url, "filename": body.filename}
 
+    visual_export_slot = asyncio.Lock()
+
+    async def export_visual_sequence(studio_id, mount_id, file, principal):
+        if studio_id not in VISUAL_SEQUENCE_HOST_STUDIOS:
+            raise HTTPException(404, "Visual sequence export is unavailable in this Studio")
+        runtime, _ = manager()
+        broker = StudioCapabilityBroker(runtime)
+
+        def authorized_mount():
+            try:
+                mounted = broker.mounted_mini_app(studio_id, mount_id, principal=principal)
+                if VISUAL_SEQUENCE_CAPABILITY not in mounted.capabilities:
+                    raise HTTPException(403, "Visual sequence export was not declared")
+                instance = mounted.mount["context"].get("studioInstanceId")
+                if not isinstance(instance, str) or not instance:
+                    raise HTTPException(409, "Studio output scope is unavailable")
+                authorize_app_instance(runtime, principal, instance)
+                if runtime.extension_manager.instance_entry(instance, principal=principal).get("app_key") != studio_id:
+                    raise HTTPException(404, "Studio instance was not found")
+                return mounted, instance
+            except StudioCapabilityError as error:
+                raise capability_error(error) from error
+            except (ExtensionError, ResourceNotFoundError) as error:
+                raise HTTPException(404, "Mini-App mount is unavailable") from error
+
+        mounted, instance = authorized_mount()
+        jobs = getattr(runtime, "studio_jobs", None)
+        if jobs is None:
+            raise HTTPException(503, "Studio output is unavailable")
+        if visual_export_slot.locked():
+            raise HTTPException(409, "Another visual export is running")
+        async with visual_export_slot:
+            data = await file.read(MAX_VISUAL_SEQUENCE_BYTES + 1)
+            if len(data) > MAX_VISUAL_SEQUENCE_BYTES:
+                raise HTTPException(413, "Visual sequence exceeds 8 MiB")
+            with tempfile.TemporaryDirectory() as temporary:
+                directory = Path(temporary)
+                try:
+                    metadata = await asyncio.to_thread(render_visual_sequence, data, directory / "output")
+                except ValueError as error:
+                    raise HTTPException(422, str(error)) from error
+                current, current_instance = authorized_mount()
+                if current_instance != instance or current.mount.get("effective_digest") != mounted.mount.get("effective_digest"):
+                    raise HTTPException(409, "Mini-App mount changed during export")
+                if not any(item.get("kind") == metadata["kind"] and item.get("final", True)
+                           for item in current.declaration.get("outputs", ())):
+                    raise HTTPException(403, "This output kind was not declared")
+                identifier = uuid.uuid4().hex
+                metadata["filename"] = f"visual-sequence-{identifier[:8]}.{metadata['format']}"
+                (directory / "result.json").write_text(json.dumps(metadata))
+                scope = dict(actor_id=principal.actor_user_id, installation_id=principal.installation_id,
+                             app_instance_id=instance, studio_id=studio_id)
+                repository = StudioRepository(runtime.database)
+                run = repository.create_run(
+                    mini_app_id=current.declaration["id"], mini_app_version=current.declaration["version"],
+                    placement="inline", title=metadata["filename"], input_data={"format": metadata["format"]},
+                    step_label="Export visual sequence", **scope,
+                )
+                repository.update_run(run["id"], status="running", progress=90, **scope)
+                try:
+                    result = await asyncio.to_thread(jobs.publish, {
+                        **scope, "id": identifier, "run_id": run["id"], "kind": "visual-sequence",
+                        "mini_app_id": current.declaration["id"],
+                    }, directory)
+                except Exception:
+                    repository.update_run(run["id"], status="failed", progress=90, detail="Could not save output", **scope)
+                    raise
+                return JSONResponse({"completed": True}, headers={
+                    "X-AI2Apps-Download-URL": result["downloadUrl"],
+                    "X-AI2Apps-Studio-Run-ID": run["id"],
+                })
+
     @router.post(
         "/{studio_id}/mini-app-mounts/{mount_id}/capabilities/{capability}/invoke"
     )
@@ -1318,6 +1441,8 @@ def create_studio_mini_app_router(
         consent: Annotated[bool, Form()] = False,
         principal: RequestPrincipal = principal_dependency,
     ) -> Response:
+        if capability == VISUAL_SEQUENCE_CAPABILITY:
+            return await export_visual_sequence(studio_id, mount_id, file, principal)
         if capability not in {
             "video.avatar_generation",
             "audio.detailed_transcription",
@@ -1710,4 +1835,8 @@ def create_studio_mini_app_router(
                 detail={"code": error.code, "message": str(error)},
             ) from error
 
+    from ai2apps.api.studio_image_workflow import create_image_workflow_router
+    from ai2apps.api.studio_comic_translation import create_comic_translation_router
+    router.include_router(create_image_workflow_router(runtime_provider, principal_provider))
+    router.include_router(create_comic_translation_router(runtime_provider, principal_provider))
     return router

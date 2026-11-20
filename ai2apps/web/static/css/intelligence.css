@@ -595,3 +595,41 @@ html[data-theme=dark] .intel-dialog input,html[data-theme=dark] .intel-dialog te
 .intel-inline-image figcaption a{color:inherit;text-decoration:none}
 
 .intel-body>.intel-body-section{font-size:1.1em;margin:1.5em 0 .6em;line-height:1.6}
+
+/* Owner backup controls stay reachable on Desktop and Mobile. */
+.intel-backup-menu{position:relative;margin-left:auto;font-size:14px}.intel-backup-menu>summary{cursor:pointer;padding:10px;white-space:nowrap}.intel-backup-menu>div{position:absolute;right:0;top:100%;z-index:40;display:grid;min-width:190px;padding:8px;background:var(--surface,#fff);border:1px solid #dce3ee;border-radius:12px;box-shadow:0 8px 24px #0002}.intel-backup-menu button{text-align:left;white-space:nowrap;padding:10px}.intel-backup-items{max-height:35vh;overflow:auto}.intel-backup-dialog{max-height:85dvh;overflow:auto}.intel-backup-dialog footer{display:flex;justify-content:flex-end;gap:12px}
+
+.intel-export-dialog{width:min(600px,94vw);max-height:88dvh;overflow:auto}.intel-export-dialog form{display:grid;gap:12px}.intel-export-dialog label{display:grid;gap:4px}.intel-export-dialog footer{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:10px}.intel-export-dialog a{display:inline-flex;align-items:center;padding:10px 16px;text-decoration:none}.intel-export-dialog [hidden]{display:none!important}
+.intel-export-dialog,.intel-backup-dialog{box-sizing:border-box;min-width:0}.intel-export-dialog input,.intel-export-dialog select{min-width:0;width:100%}
+.intel-export-dialog h2{margin-bottom:18px}.intel-export-dialog label{margin:0}.intel-export-dialog label input,.intel-export-dialog label select{margin-top:0}.intel-export-dialog .intel-help{margin:4px 0;line-height:1.6}.intel-export-dialog p[role=status]:empty{display:none}.intel-export-dialog footer{position:sticky;bottom:-25px;margin-top:0;padding:12px 0 0;background:var(--i-card,#fff)}.intel-export-dialog footer button,.intel-export-dialog footer a{min-height:40px}
+
+.intel-export-dialog h2{position:sticky;top:0;z-index:2;background:var(--i-card,#fff);padding:4px 0;outline:none}
+.intel-export-dialog h2:focus{outline:none}
+
+.intel-export-dialog .intel-export-toc{display:flex;align-items:center;gap:10px}.intel-export-dialog .intel-export-toc input{width:20px;height:20px;flex:none;margin:0}
+
+.intel-export-dialog textarea[readonly]{box-sizing:border-box;width:100%;min-width:0;max-height:120px;font-size:12px;overflow-wrap:anywhere;word-break:break-all}
+
+.intel-doc-intake {display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:10px 0}
+.intel-doc-intake [data-doc-prompt]{margin-inline-end:auto}
+#intel-app .intel-doc-select{
+ position:absolute;z-index:2;inset-inline-end:8px;top:8px;width:32px;height:32px;padding:0;
+ display:grid;place-items:center;background:#fff;color:#172033;border:1px solid #94a3b8;
+}
+#intel-app .intel-doc-select:hover:not(:disabled){background:#eef2ff}
+#intel-app .intel-doc-select[aria-pressed="true"]{background:#1d4ed8;color:#fff;border-color:#1d4ed8}
+#intel-app .intel-doc-select[aria-pressed="true"]:hover:not(:disabled){background:#1e40af}
+#intel-app .intel-doc-select:focus-visible{outline:2px solid #2563eb;outline-offset:2px}
+.intel-doc-select span{position:relative;width:16px;height:16px}
+.intel-doc-select span::before,.intel-doc-select span::after{
+ content:"";position:absolute;inset:0;margin:auto;width:16px;height:3px;border-radius:2px;background:currentColor;
+}
+.intel-doc-select span::after{transform:rotate(90deg)}
+.intel-doc-select[aria-pressed="true"] span::before{
+ width:7px;height:13px;border:solid currentColor;border-width:0 3px 3px 0;
+ border-radius:1px;background:none;transform:translateY(-1px) rotate(45deg);
+}
+.intel-doc-select[aria-pressed="true"] span::after{display:none}
+.intel-story-compact:has(.intel-doc-select) .intel-card-content:not(:has(.intel-card-media)) h2{
+ padding-inline-end:48px;
+}

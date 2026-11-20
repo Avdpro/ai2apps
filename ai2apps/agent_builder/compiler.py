@@ -12,6 +12,8 @@ from urllib.parse import urlparse
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError, ValidationError
 
+from ai2apps.capabilities.effects import validate_effect_names
+
 COMPILER_VERSION = "ai2apps-site-agent-p1.4/1"
 POLICY_VERSION = "ai2apps-web-action-policy-p1/1"
 TERMINALS = frozenset({"done", "failed", "pause"})
@@ -213,15 +215,22 @@ def _compile_single_source(source: dict[str, Any], *, probe: dict[str, Any] | No
             )
             continue
         export_names.add(name)
+        try:
+            declared_effects = item.get("effects", ["read"])
+            if not isinstance(declared_effects, list):
+                raise ValueError("effects must be an array of effect names")
+            export_effects = validate_effect_names(declared_effects)
+        except ValueError as error:
+            errors.append({"path": f"capability_exports.{index}.effects",
+                           "code": "invalid_effects", "message": str(error)})
+            continue
         normalized_exports.append(
             {
                 "name": name,
                 "description": str(item.get("description") or ""),
                 "input_schema": dict(item.get("input_schema") or inputs),
                 "output_schema": dict(item.get("output_schema") or outputs),
-                "effects": sorted(
-                    {str(value) for value in item.get("effects", ["read"])}
-                ),
+                "effects": list(export_effects),
             }
         )
         for schema_key in ("input_schema", "output_schema"):

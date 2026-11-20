@@ -1,0 +1,280 @@
+schema: ai2apps.service/v1
+id: ai2apps.model.minimax-h3-cuda
+name: MiniMax H3 CUDA
+description: Fixed official mixed-precision FL2VA and Ref2VA CUDA video with generated
+  audio.
+version: 0.1.0
+publisher:
+  id: ai2apps
+license:
+  name: Apache License 2.0
+  id: Apache-2.0
+  path: LICENSE
+runtime:
+  mode: process
+  protocol: ai2apps-model-worker/v1
+  provider: ai2apps.runtime.cuda-torch
+  adapter: src/worker_adapter.py:create_adapter
+models:
+- id: ai2apps.model.minimax-h3-cuda/fl2va-int8
+  display_name: MiniMax H3 FL2VA CUDA
+  model_type: video_generation
+  upstream_id: Comfy-Org/MiniMax-H3
+  capabilities:
+  - video_generation
+  - text_to_video
+  - image_to_video
+  - synchronized_audio
+  video_capabilities:
+    schema: ai2apps.video-capabilities/v1
+    operations:
+    - video_generation
+    content_combinations:
+    - id: text_to_video
+      required:
+      - type: text
+        role: prompt
+        min: 1
+        max: 1
+      optional:
+      - type: image_url
+        role: first_frame
+        min: 0
+        max: 1
+      - type: image_url
+        role: last_frame
+        min: 0
+        max: 1
+    formats:
+      image_input:
+      - png
+      - jpeg
+      - webp
+      audio_input: []
+      video_input: []
+      video_output:
+      - mp4
+      video_codecs:
+      - h264
+      audio_codecs:
+      - aac
+    geometry:
+      resolutions:
+      - 512x512
+      - 512x288
+      - 288x512
+      - 768x1344
+      - 1344x768
+      ratios:
+      - '1:1'
+      - '16:9'
+      - '9:16'
+      framespersecond:
+      - 24
+      alpha: false
+    duration:
+      mode: requested
+      minimum_seconds: 0.92
+      maximum_seconds: 15.1
+    audio:
+      modes:
+      - generated
+      default_mode: generated
+      generated_audio: true
+    presets:
+    - id: strict
+      display_name: Standard
+      approximate: false
+      deterministic: false
+      resumable: unsupported
+    defaults:
+      resolution: 512x512
+      ratio: '1:1'
+      framespersecond: 24
+      preset: strict
+      seed: 42
+      output_format: mp4
+      audio_output_mode: generated
+    execution:
+      asynchronous: true
+      streaming_preview: false
+      progress: phase
+      max_concurrency_per_device: 1
+  weights:
+    provider: huggingface
+    repo_id: Comfy-Org/MiniMax-H3
+    revision: e5eb578a89295337b8ff433a035929ce0279e0b6
+    preparation:
+      recipe: native
+  metadata:
+    family: minimax-h3
+    h3_variant: fl2va
+    implementation: official-comfy-cuda
+    device_recommendation:
+      minimum_memory_gib: 64
+      preferred_memory_gib: 96
+      quality_rank: 4
+- id: ai2apps.model.minimax-h3-cuda/ref2va-int8
+  display_name: MiniMax H3 REF2VA CUDA
+  model_type: video_generation
+  upstream_id: Comfy-Org/MiniMax-H3
+  capabilities:
+  - video_generation
+  - reference_to_video
+  - synchronized_audio
+  video_capabilities:
+    schema: ai2apps.video-capabilities/v1
+    operations:
+    - video_generation
+    content_combinations:
+    - id: image_reference_to_video
+      required:
+      - type: text
+        role: prompt
+        min: 1
+        max: 1
+      - type: image_url
+        role: reference_image
+        min: 1
+        max: 4
+      optional:
+      - type: video_url
+        role: reference_video
+        min: 0
+        max: 1
+      - type: audio_url
+        role: reference_audio
+        min: 0
+        max: 1
+    - id: video_reference_to_video
+      required:
+      - type: text
+        role: prompt
+        min: 1
+        max: 1
+      - type: video_url
+        role: reference_video
+        min: 1
+        max: 1
+      optional:
+      - type: image_url
+        role: reference_image
+        min: 0
+        max: 4
+      - type: audio_url
+        role: reference_audio
+        min: 0
+        max: 1
+    formats:
+      image_input:
+      - png
+      - jpeg
+      - webp
+      audio_input:
+      - wav
+      - mp3
+      - m4a
+      - aac
+      - flac
+      video_input:
+      - mp4
+      - mov
+      - webm
+      video_output:
+      - mp4
+      video_codecs:
+      - h264
+      audio_codecs:
+      - aac
+    geometry:
+      resolutions:
+      - 512x512
+      - 512x288
+      - 288x512
+      - 768x1344
+      - 1344x768
+      ratios:
+      - '1:1'
+      - '16:9'
+      - '9:16'
+      framespersecond:
+      - 24
+      alpha: false
+    duration:
+      mode: requested
+      minimum_seconds: 0.92
+      maximum_seconds: 15.1
+    audio:
+      modes:
+      - generated
+      default_mode: generated
+      generated_audio: true
+    presets:
+    - id: strict
+      display_name: Standard
+      approximate: false
+      deterministic: false
+      resumable: unsupported
+    defaults:
+      resolution: 512x512
+      ratio: '1:1'
+      framespersecond: 24
+      preset: strict
+      seed: 42
+      output_format: mp4
+      audio_output_mode: generated
+    execution:
+      asynchronous: true
+      streaming_preview: false
+      progress: phase
+      max_concurrency_per_device: 1
+  weights:
+    provider: huggingface
+    repo_id: Comfy-Org/MiniMax-H3
+    revision: e5eb578a89295337b8ff433a035929ce0279e0b6
+    preparation:
+      recipe: native
+  metadata:
+    family: minimax-h3
+    h3_variant: ref2va
+    implementation: official-comfy-cuda
+    device_recommendation:
+      minimum_memory_gib: 64
+      preferred_memory_gib: 96
+      quality_rank: 4
+capabilities:
+- video-generation
+- minimax-h3
+requires:
+  services:
+  - id: ai2apps.runtime.cuda-torch
+    version: '>=0.6.0,<1.0.0'
+    optional: false
+    capabilities:
+    - cuda
+    - model-worker-v1
+    - video-generation
+    - minimax-h3
+  python: '>=3.11,<3.14'
+permissions:
+  network:
+    outbound: false
+  model_weights:
+    huggingface_cache: read
+    reason: Read Host-selected fixed H3 checkpoints.
+  accelerator:
+    cuda: true
+    reason: Run fixed H3 CUDA inference through the Runtime-owned Comfy process.
+compatibility:
+  os:
+  - linux
+  architectures:
+  - arm64
+  - aarch64
+health:
+  path: /health
+  startup_timeout_seconds: 180
+restart:
+  max_attempts: 2
+  base_delay_seconds: 2
+tools: []

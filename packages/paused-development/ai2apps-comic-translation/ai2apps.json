@@ -1,0 +1,104 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/comic-translation",
+    "type": "app",
+    "version": "0.1.3",
+    "displayName": "Comic Translation",
+    "description": "Translate and typeset comic pages with an offline bilingual reader."
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": [
+      "darwin"
+    ],
+    "architectures": [
+      "arm64"
+    ]
+  },
+  "entrypoints": [
+    {
+      "name": "main",
+      "kind": "app",
+      "path": "web/index.html"
+    }
+  ],
+  "permissions": [],
+  "dependencies": [
+    {
+      "packageId": "ai2apps/model-oxr",
+      "version": ">=0.1.0 <1.0.0",
+      "optional": false
+    }
+  ],
+  "files": [],
+  "sbom": {
+    "format": "spdx-json-2.3",
+    "path": "META/sbom.spdx.json"
+  },
+  "capabilityCatalog": {
+    "schemaVersion": "ai2apps.package-capabilities.v1",
+    "entries": [
+      {
+        "kind": "mini-app",
+        "identity": "ai2apps.imagine.comic-translation",
+        "provides": [
+          "imagine.translate_comic"
+        ],
+        "tasks": [
+          "Translate comic pages",
+          "Translate attached manga or comic screenshots",
+          "OCR vertical manga dialogue and export translated PNG pages",
+          "Create an offline bilingual comic reader",
+          "漫画翻译",
+          "漫画对白翻译",
+          "翻译附件里的漫画或漫画截图",
+          "识别竖排漫画对白并导出译文图片",
+          "离线漫画阅读器"
+        ],
+        "inputTypes": [
+          "image"
+        ],
+        "outputTypes": [
+          "image",
+          "file"
+        ],
+        "requirements": {
+          "capabilities": [
+            "comic.translation"
+          ]
+        },
+        "agent": {
+          "mode": "aaat",
+          "declarationVersion": "1.0.0",
+          "exports": [
+            {
+              "name": "imagine.translate_comic",
+              "interfaceVersion": "1.0.0",
+              "inputTypes": [
+                "image"
+              ],
+              "outputTypes": [
+                "image",
+                "file"
+              ]
+            }
+          ]
+        },
+        "scope": "In Imagine Studio, recognizes speech bubbles and vertical dialogue in attached or Gallery comic pages, translates into a requested language, and exports translated PNGs or an offline bilingual HTML reader.",
+        "processing": "hybrid",
+        "pricing": "unknown",
+        "localizations": {
+          "en": {
+            "displayName": "Comic Translation",
+            "description": "Translate and export comic pages."
+          },
+          "zh": {
+            "displayName": "漫画翻译",
+            "description": "批量翻译漫画并导出 PNG 或离线阅读器。"
+          }
+        }
+      }
+    ]
+  }
+}

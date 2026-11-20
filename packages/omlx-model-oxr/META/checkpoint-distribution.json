@@ -1,0 +1,68 @@
+{
+  "schema": "ai2apps.checkpoint-build/v1",
+  "distributionId": "dist_ai2apps_oxr_1_0_bf16_c708407f_v1",
+  "modelId": "ai2apps.model.oxr/oxr-1.0-bf16",
+  "repoId": "SoMarkAI/OXR-1.0",
+  "revision": "c708407f9d2b4df658f2543d9132b62bb7221df4",
+  "format": "safetensors",
+  "quantization": "bf16",
+  "pieceSize": 8388608,
+  "license": {
+    "id": "LicenseRef-SoMark-OXR",
+    "name": "SoMark OXR License (Apache-2.0 with additional terms)",
+    "termsUrl": "https://huggingface.co/SoMarkAI/OXR-1.0/blob/c708407f9d2b4df658f2543d9132b62bb7221df4/LICENSE",
+    "termsHash": "sha256:4577df88e499926976b390c4ea3992cc91baa9ebac29386f35b557bd3cb4a662",
+    "usagePolicy": "commercial_allowed_below_license_threshold",
+    "accessPolicy": "public",
+    "redistributionPolicy": "conditional",
+    "redistributionConditions": {
+      "termsAcceptance": "required",
+      "licenseDelivery": "required",
+      "downstreamTerms": "license_terms",
+      "commercialUse": "separate_license_required",
+      "attribution": {
+        "required": true,
+        "noticeText": "Uses SoMark OXR. OXR License includes commercial thresholds, online-service attribution, and restrictions on competing hosted OCR/document parsing APIs.",
+        "noticeFile": "LICENSE",
+        "productDisplay": "required"
+      },
+      "modifiedFilesNotice": "required"
+    },
+    "downloadConsent": {
+      "required": true,
+      "attestationText": "I accept the OXR License, including its USD 2M funding/revenue thresholds, attribution and competing hosted API restrictions, or hold a separate applicable written license.",
+      "acceptanceOptions": [
+        "accepted_license_terms",
+        "obtained_separate_license"
+      ]
+    }
+  },
+  "includePatterns": [
+    "LICENSE",
+    "config.json",
+    "generation_config.json",
+    "model.safetensors",
+    "preprocessor_config.json",
+    "tokenizer_config.json",
+    "tokenizer.json",
+    "added_tokens.json",
+    "special_tokens_map.json",
+    "vocab.json",
+    "merges.txt",
+    "chat_template.jinja"
+  ],
+  "sourceRepositories": [
+    {
+      "type": "huggingface",
+      "repoId": "SoMarkAI/OXR-1.0",
+      "revision": "c708407f9d2b4df658f2543d9132b62bb7221df4",
+      "access": "public_anonymous"
+    },
+    {
+      "type": "modelscope",
+      "repoId": "SoMark/OXR-1.0",
+      "revision": "87d5b6a3a12131f97e5270cc84455b29b9c1da81",
+      "access": "public_anonymous"
+    }
+  ]
+}

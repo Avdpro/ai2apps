@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "try_on": {
+    "base": "Create ONE realistic image of exactly the person from image 1 interacting with the item from image 2. Image 1 is the ONLY identity reference: preserve recognizable face, apparent age, skin tone, hair and natural body proportions. Image 2 is ITEM ONLY: do not copy its model, face, body, pose or background. Preserve the item design, color, shape, material, pattern and existing markings; do not invent a substitute or duplicate it. Preserve unrelated details. Match scale, perspective, lighting, shadows, contact and occlusion; no extra people, limbs, fingers, captions or watermarks.",
+    "interaction": {
+      "wear": "Dress or accessorize the person with the referenced item in its appropriate wearing position. Replace only the corresponding original garment or accessory; preserve unrelated clothing.",
+      "use": "Show the person naturally using the referenced object according to its ordinary function, with physically plausible interaction.",
+      "hold": "Show the person holding the referenced object naturally, with anatomically correct hands and believable grip. Do not turn the object into clothing."
+    },
+    "pose": {
+      "keep": "Preserve the original pose as closely as possible; make only the minimal limb changes required for the requested interaction.",
+      "stand": "Relaxed natural standing pose.",
+      "sit": "Natural seated pose.",
+      "walk": "Natural walking pose suitable for showing the item."
+    },
+    "background": {
+      "keep": "Preserve the background and camera perspective of image 1.",
+      "white": "A clean white photography studio.",
+      "street": "A realistic city street.",
+      "park": "A green outdoor park.",
+      "room": "A tasteful lived-in interior."
+    }
+  },
+  "extract": {
+    "base": "Create ONE clean object-reference image by extracting the specified target from input image 1.",
+    "targets": {
+      "outfit": "the complete worn outfit, including clothing, shoes and worn accessories, arranged together as separate items",
+      "clothes": "all clothing, excluding shoes and accessories",
+      "top": "the upper-body garment",
+      "pants": "the pants or trousers",
+      "skirt": "the skirt",
+      "dress": "the dress",
+      "shoes": "the shoes as a matching pair when visible",
+      "bag": "the bag"
+    },
+    "rules": "Use the source as the authoritative reference. Preserve the visible item design, silhouette, proportions, colors, material, seams, patterns and existing markings as closely as possible. Remove the wearer, face, body, hands, mannequin and original background. Show the complete item unobstructed on a seamless pure white background, centered with generous margins, realistic lighting and only a subtle contact shadow. For multiple requested garments, use a neat flat-lay arrangement in a single image, no duplicates or panel grid. Do not add props, labels, captions or watermarks. Do not invent a different product or substitute an unrelated object. If reconstruction of hidden parts is necessary, keep it minimal and consistent with visible evidence."
+  },
+  "product": {
+    "base": "Create ONE professional product photograph using the supplied image as the authoritative product reference. Preserve the exact product identity, silhouette, proportions, visible parts, packaging, original colors, material, logos and existing readable label text. Keep the original product viewing angle; do not invent hidden surfaces or new branding. Do not add people, duplicate products, prices, slogans or watermarks. Change the setting and lighting, not the product design. Maintain realistic contact shadows, perspective, reflections and scale. If the source includes a person wearing or using the product, preserve that person and their interaction as part of the reference; do not remove or replace the person.",
+    "scene": {
+      "white": "Seamless pure white studio background, subtle natural contact shadow.",
+      "stone": "Minimal neutral stone podium with a refined studio backdrop.",
+      "desk": "Tasteful natural wood tabletop in a clean interior, restrained supporting props.",
+      "nature": "Natural outdoor setting with soft greenery in the distance and realistic scale.",
+      "festival": "Elegant gift-giving scene with subtle ribbons and warm festive accents, no text."
+    },
+    "light": {
+      "soft": "Large softbox lighting, controlled reflections and soft shadows.",
+      "window": "Natural diffused window light and realistic gentle shadows.",
+      "dramatic": "Dramatic but readable rim lighting, preserve accurate product colors and material."
+    },
+    "composition": {
+      "center": "Center the entire product with generous margins; preserve its original viewing angle.",
+      "left": "Place the entire product on the left, leave uncluttered negative space on the right for later typesetting.",
+      "right": "Place the entire product on the right, leave uncluttered negative space on the left for later typesetting."
+    }
+  }
+}

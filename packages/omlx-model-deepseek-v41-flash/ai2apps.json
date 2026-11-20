@@ -3,7 +3,7 @@
   "package": {
     "id": "ai2apps/model-deepseek-v41-flash",
     "type": "service",
-    "version": "0.1.1",
+    "version": "0.1.2",
     "displayName": "DeepSeek V4.1 Flash",
     "description": "Lossless multimodal DeepSeek V4.1 Flash Worker for the SSD-ready checkpoint."
   },
@@ -39,7 +39,7 @@
   "dependencies": [
     {
       "packageId": "ai2apps/runtime-omlx",
-      "version": ">=1.7.5 <2.0.0",
+      "version": ">=1.8.12 <2.0.0",
       "optional": false
     }
   ],
@@ -59,7 +59,7 @@
     ]
   },
   "modelProfile": {
-    "sizeBytes": 510320301313,
+    "sizeBytes": 510318025080,
     "minimumMemoryBytes": 103079215104,
     "scores": {
       "speed": 2,

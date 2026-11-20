@@ -103,19 +103,41 @@ def test_search_confirmation_cannot_cross_thread_or_actor(env,monkeypatch):
     assert chat.Repository(s).get('owner','article')['busy'] is None
 
 @pytest.mark.asyncio
-async def test_confirmed_search_uses_selected_provider_and_only_read_bodies(env,monkeypatch):
+@pytest.mark.parametrize('contract_changed', [False, True])
+async def test_confirmed_search_uses_selected_provider_and_only_read_bodies(env,monkeypatch,contract_changed):
+    from ai2apps.browser.builtin_mini_apps import definitions
+    from ai2apps.research import search_preparation as prep
+    from ai2apps.services.capability_routing import CapabilityInvocationError, CapabilityProvider, CapabilityRouter
+
     s,r,p,a,c=env;repo=chat.Repository(s);state=repo.get('owner','article')
     for key in ('installation_id','organization_id','billing_account_id','membership_epoch'):setattr(p,key,None)
     p.installation_id='installation'
     monkeypatch.setattr('ai2apps.system_tasks.sessions.execution_session',lambda *a:'session')
-    monkeypatch.setattr('ai2apps.research.search_preparation.owned',lambda *a,**k:{})
-    monkeypatch.setattr('ai2apps.research.search_preparation.require_confirmation',lambda *a,**k:({'mode':'fast','limit':3,'sources':['google']},{}))
+    confirmed = {
+        'query': 'Model X meaning', 'mode': 'fast', 'limit': 8, 'sources': ['deepseek'],
+        'preparation_id': 'confirmed-search', 'profile': 'default', 'x_sort': 'top',
+        'xiaohongshu_sort': 'general', 'exclude_ads': True, 'retain_pages': False,
+        'cloud_consent': False, 'cloud_price_version': '', 'cloud_max_points': '',
+    }
+    monkeypatch.setattr(prep, 'owned', lambda *a, **k: {'confirmed_json': json.dumps(confirmed), 'origin_run': ''})
+    monkeypatch.setattr('ai2apps.services.aaat.principal_for', lambda *a: p)
+    minis, _ = definitions()
+    spec = next(m for m in minis if m['id'] == 'ai2apps.search-all')['aaat']['exports'][0]
+    async def describe(principal, model=None):
+        schema = spec['inputSchema']
+        if contract_changed:
+            schema = {**schema, 'required': [*schema['required'], 'new_required_input']}
+        return {'effective_schema': schema, 'selection_required': True}
     used=[]
-    async def invoke(capability,arguments,context):
-        used.append((capability,arguments,context))
+    async def search(arguments,context):
+        prep.require_confirmation(r, p, arguments, session_id=context.session_id)
+        used.append((arguments,context))
         return {'articles':[{'source_id':'web1','url':'https://example.com/read','title':'Original','read':True,'text':'Original body'},
                             {'source_id':'web2','url':'https://example.com/snippet','title':'Unread','read':False,'text':'Search snippet'}]}
-    r.app_capability_router=NS(invoke=invoke)
+    r.app_capability_router = CapabilityRouter(r.database)
+    r.app_capability_router.register(CapabilityProvider(
+        'ai2apps.search-all.search', 'web.search', 'ai2apps.ai-browser', search, describe=describe,
+    ))
     async def model(*args,**kwargs):
         evidence=args[-2]['evidence']
         assert any(e['body']=='Original body' for e in evidence)
@@ -126,9 +148,18 @@ async def test_confirmed_search_uses_selected_provider_and_only_read_bodies(env,
     body={**args(state['thread']),'confirmation_id':'confirmed-search'}
     repo.reserve('owner','article',body)
     task=r.system_tasks.submit('owner','ai2apps.intelligence','intelligence.article_chat','Discuss',{'article_id':'article','request_id':body['request_id']})
+    if contract_changed:
+        with pytest.raises(CapabilityInvocationError, match='parameter_contract_mismatch'):
+            await r.system_tasks.handlers['intelligence.article_chat'].execute(TaskContext(r.system_tasks,task))
+        assert not used
+        error = repo.action('owner', 'article', body['request_id'])['error']
+        assert '请重新发起搜索' in error
+        assert 'parameter_contract' not in error
+        return
     await r.system_tasks.handlers['intelligence.article_chat'].execute(TaskContext(r.system_tasks,task))
-    assert used[0][0]=='web.search' and used[0][1]=={'provider':'ai2apps.search-all.search','confirmation_id':'confirmed-search','mode':'fast'}
-    assert used[0][2].actor_user_id=='owner' and used[0][2].installation_id=='installation'
+    assert len(used) == 1
+    assert used[0][0] == {**confirmed, 'confirmation_id': 'confirmed-search'}
+    assert used[0][1].actor_user_id=='owner' and used[0][1].installation_id=='installation'
     assert repo.get('owner','article')['turns'][0]['references'][0]['url']=='https://example.com/read'
 
 @pytest.mark.asyncio

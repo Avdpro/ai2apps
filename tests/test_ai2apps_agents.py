@@ -1219,7 +1219,7 @@ async def test_general_agent_persists_final_model_reply_in_session(tmp_path):
         run, _ = runtime.agents.create_run(
             session_id=session_id,
             agent_key="ai2apps.general-agent",
-            input={"model": "test-model", "message_id": user.message.id},
+            input={"model": "test-model", "message_id": user.message.id, "tools": ["system.echo"]},
         )
         runtime.agent_runtime.wake()
         completed = await _wait_status(runtime, run.id, AgentRunStatus.COMPLETED)
@@ -1304,7 +1304,7 @@ async def test_general_agent_runs_model_tool_model_loop_durably(tmp_path):
         run, _ = runtime.agents.create_run(
             session_id=session_id,
             agent_key="ai2apps.general-agent",
-            input={"model": "test-model", "message_id": user.message.id},
+            input={"model": "test-model", "message_id": user.message.id, "tools": ["system.echo"]},
         )
         runtime.agent_runtime.wake()
         # Three durable steps plus final message persistence can exceed 3 s
@@ -1348,6 +1348,18 @@ async def test_general_agent_retries_non_effectful_tool_after_runtime_restart(tm
         "system.echo",
         provider_key="builtin:diagnostics",
         handler=interrupted_echo,
+    )
+    # This deliberately blocked fixture must outlive full host shutdown.
+    # The built-in diagnostics Tool's normal 5 s deadline otherwise expires
+    # during unrelated maintenance cleanup before AgentRuntime.stop is reached.
+    descriptor = runtime.services.get_tool("system.echo")
+    runtime.services.ensure_tool(
+        service_id=descriptor.service_id, qualified_name=descriptor.qualified_name,
+        display_name=descriptor.display_name, description=descriptor.description,
+        input_schema=descriptor.input_schema, output_schema=descriptor.output_schema,
+        effects=descriptor.effects, required_capabilities=descriptor.required_capabilities,
+        capability_rules=descriptor.capability_rules, retry_policy=descriptor.retry_policy,
+        timeout_ms=60_000,
     )
     model_calls = 0
 
@@ -1395,7 +1407,7 @@ async def test_general_agent_retries_non_effectful_tool_after_runtime_restart(tm
     run, _ = runtime.agents.create_run(
         session_id=session_id,
         agent_key="ai2apps.general-agent",
-        input={"model": "test-model", "message_id": user.message.id},
+        input={"model": "test-model", "message_id": user.message.id, "tools": ["system.echo"]},
     )
     runtime.agent_runtime.wake()
     await asyncio.wait_for(tool_started.wait(), timeout=2)
@@ -1474,7 +1486,7 @@ async def test_general_agent_stops_repeated_identical_tool_loop(tmp_path):
         run, _ = runtime.agents.create_run(
             session_id=session_id,
             agent_key="ai2apps.general-agent",
-            input={"model": "test-model", "message_id": user.message.id},
+            input={"model": "test-model", "message_id": user.message.id, "tools": ["system.echo"]},
         )
         runtime.agent_runtime.wake()
         failed = await _wait_status(
@@ -1583,7 +1595,7 @@ async def test_general_agent_waits_for_capability_before_model_selected_effect(
         run, _ = runtime.agents.create_run(
             session_id=session_id,
             agent_key="ai2apps.general-agent",
-            input={"model": "test-model", "message_id": user.message.id},
+            input={"model": "test-model", "message_id": user.message.id, "tools": ["secure.write_value"]},
         )
         runtime.agent_runtime.wake()
         await _wait_status(runtime, run.id, AgentRunStatus.WAITING_CAPABILITY)

@@ -56,12 +56,16 @@ class ReadAloudRepository:
     ) -> None:
         if self.events is None:
             return
-        self.events.append_in_transaction(
+        event = self.events.append_in_transaction(
             connection,
             event_type=event_type,
             subject_id=subject_id,
             payload={"owner_user_id": owner_user_id, **(payload or {})},
         )
+        publisher = getattr(self.events, "business_publishers", {}).get(event_type)
+        if publisher is not None:
+            publisher.publish(connection, owner=owner_user_id, subject_id=subject_id,
+                              occurrence_key=subject_id, data=payload or {}, existing_event_id=event.id)
 
     def list_projects(self, owner_user_id: str) -> tuple[dict[str, Any], ...]:
         with self.database.transaction() as connection:

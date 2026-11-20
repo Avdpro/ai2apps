@@ -87,12 +87,14 @@ def test_knowledge_runtime_and_workers_use_generic_locked_provider_contract() ->
         ROOT / "packages" / "ai2apps-model-multilingual-e5-small",
     ):
         worker = ServicePackageArchive._manifest(manifest(source))
-        assert worker.raw["runtime"]["provider"] == "ai2apps.runtime.knowledge-rag"
+        assert worker.raw["runtime"]["provider"] == "ai2apps.runtime.omlx"
         assert worker.command[0] == "{runtime_python}"
         requirement = worker.raw["requires"]["services"][0]
-        assert requirement["id"] == "ai2apps.runtime.knowledge-rag"
+        assert requirement["id"] == "ai2apps.runtime.omlx"
         assert requirement["optional"] is False
-        assert "knowledge-runtime-v1" in requirement["capabilities"]
+        assert requirement["version"] == ">=1.8.16,<2.0.0"
+        shared = ServicePackageArchive._manifest(manifest(RUNTIME_SOURCE))
+        assert set(requirement["capabilities"]).issubset(shared.capabilities)
 
     embedding = ServicePackageArchive._manifest(
         manifest(ROOT / "packages" / "ai2apps-model-multilingual-e5-small")

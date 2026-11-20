@@ -1,0 +1,18 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "ai2apps-model-multilingual-e5-small-cuda-0.1.0",
+  "documentNamespace": "https://ai2apps.com/spdx/ai2apps-model-multilingual-e5-small-cuda/0.1.0",
+  "packages": [
+    {
+      "name": "Multilingual E5 Small external weights",
+      "SPDXID": "SPDXRef-E5",
+      "versionInfo": "614241f622f53c4eeff9890bdc4f31cfecc418b3",
+      "downloadLocation": "https://huggingface.co/intfloat/multilingual-e5-small",
+      "licenseDeclared": "MIT",
+      "licenseConcluded": "NOASSERTION",
+      "copyrightText": "NOASSERTION"
+    }
+  ]
+}

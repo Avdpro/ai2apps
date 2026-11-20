@@ -26,6 +26,7 @@ def test_image_capabilities_normalize_runtime_optimizations():
         "metal_rms_adaln_fusion": True,
         "edit_kv_cache": True,
         "max_concurrency_per_device": 1,
+        "denoiser_idle_seconds": 60,
     }
     result = validate_image_capabilities(value)
     assert result["execution"]["compiled_denoiser"] is True
@@ -33,6 +34,7 @@ def test_image_capabilities_normalize_runtime_optimizations():
     assert result["execution"]["single_pass_guidance_one"] is True
     assert result["execution"]["metal_rms_adaln_fusion"] is True
     assert result["execution"]["edit_kv_cache"] is True
+    assert result["execution"]["denoiser_idle_seconds"] == 60
 
 
 @pytest.mark.parametrize(
@@ -42,6 +44,7 @@ def test_image_capabilities_normalize_runtime_optimizations():
         lambda value: value.update(operations=["unknown_operation"]),
         lambda value: value["geometry"].update(multiple_of=0),
         lambda value: value["defaults"].update(width=4096),
+        lambda value: value["execution"].update(denoiser_idle_seconds=True),
     ],
 )
 def test_invalid_image_capabilities_are_rejected(mutation):

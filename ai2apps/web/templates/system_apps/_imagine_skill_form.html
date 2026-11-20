@@ -1,0 +1,52 @@
+<template x-if="currentMiniApp.source === 'skill'">
+    <form class="vs-create" @submit.prevent="runSkillForm()" @input="skillRunKey=''" :aria-label="currentMiniApp.name">
+        <fieldset :disabled="skillBusy" style="display:grid;gap:14px;border:0;padding:0;margin:0;min-width:0">
+            <template x-for="field in currentMiniApp.form.parameters" :key="currentMiniApp.id + field.key">
+                <label class="vs-field">
+                    <span x-text="field.label"></span>
+                    <template x-if="field.type === 'multiline'">
+                        <textarea rows="4" maxlength="4000" x-model="skillValues[field.key]" :required="field.required"></textarea>
+                    </template>
+                    <template x-if="field.type === 'text' || field.type === 'number'">
+                        <input :type="field.type" step="any" maxlength="300" x-model="skillValues[field.key]" :required="field.required">
+                    </template>
+                    <template x-if="field.type === 'choice' || field.type === 'image' || field.type === 'boolean'">
+                        <select x-model="skillValues[field.key]" :required="field.required">
+                            <option value="" x-text="skillLabel('Choose…', '请选择…')"></option>
+                            <template x-for="choice in (field.type === 'image' ? skillAssets.map(asset => ({id:asset.id,label:asset.name})) : field.type === 'boolean' ? [{id:'on',label:skillLabel('On','开启')},{id:'off',label:skillLabel('Off','关闭')}] : field.choices.map(value => ({id:value,label:value})))" :key="choice.id">
+                                <option :value="choice.id" x-text="choice.label"></option>
+                            </template>
+                        </select>
+                    </template>
+                </label>
+            </template>
+            <label class="vs-field">
+                <span x-text="skillLabel('Image model', '绘图模型')"></span>
+                <select required x-model="skillModelId" @change="selectSkillModel()">
+                    <template x-for="model in skillModels" :key="model.id">
+                        <option :value="model.id" x-text="model.label"></option>
+                    </template>
+                </select>
+            </label>
+            <label class="vs-field" x-show="skillModel">
+                <span x-text="skillLabel('Image size', '图片尺寸')"></span>
+                <template x-if="skillModel?.size.mode === 'fixed'">
+                    <select x-model="skillSize" required>
+                        <template x-for="size in skillModel.size.presets" :key="size"><option :value="size" x-text="size"></option></template>
+                    </select>
+                </template>
+                <template x-if="skillModel && skillModel.size.mode !== 'fixed'">
+                    <input x-model="skillSize" required pattern="[0-9]{2,5}x[0-9]{2,5}">
+                </template>
+            </label>
+            <p x-show="skillTaskModel" class="vs-field-hint"
+                x-text="skillLabel('Prompt preparation model', '提示词准备模型') + ' · ' + skillTaskModel"></p>
+            <p x-show="!skillTaskModel && skillModels.length" role="status"
+                x-text="skillLabel('Set a Standard task model in the Privacy profile to continue.', '请先在隐私配置中设置标准任务模型。')"></p>
+            <button type="submit" class="vs-button primary" :disabled="skillBusy || !skillTaskModel || !skillModel"
+                x-text="skillBusy ? skillLabel('Submitting…', '正在提交…') : skillLabel('Generate image', '生成图片')"></button>
+        </fieldset>
+        <p x-show="skillError" role="alert" x-text="skillError"></p>
+        <p x-show="skillRunId" role="status" x-text="skillLabel('See this run in Output.', '在输出区查看这次执行。')"></p>
+    </form>
+</template>

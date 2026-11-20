@@ -107,3 +107,32 @@ def test_channel_reset_preserves_other_channels_and_rejects_active_answer(env,mo
     monkeypatch.setattr(service,'converse',answer)
     assert client.post(path,json={'question':'New question','request_id':'request-reset-123'}).status_code==200
     assert len(store.conversation(owner,c['id']))==1
+
+
+def test_channel_models_owner_scope_selection_and_retry_binding(env,monkeypatch):
+    from ai2apps.intelligence import article_chat
+    client,store,owner,c=env;calls=[]
+    async def catalog(*a):return {'models':[{'id':'model-a','name':'A'}],'default':'model-a'}
+    monkeypatch.setattr(article_chat,'conversation_models',catalog)
+    path='/intelligence/channels/'+c['id']+'/conversation'
+    assert client.get(path+'/models').json()['models'][0]['id']=='model-a'
+    foreign=store.save_channel('foreign',ChannelInput(name='Private',interests='News').model_dump())
+    assert client.get('/intelligence/channels/'+foreign['id']+'/conversation/models').status_code==404
+    async def answer(*a,**kw):calls.append(kw);return {'answer':'Selected model answer','references':[]}
+    monkeypatch.setattr(service,'converse',answer)
+    body={'question':'Question','request_id':'model-request-123','model':'model-a'}
+    assert client.post(path,json={**body,'model':'foreign-model'}).status_code==409
+    assert client.post(path,json=body).status_code==200
+    assert calls==[{'model_id':'model-a'}]
+    assert client.post(path,json=body).status_code==200 and len(calls)==1
+    assert client.post(path,json={**body,'model':None}).status_code==409
+    assert store.conversation(owner,c['id'])[0]['model']=='model-a'
+
+@pytest.mark.asyncio
+async def test_channel_converse_forwards_model_to_shared_invocation(monkeypatch):
+    async def model(*a,**kw):
+        assert kw['model_id']=='selected-model'
+        return a[-1]({'answer':'Fact [1]','evidence_ids':[1]})
+    monkeypatch.setattr(service,'model_json',model)
+    await service.converse(None,None,None,{'id':'c','name':'Test','interests':''},'Question',
+        [{'id':'a','title':'Fact','body':'Fact','summary':'','updated_at':'2026-10-31'}],[],model_id='selected-model')

@@ -1,0 +1,73 @@
+{
+  "schema": "ai2apps.checkpoint-build/v1",
+  "distributionId": "dist_ai2apps_zonos3_mini_c3b13200_v1",
+  "modelId": "ai2apps.model.zonos3-mini/default",
+  "repoId": "mlx-community/ZONOS3-Mini",
+  "revision": "c3b1320037be83fdbe57586bd6678573de1789f4",
+  "format": "safetensors",
+  "quantization": "bf16",
+  "pieceSize": 8388608,
+  "license": {
+    "id": "Apache-2.0",
+    "name": "Apache License 2.0",
+    "termsUrl": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+    "termsText": "Apache License, Version 2.0. See https://www.apache.org/licenses/LICENSE-2.0\n\n",
+    "termsHash": "sha256:2b93f05188b150e3d6ce31fa7cb7654cde98b78d2b671c5689e334bf520d53c9",
+    "usagePolicy": "permissive",
+    "accessPolicy": "public",
+    "redistributionPolicy": "allowed"
+  },
+  "includePatterns": [
+    "codec/config.json",
+    "codec/model.safetensors",
+    "config.json",
+    "conversion.json",
+    "model.safetensors",
+    "speaker_encoder/config.json",
+    "speaker_encoder/frontend.npz",
+    "speaker_encoder/model.safetensors",
+    "tokenizer.json",
+    "voices.json",
+    "voices/Ananya_hi_F_1.embedding.npz",
+    "voices/Arjun_hi_M_1.embedding.npz",
+    "voices/Chaitanya_te_M_1.embedding.npz",
+    "voices/Cillian_en-Irish_M_1.embedding.npz",
+    "voices/Gaspard_fr_M_1.embedding.npz",
+    "voices/Ginevra_it_F_1.embedding.npz",
+    "voices/Haoran_zh-energetic_M_1.embedding.npz",
+    "voices/Imogen_en-British_F_1.embedding.npz",
+    "voices/Jett_en-energetic_M_1.embedding.npz",
+    "voices/Leonor_pt_F_1.embedding.npz",
+    "voices/Liesel_de_F_1.embedding.npz",
+    "voices/Lorenzo_it_M_1.embedding.npz",
+    "voices/Meilin_zh-energetic_F_1.embedding.npz",
+    "voices/Minjun_ko_M_1.embedding.npz",
+    "voices/Morgana_en-witch_F_1.embedding.npz",
+    "voices/Rodrigo_es_M_1.embedding.npz",
+    "voices/Rupert_en-British_M_1.embedding.npz",
+    "voices/Sakura_en-anime_F_1.embedding.npz",
+    "voices/Savannah_en-American_F_1.embedding.npz",
+    "voices/Seoyeon_ko_F_1.embedding.npz",
+    "voices/Sravya_te_F_1.embedding.npz",
+    "voices/Thaddeus_en-announcervoice_M_1.embedding.npz",
+    "voices/Thiago_pt_M_1.embedding.npz",
+    "voices/Willow_en-asrm_F_1.embedding.npz",
+    "voices/Wolfgang_de_M_1.embedding.npz",
+    "voices/Wyatt_en-American_M_1.embedding.npz",
+    "voices/Ximena_es_F_1.embedding.npz"
+  ],
+  "sourceRepositories": [
+    {
+      "type": "huggingface",
+      "repoId": "mlx-community/ZONOS3-Mini",
+      "revision": "c3b1320037be83fdbe57586bd6678573de1789f4",
+      "access": "public_anonymous"
+    },
+    {
+      "type": "modelscope",
+      "repoId": "mlx-community/ZONOS3-Mini",
+      "revision": "7c4ec723c0029cfcf8fdac3142365fc91483b321",
+      "access": "public_anonymous"
+    }
+  ]
+}

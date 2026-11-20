@@ -1,0 +1,38 @@
+{
+  "schema": "ai2apps.checkpoint-build/v1",
+  "distributionId": "dist_ai2apps_musetalk_whisper_169d4a43_v1",
+  "modelId": "ai2apps.model.musetalk-cuda/whisper",
+  "repoId": "openai/whisper-tiny",
+  "revision": "169d4a4341b33bc18d8881c4b69c2e104e1cc0af",
+  "format": "safetensors",
+  "quantization": "fp32",
+  "pieceSize": 8388608,
+  "license": {
+    "id": "Apache-2.0",
+    "name": "Apache License 2.0",
+    "termsUrl": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+    "termsHash": "sha256:5c17a1de8ab9212122b8f5f84891494963609695a5f6083671e5d21cd074dcba",
+    "usagePolicy": "license_terms",
+    "accessPolicy": "public",
+    "redistributionPolicy": "allowed"
+  },
+  "includePatterns": [
+    "config.json",
+    "model.safetensors",
+    "preprocessor_config.json"
+  ],
+  "sourceRepositories": [
+    {
+      "type": "huggingface",
+      "repoId": "openai/whisper-tiny",
+      "revision": "169d4a4341b33bc18d8881c4b69c2e104e1cc0af",
+      "access": "public_anonymous"
+    },
+    {
+      "type": "modelscope",
+      "repoId": "openai-mirror/whisper-tiny",
+      "revision": "689008f4159ef574fdce4c0b245c5c008f33374e",
+      "access": "public_anonymous"
+    }
+  ]
+}

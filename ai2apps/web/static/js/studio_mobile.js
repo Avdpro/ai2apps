@@ -180,7 +180,7 @@
                 else await select.call(this,id); // Prepare the retained Gallery drop target only after an explicit selection.
                 return;
             }
-            if(media.matches && this.hasActiveMiniApp!==false && this.currentMiniApp?.id===id){await this.ensureSelectedMiniAppFrame?.();go('create');return;}
+            if(media.matches && this.hasActiveMiniApp!==false && this.currentMiniApp?.id===id && this.currentMiniApp?.source!=='package'){await this.ensureSelectedMiniAppFrame?.();go('create');return;}
             await select.call(this,id);
             if(media.matches && this.currentMiniApp?.id===id)go('create');
         };
@@ -287,14 +287,17 @@
             picker.onchange=()=>{if(picker.files.length&&input.isConnected&&!input.disabled){input.files=picker.files;input.dispatchEvent(new Event('change',{bubbles:true}));}else pendingPick?.(null);picker.remove();};picker.oncancel=()=>{picker.remove();pendingPick?.(null);};picker.hidden=true;root.append(picker);close(false);invoke(picker);
         }
         function choose(input){const box=sheet(t.choose);action(box,t.file,()=>pick(input,false));action(box,t.photos,()=>pick(input,true),!/image|video/.test(input.accept));action(box,t.pickGallery,()=>gallery(input));action(box,t.cancel,close);}
-        assetPickers.set(root,({accept,signal}={})=>{
+        assetPickers.set(root,({accept,multiple=false,signal}={})=>{
             if(!media.matches)throw new Error('Mobile asset picker unavailable');
             close();
             return new Promise(resolve=>{
-                const input=document.createElement('input');input.type='file';input.accept=accept;input.hidden=true;root.append(input);
-                const finish=file=>{if(pendingPick!==finish)return;pendingPick=null;input.remove();signal?.removeEventListener('abort',cancel);resolve(file?{body:file,name:file.name}:null);};
+                const input=document.createElement('input');input.type='file';input.accept=accept;input.multiple=multiple;input.hidden=true;root.append(input);
+                const finish=value=>{if(pendingPick!==finish)return;pendingPick=null;input.remove();signal?.removeEventListener('abort',cancel);resolve(value);};
                 const cancel=()=>{close();finish(null);};pendingPick=finish;
-                input.addEventListener('change',()=>finish(input.files[0]||null));
+                input.addEventListener('change',()=>{
+                    const files=Array.from(input.files,body=>({body,name:body.name}));
+                    finish(files.length ? (multiple ? files : files[0]) : null);
+                });
                 signal?.addEventListener('abort',cancel,{once:true});
                 if(signal?.aborted)cancel();else choose(input);
             });

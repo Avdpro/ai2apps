@@ -31,6 +31,8 @@ def public_allowed(method, path):
     if method=='POST' and re.fullmatch(r'/v1/mobile/chat/threads/[A-Za-z0-9_-]+/manage',path):return True
     if method in ('PATCH','DELETE') and re.fullmatch(r'/v1/mobile/chat/threads/[A-Za-z0-9_-]+',path):return True
     if method=='POST' and re.fullmatch(r'/v1/mobile/chat/threads/[A-Za-z0-9_-]+/speech',path):return True
+    if method=='GET' and re.fullmatch(r'/v1/mobile/chat/threads/[A-Za-z0-9_-]+/images/[A-Za-z0-9_-]+/\d+',path):return True
+    if method=='GET' and re.fullmatch(r'/v1/mobile/chat/threads/[A-Za-z0-9_-]+/(?:files/[A-Za-z0-9_-]+/[A-Za-z0-9_-]+|attachments/[A-Za-z0-9_-]+)',path):return True
     if re.fullmatch(r'/v1/mobile/chat/threads/[A-Za-z0-9_-]+/turns(?:/[A-Za-z0-9_-]+(?:/cancel)?)?', path):
         return (method == 'GET' and not path.endswith('/cancel')) or (method == 'POST' and (path.endswith('/turns') or path.endswith('/cancel')))
     from ai2apps.web.owner_agent_gateway import allowed as agent_allowed
@@ -110,6 +112,8 @@ async def chat_proxy(request, method, path, payload=None):
         or (method == 'POST' and path == '/chat/threads')
         or (method in ('GET','PUT') and re.fullmatch(r'/chat/threads/[A-Za-z0-9_-]+/content',path)))
     if method=='POST' and re.fullmatch(r'/chat/threads/[A-Za-z0-9_-]+/speech',path):allowed=True
+    if method=='GET' and re.fullmatch(r'/chat/threads/[A-Za-z0-9_-]+/images/[A-Za-z0-9_-]+/\d+',path):allowed=True
+    if method=='GET' and re.fullmatch(r'/chat/threads/[A-Za-z0-9_-]+/(?:files/[A-Za-z0-9_-]+/[A-Za-z0-9_-]+|attachments/[A-Za-z0-9_-]+)',path):allowed=True
     if method=='POST' and re.fullmatch(r'/chat/threads/[A-Za-z0-9_-]+/manage',path):allowed=True
     if method in ('PATCH','DELETE') and re.fullmatch(r'/chat/threads/[A-Za-z0-9_-]+',path):allowed=True
     if re.fullmatch(r'/chat/threads/[A-Za-z0-9_-]+/turns(?:/[A-Za-z0-9_-]+(?:/cancel)?)?', path):
@@ -121,10 +125,12 @@ async def chat_proxy(request, method, path, payload=None):
     isolated = FastAPI(openapi_url=None, docs_url=None, redoc_url=None)
     isolated.include_router(create_chat_router(_runtime, principal_provider=principal))
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=isolated), base_url='http://chat.internal',timeout=120) as client:
-        params={'expected_revision':request.query_params.get('expected_revision','')} if method=='DELETE' else None
+        from ai2apps.chat.mobile_images import prepare_request,project_response
+        payload=prepare_request(_runtime(),principal(),method,path,payload)
+        params={'expected_revision':request.query_params.get('expected_revision','')} if method=='DELETE' else dict(request.query_params) if method=='GET' else None
         response = await client.request(method,path,json=payload,params=params)
     grant[0].valid(grant[1])
-    return Response(response.content,status_code=response.status_code,
+    return Response(project_response(path,response.status_code,response.content),status_code=response.status_code,
         media_type=response.headers.get('content-type','application/json'),headers={'Cache-Control':'no-store'})
 
 

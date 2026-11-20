@@ -111,6 +111,7 @@
     let mounts = new Map();
     let frames = new Map();
     let activeAppId = null;
+    let inlineChatLastUsed = 0;
     let pendingAppNavigation = null;
     let toastTimer = null;
     let sequence = 0;
@@ -205,6 +206,13 @@
         const quickStartApps = Array.from(quickStartIds)
             .map((id) => apps.find((app) => app.id === id)).filter(Boolean);
         quickStartApps.push(...apps.filter(app=>!quickStartIds.has(app.id)));
+        const messagerIndex = quickStartApps.findIndex(app => app.id === 'ai2apps.messager');
+        if (messagerIndex > 0) quickStartApps.unshift(...quickStartApps.splice(messagerIndex, 1));
+        const chatIndex = quickStartApps.findIndex(app => app.id === 'ai2apps.general-chat');
+        if (chatIndex >= 0 && quickStartApps.some(app => app.id === 'ai2apps.todo')) {
+            const [chat] = quickStartApps.splice(chatIndex, 1);
+            quickStartApps.splice(quickStartApps.findIndex(app => app.id === 'ai2apps.todo') + 1, 0, chat);
+        }
         homeApps.innerHTML = quickStartApps.map((app) => (
             '<button class="mobile-home-app" type="button" data-mobile-app="' + escapeHtml(app.id) + '">' +
             appIcon(app) + '<strong>' + escapeHtml(app.name) + '</strong><small>' +
@@ -214,8 +222,10 @@
     }
 
     function dockCandidates() {
-        return Array.from(mounts.values())
-            .filter((mount) => mount.app_key !== 'ai2apps.general-chat')
+        const running = Array.from(mounts.values());
+        if (inlineChatLastUsed && !mounts.has('ai2apps.general-chat')) running.push({app_key:'ai2apps.general-chat',lastUsed:inlineChatLastUsed});
+        return running
+            .filter((mount) => mount.app_key !== 'ai2apps.messager')
             .sort((a, b) => (b.lastUsed || 0) - (a.lastUsed || 0))
             .slice(0, 2);
     }
@@ -234,7 +244,7 @@
             const appId = button.dataset.mobileApp;
             const action = button.dataset.mobileAction;
             button.classList.toggle('is-active', action === 'home' ? activeAppId === null : appId === activeAppId);
-            if (appId) button.dataset.running = mounts.has(appId) ? 'true' : 'false';
+            if (appId) button.dataset.running = (mounts.has(appId) || appId === 'ai2apps.general-chat' && inlineChatLastUsed > 0) ? 'true' : 'false';
         });
         refreshIcons();
     }
@@ -377,7 +387,7 @@
             frame.className = 'mobile-app-frame';
             if(mount.renderer==='sandbox')frame.setAttribute('sandbox','allow-scripts allow-forms allow-downloads');
             frame.title = app.name;
-            frame.allow = 'clipboard-read; clipboard-write';
+            frame.allow = 'clipboard-read; clipboard-write'+(mount.renderer==='host'?'; microphone':'');
             frame.referrerPolicy = 'same-origin';
             frame.addEventListener('load', () => {
                 let documentReady = false;
@@ -429,7 +439,7 @@
             hideTodoDetail();frames.forEach(record=>{record.frame.hidden=true;if(record.browserDetail)record.browserDetail.frame.hidden=true;});
             const chat=root.querySelector('[data-mobile-inline-agent]');
             if(!chat)throw Error('Chat Shell surface unavailable');
-            activeAppId=appId;title.textContent=app.name;home.hidden=true;stage.hidden=false;loading.hidden=true;errorView.hidden=true;chat.hidden=false;
+            activeAppId=appId;inlineChatLastUsed=Date.now();title.textContent=app.name;home.hidden=true;stage.hidden=false;loading.hidden=true;errorView.hidden=true;chat.hidden=false;
             closeOverlays();renderDock();savePosition();window.dispatchEvent(new CustomEvent('ai2apps-mobile-chat-visible',{detail:true}));return;
         }
         const cached = frames.get(appId), cachedMount = mounts.get(appId);
@@ -551,6 +561,9 @@
         }
         record.browserBackPending=false;
         record.frame.hidden=true;record.browserDetail.frame.hidden=false;
+        if(record.browserDetail.ready){
+            record.browserDetail.frame.contentWindow?.postMessage({type:'ai2apps.host.activate',mountToken:record.token},location.origin);
+        }
         loading.hidden=record.browserDetail.ready;errorView.hidden=true;
         return true;
     };
@@ -659,6 +672,20 @@
         if (!record || (event.origin !== window.location.origin && event.origin !== 'null')) return;
         const message = event.data || {};
         if (message.mountToken !== record.token || message.instanceId !== record.instanceId) return;
+        // Trusted Apps register inner UI depth in the host's joint history.
+        // Native edge-back must pop an inner page before it changes Apps.
+        if(message.type==='ai2apps.shell.navigation.push'||message.type==='ai2apps.shell.navigation.back'){
+            if(record!==frames.get(activeAppId)||record.renderer==='sandbox')return;
+            const current=history.state?.appUiMount===record.token?Number(history.state?.appUiDepth)||0:0;
+            if(message.type==='ai2apps.shell.navigation.push'){
+                const depth=Number(message.depth);
+                if(!Number.isInteger(depth)||depth!==current+1||depth>20)return;
+                if(history.state?.appUiMount!==record.token)history.replaceState({...history.state,appId:activeAppId,appUiMount:record.token,appUiDepth:0},'',location.href);
+                record.uiDepth=depth;record.uiBackPending=false;
+                history.pushState({...history.state,appId:activeAppId,appUiMount:record.token,appUiDepth:depth},'',location.href);
+            }else if(current>0&&!record.uiBackPending){record.uiBackPending=true;history.back();}
+            return;
+        }
         if(activeAppId==='ai2apps.intelligence'&&record===frames.get(activeAppId)&&record.renderer!=='sandbox'){
             if(message.type==='ai2apps.intelligence.push'){
                 const depth=Number(message.depth),current=Number(history.state?.intelDepth)||0;
@@ -679,12 +706,25 @@
                 if(frames.get(activeAppId)===record){loading.hidden=true;errorView.hidden=true;}
             }
             event.source.postMessage({
-                type: 'ai2apps.host.context', mountToken: record.token, browserTask:record.browserTaskIntent||null,
+                type: 'ai2apps.host.context', mountToken: record.token, browserTask:record.browserTaskIntent||null,appStateLaunch:record.appStateLaunch||null,
                 instanceId: record.instanceId, viewMountId: record.mountId,
                 context,
             }, '*');
         } else if (message.type === 'ai2apps.shell.open-launcher') {
             openOverlay('launcher');
+        } else if(message.type==='ai2apps.shell.ack-app-state'){
+            if(record.appStateLaunch===message.launchId)record.appStateLaunch=null;
+        } else if(message.type==='ai2apps.shell.open-entry'){
+            if(record.renderer==='sandbox'||frames.get(activeAppId)!==record)return;
+            try{
+                let appId=String(message.appId||'');
+                if(message.appStateLaunch){if(!/^ascl_[0-9a-f]{32}$/.test(message.appStateLaunch))throw Error('Invalid shortcut');const value=await request('/v1/platform/app-shortcuts/launches/'+message.appStateLaunch);appId=value.target.app_id;}
+                if(!appsById.has(appId))throw Error('Target App is not available on Mobile');
+                await openApp(appId);
+                const target=frames.get(appId);if(activeAppId!==appId||!target||target.renderer==='sandbox')throw Error('Target App did not open');
+                if(message.appStateLaunch){target.appStateLaunch=message.appStateLaunch;target.frame.contentWindow.postMessage({type:'ai2apps.host.context',mountToken:target.token,instanceId:target.instanceId,appStateLaunch:target.appStateLaunch},location.origin);}
+                sendBridgeResponse(event.source,message,true,{appId,instanceId:target.instanceId});
+            }catch(error){sendBridgeResponse(event.source,message,false,null,{message:error.message});}
         } else if (message.type === 'ai2apps.shell.open-browser-task') {
             try{
                 if(!/^btask_[a-zA-Z0-9_-]{1,120}$/.test(message.taskId||''))throw Error('Invalid browser task');
@@ -779,6 +819,9 @@
             if(browserRecord.browserDetail)browserRecord.browserDetail.frame.hidden=true;
             browserRecord.frame.hidden=false;
             browserRecord.frame.contentWindow.ai2appsRestoreStudioSurface?.(event.state?.studioInline?'create':'library');
+            if(event.state?.studioInline){
+                browserRecord.frame.contentWindow?.postMessage({type:'ai2apps.host.activate',mountToken:browserRecord.token},location.origin);
+            }
             loading.hidden=true;errorView.hidden=true;return;
         }
         if(['ai2apps.ai-browser','ai2apps.imagine-studio','ai2apps.video-studio','ai2apps.readaloud'].includes(appId)&&browserRecord?.browserDetail){
@@ -791,7 +834,24 @@
             const showing=event.state?.browserMiniApp===browserRecord.browserDetail.id;
             browserRecord.browserDetail.frame.hidden=!showing;
             browserRecord.frame.hidden=showing;
+            if(showing&&browserRecord.browserDetail.ready){
+                browserRecord.browserDetail.frame.contentWindow?.postMessage({type:'ai2apps.host.activate',mountToken:browserRecord.token},location.origin);
+            }
             loading.hidden=!showing||browserRecord.browserDetail.ready;errorView.hidden=true;return;
+        }
+        const uiRecord=frames.get(appId);
+        if(uiRecord&&uiRecord.renderer!=='sandbox'&&event.state?.appUiMount===uiRecord.token&&Number.isInteger(event.state?.appUiDepth)&&event.state.appUiDepth>=0&&event.state.appUiDepth<=20){
+            if(activeAppId!==appId){
+                const app=appsById.get(appId),mount=mounts.get(appId);
+                if(!app||!mount||!uiRecord.loaded||uiRecord.failed)return;
+                sequence+=1;displayMount(app,mount,false);
+            }
+            const animate=!!uiRecord.uiBackPending;
+            uiRecord.uiBackPending=false;uiRecord.uiDepth=event.state.appUiDepth;
+            // Keep the current iframe mounted. Native history already animates its
+            // swipe snapshot; the App must restore synchronously without a slide.
+            uiRecord.frame.contentWindow.postMessage({type:'ai2apps.shell.navigation.history',depth:uiRecord.uiDepth,animate,mountToken:uiRecord.token,instanceId:uiRecord.instanceId},location.origin);
+            loading.hidden=true;errorView.hidden=true;return;
         }
         const intelRecord=frames.get('ai2apps.intelligence');
         if(activeAppId==='ai2apps.intelligence'&&appId==='ai2apps.intelligence'&&intelRecord){
@@ -830,9 +890,28 @@
         } else if (appId) openApp(appId, false); else showHome(false);
     });
 
-    async function boot() {
+    let bootFlight = null, bootQueued = false;
+    function boot() {
+        if (bootFlight) { bootQueued = true; return bootFlight; }
+        catalogReady = false;
+        root.classList.add('mobile-booting');
+        root.dataset.entryState = 'loading';
+        root.setAttribute('aria-busy', 'true');
+        bootFlight = (async () => {
+            let settled;
+            do { bootQueued = false; catalogReady = false; settled = await loadEntry(); } while (bootQueued && settled);
+            // Redirects retain the same loading surface until the next document.
+            if (settled) {
+                root.dataset.entryState = catalogReady ? 'ready' : 'error';
+                root.setAttribute('aria-busy', 'false');
+                root.classList.remove('mobile-booting');
+            }
+        })().finally(() => { bootFlight = null; });
+        return bootFlight;
+    }
+    async function loadEntry() {
         try {
-            if (!agentHome && await window.AI2AppsAgentConnection?.restoreShellEntry?.()) return;
+            if (!agentHome && await window.AI2AppsAgentConnection?.restoreShellEntry?.()) return false;
             if (agentHome) {
                 await window.AI2AppsAgentConnection?.ready;
                 const connectionState=window.AI2AppsAgentConnection?.status();
@@ -850,7 +929,7 @@
                     body: JSON.stringify({ handoff: handoff }),
                 });
                 location.replace('/mobile');
-                return;
+                return false;
             }
             if (location.pathname === '/mobile/member/complete' || location.pathname === '/mobile/complete') {
                 throw new Error('授权交接已失效，请返回扫码后的账户页面，重新点击“进入我的应用”。');
@@ -866,6 +945,17 @@
                 if (appsById.has(mount.app_key)) mounts.set(mount.app_key, Object.assign(mount, { lastUsed: Date.now() - index }));
             });
             catalogReady = true;
+            root.querySelector('.mobile-activity-card').hidden = false;
+            const reauthorize = root.querySelector('.mobile-reauthorize');
+            if (reauthorize) reauthorize.hidden = true;
+            if (!agentHome) {
+                const zh = document.documentElement.lang.startsWith('zh');
+                const own = owner?.authorized || document.body.dataset.ownerHome === 'true';
+                root.querySelector('.mobile-connection').textContent = own ? 'Owner' : 'Local';
+                root.querySelector('.mobile-hero-status').textContent = own
+                    ? (zh ? 'Owner 连接已就绪' : 'Owner session connected')
+                    : (zh ? '本地连接已就绪' : 'Connected on local network');
+            }
             if(agentHome){
                 const note=root.querySelector('[data-agent-pair-note]');const issue=window.AI2AppsAgentConnection?.status().error;note.textContent=agentConnected?'应用与 Agent 均已连接。':issue?'应用已连接；Agent 未连接：'+issue:'应用已连接。';
                 root.querySelector('.mobile-connection').textContent=agentConnected?'Apps · Agent':'Apps';
@@ -906,10 +996,17 @@
                 root.querySelector('.mobile-connection').textContent = 'Agent';
                 refreshIcons();
                 if(restoreChat){const route=new URLSearchParams(location.hash.slice(1));route.set('app','ai2apps.general-chat');history.replaceState({appId:'ai2apps.general-chat',mobileRoot:true},'',homePath+'#'+route);await openApp('ai2apps.general-chat',false);}
-                return;
+                return true;
             }
             bootError = error.message;
             homeApps.innerHTML = '<p class="mobile-empty">' + escapeHtml(bootError) + '</p>';
+            if (['/mobile','/mobile/home'].includes(location.pathname)) {
+                const retry = document.createElement('button');
+                retry.type = 'button'; retry.className = 'mobile-entry-retry';
+                retry.textContent = document.documentElement.lang.startsWith('zh') ? '重试连接' : 'Retry connection';
+                retry.onclick = () => { void boot(); };
+                homeApps.append(retry);
+            }
             const connection = root.querySelector('.mobile-connection');
             connection.textContent = '未连接';
             root.querySelector('.mobile-hero-status').textContent = '未能完成连接，请重新进入';
@@ -918,6 +1015,7 @@
             if (reauthorize) reauthorize.hidden = false;
         }
         refreshIcons();
+        return true;
     }
 
     window.addEventListener('ai2apps-agent-connection-ready',()=>boot());

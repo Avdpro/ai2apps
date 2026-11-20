@@ -1,0 +1,112 @@
+schema: ai2apps.service/v1
+id: ai2apps.model.qwen3-tts-0.6b-cuda
+name: Qwen3 TTS 0.6B CUDA
+description: Pinned official BF16 CUDA speech synthesis; signed installation pending.
+version: 0.1.0
+publisher:
+  id: ai2apps
+runtime:
+  mode: process
+  protocol: ai2apps-model-worker/v1
+  provider: ai2apps.runtime.cuda-torch
+  adapter: src/worker_adapter.py:create_adapter
+models:
+- id: ai2apps.model.qwen3-tts-0.6b-cuda/custom-voice
+  display_name: Qwen3 TTS 0.6B custom-voice BF16
+  model_type: audio_tts
+  upstream_id: Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice
+  capabilities:
+  - speech_generation
+  - named_voices
+  weights:
+    provider: huggingface
+    repo_id: Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice
+    revision: 85e237c12c027371202489a0ec509ded67b5e4b5
+    preparation:
+      recipe: native
+  audio_capabilities:
+    schema: ai2apps.audio-capabilities/v1
+    operations:
+    - audio_speech
+    languages:
+    - auto
+    - zh
+    - en
+    - de
+    - it
+    - pt
+    - es
+    - ja
+    - ko
+    - fr
+    - ru
+    formats:
+      input: []
+      output:
+      - wav
+      - pcm
+      - mp3
+      - m4a
+      - aac
+      - flac
+      - ogg
+      - opus
+      - webm
+    streaming:
+      mode: unsupported
+      formats: []
+    tts:
+      named_voices:
+        mode: native
+        voices:
+        - serena
+        - vivian
+        - uncle_fu
+        - ryan
+        - aiden
+        - ono_anna
+        - sohee
+        - eric
+        - dylan
+      speed:
+        mode: unsupported
+      emotion:
+        mode: unsupported
+      instructions:
+        mode: unsupported
+      voice_profiles:
+        mode: unsupported
+capabilities: []
+requires:
+  services:
+  - id: ai2apps.runtime.cuda-torch
+    version: '>=0.6.0,<1.0.0'
+    optional: false
+    capabilities:
+    - cuda
+    - model-worker-v1
+    - audio-tts
+    - qwen3-tts
+  python: '>=3.11,<3.14'
+permissions:
+  network:
+    outbound: false
+  model_weights:
+    huggingface_cache: read
+    reason: Read only the Host-selected pinned Qwen3 TTS checkpoint cache.
+  accelerator:
+    cuda: true
+    reason: Run BF16 CUDA speech inference.
+compatibility:
+  os:
+  - linux
+  architectures:
+  - arm64
+  - aarch64
+health:
+  path: /health
+  startup_timeout_seconds: 180
+restart:
+  max_attempts: 2
+  base_delay_seconds: 1
+tools: []

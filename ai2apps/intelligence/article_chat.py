@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from fastapi import HTTPException
 from . import service
 
-logging.getLogger(__name__).info('Article chat explicit web search context v2 loaded from %s', __file__)
+logging.getLogger(__name__).info('Article chat confirmed search arguments loaded from %s', __file__)
 
 
 class Action(BaseModel):
@@ -328,6 +328,7 @@ async def generate(runtime,principal,store,article,state,args,external=None):
 
 def register(runtime,principal_for,authorize):
     from ai2apps.system_tasks.service import TaskHandler
+    from ai2apps.services.capability_routing import CapabilityInvocationError
     repo=Repository(runtime.intelligence_collector.store)
     def check(owner,payload):
         article=repo.store.get('articles',owner,payload['article_id'])
@@ -346,7 +347,7 @@ def register(runtime,principal_for,authorize):
                 from ai2apps.services.models import ToolCallContext
                 from ai2apps.system_tasks.sessions import execution_session
                 session=execution_session(runtime,ctx.owner,'ai2apps.intelligence')
-                confirmed_fast_search(runtime,principal,id,args['thread'],args['confirmation_id'],session)
+                confirmed = confirmed_fast_search(runtime,principal,id,args['thread'],args['confirmation_id'],session)
                 async def progress(update):
                     content=update.get('content',{})
                     ctx.report(message=update.get('text','Search-All'),progress=content)
@@ -356,7 +357,11 @@ def register(runtime,principal_for,authorize):
                 context=replace(context,progress_reporter=progress)
                 ctx.report(message='Search-All：搜索并阅读正文')
                 async with asyncio.timeout(180):
-                    external=await runtime.app_capability_router.invoke('web.search',{'provider':'ai2apps.search-all.search','confirmation_id':args['confirmation_id'],'mode':'fast'},context)
+                    external = await runtime.app_capability_router.invoke(
+                        'web.search',
+                        {**confirmed, 'provider': 'ai2apps.search-all.search', 'confirmation_id': args['confirmation_id']},
+                        context,
+                    )
             ctx.report(message='分析文章话题' if args['mode']!='answer' else '阅读资料并回答')
             result=action.get('draft_result')
             if result is None:
@@ -380,7 +385,10 @@ def register(runtime,principal_for,authorize):
             except (ValueError,TypeError):pass
             raise
         except Exception as error:
-            try:repo.finish(ctx.owner,id,key,error=str(getattr(error,'detail',error))[:500])
+            message = str(getattr(error,'detail',error))[:500]
+            if isinstance(error, CapabilityInvocationError) and error.code == 'parameter_contract_mismatch':
+                message = '搜索参数校验未通过，请重新发起搜索。 / Search parameters could not be validated. Start a new search.'
+            try:repo.finish(ctx.owner,id,key,error=message)
             except (ValueError,TypeError):pass
             raise
     async def bounded(ctx):

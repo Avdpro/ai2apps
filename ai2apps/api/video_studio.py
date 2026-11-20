@@ -57,6 +57,8 @@ from ai2apps.video_policy import (
     is_temporarily_disabled_video_model,
 )
 
+from ai2apps.studio.development import comfyui_prototype_enabled
+
 APP_ID = "ai2apps.video-studio"
 STUDIO_ID = APP_ID
 EXTRACT_AUDIO_ID = "ai2apps.video.extract-audio"
@@ -70,6 +72,10 @@ MINI_APPS = (
     {"schema": "ai2apps.mini-app/v1", "id": EXTRACT_AUDIO_ID, "version": "1.0.0", "kind": "clip", "mode": "x2a", "icon": "audio-lines", "entry": {"kind": "host-adapter", "adapter": "extract-audio"}, "ui": {"minimum_width": 520, "drop_targets": [{"id": "video", "accepts": ["video"]}]}, "placements": [{"studio": STUDIO_ID, "category": "edit", "order": 40}], "inputs": [{"id": "video", "kind": "video", "required": True}], "outputs": [{"id": "audio", "kind": "audio", "media_types": ["audio/wav"], "final": True}], "executor": {"pipelines": ["ai2apps.pipeline.media-extraction"]}, "requirements": {"capabilities": ["media.audio_decode"]}},
     {"schema": "ai2apps.mini-app/v1", "id": UPSCALING_ID, "version": "1.0.0", "kind": "clip", "mode": "upscale", "icon": "scan-search", "entry": {"kind": "host-adapter", "adapter": "video-upscaling"}, "ui": {"minimum_width": 520, "drop_targets": [{"id": "video", "accepts": ["video"]}]}, "placements": [{"studio": STUDIO_ID, "category": "edit", "order": 45}], "inputs": [{"id": "video", "kind": "video", "required": True}], "outputs": [{"id": "video", "kind": "video", "media_types": ["video/mp4"], "final": True}], "executor": {"operation": "video_upscaling"}, "requirements": {"capabilities": ["video.upscaling"]}},
 )
+if comfyui_prototype_enabled():
+    from ai2apps.experiments.comfyui_studio import declaration as comfyui_declaration
+
+    MINI_APPS += (comfyui_declaration(STUDIO_ID),)
 MINI_APP_BY_ID = {item["id"]: item for item in MINI_APPS}
 
 
@@ -511,7 +517,7 @@ def create_video_studio_router(
         principal: RequestPrincipal = principal_dependency,
     ):
         definition = MINI_APP_BY_ID.get(request.mini_app_id)
-        if definition is None:
+        if definition is None or request.mini_app_id == "ai2apps.comfyui":
             raise HTTPException(status_code=404, detail="Video Mini-App was not found")
         try:
             return studio(principal, app_instance_id).create_run(
@@ -1224,13 +1230,16 @@ def create_video_studio_router(
             return studio_error(error)
 
     @router.get("/providers")
-    def providers(_principal=principal_dependency):
+    def providers(principal: RequestPrincipal = principal_dependency):
         items = []
-        for model in list_package_models(runtime_provider()):
+        from ai2apps.video.byok import catalog as byok_catalog
+
+        for model in [*list_package_models(runtime_provider()), *byok_catalog(runtime_provider(), principal.actor_user_id)]:
             if model.model_type != "video_generation" or is_temporarily_disabled_video_model(model):
                 continue
+            is_byok = model.metadata.get("source") == "byok"
             identity = build_model_identity(
-                source="package",
+                source="byok" if is_byok else "package",
                 provider_id=model.inference_provider_key or model.provider_key,
                 model_id=model.id,
                 display_name=model.display_name,
@@ -1247,9 +1256,48 @@ def create_video_studio_router(
                     "family": model.metadata.get("family"),
                     "precision": model.metadata.get("precision"),
                     "residency": model.metadata.get("residency"),
+                    "sourceType": "byok" if is_byok else "package",
+                    "byokProvider": model.metadata.get("provider") if is_byok else None,
+                    "resolutionOptions": model.metadata.get("resolutionOptions") if is_byok else None,
+                    "resolutionSemantics": model.metadata.get("resolutionSemantics") if is_byok else None,
                 }
             )
         return {"items": items}
+
+    @router.get("/byok")
+    def list_byok_video_providers(principal: RequestPrincipal = principal_dependency):
+        from ai2apps.video.byok import PROVIDERS, configured
+
+        runtime = runtime_provider()
+        return {"items": [
+            {"id": provider, "name": spec["name"], "modelId": spec["model"],
+             "modelIds": [item["model"] for item in spec.get("models", ({"model": spec["model"]},))],
+             "configured": configured(runtime, provider, principal.actor_user_id)}
+            for provider, spec in PROVIDERS.items()
+        ]}
+
+    @router.put("/byok/{provider}")
+    def configure_byok_video_provider(
+        provider: str, payload: dict[str, str], principal: RequestPrincipal = principal_dependency,
+    ):
+        from ai2apps.video.byok import PROVIDERS, set_credential
+
+        if provider not in PROVIDERS:
+            raise HTTPException(status_code=404, detail="Unknown video API provider")
+        try:
+            set_credential(runtime_provider(), provider, principal.actor_user_id, payload.get("apiKey", ""))
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        return {"provider": provider, "configured": True}
+
+    @router.delete("/byok/{provider}")
+    def remove_byok_video_provider(provider: str, principal: RequestPrincipal = principal_dependency):
+        from ai2apps.video.byok import PROVIDERS, clear_credential
+
+        if provider not in PROVIDERS:
+            raise HTTPException(status_code=404, detail="Unknown video API provider")
+        clear_credential(runtime_provider(), provider, principal.actor_user_id)
+        return {"provider": provider, "configured": False}
 
     @router.post("/drafts", status_code=201)
     async def create_draft(

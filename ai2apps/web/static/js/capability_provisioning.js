@@ -268,8 +268,12 @@
                 '<label class="acpf-license-confirm"><input type="checkbox"> <span></span></label>' +
                 '<div class="acpf-actions"><button type="button" data-license-action="cancel" class="acpf-secondary">' + tr("取消") + '</button>' +
                 '<button type="button" data-license-action="accept" class="acpf-primary" disabled>' + tr("确认许可并继续下载") + '</button></div></section>';
-            if (root) { overlay.classList.add('acpf-inline'); overlay.querySelector('section').removeAttribute('aria-modal'); }
-        (root || document.querySelector('dialog[open]') || document.body).appendChild(overlay);
+            if (root) {
+                root.classList.add('acpf-showing-license');
+                overlay.classList.add('acpf-inline');
+                if (root.classList.contains('acpf-inline')) overlay.querySelector('section').removeAttribute('aria-modal');
+            }
+            (root || document.querySelector('dialog[open]') || document.body).appendChild(overlay);
             overlay.querySelector('#acpf-license-title').textContent = license.name || tr('模型许可确认');
             overlay.querySelector('.acpf-license-usage').textContent = tr('用途限制：{0}', license.usagePolicy || tr('以许可条款为准'));
             const terms = overlay.querySelector('.acpf-license-terms');
@@ -318,7 +322,10 @@
                         });
                     }
                 });
-            }).finally(() => overlay.remove());
+            }).finally(() => {
+                overlay.remove();
+                root?.classList.remove('acpf-showing-license');
+            });
             consents.push(consent);
         }
         return consents;
@@ -396,7 +403,7 @@
         });
     }
 
-    function sheet(session, root = null) {
+    function sheet(session, root = null, view = null) {
         const overlay = document.createElement('div');
         overlay.className = 'acpf-overlay';
         overlay.innerHTML = '<section class="acpf-sheet acpf-run-sheet" role="dialog" aria-modal="true" aria-labelledby="acpf-title">' +
@@ -409,13 +416,18 @@
             '<button type="button" data-action="restart" class="acpf-primary" hidden>' + tr("重启本地服务") + '</button>' +
             '<button type="button" data-action="retry" class="acpf-primary" hidden>' + tr("重试") + '</button>' +
             '<button type="button" data-action="done" class="acpf-primary" hidden>' + tr('完成') + '</button></div></footer></section>';
-        if (root) { overlay.classList.add('acpf-inline'); overlay.querySelector('section').removeAttribute('aria-modal'); }
+        if (root) {
+            if (!view) overlay.classList.add('acpf-inline');
+            const panel = overlay.querySelector('section');
+            panel.removeAttribute('aria-modal');
+            if (root.matches('dialog')) panel.removeAttribute('role');
+        }
         (root || document.querySelector('dialog[open]') || document.body).appendChild(overlay);
-        render(overlay, session);
+        render(overlay, session, view);
         return overlay;
     }
 
-    function render(overlay, session) {
+    function render(overlay, session, view = null) {
         const plan = session.plan || {};
         const presentation = { ...defaultPresentation, ...(plan.presentation || {}) };
         const memory = Math.round(plan.device?.system_memory_gib || 0);
@@ -428,7 +440,9 @@
         const mark = overlay.querySelector('.acpf-mark i');
         if (mark) mark.setAttribute('data-lucide', presentation.icon);
         overlay.querySelector('.acpf-reason').textContent = (plan.reasons || []).map(value => tr(value)).join(' · ');
-        overlay.querySelector('.acpf-device').textContent = `${plan.device?.accelerator?.vendor || tr('本地')} ${plan.device?.accelerator?.api || tr('设备')} · ${memory} GiB · ${plan.profileId || ''}`;
+        const device = overlay.querySelector('.acpf-device');
+        device.hidden = Boolean(view);
+        device.textContent = view ? '' : `${plan.device?.accelerator?.vendor || tr('本地')} ${plan.device?.accelerator?.api || tr('设备')} · ${memory} GiB · ${plan.profileId || ''}`;
         const options = plan.profileOptions || [];
         const selected = options.filter(option => option.selected);
         const selection = overlay.querySelector('.acpf-selected-tier');
@@ -455,7 +469,7 @@
             details => details.dataset.groupKey
         ));
         list.replaceChildren();
-        for (const group of groupedSteps(session)) {
+        for (const group of view?.groups || groupedSteps(session)) {
             const item = document.createElement('li');
             item.className = group.state;
             item.setAttribute('aria-label', `${tr(group.title)}, ${stepStateLabels[group.state]}`);
@@ -471,7 +485,7 @@
             if (group.steps.length === 1) {
                 const step = group.steps[0];
                 const detail = document.createElement('small'); detail.textContent = `${stepIdentity(step)} ${step.requiredVersion || ''}`.trim();
-                content.append(detail);
+                if (detail.textContent) content.append(detail);
             } else {
                 const details = document.createElement('details'); details.className = 'acpf-step-items';
                 details.dataset.groupKey = group.key;
@@ -495,7 +509,7 @@
             : progressStage === 'activating_checkpoint'
                 ? labels.activating
                 : (labels[session.status] || session.status);
-        overlay.querySelector('.acpf-status').textContent = `${statusLabel} · ${Math.round(percent)}%`;
+        overlay.querySelector('.acpf-status').textContent = `${view?.statusLabel || statusLabel} · ${Math.round(percent)}%`;
         const bytesCompleted = Number(progressDetail.bytesCompleted ?? progressDetail.bytes_completed ?? 0);
         const bytesTotal = Number(progressDetail.bytesTotal ?? progressDetail.bytes_total ?? 0);
         const totalBytesCompleted = Number(progressDetail.totalBytesCompleted ?? progressDetail.total_bytes_completed ?? bytesCompleted);
@@ -539,8 +553,8 @@
         overlay.querySelector('[data-action="cancel"]').hidden = session.status === 'ready';
         overlay.querySelector('[data-action="done"]').hidden = session.status !== 'ready';
         if (session.status === 'ready') {
-            overlay.querySelector('#acpf-title').textContent = tr('安装成功');
-            overlay.querySelector('.acpf-description').textContent = tr('安装已完成，可以开始使用。');
+            overlay.querySelector('#acpf-title').textContent = view?.successTitle || tr('安装成功');
+            overlay.querySelector('.acpf-description').textContent = view?.successDescription || tr('安装已完成，可以开始使用。');
             overlay.querySelector('.acpf-progress i').style.width = '100%';
             overlay.querySelector('.acpf-status').textContent = tr(presentation.ready_label);
         }
@@ -586,7 +600,7 @@
                             ? session.error?.challenges || []
                             : [];
                         const licenseConsents = challenges.length
-                            ? await confirmLicenseChallenges(challenges, options.root ? overlay : null)
+                            ? await confirmLicenseChallenges(challenges, overlay)
                             : [];
                         session = await send(`/provisioning/sessions/${session.id}/${action}`, {
                             method: 'POST',
@@ -717,6 +731,7 @@
     const miniAppHosts = {
         'ai2apps.ai-browser': 'AI Browser',
         'ai2apps.imagine-studio': 'Imagine Studio',
+        'ai2apps.doc-studio': 'Doc Studio',
         'ai2apps.video-studio': 'Video Studio',
         'ai2apps.readaloud': 'Voice Studio',
     };
@@ -758,60 +773,314 @@
         });
     }
     async function openMiniAppPackages({placement}) {
-        if(!miniAppHosts[placement])throw Error('Unsupported Mini-App placement');
-        const hostName=miniAppHosts[placement];
-        const zh=/^zh/i.test(document.documentElement.lang),label=(cn,en)=>zh?cn:en;
-        const overlay=document.createElement('div');overlay.className='acpf-overlay acpf-choice-overlay';
-        overlay.innerHTML='<section class="acpf-sheet acpf-choice-sheet" role="dialog" aria-modal="true"><header class="acpf-choice-header"><div class="acpf-heading"><span>AI2APPS MINI-APPS</span><h2></h2><p></p></div></header><div class="acpf-mini-catalog"></div><p class="acpf-error" role="status"></p><div class="acpf-actions"><button type="button" class="acpf-secondary" data-more></button><button type="button" class="acpf-secondary" data-close></button></div></section>';
-        overlay.querySelector('h2').textContent=label('安装 '+hostName+' Mini-App','Install '+hostName+' Mini-Apps');
-        overlay.querySelector('.acpf-heading p').textContent=label('只显示声明支持 '+hostName+' 的 Package。安装使用系统签名校验和依赖检查。','Only Packages declaring '+hostName+' support are shown. Installation uses system signature and dependency checks.');
-        const list=overlay.querySelector('.acpf-mini-catalog'),error=overlay.querySelector('.acpf-error'),more=overlay.querySelector('[data-more]'),close=overlay.querySelector('[data-close]');
-        more.textContent=label('加载更多','Load more');close.textContent=label('关闭','Close');
-        let cursor='',busy=false,installed=false;const seen=new Set();
-        const previous=document.activeElement;document.body.append(overlay);close.focus();
-        return await new Promise(resolve=>{
-            const finish=()=>{if(busy)return;document.removeEventListener('keydown',keys);overlay.remove();previous?.focus?.();resolve({installed});};
-            const keys=event=>{if(event.key==='Escape'){event.preventDefault();finish();}if(event.key==='Tab'){const nodes=[...overlay.querySelectorAll('button:not(:disabled),a[href]')];if(!nodes.length)return;const i=nodes.indexOf(document.activeElement);if(event.shiftKey&&i<=0){event.preventDefault();nodes.at(-1).focus();}else if(!event.shiftKey&&(i<0||i===nodes.length-1)){event.preventDefault();nodes[0].focus();}}};
-            document.addEventListener('keydown',keys);close.onclick=finish;
-            const install=async(item,button)=>{
-                busy=true;close.disabled=true;more.disabled=true;button.disabled=true;error.textContent='';
-                try{
-                    const id=item.packageId||item.package?.id||item.manifest?.package?.id;
-                    if(!/^[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+$/.test(id||''))throw Error('Invalid Package identity');
-                    const path='/packages/'+id.split('/').map(encodeURIComponent).join('/');
-                    let op=await request(path+'/install-operations',{method:'POST',body:JSON.stringify({version:item.latestVersion||item.version||item.latestRelease?.version||null,approve_review:false})});
-                    while(['pending','running'].includes(op.status)){
-                        error.textContent=label('正在安装：','Installing: ')+(op.stage||op.status);
-                        await new Promise(r=>setTimeout(r,750));op=await request('/packages/install-operations/'+encodeURIComponent(op.operationId));
+        const hostName = miniAppHosts[placement];
+        if (!hostName) throw Error('Unsupported Mini-App placement');
+
+        const zh = /^zh/i.test(document.documentElement.lang);
+        const label = (cn, en) => zh ? cn : en;
+        const dialog = document.createElement('dialog');
+        dialog.className = 'acpf-mini-dialog';
+        dialog.setAttribute('aria-labelledby', 'acpf-mini-title');
+        dialog.innerHTML = `
+            <header class="acpf-mini-header">
+                <h2 id="acpf-mini-title"></h2>
+                <p></p>
+            </header>
+            <div class="acpf-mini-body">
+                <p class="acpf-mini-status" role="status"></p>
+                <p class="acpf-mini-problem" role="alert" hidden></p>
+                <div class="acpf-mini-catalog"></div>
+            </div>
+            <footer class="acpf-mini-footer">
+                <button type="button" data-more hidden></button>
+                <button type="button" data-close autofocus></button>
+            </footer>`;
+
+        const list = dialog.querySelector('.acpf-mini-catalog');
+        const status = dialog.querySelector('.acpf-mini-status');
+        const problem = dialog.querySelector('.acpf-mini-problem');
+        const more = dialog.querySelector('[data-more]');
+        const close = dialog.querySelector('[data-close]');
+        const requests = new AbortController();
+        const seen = new Set();
+        let installedPackages;
+        let cursor = '';
+        let loading = false;
+        let installing = false;
+        let installed = false;
+
+        dialog.querySelector('h2').textContent = label('安装 Mini-App', 'Install Mini-Apps');
+        dialog.querySelector('header p').textContent = label('添加到 ' + hostName, 'Add to ' + hostName);
+        close.textContent = label('关闭', 'Close');
+
+        function updateActions() {
+            more.disabled = loading;
+            for (const button of list.querySelectorAll('button')) {
+                button.disabled = loading || button.dataset.locked === 'true';
+            }
+        }
+
+        function selectPackage(target, name, button) {
+            if (installing || button.disabled) return;
+            installing = true;
+            dialog.classList.add('acpf-mini-obscured');
+            const progress = document.createElement('dialog');
+            progress.className = 'acpf-package-run';
+            progress.setAttribute('aria-labelledby', 'acpf-title');
+            document.body.append(progress);
+
+            const stages = [
+                label('准备软件包', 'Prepare package'),
+                label('下载并验证软件包', 'Download and verify package'),
+                label('安装依赖', 'Install dependencies'),
+                label('安装软件包', 'Install package'),
+                label('完成本地注册', 'Finalize local registration'),
+                label('完成', 'Complete'),
+            ];
+            const stageLabels = {
+                downloading_package: label('正在下载软件包', 'Downloading package'),
+                verifying_package: label('正在验证软件包签名', 'Verifying package signature'),
+                downloading_dependency: label('正在下载依赖', 'Downloading dependency'),
+                verifying_dependency: label('正在验证依赖签名', 'Verifying dependency signature'),
+            };
+            const presentation = {
+                eyebrow: 'AI2APPS',
+                title: label('安装 Mini-App', 'Install Mini-App'),
+                description: `${name} · ${target.version}`,
+                icon: 'package-down',
+                confirm_label: label('确认并继续安装', 'Approve and continue'),
+                ready_label: label('已添加到 ' + hostName, 'Added to ' + hostName),
+            };
+            const session = {plan: {presentation}, status: 'installing_provider'};
+            const overlay = sheet(session, progress, {groups: []});
+            const action = key => overlay.querySelector(`[data-action="${key}"]`);
+            const status = overlay.querySelector('.acpf-status');
+            status.setAttribute('role', 'status');
+            const steps = overlay.querySelector('.acpf-steps');
+            steps.setAttribute('aria-label', label('安装步骤', 'Installation steps'));
+            overlay.querySelector('.acpf-error').setAttribute('role', 'alert');
+
+            let busy = false;
+            let operationId = '';
+            let currentStep = 1;
+            let percent = 0;
+            let operation = {};
+
+            function draw(state, message, error = null) {
+                const groups = stages.map((title, index) => {
+                    const step = index + 1;
+                    return {title, steps: [{}], state: state === 'ready' || step < currentStep ? 'complete'
+                        : step === currentStep ? (state === 'failed' ? 'failed' : 'active') : 'pending'};
+                });
+                Object.assign(session, {status: state, error, progress: {percent, detail: operation}});
+                render(overlay, session, {
+                    groups, statusLabel: message,
+                    successTitle: label('安装成功', 'Installation complete'),
+                    successDescription: `${name} · ${target.version}`,
+                });
+                action('cancel').hidden = busy;
+                action('cancel').textContent = label('返回列表', 'Back to list');
+                action('retry').textContent = operationId
+                    ? label('重新连接', 'Reconnect')
+                    : label('重试', 'Retry');
+                action('done').textContent = label('完成', 'Done');
+                if (!busy) (state === 'ready' ? action('done') : action('cancel')).focus();
+            }
+
+            async function install(approveReview = false) {
+                if (busy) return;
+                busy = true;
+                if (!operationId) {
+                    currentStep = 1;
+                    percent = 0;
+                    operation = {};
+                    overlay.lastDownload = null;
+                }
+                draw('installing_provider', stages[currentStep - 1]);
+                const path = '/packages/' + target.packageId.split('/').map(encodeURIComponent).join('/');
+                try {
+                    if (!operationId) {
+                        const exact = target.manifestSha256 && target.artifactSha256;
+                        operation = await request(path + '/install-operations', {
+                            method: 'POST',
+                            body: JSON.stringify({
+                                version: target.version,
+                                approve_review: approveReview,
+                                ...(exact ? {installationTarget: target} : {}),
+                            }),
+                        });
+                        operationId = operation.operationId || '';
+                    } else {
+                        operation = await request('/packages/install-operations/' + encodeURIComponent(operationId));
                     }
-                    if(op.status!=='completed'&&op.status!=='succeeded')throw Error(op.error?.message||label('安装未完成，请在“发现”查看审核或依赖要求。','Installation did not finish. Check Discover for review or dependency requirements.'));
-                    installed=true;button.textContent=label('已安装','Installed');error.textContent=label('安装完成，可关闭此窗口。','Installed. You can close this window.');
-                }catch(e){error.textContent=String(e.message);button.disabled=false;}
-                finally{busy=false;close.disabled=false;more.disabled=false;}
-            };
-            const load=async()=>{
-                more.disabled=true;error.textContent=label('正在加载…','Loading…');
-                try{
-                    let pages=0;
-                    do{
-                        const result=await request('/packages/catalog/search?type=app&limit=100'+(cursor?'&cursor='+encodeURIComponent(cursor):''));
-                        cursor=result.nextCursor||result.next_cursor||result.pagination?.nextCursor||result.pagination?.next_cursor||'';
-                        const rows=Array.isArray(result)?result:(result.items||result.packages||result.results||[]);
-                        for(const item of rows){
-                            const id=item.packageId||item.package?.id||item.manifest?.package?.id;
-                            const compatible=miniAppPackageComponents(item,placement);
-                            if(!compatible.length||seen.has(id))continue;seen.add(id);
-                            const card=document.createElement('article');card.className='acpf-mini-package';const title=document.createElement('strong'),description=document.createElement('p'),button=document.createElement('button');
-                            title.textContent=item.displayName||item.package?.displayName||id;description.textContent=compatible.map(c=>c.displayName||c.componentId).join(' · ');button.className='acpf-primary';button.textContent=label('安装 Mini-App','Install Mini-App');button.onclick=()=>install(item,button);card.append(title,description,button);list.append(card);
+                    while (['pending', 'running'].includes(operation.status)) {
+                        if (!operationId) throw Error(label('无法读取安装进度。', 'Installation progress is unavailable.'));
+                        const step = /^(downloading|verifying)_package$/.test(operation.stage)
+                            ? 2 : Number(operation.currentStep) || currentStep;
+                        currentStep = Math.max(1, Math.min(stages.length, step));
+                        const fraction = operation.bytesTotal > 0
+                            ? Math.min(1, Number(operation.bytesCompleted || 0) / operation.bytesTotal)
+                            : 0;
+                        percent = Math.max(percent, Math.min(99, (currentStep - 1 + fraction) / (stages.length - 1) * 100));
+                        draw('installing_provider', stageLabels[operation.stage] || stages[currentStep - 1]);
+                        await new Promise(resolve => setTimeout(resolve, 750));
+                        operation = await request('/packages/install-operations/' + encodeURIComponent(operationId));
+                    }
+                    operationId = '';
+                    busy = false;
+                    if (operation.error?.code === 'audit_review_required') {
+                        if (Number(operation.currentStep) > 0) {
+                            currentStep = Math.min(stages.length, Number(operation.currentStep));
                         }
-                        pages++;
-                    }while(!seen.size&&cursor&&pages<5);
-                    error.textContent=seen.size?'':label('暂无已发布且适配 '+hostName+' 的 Mini-App Package。','No published '+hostName+' Mini-App Packages are available.');more.hidden=!cursor;
-                }catch(e){error.textContent=String(e.message);}
-                finally{more.disabled=false;}
-            };
-            more.onclick=load;void load();
+                        draw('awaiting_confirmation', label('等待审查确认', 'Review required'), {message: label(
+                            '安装器已验证软件包签名。本机审查需要你确认是否继续安装。',
+                            'The package signature was verified. Local review requires your approval to continue.',
+                        )});
+                        overlay.querySelector('.acpf-error').classList.add('is-notice');
+                        return;
+                    }
+                    if (!['succeeded', 'completed'].includes(operation.status)) {
+                        throw Error(operation.error?.message || label('安装未完成。', 'Installation did not finish.'));
+                    }
+                    installed = true;
+                    installedPackages.add(target.packageId);
+                    for (const item of list.querySelectorAll('button')) {
+                        if (item.dataset.packageId !== target.packageId) continue;
+                        item.textContent = label('已安装', 'Installed');
+                        item.dataset.locked = 'true';
+                    }
+                    updateActions();
+                    percent = 100;
+                    draw('ready', presentation.ready_label);
+                } catch (error) {
+                    busy = false;
+                    draw('failed', label('安装中断', 'Installation interrupted'), {message: error.message});
+                }
+            }
+
+            action('confirm').onclick = () => install(true);
+            action('retry').onclick = () => install();
+            action('cancel').onclick = () => progress.close();
+            action('done').onclick = () => progress.close();
+            progress.addEventListener('cancel', event => {
+                if (busy) event.preventDefault();
+            });
+            progress.addEventListener('close', () => {
+                progress.remove();
+                installing = false;
+                dialog.classList.remove('acpf-mini-obscured');
+                if (installedPackages.has(target.packageId)) dialog.close();
+                else button.focus();
+            }, {once: true});
+            progress.showModal();
+            overlay.querySelector('#acpf-title').tabIndex = -1;
+            overlay.querySelector('#acpf-title').focus();
+            void install();
+        }
+
+        function appendCard(item) {
+            const target = item.installationTarget;
+            const componentId = item.componentId;
+            if (item.contentKind !== 'mini-app' || !Array.isArray(item.placements) || !item.placements.includes(placement) ||
+                !/^[\w.-]+\/[\w.-]+$/.test(target?.packageId || '') ||
+                typeof target.version !== 'string' || !target.version ||
+                typeof componentId !== 'string' || !componentId ||
+                seen.has(componentId) || installedPackages.has(target.packageId)) return;
+
+            seen.add(componentId);
+            const card = document.createElement('article');
+            card.className = 'acpf-mini-package';
+            const icon = document.createElement('span');
+            icon.className = 'acpf-mini-icon';
+            icon.setAttribute('aria-hidden', 'true');
+            const declarations = item.parent?.miniApps;
+            const declaration = Array.isArray(declarations)
+                ? declarations.find(entry => entry?.componentId === componentId)
+                : undefined;
+            const iconName = item.icon || declaration?.icon;
+            const iconKey = typeof iconName === 'string' && /^[a-z][a-z0-9-]*$/.test(iconName)
+                ? iconName.replace(/(^|-)(\w)/g, (_, separator, letter) => letter.toUpperCase())
+                : '';
+            const glyph = document.createElement('i');
+            glyph.dataset.lucide = iconKey && (Object.hasOwn(window.ai2appsIcons || {}, iconKey) ||
+                Object.hasOwn(window.lucide?.icons || {}, iconKey)) ? iconName : 'panels-top-left';
+            icon.append(glyph);
+            const copy = document.createElement('div');
+            const heading = document.createElement('h3');
+            const description = document.createElement('p');
+            const version = document.createElement('small');
+            const button = document.createElement('button');
+            const compatible = item.installability?.installable !== false;
+            heading.textContent = item.displayName || target.packageId;
+            description.textContent = item.description || '';
+            description.hidden = !description.textContent || description.textContent === heading.textContent;
+            version.textContent = target.version;
+            button.type = 'button';
+            button.className = 'acpf-mini-install';
+            button.dataset.packageId = target.packageId;
+            button.textContent = compatible ? label('安装', 'Install') : label('不兼容', 'Incompatible');
+            if (!compatible) button.dataset.locked = 'true';
+            button.onclick = () => selectPackage(target, heading.textContent, button);
+            copy.append(heading, description, version);
+            card.append(icon, copy, button);
+            list.append(card);
+        }
+
+        async function load() {
+            if (loading || installing) return;
+            loading = true;
+            updateActions();
+            problem.hidden = true;
+            status.hidden = false;
+            status.textContent = label('正在加载 Mini-Apps…', 'Loading Mini-Apps…');
+            list.setAttribute('aria-busy', 'true');
+            try {
+                const query = new URLSearchParams({content: 'mini-app', studio: placement, limit: '24'});
+                if (cursor) query.set('cursor', cursor);
+                const [catalog, local] = await Promise.all([
+                    request('/packages/catalog/content?' + query, {signal: requests.signal}),
+                    installedPackages ? null : request('/packages/installed', {signal: requests.signal}),
+                ]);
+                if (!Array.isArray(catalog.items)) throw Error(label('无法读取 Mini-App 列表。', 'Could not read the Mini-App catalog.'));
+                installedPackages ||= new Set((local.items || []).map(item => item.packageId));
+                catalog.items.forEach(appendCard);
+                window.ai2appsProcessIcons?.();
+                cursor = catalog.nextCursor || '';
+                more.hidden = !cursor;
+                more.textContent = label('加载更多', 'Load more');
+                status.hidden = seen.size > 0;
+                status.textContent = cursor
+                    ? label('本页没有可安装的 Mini-App，可以加载更多。', 'No Mini-Apps to install on this page. You can load more.')
+                    : label('目前没有要安装的 Mini-App。', 'No Mini-Apps to install.');
+            } catch (error) {
+                if (requests.signal.aborted) return;
+                status.hidden = true;
+                problem.hidden = false;
+                problem.textContent = error.message;
+                more.hidden = false;
+                more.textContent = label('重新加载', 'Retry loading');
+            } finally {
+                loading = false;
+                list.setAttribute('aria-busy', 'false');
+                updateActions();
+            }
+        }
+
+        const previous = document.activeElement;
+        document.body.append(dialog);
+        dialog.showModal();
+        more.onclick = load;
+        close.onclick = () => dialog.close();
+        dialog.addEventListener('cancel', event => {
+            if (installing) event.preventDefault();
         });
+        void load();
+        return new Promise(resolve => dialog.addEventListener('close', () => {
+            requests.abort();
+            dialog.remove();
+            previous?.focus();
+            resolve({installed});
+        }, {once: true}));
     }
 
     // A generic owner-declared setup handoff. It configures prerequisites only;

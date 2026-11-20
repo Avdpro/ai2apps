@@ -30,6 +30,7 @@ test('Mobile loads directory counts, then 20 cards per page and article detail o
    const offset=Number(url.searchParams.get('cursor')||0);
    return json({items:list.slice(offset,offset+20).map(({body,...a})=>({...a,_summary:true})),total:list.length,next_cursor:list.length>offset+20?String(offset+20):null});
   }
+  if(url.pathname==='/v1/platform/intelligence/exports')return json({items:[]});
   if(/\/articles\/a\d+$/.test(url.pathname)){
    const article=articles.find(a=>url.pathname.endsWith('/'+a.id));
    if(options.method==='PATCH'){Object.assign(article,JSON.parse(options.body));revision++;}
@@ -42,7 +43,7 @@ test('Mobile loads directory counts, then 20 cards per page and article detail o
  await page.waitForFunction(()=>document.querySelector('#intel-app').dataset.channelLoad==='ready');
  assert.equal(await page.locator('[data-channel="c"] .count').innerText(),'45');
  assert.equal(await page.locator('[data-channel="other"] .count').innerText(),'2');
- assert.deepEqual(await page.evaluate(()=>requests.map(r=>r.path+r.query)),['/v1/platform/intelligence?view=channels']);
+ assert.deepEqual(await page.evaluate(()=>requests.map(r=>r.path+r.query)),['/v1/platform/intelligence/exports','/v1/platform/intelligence?view=channels']);
  // Channel-directory pull reloads only summary metadata, even when begun on a card.
  await page.evaluate(()=>{
   window.directoryTouch=(type,x,y,count=1)=>{

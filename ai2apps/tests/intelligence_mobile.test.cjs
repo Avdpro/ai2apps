@@ -18,6 +18,8 @@ test('mobile stack, channel chat, menus, swipe and desktop layout',async()=>{
  await page.addStyleTag({path:path.join(base,'web/static/css/intelligence.css')});
  await page.exposeFunction('mockApi',async(url,options)=>{
   requests.push({url,options});if(url.includes('browser-profiles'))return [{key:'default',name:'Default'}];
+  if(url.endsWith('/channels/c/material-packs'))return {id:'pack',title:'体育',articles:[{title:article.title}]};
+  if(url.endsWith('/material-packs/pack/gallery'))return {missing_images:0};
   if(url.endsWith('/conversation')){if(options.method==='POST'){await new Promise(resolve=>releaseConversation=resolve);return {id:'t',question:'问题',answer:'回答',references:[]};}return {turns:[]};}
   if(/\/articles\/a\d+$/.test(url))return state.articles.find(a=>url.endsWith('/'+a.id));
   if(url.endsWith('/drafts'))return {items:[]};return state;
@@ -41,9 +43,24 @@ test('mobile stack, channel chat, menus, swipe and desktop layout',async()=>{
  await page.waitForTimeout(30);assert.equal(await page.locator('#mobile-category').inputValue(),'runs');
  await page.selectOption('#mobile-category','articles');
  assert(requests.some(r=>r.url.endsWith('/runs')&&r.options.method==='POST'));
+ assert.equal(await page.locator('[data-doc-select]').count(),0);
  await page.click('.intel-main .intel-mobile-menu summary');await page.click('.intel-mobile-menu [data-write="channel"]');
- assert.equal(await page.locator('#writing-dialog').evaluate(e=>e.open),true);
- await page.click('[data-close="writing-dialog"]');
+ await page.locator('[data-doc-select]').first().waitFor();
+ assert.equal(await page.locator('[data-doc-open]').isDisabled(),true);
+ assert.equal(await page.locator('#intel-material-pack-dialog[open]').count(),0);
+ await page.click('[data-doc-clear]');
+ assert.equal(await page.locator('[data-doc-select]').count(),0);
+ await page.click('[data-doc-start]');
+ await page.click('[data-doc-select="a0"]');
+ assert.equal(await page.locator('[data-doc-select="a0"]').getAttribute('aria-pressed'),'true');
+ await page.click('[data-doc-open]');
+ const packDialog=page.locator('#intel-material-pack-dialog[open]');
+ const packRequest=requests.find(r=>r.url.endsWith('/channels/c/material-packs'));
+ assert.deepEqual(JSON.parse(packRequest.options.body),{scope:'selection',article_ids:['a0']});
+ await packDialog.getByRole('button',{name:/加入 Gallery|Add to Gallery/}).click();
+ await packDialog.getByRole('status').filter({hasText:/素材包已加入 Gallery|Material pack saved to Gallery/}).waitFor();
+ await packDialog.getByRole('button',{name:/关闭|Close/}).click();
+ assert.equal(await page.locator('[data-doc-select]').count(),0);
  await page.selectOption('#mobile-category','drafts');await page.waitForTimeout(30);
  assert.equal(await page.locator('#section-filters').isVisible(),false);
  await page.selectOption('#mobile-category','articles');

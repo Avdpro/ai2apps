@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import hashlib
+import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -303,3 +305,31 @@ def test_modelscope_metadata_fetch_rejects_missing_selected_sha256():
             include_patterns=("weights/*",),
             api=Api(),
         )
+
+
+def test_qwen_image_21_candidate_exposes_exact_model_license_for_confirmation(tmp_path):
+    spec_path = Path(__file__).resolve().parents[1] / (
+        "packages/ai2apps-model-qwen-image-cuda/META/checkpoint-distribution-21.json"
+    )
+    spec = json.loads(spec_path.read_text(encoding="utf-8"))
+    roots = _roots(tmp_path)
+    for root in roots.values():
+        (root / "model_index.json").write_text("{}", encoding="utf-8")
+    built = build_checkpoint_distribution(
+        spec,
+        source_roots=roots,
+        private_key=Ed25519PrivateKey.generate(),
+        publisher_id="publisher.test",
+        publisher_key_id="key.test",
+    )
+
+    model_license = built.manifest.license
+    assert model_license.license_id == "LicenseRef-Qwen-Research"
+    assert model_license.usage_policy == "non_commercial"
+    assert model_license.terms_hash == hashlib.sha256(model_license.terms_text.encode("utf-8")).hexdigest()
+    assert model_license.download_consent["required"] is True
+    assert model_license.download_consent["acceptanceOptions"] == [
+        "accepted_license_terms",
+        "obtained_separate_license",
+    ]
+    assert model_license.redistribution_conditions["commercialUse"] == "separate_license_required"

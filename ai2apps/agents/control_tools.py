@@ -3,11 +3,13 @@
 from jsonschema import Draft202012Validator
 
 from ai2apps.core import ResourceConflictError
+from ai2apps.core.clock import time_snapshot
 from ai2apps.services import ToolProviderError
 
 from .models import InteractionAction, InteractionKind, InteractionStatus
 
 ASK_USER = "agent.ask_user"
+CLOCK = "agent.current_time"
 PLAN_READ = "agent.read_plan"
 PLAN_UPDATE = "agent.update_plan"
 
@@ -124,6 +126,16 @@ def install_control_tools(agents, services, registry, *, service_id, provider_ke
     def read_plan(arguments, context):
         return agents.get_plan(run_for(context).id)
 
+    def read_clock(arguments, context):
+        run = run_for(context)
+        owner_context = run.input.get("owner_context") or {}
+        timezone = arguments.get("timezone") or owner_context.get("schedule_timezone")
+        timezone = timezone or (owner_context.get("request_time") or {}).get("timezone") or "UTC"
+        try:
+            return time_snapshot(timezone)
+        except ValueError as error:
+            raise ToolProviderError(str(error)) from error
+
     def update_plan(arguments, context):
         try:
             return agents.update_plan(run_for(context).id, **arguments)
@@ -132,8 +144,15 @@ def install_control_tools(agents, services, registry, *, service_id, provider_ke
 
     for name, description, schema, handler in (
         (
+            CLOCK,
+            "Read the current host clock. Omit timezone to use the Run's context, or supply an IANA time zone. Use a fresh reading when execution was queued or resumed, or when computing a current time window.",
+            {"type": "object", "properties": {"timezone": {"type": "string", "minLength": 1, "maxLength": 128}},
+             "additionalProperties": False},
+            read_clock,
+        ),
+        (
             ASK_USER,
-            "Ask the user for missing information or a choice, then wait durably. Use a unique question_id. Options are suggestions; free text is allowed. Answers never grant Tool permissions.",
+            "Ask the user for missing information or a choice, then wait durably. Use a unique question_id. When offering alternatives, put each concise, self-contained choice in the options array, not only as a lettered list inside question. The UI renders clickable suggestions plus a separate free-text answer. Do not ask to disambiguate a goal already clear from the immediately preceding conversation. Options are suggestions; free text is allowed. Answers never grant Tool permissions.",
             QUESTION_SCHEMA,
             answer,
         ),

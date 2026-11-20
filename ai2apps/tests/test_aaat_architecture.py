@@ -112,3 +112,13 @@ def test_new_agent_module_is_protected_without_adding_it_to_an_allowlist():
     units={'ai2apps.agents.general':Unit('ai2apps.agents.general',''),
            'ai2apps.agents.new_helper':Unit('ai2apps.agents.new_helper','from ai2apps.new_owner import handler')}
     assert any('ai2apps.agents.new_helper' in error for error in check(units,policy()))
+
+
+def test_structured_output_platform_helper_cannot_import_bot_business_schema():
+    units={
+        'ai2apps.agents.runtime':Unit('ai2apps.agents.runtime','from ai2apps.cloud_structured_output import validate_complete'),
+        'ai2apps.cloud_structured_output':Unit('ai2apps.cloud_structured_output','from ai2apps.messager.decision import parse_decision'),
+        'ai2apps.messager.decision':Unit('ai2apps.messager.decision',''),
+    }
+    failures=check(units,POLICY)
+    assert any('crosses shared AS boundary' in error and 'ai2apps.messager.decision' in error for error in failures)

@@ -177,6 +177,7 @@ class PlatformRuntime:
         self.background_browser_runner = None
         self.intelligence_collector = None
         self.system_tasks = None
+        self.image_workflow_schedules = None
         self.agent_reliability: AgentReliabilityService | None = None
         self.site_agent_packages: SiteAgentPackageService | None = None
         self.workspace: WorkspaceRepository | None = None
@@ -369,6 +370,7 @@ class PlatformRuntime:
         if self.agent_runtime is not None:
             await self.agent_runtime.start()
         startup_checkpoint("after core services")
+        await self.business_event_relay.startup()
         from ai2apps.todo.service import TodoService
         self.todo = TodoService(self)
         await self.todo.startup()
@@ -381,6 +383,7 @@ class PlatformRuntime:
             await self.intelligence_collector.startup()
         if self.system_tasks is not None:
             await self.system_tasks.startup()
+        await self.hook_execution.startup()
         if self.agent_schedule_runner is not None:
             await self.agent_schedule_runner.startup()
         if self.upstreams is not None:
@@ -405,6 +408,16 @@ class PlatformRuntime:
             await self.messager_peer_v2.startup()
         if not self.offline_mode:
             await self._start_model_share_provider()
+        if getattr(self, "comapps", None) is not None and not self.offline_mode:
+            from ai2apps.comapps.bot_channel import BotChannel
+            from ai2apps.comapps.proxy_monitor import ImageMonitor
+            from ai2apps.comapps.recall_monitor import RecallMonitor
+            self.comapps.bot_channel = BotChannel(self, self.comapps)
+            self.comapps.bot_channel.start()
+            self.comapps.proxy_monitor = ImageMonitor(self, self.comapps)
+            self.comapps.proxy_monitor.start()
+            self.comapps.recall_monitor = RecallMonitor(self, self.comapps)
+            self.comapps.recall_monitor.start()
         startup_checkpoint("complete")
 
     async def _start_model_share_provider(self) -> None:
@@ -500,6 +513,17 @@ class PlatformRuntime:
                 )
 
     async def stop_background_tasks(self) -> None:
+        recall = getattr(getattr(self, "comapps", None), "recall_monitor", None)
+        if recall is not None:
+            await recall.stop()
+        monitor = getattr(getattr(self, "comapps", None), "proxy_monitor", None)
+        if monitor is not None:
+            await monitor.stop()
+        channel = getattr(getattr(self, "comapps", None), "bot_channel", None)
+        if channel is not None:
+            await channel.stop()
+        if getattr(self, "business_event_relay", None):
+            await self.business_event_relay.shutdown()
         """Stop maintenance loops and wait until their current batch completes."""
 
         if self.self_managed_access is not None:
@@ -521,6 +545,7 @@ class PlatformRuntime:
             await self.peer_transport.shutdown()
         if self.provisioning is not None:
             await self.provisioning.shutdown()
+        await self.hook_execution.shutdown()
         if self.system_tasks is not None:
             await self.system_tasks.shutdown()
         if self.todo is not None:
@@ -660,6 +685,14 @@ class PlatformRuntime:
         self.security_identity = security_identity
         self.notifications = notifications
         self.events = EventStore(database, notifications)
+        from ai2apps.events.builtin import install as install_business_events
+        install_business_events(self)
+        from ai2apps.events.relay import EventRelay
+        self.business_event_relay = EventRelay(self)
+        from ai2apps.events.builtin import install_relays
+        install_relays(self)
+        from ai2apps.events.builtin import install_hook_scanner
+        install_hook_scanner(self)
         ChatRepository(database, self.events).ensure_builtin()
         ensure_system_apps(database, self.events)
         self.services = ServiceRepository(database, self.events)
@@ -726,6 +759,10 @@ class PlatformRuntime:
             local_node_id=stable_gateway_id(self.config.paths.database_path),
         )
         self.secrets = SecretRepository(database, self.events, secret_backend)
+        from ai2apps.comapps.service import ComApps
+        self.comapps = ComApps(secret_backend)
+        from ai2apps.mail.service import MailService
+        self.mail = MailService(database, secret_backend, todo_store=lambda: getattr(self.todo, "store", None))
         cloud_base_url = os.environ.get(
             "AI2APPS_CLOUD_BASE_URL", DEFAULT_AI2APPS_CLOUD_BASE_URL
         )
@@ -738,6 +775,8 @@ class PlatformRuntime:
                 namespace=f"installation:{security_identity.security_instance_id}",
             ),
         )
+        from ai2apps.credential_import import CredentialImport
+        self.credential_import = CredentialImport(self)
         remote_runtime_directory = self.config.paths.base_path / "platform" / "remote"
         remote_config_error = None
         try:
@@ -952,7 +991,19 @@ class PlatformRuntime:
         from ai2apps.system_tasks import SystemTaskService
         from ai2apps.system_tasks.intelligence import register_intelligence
         self.system_tasks = SystemTaskService(self)
+        from ai2apps.events.actions import HookActions
+        self.hook_actions = HookActions(self)
+        from ai2apps.todo.hook_actions import install as install_todo_hook_actions
+        from ai2apps.messager.hook_actions import install as install_notice_hook_actions
+        install_todo_hook_actions(self)
+        install_notice_hook_actions(self)
+        from ai2apps.studio.image_schedules import ImageWorkflowSchedules
+        self.image_workflow_schedules = ImageWorkflowSchedules(self)
         register_intelligence(self)
+        from ai2apps.doc_studio.service import register as register_doc_studio
+        register_doc_studio(self)
+        from ai2apps.share_works.service import register as register_share_works
+        register_share_works(self)
         self.agent_runtime.bind_run_terminal_handler(
             self.processes.schedule_cancel_by_run
         )
@@ -963,6 +1014,9 @@ class PlatformRuntime:
         install_direct_chat(self)
         from ai2apps.chat.notifications import install as install_chat_notifications
         install_chat_notifications(self)
+        from ai2apps.system_tasks.agent_flows import AgentFlows
+        self.todo_agent_flows = AgentFlows(self)
+        self.remote.notifications.register_source(self.todo_agent_flows.push_completed)
         install_browser_builder_agent(self.agents, self.agent_runtime)
         install_general_agent(
             self.agents,
@@ -975,15 +1029,25 @@ class PlatformRuntime:
         )
         from ai2apps.app_chat.service import AppChatService
         self.app_chat = AppChatService(self)
+        from ai2apps.processes.harness_app import install_harness_app
+        install_harness_app(self)
         from ai2apps.todo.app_chat import install as install_todo_chat
         install_todo_chat(self)
+        from ai2apps.apps.system import _messager_launcher_status
+        if _messager_launcher_status() == "active":
+            from ai2apps.messager.bots import install as install_messager_bots
+            install_messager_bots(self)
         from ai2apps.studio.app_chat import install as install_studio_chat
         install_studio_chat(self)
+        from ai2apps.doc_studio.chat import install as install_doc_chat
+        install_doc_chat(self)
         from ai2apps.app_development.service import install_app_development
         install_app_development(self)
         install_research_agent(self.agents)
         from ai2apps.research.search_workflow import install as install_search_workflow
         install_search_workflow(self)
+        from ai2apps.intelligence.aaat import install_search_workflow_access
+        install_search_workflow_access(self)
         self.sharing.bind_agents(self.agents, self.agent_runtime)
         install_delegation_service(
             self.agents,
@@ -1032,6 +1096,15 @@ class PlatformRuntime:
         self.extension_manager.package_capabilities_changed = sync_package_exports
         self.service_registry.bindings_changed = sync_package_exports
         sync_package_exports()
+        from ai2apps.events.execution import HookExecution
+        self.hook_execution = HookExecution(self)
+        from ai2apps.studio.event_hooks import install as install_mini_hooks
+        install_mini_hooks(self)
+        from ai2apps.packages.event_hooks import install as install_package_hooks
+        install_package_hooks(self)
+        self.event_hooks.execution = self.hook_execution
+        for consumer in tuple(self.event_hooks.consumers.values()):
+            self.hook_execution.register(consumer)
         logger.info("Platform App exports synchronized: %.3fs", time.perf_counter() - claimed_started)
         self.provisioning = CapabilityProvisioner(
             runtime=self,

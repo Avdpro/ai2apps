@@ -1,0 +1,27 @@
+{
+  "schema": "ai2apps.source-lock/v1",
+  "implementation": {
+    "repository": "omlx-moe-cache",
+    "path": "packages/omlx-model-rvc"
+  },
+  "upstream": {
+    "repository": "https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI",
+    "commit": "81eed5e8f68b6bed1789f682fe78cdd324495afc"
+  },
+  "checkpoint_layout": "ai2apps.mlx-rvc-composite/v1",
+  "checkpoint_publication": {
+    "status": "uploaded",
+    "local_root": "/private/tmp/ai2apps-rvc-package-upload",
+    "payload_size_bytes": 1410903481,
+    "files": 19,
+    "layout_manifest_sha256": "d809cae479ea4bbe0660cf90ed6e4a4ddf6524e9c7dfe47eb6ffdbbd21416be5",
+    "huggingface": {
+      "repo_id": "Avdpro/MLX-RVC-Serena-E70",
+      "revision": "738acad9f58c074d9f817eeac8c7dac9e2eafa1f"
+    },
+    "modelscope": {
+      "repo_id": "ai2apps/MLX-RVC-Serena-E70",
+      "revision": "643998a0bf604279e9f9463d4be1e5423a878038"
+    }
+  }
+}

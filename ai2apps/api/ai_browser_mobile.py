@@ -4,6 +4,7 @@ from ai2apps.web.owner_studio_gateway import restrict_router
 
 
 def create_ai_browser_mobile_router(runtime_provider, principal_provider):
+    from .share_works import create_share_works_router
     from .client import create_client_router
     from .agent_platform import create_agent_platform_router
     from .agent_builder import create_agent_builder_router
@@ -13,7 +14,7 @@ def create_ai_browser_mobile_router(runtime_provider, principal_provider):
     rows = json.loads((Path(__file__).resolve().parents[1] / 'web/owner_studio_routes.json').read_text())
     router = APIRouter()
     for name, factory in [('client', create_client_router), ('agent_platform', create_agent_platform_router),
-                          ('agent_builder', create_agent_builder_router), ('studio_mini_apps', create_studio_mini_app_router)]:
+                          ('agent_builder', create_agent_builder_router), ('studio_mini_apps', create_studio_mini_app_router), ('share_works',create_share_works_router)]:
         child = factory(runtime_provider, principal_provider)
         allowed = {(row['method'], row['path']) for row in rows if row['module'] == name}
         if name == 'studio_mini_apps':

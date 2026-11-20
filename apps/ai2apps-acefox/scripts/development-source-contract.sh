@@ -3,7 +3,8 @@ validate_fixed_development_source() {
   local repo_root=$1 source_root=$2 product_identifier=$3 instance_id=$4
   if [[ ${product_identifier} != com.ai2apps.desktop.dev &&
         ${product_identifier} != com.ai2apps.desktop.appdev &&
-        ${instance_id} != dev && ${instance_id} != app-dev ]]; then
+        ${product_identifier} != com.ai2apps.desktop.miniappdev &&
+        ${instance_id} != miniapp-dev && ${instance_id} != dev && ${instance_id} != app-dev ]]; then
     return 0
   fi
   if [[ -z ${source_root} || ${source_root} != /* ||

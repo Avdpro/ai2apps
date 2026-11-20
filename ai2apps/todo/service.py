@@ -4,6 +4,7 @@ import logging
 import os
 import shutil
 import signal
+import sqlite3
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -17,15 +18,40 @@ ACTIVE = ("queued", "running", "waiting_input", "waiting_capability", "planning"
 
 class TodoService:
     def __init__(self, runtime):
+        log.info("Todo execution lanes loaded; source=%s", __file__)
         self.runtime = runtime
         self.store = TodoStore(runtime.config.paths.artifacts_path / "todo")
         from .codex_bridge import CodexBridge
         self.codex_bridge = CodexBridge(self.store, self.authorize_codex)
+        self.execution_adapters = dict(getattr(runtime, "todo_execution_adapters", {}))
         self.jobs = {}
         self.max_concurrent_runs = 3
         self.stopping = False
         self.loop = None
         self.started = datetime.now(UTC)
+
+    def register_execution_adapter(self, adapter):
+        if adapter.queue_class not in ('normal','maintenance'):raise ValueError('Unknown trusted queue class')
+        old=self.execution_adapters.get(adapter.registration)
+        if old is not None and old is not adapter:raise ValueError('Duplicate Todo execution adapter')
+        self.execution_adapters[adapter.registration]=adapter
+
+    def execution_adapter(self, binding):
+        adapter=self.execution_adapters.get(binding['registration'])
+        if adapter is None:raise ValueError('Trusted task execution owner is unavailable')
+        return adapter
+
+    def finish_bound_run(self, run_id):
+        try:
+            with self.store.connect() as db:
+                row=db.execute('SELECT owner,status,data FROM runs WHERE id=?',(run_id,)).fetchone()
+            if row is None or row['status'] in ACTIVE:return
+            data=json.loads(row['data']);binding=data.get('execution_binding')
+            if not binding:return
+            adapter=self.execution_adapter(binding)
+            if adapter.finished:adapter.finished(row['owner'],run_id,row['status'],data)
+        except Exception:
+            log.exception('Trusted task completion receipt remains pending')
 
     async def startup(self):
         self.started = datetime.now(UTC)
@@ -38,14 +64,23 @@ class TodoService:
             )
         for row in rows:
             data = json.loads(row["data"])
+            if data.get('execution_binding'):
+                adapter=self.execution_adapters.get(data['execution_binding']['registration'])
+                if adapter and adapter.restore:
+                    restored=adapter.restore(row['owner'],row['id'],data)
+                    if restored and restored.get('requeue_unstarted'):
+                        if data.get('agent_run_id'):raise ValueError('An existing execution cannot be requeued as unstarted')
+                        self.store.run_update(row['id'],'queued',todo_queued=True,started_at=None)
+                        continue
+                    if restored:
+                        data.update(restored)
+                        self.store.run_update(row['id'],row['status'],**restored)
             if data.get('desktop_native') and data.get('native_marker'):
                 job = asyncio.create_task(self.watch_desktop_native(row['id'], data))
                 self.jobs[row['id']] = job
-                job.add_done_callback(lambda _, id=row['id']: self._job_done(id))
+                job.add_done_callback(lambda finished, id=row['id']: self._job_done(id, finished))
             elif data.get("agent_run_id"):
-                job = asyncio.create_task(self.watch_internal(row["id"], data["agent_run_id"]))
-                self.jobs[row["id"]] = job
-                job.add_done_callback(lambda _, id=row["id"]: self._job_done(id))
+                self.attach_run_watcher(row["id"], data["agent_run_id"])
             elif row["status"] == "queued" and data.get("todo_queued"):
                 continue
             else:
@@ -60,6 +95,9 @@ class TodoService:
                 await self.codex_bridge.start()
             except OSError:
                 log.exception("Codex Todo bridge could not start; Todo remains available")
+        for adapter in self.execution_adapters.values():
+            if adapter.recover:adapter.recover()
+        if getattr(self.runtime,'system_tasks',None):self.system_schedules().sync()
         self.dispatch_queue()
         self.loop = asyncio.create_task(self.scheduler(), name="todo-scheduler")
 
@@ -128,11 +166,23 @@ class TodoService:
             None,
         )
 
-    def launch(self, owner, task_id, scheduled_at=None, principal=None):
+    def launch(self, owner, task_id, scheduled_at=None, principal=None, *, request_key=None, admitted=None):
         from ai2apps.apps.access import APP_CODER_USE, has_app_capability
 
         principal = principal or self.principal(owner)
-        task = self.store.get(owner, task_id)
+        current_task = self.store.get(owner, task_id)
+        task = admitted['task'] if admitted else current_task
+        if admitted and (task.get('id')!=task_id or not admitted.get('binding') or task.get('executor')!='managed'):raise ValueError('Invalid trusted execution snapshot')
+        if request_key:
+            receipt=self.store.launch_receipt(owner,request_key)
+            if receipt:
+                if receipt['task_id']!=task_id:raise ValueError('Launch request belongs to another task')
+                return {'id':receipt['run_id']}
+        execution_binding=admitted['binding'] if admitted else self.store.execution_binding(owner,task_id)
+        if execution_binding:
+            if task['executor']!='managed':raise ValueError('Trusted tasks must use their owning execution adapter')
+            self.execution_adapter(execution_binding).validate(owner,task,execution_binding['binding'])
+        elif task['executor']=='managed':raise ValueError('A trusted task execution owner is required')
         if task.get("archived_at") or task.get("deleted_at"):
             raise ValueError("Restore this project before executing")
         if task["executor"] == "codex_desktop":
@@ -146,7 +196,7 @@ class TodoService:
                 raise ValueError('Choose an existing Codex project directory')
             if not CodexDesktop.executable(): raise ValueError('Codex is not installed')
             task = {**task, 'codex':binding, 'working_directory':cwd}
-        elif task["executor"] != "internal":
+        elif task["executor"] not in ("internal","managed"):
             if not has_app_capability(principal, APP_CODER_USE):
                 raise ValueError("Coder permission required for external execution")
             if not self.executable(task["executor"]):
@@ -161,6 +211,13 @@ class TodoService:
         id = uuid.uuid4().hex
         with self.store.connect() as db:
             latest = self.store.task(db.execute("SELECT * FROM tasks WHERE id=? AND owner=?", (task_id, owner)).fetchone())
+            if not admitted and latest['revision']!=task['revision']:raise ValueError('Project changed before execution; review it again')
+            if not admitted and scheduled_at and latest['schedule']['frequency']=='off':raise ValueError('The execution schedule was disabled')
+            if request_key:
+                receipt=db.execute('SELECT run_id,task_id FROM run_creation_receipts WHERE owner=? AND request_key=?',(owner,request_key)).fetchone()
+                if receipt:
+                    if receipt['task_id']!=task_id:raise ValueError('Launch request belongs to another task')
+                    return {'id':receipt['run_id']}
             if latest.get("archived_at") or latest.get("deleted_at"):
                 raise ValueError("Restore this project before executing")
             if db.execute(
@@ -179,7 +236,10 @@ class TodoService:
                     (task_id, owner),
                 )
             ]
+            lane = db.execute("SELECT lane FROM task_execution_lanes WHERE owner=? AND task_id=?", (owner, task_id)).fetchone()
             data = {
+                "execution_lane": lane[0] if lane else None,
+                "execution_binding": execution_binding,
                 "snapshot": task,
                 "attachments": attachments,
                 "queued_at": now_text(),
@@ -193,16 +253,40 @@ class TodoService:
                 "INSERT INTO runs VALUES(?,?,?,?,?)",
                 (id, owner, task_id, "queued", json.dumps(data)),
             )
+            if request_key:
+                db.execute('INSERT INTO run_creation_receipts VALUES(?,?,?,?)',(owner,request_key,task_id,id))
         self.dispatch_queue()
         return {"id": id}
 
-    def _job_done(self, id):
-        job = self.jobs.pop(id, None)
-        if job is not None and not job.cancelled():
+    def _job_done(self, id, job):
+        if self.jobs.get(id) is not job:
+            return
+        self.jobs.pop(id)
+        if not job.cancelled():
             error = job.exception()
-            if error is not None:
+            if isinstance(error, sqlite3.OperationalError):
+                log.warning("Todo run %s could not be persisted: %s", id, error)
+            elif error is not None:
                 self.store.run_update(id, "failed", error=("Execution timed out after 1 hour" if isinstance(error, TimeoutError) else str(error)), finished_at=now_text())
         self.dispatch_queue()
+
+    def attach_run_watcher(self, run_id, agent_id):
+        job = asyncio.create_task(self.watch_internal(run_id, agent_id))
+        self.jobs[run_id] = job
+        job.add_done_callback(lambda finished: self._job_done(run_id, finished))
+
+    def recover_run_watchers(self):
+        # The executor's durable Run can finish while Todo storage is unavailable.
+        # Attach to the existing ID rather than redispatching the task.
+        with self.store.connect() as db:
+            rows = db.execute("""
+                SELECT id, json_extract(data, '$.agent_run_id') AS agent_id
+                FROM runs WHERE status IN ('queued','running','planning','waiting_input','waiting_capability')
+                AND json_extract(data, '$.agent_run_id') IS NOT NULL
+            """).fetchall()
+        for row in rows:
+            if row["id"] not in self.jobs:
+                self.attach_run_watcher(row["id"], row["agent_id"])
 
     def queue_status(self, owner):
         with self.store.connect() as db:
@@ -230,33 +314,73 @@ class TodoService:
         if self.stopping:
             return
         with self.store.connect() as db:
+            occupied = set()
+            for active in db.execute("SELECT owner,data FROM runs WHERE status IN ('queued','running','planning','waiting_input','waiting_capability')"):
+                saved = json.loads(active['data'])
+                if saved.get('execution_lane') and not saved.get('todo_queued'):
+                    occupied.add((active['owner'], saved['execution_lane']))
             rows = list(db.execute("SELECT * FROM runs WHERE status='queued' ORDER BY rowid"))
+            # Priority is trusted adapter metadata, never TaskInput or stored user data.
+            # A claimed lane (including user/approval waits) remains non-preemptive.
+            def maintenance(data):
+                binding=data.get('execution_binding') or {}
+                adapter=self.execution_adapters.get(binding.get('registration'))
+                return bool(adapter and adapter.queue_class=='maintenance')
+            groups={}
+            for row in rows:
+                data=json.loads(row['data'])
+                if data.get('todo_queued') and data.get('execution_lane'):
+                    groups.setdefault((row['owner'],data['execution_lane']),[]).append(row)
+            preferred={}
+            for lane,group in groups.items():
+                normals=[r for r in group if not maintenance(json.loads(r['data']))]
+                upkeep=[r for r in group if maintenance(json.loads(r['data']))]
+                burst=db.execute('SELECT burst FROM execution_lane_fairness WHERE owner=? AND lane=?',lane).fetchone()
+                aged=bool(normals and (datetime.now(UTC)-datetime.fromisoformat(json.loads(normals[0]['data'])['queued_at'])).total_seconds()>=60)
+                preferred[lane]=(upkeep[0] if upkeep and (not normals or ((burst[0] if burst else 0)<2 and not aged)) else (normals[0] if normals else group[0]))['id']
             for row in rows:
                 if len(self.jobs) >= self.max_concurrent_runs:
                     break
                 data = json.loads(row["data"])
                 if not data.get("todo_queued") or row["id"] in self.jobs:
                     continue
+                lane = (row['owner'], data['execution_lane']) if data.get('execution_lane') else None
+                if lane in occupied:
+                    continue
+                if lane is not None and preferred.get(lane)!=row['id']:
+                    continue
+                if lane is not None:
+                    occupied.add(lane)
+                    db.execute('INSERT INTO execution_lane_fairness VALUES(?,?,?) ON CONFLICT(owner,lane) DO UPDATE SET burst=CASE WHEN excluded.burst=0 THEN 0 ELSE burst+1 END',(*lane,1 if maintenance(data) else 0))
                 data.update(todo_queued=False, started_at=now_text())
                 db.execute("UPDATE runs SET status='running',data=? WHERE id=?", (json.dumps(data), row["id"]))
                 job = asyncio.create_task(self.execute(row["id"], row["owner"], data), name=f"todo-run-{row['id']}")
                 self.jobs[row["id"]] = job
-                job.add_done_callback(lambda _, id=row["id"]: self._job_done(id))
+                job.add_done_callback(lambda finished, id=row["id"]: self._job_done(id, finished))
 
     async def scheduler(self):
         while True:
             try:
+                self.recover_run_watchers()
                 self.dispatch_queue()
-                self.tick(datetime.now(UTC))
+                if getattr(self.runtime, 'system_tasks', None):
+                    await asyncio.to_thread(self.system_schedules().sync)
+                self.tick(datetime.now(UTC), sync_system=False)
             except Exception:
                 log.exception("Todo schedule tick failed")
             await asyncio.sleep(15)
 
-    def tick(self, now):
+    def system_schedules(self):
+        from .system_schedules import SystemTodoSchedules
+        if not hasattr(self.runtime,'todo_system_schedules'):self.runtime.todo_system_schedules=SystemTodoSchedules(self.runtime)
+        return self.runtime.todo_system_schedules
+
+    def tick(self, now, *, sync_system=True):
+        if sync_system and getattr(self.runtime,'system_tasks',None):self.system_schedules().sync()
         with self.store.connect() as db:
             rows = list(
                 db.execute(
-                    "SELECT * FROM tasks WHERE next_due IS NOT NULL AND next_due<=?",
+                    "SELECT * FROM tasks t WHERE next_due IS NOT NULL AND next_due<=? AND NOT EXISTS(SELECT 1 FROM task_system_schedules s WHERE s.owner=t.owner AND s.task_id=t.id)",
                     (now.isoformat(),),
                 )
             )
@@ -272,7 +396,7 @@ class TodoService:
             with self.store.connect() as db:
                 changed = db.execute(
                     "UPDATE tasks SET next_due=? WHERE id=? AND next_due=? AND revision=?",
-                    (future.isoformat(), row["id"], row["next_due"], row["revision"]),
+                    (future.isoformat() if future else None, row["id"], row["next_due"], row["revision"]),
                 ).rowcount
                 if changed and not missed_hour and not schedule.get("auto_execute", True):
                     data = json.loads(row["data"])
@@ -285,6 +409,7 @@ class TodoService:
             except Exception as error:
                 id = uuid.uuid4().hex
                 data = {
+                    "execution_binding": self.store.execution_binding(row["owner"],row["id"]),
                     "scheduled_at": due.isoformat(),
                     "started_at": now_text(),
                     "error": str(error),
@@ -298,6 +423,7 @@ class TodoService:
                         "INSERT INTO runs VALUES(?,?,?,?,?)",
                         (id, row["owner"], row["id"], "skipped", json.dumps(data)),
                     )
+                self.finish_bound_run(id)
 
     async def internal_run(self, owner, id, task, prompt, attachments):
         from ai2apps.identity import user_singleton_key
@@ -404,6 +530,17 @@ class TodoService:
                     if run.finished_at
                     else None,
                 )
+                # Trusted owners may project the original durable Run into
+                # their UI/notification channel; this never starts execution.
+                try:
+                    with self.store.connect() as db:
+                        observed=db.execute('SELECT owner,status,data FROM runs WHERE id=?',(id,)).fetchone()
+                    data=json.loads(observed['data']);binding=data.get('execution_binding')
+                    if binding:
+                        adapter=self.execution_adapter(binding)
+                        if adapter.observe:adapter.observe(observed['owner'],id,observed['status'],data)
+                except Exception:
+                    log.exception('Task owner status projection remains pending')
                 if status not in ACTIVE:
                     artifacts = [
                         {"id": a.id, "name": a.name, "session_id": run.session_id}
@@ -415,10 +552,14 @@ class TodoService:
         except asyncio.CancelledError:
             # Agent runtime owns durable recovery; do not cancel its run on shutdown.
             raise
+        except sqlite3.OperationalError:
+            log.exception("Todo status projection for %s will resume from its original Run", id)
         except Exception as error:
             self.store.run_update(
                 id, "failed", error=("Execution timed out after 1 hour" if isinstance(error, TimeoutError) else str(error)), finished_at=now_text()
             )
+        finally:
+            self.finish_bound_run(id)
 
     async def watch_desktop_native(self, id, data):
         def update(status, **fields):
@@ -507,6 +648,14 @@ class TodoService:
         process = None
         try:
             task = data["snapshot"]
+            if data.get('execution_binding'):
+                binding=data['execution_binding'];adapter=self.execution_adapter(binding)
+                adapter.validate(owner,task,binding['binding'])
+                agent_id=await adapter.start(owner,id,task,task['title']+'\n\n'+task['description'],data['attachments'],binding['binding'])
+                self.store.run_update(id,'running',agent_run_id=agent_id)
+                await self.watch_internal(id,agent_id)
+                return
+            if task['executor']=='managed':raise ValueError('A trusted task execution owner is required')
             run_root = self.store.root / "runs" / id
             inputs = run_root / "inputs"
             inputs.mkdir(parents=True)
@@ -577,6 +726,7 @@ class TodoService:
                     await process.wait()
                 except ProcessLookupError:
                     pass
+            self.finish_bound_run(id)
 
     async def cancel(self, owner, id):
         with self.store.connect() as db:

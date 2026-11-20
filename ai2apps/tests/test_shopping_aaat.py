@@ -94,7 +94,7 @@ async def test_registered_refresh_returns_owner_report_and_source_reference(runt
     assert submitted[-1]['capability']=='prepare_cart'
     assert submitted[-1].get('retain_pages',False) is False
     cart=runtime.services.get_tool('shopping.prepare_cart')
-    assert 'external_write' in cart.effects
+    assert 'external' in cart.effects
 
     policies=runtime.app_capability_router.active_result_policies([NS(kind='tool',tool_name='shopping.refresh_list',status=NS(value='completed'),output=result)])
     policy=next(p for p in policies if p.id=='shopping-owner-report')

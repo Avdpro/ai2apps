@@ -71,19 +71,55 @@ def readiness(runtime):
     return separation,conversion,transcription
 
 
-async def descriptor(runtime, principal, *, replacement=False):
+async def descriptor(runtime, principal, *, replacement=False, action=None):
     separation,conversion,transcription=readiness(runtime)
     schema=deepcopy(REPLACE_SCHEMA if replacement else SEPARATE_SCHEMA)
     if not replacement and separation:
         schema['properties']['profile']['enum']=[p for p in schema['properties']['profile']['enum'] if p in separation]
         schema['properties']['profile']['default']=schema['properties']['profile']['enum'][0]
-    # Analysis only needs transcription. Conversion prerequisites are rechecked
-    # before replace, with the same owner's existing ACPF available on the form.
+    replacing=replacement and action=='replace'
+    missing=[]
+    if replacement:
+        if not transcription:missing.append('detailed_transcription')
+        if replacing and 'dialogue_background' not in separation:missing.append('dialogue_background_separation')
+        if replacing and not conversion:missing.append('voice_conversion')
+    elif not separation:missing.append('source_separation')
     return {'effective_schema':schema,'selection_required':True,
-        'configuration_required':not transcription if replacement else not separation,
-        'install':{'appId':APP,'capability':REPLACE if replacement else SEPARATE,'requirements':{}},
+        'model_field':'action' if replacement else None,
+        'configuration_required':bool(missing),'missing_requirements':missing,
+        'constraints':{'missing_requirements':missing},
+        'install':{'appId':APP,'capability':(TRANSCRIBE if replacement and action!='replace' else REPLACE if replacement else SEPARATE),'requirements':{}},
         'warnings':([{'zh':'先分析录音，再按真实说话人编号选择角色；换声需参考音频及明确使用权确认。','en':'Analyze first, then select an observed speaker. Replacement requires reference audio and explicit rights confirmation.'}] if replacement else []),
         'available_profiles':sorted(conversion if replacement else separation)}
+
+
+async def audio_replacement_descriptor(runtime, principal, action=None):
+    """Voice-only refinements; reuse the executor's ready conversion profiles."""
+    result = await descriptor(runtime, principal, replacement=True, action=action)
+    schema = result['effective_schema']
+    profiles = [p for p in REPLACE_SCHEMA['properties']['conversion_profile']['enum']
+                if p in result['available_profiles']]
+    labels = {
+        'timbre_fast': {'zh': '音色 · 快速', 'en': 'Timbre · fast'},
+        'timbre_quality': {'zh': '音色 · 高质量', 'en': 'Timbre · quality'},
+        'voice_quality': {'zh': '声音 · 高质量', 'en': 'Voice · quality'},
+    }
+    # Analysis does not consume conversion_profile. Restrict the field only
+    # for replacement, so a saved future preference cannot block analysis.
+    if profiles and action == 'replace':
+        schema['properties']['conversion_profile'].update(enum=profiles, default=profiles[0])
+        result['fields'] = [{'key': 'conversion_profile', 'type': 'select',
+            'options': [{'value': p, 'label': labels[p]} for p in profiles]}]
+    messages = {
+        'detailed_transcription': {'zh': '详细转写与说话人识别模型未就绪；请配置后再分析。',
+            'en': 'Detailed transcription and speaker analysis are not ready. Configure them before analysis.'},
+        'dialogue_background_separation': {'zh': '换声所需的对白 / 背景分离模型未就绪。',
+            'en': 'Dialogue/background separation required for replacement is not ready.'},
+        'voice_conversion': {'zh': '换声所需的声音转换模型未就绪。',
+            'en': 'Voice conversion required for replacement is not ready.'},
+    }
+    result['warnings'].extend(messages[k] for k in result.get('missing_requirements', []) if k in messages)
+    return result
 
 
 def observation_table(runtime):

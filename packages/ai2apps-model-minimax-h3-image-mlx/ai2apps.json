@@ -1,0 +1,179 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/model-minimax-h3-image",
+    "type": "service",
+    "version": "0.1.1",
+    "displayName": "MiniMax H3-Image MLX",
+    "description": "Local text-to-image and multi-reference (up to 16 images) image editing."
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": [
+      "darwin"
+    ],
+    "architectures": [
+      "arm64"
+    ],
+    "minimumOsVersion": "26.2"
+  },
+  "entrypoints": [
+    {
+      "name": "model-worker",
+      "kind": "service",
+      "path": "service.yaml"
+    }
+  ],
+  "permissions": [
+    {
+      "capability": "model-weights.huggingface-cache.read",
+      "reason": "Read pinned H3-Image and shared H3 checkpoints.",
+      "required": true
+    },
+    {
+      "capability": "accelerator.metal",
+      "reason": "Run native MLX image inference.",
+      "required": true
+    }
+  ],
+  "dependencies": [
+    {
+      "packageId": "ai2apps/runtime-omlx",
+      "version": ">=1.8.11 <2.0.0",
+      "optional": false
+    },
+    {
+      "packageId": "ai2apps/model-minimax-h3",
+      "version": ">=0.11.0 <0.11.1",
+      "optional": false
+    }
+  ],
+  "files": [
+    {
+      "path": "LICENSE",
+      "sha256": "0ec3bb5e6d9e885fa2aaf15e84689e50fd51f42b53fa24d3a64ed9d8c76d423b",
+      "size": 18208
+    },
+    {
+      "path": "META/NOTICE",
+      "sha256": "0dbb8dfd75b4b693d8b8533af8feaaf764a3ee813818881f29685fdbc493bd38",
+      "size": 392
+    },
+    {
+      "path": "META/checkpoint-distribution.json",
+      "sha256": "d686acda349fd221716ef809d6620ed057134848d0d5969d9d28f235951aa942",
+      "size": 2365
+    },
+    {
+      "path": "META/licenses/Apache-2.0-PipeNetwork.txt",
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+      "size": 11358
+    },
+    {
+      "path": "META/sbom.spdx.json",
+      "sha256": "158deeb952e7b7d32613bbb639da0ad06e7f630f19505492fe58ddd03ff7e0e4",
+      "size": 19278
+    },
+    {
+      "path": "service.yaml",
+      "sha256": "e1beb8547bdc592b10e570d40301a6d9dd992f490c80c993d1ba956ddfc0ec72",
+      "size": 2830
+    },
+    {
+      "path": "src/minimax_h3_mlx/config.py",
+      "sha256": "9992a243a374ede1e072f6211652875d5985eacf82a76e4301162e4fcd9dee9f",
+      "size": 3280
+    },
+    {
+      "path": "src/minimax_h3_mlx/dit.py",
+      "sha256": "17c4743cc74dd2c04b4bdd242a222e3b6bcd986e8f5620727aca8c5dbf3989ff",
+      "size": 23444
+    },
+    {
+      "path": "src/minimax_h3_mlx/fused_ops.py",
+      "sha256": "aa5de0f7fb18eebdd80f194e8c3668623bcf4afb7fad0037c5e32aa03d9f43ce",
+      "size": 5776
+    },
+    {
+      "path": "src/minimax_h3_mlx/image_dit.py",
+      "sha256": "bf5e4c2cc67560cd5328e5d91beb758ec2d2f7686aef0d8b3d16a52099ed2304",
+      "size": 9933
+    },
+    {
+      "path": "src/minimax_h3_mlx/image_pipeline.py",
+      "sha256": "5d435d2ab17666f24f37bafadbab40f1833589a3e1ee83e9266b5b3c88c2329a",
+      "size": 5809
+    },
+    {
+      "path": "src/minimax_h3_mlx/image_vae.py",
+      "sha256": "88bf5dee578e3ff9dd62b6f4e20922d2a12d32a8a16595eecc2d73fc7f181246",
+      "size": 5207
+    },
+    {
+      "path": "src/minimax_h3_mlx/load.py",
+      "sha256": "130a51e8a774783d7a35ced490c2c1644cee68897068c134004a3608d7f4142b",
+      "size": 15966
+    },
+    {
+      "path": "src/minimax_h3_mlx/packing.py",
+      "sha256": "719510f49d4be788eb263f25d489c438125d276ca02bb0ec5e8068344ed82656",
+      "size": 19933
+    },
+    {
+      "path": "src/minimax_h3_mlx/scheduler.py",
+      "sha256": "c9ffb92aeed407e0e5ccd03d9d8553513b91bb57412073a7937de8d0d5b3cc5e",
+      "size": 7292
+    },
+    {
+      "path": "src/minimax_h3_mlx/text_encoder.py",
+      "sha256": "78619e67554715287b55ab0eeb236da630d561364d15d3f7a63c57046cef05f5",
+      "size": 25928
+    },
+    {
+      "path": "src/minimax_h3_mlx/video_vae.py",
+      "sha256": "9b0da708c3fbc7c25bac8445a995ab3be1205ea317141a97eb8e690f87b698d3",
+      "size": 29924
+    },
+    {
+      "path": "src/worker_adapter.py",
+      "sha256": "61930259cd788b1e53cbcded8675f512da8e7c02641d148069035e95d5b4eaa3",
+      "size": 8792
+    }
+  ],
+  "sbom": {
+    "format": "spdx-json-2.3",
+    "path": "META/sbom.spdx.json"
+  },
+  "discovery": {
+    "kind": "model",
+    "categories": [
+      "image"
+    ],
+    "tasks": [
+      "image-generation",
+      "image-edit"
+    ]
+  },
+  "modelInstall": {
+    "serviceKey": "ai2apps.model.minimax-h3-image",
+    "models": [
+      {
+        "id": "ai2apps.model.minimax-h3-image/default",
+        "label": "MiniMax H3-Image MLX",
+        "recommended": true
+      }
+    ]
+  },
+  "modelProfile": {
+    "sizeBytes": 68628500103,
+    "minimumMemoryBytes": 137438953472,
+    "scores": {
+      "speed": 2,
+      "capability": 4
+    },
+    "benchmark": {
+      "label": "BF16 text-to-image; two-reference 512x512 edit verified with existing weights",
+      "device": "128 GiB Apple Silicon"
+    }
+  }
+}

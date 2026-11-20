@@ -178,13 +178,14 @@ def install(runtime,register):
         s=store(runtime)
         binding=runtime.app_chat.binding(context.session_id) if getattr(runtime,'app_chat',None) else None
         if binding:
-            runtime.app_chat.authorize(context,name,args)
+            runtime.app_chat.require_authorized(context,name,args)
+        if binding and binding['registration']=='ai2apps.todo.chat':
             if name in ('todo.create','todo.update') and binding['ui'].get('dirty'):raise ToolProviderError('Save or discard current Todo form edits before changing project data')
             if name in ('todo.search','todo.resolve_project','todo.project_stats'):
                 args={**args,'directory_id':binding['scope']['directory_id']}
         if name == 'todo.resolve_directory':
             directories = s.list_directories(owner)
-            if binding:
+            if binding and binding['registration']=='ai2apps.todo.chat':
                 directories = [d for d in directories if d['id'] == binding['scope']['directory_id']]
             return resolve_directory(directories, args['query'])
         if name in ('todo.resolve_project','todo.project_stats','todo.children'):

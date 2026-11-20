@@ -64,6 +64,12 @@
         return eligible[0]?.id || null;
     }
     const policy = {agentSummary, agentNotice, agentEligible, agentSelectable, agentDeclaration, agentOptions, agentDefault};
+    policy.reasoningLabel = (level, language) => {
+        const labels = {'':['跟随模型','Model default'],none:['关闭','Off'],minimal:['极低','Minimal'],
+            low:['低','Low'],medium:['中','Medium'],high:['高','High'],xhigh:['很高','Extra high'],
+            max:['最高','Max'],ultra:['超高','Ultra']};
+        return labels[level]?.[String(language).startsWith('zh') ? 0 : 1] || level;
+    };
     root.AI2AppsConversationModelPolicy = policy;
     if (typeof module !== 'undefined') module.exports = policy;
 })(globalThis);

@@ -1,0 +1,36 @@
+<div class="comfy-diff">
+    <template x-for="(side, index) in [
+        {form: comparison.beforeForm, execution: comparison.beforeExecution},
+        {form: comparison.afterForm, execution: comparison.afterExecution}
+    ]" :key="index">
+        <section>
+            <h4 x-text="index === 0 ? label('Before', '修改前') : label('After', '修改后')"></h4>
+            <template x-if="side.form">
+                <div class="comfy-form">
+                    <strong x-text="side.form.name"></strong>
+                    <ol>
+                        <template x-for="(field, fieldIndex) in side.form.fields" :key="fieldIndex">
+                            <li>
+                                <strong x-text="field.label"></strong>
+                                <span x-text="field.control"></span>
+                                <small x-show="field.help" x-text="field.help"></small>
+                            </li>
+                        </template>
+                    </ol>
+                    <strong x-text="label('Execution parameters', '执行参数')"></strong>
+                    <dl class="comfy-parameters">
+                        <dt x-text="label('Model', '模型')"></dt>
+                        <dd x-text="side.execution.model + ' · ' + side.execution.source"></dd>
+                        <dt x-text="label('Positive prompt', '正向提示词')"></dt>
+                        <dd x-text="side.execution.prompt"></dd>
+                        <dt x-text="label('Size', '尺寸')"></dt>
+                        <dd x-text="side.execution.size"></dd>
+                        <dt x-text="label('Quality / Format', '质量 / 格式')"></dt>
+                        <dd x-text="(side.execution.quality || 'auto') + ' / ' + (side.execution.outputFormat || 'png')"></dd>
+                    </dl>
+                </div>
+            </template>
+            <p x-show="!side.form" x-text="label('New preset', '新预设')"></p>
+        </section>
+    </template>
+</div>

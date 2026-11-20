@@ -147,6 +147,8 @@ class InteractivePackageManager:
             else SingletonScope(instances.get("scope", "system"))
         )
         active = self._active_app_definition(package.package_id)
+        if active is not None and active["source"] == "builtin":
+            raise ExtensionError("reserved_system_app", "System Apps cannot be replaced by Packages")
         if (
             active is not None
             and active["effective_digest"] == package.effective_digest
@@ -477,6 +479,8 @@ class InteractivePackageManager:
     async def _install_verified_bundle(
         self, bundle, verification: dict, *, approve_review=False
     ):
+            if bundle.kind is UnitKind.APP:
+                self._require_package_app_key(bundle.key)
             if bundle.kind is UnitKind.AGENT:
                 from ai2apps.agent_builder.packages import validate_web_agent_package
 
@@ -735,6 +739,7 @@ class InteractivePackageManager:
                 )
 
     def _activate_app(self, record, effective):
+        self._require_package_app_key(record.unit_key)
         m = effective.manifest
         instances = m.get("instances", {})
         mode = AppInstanceMode(instances.get("mode", "multiple"))
@@ -825,6 +830,11 @@ class InteractivePackageManager:
                 "SELECT * FROM app_definitions WHERE package_id=? AND status='enabled' ORDER BY created_at DESC LIMIT 1",
                 (key,),
             ).fetchone()
+
+    def _require_package_app_key(self, key):
+        definition = self._active_app_definition(key)
+        if definition is not None and definition["source"] == "builtin":
+            raise ExtensionError("reserved_system_app", "System Apps cannot be replaced by Packages")
 
     def _instances(self, definition_id):
         with self.database.transaction() as c:
@@ -1067,8 +1077,8 @@ class InteractivePackageManager:
         if singleton_key:
             with self.database.transaction() as c:
                 existing = c.execute(
-                    "SELECT * FROM app_instances WHERE singleton_key=?",
-                    (singleton_key,),
+                    "SELECT * FROM app_instances WHERE singleton_key=? AND app_definition_id=?",
+                    (singleton_key, definition["id"]),
                 ).fetchone()
             if existing:
                 instance = self.apps.get_instance(existing["id"])
@@ -1089,6 +1099,7 @@ class InteractivePackageManager:
         instance = self.apps.create_instance(
             app_definition_id=definition["id"],
             singleton_key=singleton_key,
+            replace_disabled_singleton=True,
             owner_user_id=(
                 request_principal.actor_user_id
                 if principal is not None
@@ -2250,6 +2261,8 @@ class InteractivePackageManager:
             if cursor.rowcount == 0:
                 raise ResourceNotFoundError(f"{kind.value}_definition", key)
 
+        revoked=getattr(self,'package_access_revoked',None)
+        if not enabled and revoked:revoked(kind,key,'package_disabled_or_uninstalled')
         changed=getattr(self,'package_capabilities_changed',None)
         if changed:changed()
 
@@ -2297,6 +2310,7 @@ class InteractivePackageManager:
         return result
 
     def _rollback_app(self, target, effective) -> None:
+        self._require_package_app_key(target.unit_key)
         target_definition = None
         with self.database.transaction() as connection:
             target_definition = connection.execute(

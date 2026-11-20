@@ -20,6 +20,7 @@ from .models import (
     ToolInvocationRecord,
     ToolInvocationStatus,
     ToolProviderError,
+    ToolAuthorizationError,
 )
 from .registry import ServiceLifecycle, ServiceRegistry, ToolGateway
 from .repository import ServiceRepository
@@ -42,6 +43,7 @@ __all__ = [
     "ToolExecutionResult",
     "ToolGateway",
     "ToolGatewayError",
+    "ToolAuthorizationError",
     "ToolInvocationRecord",
     "ToolInvocationStatus",
     "ToolProviderError",

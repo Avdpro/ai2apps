@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
@@ -93,6 +93,26 @@ class ProviderEnabledRequest(BaseModel):
     enabled: bool
 
 
+class ChannelReadRequest(BaseModel):
+    model_config = {'extra': 'forbid'}
+    session_id: str = Field(min_length=1, max_length=256)
+    owner: str = Field(min_length=1, max_length=256)
+    local_id: str = Field(min_length=1, max_length=256)
+    interface_version: str = Field(default='1', min_length=1, max_length=64)
+    provider_id: str = Field(min_length=1, max_length=256)
+    provider_version: str = Field(min_length=1, max_length=256)
+    role: str = Field(pattern='^(list|search|read|resolve)$')
+    arguments: dict[str, Any] = Field(default_factory=dict)
+
+
+class ChannelRepairReadRequest(ChannelReadRequest):
+    protocol: Literal['ai2apps.channels/v2']
+    parameter_repair: Literal['off', 'deterministic', 'system'] = 'system'
+    max_repair_attempts: int = Field(default=2, ge=0, le=2)
+    total_timeout_ms: int = Field(default=15000, ge=100, le=15000)
+    model_max_tokens: int = Field(default=256, ge=32, le=512)
+
+
 def create_capability_router(
     runtime_provider: PlatformRuntimeProvider,
     principal_provider: PrincipalProvider = resolve_request_principal,
@@ -113,6 +133,55 @@ def create_capability_router(
                 retryable=True,
             )
         return runtime.capabilities
+
+    # MVP: same authenticated system-management surface as the Tool API.
+    # No arbitrary App/Package delegation is inferred from user access.
+    def channel_host(principal, session_id):
+        from ai2apps.api.ownership import authorize_session
+        from ai2apps.services import ToolCallContext
+        from ai2apps.services.channels import ChannelDirectory
+        runtime = runtime_provider()
+        if runtime is None or getattr(runtime, 'app_capability_router', None) is None:
+            from fastapi import HTTPException
+            raise HTTPException(503, detail={'code': 'runtime_not_ready'})
+        authorize_session(runtime, principal, session_id)
+        context = ToolCallContext.from_principal(principal, caller_id='api:channels', session_id=session_id)
+        return ChannelDirectory(runtime), context
+
+    @router.get('/channels')
+    def list_channels(session_id: str, query: str = Query(default='', max_length=500),
+                      offset: int = Query(default=0, ge=0), limit: int = Query(default=20, ge=1, le=100),
+                      principal=Depends(principal_provider)):
+        directory, context = channel_host(principal, session_id)
+        return directory.catalog(context, query=query, offset=offset, limit=limit)
+
+    @router.post('/channels/read')
+    async def read_channel(body: ChannelReadRequest, principal=Depends(principal_provider)):
+        from ai2apps.services.capability_routing import CapabilityInvocationError
+        from ai2apps.services import ToolGatewayError
+        directory, context = channel_host(principal, body.session_id)
+        try:
+            return await directory.invoke(context, **body.model_dump(exclude={'session_id'}))
+        except (CapabilityInvocationError, ToolGatewayError) as error:
+            status = 409 if error.code == 'version_conflict' else (403 if error.code in {'permission_denied', 'capability_denied'} else 422)
+            return platform_error_response(status_code=status,
+                code=error.code, message=str(error), retryable=False,
+                details=getattr(error, 'details', {}))
+
+    @router.post('/channels/read-with-repair')
+    async def read_channel_with_repair(body: ChannelRepairReadRequest, principal=Depends(principal_provider)):
+        from ai2apps.services.parameter_repair import RepairOptions
+        from ai2apps.services.capability_routing import CapabilityInvocationError
+        from ai2apps.services import ToolGatewayError
+        directory, context = channel_host(principal, body.session_id)
+        try:
+            request = body.model_dump(exclude={'session_id','protocol','parameter_repair','max_repair_attempts','total_timeout_ms','model_max_tokens'})
+            return await directory.invoke_repaired(context, options=RepairOptions(body.parameter_repair,
+                body.max_repair_attempts, body.total_timeout_ms, body.model_max_tokens), **request)
+        except (CapabilityInvocationError, ToolGatewayError) as error:
+            status = 409 if error.code == 'version_conflict' else (403 if error.code in {'permission_denied','capability_denied'} else 422)
+            return platform_error_response(status_code=status, code=error.code, message=str(error),
+                retryable=False, details=getattr(error,'details',{}))
 
     @router.get("/capability-catalog")
     def inspect_catalog(principal=Depends(principal_provider)):

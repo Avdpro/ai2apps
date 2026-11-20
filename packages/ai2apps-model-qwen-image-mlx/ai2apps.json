@@ -3,9 +3,9 @@
   "package": {
     "id": "ai2apps/model-qwen-image-mlx",
     "type": "service",
-    "version": "0.1.2",
+    "version": "0.1.3",
     "displayName": "Qwen Image MLX",
-    "description": "Separate Qwen Image 2512 generation and Qwen Image Edit 2511 editing (1–3 references)."
+    "description": "Unified Qwen Image 2.1 text-to-image and instruction-based editing with RGBA PNG and WebP output."
   },
   "compatibility": {
     "ai2apps": ">=0.1.0 <2.0.0",
@@ -39,7 +39,7 @@
   "dependencies": [
     {
       "packageId": "ai2apps/runtime-omlx",
-      "version": ">=1.5.1 <2.0.0",
+      "version": ">=1.8.17 <2.0.0",
       "optional": false
     }
   ],
@@ -59,29 +59,24 @@
     ]
   },
   "modelProfile": {
-    "sizeBytes": 42949672960,
-    "minimumMemoryBytes": 51539607552,
+    "sizeBytes": 33131601593,
+    "minimumMemoryBytes": 34359738368,
     "scores": {
       "speed": 2,
       "capability": 5
     },
     "benchmark": {
-      "label": "Existing package estimates; not a new hardware benchmark",
-      "device": "Apple Silicon reference hardware"
+      "label": "M5 Max smoke tested at 512×512 Q8; memory floor estimated",
+      "device": "Apple M5 Max"
     }
   },
   "modelInstall": {
     "serviceKey": "ai2apps.model.qwen-image-mlx",
     "models": [
       {
-        "id": "ai2apps.model.qwen-image-mlx/2512",
-        "label": "Qwen Image 2512 MLX",
+        "id": "ai2apps.model.qwen-image-mlx/2.1",
+        "label": "Qwen Image 2.1 MLX",
         "recommended": true
-      },
-      {
-        "id": "ai2apps.model.qwen-image-mlx/edit-2511",
-        "label": "Qwen Image Edit 2511 MLX",
-        "recommended": false
       }
     ]
   }

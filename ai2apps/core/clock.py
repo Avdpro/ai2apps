@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
 def utc_now() -> datetime:
@@ -40,3 +41,23 @@ def parse_utc(value: str) -> datetime:
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         raise ValueError("Platform timestamps must include a timezone")
     return parsed.astimezone(UTC)
+
+
+def time_snapshot(timezone: str = "UTC", *, now: datetime | None = None) -> dict[str, str]:
+    """Sample one host instant and project it into a validated IANA zone."""
+    if not isinstance(timezone, str) or not 1 <= len(timezone) <= 128:
+        raise ValueError("Unknown time zone")
+    try:
+        zone = ZoneInfo(timezone)
+    except (ValueError, ZoneInfoNotFoundError) as exc:
+        raise ValueError("Unknown time zone") from exc
+    instant = utc_now() if now is None else now
+    utc = format_utc(instant)
+    local = instant.astimezone(zone)
+    return {
+        "utc": utc,
+        "local": local.isoformat(timespec="seconds"),
+        "date": local.date().isoformat(),
+        "weekday": ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")[local.weekday()],
+        "timezone": timezone,
+    }

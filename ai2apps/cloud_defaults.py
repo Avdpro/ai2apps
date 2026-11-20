@@ -20,30 +20,29 @@ def validate_policy(payload: object) -> dict:
     revision = payload.get("revision")
     if not isinstance(revision, str) or not revision or len(revision) > 128:
         raise ValueError("Invalid Cloud defaults revision")
-    model = payload.get("apiDefault")
-    if model is None and "apiDefault" in payload:
-        return {"schema": POLICY_SCHEMA, "revision": revision, "apiDefault": None}
-    if not isinstance(model, dict):
-        raise ValueError("Missing Cloud API default")
-    model_id = model.get("modelId")
-    name = model.get("displayName")
-    if (
-        not isinstance(model_id, str)
-        or len(model_id) > 480
-        or re.fullmatch(r"[A-Za-z0-9._-]+/[A-Za-z0-9._/-]+", model_id) is None
-        or any(part in {"", ".", ".."} for part in model_id.split("/"))
-        or model_id.startswith(("cloud/", "gateway/"))
-        or not isinstance(name, str)
-        or not name.strip()
-        or len(name) > 256
-        or any(ord(char) < 32 for char in name)
-    ):
-        raise ValueError("Invalid Cloud API default model")
-    return {
-        "schema": POLICY_SCHEMA,
-        "revision": revision,
-        "apiDefault": {"modelId": model_id, "displayName": name.strip()},
-    }
+    result = {"schema": POLICY_SCHEMA, "revision": revision}
+    for field in ("apiDefault", "imageApiDefault"):
+        if field == "imageApiDefault" and field not in payload:
+            continue  # Older Cloud policy: no drawing default has been declared.
+        model = payload.get(field)
+        if model is None and field in payload:
+            result[field] = None
+            continue
+        if not isinstance(model, dict):
+            raise ValueError("Missing Cloud default: " + field)
+        model_id = model.get("modelId")
+        name = model.get("displayName")
+        if (
+            not isinstance(model_id, str) or len(model_id) > 480
+            or re.fullmatch(r"[A-Za-z0-9._-]+/[A-Za-z0-9._/-]+", model_id) is None
+            or any(part in {"", ".", ".."} for part in model_id.split("/"))
+            or model_id.startswith(("cloud/", "gateway/"))
+            or not isinstance(name, str) or not name.strip() or len(name) > 256
+            or any(ord(char) < 32 for char in name)
+        ):
+            raise ValueError("Invalid Cloud default model: " + field)
+        result[field] = {"modelId": model_id, "displayName": name.strip()}
+    return result
 
 
 async def refresh_cloud_defaults(store, cloud) -> bool:

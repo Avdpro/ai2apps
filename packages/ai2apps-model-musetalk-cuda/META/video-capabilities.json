@@ -1,0 +1,91 @@
+{
+  "schema": "ai2apps.video-capabilities/v1",
+  "operations": [
+    "video_generation"
+  ],
+  "content_combinations": [
+    {
+      "id": "template_video_driving_audio",
+      "required": [
+        {
+          "type": "video_url",
+          "role": "source_video",
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "audio_url",
+          "role": "driving_audio",
+          "min": 1,
+          "max": 1
+        }
+      ],
+      "optional": []
+    }
+  ],
+  "formats": {
+    "image_input": [],
+    "audio_input": [
+      "wav"
+    ],
+    "video_input": [
+      "mp4"
+    ],
+    "video_output": [
+      "mp4"
+    ],
+    "video_codecs": [
+      "h264"
+    ],
+    "audio_codecs": [
+      "aac"
+    ]
+  },
+  "geometry": {
+    "resolutions": [
+      "source"
+    ],
+    "ratios": [
+      "source"
+    ],
+    "framespersecond": [
+      25
+    ],
+    "alpha": false
+  },
+  "duration": {
+    "mode": "driving_audio",
+    "minimum_seconds": 0.2,
+    "maximum_seconds": null
+  },
+  "audio": {
+    "modes": [
+      "preserve_driving_audio"
+    ],
+    "default_mode": "preserve_driving_audio",
+    "generated_audio": false
+  },
+  "presets": [
+    {
+      "id": "default",
+      "display_name": "MuseTalk",
+      "cancellable": true,
+      "resumable": "unsupported"
+    }
+  ],
+  "defaults": {
+    "resolution": "source",
+    "ratio": "source",
+    "framespersecond": 25,
+    "preset": "default",
+    "seed": 42,
+    "output_format": "mp4",
+    "audio_output_mode": "preserve_driving_audio"
+  },
+  "execution": {
+    "asynchronous": true,
+    "streaming_preview": false,
+    "progress": "unsupported",
+    "max_concurrency_per_device": 1
+  }
+}

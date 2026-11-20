@@ -1,0 +1,121 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/comic-studio",
+    "type": "app",
+    "version": "0.1.2",
+    "displayName": "Comic Studio",
+    "description": "Create short episodic comics with reusable series and characters."
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": [
+      "darwin"
+    ],
+    "architectures": [
+      "arm64"
+    ]
+  },
+  "entrypoints": [
+    {
+      "name": "main",
+      "kind": "app",
+      "path": "web/comic.html"
+    }
+  ],
+  "permissions": [],
+  "dependencies": [],
+  "files": [],
+  "sbom": {
+    "format": "spdx-json-2.3",
+    "path": "META/sbom.spdx.json"
+  },
+  "capabilityCatalog": {
+    "schemaVersion": "ai2apps.package-capabilities.v1",
+    "entries": [
+      {
+        "kind": "mini-app",
+        "identity": "ai2apps.imagine.comic-studio",
+        "provides": [
+          "imagine.create_comic",
+          "imagine.comic_series",
+          "imagine.create_series_episode"
+        ],
+        "tasks": [
+          "Create a short comic",
+          "Draw 2–6 comic panels with saved character appearances",
+          "Create a captioned comic from a script",
+          "生成短篇漫画",
+          "用已保存角色形象绘制漫画",
+          "按脚本绘制2至6格漫画",
+          "List comic series",
+          "Create a new episode in an existing series",
+          "查询漫画系列",
+          "在已有系列中生成新一集"
+        ],
+        "inputTypes": [
+          "text",
+          "image"
+        ],
+        "outputTypes": [
+          "image"
+        ],
+        "requirements": {
+          "capabilities": [
+            "image.workflow"
+          ]
+        },
+        "agent": {
+          "mode": "aaat",
+          "declarationVersion": "1.0.0",
+          "exports": [
+            {
+              "name": "imagine.create_comic",
+              "interfaceVersion": "1.0.0",
+              "inputTypes": [
+                "text",
+                "image"
+              ],
+              "outputTypes": [
+                "image"
+              ]
+            },
+            {
+              "name": "imagine.comic_series",
+              "interfaceVersion": "1.0.0",
+              "inputTypes": [
+                "text"
+              ],
+              "outputTypes": [
+                "text"
+              ]
+            },
+            {
+              "name": "imagine.create_series_episode",
+              "interfaceVersion": "1.0.0",
+              "inputTypes": [
+                "text"
+              ],
+              "outputTypes": [
+                "image"
+              ]
+            }
+          ]
+        },
+        "scope": "List saved series, inspect settings and recent 20 stories, and append an episode with saved character appearances. No implicit schedule or series setting changes.",
+        "processing": "hybrid",
+        "pricing": "unknown",
+        "localizations": {
+          "en": {
+            "displayName": "Comic Studio",
+            "description": "Draw scripted short comics with consistent characters."
+          },
+          "zh": {
+            "displayName": "短漫工坊",
+            "description": "使用角色形象，按脚本逐格绘制短漫画。"
+          }
+        }
+      }
+    ]
+  }
+}

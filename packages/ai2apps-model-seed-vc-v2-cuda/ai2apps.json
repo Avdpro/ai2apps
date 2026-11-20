@@ -1,0 +1,81 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/model-seed-vc-v2-cuda",
+    "type": "service",
+    "version": "0.1.0",
+    "displayName": "Seed-VC v2 CUDA",
+    "description": "CUDA voice conversion with request-scoped reference audio; timbre and autoregressive voice modes."
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": [
+      "linux"
+    ],
+    "architectures": [
+      "arm64"
+    ]
+  },
+  "entrypoints": [
+    {
+      "name": "model-worker",
+      "kind": "service",
+      "path": "service.yaml"
+    }
+  ],
+  "permissions": [
+    {
+      "capability": "model-weights.huggingface-cache.read",
+      "reason": "Read the pinned Seed-VC v2 checkpoint.",
+      "required": true
+    },
+    {
+      "capability": "accelerator.cuda",
+      "reason": "Run local zero-shot voice conversion.",
+      "required": true
+    }
+  ],
+  "dependencies": [
+    {
+      "packageId": "ai2apps/runtime-cuda-torch",
+      "version": ">=0.6.0 <1.0.0",
+      "optional": false
+    }
+  ],
+  "files": [],
+  "sbom": {
+    "format": "spdx-json-2.3",
+    "path": "META/sbom.spdx.json"
+  },
+  "discovery": {
+    "kind": "model",
+    "categories": [
+      "speech"
+    ],
+    "tasks": [
+      "voice-conversion"
+    ]
+  },
+  "modelInstall": {
+    "serviceKey": "ai2apps.model.seed-vc-v2-cuda",
+    "models": [
+      {
+        "id": "ai2apps.model.seed-vc-v2-cuda/default",
+        "label": "Seed-VC v2",
+        "recommended": true
+      }
+    ]
+  },
+  "modelProfile": {
+    "sizeBytes": 2236581603,
+    "minimumMemoryBytes": 8589934592,
+    "scores": {
+      "speed": 3,
+      "capability": 3
+    },
+    "benchmark": {
+      "label": "Estimated deployment memory; development CUDA minute fixture peak 4.20 GB, signed installation pending",
+      "device": "NVIDIA DGX Spark GB10"
+    }
+  }
+}

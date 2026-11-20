@@ -1,3 +1,1661 @@
+### NXR-DESKTOP-RELEASE-2269-20261121（preparing）
+
+- 2269 发布范围冻结为此前候选；用户再次明确先发布，后续新增改动留给下一版。沿用 0.1.8、Build 2269；独立 Package 不重复发布。打包排除 ai2apps/artifacts 验收产物，避免将本机生成的验收图片和回执装进 App；源码候选也不纳入这些未跟踪产物。发布工作流隔离测试 17/17 通过。
+
+- 2026-11-21 用户明确要求：Bot 对话/实机使用以交付前已完成的验收为依据，不重复耗时 Bot 全量测试。本轮停止完整 Host 和 AaAT 批次；中断不计通过，既有失败/未完成记录保留。后续限定本次实际修复的定向验证与构建、签名、公证、双源文件和更新链路验证。用户未授权将旧 Bot 测试批量放宽，相关拟议修改仍未执行。
+
+- 补充检查：访客空间原翻译测试 5/5 通过；剩余手机导航、Todo 初始化、情报中心 DOM/恢复状态夹具更新后 35/35 通过，所有原断言保留。Mobile 视频测试当前失败定位为旧标题预期（配置视频字幕 vs 配置运行环境），尚未改动；Bot 测试更新仍等待此前审批问题的答复。尚未构建、上传或发布 2269。
+
+- 访客空间 source-text→key 翻译索引误混入模型凭据导入和 Bot Hook 的 key→English 条目，导致标准生成器失败；移除这些非访客映射（各语言正式目录保留），重新运行原生成器，保留所有访客翻译条目。复验原完整性/占位符/用户文本隔离测试。
+
+- 测试夹具修复（不涉及待批准的 Bot 断言）：手机导航按当前 boot 包装函数边界加载，补齐页面节点并额外断言 ready，原历史/作用域/离开保护等 23 项全部通过；情报中心 ZIP 导入改为精确匹配 ZIP 输入框，隔离 Chrome 两种宽度验收通过。OCR 前端检查在正确项目目录运行通过，未改测试。
+
+- 翻译修复同步更新情报中心脚本缓存版本，确保升级后不会继续读取旧映射。Bot 协作同一用例未改代码/断言单独复跑通过（29.08 秒）；全量中的超时仍待排查，不据此标为全量通过。
+
+- 前端完整检查首轮：1368 项，1324 通过、44 失败；未标为通过。素材槽测试的旧 Package 路径和拆分模板读取已修正，6 项复验通过。其余 Bot 旧夹具适配被自动审批拒绝，尚未执行，等待用户决策；不跳过失败项。
+- 实际产品修复：情报中心的文档工坊素材提示、AI 修改状态、素材选择/移除四处未进入翻译映射；补齐现有十种语言映射及文本，原 i18n 测试完整通过。文档末尾多余空行同时清理，不修改规范内容。
+
+- 2026-11-21 用户确认手机 Bot 语音/图片预览、BYOK 图片生成及商品图工作流已实测通过，明确纳入本版；这是用户实机验收，不记为本轮自动测试。独立 Package 不重复发布。
+- 发布检查：原生 Swift 测试通过；图片调用边界专项 145 项通过、1 项旧默认模型夹具失败。该夹具现显式配置所测模型，不恢复已删除的付费模型硬编码回退；所在文件最终 4 项全部通过。全量 Host 与标准 AaAT 门禁仍在运行。
+
+- User requests next Desktop release. Production anonymous manifest confirms
+  0.1.8 / Build 2268 at 10000bp. Candidate number 2269; final scope/version and
+  acceptance gates are being reconciled. No new release artifact published.
+- Release preflight reproduced shared dependency violations from cloud_gateway
+  into Image background/BYOK validators. Moved the complete image transport adapter
+  to images/cloud_gateway and updated owner API/job/server composition imports and
+  transport fixtures. Shared Chat/Responses transport no longer imports Image owner
+  rules. No architecture policy exemption or request validation was removed.
+  Full Host baseline and targeted transport/boundary checks are in progress.
+
+### NXR-CHARACTER-COLLECT-REVISION-SYNC-20261120（completed）
+
+- 修复生成后后台已关联图片而编辑器整段 JSON 比较导致不合并、后续保存 revision 冲突。改为逐字段三方合并：生成历史始终更新；不冲突时同步版本并保留未保存说明/定义图选择，真正重叠修改保留冲突保护，不盲目抬版本覆盖。
+- 图片采集共享 pending Promise，保存等待采集完成后再构造请求；保存中不启动新的采集。19 项前端定向测试通过，含字段顺序/默认字段、定义图编辑保留、真实冲突和保存采集竞态。
+- 只读核实 App-Dev 马斯克后台已有 1 张图、角色 revision 2，截图前端仍 revision 1。未重新生成或写用户角色；纯前端刷新生效。
+
+### NXR-FINALIZED-CHARACTER-REUSE-20261120（completed）
+
+- 定稿文案涵盖 App/Mini-App/Bot 等；前后端要求定义图和非空说明，输入参考图不能替代定义图，清空定义图/说明自动取消定稿。Characters.definitions 为共同只读投影，仅返回定稿的单一定义图 ID 与说明及命名/版本标识，不返回生成输入/参数/历史。
+- Gallery HTTP、挂载授权 image-workflow 和新增 gallery.character_definitions AaAT 复用该 owner 投影；Bot 可用已有 gallery.import_materials 导入定义图到会话。短漫工坊与其它绘图入口只引用定义图和 summary，不再回退生成参考图或拼接内部参数。未发布短漫工坊新 Package。
+- 10 项角色 Python、16 项 Node 通过，新增 Bot 能力走真实 SQLite/Tool 路由夹具，非真实 LLM 测试。AaAT 全量命令运行后中止以缩小到相关门禁；选定 35 项中 34 passed，1 项报告本轮未改动 cloud_gateway -> images.background 共享依赖边界错误，未改该模块/门禁。App-Dev 空闲后经 Helper 重载。
+
+### NXR-CHARACTER-REFERENCE-SLOT-ISOLATION-20261120（completed）
+
+- 修复角色/形象切换只换参数却沿用 Host 全局参考素材槽的问题。按角色和形象分别缓存未保存文件，切换清空后加载对应保存参考；空白形象不继承旧槽。保存/渲染自动导入当前输入文件，仅更新当前形象 reference_ids，形象定义图仍独立。
+- 16 项角色编辑 Node 定向测试通过，含 A/B 未保存文件往返、新形象空槽、保存参考重载和提交字段隔离；语法/空白检查通过，无模型调用，无用户数据修改。纯前端刷新生效。
+
+### NXR-CHARACTER-DEFINITION-IMAGE-20261120（completed）
+
+- 形象定义图独立字段与标准 Asset Slot，输入参考图保持原样。生成历史按钮改为设为形象定义图，Output 设图同样不再覆盖输入参考。既有数据不自动选图。
+- 新导出仅角色/形象名称、一段说明及一张显式选定定义图，保留原 schema 容器以兼容预览；缺少定义图/说明时拒绝导出，不带参数、历史或输入参考。共享角色复用和短漫工坊优先采用定义图，编辑器加载原输入参考。
+- 9 项 Python owner、17 项 Node 编辑/预览测试通过，含独立参考保持、选图隔离、未选图拒绝和单图精简导出。短漫工坊源码语法通过，未发布新 Package；App-Dev 空闲后通过自身 Helper 重载。
+
+### NXR-CHARACTER-REMOVE-GENERATED-IMAGE-20261120（completed）
+
+- 角色设计已生成图片增加删除关联，独立 owner 接口检查归属与角色 revision；保留 Output/Gallery 图片及标准参考关系，不删除原文件。服务器保存移除记录，旧 Run 重采集/重新打开不恢复已移除关联；普通保存保留此记录。
+- 前端只合并生成记录和 revision，保留未保存表单编辑。9 项 Python owner 测试、12 项编辑 Node 测试通过，含真实持久化夹具删除、过期 revision 拒绝、保留原文件与再采集不复活。
+- App-Dev 空闲后经自身 Helper 重载；不更改 Dev/生产，不执行付费推理或删除用户素材。
+
+### NXR-CHARACTER-PROPORTION-PRESETS-20261120（completed）
+
+- 角色设计身形比例保留自由输入，旁设预设下拉，选择后填入同一可编辑字段。提供 13 种中英文预设，涵盖 2/3 头身 Q 版、卡通、少年、动漫、写实、超级英雄、时装、玩偶和保留参考比例。沿用已有保存、派生、Prompt 与 JSON 字段，无新后端契约。
+- JavaScript 语法和既有 11 项角色编辑定向测试通过；纯前端刷新生效，无模型调用。
+
+### NXR-CHARACTER-DERIVE-APPEARANCE-20261120（completed）
+
+- 角色设计形象菜单首项改为创建新形象；原按钮改为派生形象。空白创建清空素材槽；派生复制视觉参数/说明但不复制确认状态与生成记录，以当前形象绑定的选中 Output 图片或最近设定图为主参考，不误取其它角色的 Output。没有设定图时禁用派生，图片读取失败不创建形象。
+- 11 项前端定向测试通过，覆盖菜单顺序、独立草稿、来源绑定、旧形象保留和失败保护；无需模型调用或 Local 重启，刷新页面生效。
+
+### NXR-CHARACTER-JSON-PREVIEW-20261120（completed）
+
+- 形象导出使用 .charector.json；Output 与 Gallery 共用 schema 校验的只读图文预览，兼容此前 application/json 导出。展示内嵌栅格图片、身份、风格、比例、衣着、要求与说明，不执行 JSON/HTML 内容。异步加载防止旧响应覆盖新选择。
+- Output 允许将形象 JSON 加入 Gallery，保持原有会话所属检查，验证 schema 和大小，不开放任意 JSON 导入。9 项角色 owner Python、3 项预览 Node 测试通过；含真实持久化夹具导出/加入 Gallery，非付费模型调用。
+- App-Dev UI 已验证已有 JSON 的内嵌图片和文字，以及点击完整查看。Local 通过自身 Helper 重载激活新文件名和导入接口。
+
+### NXR-CHARACTER-DESCRIPTION-REASONING-20261120（completed）
+
+- 角色设计自动生成说明不再无条件发送 reasoning_effort；Managed Cloud 使用其默认请求契约，只有明确声明 can_disable 的非托管路由才请求关闭思考。保留原模型，不重试、不切 Provider，不改变已有图片或说明。
+- 9 项角色 owner 定向测试通过，含 Managed Cloud、声明支持/不支持关闭思考的路由和截断保护；使用夹具，无付费推理调用。App-Dev 通过自身 Helper 重载；运行验收见 ai2apps/docs/acceptance/character-design-mvp-20261120.md。
+
+### NXR-GALLERY-DESCRIPTION-20261120（in_progress）
+
+- Gallery owner 保存 AaAT 增加可选 name/description，Provider version 2；复用 metadata.description，无 DB 迁移，旧调用兼容。HTTP artifact/attachment 导入与 PATCH、Gallery 查看器说明编辑、名称/说明搜索、search/get 返回说明同步支持；重复命中保留已有说明并返回实值。没有改 General Agent 或 Cloud。
+- 定向 Runtime/SQLite/HTTP/AaAT 夹具 11 passed；Gallery 既有测试 7 passed、1 项已有页面硬编码中文检查失败；JS 语法通过。全量 AaAT 门禁已启动，结果待确认；尚未激活或完成真实 Bot/UI 验收，不宣称运行中实例已升级。
+- 对接回执：ai2apps/docs/gallery-aaat-name-description-receipt-20261120.md。激活需待任务结束后重启对应 Local，复核固定 live-checkout source-root、实际模块与服务资源，再重新发现 AaAT。
+
+### NXR-FOUR-TTS-MODEL-PACKAGES-20261120
+
+- published_verified：四个模型Package已发布并完成最终工件与公开Registry两阶段验收，依赖已发布Runtime1.8.20。ZONOS3 Mini / MOSS TTS Nano / Breeze TTS 2 均0.1.0、experimental、质量3/5、情感与指令控制关闭；速度分别5/5、5/5、2/5。Fish Drama 3为0.2.0、非实验、质量5/5、速度4/5，唯一声明原生情感（neutral/happy/scared/angry），不声明多人能力。
+- Fish沿用ai2apps/model-fish-s2-pro与ai2apps.model.fish-s2-pro/bf16兼容标识，实际切换Drama 3混合4/8-bit固定检查点；公开Registry 0.1.1→0.2.0升级检查通过。旧/bf16仅为稳定标识，不是实际量化。保留新Community License/NOTICE及许可条件，移除旧S2 Pro未引用许可证；Breeze保留研究/非商业许可和下载确认。
+- 模型权重尺寸按固定文件实值填写：Zonos 1408903393、MOSS连同codec 373415843、Fish 23781114058、Breeze 7625565549字节；性能源于既有Apple M5 Max四段中英克隆的warm RTF，非跨设备/冷启动测量，内存要求为保守估计。模型包本身分别7053/7885/28775/28354字节，不内嵌权重。
+- 五个checkpoint distribution均完成首次HF/ModelScope双端全文件下载字节校验、签名发布与公开验签。四包各自通过最终签名包干净安装与发布后Registry新实例空权重缓存获取、Runtime依赖、审查、发现、真实中文/英文/参考克隆、鉴权、重启和卸载；Fish两阶段各含三种情感，其他模型拒绝情感请求。合计38次真实生成；69项契约回归通过。公开目录名称/版本/评分/尺寸与签名清单一致，四Submission均published。
+- 未修改Host或Dev/App-Dev安装、未重启用户实例、未发布Desktop；本次四包Dev Cookie授权使用结束。第二台设备/最低内存与真人新一轮音质评价未覆盖；网络故障恢复为夹具回归，不宣称真实故障注入。
+- 回执：docs/ai2apps-four-tts-model-packages-release-2026-11-20.json；证据：ai2apps/.build/four-tts-packages-20261120。后续Desktop评估源Package内容；独立Package发布不等于Desktop已发布。
+
+### NXR-LOCAL-CREDENTIAL-IMPORT-20261120
+
+- implemented / live_core_verified：模型设置内同机、同AI2Apps账号的一次性API-Key导入。原生系统用户验证、可信Helper传输、独立目标SecretBackend、明确覆盖及历史归属确认；不导出Cloud登录/邮箱/Cookie，不改变普通模型调用认证。
+- 已实测：用户在Test使用Dev同账号并明确授权四组Provider及覆盖，完成系统验证后，Test显示OpenAI、DeepSeek、MiniMax H3 API、火山引擎Seedance全部已导入。标准更新重启后四组均仍显示已配置；未调用付费生成。没有账号池租约或数据重置。
+- 已验证：Python安全及相关回归95项通过；Swift Helper编译、原生签名夹具信任/账号过滤通过；Test Harness清单修复回归118通过、1跳过。固定Dev源码绑定及实际Local导入路径验证，固定Test标准构建/签名/打包源一致性通过。
+- 修复启动Cocoa4866弹框：不再序列化NSXPCListenerEndpoint，改用Unix socket及内核audit-token/代码签名验证；可选导入模块失败不阻断Local。修复取消误报失败及来源刷新选择；原生按钮/说明/系统验证原因跟随发起实例当前语言，九种语言单独显示。中文按钮/说明由用户确认，最终原生取消在Test明确显示已取消且不变；其他语言未逐一实机目检，系统认证取消未做真实验收。
+- 测试方案共33项，C33包含同账号原生导入、取消、异常与安全边界。证据：ai2apps/docs/acceptance/local-credential-import-20261120/receipt.json；尚未发布Desktop。
+
+### NXR-RUNTIME-1.8.20-FOUR-TTS-20261120
+
+- published_verified：ai2apps/runtime-omlx 1.8.20 已发布。以1.8.19源码/依赖为基线，加入Fish Drama 3、ZONOS3 Mini、MOSS TTS Nano、Breeze TTS 2隔离后端及参考音频修复，不升级全局MLX依赖、不发布Model Packages。
+- Developer ID签名、Apple公证 a49d7b36-edca-4c74-bfda-522044e6a422 Accepted、staple/validate/spctl通过。外层Publisher签名Package SHA-256 b214c7f0427182b621e7b81c2b739c0198367e5286f48be3dbcdc67dd2c140a1，365300283字节（348.4 MiB），相比1.8.19的497.2 MiB减少29.94%。标准构建器可选ULMO压缩，默认UDZO不变；无运行组件删除，安装占用与内存不因压缩减少。
+- 新加载器修复严格resolve探测沙箱授权外父目录的问题，继续使用Host显式选定本地检查点和严格权重校验，不放宽沙箱。76项初始定向测试、20项修复后后端测试及2项构建器测试通过。
+- 最终签名包干净安装/重启、四模型标准无外网沙箱真实生成通过；公开Registry下载/校验/安装后四模型重复生成通过；隔离实例标准卸载通过且保留共享权重。四模型使用未发布声明fixture，未声称Model Package发行验收或第二台Mac测试。
+- Cloud/GitHub/ModelScope三来源已激活，镜像全量SHA及Range通过，匿名签名索引和三源签名分块验证通过。本次Dev Cookie授权使用结束；未修改Dev/App-Dev安装或源码绑定。
+- 回执：docs/ai2apps-runtime-1.8.20-tts-release-2026-11-20.json；构建证据：ai2apps/.build/runtime-1.8.20-tts。Desktop下次发布须评估纳入对应Runtime/构建器源变更；独立Runtime发布不等于Desktop已发布。
+
+### NXR-ZONOS3-EMOTION-STEERING-20261119
+
+- implemented / runtime_live_evaluated / package_install_pending：ZONOS3 MLX 新增整句 happy/scared/angry/sad 情绪与强度控制，固定官方 a50e14117d99181ba7f28047b451ba03ba1a09a9 的方向资源和许可。音频 decode 步在 source 19 入 attention-residual bank 前加向量；prefill 和无控制路径不变，不改现有 oMLX 模型/路由内核。非法情绪、强度、架构拒绝，neutral/0 不注入。资源包含源码分发。
+- 实测同一中文文本、同一合成参考声音，Zonos3/Drama3/Breeze 各生成中性/开心/害怕/生气，共12段有效非静音 WAV。音色情绪效果供用户试听，未宣称人工或ASR质量验收。53项定向回归通过。
+- 证据与试听页：ai2apps/docs/evidence/tts-emotions-20261119/index.html；重现脚本 ai2apps/scripts/evaluate_tts_emotions.py。本轮仍是 Runtime 层实现，尚未发布/安装新 Runtime 与 Model Packages，也未增加 Voice Studio 控件；正式 Worker 情绪0～1到原生强度的适配及包能力声明须在 Package 接入时完成。
+
+### NXR-FOUR-MLX-TTS-BACKENDS-20261119
+
+- implemented / runtime_evaluation_verified / package_install_pending：现有 Runtime 新增 ZONOS3-Mini、MOSS-TTS-Nano、Fish Drama 3、Breeze TTS 2 的严格本地加载与生成适配。固定上游 MLX 源码与来源哈希；Zonos/Drama 隔离回移，Breeze/MOSS 复用原 mlx-audio pin，不修改现有模型/路由/MoE 内核或全局依赖版本。MOSS codec 由 Host 显式提供，禁止缺依赖自动下载。
+- Drama 复用当前 mlx-lm 缓存，补齐参考音频重采样兼容，MOSS 无参考使用 continuation；修复 stereo 直接 flatten，按结果采样率输出 mono。代码与上游许可纳入源码分发。
+- 验证：46 项定向测试通过；真实 Metal 离线运行四模型中文生成与同一合成参考克隆，8 段音频和 receipts 已保存。非人工音质/ASR 评分。扩大语音 API 回归 112 passed / 2 failed / 39 errors / 1 deselected，失败均报告 PlatformRuntime.hook_execution 缺失的 shutdown 异常，未修改无关 Host 生命周期。
+- 尚未构建、发布、激活 Dev/App-Dev 或注册 Model Packages；正式可安装版本仍需能力/许可声明、Runtime 构建及 Worker 安装验收。说明 ai2apps/docs/four-mlx-tts-runtime-evaluation-20261119.md；证据 ai2apps/docs/evidence/four-mlx-tts-20261119/。
+
+### NXR-BOT-STRUCTURED-MODEL-MEMORY-20261119
+
+- implemented / regression_verified / dev_live_verified：新增结构化模型记忆，复用 Model-App 用途分类、模型目录和兼容校验。标准/隐私分开，显式模型参数→当前 Bot→最近父链→同模式系统默认；不传播其它私有记忆，不授予权限。新执行冻结快照、续接沿用原 Task、定时每次新执行重新捕获。失效/不兼容回退，显式无效模型报错，保留 Access、许可和结果未知保护。
+- UI 添加/编辑、冲突、日志与撤销复用原记忆服务；图片/语音 owner 按实际操作校验，固定模型管线不被任意偏好替换。模型目录单飞缓存、配置失效检查和图片模型族枚举避免重复解析无关依赖；真实系统默认在偏好作用域外解析。
+- Dev 验收同时修复委派审批同步 API 在线程启动异步 Todo 的错误、协作期限扫描历史交互导致的阻塞（补索引，保留检查）、父任务重放“新建任务”原话导致重复委派（改为宿主完成事件，原请求作背景）。注册私有读取 workflow 重新验证 active parent invocation 后继承其模型作用域；未注册子 Run、归属/版本变化、取消均不放行。
+- Dev 通过正常 UI 保存 Sunburst 模型记忆：父 Bot 绘图和真实跨 Bot 子任务使用 Sunburst；无模型记忆的子 Bot 独立任务使用系统默认 Flare。系统默认未改，子 Bot 未写入继承记忆。最后委派仅一条 edge，子任务与父续接均 Completed。两 Bot 永久 App Access 仍 revision 1，无 Harness 永久授权；只读 task.verify 复用正常任务级审批。
+- 验证：全量 1620 项中 1618 直接通过、2 项旧多层委派模型夹具需适配完成事件协议；保留单次执行/两条边断言后，多层委派完整 10 项通过，同一 mandatory gate 入口精确补跑两失败项 2 通过 / 1618 deselected，未解决失败 0。不是单次全绿全量结果。模型/Provider/私有读取/架构专项 80 项、前端 9 项及视频事件夹具兼容 9 项通过；夹具与真实 Dev 图片分开记录。
+- 固定 Dev 零活动任务时通过自身 Helper 重启加载 Python；App/Helper source-root、运行 Local 导入路径、实际续接事件和服务 JS SHA 匹配当前 checkout。未改 Cloud、未发布、未操作 App-Dev。技术说明 ai2apps/docs/bot-model-memories.md；证据 ai2apps/docs/acceptance/bot-model-memories-20261119/receipt.json。
+
+### NXR-MOBILE-BOT-CONFIG-HEADER-20261119
+
+- implemented / targeted_verified / dev_source_live / phone_refresh_pending：修复Bot配置页使用独立mm-details-header未继承统一页头按钮样式的遗漏，配置页头补上共享mm-header类，复用无边框、44px触控及粗返回箭头样式，不另复制一套规则。HTML刷新生效，无API/Runtime/iOS/Cloud改动。
+- 原Mobile完整Chrome导航回归1项通过，渲染模板确认共享类，390px配置页截图已检查（无边框粗返回箭头）；不需重启或重建，手机重进配置页生效。证据ai2apps/docs/acceptance/mobile-bot-config-header-20261119/receipt.json。
+
+### NXR-MOBILE-BOT-HEADER-ICONS-20261119
+
+- implemented / targeted_verified / dev_live / phone_refresh_pending：参照情报中心将Mobile Bot列表/聊天/详情页头按钮改为透明无描边，返回使用28px圆角SVG、3.5粗描边，列表新建与详情图标统一24px线性图标；保留44px触控区域与键盘focus-visible。样式仅作用于页头，输入区按钮保持原样。
+- HTML/CSS热更新，无JS/API/Runtime/iOS/Cloud改动；原Mobile完整Chrome导航回归1项通过，390px聊天/列表截图已查看，运行Dev CSS SHA及Mobile挂载no-store处理器匹配。无需重启或重装，真机刷新后视觉待确认。证据ai2apps/docs/acceptance/mobile-bot-header-icons-20261119/receipt.json。
+
+### NXR-MOBILE-BOTS-COMPACT-LIST-20261119
+
+- implemented / targeted_verified / dev_live / phone_refresh_pending：按用户要求移除Mobile Bot列表的Bots/Inbox切换栏及Inbox视图/客户端轮询分支，顶部改为50px紧凑“我的 Bots / My Bots”标题栏，保留44px新建按钮，释放列表空间。Desktop及通知后端不变。
+- HTML/JS/CSS热更新，无API/Runtime/iOS或Cloud改动。真实manifest/owner检查8项、完整Mobile Chrome回归1项通过（含标题高度/新建触控区域、对话/详情/历史返回）；node语法通过、390px截图已查看。运行Dev资源SHA及no-store挂载处理器匹配；无需重启或重装，真人刷新待确认。证据ai2apps/docs/acceptance/mobile-bots-compact-list-20261119/receipt.json。
+
+### NXR-MOBILE-STABLE-ENTRY-20261119
+
+- implemented / targeted_verified / dev_live / phone_refresh_pending：Mobile进入Desktop时统一显示服务端首屏加载状态，遮蔽中间连接标题、空首页和Dock，等待授权交接、App目录及挂载恢复完成后一次显示稳定页面。重定向期间保持加载；错误转可操作的失败页，不能无限转圈。
+- Boot改为单飞并合并连接ready事件，避免并发启动和重复渲染；加载期间aria-busy及状态文案一致，减少动态动画偏好得到尊重。无原生iOS/Runtime/Cloud改动，新HTML/JS/CSS由固定Dev源码直接提供。
+- 验证：慢速分阶段目录/挂载、重复ready事件仅一次揭示、失败退出/手动重试2项及原签名/Owner连接2项Chrome通过；生产模板白名单/i18n 19项通过，8种生产入口首屏loading验证通过；node语法通过，390px加载图人工查看。失败可显式重试稳定入口只读启动并恢复连接文案，不重放Bot任务。运行Dev /mobile/static下JS/CSS SHA匹配，HTML热更新，无需重启Local或重建手机。真人进入Desktop体验待刷新确认；证据ai2apps/docs/acceptance/mobile-stable-entry-20261119/receipt.json。
+
+### NXR-MOBILE-BOT-SIDEBAR-ASSETS-20261119
+
+- implemented / targeted_verified / dev_activated / phone_refresh_pending：修复Mobile Bot详情统计/任务用量调用window.formatMessagerUsage未定义：模板引用js/messager_usage.js，但内置Messager Mobile gateway资产清单缺失，实际挂载路径返回404。检查同时发现css/system_dialog.css及js/text_input_dialog.js缺失，一并补齐固定所有者资源，无通配或权限放宽。
+- 增强模板依赖检查：渲染时使用真实mount asset_response拒绝未声明资源；浏览器区分公开基础资源及App挂载资源，按生产manifest加载，并断言详情Tokens统计完成且无错误条。此前无限制fixture静态资源掩盖该缺口。
+- Mobile owner及真实挂载资源8项、完整Chrome回归1项通过，含展开统计区可见Tokens且无错误提示。Dev自身Helper在活动任务/语音均0时完成Local重启，DB新manifest的3项资源及no-store处理器、App/Helper源码绑定、实际模块路径和14项已提供资源SHA验证通过；无需重建Runtime或iOS。无Cloud改动、无Cookie读取。真机重进详情后的最终效果待用户；证据ai2apps/docs/acceptance/mobile-bot-sidebar-assets-20261119/receipt.json。
+
+### NXR-MOBILE-MESSAGER-DOCK-HEADER-20261119
+
+- implemented / targeted_verified / dev_live / phone_refresh_pending：Mobile Shell将Home后首个固定App由Chat改为Messenger；Messenger不重复出现在最近项，Chat作为普通最近项（包括签名内联Chat）使用。Bot列表隐藏Shell的AI2Apps/Messenger顶栏、保留下方Dock；聊天/详情继续隐藏Dock。应用自己的标题及iOS原生我的Desktop导航保留。
+- 通过现有mountToken/instanceId消息设置独立topbar/dock可见性，初次加载和重新激活及历史返回统一处理。HTML/JS变更，无API/Cloud/Runtime/iOS改动，按最小刷新流程激活。
+- 验证：Chrome 3项通过，覆盖首次Bot列表、内页/历史返回、Chat打开后普通最近项、签名及Owner连接；真实生产白名单模板/i18n 19项通过；node语法通过。运行Dev的Shell/App资源SHA、注册Mobile manifest及no-store资源处理器已核对，生产模板仅固定Messenger；无需重启Local或重建手机，真人视觉效果待刷新确认。证据ai2apps/docs/acceptance/mobile-messager-dock-header-20261119/receipt.json；实施ai2apps/docs/mobile-shell-layout-20261119.md。
+
+### NXR-MOBILE-GROUP-RESPONSIVENESS-20261119
+
+- implemented / targeted_verified / dev_live / phone_acceptance_pending：修复Mobile Messager分组展开/收起等待PATCH及全量刷新、快速连点复用旧revision导致409。改为本地立即绘制、每组串行并合并最终意图，复用PATCH返回的分组revision，避免点击后额外拉取Bot列表。后台列表刷新单飞，陈旧刷新不能覆盖正在保存的显示状态。
+- 短暂后台列表刷新失败保留当前列表，不立即弹红条；持续失败和身份错误仍提示，成功恢复清除对应连接提示。未知写入失败先只读核对，不盲目重放；明确409读取最新revision后最多重试一次仅显示偏好。
+- Chrome慢网络/连点/409/丢失回执/后台失败恢复专项1项、原Mobile完整流程1项、语音回归2项通过；专项最终验证实际内容即时隐藏/显示及后台请求单飞。node语法检查通过。实际Dev资源字节、DB注册manifest及Mobile资源处理器no-store已核对，HTML/JS热更新，无需重启Local或重建手机。真机刷新后的手感待用户。证据ai2apps/docs/acceptance/mobile-group-responsiveness-20261119/receipt.json。仅前端显示/同步策略，无Agent/Cloud/API/Runtime/iOS改动。
+
+### NXR-MOBILE-HOME-APP-ORDER-20261119
+
+- implemented / targeted_verified / dev_live：按用户要求调整Mobile首页App布局：Messager置首，Chat紧随Todo；其他App保留既有相对顺序，缺少App时不创建入口。仅首页快捷布局调整，无API/Runtime/iOS改动。
+- node语法检查及4组完整/缺失App排序检查通过；运行Dev /mobile/static/js/mobile.js的SHA与checkout匹配。HTML/JS刷新生效，不需重装手机。
+
+### NXR-MOBILE-ENTRY-ASSET-20261119
+
+- implemented / targeted_verified / dev_live / phone_retry_pending：修复上一轮图片预览新增js/mobile_images.js未列入Runtime MOBILE_STATIC_FILES，导致/mobile/member/complete渲染500、iOS误显示Desktop暂不可达。将原图查看组件并入已有白名单js/chat_artifacts.js，删除未暴露脚本及两处模板引用，无需修改/放宽白名单或重建Runtime/iOS。
+- 补强真实生产URL生成函数与白名单的入口渲染检查，覆盖4模板×4种owner/signed组合，加原有本地化共19项通过；Chrome图片/制品/签名连接7项通过。以当前checkout实际生产函数渲染8种入口变体，并从运行Dev的/mobile/static逐项获取25项资源，全200且字节匹配；前次仅/admin/static验证未覆盖Mobile白名单，本项修正验收缺口。
+- HTML/JS热更新已提供，不需重启Local或登录。真机点击重试后的最终进入待用户；证据ai2apps/docs/acceptance/mobile-entry-asset-fix-20261119/receipt.json。无Cloud改动、未读Cookie。
+
+### NXR-MOBILE-IMAGE-PREVIEW-20261119
+
+- implemented / targeted_verified / dev_activated / phone_acceptance_pending：Mobile Bot/Chat信息流先请求JPEG预览，显式点击查看/下载才请求原图。最长边960、初始质量58、最大160KiB；EXIF方向校正、去元数据、透明白底、动图首帧，CPU两线程/源64MiB及6400万像素边界。权限先于预览缓存，沿用Bot/Session/Run/记录输出所有权；签名包含preview参数。
+- Chat历史base64图片投影成thread/message/part/digest绑定的受保护引用，保存及模型请求由Chat owner恢复原始内容并限制展开体积；不改变原图/存储/模型输入。无外部URL抓取、无Cloud或iOS原生协议改动；Desktop普通显示策略保持原有方式。
+- 验证：图片专项6通过；标准AaAT相关选集74通过、1529未选（非全量）；owner/协议/HTTP安全61通过；Chrome14通过、共享输入逻辑23通过。合成PNG 10,911,132→139,407字节仅为夹具压缩指标。Dev自身Helper在无活动任务/语音时激活，App/Helper源码绑定、实时Local路径、12项资源SHA通过；手机保持Build11。真人图片清晰度和体验待刷新验收。证据ai2apps/docs/acceptance/mobile-image-previews-20261119/receipt.json；实施ai2apps/docs/mobile-image-previews-20261119.md。
+
+### NXR-MOBILE-VOICE-ENTRY-READ-20261119
+
+- implemented / targeted_verified / dev_activated / phone_acceptance_pending：未配置时Mobile普通Bot仍显示电话按钮，点击展开语音设置；每条AI回复有独立读出/停止按钮，不依赖ASR或活动语音会话。手动与自动读出复用TTS、音色和临时播报，保持单一播放源，自动关闭仍可手动读出；插话/后台/退出停止声音，不取消任务或产生Studio成品。
+- ASR/TTS分别可选：只装ASR可进入仅输入模式，禁用读出开关并提供配置入口；只装TTS可读回复、补ASR后启用对话。TTS缺失/不可用不阻断语音输入和Bot工作，复用已安装模型/原ModelInvocation。用户已确认旧版单次手机语音输入可用；新增读出和配置行为仍待真人复测。
+- 上述74项AaAT选集、61项安全/owner、23项共享输入和14项Chrome回归含本项；ASR/TTS为夹具。Dev已激活并验证当前checkout资源，不需重建iOS、未改Cloud、未读取Cookie。证据ai2apps/docs/acceptance/mobile-voice-entry-read-20261119/receipt.json。
+
+### NXR-MOBILE-BOT-VOICE-20261119
+
+- 验证：标准AaAT相关选集61通过、1533未选；最终Mobile owner/Quick Read选集10通过、12未选；HTTP安全12通过；共享前端22通过、Studio选择1通过；Chrome共享/采集/新Mobile语音3项及完整Mobile原流程1项通过。ASR/TTS与手机音频为夹具，真机麦克风/AEC/时延待用户。
+- iOS Build11签名构建及codesign验证通过，已覆盖安装原iPhone15Pro、读回版本11并启动，数据保留；原生策略及4项新来源检查通过。Local通过Dev自身Helper激活，重启前无活动任务/语音；App/Helper源码绑定、Local gateway实际路径、DB新manifest和9项最终资源SHA已验证。未改Cloud、未读Cookie、未重启App-Dev/生产。临时omlx修改已撤回，最终权限策略位于ai2apps，无需Desktop/Runtime重建。
+- 使用：手机进入当前Desktop的消息Bot详情，配置已安装ASR/TTS模型；首次采集由用户确认系统权限。证据ai2apps/docs/acceptance/mobile-bot-voice-20261119/receipt.json，实施ai2apps/docs/bot-realtime-ue-20261119.md。
+- implemented / targeted_verified / dev_activated / ios_build11_installed / manual_mic_pending：为Mobile Messager添加语音输入和ASR→原Bot→TTS对话模式，复用桌面状态球/转写气泡/读出开关。媒体仅通过绑定owner-home principal、Bot主聊天、会话租约的Mobile owner API和已有签名App网关传输；不暴露Worker或Desktop身份。语音模型在手机详情配置，安装仍由Desktop完成。单次录音30秒/4MiB，分段实时模式仍为当前回合式。
+- 原生iOS补麦克风用途声明和同源受信任Mobile frame的系统prompt策略，只允许microphone；不自动grant。已重建并覆盖安装原com.ai2apps.ios.dev Build11，保留数据。Local仅受信任声明microphone的内置App可请求采集；现有Cloud未修改。
+
+### NXR-MOBILE-MESSAGER-COMPOSER-SPACING-20261119
+
+- 现有真实Chrome手机完整用例通过，新增按钮相邻间距与加载提示清除断言；顺带补齐统计接口夹具，避免与本轮无关的undefined usage错误污染截图。覆盖发送/附件/唤醒/导航/键盘布局；Dev实际Mobile JS/CSS字节匹配checkout，无需Local重启。真人手机需重新进入消息App刷新，尚未宣称真机验收完成。证据ai2apps/docs/acceptance/mobile-messager-composer-spacing-20261119/receipt.json。
+- implemented / targeted_verified / phone_refresh_pending：根据手机截图修正输入按钮行：附件与唤醒Bot左侧相邻，发送独立右对齐，消除space-between三按钮等分造成的两段空白。Mobile目前仅三按钮，语音/实时模式未接入，未伪造占位。加载对话提示改独立节点，首个状态加载成功后清除，保留活动任务和确认卡片。前端缓存版本同步更新，无Cloud/API变更。
+
+### NXR-HOME-REMOTE-SESSION-RECOVERY-20261119
+
+- 17项Node/Shell回归及1项真实Chrome用例通过，后者模拟轮换即失效，强制验证activate在rotate与start之间执行。Dev刷新后当前已失效会话被服务端导航至标准登录页；仍需用户重新登录一次，未读取密码/Cookie、未重放真实轮换。未来流程修正为前端变更，无需Local重启。证据ai2apps/docs/acceptance/home-remote-session-recovery-20261119/receipt.json。
+- implemented / targeted_verified / existing_session_login_pending：用户真实提交已取得Cloud轮换200回执，但accessEpoch更新使旧Local session失效，随后status 401。首页轮换后先用当前浏览器既有Cloud session走标准cloud-member/activate，再start；遇到明确local_session_required时也仅恢复会话并重读状态，不重放轮换。恢复失败显示具体错误且每页最多一次失败恢复；Account轮换同步补齐。无Cloud代码变更，不读取用户密码/Cookie。
+
+### NXR-HOME-REMOTE-OWNER-REAUTH-20261119
+
+- 后端50项通过（含新purpose/resource/grant传递、错误密码、不匹配设备、跨源拒绝、网络不确定不重放），Node15项及真实Chrome1项通过。Dev固定App/Helper source-root均匹配checkout，零活动任务/语音后仅通过Dev自身Helper重启；Local日志实际remote.py路径、新密码body schema及Shell/Account JS/CSS字节均核对。真实Dev首页密码框已出现并取消，公网访问仍Off；未输入/读取真实密码或Cookie、未执行真实Cloud轮换。证据ai2apps/docs/acceptance/home-remote-owner-reauth-20261119/receipt.json。
+- implemented / targeted_verified / dev_activated / live_owner_submission_pending：修正上一轮仅有确认框但未对接Cloud purpose-bound owner reauth的问题。首页增加应用内password输入对话框，Local用账户密码申请installation.rotate_credential/当前installation的一次性grant，然后透传至既有设备轮换接口；验证失败不轮换/启用。密码不持久化且UI立即清空。Account轮换复用已有owner密码字段。单次grant轮换遇到网络不确定不自动重放。未改Cloud、未放宽认证策略。
+- 前一轮夹具未覆盖生产认证要求，不能作为端到端轮换成功证据；本轮补齐协议与UI回归。
+
+### NXR-HOME-REMOTE-ROTATE-CONFIRM-20261119
+
+- 15项Node/Shell回归、1项真实Chrome测试通过（含同意/取消两条路径）；语法和diff检查通过。证据ai2apps/docs/acceptance/home-remote-rotate-confirm-20261119/receipt.json。Cloud请求均为隔离夹具；未轮换真实密钥、未启用公网访问、未重启Local。刷新Shell首页后应用。
+- implemented / targeted_verified：首页公网访问开启时，如设备凭据进入七天轮换窗口（或服务端返回明确rotation_required码），先显示确认对话框；用户同意后使用既有设备轮换接口，再调用start。取消无轮换/启动，轮换失败不启动；保持忙碌锁及真实连接状态同步。仅修改Local Shell前端，不改Cloud和凭据策略。
+
+### NXR-BOT-REALTIME-READ-TOGGLE-20261119
+
+- implemented / targeted_verified / app_dev_refreshed：保留ASR→Bot→TTS回合式路线，状态球下增加默认开启的「读出回复」开关。关闭立即停止/中止合成并丢弃播报队列，后续回复与待确认提醒不请求TTS；持续语音输入、附件、原Bot任务与文字结果保留。再次开启只读新回复；偏好作用于当前Bot输入组件，不新增服务端配置。
+- 22项逻辑测试及6项Chrome回归通过，覆盖关闭时中止合成/丢弃队列、关闭后持续输入和重新开启不补读。App-Dev零活动语音时仅刷新页面，JS/CSS实际字节匹配checkout；未录取真人麦克风。证据ai2apps/docs/acceptance/bot-realtime-read-toggle-20261119/receipt.json。
+- Mobile核对：本功能仅接桌面消息Bot页面，实时会话写接口要求desktop principal与同源Host。390px只是窄屏布局回归，不代表Mobile入口/身份/媒体链路已支持；不放宽现有边界。
+
+### NXR-BOT-REALTIME-FEEDBACK-20261119
+
+- layout_implemented / targeted_verified / app_dev_refreshed / native_duplex_pending：根据用户首次真人体验反馈，修正状态球所在列：右侧应对应文字编辑器与底部按钮行整体，左侧保留完整输入/发送操作。现有模式仍是断句后ASR→Bot→TTS，用户反馈回合感明确，不能视为原生双工已交付。
+- 20项输入逻辑测试和6项真实Chrome浏览器回归通过（ASR/TTS夹具），检查桌面/390px文本框与按钮行均在球左列。App-Dev无活动语音会话时仅刷新页面，实时入口保留，当前实际JS/CSS字节匹配checkout。证据ai2apps/docs/acceptance/bot-realtime-feedback-20261119/receipt.json。
+- 本轮先修正布局并核对原生双工差距；不以缩短静音阈值或开放Haru未经验证的任务事实播报代替双工接入。不改变原Bot任务、权限、审批或已发布模型/Runtime。
+
+### NXR-BOT-REALTIME-UE-V1-20261119
+
+- implemented / targeted_verified / app_dev_activated / manual_mic_pending：按已确认UE落实右侧语音设置、ASR/对话声音模型下拉内ACPF configure-only安装、能力驱动音色/角色、输入区对话按钮、状态球和弹出转写气泡。文字/附件保持可用；独立录音与实时采集互斥；关闭不取消Bot任务。真实任务路线为连续采集/断句/分段ASR快照→原Bot→分句TTS，显示“流式语音”，不宣称Haru原生任务结果注入或原生流式ASR。
+- 新Bot owner配置revision、actor/installation/client-scope/主对话/控制者绑定、45秒租约与1小时预算，最终语音复用RealtimeInputs及原BotDialogue持久准入。失败重试保留话轮ID，显式附件选择冻结；单次录音和实时采集共享Web Locks，真实采集测试发现并修正异步释放竞态。声音角色临时播报由ReadAloud owner按模型/更新时间验证并复用原渲染，不将每个短句保存为Studio成品，普通Quick Read及共享输出不变。
+- 标准AaAT入口相关选集76项通过、1501未选（非全量），前端/原录音/原Bot/跨组件选择35项通过，真实Chrome桌面/390px及真实getUserMedia/AudioWorklet合成设备等7项通过，Voice Studio共享输出/Quick Read选集3项通过、27未选。新后端7项含真实SQLite/原Bot/执行器：语音触发真实工作Run，关闭后原审批保留，按原流程允许后工具只执行一次并完成；模型/工具效果及UE的ASR/TTS/ACPF是夹具，不能当作真实模型/真人麦克风验收。
+- App-Dev两次激活均通过自身既有Helper控制接口，重启前确认无活动任务/语音会话；固定App/Helper source-root和Development元数据、Local实际模块路径、9项前端资源SHA以及新API schema已验证。实际UI已配置本地Qwen3 ASR 0.6B 4-bit + Qwen3 TTS 1.7B CustomVoice 8-bit/serena，重启后配置保留且对话模式按钮可见；未重启通用Dev/生产、未改Cloud/发布Package或Desktop、未读取Cookie。
+- 待联合实测：真人识别、扬声器AEC/插话听感、端到端冷热时延、并发资源和长会话。首版连接失败会关闭并要求显式重进，透明媒体重连和服务端播放游标尚未完成。实施说明ai2apps/docs/bot-realtime-ue-20261119.md，证据ai2apps/docs/acceptance/bot-realtime-ue-20261119/receipt.json。
+
+### NXR-RUNTIME-AUDIO-DUPLEX-V1-20261118
+
+- runtime_published / three_sources_verified / host_release_pending：ai2apps/runtime-omlx 1.8.18新增audio-duplex-v1及Haru MLX实验后端；带认证Worker WebSocket、严格签名能力声明、定长PCM/有界背压、播放epoch、会话预算、原Worker状态与取消/清理。Host侧audio_realtime/speech_duplex目录合同与Gateway/UI仍需Desktop后续发布；Cloud代码未改，需求已交付ai2apps/docs/cloud-audio-duplex-requirements-20261118.md。
+- 正式工件475,550,828 bytes，SHA-256 afc84b377e66a936eaf6fdf4a135dc2814a26393b304e71b5d0c7a55e4bdf35e。Apple提交a17ce346-4672-41c4-a2a3-e85a615109c3 Accepted，staple/Gatekeeper通过；原Publisher/key保持不变。Registry submission 000f3c4c-be26-4102-b296-a1f7723030ce已published。
+- Cloud、GitHub不可变tag、ModelScope固定commit三源均完成完整大小/SHA及首中尾/单字节Range验证，外部源Cloud完整预检passed并按validation摘要/最新ETag激活，匿名签名快照验证三源及签名分片；干净实例真实Registry下载、Publisher验签、兼容/审查、安装与重启通过。最终安装出的CPython3.11以标准禁网/Metal Sandbox运行真实Haru 25帧，停止/恢复播放、鉴权拒绝与清理通过，往返p95约25ms。没有将源码harness当作安装验收。
+- 45项契约/模型目录/后端/架构通过，标准边界选集40项通过（1530项未选），隔离发布源码16项通过，原Worker/Provider选集79项通过（1项既有DeepSeek分发ID夹具不匹配未选），多源Range/坏源淘汰/竞速/断点续传16项通过（46项未选）。非完整AaAT全量，网络故障场景为夹具；没有第二台Mac或独立境内/境外设备验收。
+- 发布以正式1.8.17工件源码/依赖为基线，在全新release staging中只加入38个Model Worker双工变更文件；oMLX源码保持原字节，未夹带当前checkout其他未发布Runtime改动，不是固定Dev/App-Dev源码绑定或激活。未重启/替换两套Dev App。锁屏造成原ai2apps-notary暂不可读，解锁后复用原配置成功，已把排查顺序加入发布手册。
+- 本次Dev Cookie授权仅用于Runtime 1.8.18，三源发布结束后失效；未导出/保存Cookie，Haru模型Package不在该授权范围。正式收据docs/ai2apps-runtime-1.8.18-duplex-release-2026-11-18.json；验证副本ai2apps/docs/acceptance/runtime-duplex-20261118/。
+
+### NXR-HARU-MLX-DUPLEX-20261118
+
+- model_package_published / three_package_sources_verified / checkpoint_dual_source_verified / host_release_pending：ai2apps/model-haru-4b-mlx 0.1.0 正式发布，submission 9e31360d-88d7-4c9c-95a2-019c62670996；工件6,132 bytes，SHA-256 0b08d5c069e76fbbae42135fd099ff7a7f3301772f2a20b49cffcb3722af6923。权重 Distribution dist_ai2apps_haru4b_bf16_8d6e83bc_v1 已发布，4文件10,560,106,066 bytes /1259 pieces，HF/MS首次独立完整下载逐字节一致，签名Index v182回读原envelope一致。
+- Package Cloud/GitHub/ModelScope三源完整SHA/Range通过，两个外部源Cloud全量预检passed并按最新ETag与validation摘要激活；匿名最新签名Snapshot三源及空缓存download_verified通过。MS小工件HEAD缺长度，按生产既有严格单字节Range探针核对总大小，200+精确Content-Range通过；未降低Range/摘要校验。
+- 最终签名包发布前安装与发布后真实Registry安装、Runtime依赖重启门禁、兼容/审查/目录、正式沙箱推理、播报停止/恢复、请求取消、重启和普通卸载通过。发布后空缓存真实下载HF 10,492,997,202 bytes + MS 67,108,864 bytes，激活签名checkpoint快照；137帧p95 28.13ms，20帧输入输出非静音重叠。12帧重启短测p95约774ms，预热抖动未解决，未宣称全帧实时保证。系统TTS录音，不是麦克风/AEC或语义忠实度验收。
+- 模型声明3项、Runtime/后端19项、Host门禁/依赖选集23项、多源Range/续传/坏源夹具20项、标准AaAT架构选集28项通过；非全量门禁。Cloud生产目录Haru及audio_realtime/speech_duplex与连字符别名均能检索。Host新增model.audio-realtime.v1仅声明目录/Worker生命周期，固定Dev/App-Dev未激活；旧Host必须升级，Bot语音UI/受保护Gateway、并行ASR与任务结果回传仍待完成。Cloud代码未改。
+- 本次新Dev Cookie授权已在模型及必要权重分发发布和最终状态核对后结束；标准browser-live只在内存使用，未导出/保存。正式回执docs/ai2apps-haru-model-0.1.0-release-2026-11-18.json，证据ai2apps/docs/acceptance/haru-model-package-20261118/。下方性能/源集成条目保留早期后端验证证据，Package最终状态以上述正式回执为准。
+
+- Host安装能力门禁：新增通用 model.audio-realtime.v1（仅目录与隔离Worker生命周期，不宣称浏览器Gateway/UI）；模型Service签名compatibility.features显式要求。旧Host按原平台能力检查拒绝，不能用README或错误产品版本范围替代实际门禁。需后续Desktop发布激活，未改固定Dev。
+
+
+- implemented / experimental_backend_verified：选择原生全双工 Haru-4B，集成官方 Apache-2.0 MLX 实现，固定 commit 7fe6b7665f8bf035998f401f8cb779fbe53f2751、权重 revision 8d6e83bcd3701a76fc27a764965665da1df7da78。保留许可证、第三方说明和逐文件源哈希，仅调整包/资源定位；未修改 oMLX 原模型/router/attention/fused MoE。补齐可选haru-duplex依赖与资源打包，保留既有MLX锁。
+- 新增本地连续帧异步后端：24kHz/3200-sample双向音频与文字帧，BF16/8-bit骨干、单线程加载/推理/释放、输入校验、会话预算、拒绝帧积压、取消后失效、播放epoch隔离和清理。无网络服务、麦克风或工具权限入口。Haru无可靠工具/事实注入/ASR用户转写，相关能力明确关闭；原Bot继续拥有任务/审批。不是Bot语音UI已可用。
+- Apple M5 Max/128GiB/macOS26.6.1/MLX0.32.0真实权重测试：系统TTS中文录音按133.33ms节奏输入137帧、输出138帧，p50 25.81ms、p95 29.42ms、超帧0，输入输出非静音重叠25帧，MLX峰值7,597,967,136 bytes。加载0.612s/prefill0.095s，受系统缓存影响，不称冷加载。录音驱动，不是麦克风端到端延迟；未验收AEC、听感、长会话、并发资源或语义忠实度，实际口述添加了用户未指定的日本，不标记助手质量通过。
+- 真实权重与严格float32数值/codec/映射/重现35项通过、5项因缺独立PyTorch reference跳过（2.15s）。首轮默认TF32有一项严格codec检查失败，按MLX文档关闭TF32后原阈值通过；未放宽测试。后端生命周期/竞态夹具、源清单/资源、架构边界和原P0输入回归44项通过（18.25s），不是完整AaAT全量门禁或跨框架parity全过。
+- 早期后端验证阶段未激活Dev/App-Dev或发布Package；后续Runtime及模型正式发布见本项最终状态。固定App-Dev内嵌Runtime代码/依赖激活仍须标准builder重建并核验source-root。实施说明 ai2apps/docs/bot-haru-mlx-20261118.md；原始性能报告 ai2apps/docs/acceptance/haru-mlx-20261118/benchmark.json；中文样音 /tmp/ai2apps-haru-zh-reply.wav。剩余会话网关/租约、并行ASR、任务事件与播放确认沿原实时方案继续。
+
+### NXR-BOT-REALTIME-P0-20261118
+
+- in_progress / input_slice_verified：修订实时多模态方案，明确 Task-Session/job/Run 身份、唯一 Bot owner 准入、显式跨模态提交组、普通回答与审批隔离及幂等/epoch/游标恢复规则。
+- 已实现内部 `BotDialogue.realtime_inputs`：提交组绑定 actor/installation/client_scope/主对话，保存最终语音转写、文字和附件引用；关闭时冻结成员、正文和附件指纹；依赖附件 ready 后复用原 `BotDialogue.submit`，接收端以稳定键去重。准入后回执前崩溃通过同键恢复原 dialogue_run_id；逻辑任务仍由原 owner 判断与续接，没有新业务执行通道。
+- 新增9项真实SQLite/原Bot链路测试通过（16.16秒）；标准门禁 `.venv/bin/python ai2apps/tests/run_aaat_boundaries.py -q -k 'bot_realtime_inputs or bot_dialogue or bot_task_sessions or aaat_architecture'` 65项通过、1493项未选（177.83秒，退出0），非全量门禁。覆盖附件ready/失败/内容变化、跨会话与principal隔离、容量与版本、重复/冲突提交、准入后回执前崩溃，以及同Task-Session跨不同Worker Run。退出时headless Metal清理提示不影响退出码。模型/工具效果为确定性夹具，不是真实语音或外部服务验收。
+- 未完成：VoiceSession租约/epoch、受保护API、pending调度/取消/保留策略、播放确认、原任务事件投影、游标快照恢复和模拟实时适配器；语音UI与实际模型属后续P1。本轮未重启或激活Dev/App-Dev，未修改Cloud、未接入付费模型。实现说明 `ai2apps/docs/bot-realtime-p0-inputs-20261118.md`，日志 `/tmp/bot-realtime-inputs-tests.log`、`/tmp/bot-realtime-p0-gate.log`。
+
+### NXR-DISCOVER-INSTALLED-COMPONENT-NAVIGATION-20261118
+
+- Discover 已安装列表读取有效 App 声明中的 launcher 属性，修复已有 miniApps 缓存时遗漏导航属性的问题。纯组件 Package 只展示 Mini-App 卡片，混合 App 保留独立 App 和组件卡片。父 Package 安装状态仍供组件升级与卸载使用。
+- 定向测试覆盖已缓存和历史安装记录、独立入口开关及界面分类筛选。Python 变更需要 Dev Local 重启后生效。
+
+### NXR-MODEL-REQUIREMENTS-INDEPENDENT-REREVIEW-20261118
+
+- review_completed / source_and_targeted_verified：第二次独立复核确认上一轮四项代码问题已修正：真实配音catalog初始化、无install配置卡独立重新检查、可信依赖字段变更刷新、分析只配置详细转写。未再修改执行代码，未发现同范围新阻断问题。
+- 独立owner/Binder Python 68项通过（47.31秒）、任意字段桥接2项、标准门禁架构选集28项（1488项未选，5.37秒）、共享表单Node23项、Desktop/Mobile隔离浏览器3项均通过，退出码0。非完整门禁；Dev激活、真实安装/推理及配置后续接仍待实机验收，未重启或下载。审查与证据：ai2apps/docs/model-requirements-aaat-audit-20261118.md、ai2apps/docs/acceptance/model-requirements-independent-rereview-20261118.json。
+
+### NXR-VOICE-MODEL-REVIEW-FOLLOWUP-20261118
+
+- implemented / targeted_regression_passed：复核后修正 Voice-only 录音角色换声分析阶段的 ACPF 入口，仅请求详细转写；replace 保持整套换声。未改视频独立 catalog/安装入口。
+- 通用 Provider 表单透传可信 model_field，普通依赖选择变化保存草稿后重读契约；无 install 的配置缺项增加独立重新检查。未写入业务字段名、未自动提交或绕过确认。Desktop/Mobile隔离浏览器3项通过，任意Provider字段桥接2项通过；标准AaAT门禁相关选集86项通过、1428项未选（148.24秒，退出码0），不是全量；退出Metal清理提示不影响结果。日志/tmp/voice-review-followup-gate.log。
+- Package未变，无需重发，未读取Cookie、未重载Dev或真实推理；Host Python需重载、前端需刷新。审计记录：ai2apps/docs/model-requirements-aaat-audit-20261118.md。
+
+### NXR-MODEL-REQUIREMENTS-INDEPENDENT-REVIEW-20261118
+
+- investigation / documentation_only：对照视频与Voice整改记录复核原模型需求清单；现有相关66项回归通过（46.39秒，退出码0），追加隔离探针发现视频配音catalog未初始化broker、install=None缺项表单无独立重新检查入口、depth/action普通select不刷新动态依赖，以及分析配置仍指向完整换声模型栈四项遗漏。
+- 未修改执行代码、未重载Dev、未下载安装模型或批准许可；不把现有定向绿测当作真实推理或新全量门禁。审查与证据：ai2apps/docs/model-requirements-aaat-audit-20261118.md、ai2apps/docs/acceptance/model-requirements-independent-review-20261118.json。
+
+### NXR-VIDEO-MODEL-REQUIREMENTS-INDEPENDENT-REVIEW-FIX-20261118
+
+- implemented / targeted_verified / dev_activation_pending：根据独立复核修正视频配音目录 broker 未初始化、无安装计划配置卡片缺重新检查、普通 select 类型的 owner `model_field` 变化不刷新依赖，以及分析阶段误指向整套换声 ACPF。复用可信 owner 字段和原表单草稿/契约检查，未加入业务名 UI 特例；分析仅配置详细转写，替换仍用完整换声能力。
+- Host 与共享表单变更，Package 签名声明未变；无需发布 Package、未读取 Dev Cookie。定向 Python 28 项、共享表单 Node 23 项通过；隔离 Chrome 两种场景确认重新检查和选择变更后的刷新/提交状态。标准 AaAT 门禁入口相关选集 130 项通过、1386 项未选（176.14 秒，退出码 0），退出时 headless Metal 清理提示不影响结果。真实 Dev 模型安装和生成未做。
+
+### NXR-VOICE-ONLY-REPLACEMENT-MODEL-REQUIREMENTS-20261118
+
+- implemented / targeted_regression_passed：按模型需求审计，仅补录音角色换声 Voice-only owner；多 Studio Mini-App 与 Video/Imagine 专属入口排除。复用现有分阶段就绪检查，新增双语缺项说明和 replace 阶段实际 ready 质量的 enum/options/default；analysis 不受未来换声质量偏好阻塞。保留素材归属、真实分析证据和使用权确认。
+- Host typed SDK owner 细化；Package 文件/签名未变，无需新 Package、未读取 Dev Cookie。需 Local Python 重载后生效；未重启实例或声称真实模型推理验收。
+- 标准 AaAT 门禁入口架构/参数/owner 选集74项通过、1439项未选（86.56秒，退出码0）；最终补充 Binder 用例和分析字段收窄调整后，Voice owner / Binder 34项通过。非全量门禁；退出时 headless Metal 清理提示不影响退出码。文档：ai2apps/docs/model-requirements-aaat-audit-20261118.md。
+
+### NXR-VIDEO-MINI-APP-MODEL-REQUIREMENTS-20261118
+
+- implemented / regression_completed / dev_activation_pending：按模型需求审计修正视频相关 Mini-App 的配置归属和缺项判断。媒体分离/换声的 typed SDK 使用已验证 placement host 及对应执行 capability；静止时间按当前 depth（默认 VGGT）与 Meridian 检查；音频和视频换声按 analyze/replace 阶段检查依赖；字幕与视频配音分别呈现转写/分离缺失及标准任务模型默认路由缺失，路由缺失时不再引导重复安装语音模型。缺项通过有界 owner constraints 进入参数契约。原有归属、授权、确认与结果未知守卫保留。
+- 视频 owner/语音 owner/静止时间定向回归 29 项通过；标准 AaAT 门禁入口选取架构、Package 绑定、精确参数契约、配置表单与相关 owner 的 128 项通过（1386 项未选，175.70 秒，退出码 0）。一次全量 1514 项运行到 21% 未发现失败后主动停止，不能当作全量通过；选集退出时 headless Metal 清理提示不影响测试退出码。
+- Package 签名声明未变，本次不需要发布新 Package。Dev 运行实例尚未重载，真实模型安装与生成未做。
+
+### NXR-AAAT-MODEL-REQUIREMENTS-DOCS-20261118
+
+- documentation_only / completed：在App/Mini-App接入指南前部集中强调模型需求与缺项配置的6项必查要求，并加入AaAT开发与评审准入。覆盖按实际选择/阶段检查依赖、缺模型/缺默认路由/缺参数区分、可信配置宿主、素材参数保留、配置后原Run续接及确认保护、跨Provider与Desktop/Mobile验收证据。
+- 交叉链接现有配置展示协议及源码审查报告；明确现有入口仍有整改缺口，不把规范要求描述为全部已实现。仅文档变更，已核对新增章节和相对链接，未重启Dev、未运行模型或重复执行全量门禁。
+
+### NXR-COMIC-PARAMETER-SETUP-UI-20261118
+
+- implemented / dev_verified_required_consent_pending：用户在安装后重新翻译时，实际缺本地OXR配置，但被投影为参数确认；签名字段只有select类型、未重复options，客户端在Language处抛异常，后续字段/提交/配置按钮均未渲染。
+- 通过签名schema补全Mini-App默认字段选项；共享表单为缺options提供schema enum回退，配置缺项明确显示配置运行环境，安装handoff保留原审核标题。漫画翻译owner补齐真实翻译模型清单、model_id字段、同执行路径默认值和OCR缺项提示，不绕过配置/Access/结果未知保护。
+- owner可声明auto_continue_after_setup，纳入契约指纹；ACPF明确ready后，只有参数完整且无必需肯定式确认等条件才经原提交协议继续原Run，默认不自动续接。跨owner协议与配置、显式权利确认守卫已测试。
+- 最终共享契约/架构选集43项通过（66.24秒）；最终owner与通用字段/标志7项通过（4.77秒），漫画owner21项通过（4.93秒；声明暂不自动开发挂载的Package改用隔离测试checkout），共享表单23项和Desktop/Mobile宽度浏览器2项通过。完整1507门禁通过（2785.67秒，退出码0），是在本次新增配置修复前收集/导入，不把它宣称为此后配置改动的最终全量。
+- Dev前端实际恢复全部字段、操作按钮和OXR ACPF配置请求；用户明确允许结束该未提交翻译的等待，已停止后经标准Helper重载。App/Helper与实际导入模块source-root核对当前checkout，实际/admin/static共享脚本哈希与源码一致。原话“重做：帮我把桌面下Comic目录里的漫画翻译成英文”实机复测进入正确OCR配置等待：保留4张素材、English、默认DeepSeek，显示明确缺项及下载/取消入口。新Run run_0e5c663fc83843dc83cbed4b783f76f2 为waiting_input；未下载OCR、未提交翻译、真实安装后续接尚未验收。证据ai2apps/docs/acceptance/comic-model-setup-card-20261118.json。
+- 按用户要求检查14个Studio Mini-App、17个绑定及10个typed SDK，并核对普通朗读/转写/图像owner。另发现视频placement配置归属、Frozen Time所选几何依赖、复合流程文字默认路由及换声分阶段需求等缺口；这部分为审计发现，未声称全部已修。详见ai2apps/docs/model-requirements-aaat-audit-20261118.md。
+
+### NXR-BOT-FORM-ONLY-REVIEW-ADMISSION-20261118
+
+- implemented / dev_verified / regression_completed：显式安装任务已由 Discover 找到并读取官方漫画翻译0.1.2，但 app.collect_parameters 的仅表单入口被 Bot 冻结 Tool/Provider 目录误拒，安装未提交。新增通用 configure + 可信 continuation 目录指纹；维持 owner/version/schema/continuation、用户审核、Access 与结果未知保护，拒绝后注册/变更入口，不新增业务路由特例。
+- 已知准入拒绝按 provider_not_authorized / provider_binding_changed 投影具体安全原因，不暴露原始异常。新增11项回归通过；架构、Package owner、Bot发现与失败回执共84项通过（109.06秒）。完整1507项门禁通过（2785.67秒，退出码0）；退出清理出现headless Metal设备不可用警告。该全量在随后配置卡片改动前收集/导入，其后改动以独立最终定向回归记录为准。
+- 固定 Dev 空闲后标准 Helper 重载，App/Helper source-root和运行中 AppChat/Bot 导入路径验证当前 checkout。原话“安装《漫画翻译》”由 Bot 自行查询、详情复核并打开审核卡；Codex在原任务审核入口执行正式 Discover 安装确认，官方0.1.2激活后核验返回同一 Run，Agent/Dialogue completed，Desktop显示 Completed。未预装、未绕过正式审核、未授予新组件持久Bot Access。证据 ai2apps/docs/acceptance/bot-form-only-install-review-20261118.json。
+
+### NXR-HARNESS-DIRECTORY-PHRASING-20261118
+
+- implemented / dev_verified / regression_completed：用户卸载漫画翻译后再次执行，实际在 `host.directory.list` 提交前失败；“桌面下Comic目录”未被 Harness owner 解析为用户指定目录。为标准位置下的命名目录补齐“下/下面/下方/下边”等连接词，未添加 Bot 全局提示或扩大文件/进程权限；未绕过原目录守卫。
+- 通过同一 AaAT 门禁入口，目录原话变体、标准 Access/真实文件导入与架构选集13项通过（31.83秒；1483项未选择）。完整门禁1490项通过（2767.62秒）；其收集时尚未包含最终新增6项目录用例，这6项已在最终13项选集中复跑，不宣称单轮1496项。进程退出时有 headless Metal 清理警告，退出码0。
+- 固定 Dev 空闲后由标准 Helper 重载；漫画翻译0.1.0/0.1.1/0.1.2仍全部 uninstalled。原话“帮我把桌面下Comic目录里的漫画翻译成英文”实际读取并导入4张PNG，Bot自行调用已获许可的 image.edit 逐页生成4张英文图，4个 Studio Run succeeded，Agent/Dialogue/Todo completed，Desktop显示4张输出和Completed。源图哈希未改变，没有重新安装组件。生成式修图的译句与细节保真未经逐句OCR验证，Bot已明确报告限制。
+- 探索中曾在修图 owner 声明加入过窄的专用翻译优先说明，经用户澄清后完整撤回；images/mini_parameters.py 恢复原哈希 82350a9296f438844cfdd5330e0d0389a19061f6ff307094c6a00c6122235fb9，不属于本次交付变更。候选补充/Discover优化仅讨论，未新增强制安装或路由机制。只停止本轮自建验收，不停止其他任务；之前已完成的输出保留。最终证据 ai2apps/docs/acceptance/harness-comic-uninstalled-phrasing-20261118.json。
+
+### NXR-HARNESS-USER-DIRECTORY-IMPORT-20261118
+
+- implemented / dev_verified / regression_completed：Harness 通过普通 App Provider/Access 路径提供 `host.directory.list` 与 `host.directory.import`。目录范围来自当前任务所属 owner 验证的真实用户请求，不信任模型参数、助手历史、文件内容或模型委派作为授权。源目录只读，工作区进程隔离保持；路径遍历、符号链接、特殊文件和超限输入被拒绝。macOS 原子禁止全部路径分量中的链接，其它平台逐层验证。只读目录列举沿用既有 read 效果语义，避免超时后误标为未知副作用；真正未知的写入保护保留。
+- Bot Task 标题/步骤标签去掉“排队”等临时调度前缀，调度状态独立呈现。Dev 空闲后通过标准 Helper 重载，App/Helper source-root 和实际 App Chat/Harness 导入路径核对当前 checkout。原问法“我的桌面有个Comic目录，你把里面的漫画翻译成英文”实际列出4张PNG并导入任务，调用官方 Comic Translation 0.1.2，生成4张英文PNG，无需用户上传。Agent、Dialogue、Todo completed，Studio succeeded，Desktop 可见4张结果卡和 Completed；源图哈希未改变。第1、2、4页各有一处背景区域保留原文，已展示组件警告。
+- 首次读取等待 macOS 桌面权限，用户确认已允许；仅停止本轮超时验收后重载。官方漫画翻译组件此前未启用，经 Discover 正常验证安装0.1.2，未激活 paused-development 源。该组件首次任务 Access 因 AI 审核返回 invalid_review，由验收代理作任务级批准；没有参数表单或 ask_user，没有扩大 Bot 持久授权。
+- 定向37项通过（114.55秒），最终目录/进程/架构选集通过同一门禁入口8项通过（26.73秒，另1483项未选择）。完整门禁 `/tmp/harness-dir-full-gate.log` 已结束：1490项通过，2767.62秒，退出码0；最终大小/措辞用例已通过后续13项选集，未宣称单轮最终1496项。验收记录 `ai2apps/docs/acceptance/harness-comic-local-directory-20261118.json`，方案 `ai2apps/docs/harness-local-directories-20261118.md`。
+
+### NXR-BOT-QUESTION-CHOICE-COLORS-20261118
+
+- implemented / dev_verified：Desktop/Mobile 普通决策卡片的选项样式限定在所属卡片内，避免旧 `.bot-interactions button` 黑底白字规则覆盖；默认浅底深字、悬停浅灰底深字、选中黑底白字，选中后悬停和提交禁用仍保持对应文字颜色。
+- 浏览器回归覆盖 390px/1100px 正常、悬停、选中、提交后的实际 computed style，夹具加入真实 `bot-interactions` 父类以重现覆盖。Dev 实际卡片可见修正样式；用户未提交的自由回答恢复原值，未提交/恢复/取消其 Task。仅 CSS 更新，无权限、协议或 Agent 执行修改。
+- 本轮调查 Comic Task：实际只列当前 Session 工作区为空；Harness 进程/文件入口限制 Session 范围，未提供读取本机指定目录并导入的能力。没有为此放宽进程隔离或直接开放用户目录。后续需通过 Harness 普通 App/Task 权限体系挂接目录级读取/导入。
+- 验收记录：`ai2apps/docs/acceptance/bot-comic-path-investigation-20261118.json`。额外执行旧交互组件单测有 3 项既有夹具不匹配（缺 `mountRiskChoice` 和旧 existing-access 展示预期），记录为未通过，不能以本次颜色修正宣称该套全过。
+
+### NXR-BOT-CONVERSATION-TRIM-AND-POKE-20261118
+
+- implemented / dev_verified / regression_passed：窄左侧栏为 Bot 和分组提供名称提示；Bot 提示以头像右缘加 8px 定位，栏宽变化及时清除。Dev 实际界面确认提示贴近头像，保留原 132px 栏宽。
+- Poke 点击立即显示用户气泡并独立置灰，收到相同 request_id 的持久消息才恢复按钮；POST 返回不能提前解锁，不阻塞普通文字发送。失败和迟到确认维持消息幂等；剪裁回执同步清除尚未被普通消息轮询确认的临时消息。
+- Bot 输出操作新增桌面/手机共用剪裁确认：保留所选段，永久移除之后的对话与独占会话输入/输出。确认绑定 owner、主 Session、助手消息位置及实时预览；范围变化需重新确认。保留 Access、记忆、Task/Run 和任务工作区；活动输入、共享文件、Gallery 副本和用户磁盘原文件保留。无正文的消息幂等占位防止迟到回调恢复旧内容；清理失败使用持久回执，仅重试原素材范围并复核新引用。
+- 最终后端/身份/分页/Mobile 23 项通过；最终桌面与当前完整手机模板浏览器/交互组合 31 项通过。实际删除与素材回收只在隔离临时数据库/文件夹具执行。Dev 独立验收 Bot 两次真实 Poke 均完成，首帧即时气泡和 disabled 按钮可见，消息落盘后恢复且无重复；真实主 Bot 剪裁只预览和取消，未删除真实对话。
+- Python 更新通过标准 Helper 在空闲时重启 Local；App/Helper source-root、运行 Local 导入模块路径和八项实际 served 资源均核对当前 checkout。完整 AaAT 门禁 1,484 项通过（2,784.53 秒，退出 0）；该轮启动后新增的最终幂等/清理/Poke 回执保护由前述最终 23/31 项定向回归覆盖，不宣称第二轮完整最终集合门禁。pytest 退出时测试环境无 Metal 设备的 nanobind atexit 提示不影响退出码。
+- 说明与验收：`ai2apps/docs/bot-conversation-trim-20261118.md`、`ai2apps/docs/acceptance/bot-conversation-trim-poke-20261118.json`。
+
+### NXR-HELPER-HEALTH-AND-TASK-COMPLETION-20261118
+
+- implemented / dev_verified / regression_passed：将 System Task 调度、进度与结算、情报/Todo/Agent 计划同步、模型历史投影、Local/Admin/Shell 鉴权、本地身份投影及后台模型回收的同步数据库等待移出事件循环；bootstrap 使用 FastAPI worker。保留逐次身份/撤销检查、事务边界、原有回收策略与结果未知保护；未修改 Cloud 端 API。
+- Helper 对单次响应超时复核；连续两次失败显示告警，三次沿用自动重启配置。进程退出或 bootstrap 身份不匹配立即报故障；取消旧监控/旧 boot 的迟到探测不能覆盖新状态。
+- Agent/Todo 结束回调绑定具体已完成协程，不能移除同 Run 的后续执行。Agent 最终状态异步读取、清理纳入停机等待；System Task/attempt 原子结算，取消或新 attempt 不被迟到结果覆盖。后台线程唤醒通过所属事件循环；Agent 计划调度保留 pass 期间的唤醒/停机信号。
+- 标准 builder 已重建固定 Dev，codesign 深度校验通过。App/Helper source-root、Local 实际模块路径与实际返回的 Messager 资源核对当前 checkout。实际 Harness 查盘/目录命令均退出 0；独立 Task 与续接执行均完成，Agent、Dialogue、Todo 均为 completed，界面自动显示 Completed。最终版本 120 秒内采样 451 次，注入 2.5 秒 SQLite 写锁竞争后全部 HTTP 200，最长响应 0.272 秒，Helper 始终 ready，PID/boot 未变，重载后无 InvalidStateError/结束回调异常。
+- 完整 AaAT 门禁 1,471 项通过（46 分 17 秒，退出 0）。启动后新增的机制与最终修正另由 70 项通用 Agent/系统任务/竞争回归、104 项后台调度/本地身份/架构回归覆盖；另有 74 项 Admin/bootstrap/Package、59 项结算/取消/持久交互、124 项 Todo/系统任务通过。原生 Supervisor 30 项、Contracts 36 项通过。未宣称第二轮完整最终集合门禁。
+- 补充通用 Agent 测试发现既有 MessageRepository.get 错传 trace_id，已移除无效参数并保留 Session 限制。五个旧执行/权限夹具显式选择被测 Tool；故意阻塞的重启夹具使用独立长操作期限，避免内置诊断 Tool 的 5 秒正常超时先于完整 Host 停机触发；产品超时、重试与权限断言不变。
+- 说明与验收：`ai2apps/docs/local-health-task-responsiveness-20261118.md`、`ai2apps/docs/acceptance/helper-health-task-responsiveness-20261118.json`。一般 Dev 不作为 Release Bundle；release-only 校验的缺少 LICENSE 不计为发布验证通过，生产候选仍需标准 Release builder/runbook。
+
+### NXR-BOT-IMAGE-HANDOFF-AND-DELIVERY-20261118
+
+- implemented / dev_verified / regression_completed：Messager 任务上下文中的素材与摘要引用按已验证的本任务副本重映射，提供独立于历史窗口的有界当前 task_materials 清单，避免模型把历史缺失报告当成当前资源状态。图像声明指引按当前模型合同满足明确比例，不改写来源记录，不凭 metadata 自报扩大权限。图像 owner 在 prepare 读取并验证参考素材，handler 保留二次校验；已提交和结果未知保护不变。
+- 可信 capability-scoped completion_check 在模型结束后核对必需交付；图像最后一次操作仍失败时，任务失败并保留原报告、实际产物和用量，而非因模型正常结束标成 Completed。定向回归 98 项、参考图校验 4 项、图像 owner/表单/产物回归 23 项通过。完整门禁跑完 1,460 项：1,456 通过、4 项为进程启动时已收集的初版测试夹具失败（2789.41 秒）。修正夹具后，经同一门禁入口明确选择原四项复跑全部通过（33.94 秒）；当前新增九项和图像声明/架构合计 42 项也通过。未宣称第二次全量 1,464 项单轮无失败。Dev 已在空闲时重载，核对 App/Helper source-root、实际 Local 模块路径与 served Messager 资源；原问法合影已提交，因 07:00 腕表定时任务共用同 Bot 串行队列而等待。用户选择保留腕表执行，腕表随后正常完成。首轮合影未提交生成便打开了表单，已仅停止该验收并补充当前素材清单与尺寸指引；新 42 项回归通过。Dev 再重载后的原问法 Run `run_32d989c6526743fc937d5f323f316e64` 读取当前完整尺寸声明，直接用两张现存源图，仅一次合影调用，0 次交互、0 次源图重画，真实输出 1280×960 PNG（2,554,366 字节）。提交的两张参考图哈希与原哈士奇/熊猫一致；Agent、Dialogue、Todo 为 completed，Studio succeeded，Desktop 结果及 Completed 可见。验收记录 `ai2apps/docs/acceptance/bot-image-handoff-delivery-20261118.json`。
+
+### NXR-FIXED-LOCAL-PORT-RESTART-20261118
+
+- implemented / dev_activated_verified：固定端口重启的端口预检查与 Local 的地址复用行为对齐；若端口暂不可用，最多等待 4.5 秒重试，再报告持续冲突。旧 Local 由同一 Supervisor 管理时沿用先正常终止、超时强制终止流程，并在强制结束后确认进程退出；若旧进程无法停止，Helper 不会启动新 Local。不会关闭未知进程或其他 AI2Apps 实例。Dev 实例在旧 Local 退出约 4 秒后曾报告 52888 端口冲突，再次启动成功。新增临时本地监听测试验证持续冲突与释放后的恢复，Swift Supervisor 回归 27 项通过。修改 `apps/ai2apps-acefox/Sources/AI2AppsSupervisorCore/LoopbackPortInspector.swift`、`LocalProcessSupervisor.swift`、`AI2AppsHelper/main.swift` 及 `Tests/AI2AppsSupervisorCoreTests/SupervisorCoreTests.swift`。已通过标准构建流程替换固定 Dev App，验证签名、App/Helper 源目录及 Local 导入模块路径；通过 Helper 正常重启 Local 后，新进程 PID 18257 在固定端口 52888 恢复 ready（旧 PID 17636）。生产未构建。
+
+### NXR-BOT-REGRESSION-CONTEXT-AND-ADMISSION-20261118
+
+- implemented / dev_activated / regression_completed：测试模拟模型解析当前完整/增量上下文，不依赖 JSON 空格或历史正文中的身份字符串。授权拒绝区分未准入 Provider 和版本变化，明确未提交的校验保持提交前阶段；未知副作用、撤权和版本守卫保留。记忆回传角色/证据检查移入所属 Provider prepare，handler 仍复核，版本升为 2。Router 不接受 handler 抛出的 prepare 字样作为未提交证明。
+- 协作性能剖析发现逐 Provider 检查反复重建双方完整目录，一次双子任务约 8.7 万次权限捕获。改为当前调用内读取权限并逐 Provider 精确校验，局部复用同一目标的身份读取，不跨调用/await 缓存授权。完整冻结版本、身份、任务树与撤权守卫保持。
+- 后续门禁发现通知测试使用写死且已过期的凭据，已改为相对当前时钟的有效凭据，并新增过期时禁止发送的回归；后台写入夹具改用当前上下文并实际回应单次操作审批，未绕过权限。该组 50 项完整复跑通过。
+- 原 Todo 执行测试也适配当前任务上下文，并分别检查可发现目录和冻结执行权限，避免把目录扩大误判为授权扩大；该组重启恢复、撤权和队列等 10 项完整复跑通过。
+- 原失败 12 项在最终源码下再次全部通过（168.10 秒）；架构、路由、授权/提交阶段与未知结果保护 79 项通过。两项慢协作测试使用原默认等待，18.33 秒与 15.26 秒通过；同一 cProfile 夹具从 75.62 秒降到 23.55 秒，完整权限捕获 86,958→4、App 全目录导出 86,970→16，仅为模拟模型/本地 Provider 测量，不代表真实模型耗时。
+- 完整 AaAT 门禁已执行到底：1,454 项中 1,431 项通过、23 项失败（2673.87 秒）。完成上述夹具与断言适配、修正旧回执测试对合同重读次数的假设、区分单图与贴纸素材合同，并补齐 Gallery/情报/Mail/Doc Studio/Share Works 所属声明的摘要和字段翻译后，原 23 个失败选择器集中复跑全部通过（60.51 秒）。未再启动第二轮完整 1,454 项；相关 owner 行为另有 43 项通过，翻译和架构检查 30 项通过。验收记录：`ai2apps/docs/acceptance/bot-regression-context-admission-20261118.json`。
+- Dev 在 Agent/System Task 均空闲后经标准 Helper 重启 Local，App/Helper source-root 与 Local 实际导入路径核对当前 checkout，实际提供的 Share Works 修改声明与 checkout 字节一致。本轮未新发真实模型请求；先前磁盘原问法的实机结果见下一条历史记录。
+
+### NXR-HARNESS-TOOL-LOOP-SETTLEMENT-20261118
+
+- 按 DeepSeek Harness ca33fd68 的结果结算流程独立实现 Python 恢复：普通可诊断工具错误返回模型，由 Run 预算限制执行，不再按整个任务累计三次错误直接失败。未改变权限、取消和结果未知操作的执行保护。
+- 下面记载的是此前停止在 34% 的历史门禁结果；其 12 项失败已由 `NXR-BOT-REGRESSION-CONTEXT-AND-ADMISSION-20261118` 完成归因、修正及复跑，完整门禁和后续适配结果见上条。
+- 未提交的重复拒绝在派发前抑制，忽略新 request_id；不支持的交接路径按原 capability/provider 判断，不因业务参数变化重复尝试。Harness 命令启动短时等待，返回退出码、stdout、stderr；长命令返回原进程引用，不重复启动。
+- 已验证：最终架构/恢复/未知结果保护组合回归 59 项通过（含 5 项新恢复测试和 25 项错误保护测试）；参数合同与交接测试另有 22 项通过。全量门禁运行至约 34%，493 项通过、12 项失败后停止，未宣称全量通过。失败集中在记忆返回、同 Bot 重入和协作；协作独立重跑仍因子任务 Provider 版本授权校验失败，在隔离进程恢复旧三次错误上限并关闭新增重复拦截后也复现。其余门禁失败尚未逐项归因，未改动授权守卫绕过这些失败。
+- 固定 Dev 在空闲后重启 Local，App/Helper source-root 与 Local 实际导入的 Harness 模块路径核对当前 checkout。原问法 Run `run_a89bf43c91bf497ba7d9430209fb9916` 在 35 步完成，返回实际磁盘/目录结果及权限限制；单独故障复测 Run `run_0fe38556bdba451b861d1a0430131199` 在 13 步完成：错误 du 退出 64，修正参数后退出 0；不支持的 app.interact 只尝试一次，随后直调查询成功返回 5 项真实素材。Desktop 已显示结果与 Completed。未删除文件、未扩大持久 Access。目录统计不等于可释放容量。详见 `docs/ai2apps-tool-error-continuation.md`。
+
+### NXR-BOT-QUESTION-CHOICES-MOBILE-20261118
+
+- Bot 询问卡片支持可点击建议选项与单独自由输入，选择后明确提交；Desktop 与 Mobile Messager 复用回答组件。Mobile 新增仅限原 Bot 对话、原 Run 和普通问题的回答入口，继续校验原响应 schema，不能用于批准工具权限。刷新保留待提交草稿，提交失败复用响应 ID，成功阻止重复提交。
+- 提醒模型将备选项放入既有 `options` 字段，不在问题正文堆字母列表。既有未提供结构化选项的问题保持普通文本输入，不猜测或自动拆解历史正文。
+- 验证：39 项问题协议、Mobile owner 接口和 AaAT 架构测试通过；Desktop/390px 组件及完整手机页面点击提交的浏览器夹具通过。固定 Dev 空闲后已重载，App/Helper 和 Local 导入路径及实际返回的四个修改资源均核对当前 checkout。全量 AaAT 回归已启动，尚未结束。
+
+### NXR-HARNESS-BOT-APP-ACCESS-20261117
+
+- Harness 出现在 Bot 的 App Access 列表，沿用标准 Provider、授权和命令审批。首批提供沙箱进程的启动、等待、状态、日志和取消，以及当前会话的工作区文件、用户已选资源和产物创建。App 调用进程时关闭网络并使用标准沙箱环境。
+- 用户再次查询当前状态时，Bot 重新发现可用能力，不沿用旧对话的「无法查询」结论。固定 Dev 已从当前 checkout 重载：原问法触发 Harness，按任务批准后在实际沙箱运行 `df -h .`，退出码 0，Bot 读到并显示数据卷剩余 91 GiB。
+- Harness 集成、Bot 审批和 AaAT 架构的相关 30 项测试通过。全量 AaAT 边界回归已启动，尚未结束。
+
+### NXR-MESSAGER-TASK-USAGE-LAYOUT-20261117
+
+- Messager 桌面和移动端的 Bot 统计与任务详情用 K/M/G 显示较大的 Tokens 和 Points，保留一位小数。部分已知的任务用量显示为 `>3.2K`，英文完全未知缩写为 `Unk.`。桌面任务表的 Tokens 和 Points 单行右对齐。
+
+### NXR-MESSAGER-TASK-RETRY-ACCESS-20261117
+
+- 前台 Bot Task 续跑可复用同一 Task 之前执行批准的 App/Mini-App 访问，校验当前 Provider、Tool 和声明版本。独立任务和下一次定时运行重新计算；不把临时批准写入 Bot 的 Access 设置。
+- AI 审批补充任务目标、当前步骤和前一步回复摘录。对普通计量产物生成，审核独立判断风险与意图，意图资料不足不再单独触发人工确认。特殊操作、明确撤权和风险不明仍受原规则保护。
+- 相关 100 项回归通过。测试使用真实任务状态和模拟模型、工具，覆盖「1」续跑、历史批准复用、独立任务隔离、版本变化和撤权，以及低风险与风险不明的审批差异。固定 Dev 尚未重载。
+
+### NXR-INTELLIGENCE-ORPHANED-REFRESH-20261117
+
+A channel refresh no longer holds the channel indefinitely after its owning System Task ends or its receipt is pruned. The collection coordinator settles the old record, cancels its remaining browser work through the task tree, and preserves any saved articles.
+
+Dev reloaded the live checkout. The November 14 Watch refresh had failed with SQLite storage exhaustion during preparation, leaving the channel blocked for subsequent schedules. The old record is now failed and its task tree is cancelled. A new manual refresh reached the Fratello list. Regression tests cover an ended task, a pruned task, and a still-active task.
+
+### NXR-MESSAGER-INSTANT-OUTGOING-BUBBLE-20261117
+
+- Messager 桌面和移动端点击发送后立即显示用户气泡。正式消息按请求 ID 接替临时气泡，发送失败时撤掉临时气泡并保留写好的内容。浏览器夹具覆盖延迟响应、正式消息去重及发送失败；固定 Dev 尚未重载。
+
+### NXR-MESSAGER-ACCESS-APPROVAL-LABEL-20261117
+
+- Messager 的 Bot 设置将「AaAT 审批模式」更名为「访问审批模式 / Access approval mode」，并说明当前适用范围是普通 App 和 Mini-App 工具的访问申请。首次获准使用其他 Bot 仍走现有委派审批流程。
+
+### NXR-MESSAGER-SETTINGS-HEADING-ICONS-20261117
+
+- Messager 桌面右栏按 Tasks / Profile / Access / Skills / Exposure & callers / Voice / Memory / Task notification settings / Statistics & usage / Conversation history 排列。
+- Messager 桌面右栏的任务、统计与用量、Profile、Skills 等 10 个 Bot 区块加上与标题对应的统一线条图标，保留原有展开箭头。Chrome 夹具验证了窄栏对齐和鼠标、键盘展开收起；固定 Dev 尚未刷新。
+
+### NXR-MESSAGER-BOT-SKILL-LIST-20261117
+
+- Skills 添加入口改为可多选的对话框，只有中间候选列表滚动。左栏进入仅显示头像的模式时隐藏 Friends 和 Inbox，并自动切回 Bots。
+- Messager 桌面右侧栏新增独立 Skills 区，只显示当前 Bot 已添加的技能。添加时列出已安装且兼容的候选，选中即启用；停用保留条目并撤回运行授权，移除不卸载系统技能。
+
+### NXR-MESSAGER-HEADER-TOOLTIPS-20261117
+
+- Bot Profile 的头像上传和素材库入口改为并排的图标按钮，悬停和键盘聚焦时显示提示。
+- 钥匙按钮改用系统确认对话框，说明旧密钥对新会话的影响。默认聚焦「取消」，可用 Esc 取消；只有点击「更换密钥」才发送请求。
+- Messager 桌面顶栏右侧四个按钮在悬停和键盘聚焦时显示提示。侧栏提示随开闭状态变化，钥匙按钮明确指向本设备的消息身份密钥，刷新按钮标明好友与收件箱的范围。已在固定 Dev 刷新并验证键盘聚焦提示与侧栏文案切换。
+
+### NXR-MESSAGER-COMPOSER-SCROLLBARS-20261117
+
+- 修复桌面 Messager 用户气泡按自身宽度二次收缩的问题。宽度上限改为基于对话栏，短消息单行，长消息按可用宽度换行。已在固定 Dev 核实原对话的「几点了」恢复单行，并核对实时提供的 CSS 和 JS。
+- 固定 Poke 唤醒标签单行显示，并独立计算气泡文字宽度和内边距。Dev 完整重载后，在 AceFox 中确认同一条历史「👋 Poke」已从三行恢复为单行。
+- 修复「👋 Poke」等短消息被挤成多行的问题。用户气泡按完整文本宽度收缩，到宽度上限才换行。Chromium 在常规与窄窗口下均验证了 Poke 单行、长词换行和显式换行。
+- Messager 桌面消息流、侧栏和 Bot 输入区改用细浅滚动条。用户气泡收窄，操作贴近气泡。Bot 输入框随正文增高，上限为 180 CSS px 且受视口限制，超出时区内滚动，移除拖拽手柄和输入框焦点描边。
+- Chromium 独立页面验证自动增高、溢出滚动、清空缩回、焦点样式、滚动条及长短气泡宽度。尚未刷新正在运行的 Dev 实例。
+
+### NXR-MESSAGER-STOPPED-TASK-SIDEBAR-20261117
+
+- Bot 列表不再把已停止会话中的历史排队记录计为活跃任务，已结束的执行也不会遮挡其他活跃任务。已用 Dev 的「情报总结」历史记录只读复核。
+
+### NXR-MESSAGER-SCHEDULED-TASKS-MESSAGE-TIME-20261117
+
+- Messager 将执行成功的任务统一显示为「已完成 / Completed」。已在固定 Dev 核对腕表简报的状态文案。
+- Messager 任务概览依次显示进行中、计划中和最近三条已结束的任务。计划中按下次执行时间排序，未来 24 小时内显示时分，更远显示月日。已结束包含定时任务的最近一次实际结束记录，新一轮开始后仍可见。已在固定 Dev 刷新验证腕表简报的下次时间和最近结果，同一任务新旧执行并存由独立的后端和前端测试验证。
+- Messager 右侧任务概览的「全部任务」入口移至任务列表底部。已刷新固定 Dev 验证顺序。
+- 缩小 AI 正文最后一段与复制、朗读及时间行的间距；Chromium 夹具实测 12 → 4 CSS px，段间距和用户消息间距保持不变。
+- Messager 桌面右侧的「任务」和「全部任务」新增独立「定时任务」区，不占普通任务的三个近期名额，显示 Todo 最近一次实际执行状态。Todo 列表投影保留已有日程、更新时间，并在分页前为未归档定时任务保留优先级。
+- AI 信息流在复制、朗读按钮后按本地时间显示消息时间。当天仅显示时分，昨天显示「昨天 / Yesterday」加时分，更早显示日期和时分。
+- 13 项 Python、9 项 Node 定向回归和模板解析通过，涵盖真实 Todo 日程投影、旧日程保留、消息时间和用户消息无时间标记。开发实例尚未重载。
+
+### NXR-MESSAGER-ASC-SHORTCUT-ACTIONS-20261117
+
+- Messager 桌面侧栏把 ASC-Bot 卡片的删除按钮改为「⋯」菜单，提供「改名」和「删除」。改名复用系统输入框与 Bot Profile 保存接口，仅改变显示名；删除沿用确认和可恢复机制。菜单支持键盘操作。
+- Chromium 夹具验证改名预填、保存后更新卡片、键盘选择删除和取消确认。6 项侧栏 Node 测试、7 项快捷 Bot Python 回归及 diff check 通过。
+- ASC-Bot 卡片的「⋯」向左移 6 px、向下移 10 px，窄栏使用更小的偏移，常规侧栏为长名称预留按钮空间。已在固定 Dev 桌面刷新并目视确认「吉卜力横屏」卡片的新位置，App/Helper 源码根、运行中 Local 模块路径和实际服务的 CSS 均与当前 checkout 一致。
+
+- 常规侧栏的 ASC-Bot 菜单按钮再下移 6 px，与卡片名称更接近。已刷新固定 Dev 桌面。
+
+### NXR-SHELL-APP-SWITCH-FEEDBACK-20261117
+
+- implemented / app_dev_activated / test_built: Shell 切换 App 发起请求时立即选中目标 Dock 图标，显示带目标 App 名称的等待层；缓存命中即时进入，失败恢复先前选中态，连续切换时忽略迟到请求，返回当前 App 或首页会取消等待。移除旧 iframe 已就绪时意外遮蔽等待层的 CSS 规则。修改 `ai2apps/web/static/js/shell.js`、`web/static/css/shell.css`、`web/templates/shell.html`；新增 `ai2apps/tests/shell_app_switch_feedback.test.cjs`。JS 语法、3 项异步切换回归和 diff check 通过。App-Dev 强制刷新后实机 Dock 切换可用，并恢复原 Doc Studio 画面；App/Helper source-root metadata、运行中 Local 导入路径和实际提供的 JS/CSS 字节均与当前 checkout 相符。通过标准脚本重建固定 Test App；嵌入的 JS/CSS/HTML 与 checkout 逐字节一致，`codesign --verify --deep --strict` 和 `verify-release-app.sh` 通过。旧 Test App 归档于 `apps/ai2apps-acefox/.build/archive/AI2Apps-test-20261117-163431.app`。Test 实例已启动在 127.0.0.1:59548，但实机界面停留在启动画面，尚未完成 Test 的交互验收；Local 日志持续出现 `local_session_required`，需要另行检查 Test 登录/启动状态。冷启动等待层的真实视觉持续时间仍受本机启动速度影响；生产未重建。
+
+### NXR-MESSAGER-BOT-THINKING-LEVEL-20261117
+
+- Messager 桌面和手机的 Bot Profile 新增思考档位。默认保留模型行为，显式档位按模型和实际调用渠道的声明显示，并以同一 Profile 修订保存。
+- Bot 对话与同一轮排入的 Task 沿用入队时的设置；定时 Task 在启动时读取相同模型的当前设置。切换模型时恢复跟随模型，托管 Cloud 未开放显式档位控制。
+- 定向 Python 回归 76 项（含 28 项 AaAT 架构检查）、桌面模型选择 Node 测试 8 项，以及桌面与 390 像素 Mobile Chromium 夹具通过。覆盖档位保存、渠道隔离、对话到 Task 的传递、定时执行和多轮工具调用。扩展回归中一条旧测试仍期待 Task 的单次审批写入 Bot 永久权限。待开发实例实测；完整 AaAT 回归尚未结束。
+
+### NXR-STUDIO-MINI-APP-UPGRADE-REENTRY-20261117
+
+- 创意画坊、视频工作室、语音工作室、文档工作室和 AI 浏览器统一使用 ACPF 安装目录和独立安装进度，安装成功后刷新对应宿主的已安装列表。
+- 再次进入 Package Mini-App 或切回它所在的 Studio 时，宿主检查已安装的 Package 修订。修订变化时重新挂载 Mini-App，相同修订时复用原工作区。Mobile Shell 在点击返回及原生前进恢复已保留页面时，也通知宿主检查。
+- 101 项定向 Node 测试与 3 项文档 Studio Chromium 夹具测试通过。Dev 和 App-Dev 实际提供的八个 JS 资源与当前工作区逐字节一致。真实 Discover 升级复测待完成。
+
+### NXR-IMAGINE-MINI-APP-UPGRADE-REENTRY-20261117
+
+- Imagine Studio refreshes its Package catalog when reopening an installed Mini-App or when the Shell activates a Studio with a Package Mini-App open. It remounts the Mini-App when the installed provider revision changes and reuses the frame at the same revision. Catalog-only refreshes preserve the open editor.
+- 23 targeted Node tests passed, including desktop activation with an upgraded provider and mobile re-entry from the Mini-App library. The new browser behavior still needs an in-app upgrade replay.
+
+### NXR-COMIC-TRANSLATION-REGION-SEAMS-20261117
+
+- Fix Comic Translation export skipping separately translated OCR regions whose boxes overlap by a few edge pixels. Expand contour search for a narrow box using nearby source boxes and preserve separate, disjoint text placements. Chromium replay on the reported original spread reproduced the omission and verified both regions render with no warnings. The owner AaAT adapter verifies both the old signed and corrected renderer digests. Comic Translation 0.1.1 is published. Public signature and byte verification, clean install, upgrade from 0.1.0, Studio discovery, and AaAT registration passed with the current host checkout. The owner renderer allowlist change remains tracked for Desktop. See [publication receipt](ai2apps-comic-translation-0.1.1-release-2026-11-17.md).
+
+### NXR-COMIC-TRANSLATION-OUTPUT-LIMIT-20261117
+
+- Dev 重启后的实际批次仍有一页在 6144 和 12288 两档额度均返回 length。漫画翻译现对明确声明可关闭思考的 BYOK 模型使用直接输出模式，沿用所选模型及现有逐页校验。51 项定向测试通过，包含 DeepSeek 网关参数转换测试。修复有待 Dev Local 重新加载，并用真实页面复测耗时和翻译质量。
+
+- 漫画翻译遇到模型明确返回输出长度受限时，以同一模型和上下文加倍输出额度重试。原来的逐页时限改为 135 秒，未完整返回的内容仍不进入排版。日志记录结束原因及额度，便于区分截断和其他中断。
+- 11 项定向测试通过，两项依赖暂停的开发源的测试未纳入。当前 Dev 编辑器有用户尚在检查的批次，后端修复待 Local 重启后生效。原批次日志确认两页翻译返回 422，旧日志没有原始完成原因。
+
+### NXR-STUDIO-INSTALLED-SINGLETON-20261117
+
+- 修复开发源已停用后，正式 Package 挂载错误复用旧 AppInstance 的问题。重用仅匹配当前定义。创建新实例时，在同一事务中释放停用定义占用的单例键，保留旧实例、状态和历史。
+- Dev 通过标准 Helper 重载，App 和 Helper 源码根匹配当前工作区。已在真实 Studio 打开已安装的漫画翻译 0.1.0，确认当前挂载指向已启用的正式定义并显示翻译模型与 OCR 设置。17 项定向测试通过。两项依赖已暂停的开发源的测试未纳入通过数。
+
+### NXR-QWEN-IMAGE-21-PACKAGE-20261117
+
+- Clean ACPF acceptance passed using Chrome with the production ACPF client and a real loopback Local API in a new data root. The profile installed both published releases from Registry, required the user's manifest-bound consent before acquiring the 33.1 GB checkpoint, and reached ready. Both image generation and image editing returned valid RGBA PNGs through the installed managed Worker. See `docs/ai2apps-runtime-1.8.17-qwen-image-2.1-release-2026-11-17.json`.
+
+- Published `ai2apps/runtime-omlx` 1.8.17 after notarization, stapling, Gatekeeper verification, and a clean signed install. A separate clean instance passed public Registry download, signature verification, installation and activation after Local restart. Published `ai2apps/model-qwen-image-mlx` 0.1.3 with Qwen-Image-2.1 as its sole checkpoint and Runtime 1.8.17 as its minimum dependency. The signed checkpoint distribution is visible in the public index. Updated the Imagine Studio generation and editing ACPF profiles to use the same model ID. Clean ACPF acceptance and Runtime mirror activation are tracked in `ai2apps/.build/runtime-1.8.17-mflux/`.
+- After the Cloud ModelScope Range timeout hotfix, Registry validation `val_087a4553-6900-4964-a622-fc1afd3ef3f0` passed and the mirror was activated. Anonymous signed Snapshot v388 advertises Cloud, GitHub and ModelScope for Runtime 1.8.17. All three sources passed size checks and the signed first, middle and last pieces. The artifact size and SHA-256 match the original release.
+
+- Apple accepted submission `7a954fdd-73f8-48bb-9da4-a6f98571296d` after the earlier team agreement 403. The release DMG contains the accepted ticket.
+
+- Runtime candidate 1.8.17 upgrades MFLUX to 0.24.0 on the verified 1.8.16 release layers and Worker source. Real Mac smoke tests returned valid PNGs from FLUX.2 Klein 4B generation and editing and Z-Image Turbo generation. The standard builder produced the Developer ID signed `ai2apps/.build/runtime-1.8.17-mflux/AI2Apps-oMLX-Runtime-1.8.17-internal.dmg`. The local regression receipt records the artifact and output hashes.
+- The mounted 1.8.17 DMG passed strict deep code-signature verification. Its embedded Python ran the unchanged FLUX and Z-Image adapters and reproduced the isolated smoke-test PNG hashes. The same bundle ran Qwen 2.1 generation, editing and transparent PNG with one loaded pipeline.
+- The ACPF Chrome fixture renders the official Qwen 2.1 terms and exercises both user decisions. Submission requires selecting a decision and checking the confirmation box. The submitted decision includes the exact distribution ID, manifest digest, and terms hash. Four JavaScript tests and 37 Python license/checkpoint cases passed.
+
+- In progress. Spark ran the official pinned Qwen-Image-2.1 BF16 pipeline with Diffusers 0.41.0 and Transformers 5.18.0. The 512×512, 40-step runs generated a PNG in 13.36 seconds, edited it in 16.05 seconds, and generated a transparent PNG in 11.68 seconds. The receipt is in `spark/evidence/media/qwen-image-21-cuda-development-20261117.json`.
+- The CUDA Package adapter has a 2.1 route pending manifest activation. Direct calls to the adapter on Spark verified one pipeline load across generation and editing and two decodable RGBA PNG outputs. The draft checkpoint distribution declares the exact Qwen Research License and explicit download consent through the existing FLUX path.
+- All 24 selected Hugging Face files (33,131,601,593 bytes) matched ModelScope metadata by size and SHA-256 at revision `45ee13449c69593e1b7a10d7d1cba830c7ada657`. The user clarified that end users will run the model locally. The installer must require each user to confirm research/evaluation use under the Qwen Research License or declare a separate commercial license covering their use.
+- The MLX Package development adapter now routes both operations to one MFLUX `QwenImage21Edit` instance using the native checkpoint's processor layout and 32-pixel size grid. The MLX checkpoint distribution candidate binds the official terms and confirmation to the MLX model ID.
+- The oMLX Runtime export now pins MFLUX 0.24.0 and its wheel SHA-256. An isolated export using the real installer verified imports of 2.1, both older Qwen models, FLUX.2 Klein, and Z-Image with Torch and OpenCV blocked. The legacy Qwen derived cache key now includes the installed MFLUX version.
+- The M5 Max ran the MLX 2.1 Package adapter offline at 512×512, Q8 and 40 steps. Generation including initial load took 26.63 seconds, single-image edit took 29.53 seconds, and transparent PNG generation took 21.99 seconds. One pipeline served all three. 2512 and Edit 2511 also returned valid PNGs in separate 4-step legacy smoke tests. See `benchmarks/qwen_image/qwen21-mlx-20261117.json`.
+
+### NXR-STUDIO-MINI-APP-INSTALLER-20261117
+
+- Studio 的共享 Mini-App 安装弹窗改为随内容展开的桌面弹窗和窄屏底部面板。目录按 Studio 查询，排除已安装的 Registry Package，列表展示描述、版本及安装状态。加载、空列表、进度与失败分别显示，目录失败可重试。需要审查时引导到 Discover，沿用签名和依赖检查。
+- Dev 创意画坊已打开新版弹窗并从实际目录加载漫画翻译。App 与 Helper 的源码配置和实际提供的 JS、CSS 均与工作区一致。浏览器夹具验证桌面、手机窄屏滚动、目录筛选、失败重试、安装进度、审查提示及关闭后恢复焦点。实际安装留给用户测试。
+
+- 安装列表读取公开目录中与组件 ID 匹配的图标声明，使用 Studio 现有图标，缺失或无效时用通用图标。生产目录确认漫画翻译 0.1.0、幻想信息流 0.1.0、静止时间 0.1.3 均已声明。桌面与窄屏浏览器夹具验证通过，Dev 提供的 JS、CSS 与源码一致。原 Dev 窗口在复测期间断开旧端口，实机列表显示待复核。
+
+- Studio 收到本地 Package 审查要求时提供可点击的「查看审查」，同一弹窗内说明审查并等待用户明确确认后再继续安装。桌面和窄屏浏览器夹具验证查看、返回均不提交批准，确认后才提交。Dev 静态资源已比对，真实安装确认由用户操作。
+
+- Mini-App 选择后切换到独立安装弹窗，复用 ACPF 的步骤、进度条和下载信息界面。Package Manager 操作提供真实阶段，审查、重试与完成均在安装弹窗处理。完成后通知 Studio 刷新已安装列表。浏览器夹具覆盖选择、下载、审查、返回和完成，现有 Chat ACPF 测试通过。Dev 已提供更新资源，未提交真实安装。
+
+### NXR-MESSAGER-WORKER-TODO-RESULT-20261115
+
+- Todo results for approved proposals created inside Bot dialogue workers now reach the original Messager conversation through the recorded worker Run and owned job. Recovery repairs legacy worker receipts marked notified before delivery, deduplicates by Todo Run ID, and keeps archived conversations separate.
+- The original Alpine Run and Todo result finished at 04:56:19.691956 UTC. Its Messager receipt was absent before the fix. After the Dev restart it was recorded at 07:47:44.386650 UTC. Three focused tests cover incremental reads, legacy repair and archived conversation isolation. Dev App and Helper source roots and live Python import were verified.
+- Re-running the same approved Alpine project in fixed Dev finished at 07:49:16.653848 UTC. Messager persisted the receipt 0.620 seconds later. At 07:49:25 UTC the open conversation showed the second result without manual refresh. The served conversation script matched the live checkout.
+
+### NXR-DISCOVER-SYSTEM-SKILLS
+
+- In progress. Discover has a Skills tab for previewing and installing local Skill folders or public GitHub Skills, viewing installed details, updating, exporting ZIP files, and uninstalling. GitHub files are pinned to a commit and checked against its Git tree. Installs use separate storage per authenticated actor and survive a Local restart.
+- Bot Profile lists installed Skills with per-Bot switches. Conversation and Task Runs pin enabled revisions on admission; users can select a Skill with `/skill <name-or-id>` at the start of a message, or let the Harness select from names and descriptions. Only the selected Skill entry is read. Revocation blocks subsequent use, and the Skill does not grant tool permissions.
+- In fixed Dev, Discover imported a synthetic `receipt-format` Skill and real DeepSeek calls delivered the expected receipt in a named conversation request and an automatically matched Task. An earlier Task selected the Skill but hit SQLite write contention. Dev App/Helper source roots, live Python imports, and the served Messager script match the checkout.
+- Focused fixtures cover the local lifecycle, cross-actor isolation, stale previews, GitHub file integrity, and Bot revision and grant checks. Generated Skill handoff and signed official Package installation remain pending.
+
+- The Harness now reads selected UTF-8 files from the pinned Skill revision’s `references/` directory. Selection receives paths and instructions only; the host opens just the requested files (up to four files of 8 KiB each). Paths, type, and current grant are checked before a read. Scripts, binary files and recursive links are outside this pass. Owner selection steps count toward usage and are excluded from dialogue/tool replay.
+- Fixed Dev imported and enabled `rehearsal-references` through Discover and Bot Profile. A real DeepSeek conversation returned `HARBOR-COMET-5721`; a confirmed one-time Task returned `ALPINE-KESTREL-8416` and Todo Execution showed Completed. Both Runs exposed only the requested reference text in their Skill context. The spare file did not enter either model input. The App and Helper roots, Python import and served Messager script matched the checkout. 39 targeted tests passed; the AaAT boundary gate was rerun separately.
+
+- Discover's local and GitHub Skill import/update preview now offers optional AI safety review with the configured Privacy Standard task model. Before invocation it shows the destination and exact files. The static review reads only the staged revision, checks evidence against the file and line, and shows skipped files and partial coverage. Reports are shown in the current preview. Reviewing does not install or authorize the Skill.
+- Fixed Dev used real DeepSeek Flash to assess a synthetic local Skill. The report identified unauthorized publication, quoted the source instruction, and showed two reviewed text files and one skipped binary. Focused fixtures cover explicit invocation, actor isolation, version and model changes, partial coverage, invalid evidence, and installation without a review.
+
+- Discover can create an owner-scoped Imagine Studio Mini-App from an installed Skill revision. The manual form editor supports text, multiline text, number, switch, choice and Gallery image inputs. The Studio selector exposes incompatible destinations. The host validates parameters, asset ownership, image model and size, and commits its Studio Run and durable job together. Prompt preparation uses the Privacy Standard task model with bounded Skill references, and image execution publishes through Imagine Studio's shared Output.
+- Fixed Dev port 52033 imported the synthetic botanical-postcard Skill, created Botanical Postcard with a required subject and default style, and ran it in Imagine Studio. Real DeepSeek Flash prepared the prompt and GPT Image 2.5 Flare generated the 1024×1024 ginkgo PNG. The native Output displayed Succeeded and previewed the PNG without a manual refresh. 25 targeted tests passed, including version pinning, cross-actor access, duplicate submission, on-demand references and shared Output publication. The fixed Dev App and Helper source roots and served scripts were verified. The Mini-App and successful run persisted after a second Local reload.
+
+### NXR-IMAGINE-COMIC-TRANSLATION-20261115
+
+- Implemented an Imagine Studio Mini-App for finding light enclosed speech bubbles, editing selected regions, reading crops with installed local OXR, translating source text through the Privacy task profile, and compositing a PNG for shared Output. Complex backgrounds and missed speech bubbles require review or a manually adjusted region. No image generation model is used.
+- Fixed App-Dev port 52501 verified using the standard Helper restart. Both source roots, the live import, and three served static assets matched the checkout. Native acceptance detected two synthetic bubbles, ran real local OXR on both crops, translated both English phrases to Chinese through the configured Privacy task model, previewed, and saved a 720×500 PNG to shared Output. Pixel comparison confirmed the two text boxes changed and every pixel outside them matched the source. The targeted HTTP fixture and nine related frontend checks passed.
+- Replaced the prototype UI with the independent `ai2apps/comic-translation` Package source. It mounts through the Studio catalog, accepts ordered batches and Gallery images, lets users choose the translation model and adjoining-page context, and exports PNGs or a self-contained HTML with bilingual bubble overlays. Portability and source-mounted acceptance are tracked separately from signed publication.
+- Fixed App-Dev port 56149 mounted the independent Package and populated the model selector. Both bundle source roots, the live recognition module path and three served host assets were verified against the checkout. Three targeted Python tests covered cropping, mount scope, model policy and shared Output. A sandboxed two-page Chromium fixture verified batch translation with adjacent dialogue, Gallery batch drops, PNG and HTML export, offline page navigation, bubble hover and touch, pinch and wheel zoom, and drag panning. The fixture supplies model responses. The packaged batch has not been rendered end to end on a phone or with live models.
+- Mobile Edge requires the mounted Package operations documented in `ai2apps/docs/comic-translation-mobile-routing.md`.
+- Comic Translation automatically tries 90-degree rotation for narrow English text boxes and adds a per-region layout override. A region that cannot be safely typeset retains its original pixels, with the reason in preview and export feedback.
+- Comic Translation checks two contrast cutoffs to recover faint bubble outlines, then uses the background around the text box to reject textured art. Automatic boxes whose OCR returns only an empty string or a stray full stop are removed before translation. Manually edited boxes and intentional ellipses are preserved. On the reported screenshot, the raw candidate count decreased from 32 to 13 and included the previously missed bubble. Four targeted Python tests and the browser fixture with simulated OCR passed.
+- Comic Translation reports the mounted instance's SoMark OXR readiness at startup, preserves manual-source translation, and displays platform API error messages. Empty region headings no longer show a dangling separator. Dev 62365 had Runtime 1.8.10 and no installed OXR when the reported recognition request failed before model invocation.
+- Comic Translation can crop a two-page reader screenshot using the browser toolbar and side gutters plus panel lines on both halves. The editor reports whether the current page is cropped or is using the full image.
+- Comic Translation uses the shared Imagine Studio asset slots, with one empty slot while a batch has room. A single file drop can add multiple pages. Bubble previews show the translated text on hover or focus, and each page has a collapsed dialogue list with paired source and translated text.
+- Comic Translation accepts up to 50 pages in a batch and can export all 50 PNGs within the existing export size limit.
+- Comic Translation supplements bubble outlines with grouped text strokes, excluding long panel rules and checking for a uniform light background around each candidate. Adjacent dialogue columns can share a region when the combined background passes the same check.
+- Comic Translation supplies nearby bubble positions as hints for translating sentences that span boxes. Partial translation includes the full same-page dialogue and applies output to the requested boxes in reading order.
+- Comic Translation supports named terminology profiles by target language. The translation model receives applicable preferred terms and proposes new names for subsequent pages. Users can edit saved profiles and save a temporary glossary under a name.
+- Comic Translation can recognize two adjoining text blocks inside one irregular speech bubble as a single dialogue. It erases the original text only inside the component rectangles and fits the translation in a verified area inside the bubble.
+- Comic Translation uses the translation model to decide which neighboring OCR boxes belong to one bubble and in what order. Confirmed groups appear as one dialogue with separately editable drawing areas. The original boxes receive their own translated segments.
+- Comic Translation rechecks oversized, sparse regions at higher resolution when one narrow text candidate is anchored to an edge. A confirmed enclosed text area replaces the oversized automatic region on redetection. On the reported spread, region 4 shrank from 270×236 to 34×77 pixels. A browser render with a fixed translation changed zero pixels outside the refined area. Eight targeted Python tests passed.
+- Comic Translation removes duplicate OCR pixels from overlapping vertical dialogue windows and proposes the fragments for model grouping. Preview and both export formats use the enclosed balloon pixels to place type without overriding dark contours. Confirmed dialogue uses one type size across its drawing regions. The reported spread rendered regions 2/3, 8, and 10 without layout warnings using fixed translations and groups. Nine targeted Python tests and the Mini-App browser fixture with simulated model responses passed.
+- Imagine Studio removes the workspace drag overlay. Package image imports now go through their own asset slots, while built-in image tools retain workspace drops. The shared mobile file and Photos pickers support opt-in multiple selection for Comic Translation. An isolated browser test verified a two-file local drop, a two-image Gallery drop, and selecting two files in the Open dialog. The Studio template test and 33 targeted JavaScript tests passed.
+- Comic Translation recomposes its active preview after a drawing area is deleted or moved. Users can move a region by dragging its frame or resize it from the lower-right corner. Grouped fragments follow the edited bounds, and the coordinate fields update. An isolated browser test verified that deleting from the rendered preview restores the original pixels, that moving preserves the frame size, and that resizing preserves its top-left anchor.
+- Comic Translation supports ASCBot presets for language, OCR direction, crop, adjacent-page context, translation model and the name of an owned Profile. The Package declares `imagine.translate_comic` for Agent and Bot calls with ordered owned images. It runs without a parameter form when its input is complete and applicable access is already granted. The owner reuses editor recognition, translation, Canvas composition and Studio Output. Agent results also appear in the caller Session. Source installation, shortcut capture and claim, default arguments, publication and replay were tested with fixtures. A browser test restored settings without altering loaded pages. Two-page PNG and offline HTML rendering used real Canvas composition with fixed OCR and translation responses. The focused suite passed 64 tests. Live App-Dev and model inference remain unverified.
+
+- App Chat includes the verified task-local image attachment ID and MIME alongside image pixels, so authorized tools can reuse the original selection. In an isolated Bot-to-Studio run with pre-existing Comic Translation access, fixed planning/OCR/translation responses and real Canvas, the task returned the rendered French PNG to the Bot conversation without a form or confirmation. The running App-Dev test stopped at a Discover access request and did not produce a PNG; live-model verification on the updated Local remains open.
+
+- Comic Translation offers an in-app ACPF setup button when SoMark OXR is unavailable. Its profile selects the OXR Package and checkpoint with a compatible oMLX Runtime. The editor refreshes readiness on return and shows a host Mac setup hint on Mobile. The provisioning test produced the expected plan in awaiting-confirmation state. A browser fixture verified cancellation, readiness refresh, retention of the loaded page and Mobile guidance. Live downloads and Runtime restart remain unverified.
+
+- When Comic Translation is waiting for SoMark OXR, desktop Chat and Bot show the existing ACPF card directly in the pending interaction. The owner opts into this presentation. Installation confirmation and continuation stay in the original dialogue. Browser tests verified inline confirmation, cancellation, reconnect and Mobile behavior. An isolated Bot run opened the actual OXR plan and preserved the attachment. With installation and model responses simulated, it continued the original run and returned a PNG rendered by the browser.
+
+- Comic Translation 0.1.0 candidate declares Discover tasks in English and Chinese for attached manga, vertical dialogue, PNG export and the offline bilingual reader. The signed candidate passed the client compatibility gate and retained the Mini-App catalog and AaAT export. Its clean-instance audit requested review because the temporary instance has no AI auditor.
+- Comic Translation 0.1.0 was published on 2026-11-17 after approved clean-instance installation and removal. Anonymous Registry download, signature and byte verification, install, Studio discovery, AaAT registration and removal passed on the current Host checkout. The Bot Discover endpoint returned the exact signed Mini-App for Chinese, English and capability queries. See [publication receipt](ai2apps-comic-translation-0.1.0-release-2026-11-17.md).
+
+### NXR-MESSAGER-TASK-CHAIN-APPROVAL
+
+- Each conversation or inherited Todo task uses the highest mode on its own Bot delegation path: Always, AI, then Manual. Automated grants remain in the current execution tree. AI review receives the original user goal and current work item. Separate operation confirmations and reviewed fixed/Hook scopes keep their existing rules.
+- 78 targeted tests passed, including task path precedence, reuse after the parent resumes, scheduled delegation, separate operation confirmation, and direct chat compatibility. Fixed Dev was restarted and imported the updated owner from the live checkout. Live model and authenticated settings UI were not exercised. Full AaAT gate is running.
+
+### NXR-MESSAGER-TASK-TREE-ACCESS
+
+- Conversation tasks and inherited-access Todo runs use branch-local App/Mini-App inheritance. New Access approvals are scoped to a single root execution and reused across its child tasks. Special actions still require exact confirmation. Explicitly disabled targets block inheritance and reviewed fixed/Hook scopes retain their limits.
+- Trusted effect-free AaAT providers can waive Bot App Access. Deterministic fixtures verified three-level delegation, approval reuse after the parent resumes, explicit opt-out, and scheduled delegation completion and timeouts. Fixed Dev reloaded from the verified checkout, and its three Messager scripts match source. A live model run and the full AaAT gate are still pending.
+
+### NXR-MESSAGER-BOT-AAAT-APPROVAL-MODES
+
+- Standard Bots expose Manual, AI and Always under Access. The owner stores the mode per Bot and uses the shared Tool approval review for ordinary AaATs in foreground work. Always authorizes the original invocation. AI approval adds the App or Mini-App to the Bot's Access list. Special confirmations, disabled Access entries and the admitted delegation scope still apply. Fixed Dev reloaded from the live checkout. The Messager Access selector and default manual setting were verified in the desktop window. Served JS and CSS match source. Focused App Access, Chat approval, architecture, and delegation tests passed. The model and provider effects used fixtures.
+
+### NXR-TODO-TERMINAL-STATUS-RECOVERY-20261114
+
+- Todo reattaches observers to existing Agent runs after a transient SQLite failure. The original terminal status is persisted for Todo and the linked Messager task. Recovery observes the existing run without resubmitting the task.
+- Regression fixtures cover cancellation and failure during a write outage, then verify the recovered status, finish time and owner notification. In fixed Dev, the original daily watch brief recovered from Running to Cancelled with its existing Agent Run ID and finish time after Local reloaded from the verified checkout. The native views were not both rechecked after reload. 46 focused boundary checks and 87 Todo tests passed.
+
+### NXR-MESSAGER-INSPECTOR-WIDTH-20261114
+
+- Keeps the Messager Bot inspector vertically scrollable and caps the shared grid column at the sidebar width. Long task titles truncate; status text wraps. Chromium verified Tasks, Profile, and Access at 250, 300, and 460 pixels; six sidebar regressions passed.
+
+### NXR-BOT-STALLED-TASKS-20261114
+
+- Scheduled Bot delegation yields the parent admission slot while the original child runs. The deadline reads the original submission and child state and reports whether execution started. Scheduled Bot instructions prioritize verified partial results and reserve questions for essential user decisions.
+- An unstarted browser child with no page does not block task-tree completion. Intelligence bounds the post-collection browser cleanup wait and retains saved articles while the browser monitor verifies owned page cleanup.
+- A duplicate Intelligence refresh returns a definite non-submission instead of locking later effects as uncertain. Fixed Dev verified the new receipt on the original watch schedule and confirmed that the parent yielded admission. The live observer hit a disk I/O error when the volume filled; a regression covers observer failure before child admission.
+- The real AI Progress collection reached failed with no readable X pages; both the collection and browser task tree settled. Fixture tests verified that a cleanup timeout preserves saved articles and that an unstarted child requires no cleanup. The one-slot scheduled delegation fixture covers normal and timed-out completion.
+
+### NXR-BOT-ROUTINE-PARAMETERS-20261114
+
+- Implemented. Channel refresh, flight and hotel lookup, purchase history, Quick Read and basic transcription no longer require a parameter review when the selected capability has sufficient input. The source Trip Planner and Shopping Pro export declarations carry the policy; ship their corresponding signed Package updates for already-installed clients. Action authorization, cart review and rights confirmation retain their existing flows.
+- Quick Read defaults to the first ready model that supports plain speech without reference audio or voice design instructions. Basic transcription detects language automatically. Messager binds explicitly selected attachments to the admitted execution Session using Session-local IDs that reuse the existing blob and preserve source validation. See `ai2apps/docs/app-mini-app-agent-tool-integration.md`.
+- Fixed Dev had an existing running collector and tasks awaiting user input. App-Dev was restarted through its own Helper from the verified live source root. No production deployment or Package publication.
+- App-Dev live Messager cases: missing transcription audio was requested with model and language defaulted. Flight lookup after supplied origin/date and Quick Read with default settings reached the normal App-access approval without a parameter form. The two test approvals were declined; live quotations and audio generation were not verified. Fixture coverage includes flight and hotel required inputs, history defaults, Quick Read job submission, basic transcription of Session audio and the Intelligence refresh declaration.
+
+- Fixed Dev live retest used the original requests with pre-authorized Voice Studio access. Quick Read selected Qwen3 CustomVoice automatically and returned a playable WAV. Basic transcription read the directly uploaded WAV from the execution Session and returned the exact fixture sentence. Neither turn opened an interaction. Temporary grants were removed.
+
+### NXR-INTELLIGENCE-TEMP-RESEARCH-20261114
+
+- Temporary topic collection accepts a query directly and uses available Google and Bing sources by default. The parameter form remains available for editing. Intel Center owns the behavior and reuses Search All source and Profile validation, pricing checks and evidence reporting. Each preparation is bound to the original Tool invocation and Session. The report records the requested lookback and discloses unverified publication dates.
+- 99 focused checks passed in two batches. The Messager fixture completed search, article reading and linked delivery without an interaction. Model and source responses used fixtures. Private read registration supports multiple task owners and rejects ambiguous parent selection. The mandatory AaAT gate reproduced the previously documented Bot memory-return failure (review and merge timed out). Fixed Dev activation and live network execution are pending.
+
+### NXR-MESSAGER-ACCESS-CARD-LIFECYCLE-20261113
+
+- Messager dismisses the Bot App Access card once the original approval leaves the pending state. Answer receipts stay visible only while their own Run continues, then clear on termination or when replaced by a new question. Existing approval and special confirmation flows use the same endpoints.
+- Six frontend tests passed, including a Chromium fixture for pending → approved → running → completed. In fixed App-Dev, both served scripts matched the live checkout. The original completed task and image were visible after reload and the approval card was absent.
+
+### NXR-COMAPPS-WECHAT-20261113
+
+- Status: in_progress. ComApps is a built-in Desktop App. Its Local service and sandbox Shell bridge support iLink QR binding, scoped text receipt and explicit manual reply, plus a read-only WeChat-CLI profile selected through an owner-configured executable path. See `ai2apps/docs/comapps-wechat-mvp.md`.
+- Before release: verify the fixed App-Dev source binding and host assets, clean Desktop Test launch and upgrade from the legacy Package, actual iLink QR binding and device-visible reply, and read-only access from an explicitly selected, logged-in CLI profile. Background Agent turns and CLI dispatch are outside the initial connection slice.
+- The bubble and two-arrow SVG inherits the Shell icon color in Home, the App launcher and Dock. Existing instances retain their IDs and owner-scoped connection settings. The legacy Package is retired locally.
+- App-Dev acceptance: the source-mounted entry now keeps its script and styles in the sandbox document so the opaque frame can initialize without fetching authenticated subresources.
+- Adds opt-in iLink background text replies via the existing owner-default AI2Apps Bot conversation, with persisted cursor, admission identity, and send deduplication. Manual iLink reply previously reached the phone, and the real CLI read 21 conversations. Automatic reply requires its own live phone acceptance.
+- iLink automatic Bot replies use the `[🤖AI2Apps]: ` prefix in WeChat. The saved Bot response and manual replies are unchanged.
+- ComApps iLink follows WeChat-origin Bot tasks and presents numbered App Access menus for ordinary approvals only. Replies revalidate the original request and resume or deny the original interaction; text results return to the same channel. Special confirmation and parameter forms stay in AI2Apps. Live phone acceptance pending.
+- Adds automatic iLink Bot receipt and return of JPEG, PNG and text-readable PDF. Staged input is scoped to the bound Bot conversation and feeds the next instruction. Completed task attachments are resolved from the original Bot receipt and returned as native WeChat media. The user confirmed a live WeChat image round-trip in fixed App-Dev. Live phone acceptance for PDF is pending.
+- Adds a lowercase iLink Bot menu: b lists the bound owner's standard and Flash Bots, bp2 opens page 2, and b12 switches the conversation to a previously displayed position. Numbering continues across pages. ASC Bots are excluded. Flash inputs use the existing owner conversation and workflow entry, with scoped completion notices and App-side review. Existing tasks and Access approvals remain with their originating Bots. A standalone lowercase p triggers the selected conversation Bot through the existing Poke turn, preserving staged attachments. Verify list, paging, switching and Poke in WeChat on fixed App-Dev.
+- Adds a two-column ComApps workspace with an empty state, avatar picker, and distinct Agent conversation and IM proxy panels. Existing connections populate the sidebar. Unimplemented platforms appear as disabled choices.
+- Adds an iLink connection status panel, auto-reply switch, local sign-out that retains the avatar, and a rolling preview of the 12 latest inbound and outbound messages that refreshes while the iLink panel is visible. On Shell reload, ComApps navigates to a fresh iframe document and announces readiness. A normal reload was verified in App-Dev with the existing WeChat binding and recent activity visible.
+- iLink media upload can use the provider ticket parameter on the allowlisted CDN when a supplied URL fails validation. Failed attachment delivery records its stage and error code without logging media URLs or credentials. Transient CDN upload failures receive one retry before a chat message is submitted. The bound owner can request an existing PNG or JPEG from the selected Bot conversation with 发图 and its artifact ID.
+- iLink media upload uses a 60-second timeout per attempt. Automatic Bot replies use JPEG for opaque PNGs when encoding produces fewer bytes. PNGs with transparency, existing JPEGs, PDFs, and explicit 发图 requests keep their original bytes.
+- Proxy mode uses a three-column workspace with collapsed connection settings for bound accounts. The owner can save monitor Worker rules and broadcast drafts by account, pick real WeChat sessions, and reuse saved audiences. Work execution and broadcast delivery are pending the WeChat adapter integration.
+- Proxy Worker target search matches names, remarks and WeChat IDs across the CLI-readable directories before limiting results. The picker distinguishes a capped result list from an incomplete provider directory.
+- Proxy image Work can test either the thumbnail or the large local cache image of an exact inbound private-chat message through the configured CLI. Its Work log records the variant, format, dimensions, and byte count or the read error. The test does not classify or reply.
+- Proxy image Work can run a read-only visual judgment through the configured image recognition model for one exact inbound image. The Work log records a strict yes/no verdict or the failure.
+- An explicit Proxy Work test can watch a single verified WeChat message shard from its current tail and reply once to the bound private chat. It uses only the original targeted scheduler request and logs the verdict and delivery separately. Full multi-shard continuous monitoring is pending.
+- A saved private-chat image Work can be explicitly armed for persistent monitoring. Local verifies open message shards against local shard files, persists shard checkpoints and message deduplication, and logs judgment and targeted delivery separately. Real multi-shard coverage requires an account with multiple message shards.
+- The WeChat-CLI connection panel can create and launch a named local WeChat profile. The owner completes QR login before explicitly binding the selected profile.
+
+- Adds a session-scoped Recall Monitor Work for WeChat-CLI. Local consumes durable recall events, keeps the most recent 20 entries with available text and inbound image previews, and distinguishes reported recall time from detection time. Private-chat text and image recall passed in App-Dev. Group history distinguishes the original sender from the explicit revoker ID and resolves both through local contact remarks or nicknames. Group revoker attribution awaits an upstream CLI identity field and live validation.
+- The ComApps connection and Worker lists load from saved state while a connector operation holds the account lock. Mutating operations remain serialized and show a localized busy message.
+
+### NXR-MAIL-APP-20261112
+
+- Status: in_progress. Built-in Desktop Mail introduces generic IMAP TLS, iCloud and eligible Gmail app-password accounts, account-scoped Secrets, a bounded local unified inbox, and read-only previews. SMTP connection tests only check authentication. Mail organization and sending are not enabled by this slice. See `ai2apps/docs/mail-app-design-v1.md`.
+- Validate the Desktop launch path and real iCloud/Gmail accounts before release; local fixtures do not establish provider acceptance.
+- Mail prefers readable plain text and falls back to extracting text nodes from HTML-only messages. The frontend displays the result as text, so scripts and remote images are never loaded. Read-only fetch and preview limits are unchanged. Nine focused Mail tests passed.
+- Desktop Mail gives the account list, inbox, and message preview equal-height panels with independent vertical scrolling. The narrow layout keeps its stacked page flow.
+- Desktop Mail defaults to formatted HTML when available. Local rebuilds passive markup and strips remote resources and active elements; an opaque-origin sandbox with restrictive CSP displays it. Plain text remains available. Inbox rows show sender, date, unread and selected state in a compact layout.
+- Mail can load remote raster images for the open message after an explicit click. Local verifies public HTTPS destinations, strips credentials and re-encodes images for the sandbox; scripts stay disabled and switching messages resets consent. Thirteen focused Mail tests passed.
+- Formatted Mail preserves safe sender dimensions, image styles, footer spacing, and width-based responsive rules without changing script isolation or image opt-in. Single-pixel layout spacers are rendered locally without fetching them. Fifteen focused Mail tests passed.
+- Gmail account setup and reconnect show Google's app-password instructions and link. App-Dev displayed the Gmail form, Google IMAP and SMTP TLS handshakes succeeded without credentials, and 16 focused tests passed.
+- Gmail now defaults to desktop Google OAuth with PKCE, a loopback callback, local refresh-token storage and XOAUTH2 for read-only IMAP and SMTP authentication. Migration v110 preserves existing password accounts. Eighteen Mail tests passed, including a real local callback with a Google fixture. Live Gmail authorization requires a registered Desktop OAuth client and a test user. See the Gmail setup in `ai2apps/docs/mail-app-design-v1.md`.
+
+- Live App-Dev Gmail acceptance passed with a Google Cloud test user. OAuth and XOAUTH2 IMAP connected, SMTP authentication passed, the bounded inbox sync cached 23 messages, and one formatted message preview rendered.
+
+- Formatted Mail preserves solid CSS background fills written in shorthand, so dark text on colored email buttons remains legible.
+
+- Mail adds local smart folders with natural-language rules, AI suggestions, sample previews, manual corrections and Top3 with source evidence. Inbox analysis uses the configured Privacy standard-task model. Migration v111 adds the local classification tables. All 21 focused Mail tests passed. Fixed App-Dev synced 200 iCloud and 23 Gmail messages, kept the shopping folder and a manual assignment across restart, and used local Qwen to analyze samples from both accounts. The shopping rule matched a real shipping notice and Top3 displayed three entries with evidence and opened the original mail. The live check covered a sample of the inbox rather than a full backfill.
+
+- Mail's sidebar opens to Top3 in the Smart Folders tab and keeps account controls in a separate Accounts tab. Existing installations receive editable Shopping, Investing, Friends & family and Suspected junk presets once, with existing same-name rules and analyzed results preserved during the upgrade. Migration v112 records preset initialization per owner and installation.
+
+- Mail increases the desktop sidebar width by 20%, places pencil icons inside the folder cards, and persists local read status after a message opens. The unread dot clears consistently in smart folders, Top3 and inboxes, including after IMAP sync. Migration v113 stores read state by account, UIDVALIDITY and UID.
+
+- Mail's Finance preset includes credit card and bank statements and brokerage notices including Firstrade trades, and excludes marketing and financial news. Migration v114 upgrades unedited Investing presets and preserves earlier analysis in other views.
+
+- Mail smart-folder cards show unread counts for the selected account scope and update them as messages are read or classified. Top3 counts only the messages it displays.
+
+- Mail Top5 ranks up to five unread messages using existing analysis and dismissals. A selected message stays in the list after it is marked read while its preview is open. Switching messages, changing views, or refreshing releases the read row and lets the next unread message fill its place.
+
+- Mail keeps the status footer visible below the three panes and shows distinct icons for ready, in progress, completed, and failed operations.
+
+- Mail places smart-folder properties in the message list toolbar. Refresh syncs and organizes the selected scope from smart folders, and both toolbar icons use Dock-style tooltips.
+
+- Mail preview and classification controls share a single row with matching dimensions. The row scrolls horizontally when space is limited.
+
+- Mail adds persistent Top5 pins, local flags and linked Todo tasks, plus Flagged, To do and Replied views. Migration v115 retains bounded local body previews for pinned, flagged and open Todo mail. Replied uses the IMAP Answered flag. The Todo task is the source of completion state, and Mail-created tasks reuse one owner-scoped Mail directory. The Mail UI uses the message route for flag, pin, and Todo updates. Mail reports marker updates in the footer and refreshes the flag icon and action on a read Top5 row held for preview. Message rows group the timestamp and status icons at the right edge. The Top5 pin button only reserves space on the bottom line. It uses the same pin icon in both states, dimmed when unpinned.
+
+- Mail removes the plain-text toggle and uses text as a fallback for messages without HTML. Migration v116 remembers successful remote image loads by message identity. Mail keeps the ten most recent previews and their loaded images in memory.
+
+- Desktop Mail can compose and reply to plain-text messages over the connected account’s authenticated SMTP service. Replies use the original reply address and threading headers. Migration v117 preserves confirmed replies in the local Replied view across inbox syncs.
+
+- Desktop Mail supports saving new messages and replies to a local Drafts smart folder. Migration v118 retains drafts and their attachments per mailbox. SMTP sends attachments with the message; confirmed sends clear saved drafts and rejected sends keep them available for editing.
+
+- The Mail smart-folder editor has a fixed height within the viewport. The form and preview results scroll between the title and the persistent action buttons.
+
+- Desktop Mail opens HTTP(S) links from message text and formatted email buttons in the actor’s Default AI Browser Profile, using the native launch and WebDriver BiDi for a new tab in an existing window. Preview scripts and automatic external navigation remain disabled.
+
+- Mail is available to the connected Owner through the trusted Mobile App gateway when enabled for the Installation. Mobile uses separate list, mailbox and reading screens, with shared inbox, smart folders, compose, reply and drafts. Mailbox credentials and account management stay on Desktop. Mobile HTTP(S) links use the phone browser.
+
+- Mail adds AI writing assistance to Desktop and Mobile compose. Replies use the authorized original message to suggest directions. Users can generate and revise a plain-text preview and explicitly apply it to the composer. Calls use the configured Privacy model and have no sending authority.
+
+
+- Desktop Mail exposes AaAT search over synced inbox snapshots, bounded plain-text reading, and local reply drafts. General Agent can hand a draft to the Mail composer for review; Mail returns the decision and reviewed revision to the originating Agent run. No send capability is exposed.
+
+- Mail smart folders support local sender address and domain exclusions, including subdomains, and optional AI classification guidance. Preview and saved folders enforce exclusions by sender address. Migration v122 preserves existing rules and adds the new fields.
+
+- Mail can block a message sender or sender domain from the reading toolbar in Top5, Replied and editable smart folders. Before saving, Mail shows the exact address or domain and the affected folder. Confirmed blocks apply immediately and can be removed in folder settings. Migration v123 stores built-in view filters and preserves existing classification when adding a block from the toolbar.
+
+### NXR-SHARE-WORKS-SOCIAL-20261111
+
+- Share Works 0.1.2 adds owner-scoped social drafts for photos and video, official X media upload and post submission, and a Rednote Creator Center handoff. The X System Task binds the confirmed account, text and media digest, and persists an unknown dispatch outcome without retrying. AaAT and Bot use the owner declaration with the explicit publish effect and confirmed form.
+- Dev Rednote Creator Center accepted a synthetic PNG and MP4. Both reached the enabled Publish button. No post was submitted. X live dispatch requires a configured user OAuth token. Mobile Rednote SDK and interactive X OAuth remain follow-ups. See `ai2apps/docs/share-works-mini-app-requirements-v1.md`.
+
+### NXR-RESEARCH-BOT-PUBLIC-PDF-20261111
+
+- Web Reader exposes public PDF download and paged full-text reading through its existing Bot Access target. The original file is attached to its Session, and extracted blocks carry physical PDF page numbers. Repeated reads reuse the same attachment. The downloader uses verified public network addresses, no browser credentials, bounded redirects and file limits, then reuses the existing document parser.
+- 23 focused tests passed, including true two-page PDF parsing with fixture download bytes, cross-Session rejection, reuse, and public URL validation. Fixed Dev Local was restarted through its own Helper after idle checks. App/Helper source metadata, imported PDF reader path and served Messager assets match this checkout. Live Dev on port 62088 completed a native Research Bot task: Search All returned five candidates and read three articles; the arXiv entry was not a direct hit. Website investigation verified the v7 and v1 pages. The PDF was downloaded once, parsed across all 15 pages, and read in two windows using one attachment. The Bot cited Table 2 on physical PDF page 8 in the final report and flagged a conflict with the prose. 34 focused AaAT architecture/boundary checks passed. The broader gate was stopped after failures in the previously recorded Bot memory-return suite. See `ai2apps/docs/acceptance/research-bot-public-pdf-20261111/README.md`.
+
+### NXR-MESSAGER-RESEARCH-BOT-TEMPLATE-20261111
+
+- Desktop and Mobile share one owner-local built-in Research Bot. The creation menu offers a Research Bot template with editable Role, App access, name, avatar and model. New Bots are independent copies. Existing customization and archived Bots are preserved.
+- Defaults select the available AI Browser, Search All and Web Reader targets through the existing Bot access catalog. Role restoration edits the draft. Desktop App access restoration previews the changes and commits through the reviewed catalog and grant revision. No new AaAT or execution authority was introduced.
+- 37 focused Python tests, 11 JavaScript tests, and four Chrome creation fixtures passed. Tests cover Desktop/Mobile identity, persisted customization, ownership and template creation. Fixed Dev/App-Dev and live research were not exercised. Public PDF download-to-document handoff remains separate. See `ai2apps/docs/messager-bots-dev.md`.
+
+### NXR-DOC-STUDIO-MVP-A-20261111
+
+- Doc Studio shares Imagine Studio’s Mini-App card styles and bottom menu. The list shows versions and dependency status, and stars persist per Studio. Fixed App-Dev verified selecting the translation and Article Cards workspaces, persistence across refresh, and opening the Doc Studio installation and customization dialogs.
+
+- Translate document and Article Cards add durable Mini-Chat, AaAT operations and portable ASCBot settings. Write article exposes project discovery, generation and export to General Agent and authorized Bot sessions. Outside its Mini-Chat, callers supply an owned project ID. Article Cards provides a bilingual editor and Package-owned export declaration. Development Studio mounts inline verified Package assets under the same opaque-frame policy as installed Studio Packages.
+- Fixed App-Dev acceptance: both Mini-Chats changed editor settings. Messager reopened both ASCBots and restored German and the 9:16 Sage card layout. Local Qwen3.8 27B NVFP4 translated one passage to German through AaAT, and the completed TXT appeared in shared Output. Article Cards AaAT rendered and previewed a PNG in shared Output. Native General Agent and a standard Messager Bot independently called the read-only writing project tool. The writing generation/export authorization fixture passed, including a Bot export with a fixture model. The Chinese editor was checked in App-Dev. The English labels, dynamic template names and accessibility strings passed a locale script check. The focused test runs passed 43 and 50 tests. The full AaAT gate encountered Bot memory-return and multilevel failures.
+
+- Long DOCX recovery and final pagination pass. The Mini-App splits slow or invalid requests, retries a single failed span as plain text, persists the successful prefix inside each batch, and offers an owner-scoped, idempotent resume action through the shared output panel. Local model streaming releases the request after valid JSON or a timeout. The Word renderer converts implicit starts of empty sections to continuous while preserving explicit break types. Twenty-one focused tests passed. Fixed App-Dev loaded live checkout modules and matching frontend assets. The 63-page report ran from a fresh task with local Qwen3.8 27B NVFP4, paused at batch 7 on invalid JSON, resumed from six completed batches plus five saved passages, and completed 32/32 through the Mini-App. The actual exported DOCX rendered to 71 pages with no blank body pages, eight editable tables, twelve sections, and twelve unchanged image files. The inherited positioning of some floating header logos still overlaps body text in LibreOffice.
+
+- Long Word translations batch distinct passages and reuse identical translated text when rendering the original layout. Numeric and punctuation-only runs are restored from source, and invalid batch responses can be retried in smaller groups or as separate styled spans. Existing single-passage checkpoints remain readable. Eighteen Doc Studio tests passed. Fixed App-Dev reloaded from the live checkout, with matching served Doc Studio assets. The corrected live run completed five batches of a 63-page Word report and timed out on the sixth. Local recovery outside the Mini-App reused the saved translations and Word renderer. The recovered document rendered to 74 pages after cover and header adjustments, with eight tables, twelve sections and twelve unchanged image files. The live Mini-App long-document acceptance remains partial.
+
+- Document translation adds PDF Keep form. It replaces static labels in place through a local model and retains AcroForm fields, current values, and original page geometry.
+- Fixed App-Dev completed seven batches with local Qwen3.8 Flash Next 4-bit on a two-page visa application. Verified 29 fields and unchanged values, widget positions and appearance streams. Re-rendered the actual model output to check the final label fitting. Sixteen Doc Studio tests passed.
+
+- PDF translation balances short, self-contained two-column sections while preserving normal flow on longer pages. It prefers complete paragraph breaks, slightly favors a longer left column when the alternatives are close, and keeps headings, paragraphs and figure captions together at column boundaries.
+
+- PDF translation separates same-baseline text at the column gutter, excludes chart labels from the translated body, and lets later column groups fill available frames without forced column breaks.
+- Fixed App-Dev reran the same four CLIP source pages with DeepSeek V4 Flash. All 38 passages completed, with a checkpoint resume after provider throttling. The output shrank from five pages to four. Visual inspection confirmed Figure 2 and its Chinese caption stay together, both columns on page 3 contain text, and page 4 has no stray full-width body line. Fourteen Doc Studio tests passed.
+
+- Document translation defaults to DOCX and PDF output for Word and searchable PDF uploads. Word translation edits the OOXML package in place, preserving styles and media. PDF translation reflows extracted text and retains detected source visuals. Markdown remains selectable.
+- The translation source retention migration upgrades existing version-120 databases with the missing retention column. The live PDF upload exposed the schema mismatch before the upgrade.
+- Translation URL validation permits localized sentence punctuation. PDF passages use placeholders to restore original URLs without depending on the model's punctuation or link formatting.
+- Fixed App-Dev translated the first four pages of the public CLIP paper into Simplified Chinese with DeepSeek V4 Flash. The task resumed after a provider 429 with the first 30 passages retained, finished 42/42, and produced a five-page PDF visible in Studio. Visual inspection confirmed two source graphics with Chinese captions and found residual reading-order and pagination defects around Figure 2. Thirteen Doc Studio tests passed.
+- Format checks cover owner-scoped API jobs, editable Word exports, and left/right column reading and rendering. Rendered a DOCX fixture with a header, styled runs, a table and image, and four source pages of the public CLIP paper with fixture translations. Fixed App-Dev activation is pending existing runs waiting for input.
+
+- Doc Studio adds a built-in Translate document Mini-App. Local System Tasks translate passages in order using nearby source passages and preceding translations. Users select a chat model and can create, edit, select or delete owner-scoped guidance profiles. TXT and Markdown are downloadable through the shared output panel. DOCX and searchable PDF use the existing document parser and export Markdown. Images are excluded from inference.
+- Activated in fixed App-Dev with migration 119, verified App and Helper source roots, Local registration and served editor assets. The native flow listed local and cloud choices and translated two sample paragraphs with the real default model, then showed the result, passage count, copy and download controls. The owner tests cover profile CRUD, ownership, model selection, source and translated context, image references and Markdown output.
+- The paragraph editor can open and save already-generated drafts when hot-loaded assets are paired with an older Local service that returns only plain text. The editor shows how to enable the structured editing controls. Reopened the original X Long Post in fixed Dev and verified its paragraphs without regenerating or editing it. Three frontend checks passed, including save through the legacy endpoint and drag-and-drop with the current endpoint.
+- Write article opens generated drafts as ordered editable blocks. Passage revisions run as Doc Studio System Tasks and apply to the selected block after review. Gallery and project material images can be dropped between blocks or on an image to form a row. Draft versions retain the layout and standalone HTML embeds the images. X Post exports remain text.
+- Activated the editor in fixed App-Dev and verified App/Helper source roots, Local imports and served JavaScript/CSS. The native acceptance project used the real Standard model to revise one passage from public material, applied the suggestion, saved a new version and completed HTML export. Eight Python tests and two browser/frontend tests passed. The browser fixture exercised project material and Gallery iframe drags, and the API fixture verified image ownership and standalone export with separate and side-by-side rows.
+- Write article offers X Standard Post and X Long Post. The standard format retains the 280 weighted-character limit and existing draft IDs. The long format accepts up to 25,000 normalized characters in the exported text, including the source link. Generation and export failures show the measured length and limit, or identify a citation or draft-format error. Fixed App Dev loaded the current source and generated an 877-character X Long Post with the real Standard model, exported it and showed its preview and copy action. The previously failed standard post now shows the 280 weighted-character reason. Boundary fixtures cover 280/282 and 25,000/25,001, long draft edits and failed exports. The broad AaAT gate stopped after 437 passes at the previously recorded Bot memory-return failure.
+- Write article indents imported material rows and adds a News report style for X Post and HTML. Every writing style introduces the subject and event in the body before adding interpretation. News reports use a neutral lead, evidence-backed context and attributed claims. App Dev verified the visual hierarchy, real X Post and HTML generation from a public article, and the exported HTML preview. Both drafts were saved in the existing acceptance project. 56 focused checks covered the writing prompt, scoped Mini-Chat and ASC-Bot settings. The broader AaAT gate stopped after 437 passes at the previously recorded Bot memory-return failure.
+- Write article owns project selection, creation, rename and confirmed deletion. Active tasks block deletion. Migration 108 removes the deleted project's copies and reserves its ID against stale create retries. The left column adds project-bound Mini-Chat over the existing App Chat transport. UI actions are checked against the open project and mounted interface. Generation and export use the original System Task queue. The title bar opens the shared ASC-Bot creator with portable style, format and language.
+- Activated in App Dev and verified current source roots, Local import and served assets. Native checks covered Chat mounting, switching projects, creation, rename, the deletion confirmation and the shared ASC-Bot form. 56 focused Python checks and five frontend checks passed. Isolated fixtures exercised actual deletion, Mini-Chat UI acknowledgement, generation and export receipts, and ASC state validation. Native model inference and ASC-Bot submission were not exercised. The broad AaAT gate stopped after 437 passes at the previously recorded Bot memory-return failure.
+- Doc Studio follows the Imagine Studio column layout. The left column switches between installed Mini-Apps and the existing Gallery Mini Entry, with a link to the full Gallery. Project materials live with the writing workspace. The side columns can collapse, and each column scrolls independently. Verified in native App Dev by switching to Gallery, scrolling it, collapsing and restoring Output, and returning to the Mini-App list.
+- Doc Studio Phase A adds an Intel Center material-pack handoff for selected articles, Local projects and immutable draft versions, and X Post and standalone HTML export through the Studio host's shared document output panel. Imports retain source metadata and safe raster copies and report missing images. Generation and export use Local System Tasks.
+- Implemented and activated in fixed App Dev. App and Helper source roots, the Local Doc Studio import path, all six served assets, strict code signing and the native App Dev title were verified. The native flow imported two public Intel Center articles into a new project. The Studio showed the completed task and both materials. The running Local database retained both material snapshots and two image assets.
+- 61 distinct focused Python checks, 16 frontend checks and 34 AaAT architecture and boundary checks passed. Fixture inference covered X Post and standalone HTML, edit and export version binding, duplicate submission, cancellation, model failure and cross-owner rejection. Live model generation was not exercised. The broader AaAT gate reported Bot memory-return failures. Phase B covers Xiaohongshu paginated images and cross-caller AaAT access.
+
+### NXR-IMAGINE-CHARACTER-STICKER-PACKS-20261111
+
+- Implemented and loaded in App-Dev. Sticker Workshop adds 24 states, framing and direction. Gallery registers character sticker packs with pinned reference images and saved variants. Owner AaAT adapters resolve and reuse a Session-ready sticker or draw a missing variant through Imagine Studio and save it to the selected pack.
+- Verified the native state menu and pack controls on App-Dev port 60191. App and Helper source roots, Local adapter import and served JS, CSS and state catalog match the checkout. Gallery HTTP and AaAT fixture inference verified owner isolation, two saved references, exact and flexible matching, durable output, save-back and zero additional model calls on reuse.
+- Focused suites reported 26 passes with one existing Gallery inline localization failure, 57 passes with one existing Gallery AaAT summary localization failure, and 9 frontend passes. Stopped the full AaAT gate after 437 passes and four Bot memory test failures. Live drawing and Cloud Mobile route deployment remain unverified. See the character sticker reuse section of `ai2apps/docs/app-mini-app-agent-tool-integration.md`.
+
+### NXR-BOT-SEARCH-CONTINUITY-20261110
+
+- Search All in Bot tasks fills routine search parameters from the task and owner defaults. Automatic receipts bind to the original invocation. Explicit Cloud search retains the owner consent and price check.
+- Private Search All steps recheck the active parent invocation, current App access, and owner receipt. Shared App Chat uses an owner registration for private reads. General Agent guidance asks for unresolved required inputs or explicit owner review.
+- Dev acceptance exposed a provider-less call that reached approval after the owner had accepted the parameters. The shared executor now binds dispatch to the Provider whose policy accepted the invocation.
+- 71 focused tests and 34 architecture and cross-provider checks passed. A real local Bot task with fixture model and search services completed search, original page reading, and result delivery to the original conversation. Explicit Cloud waits before any search runs. The full AaAT gate stopped after 435 passes at the Bot memory-return test. The App-Dev Helper menu timed out. Dev loaded the current checkout and served the current Search All declaration on port 57301.
+- Live Omega acceptance on Dev: the provider binding allowed both Search All calls without a parameter form or approval. All 16 article-read attempts timed out. A subsequent provider-less Web Reader call (web.fetch) reached an ambiguous App approval and blocked task completion. The updated focused suite passed 67 checks. The mandatory gate again stopped after 435 passes at the Bot memory-return test.
+
+- AI Browser declares browser.complete_goal as website investigation from a known URL. Search All and Web Reader point to it when the next step requires site navigation or a read-only attempt returns insufficient evidence. Execution, Profile, and confirmation rules remain in the existing WebAgent owner. The 51 focused checks passed; the full AaAT gate again stopped after 435 passes at the existing Bot memory-return failure. This declaration update was not exercised in live Dev.
+
+- Browser tool discovery now distinguishes single-page reading from website investigation. Search All returns observed candidate links with partial coverage when all article reads fail. The WebAgent SDK scrolls DOM targets into view, resolves and hit-tests them again, then sends native BiDi input. The 166 focused checks and a native Dev fixture for a nested offscreen button passed. The full AaAT gate stopped after 435 passes at the existing Bot memory-return failure. Dev port 50873 loaded the changed Python and served the matching snapshot script. Live Dev, original Omega prompt: both attempts selected browser.complete_goal. The first stopped at control recovery after visual rejection. The second opened official product pages and clicked TECHNICAL DATA twice after scrolling targets from y=926/927 to an in-view click at y=652. Website investigation exhausted the interpreted action budget. Fallback Search All returned six observed candidate URLs with links-only coverage. A later provider-less web.fetch of an official catalog entered ambiguous App approval, so the conversation did not receive the full result.
+
+- Web Reader and website investigation give initial native BiDi navigation 10 seconds to reach an interactive document with a rendered body. Browser preparation, blocker handling, article extraction and model work have separate budgets. A loaded page without extracted text can supply its observed URL for authorized website investigation. At the read-only action cap, website investigation hands retained in-scope observations to the final evidence summary and marks coverage partial.
+- 168 focused tests passed, including independent phase timeouts and bounded partial evidence. The full AaAT gate stopped at the existing Bot memory-return failure after 435 passes. Dev 58719 loaded the live checkout; App and Helper source metadata, Local imports and served snapshot bytes matched. With the original Omega prompt, two Search All calls tried seven article URLs, read five substantive bodies and one retired notice, and found one unresolved blocker. The Bot then selected provider-less web.fetch for the official series entry and stopped at an unresolved App authorization target. A separate browser.complete_goal run opened the official series page in 0.49 s (journal step duration) and stopped at control recovery when visual review rejected the proposed click before dispatch. Both test runs were closed. Official specifications and live exhaustion-to-summary delivery remain unverified.
+
+- Bot Task failures now project completed evidence, actual progress, the recorded blocker and an appropriate next step into the original conversation. Capability-owned receipt policies retain cited research evidence even when a later call cannot execute. Bot and Search All instructions preserve source requirements, include supported requested fields and identify remaining gaps. 88 distinct focused checks passed, including durable receipt projection with two unrelated capability identities. AaAT gate stopped at the existing Bot memory-return failure after 435 passes. Dev 55042 used the live checkout, with App/Helper metadata, Local import path and served Messager JS verified. The original Omega prompt completed: the first website investigation verified the official US product page and all requested specifications, the follow-up catalog comparison failed at AI output validation, and the Bot delivered the verified values with that coverage limitation. The overall Run completed, so the terminal failure card was verified by fixtures rather than by this live Run.
+
+- Bot failure receipts use the current turn’s supported conversation language and pass it to automatic Search All summaries. Research conclusions use stable numbered references, with each original source URL linked once. 90 focused tests passed, including the existing Bot memory suite. Dev 59911 loaded the live checkout and reran the exact original two-step failure prompt. Search All returned 8 candidates and read 3 bodies. Cancelling the unresolved read-only web.fetch approval produced a Chinese receipt in the original conversation, with [1, 2, 3] and [1] per-claim references and 3 unique clickable source URLs. App/Helper source metadata, Local import paths and served Messager JS were verified. The final AaAT gate passed 435 checks before stopping at the existing Bot memory-return failure.
+
+### NXR-BOT-TASK-INHERITED-ACCESS-20261110
+
+- New and re-reviewed Messager Todo plans capture the Bot’s current App, Mini-App and directed Bot grants at Run start. Plan review can add grants to the Bot. Special calls retain per-operation confirmation. Existing plan bindings keep their reviewed policy until re-reviewed.
+- Immediate and scheduled Todo work can delegate one child task through the existing Messager child executor, use the intersection of the participants’ App rights, and return the result to the originating Run.
+- Verified with an isolated SQLite, real System Task scheduling, Todo and Bot execution, and a fixture model and capability. Dev activated on port 60889. App and Helper metadata, Local task-access import, and served JS match the live checkout. The existing watch plan passed live acceptance after re-review. The broader AaAT gate reported Bot memory return failures. See `ai2apps/docs/bot-plan-access-preflight-v1.md`.
+- Live follow-up: Dev’s existing watch plan kept its original schedule and instructions. The first manual Run exposed repeated whole-catalog checks during capability discovery. The task owner now uses the existing per-Provider visibility callback, preserving captured and current authorization checks. Local loaded the change from the checkout after automatic recovery; the same Run delegated to 情报总结, received the exact five-story summary, generated an image, and delivered the finished briefing to the original conversation. 42 focused checks passed.
+
+### NXR-BOT-GROUP-MENU
+
+- Desktop and Mobile group creation and rename reuse the system single-field text dialog. Actions use 16 px labels and a 44 px minimum height. Save errors remain visible in the dialog.
+- Desktop and Mobile align custom group action buttons and counts with Quick Bots. Group controls sit closer to the trailing edge. The custom menu offers creation in the group, rename and confirmed deletion.
+- Group creation preserves ownership and saves membership in the Bot creation transaction. Existing idempotency signatures remain valid. Grouped creation offers Standard and Flash Bots. ASC capture remains in the App that owns the state.
+- Fixed the shared creation menu callbacks to close through their own menu handle before opening a Bot draft or group dialog. Verified opening and cancelling Standard Bot and New group in Dev on port 63945.
+- Verified with 18 creation/group backend tests and seven drag checks. App-Dev on port 55932 loaded the current checkout and displayed all three desktop menu actions. The rename dialog prefilled the existing name.
+
+### NXR-AAAT-UNKNOWN-TOOL-RISK-MEMORY-20261110
+
+- Classify registered AaAT effects marked unclassified or carrying a historical unknown label using Tool metadata. Cache the assessment in Local by declaration and provider version. Approval cards remember a user-chosen risk level. Low risk skips unknown-effect confirmation for the same actor, App, Agent and capability signature. Existing App access, deny policies and protected effect confirmation still apply.
+- Activated in Dev Local on port 54134. Verified App and Helper source roots, running Agent module path, database migration 106 and all four served approval scripts against the checkout.
+- 66 focused tests passed, including real SQLite and Agent/Bot authorization paths with model fixtures. The 28 AaAT architecture checks and a Chrome approval-card fixture passed. The full AaAT gate stopped after 433 passes at the previously recorded Bot memory return failure. The classifier was not exercised against a live model in Dev.
+
+### NXR-AAAT-EFFECT-VOCABULARY-20261110
+
+- AaAT generation and Tool registration share the platform effect vocabulary with Bot App access and approval previews. Migrated Gallery save to ordinary local write, and updated browser interaction, file export, model lifecycle and publication-related owner declarations. Persisted legacy labels keep their conservative treatment until their owners migrate them.
+- Network settings reads are ordinary reads. Posting, sending, credential reads and network setting changes require explicit once approval bound to the exact invocation. Share Works still uses its existing exact owner form. AI authoring may suggest a mapping, while changes to the vocabulary require a reviewed source change.
+- Verified in Dev Local on port 50100. App and Helper source roots, startup module paths and served Share Works declaration match the checkout. Active services no longer register the audited retired labels. The disabled standalone browser service retains historical records.
+- 96 focused functional tests and 70 policy and architecture tests passed. The exact-confirmation cases also verify that consent for a call does not transfer to a different invocation. Fixture Flash runs saved to the real Gallery owner twice without prompts and stopped saving when Gallery access was disabled. The full AaAT gate stopped after 431 passes at the previously recorded Bot memory return timeout.
+
+### NXR-BOT-TYPE-CORNERS-20261110
+
+- Desktop ASC-Bot cards expose recoverable deletion through a dedicated button. Review targets the shortcut without switching the active conversation. ASC lifecycle and frontend review checks passed.
+- The Desktop Bot deletion and cleanup confirmation shares the AI2Apps text dialog shell and action styling. Buttons use 16 px labels and a 44 px minimum height. Verified shortcut confirmation and cancel in App-Dev.
+- Desktop and Mobile Bot list cards use a 6 px corner radius. The Bot list has half the previous horizontal inset on Desktop and Mobile. Bot list avatars are roughly 10% larger with less leading padding inside the cards. The gap between each avatar and Bot name is 6 px. The Ungrouped heading sits near the top edge of the Bot list.
+- Messager Desktop and Mobile Bot cards mark the lower-right corner with a faint diagonal line and muted gray icon over the card background. FlashBot uses a lightning bolt and ASCBot uses a horizontal right arrow without a frame. At card scale, the arrow communicated navigation more clearly than a circle. The accessible card name includes the Bot type.
+- App-Dev Desktop refreshed and visually verified on port 55081. App and Helper roots, Local module source and the three served CSS/JS assets match the live checkout. Seven desktop and mobile ordering checks passed. The browser fixture could not run because Playwright was unavailable. Mobile device rendering remains unverified.
+
+### NXR-FLASH-WORKFLOW-RECOVERY-20261110
+
+- Implemented in source. Flash resolves a missing artifact binding from the unique declared result of the original completed step, then saves the verified repair after workflow completion. Existing App access, owner checks and version comparison still apply.
+- Failure messages identify the step and binding or parameter problem. Messager aligns the collapsible error details with the conversation and hides stale details while a new run is active.
+- Dev Local loaded the fix from the live checkout. App and Helper source roots, imported Flash module paths, and served JS/CSS were verified. The original workflow revision and failed receipt remain available for user acceptance.
+- The focused Python suite passed 75 tests, including a fixture producer with the real Gallery owner, normal authorization, and an ambiguous handoff. Two Chrome fixture checks passed, including Error details alignment at 1200 and 480 pixels. The full AaAT gate stopped after 428 passes at the previously recorded Bot memory return timeout. Live image execution is pending user acceptance.
+
+### NXR-INTELLIGENCE-ARTICLE-CHAT-SEARCH-20261110
+
+- Implemented in source. Article chat forwards the persisted confirmed Search All parameters to the selected provider, including its required query, source, candidate limit and consent fields. Ownership and confirmation are checked again at execution.
+- Article chat shows a readable message for parameter-contract failures. Detailed receipts remain in the Local task log.
+- Regression uses the real capability router and built-in Search All schema with a fixture search handler. Dev activation is pending while its channel refresh and browser interaction are active.
+
+### NXR-BOT-HOST-CLOCK-20261109
+
+- implemented，未发布。普通 Bot 对话保存宿主 UTC 和客户端时区快照。任务使用启动时间及可按需调用的只读时钟。Todo 计算相对单次和下次执行，修改旧计划默认沿用原时区。审阅卡显示当地执行时间，对话包含最近执行的已记录错误。
+- 对话、Bot Todo、排程和夏令时定向 12 项通过。最终 HTTP 兼容、App Chat、移动和架构定向 50 项通过。审阅卡等前端专项 10 项通过。额外前端进度夹具的两条 DOM 模拟失败在移除本次传输改动的副本中复现。
+- AaAT 门禁 428 项通过后在委派记忆回传用例停止。单项重跑和测试进程停用时钟快照及工具的对照均在同一记忆入库等待点超时。全量门禁未通过。最后的时区请求头兼容改动经过定向复验。
+- Dev 和 App-Dev 的 App/Helper 源码根及实际服务资源已核对。原生 Helper 菜单连接超时，Local 尚待重载。未在用户实例提交测试对话或计划。
+- 设计说明：ai2apps/docs/messager-bots-dev.md 及 ai2apps/docs/aaat-declaration-context-v1.md。
+
+### NXR-FANTASY-FEED-20261109
+
+- Status: Package 0.1.0 published; compatible production Desktop host pending. Imagine Studio's Fantasy Feed Mini-App edits fictional conversations, offers WeChat, WhatsApp, Telegram and iMessage styles, and exports PNG or timed silent MP4 in three aspect ratios to shared Studio Output.
+- Host export requires a current Imagine Studio mount, its declared export capability and a matching output kind. The Local renderer validates and bounds PNG frames and encodes MP4 without Cloud or a model.
+- Development manifest and PNG/MP4 renderer tests passed. Studio bridge, client and Imagine Studio checks: 19 passed; one image setup catalog test failed on missing CUDA install options. Live source mount, signed-package acceptance and native UI verification are pending.
+- 2026-11-09 feature update: Added participant and avatar editing, cumulative story timestamps separate from playback pace, preview scrubbing, and distinct image, video, link, location, contact, transfer and red-envelope cards. The light iPhone WeChat group template uses the supplied screenshot as its layout reference. Uploaded videos can play in the editor; exports show poster, play icon and duration. Existing PNG and silent MP4 export remain host-owned. MP4 accepts JPEG frame inputs to reduce the size of photo-heavy conversations.
+- Verification for the update: isolated Chromium editor/renderer smoke passed across four templates and eight message kinds, including participant assignment, next-day rollover and preview scrubbing. Seven existing renderer/bridge/client tests passed. A JPEG-backed MP4 was encoded and decoded to confirm the 1.5-second scene interval. Native Studio acceptance remains pending.
+- WeChat text bubble calibration: adjusted line metrics, avatar alignment and the rounded, mirrored tail using the supplied screenshot. Same-width Chrome fixture measured single-line body height 47→61 px (reference 61), upper/lower clearance 9/17→19/20 px (reference 19/19), and tail tip depth 14→28.5 px (reference 29). The fixture used local screenshot crops outside the source tree.
+- WeChat single-emoji bubble: a single emoji grapheme now gets a compact, centered layout with the calibrated text tail. Same-width screenshot fixture measured 67 × 62 px after adjustment (reference 67 × 61 px). The preview uses the operating system emoji glyph.
+- WeChat group nickname spacing: moved the nickname baseline up and reserved its spacing in layout. In the same-width screenshot fixture, the visible nickname-to-bubble gap measured 7 px (reference 7 px, before 3 px).
+- WeChat outgoing screenshot calibration: aligned avatars with message tops for rows without nicknames, increased direct-chat row spacing, restored the landscape photo aspect and size while limiting enlargement of small images, and added a white link card with a matching tail and optional source label. Isolated Chromium rendered same-content before/after text, photo and link fixtures against screenshot crops. Voice bubbles and relative-date labels were observed in references but are pending.
+- WeChat voice and date display: added simulated voice messages with duration and a duration-dependent bubble, plus a screenshot date input for same-day, yesterday, weekday and calendar-date labels. Isolated Chromium rendered the three reference durations and verified four date labels. Same-width reference/rendered body widths were 243/243, 256/257 and 244/245 px; heights matched at 62, 62 and 61 px. MP4 remains silent.
+- WeChat voice transcript and completed call: optional manually entered transcript renders as an attached white card on the sender side; completed calls show a handset and validated duration. Isolated Chromium reproduced the supplied 02:04 call and three attached transcripts, including 3- and 4-second bubble calibration. At matched width the call body measured 267 px vs 266 px in the reference.
+- WeChat composer calibration: traced light-mode controls from the provided text and hold-to-talk screenshots, matched input position and dimensions, and added an editor selector for both visual states. Isolated Chromium verified both renderings and mode switching. At matched width the white text field spans rows 1157–1216 (reference 1156–1216). Comparison used screenshot crops outside the source tree.
+- Refined the WeChat composer icons against enlarged screenshot crops: the voice switch now has a solid wedge and two wave arcs, and the smile uses a wider, flat-topped bowl-shaped mouth. Verified with a same-width before/after Chromium render.
+- Added independently selectable iOS and Samsung One UI status bars. iOS geometry and silent icon were calibrated against the supplied screenshots; Samsung uses a numeric battery pill. Clock defaults to live local time and can be overridden, and simulated battery level is editable from 0 to 100%. Isolated Chromium verified both presets, default and manual clock, and minimum/maximum battery through the editor.
+- Refined iOS status bar icons against enlarged screenshot crops. The silent bell is larger and repositioned, and iOS Wi‑Fi has separate arc geometry and a tapered bottom segment. At matched width the bell measured 20 × 20 px (reference 20 × 21), Wi-Fi 27 × 20 px (reference 27 × 21). Isolated Chromium rendered both status presets.
+- Calibrated the WeChat header height, back chevron and more button, and group chat row and timestamp spacing using the original six-message screenshot. Same-width Chromium comparison puts the header divider at approximately 148 px and the last bubble at y=1062 px vs reference y=1065 px, reducing the previous roughly 156 px offset.
+- Refined the WeChat input microphone capsule, U-shaped support and short stem against the supplied screenshot. Isolated Chromium verified the same-width before/after comparison; its visible bounding box now matches the reference at x=415–433, y=1174–1199.
+- Made the footer text editable in Fantasy Feed with the localized default, up to 40 characters, and blank to hide. Isolated Chromium verified the default, “Agent助理教学”, theme switching, and clearing through the editor. Preview and export share the footer renderer.
+- Added a reusable Fantasy Feed participant profile library with up to 20 nicknames and optional avatars. The existing actor/Installation/Studio-scoped draft bridge persists the library. Applying a profile copies it into the conversation, including the self role. Isolated Chromium with a fixture Studio bridge verified create with avatar, rename, reopen, apply as self, and add a saved participant.
+- AaAT / ASC-Bot integration in source: Package declares the fictional-conversation export. Imagine owner resolves actor-scoped profiles by explicit self designation, exact nickname or alias, and renders the scripted PNG/MP4 to shared Output through the existing native BiDi session in an isolated context. Desktop ASC-Bot restores six non-private display/playback settings through App-State and never submits a render.
+- AaAT/ASC evidence: focused mandatory boundary gate 67 passed, owner/App-State/shortcut 24 passed, JavaScript state/shortcut 12 passed. An isolated temporary Studio with the live source declaration, real native AceFox renderer, and owned artifact publication passed PNG publication and idempotent readback; separate native renderer check decoded PNG and MP4 with synthetic avatars. Sandbox browser fixture verified ASC capture/restore and stale mount rejection. Fixed miniapp-dev Local was restarted idle, source metadata/import and served host script verified, new tool enabled, and native Fantasy Feed showed profile matching controls and the Create shortcut Bot panel. No live model planning turn or user shortcut creation.
+- Live miniapp-dev Standard Bot acceptance: created two synthetic avatar profiles and a dedicated Standard Bot with Fantasy Feed access. The first turn asked for profile names without invoking a tool. A follow-up using only 我/妈妈 explicitly requested discovery and invocation. The completed live run matched both profiles, published one PNG and one MP4 for the identical six-message script, and both avatars were verified in the PNG and final video frame. Both artifacts are 720×1280, MP4 is silent and 9 seconds. Run run_3321ae823bfe4578ab25e9bea7e2e007.
+
+- 2026-11-10 Registry release: ai2apps/fantasy-feed 0.1.0, submission 90bf7a7c-ff05-42b8-9de3-d856c487c98d, metadata 369, SHA-256 5b86f525a59d21651f09ef1c172c5c710482e7a38774f8b65aa1cf12d0dc4cf6, 34957 bytes. Clean signed preflight and independent anonymous Registry download/install/discovery/uninstall verified; public content index returns one correct component in image, video and Imagine Studio and none in Apps. Stable Build 2268 lacks the export capability and AaAT host SDK. Evidence under ai2apps/.build/fantasy-feed-release-0.1.0/.
+
+### NXR-MINIAPP-INNER-IDENTITY-20261109
+
+- Implemented: MiniApp browser physical bundle is now AI2Apps-MiniApp.app, with independent miniapp.icns; relative AI2Apps.app compatibility link preserves launcher/verification contracts. Full builder/signing/verification passed. Relaunched exact MiniApp; NSRunningApplication confirms new physical bundle path and AI2Apps-MiniApp name (PID 77155). Global Dock/Cmd-Tab visual verification remains outstanding; previous claims that the user selected another instance were not established.
+
+### NXR-MINIAPP-NAME-GREEN-20261109
+
+- Implemented: MiniApp-specific pale green upper icon #CDEED6 and browser application.ini product name AI2Apps-MiniApp; bundle and localized names retained. Rebuilt, signed and standard verification passed, refreshed LaunchServices registration and relaunched only MiniApp. Native window/menu name confirmed; CUA window capture cannot independently confirm global Cmd-Tab overlay.
+
+### NXR-MINIAPP-DEV-20261109
+
+- Status: built_and_launch_verified; not published. Independent miniapp-dev development bundle com.ai2apps.desktop.miniappdev, live checkout hot loading, App-Dev Helper features and Mini tray label; display name AI2Apps-MiniApp. Production identities unchanged.
+- Validation: Swift Helper compilation, shell/Python syntax checks, invalid source-root rejection, standard release-App verification and strict signing checks passed. Native UI shows AI2Apps-MiniApp and window AI2Apps-MiniApp: M5Max-128G 127.0.0.1:53132. Fresh isolated instance is at initial login; no account credentials or existing instance data copied. Mini text implementation verified in Helper source; visual tray inspection timed out.
+
+### NXR-FLASH-BOT-INPUTS-20261108
+
+- Status: verified_dev; not published. Flash-Bot uses the shared attachment upload/Gallery-drop and speech-to-editable-text composer instead of disabling both by Bot type. Speech catalog loads independently from fixed-workflow execution; no conversational model is required. Trusted workflow validators retain input acceptance rules (calculator still rejects attachments).
+- Validation: JavaScript syntax check and existing composer10 tests passed; Flash workflow owner31 tests passed. Dev62986 real Calculator Flash-Bot UI shows both Add attachments and Voice input after refresh. No recording, upload or task submission was performed in this UI check. App/Helper live source roots and served conversation JS equal checkout. Static-only change; no Local restart or full App regression. Messager conversation script URL version updated for refresh.
+
+### NXR-TASK-SNAPSHOT-DELTA-20261108
+
+### NXR-BOT-GROUP-ORDER-20261108
+
+- Implemented: Desktop direct group-heading drag and Mobile long-press reorder, persisted in actor-owned Local storage. Quick Bots can move but cannot be deleted; Ungrouped remains first. New groups append. Membership/collapse/Bot order unaffected. Strict full-set validation rejects stale/foreign/duplicate writes.
+- Validation: 13 owner/group/Poke/statistics tests and 7 Desktop/Mobile drag fixtures passed. No Agentic execution or declaration changes. Native drag not claimed. App-Dev idle-guarded standard Helper reload complete at port64057; App source root, live groups module path and both served JavaScript assets match this checkout.
+
+
+- Status: verified_dev; not published. Stable-history Sessions append lossless generic UI/owner snapshot deltas only when the entire exact base-message chain is visible. Full source snapshots persist separately; restart reuses frozen views. Compacted/missing dependencies or larger patches fall back to full values. Old Session format and all Tool/error history remain unchanged; authority checks stay fresh.
+- Validation: targeted24 passed; focused mandatory AaAT gate26 passed/1295 deselected; architecture28 passed. Cross-owner fixtures validate exact changes, removals, array splices, restart and missing-base fallback. No full App regression.
+- Actual continuous Task D completed one real missing-ID error recovery and exact original-result paging. Snapshot10837 ->2665 characters(-75.4%); all54 prior messages remain an exact prefix, same8 Tool declarations. Native BYOK first-continuation hit66.53% ->87.09%, first miss9275 ->3833. Total continuation input123356 ->122479(-0.7%); total uncached15068 ->5487(-63.6%), output749 ->787. Different planning/history; not a controlled monetary savings claim. Extra paired external replay was rejected by automatic approval and NOT executed; no workaround used.
+- Report/receipts: ai2apps/docs/stable-task-context-20261108.md; ai2apps/docs/acceptance/stable-task-context-20261108/snapshot-delta-live.json and snapshot-delta-verification.json.
+- Activation: standard idle-guarded Helper Dev reload, port62986; App/Helper source roots, actual Bot/General paths, health200 and served Bot asset match live checkout. App-Dev untouched.
+
+### NXR-STABLE-TASK-HISTORY-20261108
+
+- Status: verified_dev; not published. Creation-time owner opt-in for stable Task context references. New Bot worker Sessions freeze terminal Tool argument/result previews once and replay the same views across Runs; old Tasks are not migrated. Same-Session original-value reading spans completed/failed prior Runs only for opted-in Sessions. Cross-Session access, pending runs and original execution payloads remain guarded/unchanged.
+- Historical UI/discovery observations retain original positions, including mid-Run updates; errors stay intact. No sliding-window rewriting or failed-round deletion. Bot owner skips redundant queue-routing receipts while retaining user requests/materials. Current declaration/visibility/authorization checks remain fresh.
+- Focused mandatory AaAT gate: 65 passed / 1253 deselected; supplemental exact-prefix and cross-Run reader checks 2 passed. No full App regression. Two arbitrary-provider Runtime/SQLite fixtures verify restarts, bounded views, raw-value reading and old Session isolation.
+- Real DeepSeek BYOK continuous read-only Tasks completed missing-ID error recovery and exact omitted-text paging. Final continuation retained all 42 prior messages as an exact full prefix and the same 8 Tool declarations. Native first-round hit rate A 67.30% vs C 66.53%; uncached input 6779 vs 9275. This did NOT demonstrate cost reduction. New full state snapshots add context; differing histories/plans prevent controlled monetary comparison, and no settled BYOK amount is reported. Do not advertise cache/cost gains from this item.
+- Report and numeric receipts: ai2apps/docs/stable-task-context-20261108.md; ai2apps/docs/acceptance/stable-task-context-20261108/. Remaining opportunity is bounded/incremental fresh owner observations without rewriting sent history.
+- Activation: standard idle-guarded Dev Helper Local reload, port61874. App/Helper source-root metadata, live Bot/General module paths, health200 and served Bot asset verified against current checkout. App-Dev untouched.
+
+### NXR-CLOUD-CACHE-OBSERVATION-20261108
+
+- Status: verified_dev; not published. Local Gateway preserves whitelisted cacheObservation v1 in JSON/SSE normalized usage; only valid reported input/hit/miss can produce cached_tokens. Unreported/conflicting observations do not promote legacy zero placeholders. Agent metric rows retain the observation; historical records, billing and roles are unchanged. No Cloud-side code modified.
+- Real production managed-route acceptance under Dev Installation identity: JSON cold 0/1916, repeat 1664/1916, tail append 1664/1919, new head 0/1919. Four SSE calls reuse those warmed inputs; each reports 1664 hit and its completed request-query usage equals the SSE terminal. All eight observations valid/both, Local counts equal Cloud. No BYOK substitute, Cookie read, user_id override or credentials in receipts.
+- Relevant mandatory gate selection 14 passed; final Gateway/usage selection 21 passed, 4 deselected. No full App regression. Report/IDs: ai2apps/docs/cloud-cache-production-acceptance-20261108.md; numeric receipts ai2apps/docs/acceptance/cloud-cache-production-20261108/.
+
+- Activation: standard idle-guarded Helper reload, Dev port58440; App/Helper roots, running General/Bot paths, health and served Bot asset verified against checkout; App-Dev untouched. Final JSON usage normalization replay preserves the new observation and exact counts. Evidence: ai2apps/docs/acceptance/cloud-cache-production-20261108/local-verification.json.
+
+### NXR-CONTINUATION-CONTEXT-20261108
+
+- Status: verified_dev; not published. Messager no longer imports the current text-only request twice, omits its explicit task feedback on continuation, and suppresses only exact text-only worker answer echoes already present in that worker Session. Material-bearing and changed presentations remain; existing durable messages are untouched.
+- Generic catalog restores only ordering from a prior completed same-Session/Agent Run, with current schemas and currently revalidated selections. Dynamic UI and discovery snapshots follow stable history; all error/Tool/result evidence and original-value readers remain. No business dispatch, permissions, Cloud or retry policy changes.
+- Relevant mandatory gate selection: 67 passed / 1243 deselected; final rerun 67 passed / 1243 deselected in 37.37s, exit 0. Real DeepSeek frozen first-continuation probe: input 22371 -> 19456 (-13.03%); repeat hit rate 98.99% -> 98.68%. This is counterfactual input replay, no tools executed, not full-task cost or measured cross-Run hit-rate improvement. Old stored duplicates are not migrated.
+- Report: ai2apps/docs/continuation-context-20261108.md; Provider receipts: ai2apps/docs/acceptance/continuation-context-20261108/provider-probe.json. App-Dev unchanged.
+
+- Activation: final standard Helper idle-guarded Dev reload; App/Helper roots and running Bot/General paths match checkout, health200 and served Bot JS matches disk (port56743). No App-Dev restart. Evidence: ai2apps/docs/acceptance/continuation-context-20261108/verification.json.
+
+### NXR-TOOL-PAYLOAD-CONTEXT-20261108
+
+- Status: verified_dev, not published. General historical calls retain order and error evidence, but terminal calls' oversized string arguments and DataURLs use deterministic data references backed by unchanged durable inputs. Pending calls/actual execution are untouched; input mismatch or missing reader retains original values. Results reuse existing whole-result paging and add DataURL value references. No age-based rolling window or additional model summaries.
+- Original-value reader adds current-Run/Session-scoped source=input|output and exact JSON Pointer paths; range deduplication includes source/path/hash. Old whole-result serialization/offsets unchanged. No business-name branches, new permission grants, or Cloud modifications.
+- Validation: mandatory AaAT gate entrypoint with relevant test selection: 102 passed, 1205 deselected (54.98s), including architecture boundaries, exact parameter contract, declarations, lazy catalog, result flow and four new payload checks. Full App regression not rerun. Synthetic 127,076-byte input -> 2,590-byte history projection (-97.96% bytes); not a real-task token/cost/cache claim. Initial validation used fixtures; subsequent real Provider acceptance is recorded below.
+- Activation: idle-guarded standard Dev Helper Local restart, PID8671 / port54972; App and Helper source-root metadata and running General import path match this checkout, health200. App-Dev unchanged, no Runtime rebuild.
+- Contract: ai2apps/docs/aaat-declaration-context-v1.md. Report/evidence: ai2apps/docs/tool-payload-context-20261108.md and ai2apps/docs/acceptance/tool-payload-context-20261108/.
+
+- Live Dev acceptance: real DeepSeek BYOK Bot task saved/read back a 13,275-character synthetic document, continued the same task/session, recovered from one deliberately missing-ID read, and paged exact omitted text; both runs completed with one write only. Frozen actual-trace paired Provider probes (8 calls, no tool replay): two-round input 38,799 -> 35,037 tokens (-9.70%); warm cache 99.30% -> 99.00%, not an improvement claim or full-task cost A/B. Report: ai2apps/docs/tool-payload-live-acceptance-20261108.md; receipts: ai2apps/docs/acceptance/tool-payload-live-20261108/. No restart or App-Dev change.
+
+### NXR-AGENT-CACHE-CONTEXT-20261108
+
+- Status: verified_dev, not published. General Agent retains its initial discovery snapshot and replays actual changes at their original trace position. Fresh owner observations still run each step; only top-level host observed_at churn is ignored when semantic data/version/scope are unchanged. Empty updates withdraw previous coverage. New declaration/parameter/observation JSON is compact; no schemas, user content, authority checks or source records are deleted.
+- Dev BYOK audit: 794 reported calls, 768 with hits, 55.91% weighted input hit rate; native and OpenAI-style cache fields agree. Direct synthetic probes confirm nonzero cache in both streaming and nonstreaming responses. Managed Cloud returns zero in three identical-request raw usage receipts; Local preserves those values. Cloud-only investigation requirements documented, no Cloud code changed.
+- Final bounded synthetic A/B (two arbitrary Providers, 50 records each): input 2,817 -> 2,442 per request (-13.31%); second-step cache 0 -> 2,304/2,442 (94.35%). Uncached input across two requests -54.21%; not a claim of equivalent real-task or monetary savings. Initial unbounded-owner calibration retained separately and excluded from acceptance.
+- Validation: 50 focused tests passed. Mandatory AaAT gate: 1,301 passed / 2 failed in 1183.93s; same previously recorded background collaboration timeout and Gallery summary translation-type failures. No gate weakening or unrelated fixes.
+- Activation: standard idle-guarded Dev Helper Local restart; PID5803 / port52865; App/Helper metadata and running General executor import path match this checkout, health200. App-Dev not restarted; no user task cancelled/replayed, no Runtime rebuild or browser asset changes.
+- Receipt/report: ai2apps/docs/acceptance/deepseek-cache-context-20261108/; ai2apps/docs/deepseek-cache-context-investigation-20261108.md; Cloud handoff ai2apps/docs/cloud-deepseek-cache-requirements-20261108.md.
+
+### NXR-BOT-POKE-USAGE-FOLLOWUP-20261107
+
+- Implemented / App-Dev activated: enlarge group chevrons, expose explicit custom-group trash action and permanent Quick Bots lock; retain reviewed deletion.
+- Poke quotes previous visible prose as history data instead of chat output examples. No format-error automatic replay or authority change. Actual App-Dev second Poke failed Cloud JSON validation with stopReason=stop, 20 output tokens and settled 1 Point, not token truncation.
+- Add today/local timezone, past 7/30 days and all-history statistics; per-logical-task and linked-Todo usage. Include explicit usage and settlement receipts from failed model steps. Task ownership/Run attribution remains owner-scoped.
+- Validation: 53 unique focused Python / 17 frontend tests passed, including three successive Poke decisions, timezone/day windows, billed format failure, exact logical-task costs, task isolation and stale range response protection. Mandatory full gate: 1297 passed / 2 failed in1248.68s; same multi-Bot coordinator timeout and Gallery bilingual summary mapping failures as the previous run. Not marked green; no gate weakening.
+- Native fixed App-Dev on port54810: three successive real Cloud Pokes completed; Today9885tokens/5Points versus past7days12454/6; existing photo task lifetime3executions/126463tokens/43Points, BYOK unreported. Chevron/Quick lock and time selectors observed. Task usage is before long result text. Reloaded through standard Helper only after Agent/Todo idle check; App/Helper current checkout binding, runtime module paths and four served assets verified. Mobile owner APIs/event fixtures passed; no phone acceptance claim. No Cloud edits or production publication. Evidence: ai2apps/docs/acceptance/bot-poke-usage-followup-20261107/receipt.json.
+
+### NXR-BOT-GROUPS-POKE-STATISTICS-20261107
+
+- Implemented / App-Dev activated. Owner-scoped persistent sidebar groups, permanent localized Quick Bots default for Flash/ASC, collapsed state, group moves atomically integrated with persisted ordering, and reviewed group deletion that ungroups rather than deletes Bots. Desktop cards drag directly; Mobile long press separates dragging from ordinary scrolling. List projection remains read-only; empty/default initialization writes only when needed.
+- Poke uses one explicit owner activation through the normal durable dialogue flow with stable request identity, role/current-task context and existing authority; no Flash input bypass, approval, stopped-task replay or forced duplicate task creation.
+- Statistics attribute recorded model/review steps in this Bot's own sessions/workers and Todo lane execution counts; reuse observed metrics and request-ID point deduplication. Currency shown only when explicitly reported by provider; missing charges are never represented as zero.
+- Validation: 44 focused Python and 15 frontend tests passed; final 9 Python group/order checks passed after read optimization. Full mandatory AaAT gate: 1291 passed / 2 failed (1195.18s), not marked passed. Existing Gallery bilingual summary mapping fails; multi-Bot coordinator wait timeout also reproduced on isolated recheck and diagnostic with grouping projection disabled. No gate exceptions or authorization weakening. Native App-Dev verified group create/collapse/reload/delete-Cancel/default Quick grouping, Flash zero-model statistics, one real Poke greeting with draft retained and no task, and recorded token/Point totals. Native drag automation failed before dispatch (noWindowsAvailable); cross-group atomic persistence is covered by owner HTTP and frontend tests. Mobile gestures fixture-tested; real-phone acceptance pending.
+- Final source activated through standard Helper Local restart after both Agent/Todo idle checks, port 53297. App/Helper live source roots, actual grouping import log path and all six changed served JS/CSS bytes match checkout. No App rebuild, Cloud-side change or production publication. Owner design updated in ai2apps/docs/messager-ui-and-bot-task-v2.md; evidence: ai2apps/docs/acceptance/bot-groups-poke-statistics-20261107/receipt.json.
+
+### NXR-FLASH-HTTP-ADMISSION-20261107
+
+- Presentation follow-up: new Flash submissions no longer append a separate bilingual "Input validated and queued" chat message; input and final result remain, with execution state in the sidebar. Existing historical messages are preserved. Execution, admission and receipt logic are unchanged. All 31 Flash tests passed; App-Dev Local reloaded via standard Helper after verifying no active Agent/Todo runs.
+- Implemented, not published. Desktop and Mobile dialogue submission handlers now run on the event loop so fixed workflow Todo admission can schedule work without throwing after durable queue creation. Flash start records its Todo receipt alongside the Agent run; missing legacy acknowledgment links are recovered from the exact durable launch receipt, including terminal submissions, without replaying operations.
+- 31 Flash tests passed, including real ASGI Desktop/Mobile submission, immediate scheduling without the Todo scheduler, zero model calls, duplicate request handling and completed receipt repair. Flash suite added to the fixed gate for future runs. App-Dev Local restarted through its standard Helper control after checking there were no active Agent/Todo runs. Native acceptance on port 62394: `(12+3)*4 = 60`, composer cleared, task completed, sidebar spinner stopped, no error banner, model_calls=0. Original completed `3+3` receipt repaired without replay. App/Helper live checkout roots, runtime imported Flash module and served conversation asset verified. Receipt: `ai2apps/docs/acceptance/flash-http-20261107/receipt.json`.
+- Full AaAT gate: 1257 passed, 1 failed in 1203.21s, exit 1; not marked passed. Failure is `test_installed_first_party_provider_fields_have_owner_translations`: unchanged Gallery `gallery.import_materials` summary lacks bilingual mapping. No shared routing rules or gate exceptions were weakened.
+
+### NXR-BOT-ORDER-PERSISTENCE-20261107
+
+- Implemented, not published. Bot drag order is stored per user in the Local database instead of origin-bound localStorage, which was lost when Dev/App-Dev ports changed. An owner-host endpoint validates all submitted IDs; background list loads are invalidated during saves. New Bots append immediately in the UI and after existing ordered entries in server responses. Omitted Bots created during a reorder are retained at the end.
+- Validation: 2 server persistence/isolation tests, 5 existing Bot owner tests and 4 frontend reorder/removal checks passed. Syntax and whitespace checks passed. Python changes require Local restart; live activation is not yet accepted.
+
+### NXR-BOT-ACCESS-ROWS-20261107
+
+- Removal confirmation follow-up: trash opens a named Bot access review with Cancel focused by default and a separate Revoke and remove action. Review captures source Bot, target and permission revision; polling cannot silently substitute a newer authorization snapshot. Escape and both buttons are blocked while submitting; switching Bot invalidates the review. Three focused confirmation tests passed; frontend-only activation requires page refresh.
+- Follow-up: aligned the right-hand name/action and switch rows to two 22px lines with a 4px gap, centered against the 48px avatar; reset inherited remove-button and switch margins so control spacing cannot offset the text block.
+- Implemented, not published. Bot Access rows use a two-line layout with a 48px avatar, ellipsized name and remove action on the first line, and Allow access switch on the second. Removed the Add Bot explanatory paragraph.
+- Owner-managed removal revokes use and hides the selected outgoing row, while retaining its permission epoch and receipts. Re-adding uses the existing grant path; it never revives old execution authority. Added same-origin desktop-host DELETE endpoint with revision checks. No shared Agentic routing or declarations changed.
+- Validation: 7 Bot access tests passed, including removal/re-add and stale revision rejection. JavaScript syntax and whitespace checks passed. App-Dev refreshed template observed; no existing live permission was changed. Full AaAT gate was interrupted at 34% (exit 130), not marked passed. New Python endpoint requires Local restart before live deletion acceptance: App-Dev Helper UI timed out and the unauthenticated restart API correctly rejected the request; no credentials were read and no process was forcibly stopped.
+
+### NXR-MESSAGER-TASK-STARTUP-20261107
+
+- Implemented, not published. A temporary HTTP 503 while Todo is starting no longer leaves a global red error in Messager. Tasks shows a local readiness message, retains loaded task rows and retries through the existing five-second polling; the next successful response clears the readiness message. Other failures still surface normally and responses for a previous Bot are ignored.
+- Validation: 14 focused startup/recovery and memory lifecycle tests passed; JavaScript syntax passed. Startup unavailability/recovery is fixture-tested, not a live Local restart; no running tasks were interrupted.
+
+### NXR-ASC-BOT-AVATAR-AND-NAME-20261107
+
+- Implemented, not published. Shortcut Bot creation carries the typed preset name into the editable Bot name, reuses the Bot avatar renderer for a live preview and 12 visual icon choices, and offers named color swatches plus a compact custom color picker. Changes stay in the creation draft until submission.
+- Validation: 14 focused avatar/App-State/host tests passed; JavaScript syntax passed. App-Dev native acceptance verified the carried Chinese name, icon/color selection and live preview, and cancellation returning to the unchanged preset draft. No Bot was created. The browser fixture now covers name and color persistence at desktop/mobile widths, but could not run here because Playwright is unavailable; phone layout is not marked accepted.
+
+### NXR-ASC-BOT-CREATION-GUIDE-20261107
+
+- Implemented, not published. Replaced the unstructured ASC-Bot text with a shortcut Bot guide using the creation panel header, padded body, three short numbered steps and fixed footer. Back to Bots returns to the list, and Choose an App opens the existing Shell App Launcher when available. Creation still uses the target App's State presets flow.
+- App-Dev native acceptance confirmed the spaced step layout, bottom-aligned controls, opening the real App Launcher and returning to the Bot list. JavaScript syntax and whitespace checks passed.
+
+### NXR-BOT-MEMORY-REMOVE-CONFIRM-20261107
+
+- Implemented, not published. Removing an individual Memory opens an inline confirmation with the exact text, Cancel and Confirm removal. Cancel receives focus. The confirmation captures the inspected note revision, disables both actions while saving, and retains the existing recoverable removal API.
+- Validation: 18 focused sidebar/memory lifecycle checks passed. App-Dev native inspection verified the confirmation content, initial Cancel focus and cancellation preserving the original memory. No live memory was removed during acceptance.
+
+### NXR-BOT-ANSWER-RECEIPT-20261107
+
+- implemented，前端专项通过，未发布：修复 Messager 普通问答卡提交后仍显示可编辑表单的问题；提交中禁用，服务端确认后显示已收到回复、保留只读答复并隐藏提交按钮；屏蔽旧轮询快照，失败保留草稿且相同答复复用 response_id，不自动重试。
+- 5 项前端定向测试通过，含真实 Bot conversation 与问答组件的旧轮询竞态。较广前端检查 15 通过、3 失败；移除本次修复的基线副本复现同样 3 条既有授权/委派界面断言失败。
+- 完整 AaAT 门禁在 461 通过、1 条后台协作失败后主动停止（649.49s，SIGINT exit 2）；失败单独复现为 collaboration batch 未按时离开 running，1 failed in 34.32s。完整门禁不标为通过；本次不改动独立后台执行逻辑。
+- App-Dev 原生刷新后输入就绪；Dev/App-Dev App/Helper 源码根、Local 实际导入路径及修改资源哈希核验。没有重启 Local、取消/重新提交用户任务或覆盖图片组件。
+- 说明：ai2apps/docs/messager-bots-dev.md；收据：ai2apps/docs/acceptance/bot-answer-receipt-20261107/receipt.json。真实用户问题已在 2026-11-07T04:43:40Z 提交，本次只读核查，交互状态切换使用夹具验证。
+
+### NXR-MESSAGER-COLLABORATION-BUDGET-20261107
+
+- Status: verified_dev, not published. Immediate Bot collaboration starts with 64,000 model tokens per child or resumed round. At the limit the original conversation offers a durable choice to add another 64,000 tokens from actual settled usage or end with existing results. The collaboration clock pauses during that decision. Eight base reservations share 512,000 tokens, and a confirmed top-up is tied to its original Run. Scheduled and Hook collaboration budgets are separate.
+- Validation: simulated model runs verified continue, finish, recovery of the same pending choice, duplicate HTTP response handling, and paused collaboration time. The Messager budget card passed its button test.
+- Activation: Dev 60843 / PID 50963 loaded from the fixed checkout. App/Helper source roots, running delegation module and served interaction JavaScript matched. All 19 focused direct/multilevel delegation tests passed with deterministic models and real HTTP interaction submission. The AaAT gate completed with 1,255 passes and two previously recorded failures in background collaboration aggregation and Gallery material declaration localization. The existing-access frontend fixture also fails unchanged baseline code.
+
+### NXR-MESSAGER-DELEGATION-DISCLOSURE-20261107
+
+- Status: implemented, not published. Messager shows direct Bot delegation details collapsed by default, keeps required approval controls visible, and reports when the delegated execution actually starts with a durable message in the original conversation. The expanded details show both the shared and per-round model allowance. No execution or authorization policy changed.
+- Validation: three focused frontend checks and two simulated-model delegation tests passed, including start receipt order and sensitive approval relay.
+
+### NXR-MESSAGER-BOT-REFERENCES-20261107
+
+- Status: implemented, not published. In the desktop Agent Bot composer, `/@` lists Bots from the current sidebar and filters by name or ID. Selecting an item inserts an editable `/@<bot-id>` reference without submitting the draft. The picker shares the existing `/#` keyboard behavior. This change does not alter Bot execution or authorization.
+- Verification: 25 focused JavaScript checks passed. In App-Dev, verified that `/@` opens the list, a Chinese name fragment filters it, Down and Enter insert the selected Bot ID without sending, and `/#` still opens task suggestions.
+- Focus follow-up: selecting a Bot card focuses the editable composer as soon as it mounts, without scrolling the conversation or reclaiming focus from another control. Selecting an inline reference restores composer focus without scrolling.
+- Semantic follow-up (implemented): the picker inserts readable ``/@Name(`ID`)`` references. Messager resolves current-message IDs/names under the actor, archive, Bot type and directed visibility guards, persists bounded reference data at turn admission, and passes it to the execution task. Existing consultation/delegation capabilities retain their review and access checks.
+- New reference fixtures passed, including a real durable dialogue-to-worker-to-pending-delegation flow with a deterministic model. After an idle-checked App-Dev Helper restart, source-root metadata and imported parser path matched the checkout. Native inspection verified readable name/ID insertion and retained input focus. Live collaboration was not executed.
+- Validation follow-up: 3 Bot reference tests, 8 focused composer/sidebar checks and 14 architecture/declaration checks passed. Live JS bytes matched the checkout. The complete AaAT run was stopped after a collaboration failure and is not marked passed. The failed background aggregate test reproduced alone (36.35s) and in a process-local comparison removing this change's dialogue context, parsing and owner prompt additions (35.94s). Both timed out waiting for the collaboration batch to leave running.
+
+### NXR-MESSAGER-BOT-CARD-ORDER-20261107
+
+- Status: verified_dev, not published. Desktop Messager Bot cards support direct pointer reordering with an insertion line. The order is kept in the current client and reapplied when the Bot list refreshes. New cards follow the saved order.
+- Validation: 18 existing sidebar and memory lifecycle checks passed. Dev source roots and served JS/CSS matched. Native Dev validation moved a card down, refreshed to verify persistence, and moved it back above its neighbor.
+
+### NXR-BOT-MEMORY-OVERVIEW-20261107
+
+- Status: verified_dev, not published. Messager Memory shows up to three pending previews first, with review items prioritized and an entry into the existing review dialog. Active memories appear as compact expandable notes. Add memory is collapsed by default. Versions and undo, task and output search, removed memories, and cleanup are under More options.
+- Validation: 24 focused JavaScript checks passed, including pending previews and disposal isolation. Refreshed Dev on port 60215 and verified fixed App/Helper roots and four served assets. Native inspection confirmed the section order, existing poster notes, edit/cancel, and secondary actions. The live Bot had no pending entries. Pending data was verified with fixtures.
+- Follow-up (implemented, not published): Saved memories use a lightbulb and a trailing disclosure arrow; pending previews use an amber hourglass. Both icons sit 4 CSS px from the text. A divider separates the entries from Add memory and More options. All 24 focused JavaScript checks passed.
+
+### NXR-BOT-MEMORY-SIDEBAR-REFRESH-20261107
+
+- The Messager conversation feed now notifies the selected Bot's memory sidebar once when it observes a batch of saved memory receipts. The sidebar reloads the authoritative list using its existing Bot-scoped refresh path. The same saved preferences remain editable through the existing lifecycle.
+- Verification: 18 focused JavaScript tests passed. Refreshed Dev on port 60215, verified live source and served script bytes, and confirmed both existing poster preferences are visible in the selected Bot's Memory sidebar. Receipt-to-sidebar notification was verified with fixtures, without creating a new live memory.
+
+### NXR-BOT-DIALOGUE-FAILURE-RECEIPT-20261107
+
+- Messager state refresh reuses an existing terminal dialogue receipt. Receipts saved before a wording change keep their original text and message identity. Concurrent refreshes preserve the first saved receipt.
+- Focused validation: 13 decision and state tests passed, including repeated HTTP state reads against a pre-upgrade failure receipt. This change is limited to Messager-owned dialogue presentation.
+- Activated through the idle-checked Dev Helper restart. Verified fixed App/Helper source roots, live module source and served asset bytes. Reopened the original Bot conversation on port 60215 and verified the historical message remained visible, the error banner was absent, and the Local log recorded no dialogue-state 409 after reload.
+
+### NXR-BOT-DIALOGUE-DECISION-RECOVERY-20261107
+
+- Messager permits one no-Tool correction when a short dialogue model returns an invalid decision. The original user request, attachments and available recall context are retained. No existing task is replayed. A second invalid decision produces one user-facing message. Dialogue instructions distinguish fresh Role inputs from actual continuations.
+- Dev evidence: the new portrait lookup received a whitespace-only decision before task admission. The separate daily watch briefing was blocked by its reviewed fixed scope while looking up Bot collaboration tools. This change does not alter the scheduled plan or its authority.
+- Validation: 43 focused tests passed with model fixtures. Fixed Dev Local was idle-checked and reloaded. App and Helper source roots, live Bot and General Agent imports, served conversation assets and health matched the checkout at port 58038. The AaAT gate reported 1,252 passed and two failures in Bot collaboration and form translations, both present in the previous gate. The original user tasks were not replayed.
+
+### NXR-BOT-STOPPED-TASK-FEEDBACK-20261107
+
+- Messager names the prior task and explains the recorded reason when a request to continue reaches a stopped task. It offers a new request the user can send when the original request can stand on its own. Tasks that rely on attachments, amendments, or prior work prompt the user to describe the new request.
+- Validation: 51 targeted Bot task, history, and Tool correction tests passed. Dev reloaded after the channel refresh finished. App and Helper source roots, live Bot and General Agent imports, the served conversation script, and Local health matched the checkout. That AaAT gate reported 1,247 passed and four failures in Bot collaboration, stopped-task fixtures and form translations. Both stopped-task cases passed in the subsequent focused run.
+
+### NXR-BOT-CURRENT-APP-ACCESS-20261106
+
+- Status: verified_fixtures_and_app_dev_activation, not published. Messager checks current Bot App/Mini-App access before displaying a grant prompt. An ordinary pending call can continue using an existing grant after a server-side recheck. New access and special operations still require user confirmation.
+- The continuation resolves only the original pending interaction and cannot grant new access. Approval cards show task context without the parameter form prompt.
+- Validation: 17 Bot access tests passed with the final fixtures, including pending Run/HTTP flows for two providers. Three card presentation cases passed. App-Dev Local was idle-checked and restarted through its Helper. App/Helper source-root metadata, live Local import and served card script matched the checkout. The AaAT gate ran with the earlier fixtures and reported 1,246 passed and four failures. The two new failures passed in the final targeted run after the setup stopped inadvertently invalidating legacy grants. The same Bot collaboration and form localization failures also appeared in the previous gate run.
+
+### NXR-AGENT-TOOL-NAME-RECOVERY-20261106
+
+- Status: verified_fixtures_and_app_dev_activation, not published. General Agent uses current Tool definitions to suggest the exact function name after a preflight rejection. An ambiguous name produces a bounded list of candidates. The model must submit a new call through the normal permission and parameter checks.
+- Repeating the same rejected name in a later model round terminates the Run with an explicit failure. Malformed wire names are projected as historical evidence for the correction turn.
+- Validation: 74 focused regressions passed, plus the final four-case correction test and 30 Bot discovery/execution checks. App-Dev passed the idle check, standard Local reload, source-root and live module verification, and health check. Dev restart was deferred due to active tasks. Full AaAT gate started, result pending.
+
+### NXR-BOT-TASK-FEEDBACK-20261106
+
+- Status: verified_fixtures_and_dev_activation, not published. Messager foreground Task progress displays the active step alongside the runtime status. Terminal feedback identifies the step, projects safe known failure reasons, and reports settled Tool call counts without displaying raw provider diagnostics. Existing conversation receipts remain intact.
+- Trigger: a portrait-history lookup stopped before any Tool completed after the model repeatedly returned an unavailable function name. Presentation changes do not alter tool routing or replay the failed run.
+- Validation: 15 dialogue and feedback tests passed, with the 5 feedback tests rerun after the final copy change. Dev idle-checked Local reload, App/Helper source roots, live module source, health and served JS bytes verified.
+
+### NXR-MESSAGER-TASK-REFERENCES-20261106
+
+- Status: verified_app_dev, not published. Desktop Task sidebar prioritizes requests needing input, active work, and three recent ended tasks. Details, history, archive, Todo links and authorization management remain available through task details or All tasks.
+- Continue task inserts an editable task reference into the draft. Desktop search lists scoped task references by name or ID. Mobile continuation inserts the same visible syntax. The Messager owner resolves references in the current turn and binds explicit continuation before task admission.
+- Validation: 18 Bot Dialogue and Task-Session tests, 15 composer and sidebar checks, and desktop/mobile browser fixtures passed. Fixture execution verified server binding against a conflicting model-selected target and independent new work with a reference. App-Dev Local reloaded after idle check. App and Helper roots, live Bot Dialogue import, and four served assets matched the checkout. Native inspection verified the overview, task details, All tasks, and insertion/removal of a continuation draft without sending. Contract: ai2apps/docs/app-mini-app-agent-tool-integration.md.
+
+### NXR-BOT-MATERIAL-HANDOFF-20261106
+
+- Status: verified_fixtures_and_dev_registration, not published. Gallery and Intelligence source adapters import authorized materials into the active Session through shared Workspace artifact storage. Gallery handles image, audio, video, document and ordinary files. Intelligence uses its bounded saved-article cover preview. Partial results preserve available references and distinguish intermediate materials from deliverables.
+- Bot execution guidance matches downstream material contracts and discovers the source owner's import capability. Bot foreground runs retain current-Session artifact listing and preview. Unowned non-control tools are excluded from Bot approval discovery. Denied operations show the reason for stopping.
+- Validation: cross-owner Gateway import, actor and Session isolation, deduplication, byte limits and fixture-model Bot import-to-text-preview passed. Standard idle-checked Dev Local reload verified App/Helper source roots, running Bot source and both registered adapters. Dev health is ready. No live model or external cover fetch was exercised. The mandatory AaAT suite hit an existing event catalog assertion that omits the registered Bot collaboration events.
+- Contract: ai2apps/docs/app-mini-app-agent-tool-integration.md.
+
+### NXR-MESSAGER-GALLERY-VIEWER-20261106
+
+- Status: verified_static_and_native, not published. Desktop Bot message attachments, generated images and file preview actions reuse Gallery's existing preview template, CSS and viewer methods instead of a separate Bot image dialog. Read-only result sequences use existing Session/Gallery URLs; viewing does not import assets or grant access. Shared single-result Imagine Studio behavior is retained.
+- Reuses Gallery zoom, pan, keyboard navigation, download and media playback. Closing restores focus with preventScroll and body overflow; duplicate resource occurrences retain distinct navigation positions. Safe bounded raster data images remain supported; executable/external URLs are rejected.
+- Validation: 9 shared gesture/result, sequence/security and isolated browser checks passed, including download/import identity and close focus/scroll preservation. Native App-Dev (4 items) and Dev (2 items) opened the same Gallery viewer and navigated actual Bot images. Both fixed App/Helper source roots and five served static assets match the checkout. Only webpage refresh; no Local restart, model call or production publication. Evidence: ai2apps/docs/acceptance/messager-gallery-viewer-20261106/.
+
+### NXR-MESSAGER-PRIMARY-ENTRY-20261105
+
+- Status: verified_app_dev, not published. Messager launcher status and the existing Bot Runtime registration gate now activate for production/default as well as Dev/App-Dev/Test. No execution, confirmation or grant policy changes.
+- Messager is the first Dock and Launcher entry, pinned by default. One-time browser preference migration inserts Messager first and places Chat immediately after AI Browser, preserving all other relative positions and subsequent user drag choices. Launcher and Home use the same requested priority.
+- Home adds a separate localized Bot conversation entry directly below the hero and recommends Messager first; Chat follows AI Browser. English/Chinese descriptions now describe Bot conversations and tasks.
+- Validation: 13 production/instance manifest checks and 7 Shell ordering/Home remote checks passed; JS syntax passed. App-Dev was idle-checked and restarted through standard Helper. Exact App/Helper source roots, live Bot/App Chat import paths and served JS/CSS verified against the checkout. Native Home, Dock, Launcher and Bot-entry navigation verified. No production Desktop publication or fixed Test rebuild performed for this change.
+- Evidence: ai2apps/docs/acceptance/messager-primary-entry-20261105.md.
+
+### NXR-MANAGED-CLOUD-STRUCTURED-OUTPUT-20261105
+
+- Status: verified_test_with_findings, not published. Generic Gateway negotiates authenticated structuredOutput v1, projects response_format to responseFormat, validates bounded JSON and buffered SSE success terminals/markers, and refuses unsupported combinations/rollback responses without fallback or automatic retries. Bot owner validates its business envelope before Task/memory/plan admission; invalid envelopes use a clear safe failure.
+- Original provider error code, retry policy, usage and settled points survive durable model-step/Run errors. API ResponseFormat no longer silently erases unsupported extra fields. Exact shared module classification and mutation test retain the business dependency boundary; no provider/model-name special cases.
+- Validation: final mandatory AaAT gate 1239 passed in 1055.19s, exit 0; 62 focused protocol/owner/Gateway checks, 86 API-model/structured-output regressions and 28 architecture checks passed. Fixture and real-provider results are distinguished in the receipt.
+- Fixed Test rebuilt by standard builder; bundle verification, deep strict signature, six changed embedded-module hashes and actual Local import paths verified. Test remains isolated, non-Development, cloud Runtime; no Cloud-side code or production Desktop activation. Dev/App-Dev embedded API-model layer still requires the corresponding standard rebuild before activation is claimed.
+- Real DeepSeek: arithmetic succeeded in 1.54s; new read-only Gallery Task completed in about 9.99s (worker 8.03s, actual query 14ms); permission waiting/denial and parameter clarification verified. Two independent questions during permission waiting were rejected by Cloud as invalid structured output; each charged 1 point with settled usage preserved. No automatic retries, new App grants, schedules or old failed-Run replay. No active Test Runs remain.
+- Live Bot decisions use non-streaming JSON; SSE success/failure/EOF/buffering is fixture coverage, not claimed as live provider SSE acceptance. Provider format stability remains a finding with exact Cloud request IDs, not a false all-flows-passed claim.
+- Design: ai2apps/docs/managed-cloud-structured-output-local-v1.md. Evidence and Cloud follow-up: ai2apps/docs/acceptance/managed-cloud-structured-output-local-20261105/README.md, receipt.json and cloud-observations.md.
+
+### NXR-MESSAGER-FIXED-TEST-ACTIVATION-20261105
+
+- Status: verified_test, not published. User-authorized activation is limited to the fixed Helper-managed test instance; production/default/main and unmanaged processes remain development-only. Test remains a release-shaped embedded snapshot with isolated state and cloud Runtime.
+- Standard Test builder, complete bundle verification, deep strict signing, embedded source hashes and actual Local import paths verified. Eight instance activation matrix cases, 11 owner tests and 15 UI tests passed. The old waiting Run expired automatically during startup recovery; no manual cancellation or data reset.
+- Real local model acceptance: default Bot greeting, direct arithmetic, chatting during Task execution, App permission denial, missing-parameter clarification, and successful read-only Gallery search. No extra App grants, schedules, generated images or outbound messages. Zero active Runs remain; test records retained.
+- Findings: cold greeting 20s, warm arithmetic 5.5s, chat during Task 32s, read-only Gallery task 111s end to end (Tool 14ms). Ordinary clarification lacks persistent assistance state; denied-permission outcome lacks a clear cause/recovery; model wait text remains English in Chinese UI. Functional paths work, but unconditional replacement of Chat as default entry is not accepted yet. These product behaviors were not changed in this task.
+- Evidence: ai2apps/docs/acceptance/messager-default-entry-test-20261105/README.md and receipt.json.
+
+### NXR-MESSAGER-UNREAD-WORKER-FLICKER-20261105
+
+- verified，Dev/App-Dev 已加载，未发布：修正 Bot 列表未读统计误包含后台 Task 内部 Session 的问题；排除 dialogue_job 和归档 Session，与主对话已读接口统一范围。内部工作消息不再在列表轮询时制造绶带；不清空、改写或迁移用户已读游标。
+- 验证：4 项 owner/API 回归和首条未读/可见到底确认浏览器检查通过，新增内部工作消息、真实主对话消息及归档隔离覆盖。标准 Helper 空闲重载两实例；App/Helper 源码根、运行模块路径、服务资源核验通过，实际列表与主对话未读数一致（App-Dev 3 个 Bot，Dev 2 个 Bot）。仅消息展示统计，未改变 AaAT 执行/路由/交互策略。
+- 文档：ai2apps/docs/messager-ui-and-bot-task-v2.md「对话未读与已读位置」。
+
+### NXR-MESSAGER-CREATE-BOT-UX-20261105
+
+- 2026-11-05 侧栏布局修正：更新创建 UI 容器内的列表伸展选择器，工具栏固定在左侧栏底部，Bot 列表独立滚动，类型菜单从底部向上展开。隔离浏览器验证 3/100 项列表及菜单位置通过；原生 App-Dev 刷新后目视确认底部工具栏和完整菜单。仅 CSS，无需重启 Local。
+
+- 完整 AaAT 门禁 1132 项通过（1045.70s，exit 0）；新增创建专项 4 项、Mobile/Access 专项 21 项和前端 11 项通过；创建专项已纳入后续 CI 门禁。标准 Helper 空闲重载两实例并核验 App/Helper 源码根、运行模块路径、配置目录与服务静态资源。原生 App-Dev 验证类型菜单、整侧栏、初始设置与取消恢复；没有创建真实测试 Bot、修改真实 App Access 或调用模型。文档：ai2apps/docs/messager-ui-and-bot-task-v2.md；验收：ai2apps/docs/acceptance/bot-creation-ux-20261105/receipt.json。
+
+- verified，Dev/App-Dev 已加载，未发布：创建入口先显示类型菜单，仅标准 Bot 可选；Flash/ASC/Outlet/Mirror 灰显待开放，不引入类型执行能力。桌面以整个左侧栏承载创建表单，Mobile 复用全屏页面与既有层级导航；名字/职责、预设头像/颜色、模型和 App/Mini-App Access 可提前配置，明确创建与取消按钮。草稿不创建 Bot；owner 配置创建接口在一个事务内保存身份、初始权限、头像、模型，并以 actor/request_id 去重。复用当前 Access 目录/版本验证与启用开关，不绕过特殊确认。
+
+### NXR-MESSAGER-MOBILE-AUTO-REFRESH-20261105
+
+- verified_static，未发布：移除手机 Bot 列表和对话页头的两个刷新按钮，分离轮询时钟，列表（含消息箱）5 秒，消息流保持2 秒；页面隐藏暂停，pagehide 清理两个时钟，进入/切换/恢复可见及已读变化即时更新。仅模板与 JS；语法/diff 检查通过，沿用手机浏览器全链路验证。
+
+### NXR-MESSAGER-MOBILE-NATIVE-BACK-20261105
+
+- 宿主/App 根/情报中心/Todo 回归 18 项及真实浏览器宿主+Bot 链路 1 项通过，覆盖原生 history Back/Forward、同 iframe/无第二动画/无重复会话打开、按钮单次动画和草稿保留。静态语法/diff 通过；两实例 /mobile/static/js/mobile.js、Bot JS/CSS 和宿主页新脚本版本均已核验。真实 iPhone 边缘滑动绘制仍由用户复测。验收：ai2apps/docs/acceptance/messager-mobile-native-back-20261105/receipt.json。
+
+- verified_static，Dev/App-Dev 已生效，未发布：修正仅内容触摸返回、iOS 边缘右划却返回上一个 App 的缺口。Mobile 宿主为任意 active trusted mount 提供有界 UI depth push/back/history，校验 frame/source/origin/mount/instance 并拒绝 sandbox/background；Bot 两级页面接入宿主历史。参照情报中心：按钮/内容返回由宿主 pop 后播放一次动画，原生 pop 直接恢复 DOM，取消 WAAPI 动画并跨两个 rAF 禁用过渡；同 App pop 不隐藏、重挂载或重新 focus iframe。缓存路由支持浏览器 Forward，保留对话草稿和滚动位置；原生左边缘不再被内容 swipe 重复消费。仅静态宿主/UI 导航，无 Agentic、权限或 Cloud 变更。
+
+### NXR-MESSAGER-MOBILE-SLIDE-NAV-20261105
+
+- 390px 浏览器全链路通过：两级前进/返回动画、按钮及右划、纵向/输入框/取消手势排除、草稿与滚动保留、减少动态效果、宿主页头/Dock 与素材/发送兼容。静态语法/diff 检查通过；两实例实际 JS/CSS 与 checkout 哈希一致，无 Python/Local 重载。验收：ai2apps/docs/acceptance/messager-mobile-slide-nav-20261105/receipt.json。
+
+- verified_static，Dev/App-Dev 已提供资源，未发布：Mobile Bot 列表、对话、详情改为保留 DOM 的三层页面，沿用情报中心 240ms ease-out 右侧滑入/向右返回体验；详情由 Modal/右上角 Close 改为左上角返回对话。两级内容右划返回；纵向滚动、输入框/选择器/按钮/链接/媒体与图片预览不触发返回；取消手势和减少动态效果受支持。返回保留输入草稿/信息流滚动位置，详情期间轮询不滚动或误标消息已读。仅 HTML/CSS/JS，无执行或授权协议变化。
+
+### NXR-MESSAGER-MOBILE-PROFILE-NAV-20261104
+
+- Mobile API/网关 25 项、原对话与模型配置 11 项、模型设置与 Shell 生命周期 12 项及真实 iframe 手机浏览器链路 1 项通过。两实例均标准 Helper 空闲重载；App/Helper source-root、实际 Bot 模块路径、Profile API 与变化 JS/CSS 哈希核验通过。未执行真实模型或修改用户授权。验收：ai2apps/docs/acceptance/messager-mobile-profile-nav-20261104/receipt.json。
+
+- verified，Dev/App-Dev 已加载，未发布：手机 Bot 对话移除模型选择，发送由 owner API 使用 Bot Profile 模型。模型设置改为 actor/Bot 隔离的持久记录与 revision 守卫；桌面已保存 Profile 优先于本机浏览器旧值，旧记录兼容最近真实主会话模型及系统 Agent 默认。手机发送不依赖模型目录。使用既有 mount/instance 绑定的 Shell 可见性协议，进入/退出 Bot 对话隐藏/恢复页头与 Dock。新增详情全屏面板，编辑名字/职责/模型，查看任务及续接、权限、记忆和语音/提醒信息；权限审批等仍沿用桌面执行边界。
+
+### NXR-MESSAGER-USER-ASSISTANCE-RIBBON-20261104
+
+- 对话/Task 16 项、侧栏 6 项、手机浏览器 1 项及普通/紧凑卡片布局 1 项通过。两实例标准 Helper 空闲重载，App/Helper 源码根、运行模块路径及 JS/CSS 哈希核验通过。无真实模型调用或代用户审批；仅 UI 状态投影，未修改 AaAT 执行/路由/交互协议。验收：ai2apps/docs/acceptance/messager-assistance-ribbon-20261104/receipt.json。
+
+- verified，Dev/App-Dev 已加载，未发布：Bot 列表将等待批准/补全参数独立投影为 needs_user_assistance；聚合全部活动对话和 Task，避免后来的运行状态掩盖等待项。桌面及手机右上角橙色 ! 绶带、无障碍标签及桌面提示，与左上角蓝色未读并存；等待项不冒充正在生成/执行，同 Bot 其他实际工作可继续转圈。仅状态投影和展示，不变更执行/审批授权。
+
+### NXR-BOT-APP-ACCESS-TOGGLE-20261104
+
+- verified，Dev/App-Dev 已加载，未发布：Bot 的 App/Mini-App 授权统一 enabled 单开关；设置添加启用、关闭保留、删除确认，申请卡只提供允许此 Bot 访问/拒绝。普通读写统一授权，付款/敏感/破坏性/未知效果及 owner confirm 仍单次确认；冻结权限、撤权与独立组件边界保留。按用户要求不实现旧读写授权升级、迁移或兼容输入。
+- 完整 AaAT 门禁 1132 项通过（1018.22s，exit0；随后非失败 headless Metal 退出提示）。首轮相关后端30项通过；补组24项通过，清理夹具旧四参数更新后该项单独通过；前端单元9项、隔离 Chrome 夹具2项通过。模型和业务效果为确定性夹具，没有真实计费/外部执行。
+- App-Dev 空闲重载、原生消息页与单“允许访问”开关确认；Dev 首次忙则保留任务，最终空闲后标准Helper重载。两个实例的 App/Helper 源码根、实际 app_access.py v3 导入、服务资源哈希已核验。未更改用户授权、图片展示或共享 General Agent，也无 Cloud 改动。
+- 方案：ai2apps/docs/bot-app-access-toggle-v1.md；AaAT 规范及对接指南同步更新。收据：ai2apps/docs/acceptance/bot-app-access-toggle-20261104/receipt.json。
+
+### NXR-MESSAGER-MOBILE-DEV-20261104
+
+- App-Dev 手机验收入口已启用：独立实例 operator gateway 配置打开，经空闲检查和标准 Helper 重载后，通过标准 Mobile App 设置 API 启用 Messager；实际目录 mobile_gateway=true/enabled=true/supported=true/requiresCloudUpgrade=false，服务静态 JS 与当前 checkout 一致。Dev 与 App-Dev 数据保持独立。
+
+- 2026-11-04 手机反馈修复：首次打开/切换期间，只有 session 就绪并完成首屏后才允许轮询；加载时禁用发送和附件。避免慢模型目录请求期间以空 session 请求导致 `session not found`。390px 浏览器回归通过，新增 2.3 秒打开延迟与空 session 请求断言、图片实际解码断言。真实 Dev 旧绘图任务已取消且无产物；App-Dev 三张历史 PNG 与上传参考图仍在，未迁移实例数据。本次仅修改静态 JS。
+
+- verified_dev_enabled，未发布：Messager接入既有可信host Mobile Gateway，单独声明模板/静态资源与owner API前缀，手机提供Bot列表、对话/未读、模型选择、附件/生成素材预览下载、任务状态和消息箱。原Bot服务持久化/权限/调度不变，审批和参数补全保留桌面处理，不伪造desktop principal。仅Dev已通过标准API开启Mobile开关，重载后实际目录enabled=true/supported=true/requiresCloudUpgrade=false，静态资源与当前checkout一致。Python定向24项、手机390px网关浏览器链路1项通过；完整AaAT门禁1132项通过。真实手机测试待用户验证；好友、语音、Gallery、管理和审批/参数表单继续在桌面。验收：ai2apps/docs/acceptance/messager-mobile-dev-20261104/receipt.json。
+
+### NXR-BOT-EXPOSURE-ACCESS-C412-20261104
+
+- verified，App-Dev 已加载，未发布：C4.1.2 Public/Private 发现与有方向的 Bot 使用授权；Access/允许使用者双向视图同步、保留关闭条目、首次批准持久授权、撤销停止与关系版本守卫。Bot 使用权限无 Read/Write；后台计划、敏感和付费操作授权仍独立，重新授权不恢复旧执行。
+- 最终源码完整 AaAT 边界回归 1132 项通过（976.98s）；权限/委派/C3 专项 22 项、前端专项 18 项通过。自动执行使用确定性模型与业务效果夹具；原生检查未修改真实授权或调用真实模型。
+- 标准 Helper 空闲重载 App-Dev，核对 App/Helper 源码根、Local 实际导入路径和服务资源哈希；原生确认暴露设置、允许使用者及 Bot Access 入口。未修改图片展示组件或 Cloud。
+- 技术文档：ai2apps/docs/bot-exposure-access-c412-implementation.md；总通信方案同步。验收收据：ai2apps/docs/acceptance/bot-exposure-access-c412-20261104/receipt.json。
+
+### NXR-BOT-DELEGATED-MEMORY-RETURNS-20261104
+
+- verified，Dev/App-Dev 已加载，未发布：子 Bot 通过 messager.memory.return 将当前委派任务中的可验证发现作为候选逐级回传，上级用户审阅后进入独立记忆维护队列。保留任务/Run/原始证据及路径；同源去重、同值多来源合并、撤销/清理失效、防环及确认后有界资源复制。不复制私人记忆库、不扩散 App 权限；无共享 General Agent/Cloud 或图片显示组件改动。
+- 完整 AaAT 门禁快照 1125 项通过（990.40s，exit 0；随后非失败 headless Metal 退出提示）。门禁期间最终 owner 同值证据合并修正，经最终 9 项专项通过；界面 5 项、原多级委派兼容 10 项通过。快照与最终专项范围单独记录，不声称最终文件逐字节重跑完整门禁。模型与业务输出为确定性夹具，无真实模型/付费/外部通讯验收。
+- 两个实例均经标准 Helper 空闲重载；App/Helper 源码根、实际 Local 导入路径、回传表/Tool 与服务资源哈希核验。原生 App-Dev 身份/标题、既有对话和消息输入就绪；记忆待整理入口正常。没有创建用户任务或写入用户记忆。
+- 技术方案：ai2apps/docs/bot-memory-delegation-returns-v1.md；总计划、自动记忆及委派接入文档同步更新。收据：ai2apps/docs/acceptance/bot-memory-returns-20261104/receipt.json。
+
+### NXR-BOT-TASK-REENTRY-C411-20261104
+
+- verified，App-Dev已加载，未发布：C4.1.1允许同Bot和祖先Bot处理独立子题，以持久工作项等待图替代Bot身份防环。真实任务自等待/反向等待仍拒绝，原样重复分解另行识别；去重包含源工作项、输入材料、预期产物和已有结果引用。目录包含当前Bot并区分委派/咨询可用性，旧审批不静默升级。保留串行槽位、上下文隔离、原入口审阅、逐层权限和根预算；固定C3计划不扩权。
+- 同对话子任务完成结果经持久回接只显示一次；纯文本回接保存为规范文本部件，修复旧多模态包装导致的空文字投影。子任务记录与产物保留，未改动图片呈现组件。
+- 最终完整AaAT门禁1088项通过（956.65s，exit0；非失败headless Metal退出提示），覆盖最终源码；目录/重入/咨询16项、最终输出/C2回归12项、C2/C4.1/C3兼容26项、前端17项分别通过。模型与业务效果为确定性夹具，实际环验证为后台工作图守卫；没有开放任意已有任务依赖挂接接口。
+- App-Dev通过标准Helper空闲重载，App/Helper源码根、实际导入路径、新工作项表、页面资源哈希和匿名401核验；原生身份、消息页与输入框就绪确认。没有创建用户任务、提交用户审批或执行真实外部操作。文档：ai2apps/docs/bot-task-reentry-c411-implementation.md；收据：ai2apps/docs/acceptance/bot-task-reentry-c411-20261104/receipt.json。
+
+### NXR-MESSAGER-SCROLL-LATEST-20261104
+
+- verified，未发布：Bot消息流底部居中增加向下箭头圆形图标按钮与Hover-Tip，下方有内容时显示，点击直达末尾，到底隐藏。浮层不占消息布局；滚动、消息/素材高度与侧栏调整后更新，沿用到底已读规则。仅前端修改；3项浏览器检查通过（按钮出现/到底隐藏、未读清除、缓存滚动位置恢复），App-Dev刷新后真实对话点击核验通过，实际服务JS/CSS与checkout一致，语法/diff检查通过。
+
+### NXR-BOT-MULTILEVEL-C41-20261104
+
+- verified，App-Dev已加载，未发布：C4.1有界多层委派；前台显式允许继续分工，逐次回到原Bot审阅。持久依赖图限制3层/8边，新增轮次共享128000 tokens保守预留、36次Tool调用和600秒期限；逐层权限交集、祖先及跨root等待防环、结果逐级恢复、取消/撤权传播、持久停止收据及中断清理。C3固定后台计划不取得递归权限，无跨用户/安装支持。
+- 完整AaAT门禁1082项通过（841.14s，exit0；非失败headless Metal退出提示）。完整门禁快照之后的局部停止清理查询扩展，另经C4.1组9项及新增清理间隙故障注入1项通过；前端16项、C1/C2/C4.1初轮26项和C3兼容18项通过。模型与业务效果均为确定性夹具。
+- App-Dev经标准Helper空闲重载，App/Helper源码根、实际模块路径、新依赖图数据表、前端资源哈希和匿名401已核验；原生com.ai2apps.desktop.appdev.shell标题与消息页确认。未修改图片展示组件，未创建用户任务或批准真实操作。文档：ai2apps/docs/bot-multilevel-c41-implementation.md；收据：ai2apps/docs/acceptance/bot-multilevel-c41-20261104/receipt.json。
+
+### NXR-BOT-COLLABORATION-C3-20261104
+
+- verified，App-Dev已加载，未发布：固定1–3个同用户/同安装Bot的事件、定时和立即协作计划，前台提出、宿主审阅后准入；复用标准HookAction/事件详情、Todo、C2子任务和原持久审批。冻结双方后台权限交集、身份/Provider版本，特殊操作仅当次审批并回接原Bot；不可变计划替换仅影响后续准入，明确停用会取消未完成协作。
+- 新增协作accepted/completed目录事实与AaAT详情，固定批次/子任务幂等收据、同root预算、取消/撤权防重放、具名多方汇总及明确部分结果策略。每计划滚动24小时24批次、事件间隔60秒；私有异步App队列仍须自己保留标准cause，未宣称任意外部回声已证明无环。无C4递归、跨用户或跨安装支持。
+- 最终完整AaAT门禁1067项通过（811.60s，exit0），前端15项及隔离浏览器3项检查通过；C3核心8项、C2/C3/通用检查点17项、最终停止/兼容2项、事件/汇总2项、日配额1项分别通过。首轮空上下文字段兼容问题已修复；参数表单并发锁等待复核及最终完整门禁通过，未改动其实现或测试。
+- App-Dev经标准Helper空闲重载，App/Helper源码根、实际模块路径、C3注册项/数据表、页面资源哈希与匿名401均核验；原生窗口身份确认。未修改图片显示组件、未执行真实模型/计费/外部通讯或用户审批。实施与边界：ai2apps/docs/bot-collaboration-c3-implementation.md；收据：ai2apps/docs/acceptance/bot-collaboration-c3-20261104/receipt.json。
+
+### NXR-MESSAGER-READ-CURSOR-20261104
+
+- verified，未发布：每个用户/Bot/主对话持久化单调已读位置，只统计之后completed Bot消息。切换优先定位首条未读分隔线；无未读恢复缓存位置。可见对话滚动到底部才推进已读，后台或脱离挂载不确认；站内提醒独立统计。首次启用以既有历史末尾作基线；App-Dev临时预览提醒按精确ID静默清理。仅显示状态，不改变Agent上下文、权限和执行。10项Python、9项Node/浏览器检查通过；Dev/App-Dev通过标准Helper空闲重载，来源/模块/服务资源及真实接口核验通过，App-Dev正常历史及无预览标记实机确认。新消息/首条未读/到底清除为隔离夹具验证，未调用真实模型制造消息。验收：ai2apps/docs/acceptance/messager-read-cursor-20261104/receipt.json。
+
+### NXR-MESSAGER-UNREAD-RIBBON-COLOR-20261104
+
+- implemented，未发布：Bot未读绶带采用情报中心未读情报相同的蓝色#2563eb和白字#fff，边线同蓝；位置、数字和尺寸不变。仅CSS；App-Dev已刷新，实机截图确认三张Bot卡片蓝底白字，实际服务CSS与checkout一致，diff检查通过。
+
+### NXR-MESSAGER-BOT-ACTIVITY-RINGS-20261104
+
+- verified，未发布：左栏Bot卡片增加两种无文字活动圈：蓝色单环表示生成回复，紫色双环表示执行Task，允许同时显示；排队/等待输入暂停任务圈，悬停区分状态。目录从真实活动对话Run、独立Task和Todo执行lane读取状态，非当前Bot通过定时刷新更新；紧凑侧栏保留状态。仅owner状态读取与UI，无执行/权限语义改变。后端15项、侧栏6项通过，隔离浏览器验证窄栏双圈可见/无文字/不同旋转周期。Dev/App-Dev通过标准Helper空闲重载，App-Dev真实目录字段及服务JS/CSS核验通过；未通过真实模型制造活动。
+
+### NXR-MESSAGER-REPLY-IMAGE-SIZE-20261104
+
+- implemented，未发布：Bot回复图片从192px缩略图上限改为最大560px宽/480px高，按原比例适应对话栏；用户上传附件维持紧凑缩略图，保存/加入Gallery与放大操作不变。仅CSS修改；App-Dev刷新后实机截图确认完整大图按比例展示及操作按钮保留，实际服务CSS与当前checkout一致，diff检查通过；无需重启Local或重建。
+
+### NXR-MESSAGER-UPLOAD-THUMBNAILS-BUBBLES-20261103
+
+- verified，未发布：修复App Chat消息投影遗漏上传附件media_type/size_bytes，基于原Session内附件记录补齐历史/新消息展示元数据，不按扩展名猜类型，不改执行输入。上传图片恢复Chat风格缩略图、放大与保存/加入Gallery；用户黑色文字气泡单独fit-content，不再被附件宽度撑大，附件仍右对齐。
+- 无Cloud/权限/Agent执行逻辑修改。后端23项、隔离浏览器15项通过；Dev/App-Dev均通过标准Helper空闲重载，App/Helper来源与实际CSS核验通过。实际消息接口返回原上传PNG正确MIME/大小；App-Dev实机确认缩略图、放大/关闭预览及短Prompt气泡。未进行实际Gallery写入或下载；操作使用夹具验证。验收：ai2apps/docs/acceptance/messager-upload-thumbnails-20261103/receipt.json。
+
+### NXR-MESSAGER-CHAT-ASSET-CARDS-20261103
+
+- 已实现，App-Dev已刷新，未发布：Bot消息素材对齐Chat，图片采用缩略图/点击放大与保存、加入Gallery操作，文件类复用chat_artifacts卡片的预览/下载/加入Gallery；移除图片下方原始文件名下载行，保留原会话资源拖拽。
+- Chat图片/文件共用组件增加Session附件身份识别及可选sourceAppId，Bot使用Messager归属；原Chat默认不变，移动signed流程仍仅接收artifact。不引入任意HTML预览。退出Bot关闭图片对话框并清理文件预览资源。15项测试通过，覆盖图片预览/原始下载、artifact/attachment导入身份、音频/文档预览、HTML不执行、正文图片去重、Chat桌面/移动回归与Bot缓存。Dev/App-Dev六项服务JS/CSS核验当前checkout；App-Dev真实消息显示保存/加入素材库按钮。原生图片预览在AX中打开后，外部替换App-Dev bundle打断进一步检查，完整操作由隔离Chrome验证。未下载真实素材、写入用户Gallery或运行模型。收据：ai2apps/docs/acceptance/messager-chat-assets-20261103/receipt.json。
+
+### NXR-MESSAGER-CONVERSATION-MODEL-ACPF-20261103
+
+- Dev/App-Dev已加载，未发布：Bot对话模型下拉增加“安装模型…”入口，调用Messager所有的text.chat.local ACPF、installMore/configure_only；立即恢复原模型，不将入口值保存为模型，取消保持原选择。ready后刷新当前Bot目录并保留有效选择，切换Bot后不更新旧对象，不自动发送/重试任务。
+- Chat与Messager的对话模型配置迁入conversation-models.yaml共享app_ids清单；Chat的音频配置保留原文件，Messager语音配置不变，不修改ACPF引擎/安装协议。模型JS7项、共享Profile/Chat配置后端3项、缓存/清理UI6项通过。App-Dev原生选择“安装模型…”打开标准多模型ACPF，含推荐与已安装标记；取消后保留原DeepSeek API Default，未确认安装、下载或提交新消息。两实例空闲后标准Helper重载，App/Helper根、实际Local模块路径与服务三项JS核验当前checkout。收据：ai2apps/docs/acceptance/messager-model-acpf-20261103/receipt.json。
+
+### NXR-MESSAGER-AVATAR-PRESETS-20261103
+
+- 已实现，未发布：头像首选项用Star明确命名，保留spark存储键兼容旧设置；新增Sun/Moon/Cat/Owl/Leaf/Rocket/Compass/Heart，合计12种统一线描SVG预设，保留自定义颜色、上传与Gallery图片。
+- 原生BotAvatar API扩展封闭枚举，不接受任意SVG/URL；2项头像回归和12种预设API校验通过，未知预设仍拒绝。仅头像显示/配置，无权限或执行逻辑变化；Dev/App-Dev空闲后经标准Helper重载；App/Helper源码根、实际OpenAPI的12项枚举及服务SVG资产均核验当前checkout。未更改用户头像进行测试。
+
+### NXR-MESSAGER-AVATAR-FIELD-TITLE-20261103
+
+- 已实现，未发布：Profile头像编辑区增加“Bot头像 / Bot Avatar”字段标题，与Name/Role同用12px、500字重与5px标题间距；头像组补上本地化可访问名称。仅模板/CSS，diff检查通过，刷新加载。
+
+### NXR-DOCK-DRAG-MARKERS-20261103
+
+- 已实现，未发布：Dock每次dragover先清理其它插入标记，不依赖可能遗漏的dragleave；跨SVG子节点不错误清掉当前提示。拖出Dock、放下、dragend统一清理标记/拖动状态，文档层监听避免renderDock替换源节点后漏清理；禁止拖到自身导致排序错误，拖动中不弹图标Tip。
+- 仅Shell前端，无协议/Runtime变更。JS语法与diff检查通过；隔离Chrome回归通过，覆盖连续跨目标无dragleave、SVG子节点、拖到自身、拖出、排序/落下、取消及窗口外drop；两个开发实例shell.js字节核验当前checkout，Dev Home已刷新。未更改真实Dock排序用于测试。收据：ai2apps/docs/acceptance/dock-drag-markers-20261103/receipt.json。
+
+### NXR-MESSAGER-INSPECTOR-TYPOGRAPHY-20261103
+
+- 已实现，未发布：统一Bot右栏13px标题/输入、12px标签/说明与紧凑间距，角色文本框默认96px，头像编辑改为轻实线背景；移除Profile中重复的任务状态。Task/权限/通知常驻说明缩为一句，完整规则保留在“了解规则”折叠区，语音说明缩短。
+- 仅模板与CSS，不修改权限、配置保存或执行规则。静态diff检查通过，Dev已刷新并目视核验Task短说明、折叠规则、Profile标签/输入字号与头像编辑排版；Dev/App-Dev实际服务CSS核验当前checkout。
+
+### NXR-MESSAGER-FIVE-BOT-CACHE-20261103
+
+- Dev已刷新并原生验证，未发布：按当前Messager挂载点以内存LRU保留最近5个Bot（含当前），缓存消息快照、已上翻历史、滚动像素位置及文字草稿。切回同步呈现只读快照，后台重新打开/校验会话、目录与最新消息后无跳转替换；会话变化、空/截断历史不复用旧消息。
+- 缓存不保留活执行器、轮询、录音或审批权限；快照中按钮禁用，审批和任务状态清掉，恢复后读取真实状态。清空/归档显式失效、页面卸载清空；晚到的旧创建不会覆盖新快照。仅前端，无授权或Agent执行逻辑变化；前端16项回归、最终缓存2项通过。隔离Chrome验证LRU淘汰、240px滚动及更早分页恢复、文字草稿、清空/撤权失效；Dev原生向上滚动后切出/切回核验，两个开发实例实际服务JS逐字节核验当前checkout。收据：ai2apps/docs/acceptance/messager-five-bot-cache-20261103/receipt.json。
+
+### NXR-MESSAGER-LOADING-LABEL-20261103
+
+- 已实现，未发布：读取对话提示改为中间栏水平/垂直居中，20px中等字重与更深灰色；不占流式布局空间、不阻挡输入。仅CSS，无加载/执行行为变化，diff检查通过；刷新页面加载。
+
+### NXR-MESSAGER-SWITCH-LOADING-20261103
+
+- 已实现，未发布：Bot切换同步展示读取状态，会话打开与模型目录并行；完整输入框先挂载，历史消息不等目录，任务状态后台补齐。目录就绪仅更新语音模型选项，保留用户草稿；发送/附件/录音就绪前禁用。无消息/权限/审批缓存，沿用generation隔离。
+- 仅前端加载顺序，无后端执行/权限变更。Composer8项、状态优先1项和隔离Chrome加载/审批回归验证；覆盖人为挂起模型目录时历史和附件/语音图标已显示、草稿保留、发送就绪保护。设计文档同步更新。Dev原生刷新并切换核验完整消息与图标输入栏；Dev/App-Dev实际服务三项资产逐字节核验当前checkout。
+
+### NXR-MESSAGER-COMPOSER-ENTER-20261103
+
+- 已实现，未发布：Bot输入框按Chat主输入框规则处理回车：桌面Enter提交、Shift+Enter换行、粗指针/触摸设备Enter换行；IME isComposing和keyCode229不截断选词。不处理已被消费的事件，发送不可用/上传录音转写/提交中不重复发送，卸载移除监听。
+- 复用原form.requestSubmit与已有发送校验，无Agent权限/执行逻辑变化。Composer8项测试、JS语法与diff检查通过；涵盖桌面/触摸/IME/禁用/忙碌及既有附件语音流程。
+
+### NXR-MESSAGER-ACCESS-DIVIDERS-20261103
+
+- 已实现，未发布：App Access各目标之间增加浅色分割线，App/Mini-App分组之间也增加分割线；避免末条重复边线。仅CSS和模板，无权限/执行行为变化；静态差异检查通过，Dev原生页面刷新后已目视核验分组和两个Mini-App条目间的浅色线。
+
+### NXR-MESSAGER-AI-USAGE-CONSENT-20261103
+
+- Dev/App-Dev 已加载并验证，未发布：分开AI/API推理用量ai.usage和购买/支付purchase/payment；文生图、编辑及图片Mini-App使用正常AI用量声明。Bot已有读写权限时不因用量逐次确认，交易、显式confirm、敏感、删除和未知副作用继续单次确认。旧billing不做全局放行。
+- 保留既有预算、撤权、冻结权限、原Run/版本核验及不确定执行恢复保护；无新增/扩大预算、充值、订阅购买或自动审批旧任务。同步AaAT契约、接入指南、Messager设计和权限UI文案，明确AI充值/套餐购买属于交易付款。
+- 专项owner测试21项、前端12项、完整AaAT门禁997项通过（522.09秒、退出0；结束后headless Metal atexit警告）。覆盖跨owner夹具的正常AI用量授权/再次调用/显式确认、purchase/payment/旧billing/未知副作用仍阻断、真实图片owner声明及不确定执行保护。
+- 用户明确同意后，仅取消已核对的Dev旧image.generate任务run_2d98919e081245f99a72c387c368347e；空闲检查后经标准Helper重载。两实例App/Helper源码根、实际模块路径、持久工具effects及最终服务模板/JS/CSS均核验当前checkout；未执行真实模型、购买或支付。
+- 证据：ai2apps/docs/acceptance/messager-ai-usage-consent-20261103/receipt.json、sources.json及测试日志。未改Cloud或发布生产版本。
+
+### NXR-MESSAGER-INLINE-ACCESS-CARDS-20261103
+
+- Dev/App-Dev 已加载并验证，未发布：Bot授权交互进入消息流Mini-UI卡片，带App/Mini-App名称、图标及所属宿主，访问授权主按钮Allow this bot；付费/敏感特殊调用仍分开确认。修复内置Mini-App无manifest组件导致身份解析失败的问题，由owner提供明确显示身份，Package继续必须匹配实际manifest。
+- 保留原Run/Interaction、request_hash与授权校验；切换交互防旧响应覆盖，提交锁定避免重复点击。完整AaAT门禁990项通过（533.41秒、退出0）；前端12项、owner回归23项通过。门禁结束有headless Metal atexit警告，进程退出0。
+- Dev原活动任务结束后才经标准Helper重载；两实例App/Helper源码根、运行模块路径、实际服务JS/CSS及文生图Mini-App真实身份解析均核验当前checkout。原生Dev消息页恢复正常。卡片布局与真实接口调用结构以隔离浏览器/API/SQLite夹具验证；未批准或执行真实付费绘图请求。
+- 收据：ai2apps/docs/acceptance/messager-inline-access-cards-20261103/receipt.json；测试预览：fixture-card.png；规范：ai2apps/docs/messager-ui-and-bot-task-v2.md。未改Cloud或发布生产版本。
+
+### NXR-MESSAGER-ACCESS-TARGETS-20261103
+
+- Dev/App-Dev 已加载并验证，未发布：权限面板仅列已加入目标，App/Mini-App独立分组；添加弹窗按名称搜索且默认只读，开关直接应用。删除前审阅目标与撤权影响，确认后撤销全部目标权限，旧执行失效、回执保留；取消不提交。300px右栏无横向溢出，图标带Tip。
+- 新Bot默认Gallery/Messager/Todo读写、AI Browser只读。保留已有明确授权/关闭/清理/撤销，不因升级恢复；替代仅未修改的历史自动Intelligence授权并推进epoch。按可信owner+mini标识授权，父App不隐式授权Mini-App；旧Package授权仅迁移当时已有组件，未来兄弟组件不继承。卸载Mini-App可读名称保留供撤权，实际无权限。
+- 完整AaAT门禁981项通过（599.84秒、退出0），owner回归20项、最终目标专项6项、前端11项通过。覆盖跨用户、Mini兄弟隔离、迁移、版本防覆盖、失效组件、冻结撤权、普通/特殊原审批与取消。老协议测试夹具明确设置为受限/历史授权，未削弱通用边界规则。
+- 原生App-Dev确认四默认值、App与16个独立Mini-App的添加目录、取消和Gallery撤权确认；未在真实账号提交新增/删除权限或运行模型。实际写入与撤权由隔离SQLite/Run/浏览器夹具验证。Dev任务完成后才经标准Helper重载；两实例App/Helper根、实际v2权限模块与最终服务模板/JS/CSS核验当前checkout。
+- 收据：ai2apps/docs/acceptance/messager-access-targets-20261103/receipt.json；规范：ai2apps/docs/messager-ui-and-bot-task-v2.md。未改Cloud、通用Agent业务分支、付费确认或生产发布。
+
+### NXR-MESSAGER-VOICE-AUTO-FALLBACK-20261103
+
+- App-Dev implemented / verified，未发布；Dev仍有活跃Agent Run，未重启：Bot语音移除保存按钮，完整角色或模型/音色选择自动提交，未完成选择继续用已生效设置；提交中禁用选择，版本冲突重新读取。
+- 按Bot/actor持久化上次成功合成配置，旧revision不能覆盖新设置；播放前检查当前/历史可用性，失效时回退上次可用或默认并说明。明确400/404/409/422/503可转用候选；取消、网络错误、其他不明确服务错误不自动重试。回退不写用户选择，重置清历史。
+- 模型下拉安装项调用标准ACPF configure_only/installMore，新增Messager owner YAML仅声明已验证CustomVoice方案。原生确认模型选择页、已安装标记和取消路径，未下载模型；不修改ACPF安装引擎，不新建Publisher/Package。
+- 后端13项、前端24项、既有ACPF回归4项通过。原生完整选择自动持久化并真实朗读成功；历史成功配置持久化与原默认恢复已只读核验。不可用回退为夹具验证，未破坏真实模型制造故障。App-Dev经标准Helper加载最终源码；最终运行模块/资产/App/Helper根已核验，期间实例外部重载后重新连接核验。Dev后端新接口激活仍暂缓。
+- 收据：ai2apps/docs/acceptance/messager-voice-auto-fallback-20261103/receipt.json；规范：ai2apps/docs/messager-ui-and-bot-task-v2.md。未改Cloud或AaAT执行授权。
+
+### NXR-MESSAGER-BOT-VOICE-SETTINGS-20261103
+
+- App-Dev implemented / verified，未发布；Dev后端激活暂缓（1个活跃Agent Run，未中断）：Bot右栏新增默认折叠“语音”组，提供Chat默认、语音工坊角色、独立模型/预设音色。每Bot/actor持久化，revision防覆盖；保存检查Bot归属、角色归属与就绪、模型权重/输入要求和预设匹配。归档恢复保留，重置Bot清除覆盖。
+- 共用消息UI接受通用朗读请求回调，无Bot业务分支；独立模型走现有speech API，角色复用工坊quick-read及其参考资料归属检查，输出归工坊共用历史，无Bot自建输出。失效角色/模型报错，不静默替换；设置不改变当前播放，不写Chat默认。切换/刷新后正确恢复下拉框。
+- 后端11项（含API/归属/revision/角色/模型和生命周期）、前端21项通过。原生验证独立模型音色保存、跨Bot隔离和刷新恢复，真实朗读HTTP200并恢复空闲；验收Bot已恢复原默认。角色合成仅模拟接口测试，未作真实角色合成。App-Dev标准Helper空闲重载，最终API、App/Helper根、实际导入模块与服务资源核验当前checkout。Dev任务仍活跃未重启，前端源资源为当前checkout。
+- 收据：ai2apps/docs/acceptance/messager-bot-voice-settings-20261103/receipt.json；规范：ai2apps/docs/messager-ui-and-bot-task-v2.md。未改Cloud、AaAT执行/声明或生产发布。
+
+### NXR-MESSAGER-TTS-SELECTION-FIX-20261103
+
+- App-Dev 真实合成及界面调用验证，未发布：普通朗读此前只看公开模型表，选到列表首个IndexTTS参考音频模型；无参考素材时400 invalid_reference_audio。现合并Chat完整模型能力与权重就绪信息，选择可直接文字朗读模型，优先兼容的Chat已选模型及音色偏好，必要时发现预设音色；不修改保存设置，不虚构参考音频、不在合成失败后跨模型重试。错误保留HTTP状态和服务具体说明。
+- 15项隔离前端回归通过，覆盖完整目录合并、未下载/参考模型过滤、音色偏好和具体错误。真实Qwen3 CustomVoice serena短中文合成HTTP200，WAV 24000Hz/28800帧/1.2秒；原生Bot历史回复点击朗读显示生成状态，服务HTTP200后按钮恢复空闲且无错误。两个固定实例服务资源与源码根核验当前checkout。仅前端，无Local重启/权限变更。收据：ai2apps/docs/acceptance/messager-tts-selection-fix-20261103/receipt.json。
+
+### NXR-MESSAGER-MESSAGE-ICON-ACTIONS-20261103
+
+- App-Dev 已刷新并核验，未发布：Bot 用户/AI消息操作栏改为图标按钮，复用Chat Hover-Tip，鼠标悬停与键盘聚焦均可见。复制成功绿色勾号/已复制Tip约1.8秒还原；失败Tip及错误文字。朗读生成期加载图标、播放期停止图标，Tip说明当前状态和点击停止操作；取消/结束恢复音量图标。Mini-Chat原文本栏外观保留。
+- 14项隔离浏览器回归通过，覆盖两个角色、复制成功恢复、模拟TTS生成/播放/停止状态；原生App-Dev确认图标布局及复制成功Tip。未调用真实语音模型。两个固定实例的App/Helper根、运行模块和服务组件来源核验当前checkout。无Local重启/权限或执行变化。收据：ai2apps/docs/acceptance/messager-message-icon-actions-20261103/receipt.json。
+
+### NXR-MESSAGER-MESSAGE-ACTIONS-20261103
+
+- App-Dev 已刷新并原生核验，未发布：Bot 对话用户气泡和 AI 回复下方增加复制、朗读/停止。抽出并复用 Chat UI 既有复制/TTS操作组件，不替换正文和附件，不新增模型或任务执行路径。复制原正文，朗读排除代码块；切换Bot、卸载、后台停止并回收播放资源。
+- 浏览器12项回归通过（含 Chat 原功能与两个角色独立复制、正文/附件保留、模拟TTS停止），原生既有对话显示两套按钮且AI复制出现已复制反馈。未调用真实语音模型。两个固定开发实例App/Helper根、运行来源与服务资源核验当前checkout。仅前端，无Local重启或权限改变。收据：ai2apps/docs/acceptance/messager-message-actions-20261103/receipt.json。
+
+### NXR-MESSAGER-RIGHT-SIDEBAR-20261103
+
+- App-Dev 已刷新并实测，未发布：Bot/Gallery 右侧栏增加拖拽及键盘调整；沿用原宽度为最小值（常规300px、窄窗250px），最大720px并保留对话区可用空间。独立保存宽度，窗口临时限宽不覆盖偏好；双击/Home恢复最小值，移动端沿用覆盖布局。
+- 复用已有 pointer capture/取消/卸载清理；左右栏隐藏切换重新计算可用宽度。前端15项通过，原生验证300→316键盘增宽、316→416鼠标拖拽、刷新保留416px。App/Helper根、运行模块、服务资源均核对当前checkout。仅前端，无Local重启/权限变化。证据：ai2apps/docs/acceptance/messager-right-sidebar-resize-20261103/receipt.json。
+
+### NXR-MESSAGER-FOOTER-HOVER-TIPS-20261103
+
+- App-Dev 已刷新并核验，未发布：底部新建/已删除 Bot 图标增加显式 Hover-Tip，悬停或键盘聚焦时向上显示，带 aria-describedby；新建提示随面板状态切换为取消新建。左右朝栏内定位，窄栏可换行，避免裁切；取消重复原生 title。
+- 原生验证两个按钮聚焦时对应提示与位置；前端7项回归通过。固定实例源根、运行模块及服务模板/样式核验当前checkout。仅 HTML/CSS，无操作行为、权限或Local重启。收据：ai2apps/docs/acceptance/messager-footer-hover-tips-20261103/receipt.json。
+
+### NXR-MESSAGER-TOAST-FOOTER-20261103
+
+- App-Dev 已刷新并原生验收，未发布：错误/成功提示改为顶部下滑浮层，不占工作区布局，固定6秒关闭并提供关闭按钮。相同可见消息不重置计时；新消息替换与销毁清理，旧回调不能关闭新提示。关闭会取消尚未完成的身份轮换二次确认，不保留不可见确认状态。未改变服务错误语义。
+- 新建 Bot、已删除 Bot 改为名称提示/可访问标签的图标按钮，固定 Bot 列表底部一行；列表独立滚动，窄栏88px仍同排。保留新建草稿、原归档索引/恢复路径，未自动恢复或新建Bot。
+- 前端14项回归通过，原生验证既有NotFound浮层不挤动工作区、关闭/超时、底部新建表单及归档空状态、窄栏同排；最终恢复260px。App/Helper及服务模板/JS/CSS来源核验当前checkout。仅前端刷新，无Local重启、模型调用、任务创建或授权变化。
+- 收据：ai2apps/docs/acceptance/messager-notice-footer-20261103/receipt.json；规范补充：ai2apps/docs/messager-ui-and-bot-task-v2.md。
+
+### NXR-MESSAGER-BOT-CARD-20261103
+
+- App-Dev 已刷新并核验布局，未发布：左栏 Bot 卡片统一64px高，仅头像、单行省略名字与真实未读状态；移除职责和任务状态副标题。窄栏仍隐藏名称、保留相同高度及完整名称提示。
+- 未读使用左上角45度浅蓝绶带与蓝色数字/圆点，99以上为99+，不制造未读、不把任务完成视为未读；不改变好友/Inbox语义或任何用户读状态。前端5项回归通过，App/Helper及服务模板/样式来源核验当前checkout。仅HTML/CSS，无Local重启、模型调用或授权变更。
+- 收据：ai2apps/docs/acceptance/messager-bot-card-20261103/receipt.json；规范补充：ai2apps/docs/messager-ui-and-bot-task-v2.md。
+
+### NXR-BOT-WRITE-AND-NOTIFICATIONS-20261103
+
+- implemented / automated_verified，Dev / App-Dev 已加载，人工场景验收待用户，未发布：App 权限新增默认关闭的 todo.inbox.create 与 messager.notice.create，前台/后台分别授权。精确校验 App、接口版本、effects 和冻结 epoch；只创建当前用户收件箱普通待办或给自己保存站内提醒，不允许修改/删除/启动任务、指定收件人、外部发送或付款。既有只读授权不扩大。
+- 新增 Bot 成功、失败/取消、等待回复/确认、主动提醒策略；成功还遵守每次任务 notify。Todo 原状态通过通用 owner observe 投影到持久本机提醒；异常不影响执行，不建立第二执行器。使用既有通知发件箱及受控 app_route，预览固定通用文案、正文留本机。发送/重试/点击再次检查原 Bot/会话/Run/Interaction/期限/取消；点击只回到原对象，不提交或批准。
+- Inbox/Dock/Bot 未读徽标及原任务定位接通；已读或策略关闭可通过通用 owner-scoped cancel_pending 撤回精确本机待发送事件。原始回执幂等、静默决策不复活、进程重建后续接原等待与终态。Hook 的详情读取/动作委托不因 Bot 后台写入授权而扩大。已送达提醒不能靠本机取消撤回。
+- 完整 AaAT 964 项通过（500.52 秒/退出0），界面回归12项通过；补充集成84项、owner/通用观察20项通过。测试使用临时数据、可控模型及模拟网络；覆盖默认关闭、FG/BG 隔离、撤权、严格输入、普通 Todo 不执行、读/点击不审批、静默与失败策略、重建恢复、隐私预览、Hook 限制、跨 owner 取消和未读队列积压。
+- 两固定实例空闲后经各自标准 Helper 重载，App/Helper 源码根、实际导入模块、新表与已服务资产内容均核对为当前 checkout，实例数据保持独立。未运行真实模型场景，未创建用户验收任务，未代为启用写入授权或更改提醒设置；按用户要求由用户自行验收。入口：Bot 右栏 App 访问权限、任务与提醒策略，以及 Messager Inbox。Cloud 能力或连接不可用时保留本机 Inbox；沿用既有桌面客户端权限边界。
+- 规范：ai2apps/docs/messager-ui-and-bot-task-v2.md；证据：ai2apps/docs/acceptance/messager-write-notifications-20261103/receipt.json。未改 Cloud 服务端、未增加第三方 Package 执行器、未发布生产版本。
+
+### NXR-MESSAGER-RESIZABLE-SIDEBAR-20261103
+
+- App-Dev 原生验收通过、两个开发实例资源已更新，未发布：左栏增加可拖动及键盘操作分隔条；默认260px、最小88px、最大480px，按右栏和中栏360px可用空间约束。低于168px时 Bot/好友卡片仅头像与真实已有未读计数/标记，保留名称提示与可访问名称；Tab 仍单行图标，新建/搜索入口可展开。
+- Pointer capture 支持跨 iframe，取消/卸载清理；方向键每次16px、Home/End及双击重置。当前浏览器本地保存偏好，窗口临时限宽不覆盖偏好。未增加未读追踪，未把任务完成状态推断为未读；计数缺失不显示角标，布尔未读显示圆点。
+- 前端17项回归通过。App-Dev 实测鼠标从88px拖至220px、卡片恢复文字、Home最小值和头像模式、刷新保留88px、双击恢复260px；最终保留260px。App/Helper根、运行模块与服务 JS/CSS来源核验当前checkout。仅前端刷新，无 Local/Runtime重启，无模型调用、Cloud变更或用户授权变化；未干预 Dev 原有导出界面。
+- 收据：ai2apps/docs/acceptance/messager-sidebar-resize-20261103/receipt.json；规范补充：ai2apps/docs/messager-ui-and-bot-task-v2.md。
+
+### NXR-MESSAGER-SIDEBAR-GALLERY-20261103
+
+- Dev / App-Dev 已激活；布局、协议及真实接口验收通过，原生拖拽手势待实机确认，未发布。右栏 Bot / Gallery Tab；Task 首组默认展开，Profile（名字/头像/职责/模型/删除或重置）、App 权限、记忆、对话历史默认折叠。Gallery 复用系统 Mini-Entry 标准挂载。
+- Gallery 素材按拥有者核验 ID 与实际内容后复制到原会话附件；会话附件、Workspace 生成文件及正文受管素材引用携带持久资源身份拖入 Gallery。新增 Gallery 所有的 Session 附件导入，复用 Session/actor/collection 访问检查及内容去重，不信任载荷路径或外部 URL。HTML 不在主页面执行；音视频/非解析文件为明确未读取元数据，不伪造分析或扩权。保留原附件大小/数量限制。
+- 完整 AaAT903项通过（503.78秒/退出0），Python owner/Gallery专项30项、前端事件14项通过。Dev/App-Dev 原生分组和系统 Gallery 挂载核验通过；专用图片/HTML实际完成生成文件→Gallery→会话附件→Gallery去重、内容一致。无模型调用、无外部消息或用户授权变更。原生 CUA 拖拽尝试未触发持久化，不计为手势验收成功，须保留此限制。
+- App/Helper 来源、运行模块路径及新 JS/CSS 服务资源核验当前 checkout；固定实例隔离保留。收据：ai2apps/docs/acceptance/messager-sidebar-gallery-20261103/receipt.json；规范：ai2apps/docs/messager-ui-and-bot-task-v2.md。
+
+### NXR-MESSAGER-CONVERSATION-CONFIG-20261103
+
+- Dev / App-Dev 已激活并验收，未发布：Bot 对话通过 Messager owner 的 messager.bot.configure 提出身份职责修改、用户指定记忆保存、原托管 Todo 计划停用；只有同源 Local desktop 宿主审阅确认后生效，普通讨论、任务执行和后台 Hook 不能直接修改配置。重复计划创建仍复用已有 Task 提案及冻结后台权限。
+- 宿主展示原/新身份、记忆正文来源或原任务时间/时区；复核 actor/Bot/Session、冻结权限和接口版本、审阅哈希/期限与业务版本。身份/记忆与结果同库原子提交，写入事务再次检查身份，避免覆盖并发右栏保存；稳定消息键投影实际回执并同步右栏。
+- TodoStore 新增任意 owner 可用的原子 disable_schedule 及幂等回执，原计划改 off、next_due 置空；已入队/运行的执行保留。调度 admission 检查实际日程，防止已停用槽位继续启动。跨库 applying 窗口只核对原 Todo 回执，不推断成功或重放副作用。未在共享 General/路由添加 Bot 分支。
+- 最终完整 AaAT 903 项通过（500.82 秒/退出0），最终 owner/原 Todo 专项31项通过（43.51秒），JS回归1项通过。App-Dev 真实 Cloud DeepSeek 四轮对话及原生审阅完成职责、记忆、每日06:00计划创建与原计划停用；三份配置回执各一份、仅一个 Todo、零任务 Run、零后台 App 读取范围、无外部消息。并发、版本、撤权、陈旧卡与跨库中断以夹具验证。
+- 最终 App/Helper 源码根、运行模块路径、服务资源内容与当前 checkout 一致；空闲后标准 Helper 重载，两实例保持独立，原生 App-Dev 固定窗口身份及回执恢复核对通过。收据 ai2apps/docs/acceptance/messager-conversation-config-20261103/receipt.json；规范 ai2apps/docs/messager-ui-and-bot-task-v2.md。保留专用验收 Bot/停用任务用于审计，未修改默认用户 Bot。
+- 当前不自动抽取整段历史记忆，不在对话中自动扩大 App 访问权限；暂停只停未来调度，不停止当前已启动的执行。未开放任意 Todo 修改、第三方 Package 执行器、外部发送或付款，也未发布生产版本。
+
+### NXR-MESSAGER-AGENT-MODEL-20261103
+
+- Dev / App-Dev 刷新并验收，未发布：Bot 模型列表复用 Chat 的 Agent 可选/默认选择策略及相同目录来源；排除非对话、隐藏、Helper、缓存发现、未就绪及失败模型，统一别名为 Gateway ID。新 Bot 继承 work_agent 及 Chat 原有工作能力/账户 API 默认回退；不再使用 Mini-App work_standard 或目录第一项。保留已有 Bot 明确选择的有效模型，默认不可用时要求明确选择，能力说明折叠展示。STT 使用独立目录。
+- 前端策略/输入区 21 项、Python 默认模型/Agent 选择 8 项通过。Dev 实际完整目录44项收窄为8个对话模型，无专属手动选择时与 Chat Agent 默认相同；原生菜单核验无音频/图像/视频生成项。App-Dev 中文界面选择其独立账户 Agent API 默认。两实例 App/Helper 源码根、运行模块路径和新服务资源核验通过。
+- 仅 HTML/JS 刷新，无 Local 重启、模型调用、全局默认/授权修改或后台执行协议变化。收据：ai2apps/docs/acceptance/messager-agent-model-20261103/receipt.json；规范补充：ai2apps/docs/messager-ui-and-bot-task-v2.md。
+
+### NXR-MESSAGER-MEMORY-LIFECYCLE-20261103
+
+- Dev / App-Dev 已激活并验收，未发布：独立的用户维护长期记忆，记录来源/更新时间，带 owner/Bot 隔离、容量上限及乐观版本；记忆作为数据进入新对话，不增加授权。任务提案冻结记忆快照，宿主审阅卡可展开查看；当前不自动从对话提取记忆。
+- 可恢复的记忆移除、对话归档/恢复、Bot 删除/恢复及默认 Bot 重置；清理要求同源宿主影响审阅及哈希，提升权限版本、撤回 App 授权、停止旧 Run/托管队列与关联计划、暂停 Hook/原 System Task、拒绝待确认提案。恢复不复活权限/Hook/计划。历史任务仍结算唯一审计回执；活动的手工关联/外部执行需先由所属 App 停止，清理在变更前拒绝。
+- 完整 AaAT 893 项通过（487.53 秒/退出0），Bot owner 专项21项通过，JS挂载/选中保持回归1项通过。App-Dev 原生验证保存、移除/恢复、来源时间、审阅、删除/恢复、清除对话与保留记忆、恢复原模型结果；修复设置表单销毁后对话挂载丢失及非删除清理错误切换默认 Bot。
+- 真实 Cloud DeepSeek 在零 App 授权、零 Tool 调用下读取合成记忆标记成功。两个实例的 App/Helper 源码根、运行模块及服务资源内容核验通过。Dev 原有上传面板保留，原生修改验收在独立 App-Dev 进行；仅专用测试 Bot 改动，默认用户 Bot 未修改。收据 ai2apps/docs/acceptance/messager-memory-lifecycle-20261103/receipt.json；规范补充 ai2apps/docs/messager-ui-and-bot-task-v2.md。
+- 清理可恢复且保留任务快照/审计，不等于永久擦除。未增加 App 写入、发送或付款权限，未实现第三方 Package 后台执行器，未发布生产版本。
+
+### NXR-MESSAGER-COMPOSER-20261103
+
+- Dev / App-Dev 已激活并验收，未发布：Bot 输入区参考 Chat 增加附件、语音输入、底部操作栏和图标发送按钮。附件支持文件选择、拖入、预览及移除；语音复用已准备的 STT 与转写 API，结果进入可编辑草稿，由用户自行发送。未准备识别模型时指引至 Chat 语音设置。
+- AppChat 以 owner 显式 opt-in 接受当前会话附件 ID；服务端解析有界文档摘录或图片到原 Run，不提供额外 Tool 权限。跨会话材料拒绝、原请求重放不重新读取。消息展示正文及文件名卡片；后台 Todo 附件转移尚未开放，相关提案明确拒绝，避免丢失材料或扩权。
+- Dev 原生选择/上传/发送合成附件，当前实际模型正确读取标记，无工具调用、无新增用户 App 授权。语音以夹具验证，未录制现场声音。专项 22 项、输入区交互 3 项通过；完整 AaAT 893 项通过（487.01 秒，退出0）。固定 App/Helper 源码根、运行模块与新服务资源均核验当前 checkout；两个实例独立。收据：ai2apps/docs/acceptance/messager-composer-20261103/receipt.json。
+
+### NXR-MESSAGER-TODO-EXECUTION-20261103
+
+- Dev / App-Dev 已激活并验收，未发布：Bot 对话提案经同源宿主审阅后原子创建 Todo managed 任务及串行 lane，幂等启动；冻结后台权限、模型、指令与日程，通过可信 owner adapter 使用独立 AppChat 任务 Session，缺少绑定时拒绝执行，不落回普通 GeneralAgent。支持立即、定时单次及重复计划。
+- 原 Task Run 的输入/单次审批回接原 Interaction；限制当前操作/资源，不扩大冻结能力。撤回停止旧 Run、队列和调度；恢复复用原执行回执，终态去重写回原对话。备份不导出授权，导入托管任务需重新 owner 审阅。业务表单/handoff/BiDi 保留所属 App 完成约束。
+- 完整 AaAT 882 项通过（450.13 秒），补充审批 6 项通过，Todo 执行/备份 111 项通过。Dev 当前 DeepSeek 真实模型完成提案→原生确认→Todo 启动→等待时并行普通对话→原 Run 回复续跑→唯一结果回写；敏感审批/撤回/恢复/定时以夹具验证，未执行真实敏感操作。无新增用户 App 授权或外部消息。
+- App/Helper 源码根、运行模块路径、服务资源内容与当前 checkout 一致；空闲后标准 Helper 重载，原生 Dev 回执恢复、App-Dev 固定窗口身份及独立数据核验通过。协议 ai2apps/docs/messager-todo-execution-v1.md；收据 ai2apps/docs/acceptance/messager-todo-execution-20261103/receipt.json。首批 App profile 仍只读；记忆管理、删除/清理及更多写能力尚未完成，不视为整个 Messager v2 已交付。
+
+### NXR-MESSAGER-BOT-ACCESS-20261103
+
+- 本阶段dev/app-dev已激活，整体Messager v2仍in_progress，未发布：Bot独立App只读授权面板与owner接口，首批情报/Todo读取、foreground/background分开，Provider/version固定；保留旧情报前台读取，不默认授权Todo或后台。修改授权停止旧AppChat执行，撤回再授权不恢复旧Run。授权不能由职责文本、消息或模型参数提供。
+- AppChat新增通用owner admission私有授权记录/执行前复核，普通Run输入不可伪造；宿主同源desktop与授权revision/接口审阅hash检查，Generic Agent补齐Run拥有的发现/参数预检上下文trace_id；无业务名分支。Hook身份摘要仅使用Bot名称/职责，不混入动态任务快照。最终完整AaAT863项通过（424.19秒/退出0），最终审阅/通用执行11项、防伪3项、Hook兼容批次30项通过；模型/执行为夹具，未扩大真实用户授权或执行用户任务。标准Helper空闲重载后，App/Helper源码根、运行AppChat/General/权限模块、私有表、资源字节、匿名401核验通过；Dev英/App-Dev中文权限面板及App-Dev原生标题通过。收据ai2apps/docs/acceptance/messager-bot-access-20261103/receipt.json；写操作、对话创建/启动Todo、冻结任务权限、确认回接及通知仍未交付。
+
+### NXR-MESSAGER-TODO-LANES-20261103
+
+- 本阶段dev/app-dev已激活，整体Messager v2仍in_progress，未发布：Todo原库受信任owner/task串行lane绑定，launch原子冻结、持久认领、等待交互占位、跳过忙lane继续其他任务；相同lane按owner隔离，活跃时禁止改绑。无lane旧任务保持现有行为，General Agent和权限不变。
+- Messager右栏关联已有Todo/解除、最多50项真实任务与最新Run状态、最多100项仅owner候选、Todo原项目直达。只读任务快照进入Bot上下文；关联不创建/启动任务、不授权；执行/调度/审批继续使用Todo入口与权限。
+- 完整AaAT856项通过（432.81秒/退出0），最终Bot/通道11项、Todo核心95项、其他执行器/备份20项通过；等待/恢复/并行对话为真实Runtime与可控执行模型夹具。两个固定实例空闲后经标准Helper重载，源码根/运行模块/资源字节/新表/匿名401核对通过；Dev原生任务候选展开取消及App-Dev中文任务栏/原生标题通过，未关联或启动真实任务。收据ai2apps/docs/acceptance/messager-todo-lanes-20261103/receipt.json。对话自动创建/启动、定时单次、Bot冻结App授权、审批回接与通知策略、长期记忆/清理删除仍未交付。实施记录ai2apps/docs/messager-ui-and-bot-task-v2.md。
+
+### NXR-MESSAGER-BOT-STREAM-AVATAR-20261103
+
+- dev/app-dev已激活，未发布：Bot中栏改为独立消息视图，复用Chat气泡CSS与安全Markdown；移除重复名称/职责与顶部模型选择，模型设置归右栏并按Bot保存浏览器选择。App Chat新增owner认证的最多50条sequence历史/增量分页、无正文状态查询；旧200条快照默认行为保持，查询仅取最新30个turn元数据。翻页保持锚点、按消息ID增量合并，切换Bot拒绝过期请求。
+- 四套固定SVG/颜色头像及图片上传、拖拽、Gallery选择。图片为当前用户图库引用，PNG/JPEG/WebP最大5MiB；API拒绝非法颜色、其他用户素材及不支持类型，头像不改变工具授权。独立头像表沿用Bot owner私有持久存储。默认Bot与原有会话/规则保留。
+- 完整AaAT846项通过（404秒/退出0），最终分页/头像5项、头像前端2项通过；初批durable/owner9项通过。固定实例空闲后标准Helper重载，App/Helper源码根、运行App Chat来源及前端资源逐字节核验；Dev原生确认中间栏布局、右栏模型/头像及原有腕表历史恢复。125条分页与图库隔离使用临时夹具，原生未发送消息/付费调用/改动头像，真实用户50+历史滚动与图片拖拽未做实机验收。完整记录ai2apps/docs/acceptance/messager-bot-stream-20261103/receipt.json。
+- 整体Messager v2仍in_progress：Todo Agent-Task串行通道、执行期间独立聊天、长期记忆、App权限与删除/清理未交付；本轮没有开放更多Bot能力或修改Cloud/生产发布。
+
+### NXR-MESSAGER-BOT-UI-V2-20261102
+
+- 2026-11-03 UI修正：左栏Bots/Friends/Inbox改为单行等宽横排、居中且不换行；CSS刷新生效，不改动任务/授权或会话逻辑。
+
+- in_progress，尚未完整验收/激活：首批源码落实三栏骨架、紧凑Header/图标提示/侧栏开关、Bot/Friends/Inbox顺序与Friends内申请入口、中栏申请列表、右栏名称/职责编辑及owner API。默认AI2Apps Bot通过actor→bot_id映射幂等创建，改名不重复创建。保留现有对话与规则；头像、完整Chat信息流/分页、记忆、权限管理、独立前台对话及Todo任务协作仍待完成。文档ai2apps/docs/messager-ui-and-bot-task-v2.md。
+
+### NXR-EVENT-HOOK-SETTINGS-20261102
+
+- dev/app-dev已刷新生效，未发布：按用户指定把 Messager Automation 的现有管理内容整体迁到 Settings，在 Capabilities & Tools 后增加 Event/Hook（事件/响应）。独立视图与样式，按页签懒加载/轮询，离开或销毁时停止轮询；移除 Messager 全局页签、监控脚本与样式依赖。System Control 快速授权入口保留，授权提示/SDK文案指向 Settings。订阅、授权、执行和业务策略不变，内部结构后续再完善。
+- 现有监控/授权前端8项通过；Settings组件懒加载、单轮询与离开/销毁停止的只读 smoke 验证、JS语法、差异空白检查通过。原生Dev验证标签顺序、原有2条暂停规则/通知/历史与规则表单、Messager四个导航无Automation；App-Dev中文AX验证能力与工具后为事件/响应，读取独立实例0规则。App-Dev后台截图未显示iframe绘制，未当作视觉证据。无规则/授权写入，无Python/原生/Cloud变化，无需Local重启或重建。两实例App/Helper源根、运行模块来源及本次JS/CSS逐字节核对通过。收据ai2apps/docs/acceptance/event-hook-settings-20261102/receipt.json。
+
+### NXR-PACKAGE-HOOK-CONSENT-20261102
+
+- dev/app-dev已激活，未发布：Schema105；签名event_hooks仅限定申请上限，安装不授权。宿主同源桌面审阅，申请/预览及批准/规则/grant分别原子保存；绑定用户、Installation、Package、App实例和Mini-App。监听、AaAT详情、后台固定处理器与固定动作分别冻结，不开放Package后台代码或任意工作流。
+- App Shell bridge与Mini-App实际mount端口接入，App SDK随Package签名打包。详情固定Provider/version与event_id、缓存重检授权、最多三次读取及48KB上限。兼容升级只前移接受来源；扩权/不兼容/发布者/patch/重装变化需重批，停用卸载撤销。System Control提供全局申请审阅、范围查看、暂停/恢复/撤销，Messager自动化页同步管理。每Package最多10个待处理申请，拒绝释放预览额度。
+- 最终完整AaAT门禁845通过（429.33秒，退出码0）；Package专项22、订阅/执行/动作74、安装/已有导出/owner62、前端及实际消息端口10项通过。此前扩展门禁843通过/1项旧交接SQLite锁冲突，按下项修复后全套通过，未放宽门禁。测试签名安装为真实临时Package，事件/AaAT业务结果及审批弹窗使用明确夹具，不等同线上第三方Package或微信验收。
+- 固定实例空闲后标准Helper激活，最终dev86132/55202、app-dev86147/55246。App/Helper源码根、运行导入路径、Schema105、八份资源字节、四项详情Tool及匿名401核验通过；原生英/中文全局管理入口、Dev Messager自动化区及最终App-Dev原生标题通过。没有新增用户Package申请或授权，没有Cloud/原生/Runtime依赖变更及生产发布。协议ai2apps/docs/package-event-hooks-user-consent-v1.md；实施ai2apps/docs/package-event-hooks-implementation.md；收据ai2apps/docs/acceptance/package-event-hooks-20261102/receipt.json。
+
+### NXR-PARAMETER-HANDOFF-WRITER-20261102
+
+- dev/app-dev已激活，未发布：完整Hook回归暴露旧参数交接先读后写时的SQLite快照升级冲突。Provider切换、handoff创建和link写入使用现有transaction(write=True)，在版本重检之前取得写事务；不改变Provider、状态、确认或业务规则，不增加自动重试。新增真实竞争写入测试，交接/表单22项通过（29.72秒），修复后完整AaAT845项通过。与Package Hook最终标准Helper重载一同激活，来源和实例验证见上项收据。
+
+### NXR-EVENT-HOOKS-E4-MONITOR-20261102
+
+- dev/app-dev已激活，未发布：Schema104；E4首批固定Todo创建＋当前用户本机站内通知，动作版本/参数在预览冻结；模型只审阅，宿主执行，逐步回执及Bot会话幂等执行回执。复用Todo原库creation_key，未知结果禁止自动重发，部分成功保留，授权撤回阻止后续动作；同规则版本串行受理并对needs_user/partial/outcome_unknown阻断越过。可选结构化紧急程度；正常略过，不确定/无效不执行。AI2Apps好友来信加入标准事件和AaAT详情，离线/历史来信不自动产生副作用。第三方Package、好友自动回复、微信外发未扩展。
+- E5监控：Messager新增自动化页，冻结预览与独立确认、版本化暂停/恢复/移除、队列等待、匹配延迟样本、失败/抑制/未知结果、授权/配额/游标缺口、分步实际回执和本机通知已读。观察不驱动工作；确认响应丢失复用request_id。
+- 真实Dev验收：原腕表刷新实际新增1篇并自动调用既有DeepSeek工作模型；关闭/重开恢复摘要。发现并修复primary_source_url/sources未投影，原事件AaAT和另一个只读来源核对Run验证，历史缺口保留。另以新声音档案真实触发Bot、Todo5505127a04e947f3b9a052f3b399bd16、本机通知hn_d68740a0f8fa4eb881ab6f53c691e1fe；显式恢复同一投递仍1个模型Run/1个Todo/1个通知，自动化页回执与预览/已读实机验证。两条验收规则均已暂停，没有对外发送或声音生成。
+- 验证：完整AaAT门禁822通过（404.02秒）；首轮1项旧交接测试SQLite锁冲突，单项及最终全套复跑通过。相关回归79项、收尾动作/Bot回归30项、前端协议/消息端口5项通过。固定实例空闲后标准Helper重载；App/Helper源根、运行模块、Schema104、四项详情Tool、静态资源字节及匿名401验证，最终PID dev81975/app-dev82248。无Cloud/原生或Runtime依赖变更、无生产发布。实施ai2apps/docs/event-hooks-e4-monitoring-implementation.md；收据ai2apps/docs/acceptance/event-hooks-e4-monitoring-20261102/receipt.json。
+
+### NXR-EVENT-HOOKS-E3-20261102
+
+- dev/app-dev 已激活，未发布：Schema103；Hook执行复用System Tasks与持久受理凭据，Bot复用原App Chat，App/Mini-App提供固定事件详情收件处理及mount-bound MessageChannel消费。三个owner提供AaAT详情接口；后台委托固定安装/身份/版本/范围/模型/到期，精确只读guard覆盖Gateway及直接Router，限制因果深度8/激活20/Tool调用12及Run预算。暂停/改版撤权，A→B→A抑制，未知因果不执行；Package升级失效，缓存重新检查资源权限，Mini-App事件能力接入宿主就绪检测。未创建用户规则、对外发送、调用付费模型、改动Cloud或发布Package。
+- 验证：完整AaAT门禁809项通过（342.26秒）；首跑新增详情接口翻译契约失败已补owner文案，未放宽门禁。收尾后的执行/详情/订阅/Studio/Package专项78项通过（64.97秒），实际消息端口2项通过。固定实例空闲后经标准Helper重载；App/Helper源码根、运行事件/执行/宿主/Broker模块路径、Schema103、三个详情Tool注册、服务静态资源字节及匿名管理401核验通过，最终PID app-dev77912、dev77931。模型/签名Package目录/媒体为夹具；真实第三方Package界面、付费模型和微信发送不在本阶段验收内。实施：ai2apps/docs/event-hooks-e3-implementation.md；收据：ai2apps/docs/acceptance/event-hooks-e3-20261102/receipt.json。
+
+### NXR-EVENT-HOOKS-E2-20261102
+
+- E2 dev/app-dev 已激活，未发布：Schema 102，规则预览/幂等启用、声明与资源范围验证、版本边界、暂停/恢复/删除审计、持久游标和唯一命中记录；视频/语音支持 owner 授权的 owned_collection，普通通配拒绝。复用事件 Relay，重启/并发/事务中断不重复；匹配仅 matched、executed=false，不运行模型或业务动作。32 项专项及相关测试通过；AaAT 门禁首次 1 项旧表单交接 SQLite 锁冲突，单项与整套复跑通过（758 项）。固定实例空闲后经 Helper 重载，App/Helper 源根、Hook 模块来源、schema102、匿名管理401均核验；PID dev=74236、app-dev=74242。Mini-App 实际 mount/SDK 与自动执行仍属 E3。详见 ai2apps/docs/event-hooks-e2-implementation.md。
+
+### NXR-BUSINESS-EVENTS-20261102
+
+- E1 dev/app-dev 已激活，未发布：Schema 101、三个内置事件类型目录、owner 授权查询、事务去重及情报跨库 Outbox；语音保留原 event_id，视频仅覆盖 VideoTaskManager 生成产物，详情绑定/自动 Hook 未开放。6 项新增专项、90 项相关回归批次及 758 项 AaAT 门禁通过；使用合成媒体/模型夹具，未调用真实付费模型。两个固定实例空闲后经 Helper 重载，App/Helper 源根及运行 catalog 模块来源核对；schema101、匿名目录401。PID dev=72899、app-dev=72903。实施边界见 ai2apps/docs/business-events-e1-implementation.md。
+
+### NXR-MESSAGER-BOTS-20261102
+
+- dev/app-dev 已激活：按用户创建具名 Bot、独立持久会话、后台状态及历史恢复。仅绑定已保存情报的四项只读能力，好友/微信发送不在范围内。共享 Mini-Chat 的 Enter 改为提交输入框所属表单。App/Helper 源根、运行模块和服务资源字节核对通过。真实 Runtime + 模型夹具通过工具调用及恢复；无账号 Chromium 夹具通过创建、按钮/Enter 发送和重开历史；AaAT 边界门禁 758 项通过。未使用真实付费模型。详见 ai2apps/docs/messager-bots-dev.md。
+
+### NXR-MESSAGER-DEV-LAUNCHER-20261102
+
+- Messager 只在 Helper 启动且源码根匹配的固定 dev/app-dev 开放 Launcher；Test、生产和普通源码启动保持 development。复用同一系统 App manifest 驱动注册和页面入口。
+
+### NXR-INTELLIGENCE-GALLERY-AAAT-20261101
+
+- implemented / dev_and_appdev_activated: Completed exports expose explicit Save to Gallery using the owner-scoped Gallery repository (content hash/name dedup, independent Blob copy, source metadata). App and new intelligence.export_html AaAT share the same submission/verified-file services and existing intelligence.export System Task. Tool defaults rolling24h, reading images, content-created/updated selection, collapsed cards; preserves frozen invocation window/idempotence, follows progress/cancellation and attaches only completed verified HTML to the caller Session. No auto Gallery save, public upload, refresh or second execution queue.
+- Owner semantics/declaration/defaults live in Intelligence adapters; shared Agent/AaAT infrastructure unchanged. Mandatory gate756 passed (316.62s), owner/API/scheduler/Chat artifact suite47 passed (18.25s), Chromium2/WebKit2 Desktop/Mobile fixtures passed; final screenshot rerun and JS syntax checked. Standard Helper restarts only after idle and App/Helper source-root checks; actual v20 export/HTML AaAT imports, served assets and registered24h/reading defaults verified for Dev/App-Dev. Dev idle check uses a WAL-aware read-only view. No live user export/Gallery save, model call or public publication. Receipt:ai2apps/docs/acceptance/export-gallery-aaat-20261101/.
+
+### NXR-INTELLIGENCE-SOCIAL-SHARE-20261101
+
+- implemented / dev_and_appdev_activated: HTML export adds description/Open Graph/Twitter title, description and embedded600px social cover. Optional owner-scoped8MiB image upload in export dialog; defaults to first displayed article cover then rasterized existing AI2Apps SVG logo. Explicit head/body makes metadata discoverable. Share Works preparation materializes embedded OG/Twitter cover as an immutable JPEG under its own snapshot and sets same-site absolute HTTPS metadata URL; normal embedded body bytes remain unchanged. Snapshot confirmation/hash verification still covers every generated file. No publish without existing user confirmation.
+- Validation:104 owner HTML/export/share regressions passed; later11 export-job tests include a new real ASGI Mobile Gateway cover upload. Chromium2/WebKit2 fixtures passed; final Chromium2 covers optional/default-cover control. App-Dev idle guarded then standard Helper restart; live App/Helper roots, actual v19 export/v8 share module imports and served resources verified. Dev restart was originally deferred during collection; later idle/WAL-aware checks and Gallery/AaAT activation loaded these changes too (see the newer receipt). No publication, Cloud/native/shared AaAT change. Physical WeChat rendering pending; metadata alone is not a guaranteed custom WeChat card. Receipt:ai2apps/docs/acceptance/export-social-metadata-20261101/.
+
+### NXR-INTELLIGENCE-COMPACT-CARDS-20261101
+
+- implemented / dev_and_appdev_activated: Remove34px summary top spacer in exported no-contents cards. Cover cards allow corner ribbon overlap on the image. Text-only cards inset title52px to keep the ribbon off text, add escaped summary/body fallback preview clamped to3 lines with ellipsis and hide duplicate preview when expanded. Existing HTML must be regenerated.
+- Validation:32 Python HTML/export-job regressions and2 Chromium/WebKit mobile-size fixtures passed, including three-line overflow, title inset, preview hiding and touch open/close. WebKit screenshot visually checked for ribbon/text non-overlap. Idle-guarded standard Helper restarts loaded Dev/App-Dev; App/Helper root contracts and v18 module imports/served assets verified. Receipt:ai2apps/docs/acceptance/export-compact-cards-20261101/. No Cloud/AaAT/native/public-hosting change.
+
+### NXR-INTELLIGENCE-INSTANT-TOUCH-20261101
+
+- implemented / dev_and_appdev_activated: Exported HTML card touch feedback uses passive delegated Pointer Events instead of mobile :active timing. Down changes background immediately; quick taps retain at least120ms of feedback without delaying native toggle. Movement>8px, cancellation, blur/hidden clear the press state. No preventDefault, pointer capture or touch scrolling override. Desktop :active fallback retained.
+- Validation:31 Python HTML/export-job tests and2 Chromium/WebKit mobile-size browser fixtures passed. Same-event computed background verifies immediate response; quick tap retention, movement/cancel cleanup and native tap open/close verified. Idle/source-root guarded standard Helper restarts loaded Dev/App-Dev; actual v17 import path and served assets checked. Receipt:ai2apps/docs/acceptance/export-instant-touch-20261101/. Browser fixtures are simulated mobile, not physical iPhone acceptance. Existing published exports require regeneration.
+
+### NXR-INTELLIGENCE-ADAPTIVE-HTML-IMAGES-20261101
+
+- implemented / dev_and_appdev_activated: Reading HTML first renders normally; actual UTF-8 output >12 MiB triggers one local, no-refetch body-image pass (720px longest edge, WebP q62, smaller encodings only). Displayed covers, fallback/shared cover aliases and explicit original quality are preserved. Images fill reading width with aspect ratio intact. Result/dialog expose compacted image count. No image dropping or promise of a final 12 MiB bound; existing safety/HTML limits remain.
+- Validation:31 HTML/export-job Python tests passed; JS syntax checked. Real 12 MiB threshold synthetic fixture:26,069,166 to3,987,090 bytes (84.7% smaller),12 body images/13 loads, cover retained. Not a user-export size promise. Idle-guarded standard Helper restarts loaded Dev/App-Dev; App/Helper roots, actual v16 module paths and served assets verified. Receipt:ai2apps/docs/acceptance/export-adaptive-images-20261101/. No Cloud, AaAT, browser-control, native or public-hosting changes.
+
+### NXR-SHARE-WORKS-LARGE-PREVIEW-20261101
+
+- implemented / appdev_activated: Local Share Works preview now accepts self-contained HTML up to the existing 128 MiB artifact limit instead of rejecting above 16 MiB. Check file size before reading and bound embedded ZIP image expansion by the same total budget. Keep owner/mount guards and sandbox/CSP unchanged.
+- Preview failures show specific bilingual size/local-preview messages; hide stale preview and reset consent on preparation and disallow publication until preview response succeeds. No upload or public content change. Regression includes a 17 MiB HTML preview, limit rejection and Desktop/Mobile failure/consent fixtures.
+
+- Validation: 69 Python owner regressions and 4 Desktop/Mobile HF/MS browser fixtures passed, including visible sandbox preview and error recovery. Only idle App-Dev Local restarted through standard Helper; App/Helper live source roots, actual service import and served final assets verified. No upload/publication. Receipt: ai2apps/docs/acceptance/share-works-large-preview-20261101/.
+
+### NXR-SHARE-WORKS-HF-VERIFY-20261101
+
+- Accepted:83 targeted Python regressions and4 Desktop/Mobile UI fixtures passed. Final actual owner UI read-only verification saved6 verified files/5 decoded images with HF metadata and us.aws.cdn.hf.co; screenshot shows6/6 and original share link. Original failed Task retained; zero new uploads/commits. Details and source/asset activation proof in the receipt below.
+
+- implemented / appdev_activated / existing_hf_share_reconciled: user live Avdpro/shares upload completed but verification incorrectly treated HF Static's additive variables/social metadata and official CDN redirects as deployment-not-ready. Strict provider-owned metadata recognition requires the full original HTML bytes unchanged; only HTTPS *.cdn.hf.co redirects are permitted for HF, with original file hashes and image decoding retained. MS gets no HF exceptions. Deterministic failures no longer wait ten minutes; sanitized reasons persist. Remaining resources use concurrency<=4 after HTML verification. UI clears busy placeholders and shows actual reverified counts instead of old failed Task progress.
+- No repeat upload, space mutation, TLS bypass, Cloud/shared Agent/browser-control/Intelligence collector change. Original failed Task remains historical; authorized read-only verification updates only the existing publication's business result. Test and live-reconciliation evidence: ai2apps/docs/acceptance/share-works-hf-verification-20261101/.
+
+### NXR-SHARE-WORKS-CLI-20261101
+
+- UI follow-up 2026-11-01: sharing target now lists disabled gray `ai2apps.com · Coming soon` first; HF stays the selectable default and MS remains selectable. Shared Desktop/Mobile HTML only, no backend/Cloud enablement. Parsed markup confirms disabled state and existing choices.
+
+- implemented / appdev_activated / live_upload_pending: AI Browser Share Works built-in Mini-App. HF uses preinstalled authenticated CLI; MS officially authenticated SDK in that CLI environment was explicitly approved by user after confirming Studio upload is absent from the official CLI. No login/install/token UI, credential copying, Cookie fallback or runtime substitution. Known fixed checkout CLI environment discovery corrected the initial incomplete PATH-only finding; live read-only identities: HF Avdpro, MS ai2apps.
+- Desktop/Mobile same owner-bound service, closed mount bridge, curated Mobile routes/assets and existing System Tasks. HTML/ZIP and completed Intelligence HTML artifacts, immutable separate snapshot directories, sandbox preview, public confirmation, progress/cancel/history, exact anonymous file hashes/image decode, uncertain submissions verify-only. No space creation or real publication performed. HF/MS real upload/deploy/cold-start acceptance pending dedicated authorized target. AaAT, one-click Intelligence UI handoff, Gallery and retention UI remain future scope.
+- Validation: 102 targeted regressions; final owner tests36; owner-Studio/Mobile105; built-in+owner44 including actual curated Mobile router; Node4 and Chromium4 Desktop/Mobile HF/MS fixtures passed. Full mandatory AaAT gate passed754 (308.56s); later additional owner/Mobile cases passed separately. App-Dev standard Helper restarts only after idle/source-root checks; actual imports, served assets and native instance title verified; general Dev unchanged. Live HF UI account check passed after excluding Supervisor model credential-path overrides only from the external publisher process; simulated supervised HF/MS checks passed; Local and Intelligence isolation unchanged. Evidence: ai2apps/docs/acceptance/share-works-hf-ms-20261101/README.md, activation.json and test logs. Requirements v1.4: ai2apps/docs/share-works-mini-app-requirements-v1.md.
+
+### NXR-DATA-URL-COMPACT-16M-20261101
+
+- implemented / dev_and_appdev_activated: User-requested Data URL final limit raised8→16MiB in encoder, owner retrieval and frontend. Data URL reading images now960px/q72 with optimized JPEG (transparent WebP); normal HTML remains1600px/q82, original bytes unchanged. UI labels compact Data reading. Single network image8MiB guard unchanged. No truncation or native/Cloud/shared Agent changes.
+- Validation:22Python HTML/job tests passed (5.35s), including >8MiB URL acceptance below16, over16 rejection, dimension/byte reduction and original/normal preservation. Chromium3/WebKit3 passed for copy/fallback/options/Data URL image+JS and script-disabled native rendering. Idle/root-guarded owning Helper restarts: Dev PID71589/port52531, App-Dev PID71626/port56628; live v4 imports and JS/CSS verified. No real106-image export rerun, Cookie access or model call. Old failed task must be regenerated. Evidence:ai2apps/docs/acceptance/data-url-compact16-20261101/README.md and activation.json; usage docs updated.
+
+### NXR-INTELLIGENCE-DATA-URL-EXPORT-20261101
+
+- implemented / dev_and_appdev_activated: User-requested experimental data_html format encodes whole generated UTF-8 page as data:text/html;charset=utf-8;base64,..., retaining embedded pictures and TOC/card settings. Owner-authenticated no-store link retrieval and text/plain txt download; explicit user clipboard action with selectable full-text fallback. Private output retention, 8MiB final URL cap, no truncation. No public hosting, Cloud upload, FRP dependency after copy or native/browser scheme policy change.
+- Validation: 128 Python format/owner/API/security/task/legacy/architecture/mobile-gateway tests passed (24.13s); 18 Chromium UI tests and WebKit3 passed. Direct Data URL navigation decodes images and runs JS search with zero external HTTP requests. Clipboard mocked in tests, full-string equality and fallback verified; not actual chat-app external-link acceptance. Idle/root-guarded owning Helper restarts, Dev PID68562/port54711 and App-Dev PID68555/port54078. v3 import logs, served JS/CSS and authenticated route guards verified. No user-data export, Cookie access, model call, outgoing message, iOS update or shared Agent changes. Evidence: ai2apps/docs/acceptance/intelligence-data-url-export-20261101/README.md and activation.json. Usage docs updated; user to test sharing.
+
+### NXR-INTELLIGENCE-HTML-TOC-STATIC-IMAGES-20261101
+
+- implemented / dev_and_appdev_activated: include_toc defaults true and is exposed for HTML. False omits navigation/back-to-contents and uses native closed details cards with only image/title summary. Images now use direct Data URL src, independent of JS. Existing user AI export contained 9 images/0 failures but JS-disabled preview decoded0; private diagnostic transformation using the same embedded bytes decoded9/9. No source article/old artifact edits or new network image reads. Option changes hide old download links until regeneration.
+- Validation: 126 Python HTML/job/owner/API/legacy/System Task/architecture/mobile-gateway tests passed (24.65s), 17 Chromium UI tests passed; final additional option-change assertion passed. WebKit2 passed, including script-disabled real image decode and native details toggle. Idle/source-root guarded standard Helper Local restarts: Dev PID61190/port55431 and App-Dev PID61307/port52616. Live v2 export_jobs import paths and JS/CSS bytes verified. No iOS/native/Cloud/shared Agent execution change, model call or Cookie access. Old HTML must be regenerated. Evidence: ai2apps/docs/acceptance/intelligence-html-toc-static-images-20261101/README.md, activation.json and existing-preview-diagnostic.json. Usage updated in intelligence-backup-transfer-v1.md.
+
+### NXR-IOS-HTML-ATTACHMENT-20261101
+
+- implemented / ios_device_installed_pending_user_save: Native FilePolicy rejected every HTML MIME, including the successful Intelligence HTML attachment. Now permits successful same-origin explicit attachment responses with html/htm/xhtml suggested filename; ordinary HTML, unauthorized/error responses, unexpected filenames and existing size/origin guards remain rejected. FileTransfer passes actual response disposition and suggested filename. No App/domain-specific exceptions.
+- Validation: existing standalone Swift policy suite and 18 new HTML attachment assertions passed. Signed iPhoneOS Debug build10 succeeded; codesign deep/strict passed in full system trust environment (restricted trust lookup initially failed, not bypassed). Overlay installation and launch succeeded on the established iPhone15Pro, com.ai2apps.ios.dev 0.1.0/10, without uninstall/data clearing or Cookie/session access. Actual user HTML download and Files save require user retry. Evidence: ai2apps/docs/acceptance/ios-html-attachment-20261101/README.md and receipt.json; iOS README updated. No Desktop/Cloud behavior changed.
+
+### NXR-INTELLIGENCE-MOBILE-EXPORT-ACTIVATION-20261101
+
+- implemented / dev_and_appdev_activated: Mobile request 3e9d3b53 hit Dev's old cached owner router and returned 404; earlier export activation was App-Dev only. Idle/source-root guards followed by exact owning Helper Local restarts now load both. Mobile export download anchors use existing mount-bound MobileAppResource; generic trusted host resource transport preserves Content-Disposition so HTML downloads as an attachment. Export heading receives noninteractive focus without scroll and remains visible; cache version advanced.
+- Validation: 16 Python export/mobile-gateway tests passed, including real ASGI mobile create → System Task → attachment download with controlled PNG. Chromium 3 and WebKit 2 browser tests passed at desktop/mobile sizes, including 390x600 touch view, mount URL, title reset and offline HTML. Final Dev PID55400/port60427 and App-Dev PID55487/port52450: App/Helper roots checked, live API import logs and served JS/CSS bytes match checkout, unauthenticated export/file routes return 401. No user-data export/import, Cookie access, model call, App rebuild, Cloud/native/shared Agentic change. Evidence: ai2apps/docs/acceptance/intelligence-mobile-export-fix-20261101/README.md and activation.json. Phone refresh required.
+
+### NXR-CHANNEL-READ-PARAMETER-REPAIR-20261101
+
+- implemented / appdev_live_read_repair_acceptance_passed: explicit channels/v2 read-with-repair endpoint, owner-declared deterministic aliases/scalar/default normalization and at most one bounded AI patch via existing work_simple/privacy model routes. Built-in Gallery/Knowledge search and Intelligence channels/news opt in only for result limit; AI output cap 20 or tighter Schema. IDs/query/permissions not sent or patched. Provider/contract rechecked before dispatch; preparation errors only, no handler-error replay or alternative Provider. Two candidate attempts, 15s total, bounded input/context/output, digest-only EventStore audit. No write operations, confirmation receipts or competing durable queue.
+- Existing Agent-Chat and channels/v1 remain unchanged; no automatic migration or new inner AI in old paths. New coordinator lazy initialization failure isolation tested; host-only contract pin defaults None for old contexts. Positive shared-module classification, no business exceptions.
+- Validation: full mandatory AaAT gate 752 passed (315.83s); final targeted repair/channel/architecture 63 passed (25.14s); final 25 repair cases passed (17.71s) including local/Cloud/profile/usage/mode/budget/identity/schema/revocation/timeout/cancellation/non-replay/privacy. Gate collected 23 new repair cases before two additional cases were added; final suite covers later audit metadata. Model normalizer replies are fixtures, not real-model acceptance.
+- After platform/Intelligence idle checks, restarted only exact App-Dev Local via Helper (50966/50590 → 51362/63047). App/Helper checkout bindings, runtime import logs, native title, health, OpenAPI new v2 route and served Shell/Chat byte hashes verified. Actual original Agent-Chat Gallery smoke completed: existing parameter_contract_required recovery then successful read, zero new repair events in that Session. No Cookie grant reused, App rebuild or production change. Subsequent real-model acceptance passed; see live follow-up below. Evidence: ai2apps/docs/acceptance/channel-read-repair-20261101/README.md, activation.json, legacy-smoke.json; contract: ai2apps/docs/aaat-read-parameter-repair-v2.md.
+
+- Real-model follow-up: 17 v2 localhost cases plus strict v1 control passed. Actual work_simple Cloud model corrected “a couple” to limit2; deterministic+AI share the two-attempt budget, one-attempt exhaustion stops before AI, 100ms deadline returned in119ms with not_started/zero Gateway and no late dispatch. 32-token request returned6 output tokens; 3/15001ms/513 policy caps reject, not a claim of physical token-truncation testing. Model refusal and invalid/unknown/ID fields stop; real owner read failure submits once and does not repair/retry. Three successful reads/one failed read total, zero v2 Agent Runs, digest-only31 audit events; reported502 tokens plus one timed-out attempt with unreported usage (not assumed zero).
+- Original Agent-Chat live read and form → full Shell refresh/new mount → exact Run/Interaction/input identity restoration → cancel → completion passed. No todo.create, zero owner Todo/directory marker matches, no duplicate model input, zero new repair events in its Session, final Agent scan idle. No implementation/config change or restart initiated this turn. Observed a graceful Local restart not initiated by this acceptance (68555/54078 → 71626/56628); identity guard stopped unsent work, then source/policy/contract continuity verified before only unsent no-AI controls continued. User granted exact-profile Cookie use for this turn only; no values saved/exported, temporary helpers removed and use ended. Evidence: ai2apps/docs/acceptance/channel-read-repair-live-20261101/README.md, api.json, legacy.json.
+
+### NXR-INTELLIGENCE-RECENT-OFFLINE-EXPORT-20261101
+
+- implemented / appdev_activated: Owner ZIP export adds timezone-aware `[since,until)` selection for created-only or new/content-updated articles, preserving independent-import dependencies. Read/favorite/feedback excluded; future cover/image changes stamp content_updated_at. Single-channel self-contained HTML preserves inline images, embeds deduplicated validated raster Data URLs (reading/original quality), adds local search/sections/contents and explicit missing-image report. No private chat/preferences/drafts included in HTML. Bounded public image reads and owner-local attachments, CSP/escaping, no browser/model/interactive reads.
+- Existing System Task handler owns background generation, progress, explicit cancellation, task/download ownership and request identity; recent history supports reopening. Export options Desktop/Mobile; files atomically published with lazy private retention. No shared Agent/AaAT/scheduler execution changes, Cloud change or native rebuild. Recent-range transfer only, not baseline/deletion sync.
+- Validation: 112 Python owner/API/format/security/cancellation/legacy/System Task/architecture tests passed (25.46s); 17 JS/browser tests passed, including 1200/390px controls and generated file:// HTML with successful image decode, search and zero external HTTP requests. New image tests use controlled loaders and actual local PNG encoding; no live user-content export, Cookie access or paid model call. App-Dev idle guarded then restarted via owning Helper; App/Helper roots, API live import path and served JS/CSS hashes match checkout. Observed Local PID50966/port50590. No other instance restart. Evidence: ai2apps/docs/acceptance/intelligence-recent-offline-export-20261101/README.md and activation.json. Usage: ai2apps/docs/intelligence-backup-transfer-v1.md.
+
+### NXR-CHAT-AGENT-INPUT-IDENTITY-20261101
+
+- implemented / appdev_activated_live_acceptance: duplicate reopened user messages traced to browser snapshot replacement deleting the Agent runtime input's durable key, followed by executor input re-append. Chat-owned reconciliation now preserves server-owned Message IDs/keys/original parts and coalesces exact persisted-Run aliases; legacy duplicates fold in read projection without bulk history migration. Run execution, model/Tool loop, confirmation/call keys and recovery policy unchanged. Resumable explicit message references protected; completed-history explicit edit/delete truncation retained.
+- Validation: full AaAT gate 728 passed (300.15s); final targeted 22 passed (18.28s), including seven new identity/race/rich-input/cross-Run/real-General/form-recovery cases. Final targeted run includes later additional recovery test and shared-reference hardening. No fixture/live conflation.
+- App-Dev task tables and Intelligence execution idle before exact Helper Local restart (48137/64025 → 48302/63738). App/Helper source metadata, native title and runtime import logs verified against checkout. Live default-model Chat: old duplicate now displays once without raw-history rewrite; new form wait → leave/reopen → same input ID/key/Interaction → cancel → normal completion, then original describe/Gallery read and final reopen passed. Model context has one copy per user turn; zero Todo creations, final Agent scan idle. No Cookie grant reused, no other instance restart, App rebuild or production change. Evidence: ai2apps/docs/acceptance/chat-agent-input-identity-20261101/README.md and live.json.
+
+### NXR-INTELLIGENCE-ZIP-TRANSFER-20261101
+
+- implemented / appdev_activated: Owner-scoped Intelligence all/single-channel ZIP export and preview-confirm import. Preserves article inline structure, cached source text, drafts, preferences, inert conversations/history and scoped entity evidence. Local uploaded files included with SHA-256 verification; remote images retain original URLs. Stable provenance and conservative article dedup; local-wins conflicts retained and article conflict text view available. Channel sections and entity evidence merge with ID remapping. Archive+affected-target snapshot approval, active-target guard and transaction/blob rollback. New channel schedules, imported sources and external bindings inactive; existing local settings preserved. No Cloud or shared AaAT execution changes.
+- Validation: 52 Python transfer/API/owner/inline-content regressions passed; 14 existing JS/mobile/rendering/chat/i18n tests passed; new browser fixture passed at 1200/390px, plus JS syntax check. App-Dev idle guard checked platform task/job/run tables and inactive Intelligence DB; only its Local restarted through owning Helper. App/Helper metadata, live API import log and JS/CSS bytes match checkout. Final observed Local PID48302/port63738. Backup authentication guard verified without accessing user Cookies. No live user data imported. Fixture versus activation evidence: ai2apps/docs/acceptance/intelligence-backup-transfer-20261101/README.md and activation.json. Usage/limitations: ai2apps/docs/intelligence-backup-transfer-v1.md. Dev/production unchanged; no rebuild.
+
+### NXR-AAAT-CHANNELS-MVP-20261101
+
+- implemented / appdev_activated_live_core_acceptance: additive authenticated system-management static channel directory and read-only Gateway entry; built-in Intelligence/Gallery/Knowledge reuse existing handlers and ACLs. Host-only exact Provider/version pin; current Agent-Chat flow/catalog/forms/keys/recovery remain on their original paths. New reads do not write shared Provider success/cooldown preferences. No AI repair, write operations, arbitrary App/Package delegation, non-Run confirmation, App rebuild.
+- Validation: new channel tests 11 passed; existing owner/routing/architecture 53 passed; mandatory AaAT gate 711 passed (285.02s, exit 0). Final health-isolation change additionally passed 27 channel/routing tests. New tests added to future mandatory gate. Real isolated Local owner handlers/API/Gateway; model/external execution are regression fixtures, not live acceptance. Isolated tests did not change user processes/data. Evidence: ai2apps/docs/acceptance/aaat-channels-mvp-20261101/README.md; usage: ai2apps/docs/aaat-channels-mvp-v1.md. App-Dev idle verified across platform/owner execution records; restarted only its Local via exact Helper channel (36966/63773 → 45305/50477). App/Helper source metadata, live import logs and served Shell/Chat hashes match checkout. Authenticated live MVP API guards and three owner calls passed, shared preferences unchanged. Actual Agent-Chat describe/read, configure-only form, refresh/reopen, cancellation and normal completion passed; no Todo created and final Agent scan idle. Existing duplicate user prompts reproduced (64 analogous groups predate restart), single Run/no duplicate effect; subsequently fixed by NXR-CHAT-AGENT-INPUT-IDENTITY-20261101. User authorized exact App-Dev Cookie use only for this local acceptance; grant ended, no values saved. Evidence live-api.json/live-chat.json/live-assets.json in the same receipt folder.
+
+### NXR-KNOWLEDGE-OCR-LEGACY-CATALOG-20261101
+
+- implemented / pending_local_restart: Dev image import saved both originals but OCR
+  failed before model selection (attempts0, no model/route). Read-only reproduction
+  against installed Package metadata raised PackageContractError for legacy E5
+  archive lacking root ai2apps.json. OCR now skips non-image models before package
+  classification and treats unverifiable Package contracts as no dedicated OCR
+  evidence. No trust, consent or provider priority changes. Dedicated OXR not
+  installed in inspected Dev; other eligible routes retain normal consent policy.
+  Added regressions for a legacy archive and arbitrary non-image provider. User
+  instance tasks/data unchanged; no Local restart or OCR retry performed yet.
+
+### NXR-WEB-READER-LOCALIZATION-20261031
+
+- implemented / static_refresh_available: Built-in Web Reader replaces hard-coded bilingual headings/form labels/options/Run button with the host locale's single-language UI. Covers all10system dictionaries (en,zh,zh-TW,de,es,fr,ja,ko,pt-BR,ru), regional aliases and English fallback, document lang/title and accessible capability label. Localizes Task status/submitting labels and SDK timeout messages without changing task arguments/Profile, user/webpage messages or raw results. Fixes existing label display CSS overriding hidden on the list-only limit field. Reader script cache version advanced; no new resource whitelist, Package/AaAT declaration, backend or native change.
+- Validation:28localization/SDK JS checks,23Host Python checks and actual headless Chrome at390/1100px for all10locales (20fixtures) passed. English/Chinese screenshots inspected; no paid call or actual background task submitted. Dev served source bytes verified at62461; existing cached frame requires Mini-App refresh. User switched to another App during native UI check; verification completed in isolated fixture rather than interrupting them. Local/App not restarted or rebuilt, App-Dev/production unchanged. Evidence:ai2apps/docs/acceptance/web-reader-localization-20261031/receipt.json and screenshots/logs there.
+
+### NXR-DISCOVER-LATEST-COMPATIBLE-20261031
+
+- Discover 常规能力目录浏览在 Cloud 分页前请求最新兼容 release（detail projection 保留卡片所需核验信息），旧 Registry 无 projection 能力时回退普通目录。安装交接仍绑定用户选定的版本与双摘要，不用“最新”替换。Agent 目录默认已折叠版本；Studio 安装面板按父包列项。
+- Node 定向 12 项通过、1 项可选在线测试未运行；Python 定向 7 项通过。另以匿名生产查询确认 Talking Portrait 只返回 0.1.5 一张卡。未重启固定 dev、未进行本轮 Desktop 实机激活验收。
+
 ### NXR-DESKTOP-RELEASE-2268-20261031
 
 - artifact_published_pending_cloud: Apple 30d2e70c-0b3b-4edb-99a3-9de9bcf8c1f0
@@ -5017,6 +6675,8 @@
 
 
 ### NXR-TODO-MVP-20261003：内置 Todo 项目树与执行调度
+
+- 2026-11-01：Todo System Tasks 新增定时 Agent Flow。高级模型发现并编译受限步骤，用户预览参数、Provider/版本、模型路由、隐私与通知后确认。服务端原子激活固定计划，复用 SystemTask、Gateway、参数契约与通知 outbox，每次执行重验范围并可停用。详见 ai2apps/docs/todo-agent-chat-schedules.md；不改 Cloud，生产模型及手机推送待实机验收。
 
 - 2026-10-24：手机 Todo 列表改为轻量字段查询，不读取/传输描述、附件和执行记录；详情使用 owner-scoped /tasks/{id}/detail 按项目读取，归档/回收站和跨用户拒绝。Shell 详情 iframe 预热仅加载框架，由列表传递轻量上下文，打开时仅加载目标项目；详情刷新不再请求全量列表。描述搜索改为服务端匹配 ID，快捷编辑省略描述时保留原值。Python 回归和 Chrome fixture 网络请求/导航测试通过，需重启 app-dev Local 并刷新；尚未手机实机验收。
 
@@ -12666,3 +14326,869 @@ Runtime profile、安装行为或发布流程的工作，都必须在完成该�
 
 ### NXR-AUDIO-STARTUP-20261031
 - 状态：implemented_pending_live_validation。音频生成模型目录增加声明级类型过滤，在实例、凭据、依赖与权重检查前排除无关模型，减少歌曲/音效启动时重复扫描的成本。61 项回归通过；1 项既有 DeepSeek distribution ID 预期不一致失败，与改动无关。跨模型类型过滤与目录等价验证覆盖；未重启 App-Dev、未测量实机耗时、不修改签名 Package。
+### NXR-MODELS-DEFAULT-ROUTING-I18N-20261031
+
+- implemented / browser_fixture_verified: Models Default Usage's Chat/Agent default-model titles and descriptions no longer hardcode Chinese inside Alpine route definitions. Four new translation keys are supplied in en/zh/zh-TW/ja/ko/fr/es/pt-BR/ru/de, preserving unrelated catalog edits. Existing model names, capability notices, routing choices and permissions unchanged; this item fixes the four mixed-language strings, not a full audit of the separate model manager tab.
+- Fifteen targeted tests passed: two new catalog/Chrome+bundled-Alpine fixtures render the actual route expressions in all10locales and reject Chinese in English Chat/Agent labels; thirteen current conversation model-policy regressions remain green. Whitespace checks clean. Fixture evidence, not native Shell language-switch acceptance. Refresh Models page to activate; no Runtime upgrade, Local restart, App rebuild or publication performed. This work is after candidate2268 inputs and must be separately reconciled for a subsequent release.
+
+
+### NXR-COMIC-STUDIO-MVP-20261031
+
+- scheduling_implemented / app_dev_live_verified: 默认手动；Package声明有界Recipe，复用SystemTaskService固定间隔、准入、去重、取消、恢复及任务中心。提供首次时间、1～168小时间隔、每批1～5集与独立定时创作方向，保存时固定模型/比例/预算；不执行Package代码、不增加漫画业务分支。真实统一任务中心“立即启动”离开Mini-App后完成一次编剧及两格绘制，Output和分集回执恢复正常。最终测试82项Python、20项前端、711项AaAT全通过；来源元数据、Local导入路径和服务脚本哈希已核验。临时计划已停用，最终无启用的图片计划和活跃图片系统任务。当前仅Desktop配置，无生产发布或iPhone验收。证据：ai2apps/docs/acceptance/comic-studio-scheduling-20261031.md。
+
+- implemented / app_dev_live_verified: 独立短漫工坊源码 Package 0.1.0，系列、角色、脚本与画格比例由 Package 持有；Host 增加有界通用 image.workflow 图片序列和拼版 SDK，复用现有后台队列与共享 Output。真实本地两格漫画、已有图改字导出、私有角色参考、AI脚本和带角色参考的第二集全部成功，页面重载恢复持久草稿。最终App/Helper源码根、Local导入路径和共享桥接脚本响应哈希已检查。56项针对性Python、17项前端、701项完整AaAT门禁通过。首轮一次既有SQLite锁冲突已记录，单模块和整轮重跑均通过。尚未签名安装或发布；定时、新闻、多候选审核、单格重绘和Mobile生产验收不计入MVP。验收：ai2apps/docs/acceptance/comic-studio-mvp-20261031.md。
+
+### NXR-VOICE-ASR-I18N-20261031
+- 已修复：有声书、角色参考克隆和快速朗读的 ASR 控件使用界面语言资源，包括模型选择、自动选择、安装选项及校验提示。10 种界面语言模板渲染检查通过；Host 模板与语言资源变更，无 Package 变更。
+
+
+### NXR-INTELLIGENCE-CHANNEL-CHAT-MODELS-20261031
+
+- implemented / activation pending: Replace permanently disabled channel-chat model placeholder with the owned conversation model catalog; explicit selections flow through owner authorization/catalog checks into shared model_json. Default work-model behavior remains. Persist selected model in the saved turn and bind retry IDs to question/article/model. Recheck per-channel in-flight guard after async catalog validation. No shared Agent business branches or new execution loop.
+- Controls depend only on active conversation state, never global busy or collection status; per-channel selections and request model preserve navigation/retry isolation. Add regression for background collection, poll-time draft retention and switching away from a sending channel. Asset version channel-chat-models-20261031.
+- Validation: 11 owner Python and 2 JavaScript control regressions passed. Shared boundary gate running. Live model/search not invoked; activation pending.
+- Final verification: 11 owner Python tests, 3 JS Chat control tests, 3 reader scroll tests and the real WebKit Mobile progressive-loading fixture passed. Mobile model catalog loading is lazy until Chat opens. First sandbox browser launch failed; normal-environment run exposed eager directory fetch, fixed without weakening fixture, final run passed. Mandatory AaAT boundary gate 711 passed (exit 0; headless Metal atexit warning only). No live paid model invocation.
+- Activated via standard Helper after independent idle checks: App-Dev PID9613/55013, Dev PID9651/62974. App/Helper source roots verified; new Channel chat model selection import marker confirms live backend path; final versioned intelligence.js bytes match checkout in both instances. Refresh the existing Shell page to use model selection. No rebuild or publication.
+
+
+### NXR-WEBAGENT-LOCKED-DIRECT-SHELL-20261101
+
+- in_progress: Locked Dev SJX probe reproduces reused Default Profile window: DOM loads (3521 chars/152 links), two unhide/activate attempts yield focus=true but visibility remains hidden and zero native commands dispatched. New independent window succeeds under the same lock. Installed Dev does not support rendering leases. No source-specific change.
+- Native signed-bundle Shell bootstrap sets shell role on direct LaunchServices launch but omitted AI2APPS_BACKGROUND_HOST, unlike shared Helper/Launcher ShellHostEnvironment. Set the same background-host contract at the trusted native Shell entrypoint; Agent/ordinary browser paths remain unchanged. Keep permanent occlusion safeguard, all native input ownership/readback/unknown-effect guards. Native build and fixed Dev acceptance pending.
+- Additional cold-host prerequisite: browsingContext.create read a previous selectedTab for all platforms although only Android restores it. Desktop App Shell has no gBrowser, causing first-window creation failure. Limit that lookup to Android; no browsing method/authentication fork. Incremental native binary and frontend builds passed; standard fixed Dev packaging in progress, keep live locked public-site verification pending.
+- implemented / Dev native activation verified: native bootstrap adds background-host contract on signed Shell direct launch. Cold BiDi first-window creation now avoids Android-only selectedTab lookup and falls back to an existing chrome opener when no ordinary browser exists. Standard native build/faster/package and fixed build-dev-app.sh completed, previous Apps archived; codesign deep/strict passed. Permanent safeguards retained, no P4 demand-only policy migration.
+- Real locked Dev checks: cold direct packaged Shell launch reports lease version1/permanentSafeguard=true. Two hidden/reused-window SJX rounds restore visible state and acknowledge wheel readback y0→500; native compositor unpaused and final window/context leases0. Fresh test container legally requires cookie_consent, so complete SJX list/body collection is NOT claimed; no consent selected, no model/editorial calls or channel replay. Tests cleaned all created contexts including a consent-retained article tab. Existing managed profile data untouched.
+- 48 Python input/access/lease checks, two Swift launch environment tests, native protocol isolation/expiry/close-race checks and actual native opener-method fixtures passed. Shared boundary gate running. App/Helper source roots, Dev instance/development IDs, actual imported SDK module path and served SDK bytes verified against live checkout. Final Local PID32896/port50723. Only Dev replaced, App-Dev/Test/production unchanged. Evidence and minimal reversible native patch: ai2apps/docs/acceptance/webagent-locked-direct-shell-20261101/.
+- Final shared boundary gate: 711 passed, exit0 (271.83s); existing headless Metal atexit warning only. Lock-input repair accepted for fixed Dev; full clean-container SJX source acceptance held at separate legal-consent gate. No production publication.
+
+
+### NXR-WEBAGENT-COOKIE-READ-SCOPE-20261101
+
+- implemented / validation in progress: shared Local/frontend inspector recognizes explicit necessary/essential-only Cookie choices (including Accept necessary) without matching accept-all/marketing. Preserve safe hit-tested native clicks and existing consent/permission boundaries.
+- Read-only unresolved non-modal corner/edge consent banners may remain untouched only with small non-central geometry, no modal/full-screen ancestor, and at least two unobstructed substantive headings/paragraphs totalling160chars outside forms/navigation/consent. Strict interactive mode, content-obscuring overlays, sparse/hidden content and consent-frame-only inspection remain guarded. Applies generically to panels/iframes, no SJX branch.
+- Local/frontend sources identical; six owner templates advance SDK cache version cookie-read-scope-20261101. Browser security fixtures and targeted Python checks running/passed; live SJX only-necessary recognition verified, full live read and mandatory shared gate in progress. No paid model or Intelligence mutation.
+- Final validation/activation: 10 Node/browser tests plus extended iframe fixture rerun passed;48 Python input/access/lease checks passed. Mandatory shared gate711passed, exit0 (276.49s; headless Metal atexit warning only). Live Dev SDK chose only-necessary once, two SJX list scans each found17links across home/news, and detail read succeeded with11364chars/22images. Native wheel/pointer readback confirmed, all leases0, test contexts cleaned. No AI editorial generation or Intelligence database writes by tests. This supersedes the earlier locked-native probe's consent-blocked read-stage acceptance, not an entire channel-refresh claim.
+- Independently idle-guarded standard Helper restarts activated App-Dev PID36966/port63773 and Dev PID36978/port50610. App/Helper roots, new Cookie read-scope v2 import marker and final browser SDK served bytes verified. Python/JS only, no native rebuild or production publication. Docs: ai2apps/docs/webagent-cookie-reading-scope.md; live metadata: ai2apps/docs/acceptance/webagent-cookie-read-scope-20261101/live-summary.json.
+
+### NXR-INTELLIGENCE-REMOVE-DATA-URL-20261101
+
+- implemented / validation and activation pending: remove experimental whole-page Data URL export from Intelligence UI, schema, generation and retrieval route. ZIP and offline HTML remain; direct image data src is preserved for offline reading. Remove Data-only compact profile and clipboard UI. Legacy completed Data URL downloads return410 with a regenerate message; history/private artifacts are not destructively deleted.
+- Owner export tests cover rejected retired format and legacy download response; browser checks cover the two remaining options and offline images. No Cloud, native or shared Agent execution changes.
+- Final validation: 22 Python tests and 2 Chromium + 2 WebKit browser tests passed; JS syntax and source scan clear. Both instances idle-guarded and activated through standard Helper: Dev PID82056/64549, App-Dev PID82065/62508. App/Helper roots, live ZIP/HTML export v5 module path and served JS/CSS bytes verified. Evidence: ai2apps/docs/acceptance/remove-data-url-20261101/. Refresh Shell to load the revised format picker; no rebuild or production publication.
+
+### NXR-SHARE-WORKS-INLINE-HTML-20261101
+
+- implemented: preserve self-contained HTML byte-for-byte, including embedded image data URIs. Do not extract image assets, compress images, or inject a snapshot marker. ZIP keeps its supplied file structure. Retain image validation and immutable manifest hashes; existing publications remain untouched.
+- Desktop/Mobile use the same owner prepare/preview service. Increase sandbox HTML preview limit to16MiB to accommodate embedded images; existing image resource preview and upload limits remain unchanged.
+- Validation:61 owner Python tests passed, including exact HTML/ZIP preservation and Desktop/Mobile preview roundtrip above2MiB;4 Desktop/Mobile HF/MS browser fixtures passed with embedded image decoding and sandbox/confirmation checks. No live upload, publication replacement or existing snapshot migration. App-Dev activation evidence in ai2apps/docs/acceptance/share-works-inline-html-20261101/.
+- Activation verified: idle-guarded standard Helper restart of App-Dev only, PID88675/port49942. App/Helper source roots, live inline HTML v4 owner import path and served assets match checkout. No native rebuild or production publication.
+
+### NXR-SHARE-WORKS-HISTORY-LINKS-20261101
+
+- implemented: each share record shows hosting provider, space and timestamp. Separate visible success/pending/failure state from file verification details; verified publication remains successful even if an earlier task failed. Compact equal-height action buttons replace bare links.
+- Owner adapter retrieves mount/owner-scoped publication before showing a host-owned link dialog. User-activated HTTPS link opens outside the sandbox on the current device, preserving AI2Apps. Share target restricted to corresponding HF/MS hosting suffix; management URL generated only from validated provider/repo. No arbitrary URL passed by the package and no popup permission expansion.
+- Validation:4 owner bridge unit checks,4 Desktop/Mobile HF/MS record UI fixtures and8 host-owned share/space new-tab fixtures. Static-only change: refresh Shell; no Local restart, upload or existing publication mutation. Evidence: ai2apps/docs/acceptance/share-works-history-links-20261101/.
+- Final:5 owner bridge checks (adds malicious URL/reference rejection),4 record UI and8 isolated link fixtures passed. Live App-Dev refresh shows both provider-marked success records; latest real HF share opened in a separate native browser window with8 article headings. Returned to preserved AI2Apps page. No restart, model call or republishing.
+
+### NXR-SHARE-WORKS-REMEMBER-TARGETS-20261101
+
+- implemented: persist last checked/prepared destination per owner and HF/MS source in local owner storage, shared by Desktop/Mobile. Existing snapshots restore previous targets without reuploading. Provider switching restores its own destination. HF official CLI SpaceInfo.host supplies the exact direct URL; MS uses official SDK metadata only when a supported HTTPS hosting URL is present. Preserve manual fallback; never infer public readiness from a guessed domain.
+- Debounced complete-space lookup and version guards prevent stale responses overwriting provider/repo switches or manual URLs. Owner-only mount-bound preferences GET added to curated Mobile routes; no credentials stored or login changes.
+- Validation:owner tests and browser target restore/provider isolation/autofill/manual-race/reload fixtures plus existing share UI and bridge tests. Official read-only HF metadata probe confirms Avdpro/shares host=https://avdpro-shares.static.hf.space. No upload or publication mutation. App-Dev idle-guarded standard Helper activation, final receipt pending.
+- Final verification:64 owner Python tests,5 bridge checks,4 share UI fixtures and2 viewport suites covering target restoration/provider isolation/official autofill/manual races/reload passed. Curated Mobile preferences route included. Idle-guarded standard Helper activated App-Dev PID90977/51563; App/Helper source roots and v5 import path verified. Real UI restored Avdpro/shares and https://avdpro-shares.static.hf.space/ from existing history without typing. No upload, model call or publication mutation. Evidence: ai2apps/docs/acceptance/share-works-remember-targets-20261101/.
+
+### NXR-SHARE-WORKS-MS-PENDING-20261101
+
+- implemented: ModelScope public verification recognizes only a bounded JSON HTTP412 response from *.ms.show with Code=PreconditionFailed and exact function-pending message. This owner-specific hosting state retries read-only verification within existing10-minute readiness/15-minute task bounds, never upload or deployment resubmission. Other412 responses remain terminal. Shared research client unchanged.
+- Desktop/Mobile record state displays Uploaded / Waiting for deployment for this reason, with an actionable no-reupload explanation instead of a generic CLI failure. Existing failed upload intent is reconciled through verification only.
+- Live diagnosis: ai2apps/shares snapshot b9d9aabf7d104853a2e8eddac45345f5 upload and deploy returned; verification HTTP412 JSON explicitly states function pending.68 owner tests passed;4 UI fixtures cover pending status. Idle-guarded standard Helper activation App-Dev PID92525/61510, App/Helper source roots, v6 module path and served assets verified. No reupload or new publication.
+- Live recovery succeeded: existing publication015db57d-d7aa-48d1-ac8a-6360affa2701 verified anonymously1/1 through native UI; record now Share succeeded. No upload/deployment repeated. Also refresh history after unsuccessful manual verification and suppress stale executing counts on terminal records. Receipt: ai2apps/docs/acceptance/share-works-ms-pending-20261101/.
+
+### NXR-SHARE-WORKS-MS-READER-20261101
+
+- implemented: distinguish MS file fetch URL from browser reader URL. Public top-level Sec-Fetch-Dest=document requests to ms.show redirect302 to www.modelscope.cn, whose Studio Details page errors for this space. Anonymous iframe/file reads return original HTML. Canonical https://modelscope.cn/studios/{repo}?mode=full&app_path={encoded immutable snapshot path} loads successfully. Use this observed official reader route for MS open/copy, preserving content_url and hash evidence. Legacy verified records normalize presentation without snapshot mutation/reupload. HF unchanged.
+- Owner bridge accepts only exact canonical MS reader derived from owner publication repo/snapshot, rejecting www alias, other spaces, arbitrary queries or direct-file route. No browser sandbox or security setting changes.
+- Validation:69 owner Python tests,6 bridge checks,8 Desktop/Mobile share/management link fixtures passed. Anonymous native WebKit reader loads8article headings, opens first article and reads body/sources; raw HTTP matrix and official SDK Running metadata distinguish hosting availability from browser navigation. App-Dev standard idle-guarded Helper activation in progress/receipt below. No upload, deploy or model call. Evidence: ai2apps/docs/acceptance/share-works-ms-reader-20261101/.
+- Activated and verified: App-Dev PID93386/59068, standard Helper after idle checks. App/Helper source roots, live v7 module path and served script bytes match checkout. Existing records immediately expose canonical reader on history/status. No rebuild or production publication.
+
+### NXR-SHARE-WORKS-MS-WAIT-HINT-20261101
+
+- implemented: bilingual Desktop/Mobile hint for MS deployment/wake-up: may take a few minutes, please wait, no repeat upload needed. Show beside active deploy/wait/verify or explicit deployment_pending records; omit from verified shares and unrelated failures. Setup help also sets the expectation. Static-only; cache version advanced, no restart/reupload.
+- Validation:JS syntax check and existing4 Desktop/Mobile HF/MS browser fixtures include the wait-time/no-repeat-upload wording. No backend, shared execution or Cloud changes.
+
+### NXR-INTELLIGENCE-HTML-REMOVE-FILTERS-20261101
+
+- implemented: remove Search articles input and All sections selector from generated Intelligence reading HTML, along with their filtering script, script hash and control-only CSS. Export now needs no JavaScript (script-src none); native article details, TOC option, sources and inline images retained. Applies to new Desktop/Mobile exports; existing immutable exports/publications unchanged.
+- Validation:11 HTML owner tests and2 browser fixtures passed, including offline image decode, no search/select/script controls, and script-disabled article expansion. No collection, shared Agent or publishing-path changes. Standard idle-guarded App-Dev activation receipt pending.
+- Activated App-Dev via standard Helper after independent idle checks: PID97368/60814. App/Helper development source roots and live export v6 module path verified against checkout. No rebuild, collection replay or republishing. Evidence: ai2apps/docs/acceptance/intelligence-html-no-filters-20261101/.
+
+### NXR-INTELLIGENCE-HTML-AUTHOR-CREDIT-20261101
+
+- implemented: generated reading HTML replaces channel interests beneath the title with an entire clickable attribution: Summarized by <display name>'s AI2Apps / 由 <显示名称> 的 AI2Apps 总结. Fixed HTTPS destination https://ai2apps.com/, new tab with noopener/noreferrer. Escape name, cap120chars; do not include email or internal IDs. HTML/ZIP content structure otherwise unchanged; old immutable exports/publications remain unchanged.
+- Export task resolves only a matching authenticated owner from existing Cloud auth/me within8seconds; skips Cloud offline and uses localized Local user fallback if display name unavailable/mismatched. No Cloud API changes. Desktop/Mobile share owner exporter.
+- Validation:16 HTML owner tests (bilingual escaped attribution, interests removal, owner isolation/offline) and2 browser fixtures passed. App-Dev idle-guarded standard Helper activation pending receipt.
+- Activated App-Dev PID98778/62559 via standard Helper after independent idle checks. App/Helper source roots and live export v7 module path verified.16 owner tests and2 browser fixtures passed; no live export/Cloud identity fetch or republishing performed by acceptance fixtures. Evidence: ai2apps/docs/acceptance/intelligence-html-author-credit-20261101/.
+
+### NXR-INTELLIGENCE-EXPORT-IMAGE-RECOVERY-20261101
+
+- in_progress: owner export recovers failed WordPress image-proxy / Cloudflare image-resize URLs from explicit upstream paths using the existing safe public client; no Fratello-specific rule. Keep image size/pixel and HTML budgets. Remove all missing-image diagnostics/placeholders from exported reading HTML, return detailed owner-scoped missing images for the export dialog.
+- Capture current authenticated browser account display name at export submission, verify it matches the task owner and persist trusted attribution independently from public export parameters. Generic AI2Apps credit if no verified name; no false Local user attribution, email or ID fallback. Pending tests/live activation.
+- Final:32 Python checks (plus final28 rerun after count cleanup),2 Chromium and2 WebKit browser checks passed. Live public image probe recovered11/11 failed images,0missing, without modifying user HTML. Owner-name behavior fixture-tested including browser-scoped session/owner match, internal field injection rejection and duplicate request. Keychain unavailable is handled as missing name, not export failure.
+- Dev PID3283/61156 and App-Dev PID3226/50609 activated through idle-guarded standard Helper; source metadata, live v8 import path and final served assets verified. Dev Shell visibly opened normally. Current-user live export not completed because user was interacting with Dev; no real-account username acceptance claim. Evidence:ai2apps/docs/acceptance/export-image-recovery-20261101/. No native/Cloud/production changes.
+
+### NXR-INTELLIGENCE-EXPORT-READ-RIBBON-20261101
+
+- implemented / validation pending: collapsed offline HTML article cards have blue/white Unread ribbons, dark-gray/white Read ribbons after opening. A hash-authorized local script marks cards read for the current document session and smoothly scrolls newly opened body into the lower half viewport; reduced-motion preference respected. Native details/images remain usable without scripts, with open-state ribbon fallback; auto-scroll requires script-enabled browser. No external scripts, storage or network. TOC/full-article export unchanged.
+- Final:28 Python tests passed;2 Chromium and2 WebKit tests passed including real exported-card read transition, collapse retaining read state, actual scroll/body visibility on390x600viewport and script-disabled native details/image fallback. Dev PID4548/59940 and App-Dev PID4479/49328 activated via independently idle-guarded standard Helpers. Source roots, live v9 module and served assets verified. Evidence:ai2apps/docs/acceptance/export-read-ribbon-20261101/. Regenerate HTML; no native/Cloud/production changes.
+
+### NXR-INTELLIGENCE-EXPORT-HEADING-LOGO-20261101
+
+- implemented / validation pending: reuse trusted web/static/logo-dark.svg inline in offline HTML, right-aligned beside the combined channel title and AI2Apps author-credit block. Responsive72px Desktop/56px Mobile logo, no external image fetch or script requirement, click links to AI2Apps. Existing author name/escaping and offline image CSP retained.
+- Final:19 HTML export tests passed; actual390px browser preview visually inspected with title/credit left and inline SVG right. Dev PID6709/64348 and App-Dev PID6690/51960 activated through idle-guarded standard Helpers; source-root metadata, live v10 import marker and served assets verified. Evidence:ai2apps/docs/acceptance/export-heading-logo-20261101/activation.json. Existing exports unchanged; regenerate HTML. No native/Cloud/production changes.
+
+### NXR-INTELLIGENCE-EXPORT-CARD-BACKGROUND-20261101
+
+- implemented: offline HTML page background darkens slightly from #f5f6f9 to #e9edf3; white cards and print background remain unchanged. Activation pending; reversible CSS-only visual change in generated HTML, no additional tests required.
+- Background activation verified: Dev PID7644/50320, App-Dev PID7637/57936; source metadata, live v11 import marker and served assets checked (ai2apps/docs/acceptance/export-card-background-20261101/activation.json).
+
+### NXR-INTELLIGENCE-EXPORT-DIAGONAL-DATE-20261101
+
+- implemented / verification pending: top-left read ribbons now rotate -45degrees across the card corner, preserving blue Unread/dark-gray Read states. Header displays only export calendar date in19px type, no scope range or timestamp; article-level metadata unchanged. Keep darker #e9edf3 page background and white cards.
+- Final:19 HTML export tests and2 Chromium browser checks passed.390px rendered preview visually inspected; header shows only2026-11-01 with19px date, no scope timestamp/range;45degree ribbon crosses upper-left card corner. Dev PID8323/50657 and App-Dev PID8292/50750 idle-guarded standard Helper activation verified against source roots, v12 import marker and served assets. Evidence:ai2apps/docs/acceptance/export-diagonal-date-20261101/activation.json. Existing HTML requires regeneration; no native/Cloud/production changes.
+
+### NXR-INTELLIGENCE-EXPORT-TOUCH-HIGHLIGHT-20261101
+
+- implemented / activation pending: exported HTML summary/link tap highlight disabled; card summary text selection disabled to avoid large touch-selection feedback. Preserve article body selection, native details activation, zoom gestures and keyboard focus-visible outline. touch-action manipulation retains pan/pinch. CSS-only, no input interception or new JS.
+- Final:2 existing WebKit browser checks passed, covering mobile export dialog and generated card expand/read/scroll plus script-disabled details. Idle-guarded standard Helper activation verified: Dev PID8685/53504, App-Dev PID8678/51781; App/Helper roots, v13 imported source and served assets checked. Evidence:ai2apps/docs/acceptance/export-touch-highlight-20261101/activation.json. Real iPhone visual feedback remains user validation; regenerated HTML required. No native/Cloud/production changes.
+
+### NXR-INTELLIGENCE-EXPORT-RIBBON-INSET-20261101
+
+- implemented: shift45degree ribbon band12px up and12px left (top22→10px,left-40→-52px), retaining width, read colors, text and touch behavior. Reduce corner overlap with image/title. Reversible CSS-only output change, no new tests needed. Activation pending.
+- Activated through idle-guarded standard Helpers: Dev PID9847/61666, App-Dev PID9839/53665. App/Helper roots, live v14 import marker and served assets verified; evidence ai2apps/docs/acceptance/export-ribbon-inset-20261101/activation.json. Regenerate HTML for this position; existing shared snapshots remain unchanged. No native/Cloud/production changes.
+
+### NXR-INTELLIGENCE-EXPORT-SUBTLE-PRESS-20261101
+
+- implemented: exported article card background becomes subtle #f1f4f8 while its summary is active, restores white on release. Retain disabled native tap overlay, body selection, native scrolling/zoom and keyboard focus. CSS-only :has/:active; no pointer interception or persistent press state. Activation pending.
+- Final: independent WebKit mobile-sized fixture verified computed card background white→rgb(241,244,248) during pointer-down→white on release. Dev PID10402/58407 and App-Dev PID10393/55288 standard idle-guarded activation verified; App/Helper roots, live v15 import and served assets checked. Evidence:ai2apps/docs/acceptance/export-subtle-press-20261101/activation.json. Real iPhone touch feel remains user validation; regenerate/redeploy HTML. No native/Cloud/production changes.
+
+### NXR-SHARE-WORKS-BUILTIN-AAAT-20261101
+
+- in_progress: retain product-owned built-in Share Works (no registry install); version0.1.1 declares share.destinations/prepare/publish/history/verify/cancel. Owner adapter uses existing ShareWorks and SystemTaskService.follow; no General/shared execution business branches. UI/Agent share Intelligence completed-export input checks. Current Session HTML/ZIP artifacts only; no arbitrary paths/tokens/login/space creation.
+- Publish requires exact current Run/Session/Provider-version submitted user form with snapshot/destination/repo/title/digest; no model confirmation flag. Stable confirmation-derived publication key prevents duplicate uploads. Existing Task owns progress/cancellation; retries after uncertain dispatch only reconcile. Effect declarations and bilingual field labels included. Full language catalog remains future scope.
+- Owner registry/form/queue tests and mandatory AaAT boundary gate running. No live model or upload in this implementation turn. App-Dev activation pending after final validation and idle checks.
+- implemented / App-Dev activated:89 owner/builtin tests passed; mandatory shared AaAT gate755 passed (exit0; existing headless Metal atexit warning). Real HTTP form + Agent/SystemTask lifecycle fixtures cover HF/MS, Chat attachments/workspace artifacts, foreign Session refusal, exact confirmation/replay/changes/cancel/version guards, actual progress, verification and queued cancellation cleanup. External CLI upload/public verification fixtures only; no live LLM, actual upload or production publication.
+- Final standard Helper activation after independent idle checks: App-Dev PID20435/63523. App/Helper roots, live Share Works AaAT v2 module import path and served assets match checkout. No native rebuild. Evidence: ai2apps/docs/acceptance/share-works-builtin-aaat-20261101/.
+
+### NXR-MESSAGER-CLEAR-DIALOGUE-MODAL-20261103
+
+- implemented / automated_verified / user_clear_pending / unreleased: move cleanup review out of the scrolling Bot sidebar into a root-owned native modal. Show Bot, scope and existing lifecycle impacts; Cancel receives initial focus, Escape cancels. Guard review loading, exact Bot target and duplicate submission.
+- Successful cleanup invalidates old polls and immediately removes old stream/attachments/materials before reopening the same Bot in its fresh Session; failed mutation retains content. Preserve existing recoverable archive, independent memory, Gallery originals and original Task audit. No backend/shared AaAT semantics changed.
+- JS 7 and Python owner 13 tests passed. Current Dev shell refreshed; native modal visibility, Cancel focus and Escape checked without clearing real user data. Dev/App-Dev App+Helper live roots/import paths and served JS/CSS match checkout. No rebuild, Local restart, Cloud change or publication. Evidence: ai2apps/docs/acceptance/messager-clear-dialogue-20261103/receipt.json.
+
+### NXR-BOT-CAPABILITY-DISCOVERY-20261103
+
+- implemented / automated_verified / Dev+App-Dev loaded / unreleased: explicit foreground Bot discovery uses normal Agent capability declarations, durable Tool approvals, parameter forms and handoffs. Catalog visibility does not preauthorize invocation. Freeze Tool revisions/Provider versions and Bot permission epoch; preserve original Run/Session. Background Hook/Todo remain separately frozen.
+- Generic AppChat opt-in delegates ungranted calls to existing policy/GrantLease, including additional app-chat.invoke for legacy zero-capability scoped Tools. Gateway, Router and actual owner calls enforce it. Restrict new approval to once/run to avoid shared Agent/App and later-Run grants. Default scoped Apps unchanged; control interaction creation and pending parameter host access recheck scope.
+- Todo adapter applies directory/UI scope only for its own Todo Chat; other authorized App callers retain owner checks. Bot UI reuses shared parameter forms, original approval response and host-bound handoff. No new image-specific/shared business rules.
+- Owner59, additional zero-capability/isolation7, Router guard1, JS24 passed. Final full AaAT gate970 passed in575.21s (exit0; existing headless Metal atexit warning). Standard Helper idle checks/restarts applied to exact Dev/App-Dev; App/Helper source roots, live import marker and served new JS/CSS verified. Current Dev Messager opened with original messages; no live generation, new grants, installation, Cloud change or publication. Evidence: ai2apps/docs/acceptance/messager-capability-discovery-20261103/receipt.json.
+
+### NXR-BOT-APP-READ-WRITE-ACCESS-20261103
+
+- implemented / automated_verified / Dev+App-Dev final loaded / unreleased: Bot-owned App Read/Write grants replace per-call approval as the ordinary authorization entry. Request card shows trusted App icon/name, both switches initially selected, Write depends on Read, and Allow this bot persists only this Bot's App access. App Access settings group by App. Existing limited profile grants are not silently promoted.
+- Ordinary current calls resume original Run after exact pending-interaction/catalog review. Billing, unknown/sensitive effects and owner access_policy=confirm remain separately confirmed. New tasks freeze granted ordinary Providers; admitted tasks retain original snapshots. Revocation invalidates old executions. No actual user grant or paid generation performed. Full AaAT975 passed (618.33s, exit0; existing headless Metal atexit warning); JS31, regression38, integration14 and final owner6 passed. Original pending panda request cancelled only after explicit user authorization. Native Dev App icons and dependent switches verified without saving grants. App-Dev final version loaded; Dev primary loaded, final legacy migration correction waits for newly active browser/collection tasks. No forced cancellation of those new tasks. Evidence: ai2apps/docs/acceptance/messager-app-read-write-20261103/receipt.json.
+
+- Final activation: user authorized cancelling the new batch; exact pre-action snapshot found no remaining collection nodes or waiting Runs, so no extra cancellation was performed. Standard idle-guarded Helper restart completed Dev final migration loading. Dev PID37161/63548 and App-Dev PID35894/61969 roots/import paths/served resources verified. Earlier pending-load state resolved; no live App grants or paid generation. Evidence: ai2apps/docs/acceptance/messager-app-read-write-20261103/activation-final.json.
+
+### NXR-BOT-PLANNING-CATALOG-COST-20261103
+
+- completed: Messager planning Run spent ~58s reaching Tool approval; two model steps total ~4.35s. Repeated per-Tool permission capture/export and per-Provider full export rebuilds caused multiplicative registry/manifest reads.
+- Bot validation now checks exact current routes, selected App grant targets reuse identity only within each call, and trusted AppChatOwner point visibility preserves current registry/session/version pins and default export behavior. No cross-call authority cache. Revocation and ambiguous providers remain guarded.
+- Frontend applies fresh state before awaiting the task list, preventing a slow work list from hiding approval/status updates.
+- Validation: mandatory AaAT gate 987 passed; planning fixtures 5 passed; Bot frontend unit tests 33 passed. Fixture 125 tools ~0.030s, first model-request preparation ~0.047s; no real model/image execution. Browser fixtures requiring unavailable Playwright were not executed; native Dev Messager input verified.
+- Standard idle-guarded Helper activation verified Dev PID41944/54240 and App-Dev PID41366/53362, fixed App and Helper roots, imported module paths and served asset hashes. No App permissions or paid generation approved. User live drawing acceptance remains pending. Evidence: ai2apps/docs/acceptance/messager-planning-cost-20261103/receipt.json.
+
+### NXR-BOT-SPEECH-ACPF-RECOVERY-20261103
+
+- completed: Messager TTS missing-model/synthesis failures and ASR missing-model/API failures offer an owner-owned ACPF configure-only action for Runtime/model Package setup. Raw developer diagnostics are collapsed. Permission/rate-limit/network/recording/playback errors do not trigger package setup.
+- Shared message controls expose only an optional UI error callback; owner builds ACPF request. No General/AaAT authorization or Package installer changes. No automatic Package approval, synthesis retry, transcription or message submission.
+- Failed ASR retains the recorded blob only for the current mount; explicit retry appends recognized text to editable draft. Disposed/stale setup callbacks are ignored. TTS retains original message and awaits explicit Read aloud retry.
+- Validation: 15 Node fixture tests passed; static scripts checked. Dev Messager reopened with latest assets (port55705); no backend restart performed by this change, no actual Package install or live speech model run. User live acceptance pending. Evidence: ai2apps/docs/acceptance/messager-speech-acpf-20261103/.
+
+- Follow-up: successful configured/already_ready ACPF completion removes Set up speech and old Error details, leaving completion text and any explicit ASR recording retry. Cancelled/failed setup keeps recovery controls. Relevant 15 Node tests pass, including success versus cancellation cleanup. Static-only refresh; no install or speech execution.
+
+- Default model follow-up: live failure still used legacy Fish with missing mlx_audio, while new Qwen3 Package was installed. Bot default now probes current ready provider and uses its exact model plus declared default voice, independently of stale Chat preferences. Repair ensure no longer forces installMore; explicit install-more remains available. 17 Node tests pass. Native Dev original message Read aloud reached worker HTTP200 at 08:16:51 (local log), returned idle without setup prompt; no Package installed. Evidence: ai2apps/docs/acceptance/messager-speech-acpf-20261103/default-model.json.
+
+- Playback follow-up: Messager compactSpeech removes native audio controls, uses Chat StreamingTextSegmenter (8/24/56), serial synthesis overlapping ordered playback with two prepared segments maximum. Detached player is controlled by the read/stop icon. Existing non-Bot message actions and Chat pipeline remain unchanged. 21 Node tests and 3 existing Chat segmenter tests pass, including bounded overlap/cancellation/error cleanup. Static-only Dev refresh. Evidence: ai2apps/docs/acceptance/messager-speech-acpf-20261103/streaming-tests.log.
+
+### NXR-BOT-DIALOGUE-JOBS-INLINE-MEDIA-20261103
+
+- completed: generated images/media now appear on the owning assistant message using verified Workspace references, eliminating the fixed Conversation materials feed. History paging keeps each media/result association.
+- Messager-owned tool-less short dialogue returns a direct reply or admits a durable Bot-Agent-Chat managed Todo Task on the existing messager-bot lane. Worker execution/approval does not lock new chat; managed one-time/scheduled tasks share the same serial slot. Immediate original user work needs no duplicate task-plan review; scheduling keeps the existing explicit review.
+- Workers retain original actor/Bot/request/model/identity/access/version bindings and original App Chat/AaAT execution, App grant cards, special/paid confirmation, parameter forms and cancellation. No General business branches, implicit approval, Tool execution by the dialogue coordinator or automatic uncertain-effect retry. Only the corresponding trusted Todo adapter may admit a worker. Original worker receipts recover across restart; queued follow-ups receive earlier causal results, and selected files parse after task admission rather than blocking the foreground submit.
+- Validation: full AaAT gate 1001 passed; final owner checks 7 passed; related owner regression 25 passed; Bot frontend 44 passed. Queue/approval/revocation/recovery/API/media tests use deterministic model fixtures with real Runtime/SQLite/Todo/Policy. App-Dev real greeting Run run_459ef59a55694e369befc81b7899571d returned reply with no Tools or Task. Dev native history shows both prior panda images under their own messages. No paid image generation repeated.
+- Final standard idle-guarded Helper activation verified both Dev/App-Dev fixed App+Helper source roots, live module paths and served assets. Evidence and exact PIDs/ports/source hashes: ai2apps/docs/acceptance/messager-dialogue-jobs-20261103/receipt.json. User live acceptance of complex work/approval remains pending.
+
+- Final static polish: composer unlocks as soon as message admission succeeds, without waiting for task-list polling; sidebar explains continued chat and separate schedule confirmation. Final Bot frontend 44 passed.
+
+### NXR-BOT-TASK-SESSION-CONTINUATIONS-20261103
+
+- Implemented: logical Task-Sessions with distinct sequential Runs; queued amendments merge before admission, running/waiting work keeps immutable inputs and queues follow-ups in the same AppChat Session. Explicit target selection, recent 20 summaries, pin/archive/restore and paginated retained-history browsing are available. Bot/Todo cancellation and failed/uncertain prior Runs block automatic continuation. KV-cache reuse remains best effort.
+- Existing managed plans use owner-reviewed before/after revisions, fresh frozen Bot authorization and the same Todo task ID. Generic Todo CAS receipts update future admissions without rewriting existing Run snapshots. Version/conflict/owner/revocation guards and durable decision/start/result/plan feedback survive recovery; special/paid/sensitive operation confirmation is unchanged. Owner architecture documentation updated.
+- Validation: mandatory `python ai2apps/tests/run_aaat_boundaries.py` passed 1014 tests (568.06s, exit 0); 31 focused backend tests, 45 frontend tests and final 4-test plan recheck passed. Fixtures exercised real local Run/Todo/database/authorization flows; no live paid image or destructive operation was performed. A non-failing Metal-unavailable atexit warning is retained in the gate log.
+- Activated using standard idle-guarded Helper restart in App-Dev (PID 68535 / port 58236) and, after its tasks completed, Dev (PID 68709 / port 58833). Both App/Helper source roots, actual Local import markers/new tables and served asset equality verified against the live checkout. Native App-Dev inspected the default Bot and actual history-browser empty state. No rebuild/publication or instance-data copying.
+- Evidence: `ai2apps/docs/acceptance/messager-task-sessions-20261103/README.md`. Real-model follow-up interpretation and user workflow acceptance remain manual; automated execution evidence uses deterministic model fixtures.
+
+### NXR-BOT-TYPED-RESULTS-20261103
+
+- Implemented: preserve standard openai_content parts when projecting Bot Task text/media output, instead of persisting Python str(list). Summary uses text blocks only. Artifact preview rendering compares canonical owned resource identities and suppresses duplicates already embedded in Markdown.
+- Compatibility: repair only the owner's exact legacy projection matched by Task/Run/message identity, metadata and legacy content, from canonical completed Run output. Preserve original message identity/order, artifact and Run/Tool audit; no model/effect replay or new generation.
+- Validation: 9 backend owner tests, 4 Gallery tests and 46 full Bot frontend tests passed. Mandatory AaAT gate passed 1018 tests / 558.57s / exit 0; non-failing Metal-unavailable atexit warning retained. Arbitrary image/audio identity coverage, typed result projection, legacy repair/idempotency and inline deduplication verified.
+- Activated through standard idle-guarded Helper restart in App-Dev and Dev. Source-root/import-marker/served-asset checks passed. Native App-Dev on port 64712 confirms the user's existing panda message now has readable caption and one image, without container fields or duplicate attachment card. No paid regeneration or permission changes.
+- Evidence: `ai2apps/docs/acceptance/messager-typed-results-20261103/README.md`.
+
+### NXR-BOT-FEEDBACK-AND-SESSION-CARDS-20261103
+
+- Implemented: standard runtime resource context is separate from assistant text. Generated artifact references remain model-readable, data-only and non-authoritative; user-provided runtime_context cannot become a system message. Known legacy hints are cleaned by exact verified artifact identity in user projections and media history, with no broad regex or business-name branches in General.
+- Bot execution jobs have independent action labels and natural host receipts tied to actual admission/queue decisions. Intermediate delivery reads same-session follow-ups and announces the next action; final delivery retains factual results. Persistent presentation receipts prevent queue changes or recovery from rewriting/doubling prior feedback. Worker raw output, effects, Tool audit and authorization remain intact. Trusted Bot owner instructions define factual result delivery without follow-up invitations/runtime metadata.
+- Sidebar groups by logical Task-Session, expands each step/status/original Todo link, prefers active status to queued steps and retains scheduled/manual task entries. Underlying Task/Run identities and history are not migrated. Initial state loads once even in background; periodic hidden polling remains paused.
+- Preserved concurrent image work: bot_materials.js and messager.css unchanged from turn start; bot_conversation.js differs only at initial poll guard/call (reversing those edits reproduces original hash). No image render/preview/save/Gallery/drag overwrite. One obsolete test assertion was updated for the image implementation's composed artifact/attachment Gallery routes; production image code was unchanged.
+- Validation: 29 focused owner tests, 48 Bot frontend tests, final 13-test owner and 8-test context checks passed. Mandatory AaAT rerun passed 1022 tests in 584.68s (exit 0). First run's sole stale assertion and non-failing Metal atexit warning are retained in evidence. New behavior uses deterministic models; no paid generation or privilege grant for acceptance.
+- Activated using standard idle-guarded Helper restart in fixed App-Dev and Dev; App/Helper source roots, actual Local imports and served assets verified against live checkout. Native App-Dev shows the existing panda conversation without internal hint, preserved image controls and one session card expanding the two original Todo executions. Historical delivered queue wording retained; new wording applies to subsequent runs.
+- Documentation: owner integration and normative runtime-context contracts plus Messager design updated. Evidence: `ai2apps/docs/acceptance/messager-feedback-session-cards-20261103/README.md`.
+
+### NXR-MEMORY-PROJECTION-BUNDLES-20261103
+
+- Fixed SessionMemory one-to-many model projection after runtime resource-context separation. Keep complete projected bundles under original source-node IDs, measure bundle costs and flatten only summary request messages. Original source/hash/CAS, balanced selection and artifact retention remain intact; no positional zip pairing or disabled memory workaround.
+- The real App-Dev add-hat follow-up failed before any RunStep/model/Tool submission; the base image remains. No automatic retry/effect replay. Failed sessions now retain failure status rather than claim user cancellation; context-preparation diagnostics have a user-facing card explanation while raw execution diagnostics remain available.
+- Regression: existing real generated-media/large-upload SessionMemory test now asserts message expansion and exercises ordinary/forced compaction, and is explicitly included in the mandatory gate. 14 initial and 24 final targeted tests passed. Full AaAT gate passed 1026 tests / 573.30s / exit 0; non-failing Metal atexit warning retained.
+- Activated via standard idle-guarded Helper restart in fixed App-Dev and Dev. App/Helper roots, actual import markers and served assets verified against live checkout. Native App-Dev port 60805 confirms preserved image controls and Failed/context explanation. Image rendering implementation unchanged; failed historical execution not rerun.
+- Contract updated: `ai2apps/docs/aaat-declaration-context-v1.md`. Evidence: `ai2apps/docs/acceptance/messager-memory-projection-bundles-20261103/README.md`.
+
+### NXR-BOT-DEFAULT-PARAMETER-RESOLUTION-20261103
+
+- Implemented trusted Bot instructions and image-owner AaAT declaration: resolve ordinary parameters from explicit user intent, observed context and declared/configured defaults, then invoke complete operations directly. Do not proactively open optional parameter forms just to reconfirm defaults. Actual real-run evidence identified a model-chosen collect_parameters form rather than a host-required model selection.
+- Preserve missing required sources/private facts, ambiguous identities, unavailable model/configuration, explicit settings requests and owner-mandated confirmation. No fabricated references, silent explicit-model switch, parameter-form auto-submission/fake confirmation, budget expansion, execution grant or approval bypass. Existing owner preflight remains authoritative.
+- Validation: 37 focused tests passed, including two configured model catalogs resolving minimal requests to their declared defaults and missing edit sources still rejected. Mandatory AaAT gate passed 1029 tests in 560.37s / exit 0; non-failing Metal atexit warning retained. No live paid generation for acceptance; real-model intent handling remains user acceptance.
+- Activated through standard idle-guarded Helper restart in fixed App-Dev and Dev, with App/Helper source root, Local import and served-resource verification. No image UI implementation change. Messager design updated.
+- Evidence: `ai2apps/docs/acceptance/messager-default-parameters-20261103/README.md`.
+
+### NXR-BOT-QUESTION-CONTEXT-20261103
+
+- Implemented Bot inquiry context bound to actual logical task, current step and original request. Trusted Bot instructions require specific missing/ambiguous parameters, reasons, expected answers/options and what follows the reply. Task explanations survive shared form redraw; dynamic owner missing/invalid summaries and prefilled values remain authoritative.
+- Scheduled inquiries include original task purpose and use the shared form against the original Run/interaction, releasing stale forms on redraw/disposal. No new execution authority, approval bypass, parameter auto-confirmation or image display changes.
+- Validation: 15 focused Python runtime tests, 30 targeted UI tests and 72 broader Bot/shared-form UI tests passed. Mandatory AaAT gate: 1029 passed in 561.16s, exit 0; non-failing Metal atexit warning retained. Fixtures are distinguished from live model acceptance; no paid generation was initiated.
+- Activated in fixed App-Dev and Dev through standard idle-guarded Helper restart. Verified App/Helper source roots, actual Local imports and served changed assets against the live checkout. Updated Messager design.
+- Evidence: `ai2apps/docs/acceptance/messager-question-context-20261103/README.md`.
+
+### NXR-BOT-DESCRIPTOR-ACCESS-20261103
+
+- Implemented foreground Bot descriptor inspection for frozen admitted Provider identities/versions and current Tool revision. Effectful or capability-requiring descriptor variants, unknown/changed targets and background use are not automatically authorized. Descriptor reads grant no business execution or App Read/Write access.
+- Deterministic unresolved access cards offer Cancel this operation, without meaningless Retry or Allow. Transient lookup failures explicitly offer Reload access information and cancellation; reloading never repeats business execution or responds to approval.
+- Validation: 21 focused owner tests plus four descriptor-specific cases passed; 32 related UI tests passed. Full mandatory AaAT gate: 1033 passed in 611.96s (0:10:11), exit 0 (non-failing Metal atexit warning retained). Runtime and DOM fixtures are distinguished from live model acceptance.
+- With explicit user approval, stopped the waiting Dev task session and queued follow-ups through the native UI. Standard idle-guarded Helper restart loaded both fixed Dev and App-Dev; verified App/Helper source roots, actual Local imports and served assets. Native Dev confirmed stopped state after restart and no old approval card. No paid generation, automatic approval, business retry or image rendering change.
+- Design and evidence: `ai2apps/docs/acceptance/messager-descriptor-access-20261103/README.md` and `ai2apps/docs/messager-ui-and-bot-task-v2.md`.
+
+### NXR-BOT-COMMUNICATION-C1-20261103
+
+- Implemented same-owner/same-Local text consultation directory and request AaAT. Each exact question, recipient and reply model requires an explicit one-shot review in the originating Bot conversation. A dedicated no-Tool receiving Run answers without private history/memory or App authority; responses are attributed and returned to the original conversation.
+- Durable request/Run binding, conflict detection, idempotent approval/result projection, expiry, bounded admission and model output, cancellation, settings/permission-version rechecks, cleanup/revocation and a resumable System Task observer. Background result delivery does not depend on an open UI; observer recovery never resubmits model work.
+- Updated design with origin-dialogue user-input/approval relay, including same-interaction rendering in participating Bots for C2. C1 does not implement delegated Tool tasks, persistent pair grants, multi-layer collaboration or cross-owner transport. Existing image rendering files were preserved.
+- Validation: 35 related owner/runtime tests passed; final consultation/lifecycle set 18 passed including 11 communication cases; Bot/shared-form frontend set 75 passed. Mandatory AaAT gate 1044 passed in 588.99s, exit 0; non-failing Metal atexit warning retained. Deterministic models/DOM fixtures are distinguished from live execution; no paid consultation submitted for acceptance.
+- Activated only in fixed App-Dev through the standard idle-guarded Helper restart. Verified App/Helper checkout metadata, live imported module path, registered Tools/table, served assets and native Messager mount. No App rebuild.
+- Design: `ai2apps/docs/bot-communication-and-collaboration-v1.md`; implementation: `ai2apps/docs/bot-communication-c1-implementation.md`; evidence: `ai2apps/docs/acceptance/bot-communication-c1-20261103/README.md`.
+
+### NXR-BOT-DELEGATION-C2-20261104
+
+- Implemented same-owner/same-Local immediate single-layer Bot task delegation. The original conversation reviews receiver, exact instructions, model, per-round budget and the intersection of both Bots current access. Actual child execution uses the receiver Todo/Task-Session and serial lane; no new App grants or private history/file transfer.
+- Committed parent execution checkpoints close the current round and retain a logical waiting_collaboration task, releasing its lane. Successful child output resumes the same parent Task-Session/execution Session in a new queued round with current result context. Actual Todo observation plus resumable coordination reconcile admission/result gaps without re-executing old Runs. Old-round summaries cannot overwrite newer results.
+- Original Run/interaction IDs are presented in both origin and receiver conversations; special approval is once-only and retains App identity. Rejection, expiry, cancellation, failure or revocation stops automatic continuation and preserves existing effects. Nested delegation is denied; stable identity/content deduplication, root/admission caps and frozen budgets bound work. Scheduled/Hook and multi-level delegation remain out of scope.
+- Added generic trusted AppChatOwner execution_checkpoint and approval_scopes callbacks, with current authorization checks, committed-step boundaries and narrowing-only scope ceilings. Shared execution contains no business identity branches; two unrelated Provider identities verify the abstraction. Existing image presentation implementation was preserved.
+- Validation: final C2/checkpoint set 9 passed; related Bot/C1/Task-Session set 32 passed; Bot/shared-form UI 76 passed. Mandatory AaAT gate 1054 passed in 645.87s, exit 0; non-failing Metal atexit warning retained. Evidence distinguishes deterministic model/owner fixtures from live execution; no paid delegation or sensitive user approval was performed.
+- Activated only fixed App-Dev via the standard idle-guarded Helper restart. Verified App/Helper checkout metadata, live imported C2 module path, Tools/table, served resources and native Messager load. No App rebuild or Dev/production replacement.
+- Documentation: `ai2apps/docs/bot-delegation-c2-implementation.md`; evidence: `ai2apps/docs/acceptance/bot-delegation-c2-20261104/README.md`.
+
+### NXR-BOT-CONTENT-CLEANUP-ACCESS-20261104
+
+- Implemented separation of content cleanup and persistent access revocation. Clear/restore dialogue and clear memory retain exact App/Mini-App and legacy grants while advancing epochs, stopping old executions/approvals and pausing linked schedules/Hooks. Archive/reset still revoke. No inferred restoration of historical lost grants.
+- Confirmation modal distinguishes retained access from archive/reset revocation. Existing image rendering code is untouched.
+- Validation: 27 focused runtime tests and 4 cleanup UI tests passed. Full mandatory AaAT gate completed with 1064 passed / 2 failed (848.55s, exit 1). Unrelated exact-context test lacks the concurrently added collaboration_plans field; handoff writer test hit database-lock contention. Isolated recheck: handoff passed, exact-context mismatch persists. Gate is not green; preserve these findings for release reconciliation. Optional standalone browser-cache test could not start without playwright; native modal verification completed instead.
+- Activated fixed App-Dev and Dev through standard idle-guarded Helper restarts; verified source-root/import/served resources. Native Dev modal explicitly retained App/Mini-App access; cancelled the modal and confirmed real conversation remains intact. No live cleanup, added permission or grant reconstruction performed.
+- Evidence: `ai2apps/docs/acceptance/messager-content-cleanup-access-20261104/README.md`; design updated in `ai2apps/docs/messager-ui-and-bot-task-v2.md`.
+
+### NXR-BOT-CLEANUP-OPTIONS-20261104
+
+- Implemented independent default-off memory deletion and App/Mini-App access revocation choices in clear-conversation confirmation, with dynamic scope summary/button, Cancel initial focus, busy guards and choice reset on reopen/cancel/completion.
+- Strict optional API booleans default false, restricted to clear_dialogue; review includes permission revisions. Selected dialogue/memory/grant changes commit together, with fail-closed old-work invalidation before commit. No historical grant reconstruction, restored deleted memory or automatic task restart.
+- Validation: 32 focused owner/runtime/API cases and 8 UI fixtures passed. Full mandatory AaAT gate: 1073 passed in 755.30s, exit 0; non-failing Metal atexit warning retained. Includes four combinations, origin/stale/duplicate rejection, strict input and injected transaction rollback.
+- Loaded fixed App-Dev and Dev with standard idle-guarded Helper restart; verified App/Helper source-root metadata, actual Local imports and served assets. Native Dev verified unchecked defaults, both selected summary/button, and cancellation returning to intact conversation. No real cleanup/permission mutation submitted. CSS append is scoped to dialog checkboxes; image rendering preserved.
+- Design: `ai2apps/docs/messager-ui-and-bot-task-v2.md`. Evidence: `ai2apps/docs/acceptance/messager-cleanup-options-20261104/README.md`.
+
+### NXR-BOT-MEMORY-HISTORY-M12-20261104
+
+- Implemented isolated M1 owned Task/step/output index, paginated literal/CJK history search and detail API/UI, and declared history search/get/attach AaAT with scoped access and idempotent output transfer. Current steps are recorded sequence, not inferred image-edit ancestry.
+- Implemented M2 structured field/evidence/version/change core, same-value/content-hash merge, explicit CAS replacement, durable source photo bytes, transactional journal, idempotent notice recovery and version-protected undo. Existing reviewed memory-save receipts link to changes without duplicate notices. New in-stream view/undo actions bind stored message IDs; no App Access mutation.
+- This entry delivered the isolated M1/M2 core. Its deferred retrieval/candidate/maintenance dispatch work is implemented by NXR-BOT-AUTOMATIC-MEMORY-20261104 below. Full edit lineage and semantic retrieval remain future work; no bulk historical user-memory migration.
+- Validation: 11 new core owner/API/ToolGateway tests and 3 UI fixtures; existing owner compatibility batch 48 passed. Final mandatory AaAT gate result recorded in ai2apps/docs/acceptance/bot-memory-history-m12-20261104/README.md.
+- Activated fixed App-Dev and Dev through standard idle-guarded Helper restart. Verified both App/Helper source roots, Local imported history/memory module paths, new schemas/tools and served changed assets. Native App-Dev read-only acceptance found prior straw-hat panda and composite tasks, displayed real steps/output images, and verified memory-version empty state; no real note/permission/task effects submitted. Existing image rendering preserved.
+- Design and limits: ai2apps/docs/bot-memory-history-m12-implementation.md; staged plan updated in ai2apps/docs/bot-memory-and-history-plan-v1.md.
+
+
+### NXR-BOT-AUTOMATIC-MEMORY-20261104
+
+- Implemented queued Bot memory owner adapter, reuse of foreground decisions for source-bound candidates, guarded same-field merges/replacements, candidate review/cancel, source epochs and contribution-scoped forgetting. New explicit evidence creates a new record after forgetting; stale restoration cannot overwrite a newer field.
+- Trusted generic Todo adapter queue classes, non-preemptive maintenance priority (two-batch burst and 60-second normal aging), durable fairness, and explicitly unstarted-owner recovery. No business identities in General; no new business Tool authority for maintenance.
+- Bounded memory/history recall and selected-version local resource hydration; asynchronous maintenance does not hold the chat lock during file copy. Existing image UI and Bot communication/delegation controls preserved.
+- Validation: mandatory AaAT gate 1114 passed (934.83s, exit 0); final owner delta 27 passed and dialogue flow 25 passed; 4 UI fixtures passed. Fixture models/media, real SQLite/Todo/AgentRuntime/Workspace. Native App-Dev read-only entry/empty-state acceptance passed; no user-memory mutation or paid generation.
+- Fixed App-Dev loaded final implementation and verified App/Helper source-root, Local imports, tables and served assets. Dev loaded the main implementation, but final feedback/usage compatibility delta remains pending Local restart because standard idle checks found new active tasks; never interrupted them.
+- Design and limits: ai2apps/docs/bot-memory-automatic-v1.md. Evidence: ai2apps/docs/acceptance/bot-memory-automatic-20261104/README.md.
+
+
+### NXR-BOT-PLAN-ACCESS-PREFLIGHT-20261105
+
+- Current semantics are superseded by NXR-BOT-SYSTEM-SCHEDULE-ACCESS-20261105 below: approved ordinary access persists on the Bot and schedules use the shared System Task service. Earlier evidence remains historical.
+
+- Implemented Messager-owned declaration-only preflight for Bot task proposals and recurring-plan amendments. Reviews choose fixed permissions now or bounded runtime automatic acquisition, with required/conditional targets and installed target choices. No business probing or permanent Bot App grant mutation.
+- Plan policies pin Provider/Tool/declaration versions and have independent revocation, actor/Bot/original-Run binding, exact approval replay, snapshot byte limits, and CAS plan versions. Scope cannot expand to new Providers or Apps during execution. Special operations remain original-Run once confirmations; parameter forms and handoffs stay within the approved scope.
+- Automatic admission records reflect selected business calls, not catalog visibility, form opening or business success. UI preserves selections across polling, shows plan-only scope/limits and supports revocation; no changes to the image renderer or other sessions' App/Mobile work.
+- Validation: mandatory AaAT gate 1144 passed (1059.25s, exit 0); final owner/Todo/plan/cost batch 25 passed, plus final automatic-mode form delta 1 passed; 2 UI tests and isolated Chrome review interaction passed. Fixture models/business handlers; no real grants, schedules, payments or external effects submitted.
+- Final implementation loaded fixed App-Dev through standard idle-guarded Helper restart; verified App/Helper source-root, imported task_access.py log path, tables, served JS/CSS and native message UI. Dev initially deferred the final restart because of active tasks; after they ended naturally, the standard idle-guarded restart loaded the final implementation and imported source/tables/served assets were verified. No tasks interrupted.
+- Design: ai2apps/docs/bot-plan-access-preflight-v1.md. Evidence: ai2apps/docs/acceptance/bot-plan-access-20261105/README.md. No Cloud change or publication.
+
+
+### NXR-BOT-SYSTEM-SCHEDULE-ACCESS-20261105
+
+- Implemented shared System Task schedule registration and sole-clock dispatch into the existing Todo managed queue, preserving Task IDs, execution bindings, original Agent Runs and approvals. Generic trusted calendar/disable callbacks and durable slot/launch receipts avoid a second Bot timer or duplicate execution; queued admissions retain the reviewed snapshot.
+- Approved ordinary App/Mini-App access is saved additively on the Bot, including bounded automatic acquisition at the selected business call. Task scope remains frozen; revoking Bot access blocks dependent execution and stale auto snapshots cannot regrant it. Special/cost-sensitive confirmation remains required.
+- Bot deletion/reset stops work, disables schedules and soft-deletes owned background tasks. Bot restore recovers records paused without permissions or timers. Clear conversation independently offers memory, App Access and background Task deletion, default off; manually linked unrelated tasks are retained.
+- Validation: targeted backend batch 66 passed; lifecycle/permission UI 14 passed; isolated Chrome System Tasks Desktop/Mobile 3 passed. Mandatory AaAT gate ran: 1171 passed and 4 image schedule failures; corrected generic checkpoint ownership, then all affected image/system/Bot schedule tests 37 passed (24.40s), plus arbitrary-provider checkpoint coverage 19 passed (6.80s). Final cancellation-receipt delta 8 passed. Full gate was not repeated after the narrow fix; original result and resolution are recorded honestly.
+- Loaded fixed App-Dev and Dev through standard idle-guarded Helper restarts without interrupting tasks. Verified App/Helper source roots, actual Local module paths, Todo mapping table and served changed assets against the live checkout. Native App-Dev read-only inspection confirmed System Tasks Scheduled and three unchecked clear-conversation options; no real user data, grants or paid/external actions changed for acceptance.
+- Design: ai2apps/docs/bot-plan-access-preflight-v1.md; evidence: ai2apps/docs/acceptance/bot-system-schedules-20261105/README.md. No Cloud change or publication.
+
+
+### NXR-BOT-TYPE-FOUNDATION-B0-20261105
+
+- Implemented Messager-owned versioned Bot definitions with orthogonal execution_mode/audience/location and bounded standard configuration. Current admission accepts only agent/owner/local; reserved presets, unknown versions and extra configuration are rejected. Existing five-entry creation menu remains unchanged, with four nonstandard choices disabled.
+- Default, direct and configured creation persist the definition; configured creation includes it in the original identity/settings/idempotency transaction. Desktop/Mobile directory lists project the same version, revision and entry/input behavior; options expose the type catalog. Existing identities without records project as standard without rewriting access, tasks or settings. Type mutation and nonstandard execution remain unavailable.
+- Development plan saved at ai2apps/docs/bot-types-development-plan-v1.md: B0 → Flash (calculator then invoices) → generic App-State → ASC → Outlet → Mirror. Updated ai2apps/docs/messager-ui-and-bot-task-v2.md to reflect current scope/order.
+- Validation: type/creation/existing Bot tests 12 passed (8.59s); final type/creation tests with Mobile response and rollback coverage 7 passed (4.65s). No shared Agentic/AaAT routing, declarations, interactions or result policies changed, so no full gate rerun. No image renderer, Cloud or publication changes.
+- Activated fixed App-Dev through standard idle-guarded Helper restart; verified App/Helper source root, actual Bot module import, new definition table and served assets. Dev was not restarted. No active tasks interrupted or real business effects submitted.
+
+
+### NXR-FLASH-BOT-B1-CALCULATOR-20261105
+
+- Implemented first B1 slice: trusted immutable workflow registry, exact workflow/config version references and bounded Decimal calculator (AST allowlist, no eval/exec/model/Tools). Invalid input creates no Task/Run; valid input uses original Todo managed execution and Bot lane, with System Task observing the same fixed AgentRuntime Run and canonical result messages.
+- Durable Session/request admission, Task/launch/Run/message receipts prevent duplicate execution after lost acknowledgements. Queued inputs retain their original workflow version; permission revocation, removed workflow versions, deleted Bot and archived conversation block execution or result resurrection. Cancellation/recovery read original Todo/Agent receipts. Bot delete/restore uses the established soft-delete/paused Task contract.
+- Existing Desktop/Mobile creation menu enables Flash and retains ASC/Outlet/Mirror disabled. Calculator creation/input needs no model/App access; unsupported attachments/voice controls are hidden. Ordinary Agent consultation/delegation/collaboration/background-task owner guards prevent using a model to impersonate a fixed Bot. No shared General/AaAT protocol or image-rendering change.
+- Validation: original owner/standard dialogue/lifecycle/consultation/delegation/Mobile 74 passed (78.89s); extended Flash/collaboration/Todo owner/generic boundary behavior 47 passed (160.09s); final Flash delta 29 passed (10.51s). JS 10 passed; isolated Chrome creation 2 passed, standard history/loading 2 passed, Flash no-model send/result 1 passed. Real SQLite/Todo/AgentRuntime/System observer; models forbidden in calculator tests and browser data is fixture. Full AaAT gate was not repeated because shared execution/routing/declarations/interactions/result policies were unchanged.
+- Final source loaded in fixed App-Dev with standard idle-guarded Helper restart; verified App/Helper source root, actual Flash import, new table and served changed JS bytes. Native menu and creation draft inspected then cancelled; no real Bot creation or business execution submitted. Dev not restarted; no Cloud/publication change.
+- Scope/remaining work: B1 first calculator slice is complete; invoice extraction/archive is the next B1 workflow and is not available yet. Plan: ai2apps/docs/bot-types-development-plan-v1.md; implementation/evidence: ai2apps/docs/flash-bot-b1-calculator-v1.md and ai2apps/docs/acceptance/flash-bot-b1-20261105/source-verification.jsonl.
+
+
+### NXR-APP-STATE-B2-20261105
+
+- Implemented B2 foundation: trusted portable App-State contract registry, schema/version/explicit migration checks, owner/instance-bound named presets and idempotent UI restore receipts, common Desktop/Mobile host SDK, Imagine layout and built-in Style Transfer owner adapters. Portable settings exclude text/materials/credentials/authority/tasks; owner preflight, exact model parameters, dirty-edit confirmation and revision guards precede atomic restoration. No generation or business execution starts on restore. Original instance/draft services remain authoritative.
+- Mobile exposes six exact owner gateway routes and three exact static resources; no wildcard/admin proxy or arbitrary Package registration. Other owners require explicit adoption. Package declarations, cross-installation sync and B3 ASC-Bot remain pending.
+- Validation: 71 backend App-State/owner-route checks, final App-State 10 checks, 18 relevant JS checks, and 2 desktop/mobile-size browser fixtures passed. Fixtures verify restore/cancel/material preservation/zero generation; live App-Dev panel inspected and closed, no real model call or user preset created. Real-phone cross-device restore has not been manually accepted. General Agent/AaAT behavior was not changed; full AaAT boundary gate not repeated.
+- Activated fixed App-Dev through standard builder because embedded omlx Mobile static allowlist changed; standard archive/release verification and deep strict codesign passed. Final Python loaded through idle-guarded Helper restart. Verified App/Helper source-root/instance/cloud metadata, actual Local import path, served changed bytes and embedded static entries; native title follows App-Dev contract. Dev and other instances untouched; no Cloud/publication change.
+- Design/adoption/evidence: ai2apps/docs/app-state-system-v1.md, ai2apps/docs/bot-types-development-plan-v1.md, ai2apps/docs/acceptance/app-state-b2-20261105/source-verification.json.
+
+
+### NXR-APP-STATE-CONTINUATION-20261105
+
+- Implemented: consolidate Agent-Chat App continuation configuration restoration into the shared App-State restore transaction and Imagine owner capture/validate/apply adapter. Remove the parallel direct-field assignment path; register the five existing image continuation targets with the same settings contract. Keep original ownership, private prompt/material transport, Task linking and trusted result completion outside portable state.
+- Conflict confirmation distinguishes preset settings-only restore from continuation draft replacement. Preserve existing target drafts until confirmation; rollback resource failures, pause intermediate draft writes, retain exact model/canvas and avoid duplicate imports on reopening. Matching settings do not skip a different continuation's private content. Automatic canvas uses paired nullable dimensions.
+- Validation: 21 backend state/continuation checks, final expanded App-State contract 15 checks, final relevant JavaScript 27 checks and 2 desktop/mobile-size browser fixtures passed. Mandatory full AaAT gate: 1239 passed (1035.71s); no gate policy or test exclusions changed. Browser fixtures use controlled resources/models, not real paid execution.
+- Activated Python through standard idle-guarded App-Dev Helper Local restart; verified App/Helper source-root/instance/cloud metadata, actual API import and served changed bytes. No App rebuild or Dev restart required. Mac was locked, so this round did not repeat native UI or real-phone/real-model execution; refreshed page consumes the verified scripts. Design/adoption: ai2apps/docs/app-state-system-v1.md and ai2apps/docs/app-mini-app-agent-tool-integration.md; acceptance/source evidence: ai2apps/docs/acceptance/app-state-continuation-20261105/. No Cloud/publication work; image output rendering untouched.
+
+
+### NXR-APP-STATE-CORE-APPS-20261105
+
+- Implemented shared App-State adoption for Intelligence (channel/tab/article status/type), Todo (regular directory only), Gallery (collection/kind/grid-list), and Knowledge (library bucket/kind/ask-library view). Trusted owner registrars and existing UI callbacks use the one App-State service/API/SDK/preset panel. Navigation IDs are revalidated through original owned read APIs at review and commit; missing resources fail without name guessing. Private content/search text/resources, task configs/execution and permissions stay outside presets.
+- Desktop and Mobile shared App pages supported; standalone Todo Mobile list registers the same directory contract, detail frames do not duplicate it. Mini picker/preview/browser-sidebar surfaces and pages without an AppInstance do not claim full App-State support. Dirty edits/active operations are protected; read failures preserve or roll back UI. Mobile Gateway resolves the actual target instance/App and checks that App enabled, without requiring unrelated media Apps; exact route allowlist and principal/instance guards retained.
+- Validation: 84 backend state/owner/mobile-route checks, 28 relevant JS checks, 10 desktop/mobile-size owner browser fixtures and existing Intel WebKit Mobile navigation check passed. Intel navigation fixture was updated for the export feature's existing read-only startup request, not production export behavior. No shared Agentic/AaAT execution/declaration/interaction/result changes; complete AaAT gate not repeated this turn.
+- Activated through standard idle-guarded app-dev Helper Local restart; no App rebuild/Dev restart. Verified App/Helper source metadata, actual Local API/service paths, served changed bytes and Mobile static resources. Native App-Dev panels for all four Apps inspected and closed, no user preset saved, no task/model/business operation executed. Real-phone acceptance remains manual. No Cloud/publication work.
+- Design/plan: ai2apps/docs/app-state-system-v1.md and ai2apps/docs/bot-types-development-plan-v1.md. Acceptance/source evidence: ai2apps/docs/acceptance/app-state-core-apps-20261105/.
+
+
+### NXR-ASC-BOT-B3-20261105
+
+- Implemented first ASC-Bot delivery: capture from the common App-State panel; strict portable definition; owner-only transactional idempotent Bot creation; expiring, definition- and instance-bound launch intents; trusted Desktop/Mobile host delivery and original App-State owner restoration. Name/preset avatar chosen at capture; Desktop right-click management reuses Profile/delete. No Agent conversation/Task, resource/permission capture or auto-submit.
+- Existing Agent continuation and ASC share one parameter restore binding; private task/material/result lifecycle remains with continuation. Launch claimed is UI intent status, not generation success. Missing owner-model dependencies use existing ACPF followed by explicit retry and exact original model validation, without substitution. ASC owner rejects forged Agent entry points. Added exact Mobile static asset; no Cloud changes.
+- Validation: backend type/creation/Flash/ASC 41 passed; owner/App-State/Mobile/AaAT architecture 97 passed; relevant JS 44 passed; Desktop/Mobile ASC browser fixtures plus original Standard/Flash creation fixtures passed. Final ASC two browser fixtures repeated after dependency/overlay/timeout fixes. No shared Agentic/AaAT execution/declaration/interaction/result-policy changes this turn; full gate from prior integration not repeated.
+- Standard App-Dev builder and verify-release completed; deep strict codesign passed. Final Python loaded through idle-guarded app-dev restart. Verified App/Helper metadata, actual Local API/state/ASC owner paths and Desktop/Mobile served bytes against live checkout. Native creation and Messager click opened Imagine Style Transfer with Ghibli/exact model/size/quality; no generation or task executed. One Dev acceptance Bot retained for user testing. Other instances untouched.
+- Limits: real-phone manual acceptance pending; Mobile first delivery supports capture/launch but no separate shortcut management panel. Cross-installation sync, Package declarations and saved-parameter editor are not included. No publication performed.
+- Documentation: ai2apps/docs/asc-bot-b3-v1.md, app-state-system-v1.md and bot-types-development-plan-v1.md. Evidence: ai2apps/docs/acceptance/asc-bot-b3-20261105/.
+
+
+### NXR-ASC-HEADER-ICON-20261105
+
+- Imagine Studio header App-State entry uses the existing square icon button with Lucide zap, without visible text. Title and accessible name: Create an app shortcut Bot. Existing panel action and availability guards retained. Template-only change; refresh is sufficient. Exact markup checked, neighboring controls preserved.
+
+
+### NXR-IMAGINE-HEADER-HINTS-20261105
+
+- Follow-up: native title did not display in the Shell. Added scoped in-page CSS hints to Imagine Studio header actions, sourced from accessible labels, for hover and keyboard focus; removed duplicate native title attributes. Shortcut label remains Create an app shortcut Bot; refresh and sidebar toggles use existing localized labels. Cache version advanced; template/CSS refresh only. No execution or App-State behavior changed.
+
+
+### NXR-BOT-CONFIRM-BUTTONS-20261105
+
+- Fixed Bot parameter-form action styling in both Desktop and Mobile Messager. Shared FormView buttons previously depended on Chat-only base styles; forms mounted inside task cards could appear as plain text. Added Bot-scoped bordered controls, dark primary action, white secondary action, visible countdown cancellation, focus/hover/disabled states and wrapping. Hidden cancellation stays hidden. Template CSS version advanced. No approval/parameter/execution behavior or image rendering changed; refresh only, no restart/rebuild.
+- Isolated browser checks passed with both real Messager stylesheets at desktop/mobile widths: primary/secondary/countdown cancel borders, 40px minimum height, no text-link decoration, primary contrast, one submission and disabled state. No live Task executed or user decision submitted.
+
+
+### NXR-BOT-CLEANUP-COMPLETE-20261106
+
+- Implemented: retire Task-specific execution authorization after recoverable deletion of explicitly selected Bot-owned Tasks; verify deleted_at and empty next_due before cleanup success. Failed cleanup does not report success. Ordinary Bot App Access remains governed by its independent checkbox. Original Task recovery automatically revokes stale authority for already deleted Tasks, without another user action or automatic reactivation.
+- Persistent authorization management removed from conversation feed; Desktop task sidebar retains management only for approved retained plans. New conversation remains empty after clear. No image rendering, generic Agent execution or AaAT declaration/confirmation behavior changed. Bot owner composition now tolerates Runtime's existing initialization, preventing duplicate owner registration.
+- Focused checks: 17 lifecycle tests passed; final three Task cleanup parameter cases passed including stale authorization recovery, delete/keep/restore and empty new conversation. Three feed UI unit checks passed including authorization-only empty feed. JS syntax checked. Broader suite was stopped at user direction; no full App regression or live user cleanup/generation performed.
+- Activated in fixed App-Dev through idle-guarded standard Helper Local restart; actual module paths, App/Helper source roots and served JS bytes verified against checkout (port 65334). No App rebuild or Dev instance restart. User's running Dev backend must reload before using the new Python cleanup logic.
+- Design: ai2apps/docs/messager-ui-and-bot-task-v2.md. Source evidence: ai2apps/docs/acceptance/bot-cleanup-20261106/source-verification.json.
+
+
+### NXR-BOT-EDITABLE-CACHE-20261106
+
+- Fixed a read-only cache preview remaining on screen while model catalog/history initialization is delayed or fails. Once session ownership is confirmed, mount the live composer with cached messages/draft/scroll before waiting for catalogs/history. History errors remain reported without abandoning the controller; ordinary polling may recover read-only data. Catalogs still gate Send, not draft editing; no automatic submission/retry of effects. Cache identity and denied-session guards retained; media rendering unchanged. JS/template refresh only, no Local restart. Focused browser verification covers slow catalog, LRU scroll/draft preservation, failed history, editable draft and eventual Send, cleanup invalidation and denied ownership.
+
+### NXR-BOT-PLAN-INSTRUCTION-SEPARATION-20261106
+
+- Bot plan review keeps schedule and access edits separate from execution instructions. The owner preserves the original prompt by default and accepts an explicit instruction_change only on plan_update. Chat text is no longer automatically appended to the future worker prompt. Existing plan review, authorization, CAS and frozen run snapshots remain in place.
+- The same reviewed plan update supports an explicit full replacement of execution instructions. The Bot owner rejects requests that combine replacement and append edits. A schedule-only update still preserves the body.
+- Focused validation: 23 Bot plan revision, access and system schedule tests passed. Fixed Dev Local was restarted after active work finished. The existing watch briefing plan was updated to version 4 through Messager review. Verified the replacement body, retained fixed access scope and enabled Todo schedule.
+
+### NXR-BOT-SCHEDULED-RESULT-PRESENTATION-20261106
+
+- Messager presents reviewed Todo task results as readable text and verified conversation attachments. The owner imports worker artifacts through the existing conversation transfer path and maps image references to the conversation. Failure notices display a readable status while Todo retains diagnostics.
+- Startup recovery replaces exact legacy receipts in place, preserving message identity and position. Existing delivery receipts prevent recreating messages cleared from the conversation. Recovery reuses the existing generated image without starting another Run.
+- Focused validation: 20 Bot Todo, dialogue and plan tests passed. Fixed Dev Local recovered the actual watch briefing. The original message now shows the readable result, and its poster opens from the Bot feed.
+
+### NXR-BOT-PLAN-TITLE-20261106
+
+- Bot suggests a revised Task title when a reviewed plan change makes its current title inaccurate. A user can also request a title-only update. The review card identifies the original plan and shows the proposed title when it differs.
+- Approval saves the title in the same reviewed version and publishes it to the Todo system schedule. Focused tests cover title review, rejection, approval and propagation to the schedule.
+
+### NXR-BOT-ROLE-SHORT-INPUT-20261106
+
+- The Messager Bot uses its configured Role when interpreting a short input that names the subject of a workflow. The dialogue planner routes work requiring tools to a task. The worker uses the same Role defaults and resolves the target through the appropriate capability before asking about remaining ambiguity.
+- Live Dev evidence identified a completed reply-only turn in which the saved Role reached the planner but the Bot did not create a task. The focused dialogue fixture exercises the short-input handoff and an ordinary greeting through the Bot owner, including the original worker authorization flow.
+
+
+### NXR-FLASH-ROLE-WORKFLOWS-20261108
+
+- Status: implemented; targeted checks passed, App-Dev activated; live Provider acceptance pending. Messager-owned declarative Flash workflow generation/review and immutable execution versions. Adds fixed AI, restricted arithmetic and AaAT steps with validated backward-only data bindings; optional bounded AI input adaptation is revalidated before use. No generated code or General Agent replanning.
+- Creation and Role edits review before activation; old queued/running submissions retain frozen plans. Reuses existing Todo lane, model invocation, Gateway permissions, confirmations, output policies and artifact projection. Selected attachments are owner-resolved; Desktop/Mobile share the review UI.
+- Validation so far: mandatory AaAT gate focused selection 77 passed (12 new workflow cases, 31 Flash cases, 4 creation cases and architecture coverage). Browser fixture checks 4/4 passed (review before creation, regenerate after edits, calculator and composer). App-Dev idle-guarded Helper restart loaded current flash.py (v2 marker); App/Helper source-root metadata verified and served changed JS compared byte-for-byte. Native creation layout observed; native dropdown automation could not complete the live creation test. Real Provider/image workflow acceptance remains pending; no full App regression or production publication.
+- Design: ai2apps/docs/flash-bot-custom-workflows-v1.md.
+
+### NXR-FLASH-ROLE-EDITABLE-20261108
+
+- Implemented: Flash creation defaults to custom Role workflow. Role remains editable for calculator templates; editing automatically switches to custom generation/review, enables model and access selection, and retains the entered text. Shared Desktop/Mobile creator; static refresh only, no Local restart.
+- Validation: three focused creation browser cases cover default editable Role, template-to-custom editing, review before activation and original standard/calculator creation. Documentation updated; no full App regression.
+
+### NXR-FLASH-COMPILER-CONTEXT-20261108
+
+- Fixed workflow compilation 500 before model invocation: compiler now builds request-principal context with an explicit unique compilation session ID, using the existing model invocation contract for both foreground and Cloud paths. No Bot or effectful workflow was created by the failed requests.
+- Added integration coverage through real ModelInvocationService signatures (only transport stubbed); actor/App attribution and unique per-request sessions asserted. Mandatory AaAT gate focused selection: 74 passed including 13 workflow cases. App-Dev idle-guarded Helper restart; no full App regression.
+
+### NXR-FLASH-REVIEW-FEED-20261108
+
+- Rebuilt workflow review as a content-sized, responsive modal with a lightning icon, purpose/input sections, numbered steps using owner-supplied display names, collapsed technical settings, and explicit primary/secondary footer buttons. Desktop and Mobile use the same component.
+- Fixed Flash failure presentation: readable message in feed and status; full execution receipt only in collapsed error details. Existing legacy Flash failure messages are projected into readable text without modifying stored history.
+- Workflow compilation now consumes selected providers exact current parameter contracts and rejects invalid literal settings before review/activation. Backward data references remain deferred to execution; no business-name exceptions or automatic effectful retry. Existing invalid saved plans require regeneration/review.
+- Validation: 77 focused AaAT/architecture/Flash checks passed, including arbitrary-provider invalid enum rejection; 4 browser checks passed, desktop/mobile screenshots inspected. App-Dev idle-guarded restart; no full App regression.
+
+### NXR-FLASH-INPUT-PREVIEW-20261108
+
+- Fixed missing Flash user-message material previews by projecting the already owner-resolved input artifacts through existing App Chat artifact metadata. No changes to shared media rendering, workflow authority or file content. Attachment bytes were already passed to the workflow; live failed run evidence confirms matching input artifact ID in image.style_transfer arguments; failure was invalid model enum, not lost attachment.
+- Validation: 79 focused AaAT/Flash/architecture checks passed; new image/text material tests assert input preservation, message artifact projection and duplicate receipt handling. App-Dev idle-guarded Helper restart; no full App regression. Existing stored messages are not rewritten.
+
+### NXR-FLASH-BOUNDED-REPAIR-20261108
+- Status: implemented and activated in App-Dev (2026-11-08).
+- Flash owner executor now analyzes explicit effect-free parameter rejections, permits one literal enum preset correction per failed step, preserves input bindings and completed effects, and versions successful corrections with concurrent-edit protection.
+- No new authority, automatic uncertain-effect replay, provider switching, or historical pipeline rewriting. Failed/repaired calls remain durable audit steps.
+- Evidence: ai2apps/tests/test_flash_plans.py 21 passed, including two independent provider identities and second-submission reuse without a new repair model call. Mandatory AaAT boundary gate: 82 passed, 1261 deselected. App-Dev was idle; restarted through Helper. Local PID 37688 / port 60967; startup import log and App/Helper metadata confirm live source /Users/avdpropang/sdk/omlx-moe-cache. Recovery execution evidence uses fixture model/providers, not a paid live image generation. No full App regression. Gate process emitted a headless Metal-device teardown warning after successful tests.
+
+### NXR-FLASH-CONVERSATION-EDIT-20261109
+- Status: implemented and activated in App-Dev.
+- Flash owner conversation distinguishes fixed execution from workflow editing/help for rejected input; explicit editing supports valid-text workflows. Draft changes require the existing review/version/permission checks before activation. Normal valid input incurs no extra model call.
+- Independent semantic consistency review compares Role/usage to executable steps and owner declarations; readable input replies are retained in conversation instead of a generic request failure.
+- Desktop and Mobile use the same owner service and workflow review UI. Validation: mandatory AaAT boundary gate 88 passed (1261 deselected), plus five local browser fixture flows passed. Fixtures cover no extra classification for valid input, rejected-input explanations, idempotent drafts, explicit edit mode, session isolation, missing promised effects across independent providers, cancellation and exact-draft confirmation. No full App regression or paid live model call. App-Dev was idle and restarted through Helper; Local PID 61244 / port 50593. App/Helper metadata and Local import path match the live checkout; four served JS/CSS assets matched source bytes. Gate emitted a headless Metal teardown warning after passing.
+
+### NXR-FLASH-NATURAL-EDIT-GALLERY-20261109
+
+- Status: implemented and activated in fixed App-Dev (Local PID 51235, port 55081). App/Helper live source-root metadata, imported Flash module path and four served JS/CSS assets verified against this checkout.
+- Verification: 99 focused Python checks passed across boundary, Flash and material suites (95 unaffected checks plus 4 corrected/new focused checks); 5 browser fixture checks passed. No complete App regression or live paid generation was run.
+- Remove Desktop/Mobile Flash Run/Edit mode controls. Natural short text is classified as execution, workflow change, help or invalid input; valid structured files/expressions keep the direct path. Ambiguity asks for clarification. Reviewed revisions and frozen active runs remain unchanged.
+- Gallery owner adds gallery.save_material for current Session artifacts across image/audio/video/document/file types, reusing the Gallery UI save service. Recent is a virtual view; persistence deduplicates content and retains Session and actor access checks. No business branches added to shared Agentic.
+- Flash compilation resolves the selected model's exact owner contract before validating fixed arguments, instead of applying default-model constraints to every model.
+- Documentation: ai2apps/docs/flash-bot-custom-workflows-v1.md and bot-types-development-plan-v1.md. Focused verification only; no full App regression or live image purchase.
+
+### NXR-FLASH-SEND-SPEECH-CATALOG-20261109
+
+- Status: implemented. Static UI only; no Local restart or rebuild required.
+- Flash composer no longer waits for the speech model catalog before setting its fixed-workflow execution identity and enabling input controls. Speech choices load separately and cannot strand send/attachment controls on a slow or stalled catalog. Ordinary Bot model selection remains unchanged.
+- Verification: 2 targeted browser fixtures passed, including a never-resolving speech catalog with successful sending and enabled attachment/voice controls, plus workflow review/confirmation. No full App regression. Current Dev (57324) and App-Dev (55081) served changed script verified; existing page needs refresh, preserving the user's current draft first.
+
+### NXR-FLASH-WORKFLOW-ANALYSIS-RECOVERY-20261109
+
+- Implemented in the Messager Flash workflow analysis path. Intent recognition, draft generation and consistency review each validate model output and retry their own empty, malformed or truncated result once. Truncation increases the output cap within a fixed bound. Refusals, service failures and valid semantic rejections do not retry.
+- Conversation failures identify the stage and reason and preserve the current workflow. Local diagnostics log stage, attempt, reason and invocation ID without prompts or raw responses. Retry has no business tools; existing review, permission and revision checks still govern activation.
+- Validation: 98 focused boundary, Flash and Gallery checks passed using fixtures; no full App regression or paid live generation. Dev activation and live provider acceptance are separate from this evidence.
+- Activated in fixed Dev via its own Helper after read-only idle checks. Dev Local PID 84808 / port 64853; App and Helper source-root metadata and the running analysis module's import log match the live checkout. No static assets changed. Live provider replay remains unverified.
+
+### NXR-FLASH-SEND-PENDING-FEEDBACK-20261109
+
+- Status: implemented; static refresh only. Dev 64853 serves the updated conversation script byte for byte from the verified live checkout. Existing open pages need a refresh.
+- Flash conversation explicitly indicates when a message has been submitted and is still being processed. Duplicate sends stay guarded while the request is pending. The composer becomes available when the request finishes and preserves any newer draft. Background history refresh does not block workflow review.
+- Live diagnosis: the screenshot was taken between two draft-generation attempts; both model responses were truncated. The request had reached Local, but the workflow was unchanged. This entry fixes composer feedback; provider truncation is a separate issue.
+- Validation: two targeted browser fixtures passed, covering a delayed response, duplicate prevention, newer draft preservation, send recovery and workflow review. No full App regression or live workflow resubmission.
+
+### NXR-BOT-DIALOGUE-AAAT-DISCOVERY-20261109
+
+- Implemented in source, pending native verification. Standard Bot dialogue instructs the routing model to start an execution task for work that depends on App capabilities or App-owned reference resolution so AaAT discovery can run before it asks for missing inputs. Existing permission and capability checks continue to apply.
+
+### NXR-COMFYUI-STUDIO-PRESETS-20261110
+
+- Deferred from Desktop release by request on 2026-11-11. Keep the prototype in the fixed App Dev checkout. Production and Test do not register the entry or routes, and the Desktop bundle and Python distribution exclude prototype implementation files and assets. It remains a candidate for a future built-in Mini-App.
+- The prototype covers standard text-to-image import, local or Cloud/BYOK execution, shared Studio Output, manual and system AI/Codex arrangement, exact-draft trial gating, and restorable versions. A live synthetic Codex proposal passed. App Dev activation and real image inference remain pending.
+- App Dev-only follow-up: Canvas and nested subgraph diagnosis follows active wiring, records blocked workflows as diagnostic drafts, and maps three FLUX text-to-image reference cases into the existing image generation request. The 14-case replay diagnosed all 22 files and verified five mappings through fixture image jobs. Codex returned evidence for all 14; the DeepSeek endpoint returned 401. The release exclusion remains in force. System AI arrangement now uses the configured Standard tasks model, with no pinned DeepSeek version.
+- App Dev-only benchmark entry verified all 14 cases (22 inputs) from the signed-in native window. Standard tasks and Codex passed the same 14-case structural checks; F01/F02/F10 produced real PNGs using local FLUX.2 Klein. Receipt: `ai2apps/experiments/comfyui_studio/benchmark/round-3.md`. The benchmark implementation, fixtures, and UI remain excluded from release.
+
+### NXR-MESSAGER-TASK-USAGE-ATTRIBUTION-20261111
+
+- Task details on desktop and mobile split Tokens and Cloud Points into own model/planning/review, own AaAT, delegated Bot descendants, and total. Durable Run and invocation ownership limits attribution to this Task. Settlement request IDs are deduplicated; missing metrics are unknown, with observed amounts shown separately. Bot-wide statistics keep their previous scope.
+- Imagine Studio now returns the compact usage receipt through its durable job into the AaAT invocation journal. Reported media and text Tokens and charged Points are kept; estimated Tokens and historical receipts that were never stored remain unknown. No Cloud API, authorization, or actual billing changes.
+- Read-only Dev verification of the existing watch brief found 10,425 reported delegated Tokens; historical image accounting was absent. No live run or Dev restart was needed for this check. Focused verification: 19 Python and 3 frontend checks passed, plus 6 AaAT boundary behavior checks. The full gate reached the existing Bot memory-return failure.
+
+### NXR-INTELLIGENCE-DOC-STUDIO-HANDOFF-20261111
+
+- Intel Center writing actions first freeze an owner-scoped material pack, then offer Gallery ZIP, a new Doc Studio project, or an existing project. Existing Intel drafts remain editable. Desktop project destinations use Doc Studio's durable import receipt and resume in the Studio after navigation.
+- Gallery embeds available images within an export budget and retains references and reasons for missing images. Mobile exposes the Gallery destination while Doc Studio project operations are Desktop-only in this MVP.
+- 24 backend and 9 focused frontend checks passed. Chrome fixtures verified the mobile Gallery action and desktop/mobile transport. Backend fixtures used real SQLite, Gallery and System Tasks for both project destinations, and the Mobile gateway for Gallery. Depends on the Doc Studio MVP and its Local schema migration. Pending live App-Dev acceptance.
+- Channel writing now enters an explicit selection mode. Cancel clears the selection, and confirmation opens the material-pack dialog with only the selected channel articles. Card controls sit 8 px from the top-right corner and use high-contrast plus and check marks. Verified with five handoff API tests, nine focused frontend checks, and three Chrome browser fixtures.
+- Selected article controls retain a dark blue background and a white check mark on hover. Verified computed colors in Chrome for light and dark themes.
+
+### NXR-ARTICLE-CARDS-20261112
+
+- Implemented in source, unpublished. Imagine Studio's Article Cards source Package creates editable 3:4 and 9:16 article pages with reusable nine-slice templates, configurable text and footer slots, and page-level sticker selection. Manual PNG and ordered PNG ZIP export publish to the shared Imagine Studio Output.
+- The existing visual sequence capability now accepts a bounded PNG archive mode. It validates ordered same-size frames and uses the existing mount scope, declared output kind, and shared artifact publication. Imagine Studio presents ZIP downloads in the existing Output panel. Focused visual sequence and Fantasy Feed regression tests passed (8 tests).
+- MiniApp Dev Local restarted while idle; App and Helper source roots and the enabled Article Cards source definition match the live checkout. An isolated native AceFox fixture verified 9 pages at 960 × 1280 and 10 at 720 × 1280, exact article text preservation, split/merge, sticker override, imported nine-slice background and saved-template remount. A separate isolated Local runtime used a real source Package mount and the Studio export endpoint to publish and download both PNG and ZIP from shared Output. Native fixture used a simulated bridge for editor interaction, and the signed Registry release and Xiaohongshu publication integration are pending.
+
+- Two-host Package integration: the signed Article Cards 0.1.0 candidate declares Imagine Studio and Doc Studio. Doc Studio discovers and mounts compatible Packages and lists their PNG and ZIP artifacts in its existing Output panel, scoped to the current actor, Installation and Doc Studio instance. The development-only source mount remains available. In a clean runtime with development source loading disabled, signature and compatibility checks passed, the Mini-App was absent before install, both placements exported and downloaded PNG and ZIP, Doc Studio returned only its own artifacts, and both placements disappeared after uninstall. Thirteen focused Python and five JavaScript tests passed. Fixed MiniApp Dev and App Dev were reloaded idle; both source roots, Local module source and four served assets matched the checkout. Candidate and acceptance receipt are under ai2apps/.build/article-cards-0.1.0/. Registry publication and native Doc Studio interaction acceptance are pending.
+
+- Article Cards 0.1.1 adds an optional cover in both Studios. Template covers render the editable title at a larger size. AI covers submit the title, style and selected reference images to the existing optional image workflow. The editor places the title over the private result, and only explicit PNG/ZIP export writes to the shared Studio Output. The cover is first in ZIP without renumbering the body. Native browser fixture verified the manual cover, AI plan and reference round trip with a simulated model result, separate PNG and ZIP ordering. Signed candidate remains unpublished.
+
+- Article Cards 0.1.2 adds fixed-layout and nine-slice AI template backgrounds with the existing private image workflow. Fixed layouts preserve image proportions and use center crop if needed. Nine-slice jobs ask for a square image and seed four 25% slices. Generated backgrounds preview in the current template, can be undone or saved, and preserve older templates through the nine-slice fallback. Native browser fixture verified both generation plans, application, undo and remount, and reran cover and export checks. Real inference and Registry publication remain pending.
+
+### NXR-TODO-IN-PROGRESS-ACCENT-20261112
+
+- Todo Desktop and Mobile show a static blue left marker for in-progress project rows, following indentation and excluding context-only ancestors. Custom highlight colors, selection outlines and tree connectors remain independent.
+- Existing clickable progress percentages now include a 48 px progress track; in-progress fill is blue and other states use a neutral fill. No added row height or execution/status behavior changes.
+- Validation: both JavaScript syntax checks passed; 11 existing tree/aggregate checks passed. Independent Chrome desktop fixture verified 0/30/80% fill widths and nested highlighted rows. Two existing todo_actions tests fail because their initialization-tail extraction no longer matches the current file (Unexpected end of input); this patch does not touch that initialization. Mobile hardware acceptance pending.
+- Follow-up: Desktop in-progress marker is now absolutely anchored immediately left of the existing checkbox, with no added flex item or spacing. Chrome fixture confirmed checkbox x positions are identical with and without the markers; JavaScript syntax check passed.
+- Visual refinement: Desktop and Mobile progress tracks shortened from 48 to 36 px and thickened from 4 to 6 px. Verified both stylesheet rules; existing percentage editing and row layout are unchanged.
+- Further visual refinement: Desktop and Mobile progress tracks shortened to 28 px, retaining 6 px height. Verified exact stylesheet replacements in both views.
+
+### NXR-AAAT-PROVIDER-BINDING-20261113
+
+- Agentic execution binds one eligible Provider directly and gives the Bot a candidate list when multiple Providers are available in the current scope. Parameter forms and approvals carry the selected Provider and resolved parameter contract through to dispatch. Drift is checked before invoking the owner. A single-use approval cannot authorize a different bound invocation.
+- Dev live acceptance in the existing Omega research Bot reached the real Web Reader after the Bot selected it from two candidates. The Web Reader execution receipt recorded the selected Provider, Provider version and exact contract fingerprint. Broader regression and final Dev activation evidence follow below.
+- Dev Omega run `run_eb88de33baa04d5393df7a89b91dee81`: `web.fetch` offered Web Reader and Web Research. The Bot selected `ai2apps.web-reader.fetch` (0.1.2) and read the official US Seamaster page with matching receipt and contract fingerprint. The website investigation step also completed. The final citation guard rejected a model-written link and returned the verified series page in the original Bot conversation, so complete product specifications were not delivered.
+- Validation: 85 targeted Python tests, 47 architecture/boundary/contract checks and 22 JavaScript form tests passed. The broader AaAT gate reported Bot memory-related failures. The Chrome fixture could not start without the Playwright module. Fixed Dev 64034 loaded the Agent from the live checkout and served identical form script bytes. A follow-up for synchronous Provider policies passed the lazy Tool catalog checks; activation is pending while another Dev run awaits browser input.
+
+### NXR-AAAT-BROWSER-GOAL-CITATIONS-20261113
+
+- AI Browser website investigations now project citation sources from successful, text-bearing browser observations in the same owned task. Model-produced URLs and search snippets cannot enter the catalog. The research result policy can retain the browser owner's link-free answer and render its verified primary source if the parent answer fails citation validation.
+- Previous Omega evidence confirmed that the product page was observed with the requested specifications. The earlier catalog included only the separate Web Reader series page and the parent answer contained a bare domain, which triggered fallback. The new browser evidence projection, exact URL binding, rejected invented URL and fallback answer preservation are covered by focused tests.
+- Validation: 61 citation, browser-owner and architecture checks and 118 browser, Search All and discovery checks passed. The mandatory AaAT gate stopped at the previously observed Bot memory-return regression after 437 passes. Dev restarted after the active Intel refresh completed. App and Helper source roots were checked, and the running Local on port 50714 loaded the Browser goal and General Agent from this checkout. The original Omega prompt was resubmitted verbatim in the same Bot conversation for live acceptance.
+- Live acceptance completed on Dev in the original Research Bot conversation. The new run `run_4feb28dc6c114c49b73d13512a5fbabe` used the verbatim original prompt, observed the official US detail page for blue Aqua Terra reference 220.10.41.21.03.007, and delivered the requested model, 41 mm diameter, 13.26 mm thickness, 60-hour reserve, USD 7,400 price, and clickable product URL. The citation audit reported `source_ids` with no rejection; the product URL was linked as S3 to the second Browser goal's observation. Native Messager confirmed the specifications and link were visible in the original conversation.
+
+### NXR-AGENT-RECOVERY-LAYERS-20261113
+
+- Agent Runtime retries explicit transient HTTP 429 model rejections within the original Run and model step. It retains Retry-After and the Provider request ID, bounds attempts and waiting by the Run deadline, and cancels pending backoff when the Run is stopped. Hard quota errors and partial model responses follow the normal failure path.
+- App Chat and Messager share the Run progress snapshot. Messager shows model retry timing and connection recovery and continues reading the original conversation from its message cursor. Search All reports actual completed body reads while reading another source.
+- Rejected parameter calls retain their original arguments alongside the validation receipt. The Gateway attaches the original invocation to uncertain effect failures and requires explicit pre-submission evidence to retry an effectful call. External outcome verification still depends on the relevant Provider's read-only status capability.
+- Fixture acceptance covers same-step retry, cancellation, partial output, quota, reconnect, and prevention of an ambiguous write replay. Production activation and live Provider rate limiting were outside this change.
+- Validation: 132 focused Python checks, 61 architecture and execution checks, 70 final receipt and gateway checks, and five Messager JavaScript checks passed in overlapping suites. The full AaAT gate passed 437 checks before stopping at the previously observed Bot memory-return regression. The browser-only fixture could not load its Playwright dependency.
+
+### NXR-TODO-INCREMENTAL-ROWS-20261115
+
+- Desktop Todo reuses unchanged task, completed-group and aggregate-header DOM rows instead of replacing the entire list on selection or field saves. Only new icon placeholders pass through Lucide; existing SVGs are preserved. Render computes visible rows once and indexes runs/attachment counts once rather than scanning them per row.
+- Verification: JavaScript syntax and 13 tree/priority/aggregate regressions passed. Isolated Chrome fixture with 1,000 rows updated one progress field in 4.5 ms, preserved the other 999 row identities and existing SVG, and passed selection, reverse ordering, filtering and empty-list checks. This is frontend fixture evidence, not end-to-end live server latency.
+
+### NXR-TODO-OPTIMISTIC-REORDER-20261118
+
+- Desktop project and directory drops immediately apply the new local order before the save request completes. Background save displays pending/success state; failures restore the prior order and show the error, then reconcile with the server.
+- Pending guards serialize sorting and field saves, block stale polling responses through the edit epoch and preserve unload protection. Reconciliation does not force-reset dirty detail drafts. Server revision/complete-sibling checks are unchanged.
+- Validation: JavaScript syntax check and 15 focused Node tests passed, including delayed response, duplicate-save guard, rollback, guard cleanup and non-forced detail refresh. No backend change or Local restart required.
+
+### NXR-ACPF-INPLACE-LICENSE-CONSENT-20261118
+
+- Model checkpoint license consent now replaces the current ACPF card state rather than appending a second card beneath the progress view. This applies to inline Chat/Bot and modal provisioning. Cancelling returns to the original progress card without submitting consent; acceptance restores the card and continues the existing session.
+- License radio buttons and attestation checkbox have scoped fixed dimensions and aligned text, preventing full-width host input styles from breaking their layout. Package installation, checkpoint download and explicit license requirements remain separate and unchanged.
+- Verification: focused Chrome fixtures cover inline setup, recovery, detach, license choice/attestation guards, cancellation without submission, card restoration and host-style interference. No model license was accepted and no live task was restarted on the user's behalf. HTML/JS/CSS refresh is sufficient; no Package or Runtime release is needed.
+
+### NXR-HARNESS-FILE-UTILITIES-20261118
+
+- Harness-owned AaAT providers add scoped host output export, directory creation, inspection, regular-file copy/move/rename and Finder reveal; artifact materialization and bounded ZIP packing/unpacking. Existing artifact listing/preview/export and document attachment/read/info/search Services gain Harness AaAT ownership. Artifact-to-document ingestion reuses DocumentRepository.
+- Trusted user-requested roots, Session ownership, descriptor-relative no-symlink traversal and existing Access/effect approval remain enforced. Default collision policy preserves existing files; replace requires a trusted overwrite request and observed destination hash. Per-file receipts distinguish partial saves and preserve successful work.
+- Verification: 15 new real-file/SQLite tests passed, including a fixture-model Bot import→export workflow with ordinary Access/operation approval, actual PDF AaAT reading with page coordinates, DOCX parsing, collision handling, quota, corruption rejection, unsafe ZIP rejection and partial move receipts. Existing Harness/access/architecture/document suites passed 45 checks. Finder invocation uses a test double; no live Finder window is claimed. The full AaAT run passed 482 checks before being deliberately stopped to keep validation scoped; it is not a completed full-gate pass. The canonical AaAT entry point completed the focused Harness/architecture/routing/parameter selection: 105 passed, 1426 deselected. With subsequent explicit user authorization, Dev Local was restarted through its exact Helper (PID changed to 99596; port 52888 retained). App/Helper source-root metadata, running module source path, post-boot new-tool registration timestamps and health/bootstrap were verified. App-Dev was not restarted.
+
+### NXR-HARNESS-STDIN-PDF-PREVIEW-AAAT-20261118
+
+- Harness exposes the existing process.write_stdin, document.preview and document.create_pdf Service handlers as AaAT Providers (37 total). No new process, document parser or PDF renderer is introduced. Process Session/Run ownership, bounded stdin/EOF, effect confirmation, workspace isolation and artifact ownership remain enforced.
+- Document preview reads one lookahead block and reports both character truncation and omitted later blocks, with a safe document.read continuation offset. Text preview is explicitly distinguished from page rendering.
+- Verification: five new real-file/process/SQLite handler tests passed, including UTF-8 stdin/EOF, 64 KiB cap, cross-Run rejection, PDF artifact creation and character/block preview coverage. The canonical scoped AaAT gate passed 110 checks (1426 deselected); existing document suite passed five checks. With existing user authorization and no running/queued tasks, Dev Local restarted through its exact Helper (PID 7972, port 52888), with health, App/Helper source-root metadata, running Harness module path and updated preview descriptor verified. App-Dev untouched; no Package/Runtime release required.
+
+### NXR-HARNESS-CONTINUITY-20261118
+
+- Status: in_progress. User authorized implementation of the Harness continuity roadmap.
+- Scope: bounded non-thinking approval, durable task/evidence recovery, readiness preflight, completion verification, jobs, visual inspection, independent read batching, environment and scoped PTY.
+- Ownership: generic execution stays independent of App identities; Harness owns filesystem/process semantics. No publication or production changes.
+- Verification: pending; see ai2apps/docs/harness-continuity-implementation-20261118.md.
+
+
+Completion update for NXR-HARNESS-CONTINUITY-20261118 (supersedes the initial in_progress status above):
+
+- Status: completed in source and activated in fixed Dev; pending a future Desktop Release.
+- Added 11 Harness capabilities (48 Providers total): versioned Session checkpoints, durable execution/artifact recovery, selected-provider/model preflight, SHA-256 output verification, owned job listing, PTY resize/interrupt, bounded independent read batching, environment inspection, image inspection and PDF page rendering. Existing sandbox, limits, ownership, cancellation and orphan handling are reused. Waiting timeout reports still-running rather than command failure.
+- AI review uses reasoning_effort=none and 2048 tokens, with a new review-protocol fingerprint. Truncated/filtered JSON cannot authorize operations; genuine unknown/high-risk decisions retain manual fallback.
+- Generic visual evidence uses capability-scoped trusted owner selection, Session hash checks and the next ordinary budgeted model turn. No business-name branches or hidden model calls.
+- Validation: relevant canonical AaAT gate 148 passed / 1401 deselected; final review/preflight refinements 30 targeted plus 1 precise preflight passed; process/image-input compatibility 14 passed, 2 skipped. Two arbitrary-provider General/Router visual loops use fixture model decisions, not paid inference. An initial old process test hit its 1-second cold-start window; isolated and full-group reruns passed without changing it.
+- Dev activation: standard Helper restart after no queued/running work; PID 18123, port 52888, health 200. App/Helper source-root and running imports point to this checkout. New descriptors, PTY/wait_ms and selected-model values schema verified in live DB. App-Dev untouched; no Cookie access or publication.
+- Scope/acceptance record: ai2apps/docs/harness-continuity-implementation-20261118.md. App-owned model/export jobs retain their own task services; no cross-App cancellation or effect replay. Real paid-model/Bot acceptance remains user testing and is not claimed by the fixture suite.
+
+### NXR-VIDEO-BYOK-APIS-20261119
+
+- Status: implemented in source, pending live provider-key acceptance and a future Desktop Release.
+- MiniMax H3 official-spec follow-up: direct BYOK catalog now exposes H3, H3 Highspeed, H3 Lite, and H3 Max under the same actor-scoped MiniMax key. H3 offers 768P/2K and 4–15 seconds; Highspeed/Lite offer 480P/768P and 4–15 seconds; Max offers 480P/768P and 5–15 seconds. The built-in image-to-video and reference-to-video Mini-Apps can select these models. The adapter maps first/last frames and reference image/video/audio to H3 V2 `content[]`, uses adaptive ratio for first/last-frame generation, checks per-file and 64 MiB request limits, and sends private frozen inputs directly as data URIs. No Package publication or Cloud change. Focused BYOK, background-task, and multipart tests: 24 passed; Video Studio JavaScript syntax passed. Live paid generation and Dev Local activation remain pending; data-URI acceptance is not claimed from fixture tests.
+- Seedance 2.5/Flash follow-up: both BYOK variants now declare image-to-video and reference-to-video as well as text-to-video. First/last-frame images and reference images/audio are sent as data URIs; reference videos use validated public HTTPS URLs because the Video Generation API does not document Files API `file_id` as an accepted reference. The reference UI selects `reference`, `edit`, or `extend` with matching ratio/duration mapping. Host input duration accepts up to 30 seconds for these models. Local video upload remains a documented gap pending a supported Ark asset pathway; do not substitute Chat/Responses Files IDs. This is a built-in Host/Video Studio change, with no Package or Cloud release. Focused BYOK, background-task, and multipart tests: 26 passed; JavaScript syntax and diff checks passed. Paid Ark acceptance and Dev Local activation remain pending.
+- FRPC reference-video follow-up: local Seedance reference videos now receive a task-bound, random, short-lived HTTPS capability URL through the existing Remote Access device host. The public boundary accepts only the exact video-input path on the active matching device, serves only the frozen video, checks its content hash before each request, supports HTTP Range, and revokes the lease at task completion. Existing public file/artifact routes remain denied. Input bytes transit the Cloud FRPC relay, but Cloud does not run generation or store this video as an artifact. This avoids assuming Files API `file_id` is accepted by Seedance. Public-boundary and BYOK tests: 54 passed; JavaScript syntax/diff checks passed. Live Cloud edge forwarding and Ark fetch remain unverified; no Cloud-side code was changed. If the Cloud ingress blocks the new path, a separate Cloud change-requirements handoff will be needed.
+- Video Studio text-to-video now lists direct BYOK MiniMax H3, Volcano Ark Seedance 2.5, and Seedance 2.5 Flash models alongside local Packages. Both Seedance variants share the actor's Ark key while retaining distinct official Model IDs. Ark's current API catalog does not list a separate Seedance 2.5 Pro ID, so none is fabricated. Each actor's provider key is held in the instance SecretBackend; model listing exposes only readiness. Requests go directly to the vendor API from the existing durable Video Task queue and produce the normal Video Studio Artifact/Output. No AI2Apps Cloud generation route or Cloud billing fallback is used.
+- This is a built-in Host/Video Studio change; no Model Package publication is needed.
+- Models App now owns the video BYOK key form in a dedicated Video API section; Video Studio only shows key readiness and opens Models for setup. The existing conversational Cloud provider editor remains unchanged because its OpenAI/Anthropic protocols cannot express the vendor video task APIs.
+- The adapter translates only supported text, integer duration, aspect ratio, resolution tier and audio options. Local inference steps, seed and presets are not sent to the provider. Browser controls hide local-only steps/seed for BYOK models and use whole-second duration. Provider output download checks HTTPS/public addresses, redirect count, and a 2 GiB cap.
+- Seedance Frame size correction: model-specific geometry now declares 480p/720p for Flash and 480p/720p/1080p/4K for standard 2.5, in both 16:9 and 9:16. The UI label reflects the chosen tier and request mapping forwards it to Ark; unsupported sizes are rejected before submission. Focused BYOK, background-task, and multipart tests: 23 passed; Video Studio JavaScript syntax passed. Live Dev activation and paid output acceptance remain pending.
+- Validation: focused BYOK catalog/key-isolation/request-shape/direct-HTTP tests plus existing Video Task background and multipart tests passed (20 total); Video Studio JavaScript syntax and asset-slot tests passed. Seedance Flash follow-up: 10 focused BYOK tests pass, including shared-key isolation, distinct Model ID lookup, and request shape. Real paid generation and source activation remain unverified. Provider-side cancellation of an already accepted task is not guaranteed by these vendor APIs, and tasks interrupted by Local restart are marked failed by the existing queue policy.
+
+### NXR-MLX-NATIVE-VIDEO-20261119
+
+- implemented / targeted_verified / isolated_live_worker_verified / runtime_1.8.19_published：接通 Model Worker 与 oMLX OpenAI-compatible video_url 输入；Chat/Responses保留视频字段，原生视频token/时间网格按两帧组绑定时间戳。修正无torchvision补丁丢失显式视频处理器，Runtime构建保留OpenCV与其元信息。未改模型/attention/router/MoE kernel。
+- 单视频仅inline data URI；默认2fps/32帧/640边，帧数4–128偶数、最长边128–960、源64MiB/10分钟受限；先缩放再堆叠，音轨不输入，暂不混合图音。拒绝外部URL/任意路径与不支持的模型；预检计入视频token，缓存摘要包含帧及时间，隔离图片特征缓存。
+- Apple M5 Max 128GiB实测Qwen3.8-27B NVFP4，26秒公开授权双角色动画：32/64帧完整返回38.77/45.14秒、首字7.24/13.60秒、MLX峰25.25/25.69GiB、RSS采样峰23.62/24.70GiB，流式观察生成约24.23/23.52 token/s；独立加载5.13秒。两轮识别2角色；人工近似三框IoU均值0.563/0.496，±1秒硬切命中均3/4，不能声称精确跟踪或帧级分镜。
+- 194通过/1跳过，含真实解码、时间组/native视频网格、缓存隔离、Chat/Responses schema、Runtime剥离保留、图片/音频/文本及Runtime Package回归。证据ai2apps/docs/acceptance/mlx-video-20261119/（视频、原始输出、框图、指标、脚本及receipt）。源码阶段未替换固定Dev/App-Dev；后续已通过标准builder发布Runtime 1.8.19并在Dev激活，详见下条发布验收；模型Package保持0.3.3。
+
+### NXR-MLX-VIDEO-RUNTIME-RELEASE-20261119
+
+- complete / production_package_published / three_sources_verified / dev_active：Runtime 1.8.19已通过现有Publisher、Developer ID签名、公证和staple正式发布；Cloud/GitHub/ModelScope三源同一工件（521377805 bytes，SHA-256 d4389e22c9a3849637a0198285cf2b529f5582cb8d6be998c57ff7f62baa71f7），镜像经Cloud预检激活，最终签名snapshot与各源HEAD及3个签名piece核验通过。
+- 候选基于已发布1.8.18，只合入5个视频相关源码文件及OpenCV依赖，声明vlm-video-input-v1；未混入独立SSD prefix-cache或response-format工作。Qwen3.8 27B原版Package 0.3.3保持不变，权重无需重下。
+- 171源码测试通过/1跳过，23 Runtime Package测试通过；最终签名工件经真实Registry干净安装、重启、原版模型Registry安装及沙箱Worker视频调用验收。26秒视频调用61.78秒返回2角色与位置/分镜；普通卸载模型/Runtime通过，保留共享权重。Dev常规升级安装后Local已重启，服务active记录确认1.8.19，固定源码root仍为当前Git checkout。App-Dev未改。
+- 发布授权仅限本次Runtime 1.8.19 Dev会话，发布完成后结束；未记录Cookie内容。单Mac验收，不宣称第二设备/跨地域验证。回执docs/ai2apps-runtime-1.8.19-video-release-2026-11-19.json；小型证据ai2apps/docs/acceptance/runtime-video-20261119/。本条仅Runtime Package发布完成，不代表Desktop App另发新版。
+
+
+### NXR-CLOUD-IMAGE-API-DEFAULT-20261120
+
+- Status: in_progress. User requested Cloud-managed drawing API-Default matching conversation defaults.
+- Cloud handoff: ai2apps/docs/cloud-image-api-default-requirements-20261120.md; no Cloud code or production configuration modified here.
+- Client: optional nullable imageApiDefault in existing cached v1 policy; image_generation inherits it after explicit preferences/system route, with privacy/offline/cache protections retained. Image owner removes hardcoded/name-guessed paid fallback. Studio receives Local preferred, distinguishes inherited versus explicit draft selection, and requires a choice when unavailable; existing submitted tasks keep their exact model.
+- Validation/activation: pending; no publication authorized or performed.
+
+
+Completion update for NXR-CLOUD-IMAGE-API-DEFAULT-20261120:
+
+- Client status: completed in source and activated in fixed Dev; Cloud optional imageApiDefault deployment/production acceptance remains a separate handoff, not performed from this repository.
+- Inherits Cloud drawing policy after explicit user/system choices. Legacy drafts preserve exact selected model; new default-mode drafts follow policy changes. Unavailable/null/missing default requires selection, never a hardcoded/first-catalog paid fallback. Host Mini-App catalogs expose preferred; drawing capability checks and privacy/offline/cache protection remain. Studio JS cache key updated.
+- Validation: default/routing suites 49 passed; latest policy/refresh/offline subset 9 passed; canonical related AaAT gate 79 passed / 1548 deselected; Studio Python 14 passed and Node UI 14 passed; image workflow/Skill 17 passed. Groups overlap. Model/Cloud execution is fixture-based, not paid generation or production Cloud verification.
+- Dev activation after active queue became empty: standard Helper restart, PID 11718/port 52888, health 200. App and Helper source-root metadata, running module import path and exact served Studio JS hash verified against current checkout. No Cookie access, App-Dev restart, Package or Desktop publication.
+- Cloud requirements and client evidence: ai2apps/docs/cloud-image-api-default-requirements-20261120.md.
+
+
+### NXR-IMAGE-DEFAULT-BOT-MEMORY-REVIEW-20261120
+
+- Status: in_progress. Review confirms explicit invocation > matching Bot purpose/profile memory > explicit system route > Cloud API-Default. Drawing/chat memories and normal/privacy remain isolated; operation catalog revalidation can fall back from incompatible memory without silently replacing an explicit invocation.
+- Found/fixed a Studio App-State boundary omitted by the initial Cloud-default patch: restored presets and Bot parameter handoffs set modelId but left modelSelectionMode=default, allowing a later refresh/draft restore to replace the transferred model. Shared settings apply now marks explicit and includes selection mode in rollback. App-State asset cache key updated.
+- Validation: combined real Cloud-policy resolver plus scoped Bot memory tests and existing Bot-memory suite 26 passed; Node UI tests cover restore, catalog refresh and failed-apply rollback. Canonical related gate pending. No model-memory storage or authorization changes, paid model call or publication.
+
+
+Completion update for NXR-IMAGE-DEFAULT-BOT-MEMORY-REVIEW-20261120:
+
+- Status: completed. Canonical related AaAT gate 54 passed / 1575 deselected; combined memory/default resolver 26 passed, with overlap. Node behavioral checks verify explicit handoff/preset selection survives catalog refresh and is rolled back on failed apply.
+- Dev PID 11718 returns exact current App-State JS bytes at the cache-versioned asset URL. Refresh-only activation; Local/App-Dev not restarted. No paid model inference or Cloud production acceptance claimed.
+
+### NXR-BYOK-MEDIA-CAPABILITIES-20261120 (in_progress)
+- Scope: unify BYOK image capabilities across Bot/forms/Imagine Studio and request validation; version-specific GPT Image custom geometry and quality, legacy DALL-E constraints; audit native BYOK video declarations/adapter ratios.
+- Validation: pending targeted contract, transport and UI checks. C01 remains paused; no paid generation or Cloud fallback has been submitted by this change.
+
+#### NXR-BYOK-MEDIA-CAPABILITIES-20261120 — implementation / Test acceptance update
+- Status: source implementation complete; real paid C01 composite/edit acceptance remains pending.
+- GPT Image 2, 2.5 and 2.6 geometry/quality now comes from one image owner module across Bot, forms, Studio and BYOK transport. Namespaced gateway IDs preserve their exact wire ID. Older GPT Image versions and DALL-E have separate constraints. Unknown compatible services no longer receive a guessed square-only capability claim; the UI/descriptor explicitly states provider-side geometry validation and distinguishes transport safety limits from verified support.
+- Audited all six currently implemented native BYOK video variants. Seedance standard/Flash publish their complete model-specific output-size table and validate the tier/ratio mapping; MiniMax UI separates supported resolution tiers from aspect ratio without promising invented exact pixel dimensions. No new vendor adapters or Cloud fallback.
+- Validation: 57 focused Python checks (23 new geometry/transport checks plus 34 existing catalog/video/gateway checks, run in overlapping groups); 65 canonical related AaAT checks passed, 1564 deselected. Node image/video geometry submission, shared video asset slots and image-default inheritance checks passed; changed JavaScript syntax and targeted diff whitespace checks passed. Provider tests use HTTP fixtures, not paid model calls.
+- Test: built with standard build-test-app.sh; embedded image/video owner modules and Studio JS match checkout hashes. Idle Test Local restarted through its own authenticated Helper control (PID 31002, port 62456); health 200, both served Studio JS hashes match checkout. Protected model API requires the existing user session (401 without credentials); no Cookie was read. Existing waiting_input Run count remains one, no active task interrupted, no C01 generation submitted. Dev and App-Dev left running unchanged. Test end-to-end user-session/paid output validation remains pending.
+- Audit / retest guide: ai2apps/docs/byok-media-resolution-audit-20261120.md.
+
+### NXR-IMAGINE-C03-WORKFLOWS-20261120 (in_progress)
+- Add owner AaAT declarations/parameters/session-scoped inputs and durable outputs for extract-items, try-on and product-poster; share the existing UI prompt contract with owner execution, including model/size preservation and artifact lineage.
+- C03 stays paused; no quota extension or paid image generation is authorized by this implementation work. Targeted owner/continuation/UI and canonical AaAT checks pending.
+
+#### NXR-IMAGINE-C03-WORKFLOWS-20261120 — implementation and Test activation completed
+- Registered Image-owned `image.extract_items`, `image.try_on`, `image.product_photo` with trusted context, exact source-role parameters, model/size negotiation, Session-scoped preflight, existing durable Studio jobs, and returned Run/Job/artifact IDs. No business branching was added to General Agent or Discover. Generic discovery-loop policy is outside this Image Studio fix.
+- UI and owner prompt compilation consume the same bundled `web/static/data/imagine_workflows.json`, delivered through the existing model catalog (no new Cloud/Mobile route). Product photography preserves an existing try-on subject; extraction retains explicit item detail instructions. Person/item slots stay ordered and distinct. Source artifact IDs are recorded in Run input and output artifact metadata.
+- Added owner App-State targets and continuation restoration for all three Mini-Apps, including business options and rollback, while keeping material IDs outside portable settings. Updated the integration guide.
+- Validation: final focused owner/discovery/job-chain/reference/form/App-State suite 33 passed; canonical related AaAT gate 40 passed / 1589 deselected; 14 Node continuation checks passed including all three new handoffs; three UI/owner prompt comparisons passed; existing isolated browser state checks 10 passed after allowing temporary browser launch. JS syntax and targeted diff checks passed. Durable chain tests use fixture model transport and real local jobs/artifacts, not real generated-image quality evidence.
+- Test: standard build-test-app.sh rebuilt and verified; all nine critical shipped source/data files match checkout. Idle Test Local restarted via its own authenticated Helper (PID 91436 / port 51909), health 200. Both served Studio JS hashes match checkout; live Test tool_descriptors changed from zero to all three new commerce tools after restart. C03 run_9d346763740448ada5dfa814ecb2de46 remains waiting_input. No Cookie read, quota extension, paid generation, Dev/App-Dev restart or production publication occurred. Real C03 image/model/quality acceptance remains pending user retest.
+
+### NXR-IMAGE-RESULT-PROTECTION-20261120 (in_progress)
+- Derive image producer settlement coverage from the Image owner capability map, including C03 extraction/try-on/product photography; audit specialized Image-owned producers and cover sticker generation plus comic translation under its own deliverable semantics.
+- Preserve failed/uncertain outcomes and prior outputs; no automatic retry, route/model switch, discovery/stop/budget change or paid call. Targeted settlement and canonical AaAT validation pending.
+
+#### NXR-IMAGE-RESULT-PROTECTION-20261120 — completed
+- Image settlement policy now derives from MINI_APP_CAPABILITIES rather than duplicating five names; C03 extraction/try-on/product photography are covered automatically. Audit also found sticker.generate and comic.translation without terminal-delivery guards: sticker shares image policy; comic has its own comic-delivery / comic_result_unavailable semantics (PNG/HTML), with capability constants shared by producer registration. Read-only lookup/describe/preview and other owners are not classified as image generation.
+- Existing last-attempt semantics are preserved: failed/uncertain prevents success settlement, tool_declaration_required is not an execution attempt, corrected preflight followed by success completes. Policies do not mutate inputs, provider/error/submission receipts or prior artifacts, nor retry/switch model/provider. No search/stop/budget changes or paid model calls.
+- Validation: 37 owner result-policy tests passed, including four actual GeneralAgentExecutor settlement cases with real retained local PNG artifacts; scheduler failure/repair tests expanded across group-photo and all three C03 producers. Canonical related gate passed 49 checks / 1620 deselected, plus the four new settlement checks passed via canonical gate separately. Sticker/package adapter regressions passed (50 checks including overlapping owner coverage). Targeted whitespace check passed. Initial fixture assertions were corrected to retain the router-added provider identity; browser/paid generation was not used.
+- Standard Test build verified and activated after no queued/running work: all four shipped owner source files match checkout, Local PID 20155 / port 54075, health 200. No Cookie read, task retry, quota extension, Dev/App-Dev restart or production release. C03 was observed completed at final read-only status check; this work did not resume or alter its task state. Remaining acceptance: real user workflow as desired, not needed to verify this no-model settlement fix.
+
+### NXR-COMIC-CHARACTER-SPACING-20261120 — completed
+- Comic Studio source Package character cards now use a 14 px vertical gap between name, description, reference Slot, approval and generation controls. Approval checkbox and text share one aligned row; name fills the card width. Rules are scoped to .character within the Package; shared Studio/Slot styles are unchanged.
+- Validation: inspected character DOM construction and stylesheet order; scoped CSS change and whitespace check verified. No model call, Local restart, Package publication or full regression required. Visual acceptance remains user refresh of the current App-Dev frame.
+
+### NXR-SHARED-CHARACTER-DESIGN-20261120 — in_progress
+- Implementing built-in Character Design, Gallery-owned shared identities with multiple versioned/confirmed appearances, standard image Slots and shared Output generation. Other Imagine workflows can reuse an appearance; Comic Studio source Package gains explicit import with pinned character/appearance revisions. No publication or paid inference authorized by implementation.
+- Targeted persistence/isolation, HTTP, UI logic, runtime activation and source verification pending.
+
+#### NXR-SHARED-CHARACTER-DESIGN-20261120 - completed (MVP)
+- Built-in Character Design edits Gallery-owned identities and up to 50 named appearances,
+  independent references, confirmation, default appearance, optimistic revisions and old settings.
+  Standard Slots/model selection and existing durable shared Output generation are reused.
+- Other built-in Imagine workflows reuse confirmed saved appearances with pinned provenance.
+  Comic Studio source gains explicit shared appearance import via authorized image.workflow;
+  existing series characters are untouched. No General Agent or approval policy changes.
+- Validation: 22 focused Python passed (including fixture inference through durable Run/Output,
+  isolation and mount guard); 16 Node passed; canonical AaAT gate 10 passed / 1663 deselected.
+  Syntax and scoped whitespace checks passed. No paid inference or full App regression.
+- App-Dev activated while idle through its own Helper. Actual UI saved two appearances and
+  restored after refresh. App/Helper roots, live import logs and served JS/CSS identify checkout.
+  Receipt: ai2apps/docs/acceptance/character-design-mvp-20261120.md. User quality/Mobile acceptance remains;
+  no production publication or dedicated character AaAT declaration is claimed.
+
+### NXR-CHARACTER-EDITOR-LAYOUT-20261120 - in_progress
+- Separate appearance style and body proportions. The existing style catalog dialog targets the selected appearance without changing global image style. Hide the redundant character prompt input and exclude its stale value from prompt compilation.
+- Reuse one standard Slot template, placing the four character Slots after appearance selection and before appearance name/style; retain original placement for other Mini-Apps. Comic Studio imports the new proportions field.
+- Focused persistence/UI checks and App-Dev activation pending; no paid inference or full App regression.
+
+#### NXR-CHARACTER-EDITOR-LAYOUT-20261120 - completed
+- Appearance style now has an ellipsis button opening the existing shared style dialog; catalog label and prompt are retained separately from independent body proportions. Appearance style selection does not overwrite the global image style preference; cancelling preserves the appearance.
+- Four standard Slots appear between appearance selection/creation and name/style controls. One shared Slot template preserves existing behavior for other image Mini-Apps. Character Design hides the redundant generic prompt input and ignores its stale draft value; appearance details remain the editable requirement source. Comic Studio import includes proportions.
+- Validation: 5 focused Python checks passed, with independent proportions/style ID persistence separately rechecked (1 passed); 18 Node checks passed including style dialog application/cancellation, stale prompt exclusion, Slot order, existing navigation and Package reload. JS syntax and scoped whitespace checks passed. No full App regression or paid inference.
+- Idle App-Dev restarted through its own Helper for new persisted fields. Real UI confirmed Slot order, separate proportions and ellipsis button; shared style dialog opened and selecting a style updated the appearance field and compiled prompt. Health 200 at port 64085; served character JS/Studio JS/CSS hashes match checkout. No publication.
+
+### NXR-CHARACTER-SETTINGS-OUTPUT-20261120 - in_progress
+- Attach completed Character Design images to the original saved appearance, with idempotent owned-Run collection and pinned source appearance revision. Preserve generated-image history across ordinary edits.
+- Add editable AI-written appearance guide from structured parameters via the configured standard task model; export current saved appearance and embedded image bytes as JSON through shared Output. Existing image results remain available on attachment failure.
+- Focused persistence, fixture AI/image/export and UI checks pending. No paid inference or production publication.
+
+#### NXR-CHARACTER-SETTINGS-OUTPUT-20261120 - completed
+- New Character Design renders pin a saved appearance target; empty guides are written from
+  structured parameters via the configured standard task model before submission. Guides are
+  editable; existing nonempty text is preserved unless explicitly regenerated. Truncation or
+  concurrent parameter edits cannot replace current text.
+- Completed owned image Runs reconcile idempotently into that original appearance on Output
+  refresh/reopening, with source revision and parameter snapshot. Generated-image records survive
+  form edits. Attachment errors retain actual Output and allow collection retry without inference.
+- Portable appearance JSON uses shared Output and contains identity/parameters/guide/provenance
+  plus embedded image data URLs and hashes (48 MiB source-image bound). Comic Studio imports guide.
+- Validation: 7 Python and 20 Node focused checks passed; fixture text/image transport only,
+  including actual durable Run/Output, repeat collection, retained images and embedded-byte export.
+  UI controls/export checked; health 200 and final JS/CSS hashes match App-Dev checkout. No paid
+  inference, full App regression, AaAT policy changes or publication.
+- Manual UI test initially selected an existing identity by mistake. Its empty guide was restored,
+  only the accidental JSON export Run was removed through StudioRepository, original image Runs
+  retained; no audit history rewrite. Receipt: ai2apps/docs/acceptance/character-design-mvp-20261120.md.
+
+
+## NXR-STICKER-ALPHA-20261120 · implemented
+
+Sticker Workshop white/transparent background option, AaAT variant matching and native image background propagation; verify actual alpha without switching models/providers.
+
+### NXR-STICKER-ALPHA-20261120 implementation / verification
+
+- Added white (backward-compatible default) / transparent selection in Sticker Workshop, including single/batch request payloads, drafts, Run output variants and pack saving. Native background is independent of descriptive workflow backgrounds.
+- AaAT sticker.lookup / sticker.generate expose background; transparent and white variants have distinct lookup/lock/storage identity. Legacy entries are white. Transparent uses native background + PNG and current model capability checks; no model/provider substitution or automatic background removal.
+- Known BYOK GPT Image contracts expose native background options. Managed Cloud rechecks imageOptions.background before forwarding; missing declaration rejects before submission. Cloud backend requirements: ai2apps/docs/cloud-image-transparent-background-requirements.md (no Cloud server changes).
+- Shared result jobs, legacy Studio fallback and pack append check actual alpha in PNG/WebP, rejecting opaque results without fabricating success.
+- Validation: existing sticker/BYOK/provider suite 48 passed; scoped canonical AaAT gate 62 passed (1631 deselected), fixture inference only; Node sticker_background_ui.test.cjs and syntax check passed. Additional Cloud-forwarding/API-schema/opaque-pack focused suite: 23 passed. No paid calls, Cookie access or Dev/Test process restart in this turn; current implementation is in the live source checkout, not yet activated in a release-shaped Test snapshot.
+
+
+### Sticker alpha real Dev BYOK acceptance (2026-11-20)
+
+One user-authorized GPT Image 2.5 Flare request using Dev configuration and its existing namespaced credential backend, through the standard current-checkout BYOK adapter. background=transparent, PNG, low, 1024x1024; returned RGBA in 10.05 s. Alpha 0..254; 635958 fully transparent pixels; 378208 pixels alpha>=250. Initial test wrongly required exactly 255; corrected analysis passed on identical bytes, no retry. Receipt and original PNG: ai2apps/artifacts/acceptance/sticker-alpha-dev-20261120/. Verifies Dev-configured BYOK transport, not running Local HTTP/UI or managed Cloud. No Cookie access, process restart or model switch.
+
+### NXR-CHARACTER-CONSUMERS-AND-AGENT-TOOLS-20261120 — completed (scoped)
+
+- Sticker Workshop: shared finalized character/appearance chooser, definition/prose preview,
+  primary resource Slot reuse, single/batch Prompt guide, draft restoration; original input
+  references remain authoring-only. Comic Studio source Package auto-loads finalized looks,
+  refreshes before import, and uses localized controls.
+- Built-in Character Design: registered ASCBot portable drawing-settings target and seven
+  Gallery-owned AaAT authoring/read/use capabilities. Current revisions, ownership and image+
+  prose finalization checks reuse the same owner services. No General Agent special cases.
+- Verified: 24 Node checks; 26 existing owner/App-State Python checks plus new authoring/tool
+  handoff/isolation test; 2 form i18n checks. Actual App-Dev chooser/Prompt evidence, no paid
+  drawing call. ASCBot verified through registration/capture and backend contracts, not a
+  live Bot conversation.
+- Canonical scoped boundary gate still reports pre-existing cloud_gateway imports into
+  images.background and images.byok_capabilities; gate was not weakened. Evaluate those
+  independent changes separately before a Desktop candidate release.
+- App-Dev Local restarted when queues were idle. App/Helper source roots and exact served JS
+  match live checkout. No Dev restart, Package publication, or production deployment.
+- Receipt: ai2apps/docs/acceptance/character-design-mvp-20261120.md.
+  Owner guide: ai2apps/docs/character-design-agent-integration.md.
+
+
+## NXR-H3-IMAGE-REFERENCES-20261121 · in_progress
+
+User requested local MLX and MiniMax BYOK H3-Image reference generation, Studio/AaAT reference limits and request adapters, with Package publication where needed. Existing checkout has no H3-Image source Package; local implementation/dependency/distribution and real inference acceptance must be established, not inferred from generic image_edit support.
+
+### NXR-COMIC-CHARACTER-APPEARANCE-SELECTORS-20261121 — implemented
+
+- Short Comic Studio source Package now separates character and appearance dropdowns.
+  Changing character restricts appearances to that identity, selects its available default,
+  and disables adding when no finalized definition is available. Refresh preserves valid
+  selection; use still revalidates the exact pair. Existing series characters unchanged.
+- Chinese/English labels retained. Frontend-only activation; no Runtime or Local restart,
+  no Package publication. JavaScript syntax and live App-Dev verification recorded in turn.
+
+### NXR-COMIC-STUDIO-AGENT-PUBLICATION-20261121 — in_progress
+
+- Comic Studio first release preparation: signed capability catalog/Host SDK export,
+  ASCBot portable settings, localized validation messages, Discover task hints.
+- Adds native generic studio.image-sequence/v1 SDK reusing bounded image.workflow jobs,
+  owned image resolution, durable invocation reservations and host Output. No story or
+  Mini-App identity branches in shared Agent. Requires matching Desktop; no Cloud changes.
+- Package remains 0.1.0 first immutable release. Build/install/publication evidence pending.
+
+- 2026-11-21 复核：44 项 scoped Python、12 项 Node 通过；App-Dev 重启后实机确认快捷 Bot 设置入口与中文草稿。新增标准 PNG 交付检查和跨 Provider fixture。边界选择运行 53 通过、1 失败（已有 cloud_gateway/model_manager images 依赖分类），未放宽门禁。签名候选 SHA-256 ca1278d555885a1d2957213971feda5475c070606fa37c7a25b0467b6811220c，待本次 Cookie 与隔离安装批准后发布；尚未创建提交。验收记录：ai2apps/docs/acceptance/comic-studio-0.1.0-readiness-20261121.md。Host SDK 与 ASCBot adapter 仍须纳入未来 Desktop 发布。
+
+- 2026-11-21 发布完成：ai2apps/comic-studio 0.1.0，submission f84f24a8-04c9-4a8e-8af5-46f7980b8447，Snapshot 409，SHA-256 ca1278d555885a1d2957213971feda5475c070606fa37c7a25b0467b6811220c。用户已批准本次 Cookie 与隔离安装；最终工件隔离安装/AaAT 注册/卸载通过，公开 Registry 真实下载/安装/卸载通过，中英文/能力检索与组件分类通过，Dev Discover 实机可见 0.1.0。回执 ai2apps/docs/acceptance/comic-studio-0.1.0-publication-20261121.md。Package 发布子项完成；本条仍 in_progress，新增 Host SDK/ASCBot adapter 尚待未来 Desktop 发布，未声明旧生产客户端已支持。
+
+### NXR-COMIC-SERIES-AAAT-20261121 — in_progress
+
+- 短漫工坊 0.1.1：Package 负责系列查询、历史20集、分镜编译及分集追加；通用 project-query/project-sequence Host SDK 负责受限纯数据转换、相同绘图队列、所有权、版本/幂等与输出交付。
+- Studio 草稿增加可选版本读写，旧调用保持兼容；短漫工坊启用 CAS 防止旧编辑页面覆盖 Bot 新增记录。
+- 2026-11-21 Package 发布完成：0.1.1，submission bb670f4d-41ed-4311-9834-b2b0aab53281，Snapshot 411，SHA-256 ed030eaeccd2869f43c1f39c44636d9507f6608f18e1e9fbf3fb191be8e1936d。用户已批准 Cookie 与隔离验证；最终签名工件隔离安装/三个 AaAT 注册/卸载、公开 Registry 真实下载/安装/卸载及中英文/能力发现通过。相关 Python 37项、Node 16项通过；真实浏览器纯转换测试使用 fixture，未调用付费模型。选定 AaAT 门禁53通过、1项既存共享依赖分类失败，未削弱检查。Dev/App-Dev 已激活，App-Dev 实机0.1.1加载且旧系列/分集保留。回执 ai2apps/docs/acceptance/comic-studio-0.1.1-publication-20261121.md。Package 子项完成；本条仍 in_progress，新增 Host SDK 及版本桥须随未来 Desktop 发布，未声明旧生产客户端已支持。
+
+### NXR-H3-IMAGE-REFERENCES-20261121 update
+
+- Corrected initial investigation: H3-Image 0.1.0 and the original distribution were already installed in legacy miniapp-dev. Restored current-checkout maintenance source from exact original artifact SHA-256 b9dec1ceb5ce52ef6d2bc8aeca0a454273c728074bb570c45f3388b3d5525b19; no instance state or mutable model cache copied. Its native pipeline already supported 16 references; adapter/declaration limited it to one. New 0.1.1 keeps weights, distributions and dependencies unchanged.
+- Native original-checkpoint two-reference inference: 512x512 in 59.63 s, red circle from Picture 1 on left, blue square from Picture 2 on right. Signed candidate managed Worker inference, isolated real dependency install and candidate install/uninstall also passed. Unnecessary proposed alternate checkpoint download failed at the gate before weight download; discontinued.
+- MiniMax BYOK image-native JSON generation/edit contract for H3-Image and Highspeed, ordered images, output format and exact geometry; no GPT quality fields or automatic retries/model switches. Model Manager has documented MiniMax inventory and secure existing backend configuration. Studio and AaAT negotiate 1–16 refs from current model; local descriptors retain reference limits; existing GPT paths retain four. Common Host reference byte bounds remain explicit.
+- Added generic offline signed-candidate Contract v1 verification to ServicePackageManager, with a distinct trust type; reverify actual detached signature against already trusted/unrevoked Publisher/key and all extracted bytes. No fake Repository publication claim, legacy-format bypass, audit/dependency weakening or General Agent branch. Focused signature/revocation/tamper/identity and old lifecycle tests: 5 passed with local loopback enabled.
+- Validation: H3/BYOK/provider 58 passed; model manager/catalog/reference regressions 43 passed; scoped canonical AaAT gate 52 passed before two further contract cases, H3-specific current suite 13 passed before two schema cases; Node slot and existing BYOK catalog/resolution checks passed. Live BYOK API generation remains separate, pending MiniMax key configuration.
+- Published ai2apps/model-minimax-h3-image 0.1.1 via standard script; submission 7aa045d3-385c-417e-bc62-9264ecfa81c0, artifact f326a7814da97c4e6d3bd0534683f7effb2e726460ea7ab5a7c530bc6e0991c8, 75630 bytes, Repository metadata 410. Anonymous public re-download verified exact artifact and envelope. Final postpublication fresh Registry install/managed inference/uninstall acceptance is in progress.
+- Dev already restarted externally at 2026-11-20T22:31:59Z (PID 1018, port 52888), after backend edits. Verified App and Helper source-root metadata to live checkout, imported Service manager/Sticker owner module logs to this checkout, served Imagine Studio JS exact SHA equality and health 200. No additional Dev restart or Test rebuild performed.
+
+### NXR-PORTABLE-CREATIVE-PROJECTS-20261121 — in_progress
+
+- 已实现短漫系列及共享角色可迁移 ZIP：JSON/图片有界传输、摘要/路径/清单检查、独立设备素材映射、创建副本与重名后缀、名称/数量/缩略图导入预览。角色各形象保留独立参考图、定义图和生成图片；单角色/单形象可导出。系列可单个或全部导出，草稿和分集画格可迁移，定时不自动启用。用户确认角色设计保持内置，随 Desktop 交付，只发短漫Package。
+- 通用 Host archive 只处理文档与 scoped 图片；系列业务留在 Package backup.js，角色业务归 Gallery owner。Python21项、Node34项不同用例通过；最终签名包JS跨独立临时设备目录ZIP往返、签名兼容/干净安装/三个AaAT注册/卸载及公开Registry下载/安装/卸载通过。AaAT门禁53通过、1项既存共享AS依赖分类失败，未弱化检查。
+- 2026-11-21已发布 ai2apps/comic-studio 0.1.2，submission 701b6927-ba2c-42ac-9dbf-73d5b491abe1，Snapshot412，SHA256 9127a2ebb942867ff929212dcda8d58a402c9c92c2aca3971e7e0465ff4dd08c，41198字节。公开发现/分类一致，标准脚本回读published。用户批准本次Cookie和隔离安装。
+- Dev/App-Dev经Helper激活当前checkout；App-Dev实机两个迁移入口可见。功能规格 ai2apps/docs/portable-creative-projects-v1.md，回执 ai2apps/docs/acceptance/comic-studio-0.1.2-portable-publication-20261121.md。本条仍 in_progress：通用Host bridge和内置角色迁移须随未来Desktop发布，Package子项已完成。

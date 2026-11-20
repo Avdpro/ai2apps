@@ -1,0 +1,63 @@
+schema: ai2apps.app/v1
+id: ai2apps.article-cards
+name: Article Cards
+version: 0.1.2
+description: Turn articles into editable, paginated image cards.
+publisher: {id: ai2apps}
+instances: {mode: singleton, scope: user}
+entry: {kind: sandbox, resource: web/index.html}
+navigation: {launcher: false}
+localizations:
+  zh-CN: {name: 文章卡片, description: 将长文排成可逐页编辑的图片卡片。}
+mini_apps:
+  - schema: ai2apps.mini-app/v1
+    id: ai2apps.imagine.article-cards
+    name: Article Cards
+    version: 0.1.2
+    kind: project
+    icon: layers
+    description: Choose a template, paginate an article and export numbered PNG cards.
+    catalog: {categories: [image]}
+    entry: {kind: sandbox, resource: web/index.html, placements: [inline, sidebar]}
+    placements:
+      - {studio: ai2apps.imagine-studio, category: create, order: 146}
+      - {studio: ai2apps.doc-studio, category: create, order: 30}
+    outputs: [{id: page, kind: image, final: true}, {id: bundle, kind: file, final: true}]
+    requirements:
+      capabilities:
+        - media.visual_sequence.export
+        - {capability: image.workflow, optional: true}
+    localizations:
+      zh-CN: {name: 文章卡片, description: 选模板、排长文，逐页编辑后导出 PNG 图片包。}
+    aaat:
+      schema: ai2apps.mini-app-host-exports/v1
+      exports:
+        - name: doc_studio.export_article_cards
+          interfaceVersion: 1.0.0
+          host: ai2apps.doc-studio
+          sdk: studio.article-cards/v1
+          inputSchema:
+            type: object
+            additionalProperties: false
+            required: [article]
+            properties:
+              article: {type: string, minLength: 1, maxLength: 30000}
+              ratio: {type: string, enum: ['3:4', '9:16'], default: '3:4'}
+              theme: {type: string, enum: [paper, sage, ink], default: paper}
+              format: {type: string, enum: [png, zip], default: zip}
+          fields:
+            - {key: article, label: {zh: 文章, en: Article}, type: text}
+            - {key: ratio, label: {zh: 画幅, en: Aspect ratio}, type: select}
+            - {key: theme, label: {zh: 模板, en: Template}, type: select}
+            - {key: format, label: {zh: 导出格式, en: Export format}, type: select}
+          displayName: {zh: 导出文章卡片, en: Export article cards}
+          summary: {zh: 自动分页并导出 PNG 或图片包。, en: Paginate an article and export a PNG or ZIP.}
+          agentContext:
+            schema: ai2apps.aaat-declaration/v1
+            instructions:
+              - Use supplied article text and a built-in template. PNG is the first page. ZIP contains all pages.
+              - Use editor export for existing hand-edited pages or private templates.
+            result_semantics:
+              artifact: Published result in the Doc Studio shared output.
+          selectionRequired: false
+          options: {}

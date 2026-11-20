@@ -70,3 +70,8 @@ From the repository root, build an unsigned contract artifact for local structur
 
 Production signing and publication must use `scripts/build_signed_registry_release.py` and the standard
 Package publication runbook.
+
+
+## AaAT ownership (0.2.4)
+
+This release owns its executable AaAT declarations and parameter schemas in signed `app.yaml.mini_apps[].aaat`. It requires the versioned native Host SDK protocol declared by each export (`ai2apps.mini-app-host-exports/v1`). The matching Desktop host registers exports only while this exact Package is installed, enabled, and compatible. The capability catalog alone never enables execution. Older Desktop hosts must be upgraded for this ownership contract. Existing native queues, original material references, and shared Studio Output are reused.

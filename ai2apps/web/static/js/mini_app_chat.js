@@ -302,6 +302,116 @@
 
     // Chat-owned UI only: callers retain authorization, context and execution.
     // No business names, tool routing, model invocation or evidence policies here.
+    // Reuse Chat copy/TTS controls without replacing an owner's message body.
+    function bindMessageActions({icons = false, resolveSpeech = null, onSpeechError = null, compactSpeech = false} = {}) {
+        const zh = () => (document.documentElement.lang || '').startsWith('zh');
+        const words = (cn, en) => zh() ? cn : en;
+        const timers=new Set();let disposed=false;
+        const paths={copy:'<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',check:'<path d="m5 12 4 4L19 6"/>',volume:'<path d="m11 5-6 4H2v6h3l6 4zM15 8a6 6 0 0 1 0 8M19 4a11 11 0 0 1 0 16"/>',stop:'<rect x="6" y="6" width="12" height="12" rx="2"/>',loading:'<path d="M20 12a8 8 0 1 1-5.5-7.6"/>'};
+        function icon(button,name,text){if(!icons)return;button.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+paths[name]+'</svg>';button.dataset.chatTip=text;button.setAttribute('aria-label',text);}
+        function voiceState(button,phase){if(!icons)return;button.dataset.speechState=phase;icon(button,phase==='idle'?'volume':phase==='loading'?'loading':'stop',phase==='idle'?words('朗读','Read aloud'):phase==='loading'?words('正在生成语音，点击停止','Preparing audio; click to stop'):words('正在朗读，点击停止','Reading aloud; click to stop'));}
+        let speech = null;
+        function stopSpeech() {
+            if (!speech) return;
+            const previous = speech; speech = null;
+            previous.controller.abort(); previous.player?.pause(); previous.release?.();
+            if (previous.url) URL.revokeObjectURL(previous.url);
+            previous.player?.remove(); previous.button?.setAttribute('aria-pressed', 'false');
+            if(previous.button)voiceState(previous.button,'idle');
+        }
+        async function prepareDefaultSpeech(signal,{modelId=null,useDefaultVoice=false}={}){
+            let model,voice;
+                const response = await fetch('/v1/models', {credentials:'same-origin', signal:signal});
+                if (!response.ok) throw Error(words('无法读取 Desktop TTS 模型，请在 Desktop 检查配置。', 'Check TTS configuration on Desktop.'));
+                let catalog=(await response.json()).data || [];
+                if(catalog.some(m=>m.model_type==='audio_tts'&&!m.audio_capabilities)){
+                    try{const metadata=await fetch('/admin/api/models',{credentials:'same-origin',signal:signal});if(metadata.ok){const entries=(await metadata.json()).models||[];catalog=catalog.map(m=>{const full=entries.find(e=>e.id===m.id);return full?{...m,...full}:m;});}}catch(error){if(error.name==='AbortError')throw error;}
+                }
+                const models=catalog.filter(m=>m.model_type==='audio_tts'&&m.checkpoint_ready!==false&&!m.is_hidden&&!m.load_failed
+                    &&(!(m.source_type==='package'||m.engine_type==='package')||m.checkpoint_ready===true));
+                let settings={},preferences={};try{settings=JSON.parse(localStorage.getItem('ai2apps-chat-audio-v1')||'{}');preferences=JSON.parse(localStorage.getItem('ai2apps-chat-audio-tts-preferences-v1')||'{}');}catch(_){}
+                const plain=models.filter(m=>{const tts=m.audio_capabilities?.tts;if(!tts)return !Array.isArray(m.capabilities)||m.capabilities.includes('named_voices');return !tts.instructions?.required&&(!tts.voice_profiles?.reference_audio||tts.named_voices?.voices?.length>0);});
+                model=modelId?plain.find(m=>m.id===modelId):(plain.find(m=>m.id===settings.ttsModel)||plain[0]);
+                if(!model)throw Object.assign(Error(models.length?words('现有 TTS 模型需要参考音频或声音描述。请在 Desktop 配置可直接朗读的音色模型。','Available TTS models require reference audio or a voice description. Configure a model for direct read-aloud on Desktop.'):words('Desktop 没有可用的 TTS 模型，请在 Desktop 安装并配置语音合成模型。','Install and configure an available TTS model on Desktop.')),{speechSetup:true});
+                let voices=model.audio_capabilities?.tts?.named_voices?.voices||[];
+                if(!voices.length&&Array.isArray(model.capabilities)&&model.capabilities.includes('named_voices')){
+                    const voiceResponse=await fetch('/v1/audio/voices?model='+encodeURIComponent(model.id),{credentials:'same-origin',signal:signal});if(voiceResponse.ok)voices=(await voiceResponse.json()).voices||[];
+                }
+                const preferredVoice=useDefaultVoice?'':preferences[model.id]?.voice||(settings.ttsModel===model.id?settings.voice:'');
+                voice=voices.includes(preferredVoice)?preferredVoice:voices[0];
+
+            return (text,signal)=>fetch('/v1/audio/speech',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},signal,body:JSON.stringify({model:model.id,input:text,response_format:'wav',...(voice?{voice}:{})})});
+        }
+        async function speak(target, state, button) {
+            if (speech?.target === target) { stopSpeech(); return; }
+            stopSpeech(); state.notice.textContent = '';
+            const attempt=state.speechAttempt=(state.speechAttempt||0)+1;
+            const active = {target, button, controller:new AbortController()}; speech = active;
+            button.setAttribute('aria-pressed', 'true');voiceState(button,'loading');
+            try {
+                const defaultSpeech=options=>prepareDefaultSpeech(active.controller.signal,options);
+                const customSpeech=await resolveSpeech?.(active.controller.signal,{defaultSpeech});
+                const requestSpeech=customSpeech||await defaultSpeech();
+                const clone = state.body.cloneNode(true); clone.querySelectorAll('pre').forEach(n => n.remove());
+                const chars = Array.from(clone.innerText || clone.textContent || '');
+                if (!chars.join('').trim()) throw Error(words('没有可朗读的正文。', 'No answer text to read.'));
+                const streaming=compactSpeech?window.AI2AppsStreamingTTS:null;
+                const segmenter=streaming?new streaming.StreamingTextSegmenter({minChars:8,softChars:24,maxChars:56}):null;
+                const segments=segmenter?[...segmenter.append(chars.join('')),...segmenter.finish()]:Array.from({length:Math.ceil(chars.length/500)},(_,index)=>chars.slice(index*500,(index+1)*500).join(''));
+                const synthesize=async text=>{
+                    const audio=await requestSpeech(text,active.controller.signal);
+                    if(requestSpeech.notice&&speech===active)state.notice.textContent=requestSpeech.notice;
+                    if (!audio.ok || !(audio.headers.get('content-type') || '').startsWith('audio/')) {
+                        let detail='';try{const error=await audio.json();const value=error.error?.message||error.detail?.message||error.detail;detail=typeof value==='string'?value:'';}catch(_){}
+                        throw Object.assign(Error(words('Desktop TTS 生成失败','Desktop TTS failed')+' ('+audio.status+')'+(detail?': '+detail:words('，请检查模型和音色配置。','. Check model and voice configuration.'))),{speechSetup:![401,403,429].includes(audio.status)});
+                    }
+                    return audio.blob();
+                };
+                const play=async blob=>{
+                    if(speech!==active||!target.isConnected)return;
+                    active.url=URL.createObjectURL(blob);active.player=document.createElement('audio');
+                    active.player.controls=!compactSpeech;active.player.src=active.url;if(!compactSpeech)state.toolbar.after(active.player);
+                    await new Promise((resolve,reject)=>{
+                        active.release=resolve;active.player.onended=resolve;active.player.onerror=()=>reject(Error(words('音频播放失败。','Audio playback failed.')));
+                        active.player.play().then(()=>{if(speech===active)voiceState(button,'playing');}).catch(error=>{if(error.name==='NotAllowedError'&&!compactSpeech)state.notice.textContent=words('请点击播放器开始朗读。','Tap the player to read aloud.');else reject(error.name==='NotAllowedError'?Error(words('请再次点击朗读以允许播放。','Click Read aloud again to allow playback.')):error);});
+                    });
+                    active.player?.remove();if(active.url)URL.revokeObjectURL(active.url);active.url=null;active.player=null;
+                };
+                if(streaming?.playSegments)await streaming.playSegments({segments,synthesize,play,signal:active.controller.signal,maxPrepared:2});
+                else for(const segment of segments){if(speech!==active)break;await play(await synthesize(segment));}
+
+            } catch (error) { if (speech === active && error.name !== 'AbortError') {
+                state.notice.textContent = error.message;
+                if(error.speechSetup)onSpeechError?.({error,notice:state.notice,isCurrent:()=>!disposed&&target.isConnected&&state.speechAttempt===attempt});
+            } }
+            finally { if (speech === active) stopSpeech(); }
+        }
+        const observer = new MutationObserver(() => { if (speech && !speech.target.isConnected) stopSpeech(); });
+        observer.observe(document.documentElement, {childList:true, subtree:true});
+        const background = () => { if (document.hidden) stopSpeech(); };
+        document.addEventListener('visibilitychange', background);
+        window.addEventListener('pagehide', stopSpeech);
+        function dispose() { disposed=true;for(const timer of timers)clearTimeout(timer);timers.clear();stopSpeech(); observer.disconnect(); document.removeEventListener('visibilitychange',background); window.removeEventListener('pagehide',stopSpeech); }
+        function attach(target, body, content, state = {}) {
+            Object.assign(state,{body,content:String(content||'')});
+            state.toolbar = document.createElement('div'); state.toolbar.className = 'chat-mini-message-actions'+(icons?' chat-message-icon-actions':'');
+            state.notice = document.createElement('p'); state.notice.className = 'chat-mini-message-notice'; state.notice.setAttribute('role','status');
+            const copy = document.createElement('button'); copy.type = 'button'; copy.textContent = words('复制','Copy'); copy.dataset.miniCopy = '';icon(copy,'copy',words('复制','Copy'));
+            copy.onclick = async () => { try {
+                if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(state.content);
+                else {const input=document.createElement('textarea');input.value=state.content;target.append(input);input.select();try {if(!document.execCommand('copy'))throw Error('copy');}finally{input.remove();}}
+                if(disposed)return;
+                if(icons){icon(copy,'check',words('已复制','Copied'));window.AI2AppsChatFeedback?.show(copy,true,true);clearTimeout(copy._botCopyTimer);const timer=setTimeout(()=>{timers.delete(timer);if(!disposed)icon(copy,'copy',words('复制','Copy'));},1800);copy._botCopyTimer=timer;timers.add(timer);}
+                else state.notice.textContent=words('已复制','Copied');
+            } catch (_) {if(!disposed){state.notice.textContent=words('复制失败，请选择正文手动复制。','Copy failed. Select and copy the answer manually.');if(icons)window.AI2AppsChatFeedback?.show(copy,false,true);}} };
+            const read = document.createElement('button'); read.type='button';read.textContent=words('朗读 / 停止','Read / Stop');read.dataset.miniSpeak='';read.setAttribute('aria-pressed','false');read.onclick=()=>speak(target,state,read);voiceState(read,'idle');
+            state.toolbar.append(copy,read);target.append(state.toolbar,state.notice);
+            state.toolbar.hidden=!state.content.trim();
+            return state;
+        }
+        return {attach,dispose};
+    }
+
     function bindConversationSurface(root) {
         const input = root.querySelector('textarea');
         const form = root.querySelector('form');
@@ -312,54 +422,7 @@
         const replies = new WeakMap();
         const zh = () => (document.documentElement.lang || '').startsWith('zh');
         const words = (cn, en) => zh() ? cn : en;
-        let speech = null;
-        function stopSpeech() {
-            if (!speech) return;
-            const previous = speech; speech = null;
-            previous.controller.abort(); previous.player?.pause(); previous.release?.();
-            if (previous.url) URL.revokeObjectURL(previous.url);
-            previous.player?.remove(); previous.button?.setAttribute('aria-pressed', 'false');
-        }
-        async function speak(target, state, button) {
-            if (speech?.target === target) { stopSpeech(); return; }
-            stopSpeech(); state.notice.textContent = '';
-            const active = {target, button, controller:new AbortController()}; speech = active;
-            button.setAttribute('aria-pressed', 'true');
-            try {
-                const response = await fetch('/v1/models', {credentials:'same-origin', signal:active.controller.signal});
-                if (!response.ok) throw Error(words('无法读取 Desktop TTS 模型，请在 Desktop 检查配置。', 'Check TTS configuration on Desktop.'));
-                const models = ((await response.json()).data || []).filter(m => m.model_type === 'audio_tts' && m.checkpoint_ready !== false && !m.is_hidden && !m.load_failed
-                    && (!(m.source_type === 'package' || m.engine_type === 'package') || m.checkpoint_ready === true));
-                let preferred = ''; try { preferred = JSON.parse(localStorage.getItem('ai2apps-chat-audio-v1') || '{}').ttsModel; } catch (_) {}
-                const model = models.find(m => m.id === preferred) || models[0];
-                if (!model) throw Error(words('Desktop 没有可用的 TTS 模型，请在 Desktop 安装并配置语音合成模型。', 'Install and configure an available TTS model on Desktop.'));
-                const clone = state.body.cloneNode(true); clone.querySelectorAll('pre').forEach(n => n.remove());
-                const chars = Array.from(clone.innerText || clone.textContent || '');
-                if (!chars.join('').trim()) throw Error(words('没有可朗读的正文。', 'No answer text to read.'));
-                for (let offset = 0; offset < chars.length; offset += 500) {
-                    const voice = model.audio_capabilities?.tts?.named_voices?.voices?.[0];
-                    const audio = await fetch('/v1/audio/speech', {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},signal:active.controller.signal,
-                        body:JSON.stringify({model:model.id,input:chars.slice(offset,offset+500).join(''),response_format:'wav',...(voice ? {voice} : {})})});
-                    if (!audio.ok || !(audio.headers.get('content-type') || '').startsWith('audio/')) throw Error(words('Desktop TTS 生成失败，请检查模型和音色配置。', 'Desktop TTS failed. Check model and voice configuration.'));
-                    const blob = await audio.blob(); if (speech !== active || !target.isConnected) return;
-                    active.url = URL.createObjectURL(blob); active.player = document.createElement('audio');
-                    active.player.controls = true; active.player.src = active.url; state.toolbar.after(active.player);
-                    await new Promise((resolve,reject) => {
-                        active.release = resolve; active.player.onended = resolve; active.player.onerror = () => reject(Error(words('音频播放失败。','Audio playback failed.')));
-                        active.player.play().catch(error => {if (error.name === 'NotAllowedError') state.notice.textContent = words('请点击播放器开始朗读。','Tap the player to read aloud.'); else reject(error);});
-                    });
-                    if (speech !== active) return;
-                    active.player.remove(); URL.revokeObjectURL(active.url); active.url = null;
-                }
-            } catch (error) { if (speech === active && error.name !== 'AbortError') state.notice.textContent = error.message; }
-            finally { if (speech === active) stopSpeech(); }
-        }
-        const observer = new MutationObserver(() => { if (speech && !speech.target.isConnected) stopSpeech(); });
-        observer.observe(document.documentElement, {childList:true, subtree:true});
-        const background = () => { if (document.hidden) stopSpeech(); };
-        document.addEventListener('visibilitychange', background);
-        window.addEventListener('pagehide', stopSpeech);
-        function dispose() { stopSpeech(); observer.disconnect(); document.removeEventListener('visibilitychange',background); window.removeEventListener('pagehide',stopSpeech); }
+        const messageActions=bindMessageActions(),dispose=()=>messageActions.dispose();
         function updateMessage(target, content, options = {}) {
             let state = replies.get(target);
             if (!state) {
@@ -371,16 +434,8 @@
                 state.activityNode = document.createElement('div'); state.activityNode.className = 'chat-mini-activity';
                 state.activityNode.setAttribute('role','status');
                 state.body = document.createElement('div'); state.body.className = 'chat-mini-answer';
-                state.toolbar = document.createElement('div'); state.toolbar.className = 'chat-mini-message-actions';
-                state.notice = document.createElement('p'); state.notice.className = 'chat-mini-message-notice'; state.notice.setAttribute('role','status');
-                const copy = document.createElement('button'); copy.type = 'button'; copy.textContent = words('复制','Copy'); copy.dataset.miniCopy = '';
-                copy.onclick = async () => { try {
-                    if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(state.content);
-                    else {const input=document.createElement('textarea');input.value=state.content;target.append(input);input.select();try {if(!document.execCommand('copy'))throw Error('copy');}finally{input.remove();}}
-                    state.notice.textContent=words('已复制','Copied');
-                } catch (_) {state.notice.textContent=words('复制失败，请选择正文手动复制。','Copy failed. Select and copy the answer manually.');} };
-                const read = document.createElement('button'); read.type='button';read.textContent=words('朗读 / 停止','Read / Stop');read.dataset.miniSpeak='';read.setAttribute('aria-pressed','false');read.onclick=()=>speak(target,state,read);
-                state.toolbar.append(copy,read);target.append(state.thought,state.activityNode,state.body,state.toolbar,state.notice);
+                target.append(state.thought,state.activityNode,state.body);
+                messageActions.attach(target,state.body,'',state);
             }
             state.content=String(content || ''); Object.assign(state, options);
             state.body.classList.toggle('chat-mini-markdown', state.format === 'markdown');
@@ -467,7 +522,7 @@
         view.querySelector('h1').textContent=title;view.querySelector('header p').textContent=subtitle;
         view.querySelector('.chat-mini-model span').textContent=tr('chat.mini.model','Model');view.querySelector('[data-mini-model]').setAttribute('aria-label',tr('chat.mini.model','Model'));const defaultOption=document.createElement('option');defaultOption.value='';defaultOption.textContent=tr('chat.mini.default_model','Default work model');view.querySelector('[data-mini-model]').append(defaultOption);
         const reset=view.querySelector('[data-mini-reset]');reset.title=tr('chat.mini.reset','Reset conversation');reset.setAttribute('aria-label',reset.title);reset.innerHTML='<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 10a9 9 0 1 1 2.6 8.4M3 4v6h6"/></svg>';
-        const input=view.querySelector('textarea');input.placeholder=placeholder;input.setAttribute('aria-label',placeholder);input.maxLength=maxLength;input.onkeydown=event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();view.querySelector('form').requestSubmit();}};
+        const input=view.querySelector('textarea');input.placeholder=placeholder;input.setAttribute('aria-label',placeholder);input.maxLength=maxLength;input.onkeydown=event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();input.form?.requestSubmit();}};
         const send=view.querySelector('[type="submit"]');setSendLabel(send,sendLabel||tr('chat.mini.send','Send'));
         if(legacyIds){for(const [selector,id] of [['[data-mini-model]','chat-mini-model'],['[data-mini-reset]','chat-mini-reset'],['[data-mini-messages]','chat-mini-messages'],['form','chat-mini-form'],['textarea','chat-mini-input'],['[type="submit"]','chat-mini-send']])view.querySelector(selector).id=id;}
         root.append(view);
@@ -893,7 +948,7 @@ function startEntry(){
 return {SCHEMA,version:'1.2.0',capabilities:Object.freeze(['owner-execution','bound-session','actions','interaction-form','cancel','markdown','iframe','inline','model-selection','reset']),createController,mount,startEntry};
     }
     const extensions=createExtensions();
-    window.AI2AppsMiniAppChat = { EXTENSION_SCHEMA:extensions.SCHEMA, version:'1.2.0', capabilities:extensions.capabilities, createController:extensions.createController, mount:extensions.mount, getAppChatCapabilities:()=>extensions.capabilities, createAppChatController:extensions.createController, mountAppChat:extensions.mount, bindConversationSurface, createConversationSurface, hydrateEntry, mergeToolCallChunks, SCHEMA, HELP_TOOL_NAME, createStudioController, createPackageBridge, registerPackageProvider, loadBuiltinHelp, startChatEntry, resolveModelSelection, createModelInstaller };
+    window.AI2AppsMiniAppChat = { EXTENSION_SCHEMA:extensions.SCHEMA, version:'1.2.0', capabilities:extensions.capabilities, createController:extensions.createController, mount:extensions.mount, getAppChatCapabilities:()=>extensions.capabilities, createAppChatController:extensions.createController, mountAppChat:extensions.mount, bindMessageActions, bindConversationSurface, createConversationSurface, hydrateEntry, mergeToolCallChunks, SCHEMA, HELP_TOOL_NAME, createStudioController, createPackageBridge, registerPackageProvider, loadBuiltinHelp, startChatEntry, resolveModelSelection, createModelInstaller };
     // Deprecated name is an alias only; no second entry implementation or asset.
     window.AI2AppsAppChat=extensions;
 })();

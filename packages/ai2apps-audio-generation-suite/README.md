@@ -9,3 +9,8 @@ Song Creation requires the Host `audio.song_generation` broker and Runtime 1.8.1
 Only models declaring `audio_generation.workflow: ai2apps.song-generation/v1` appear in Song Creation. Its installation entry invokes the dedicated ACPF profile. YuE2 uses the separate `ai2apps/model-yue2-mlx` Package and signed HF/ModelScope checkpoint distributions; original-license consent is required before download. Stage checkpoint/resume, partial rerender and transcription are outside this version.
 
 Version 0.2.2 owns prompt translation inside the Mini-App via the generic `llm.complete` bridge (simple complexity). Song style translation defaults to English and can be disabled. Requires a Host implementing that bridge; privacy routing is enforced by the Host. No model or Runtime payload is included in this update.
+
+
+## AaAT ownership (0.2.4)
+
+This release owns its executable AaAT declarations and parameter schemas in signed `app.yaml.mini_apps[].aaat`. It requires the versioned native Host SDK protocol declared by each export (`ai2apps.mini-app-host-exports/v1`). The matching Desktop host registers exports only while this exact Package is installed, enabled, and compatible. The capability catalog alone never enables execution. Older Desktop hosts must be upgraded for this ownership contract. Existing native queues, original material references, and shared Studio Output are reused.

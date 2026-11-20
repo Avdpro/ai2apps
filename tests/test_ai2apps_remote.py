@@ -146,6 +146,7 @@ def test_pairing_qr_is_a_local_svg_data_url():
 
 
 def _projection_manager(tmp_path, handler, *, interval_seconds=120.0):
+    credential_expires_at = (utc_now() + timedelta(days=1)).isoformat()
     installation_id = "b657d60d-2a38-4a66-bf21-20d7bb1bb13f"
     device_id = "35f29378-4912-4a76-a99d-197361226ca7"
     organization_id = "c10c7a58-b338-4194-a6a2-693bf1d54c9e"
@@ -184,12 +185,12 @@ def _projection_manager(tmp_path, handler, *, interval_seconds=120.0):
             "suspensionReason": None,
             "accessEpoch": 7,
             "publicOrigin": "https://device-test.ai2apps.com",
-            "credentialExpiresAt": "2026-11-12T08:00:00Z",
+            "credentialExpiresAt": credential_expires_at,
             "createdAt": "2026-08-14T08:00:00Z",
         },
         {
             "credentialVersion": 1,
-            "credentialExpiresAt": "2026-11-12T08:00:00Z",
+            "credentialExpiresAt": credential_expires_at,
             "serverAddr": "frpc.ai2apps.com",
             "serverPort": 7000,
             "proxyName": f"device-{device_id}",

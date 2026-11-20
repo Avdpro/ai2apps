@@ -48,7 +48,7 @@ async def test_detail_checks_access_before_extraction_including_preloaded_tab(ph
     async def access(**kwargs):return {'classification':'needs_user','reason':'cookie_consent','assistance_kind':'legal_consent','frame':True}
     async def navigate(*args,**kwargs):return {}
     async def forbidden(*args,**kwargs):raise AssertionError('Must not extract blocked content')
-    page.snapshot=snapshot;page.handle_access=access;page.navigate=navigate;page.helper=forbidden
+    page.snapshot=snapshot;page.handle_access=access;page.open_readable_page=navigate;page.helper=forbidden
     async def observed(*a,**kw):return {'paragraphs':[], 'notice':''}
     page.call_json=observed
     result=await page.read_page({'url':'https://example.com/article','new_tab':False,'phase':phase,'opened':{'context':'tab'}})
@@ -142,12 +142,40 @@ async def test_optional_overlay_one_visual_attempt_after_empty_loaded_html():
     assert calls[0][1]['allowed_refs']==['close-ref'] and 'Never' in calls[0][0]
 
 @pytest.mark.asyncio
-async def test_plain_read_timeout_is_failure_instead_of_assistance():
+@pytest.mark.parametrize('slow_stage', ['navigation', 'blocker', 'extraction', None])
+async def test_article_deadlines_are_independent(monkeypatch, slow_stage):
+    import asyncio
+    from ai2apps.browser import background_page
+    url='https://example.com/article'
+    monkeypatch.setattr(background_page,'PAGE_OPEN_SECONDS',.04)
+    monkeypatch.setattr(background_page,'ARTICLE_BLOCKER_SECONDS',.04)
+    monkeypatch.setattr(background_page,'ARTICLE_EXTRACTION_SECONDS',.04)
+    stages=[]
+    async def wait(stage):
+        stages.append(stage)
+        await asyncio.sleep(1 if stage == slow_stage else .02)
+    async def navigate(destination, **kwargs):
+        assert destination == url and kwargs == {'navigation_wait':'interactive'}
+        await wait('navigation')
+        return {'url':url}
+    async def ready(*args):return True
+    async def snapshot(*args):return {'url':url}
+    async def access(options):
+        await wait('blocker')
+        return {'classification':'none'},None
+    async def extract(max_chars):
+        await wait('extraction')
+        return {'url':url,'text':'Observed body'}
     page=BackgroundPage(SimpleNamespace(),'tab')
-    async def expired(options):raise TimeoutError()
-    page._read_page=expired
-    result=await page.read_page({'url':'https://example.com/article'})
-    assert result=={'outcome':'failed','reason':'article_read_timeout','timeout_seconds':10}
+    page.navigate=navigate;page.call_json=ready;page.snapshot=snapshot
+    page.article_access=access;page.rendered_page=extract
+    result=await page.read_page({'url':url,'new_tab':False})
+    if slow_stage:
+        assert result=={'outcome':'failed','reason':f'article_{slow_stage}_timeout','timeout_seconds':.04}
+        assert stages[-1]==slow_stage
+    else:
+        assert stages==['navigation','blocker','extraction']
+        assert result['outcome']=='success' and result['text']=='Observed body'
 
 def test_assistance_navigation_uses_only_the_task_owned_observed_context():
     from ai2apps.browser.task_presentation import browser_task_wait_presentation

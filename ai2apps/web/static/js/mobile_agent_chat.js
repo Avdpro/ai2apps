@@ -146,7 +146,8 @@ class Client {
     }
     if(item.kind==='approval'){
      section.append(node('p','仅允许一次：只授权本次请求。记住工具：在发起对话的当前应用中允许此工具访问不同资源，不适用于其他工具或整个 Desktop。'));
-     section.append(button('仅允许这一次',()=>this.respond(run,item,{decision:'approve',scope:'once'})));
+     const risk=this.forms?.mountRiskChoice?.(section,item.response_schema,item.ui_hints?.unknown_tool_risk);
+     section.append(button('仅允许这一次',()=>this.respond(run,item,{decision:'approve',scope:'once',...risk?.()})));
      if(item.response_schema?.properties?.resource_scope)section.append(button('在当前应用中记住此工具',()=>this.respond(run,item,{decision:'approve',scope:'app',resource_scope:'tool'})));
      section.append(button('拒绝',()=>this.respond(run,item,{decision:'deny'})));this.forms?.mountApproval?.(section,run,item,()=>this.respond(run,item,{decision:'approve',scope:'once'}));continue;
     }

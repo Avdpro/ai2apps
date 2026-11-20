@@ -1,0 +1,106 @@
+schema: ai2apps.service/v1
+id: ai2apps.model.stable-audio-cuda
+name: Stable Audio 3 Small CUDA
+description: CUDA music and sound effects, 1–120 seconds. Powered by Stability AI.
+  Installation requires the user to confirm applicable Stability AI and Gemma terms.
+version: 0.1.0
+publisher:
+  id: ai2apps
+license:
+  id: MIT
+  name: MIT License
+  path: LICENSE
+attribution:
+  notice: META/NOTICE.md
+  source: https://github.com/Stability-AI/stable-audio-3/tree/3a82c807b69cf4b7c5c05270011a5d5e47abac18
+  checkpoint: https://huggingface.co/stabilityai/stable-audio-3-optimized/tree/da6edc54ddba10bfd79a077102ded687f80e882b
+runtime:
+  mode: process
+  protocol: ai2apps-model-worker/v1
+  provider: ai2apps.runtime.cuda-torch
+  adapter: src/worker_adapter.py:create_adapter
+models:
+- id: ai2apps.model.stable-audio-cuda/music
+  display_name: Music / 音乐
+  model_type: audio_generation
+  upstream_id: sm-music
+  capabilities:
+  - audio_generation
+  weights:
+    provider: huggingface
+    repo_id: stabilityai/stable-audio-3-optimized
+    revision: da6edc54ddba10bfd79a077102ded687f80e882b
+    preparation:
+      recipe: native
+  metadata:
+    family: stable-audio
+    estimated_resident_bytes: 8589934592
+    audio_generation:
+      schema: ai2apps.audio-generation-capabilities/v1
+      task: music
+      minimum_duration: 1
+      maximum_duration: 120
+      preferred_prompt_language: en
+      lyrics: false
+      output_formats:
+      - wav
+      variant: sm-music
+- id: ai2apps.model.stable-audio-cuda/sfx
+  display_name: Sound Effects / 音效
+  model_type: audio_generation
+  upstream_id: sm-sfx
+  capabilities:
+  - audio_generation
+  weights:
+    provider: huggingface
+    repo_id: stabilityai/stable-audio-3-optimized
+    revision: da6edc54ddba10bfd79a077102ded687f80e882b
+    preparation:
+      recipe: native
+  metadata:
+    family: stable-audio
+    estimated_resident_bytes: 8589934592
+    audio_generation:
+      schema: ai2apps.audio-generation-capabilities/v1
+      task: sound_effects
+      minimum_duration: 1
+      maximum_duration: 120
+      preferred_prompt_language: en
+      lyrics: false
+      output_formats:
+      - wav
+      variant: sm-sfx
+capabilities:
+- audio-generation
+requires:
+  services:
+  - id: ai2apps.runtime.cuda-torch
+    version: '>=0.6.0,<1.0.0'
+    optional: false
+    capabilities:
+    - cuda
+    - model-worker-v1
+    - stable-audio
+  python: '>=3.12,<3.13'
+permissions:
+  network:
+    outbound: false
+  model_weights:
+    huggingface_cache: read
+    reason: Read only the declared immutable audio generation checkpoint.
+  accelerator:
+    cuda: true
+    reason: Generate music and sound effects on CUDA.
+compatibility:
+  os:
+  - linux
+  architectures:
+  - arm64
+  - aarch64
+health:
+  path: /health
+  startup_timeout_seconds: 120
+restart:
+  max_attempts: 2
+  base_delay_seconds: 1
+tools: []

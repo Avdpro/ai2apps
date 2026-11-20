@@ -1,0 +1,37 @@
+{
+  "schema": "ai2apps.checkpoint-build/v1",
+  "distributionId": "dist_ai2apps_musetalk_vae_31f26fde_v1",
+  "modelId": "ai2apps.model.musetalk-cuda/vae",
+  "repoId": "stabilityai/sd-vae-ft-mse",
+  "revision": "31f26fdeee1355a5c34592e401dd41e45d25a493",
+  "format": "safetensors",
+  "quantization": "fp32",
+  "pieceSize": 8388608,
+  "license": {
+    "id": "MIT",
+    "name": "MIT License",
+    "termsUrl": "https://huggingface.co/stabilityai/sd-vae-ft-mse/resolve/31f26fdeee1355a5c34592e401dd41e45d25a493/README.md",
+    "termsHash": "sha256:8ac69483c18a45d0fee531e08b6ede97ee9b4c79e875659c1b0e6a5903ca3400",
+    "usagePolicy": "license_terms",
+    "accessPolicy": "public",
+    "redistributionPolicy": "allowed"
+  },
+  "includePatterns": [
+    "config.json",
+    "diffusion_pytorch_model.safetensors"
+  ],
+  "sourceRepositories": [
+    {
+      "type": "huggingface",
+      "repoId": "stabilityai/sd-vae-ft-mse",
+      "revision": "31f26fdeee1355a5c34592e401dd41e45d25a493",
+      "access": "public_anonymous"
+    },
+    {
+      "type": "modelscope",
+      "repoId": "stabilityai/sd-vae-ft-mse",
+      "revision": "79efec79e87756556b473a8991162904c8633521",
+      "access": "public_anonymous"
+    }
+  ]
+}

@@ -1,0 +1,83 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/model-avtr1-mlx",
+    "type": "service",
+    "version": "0.1.0",
+    "displayName": "AVTR-1 MLX",
+    "description": "Native MLX talking portrait with Host source-canvas composition."
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": [
+      "darwin"
+    ],
+    "architectures": [
+      "arm64"
+    ],
+    "minimumOsVersion": "26.2"
+  },
+  "entrypoints": [
+    {
+      "name": "model-worker",
+      "kind": "service",
+      "path": "service.yaml"
+    }
+  ],
+  "permissions": [
+    {
+      "capability": "model-weights.huggingface-cache.read",
+      "reason": "Read the Host-selected AVTR-1 MLX checkpoint.",
+      "required": true
+    },
+    {
+      "capability": "accelerator.metal",
+      "reason": "Run native MLX avatar inference.",
+      "required": true
+    }
+  ],
+  "dependencies": [
+    {
+      "packageId": "ai2apps/runtime-omlx",
+      "version": ">=1.8.5 <2.0.0",
+      "optional": false
+    }
+  ],
+  "files": [],
+  "sbom": {
+    "format": "spdx-json-2.3",
+    "path": "META/sbom.spdx.json"
+  },
+  "discovery": {
+    "kind": "model",
+    "categories": [
+      "video"
+    ],
+    "tasks": [
+      "video-generation",
+      "avatar-animation"
+    ]
+  },
+  "modelProfile": {
+    "sizeBytes": 2548975525,
+    "minimumMemoryBytes": 17179869184,
+    "scores": {
+      "speed": 3,
+      "capability": 3
+    },
+    "benchmark": {
+      "label": "Portable Runtime Worker: 50 frames at 512px, validated on M5 Max; publisher rating",
+      "device": "Apple M5 Max 128 GiB"
+    }
+  },
+  "modelInstall": {
+    "serviceKey": "ai2apps.model.avtr1-mlx",
+    "models": [
+      {
+        "id": "ai2apps.model.avtr1-mlx/default",
+        "label": "AVTR-1 MLX",
+        "recommended": true
+      }
+    ]
+  }
+}

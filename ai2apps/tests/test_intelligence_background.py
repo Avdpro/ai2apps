@@ -58,6 +58,49 @@ def test_atomic_background_claim_and_no_frontend_expiry(collector):
     assert c.store.snapshot('other')['runs']==[]
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize('terminal_task_present', [True, False])
+async def test_failed_system_refresh_releases_collection_admission(collector, terminal_task_present):
+    from ai2apps.system_tasks.intelligence import register_intelligence
+    from ai2apps.system_tasks.service import SystemTaskService
+
+    c, principal = collector
+    _, channel = source_and_channel(c, principal)
+    owner = principal.actor_user_id
+    c.runtime.system_tasks = system = SystemTaskService(c.runtime)
+    c.runtime.intelligence_collector = c
+    register_intelligence(c.runtime)
+    task = system.submit(owner, 'ai2apps.intelligence', 'intelligence.refresh', 'Refresh',
+                         {'channel_id': channel['id']})
+    run = c.submit(principal, channel['id'], _system_managed=task['id'])
+    with c.store.connect() as db:
+        db.execute("UPDATE collection_jobs SET data=json_set(data,'$.ready',json('false')) WHERE run_id=?", (run['id'],))
+    with c.runtime.database.transaction(write=True) as db:
+        if terminal_task_present:
+            db.execute("UPDATE system_tasks SET status='failed' WHERE id=?", (task['id'],))
+        else:
+            db.execute("DELETE FROM system_tasks WHERE id=?", (task['id'],))
+
+    loop = asyncio.create_task(c.loop())
+    try:
+        async with asyncio.timeout(3):
+            while c.store.get('runs', owner, run['id'])['status'] == 'running':
+                await asyncio.sleep(.01)
+        ended = c.store.get('runs', owner, run['id'])
+        assert ended['status'] == 'failed'
+        assert ended['progress']['stall_reason'] == 'system_task_ended'
+        replacement = c.submit(principal, channel['id'])
+        assert replacement['id'] != run['id']
+        job = {'owner': owner, 'run_id': replacement['id']}
+        task_id = system.active_for(owner, 'ai2apps.intelligence', 'schedule:intelligence:'+channel['id'])['id']
+        c.settle_inactive_system_job(job, task_id)
+        assert c.store.get('runs', owner, replacement['id'])['status'] == 'running'
+    finally:
+        c.stop.set()
+        c.runtime.notifications.notify()
+        await loop
+
+
 def test_shared_submission_is_idempotent_and_admitted_once(collector):
     c,p=collector;s,ch=source_and_channel(c,p)
     kwargs=dict(owner='owner',session_id=c.session_id,profile='default',name='Collect',key='collection:source:phase',caller_app_id='ai2apps.intelligence',source=c.program(s,'read_page',{'url':s['url']}))
@@ -896,6 +939,41 @@ async def test_system_queued_collection_cancellation_updates_business_tree(colle
     c.runtime.system_tasks.cancel('owner',task['id']);await c.runtime.system_tasks.tick()
     assert c.store.get('runs','owner',run['id'])['status']=='cancelled'
     assert c.runtime.system_tasks.get('owner',task['id'])['status']=='cancelled'
+
+
+@pytest.mark.asyncio
+async def test_system_cleanup_timeout_returns_saved_results_and_keeps_browser_cleanup_pending(collector,monkeypatch):
+    from ai2apps.system_tasks import SystemTaskService
+    from ai2apps.system_tasks.intelligence import register_intelligence
+
+    c,p=collector
+    source,channel=source_and_channel(c,p)
+    c.runtime.intelligence_collector=c
+    c.runtime.system_tasks=SystemTaskService(c.runtime)
+    monkeypatch.setattr('ai2apps.apps.access.has_app_capability',lambda *a:True)
+    monkeypatch.setattr('ai2apps.system_tasks.intelligence.CLEANUP_TIMEOUT_SECONDS',.03)
+    register_intelligence(c.runtime)
+    run=c.submit(p,channel['id'],c.session_id)
+    task=c.runtime.system_tasks.snapshot('owner')['tasks'][0]
+    root='collection:'+run['id']
+    source_node=root+':source:'+source['id']
+    browser=c.tasks.enqueue('owner','default','','','','Read',{},parent_task_id=source_node,reuse_page=True)
+    context={'created_by_run':'run','reuse_scope':source_node,'cleanup':{'state':'pending'}}
+    c.tasks.update('owner',browser['id'],status='completed',browser_context_json=json.dumps(context))
+
+    async def saved(_):
+        c.store.finish('owner',run['id'],[],[{'title':'Saved','summary':'S','body':'B','sources':[]}],[],defer_completion=True)
+        c.tree.finish('owner',source_node)
+        c.tree.finish('owner',root)
+
+    monkeypatch.setattr(c,'guarded_collect',saved)
+    await c.runtime.system_tasks.tick()
+    await asyncio.gather(*list(c.runtime.system_tasks.jobs.values()))
+    result=c.runtime.system_tasks.get('owner',task['id'])
+    assert result['status']=='partial' and result['result']['article_count']==1
+    assert result['progress']['stall_reason']=='cleanup_timeout'
+    assert c.tree.get('owner',root)['status']=='finishing'
+    assert c.store.snapshot('owner')['articles'][0]['title']=='Saved'
 
 
 def test_system_retry_preserves_single_source_scope(collector,monkeypatch):

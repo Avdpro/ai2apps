@@ -7,7 +7,7 @@ from ai2apps.api.imagine_studio import create_imagine_studio_router
 from ai2apps.model_manager import ModelManagerStore
 from ai2apps.model_capabilities import cloud_model_capabilities
 from ai2apps.secrets import MemorySecretBackend
-from ai2apps.cloud_gateway import request_cloud_image
+from ai2apps.images.cloud_gateway import request_cloud_image
 
 
 def test_vision_and_image_capabilities_are_distinct():

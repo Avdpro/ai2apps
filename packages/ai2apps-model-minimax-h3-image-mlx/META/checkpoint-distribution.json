@@ -1,0 +1,62 @@
+{
+  "schema": "ai2apps.checkpoint-build/v1",
+  "distributionId": "dist_ai2apps_minimax_h3_image_5f904730_v1",
+  "modelId": "ai2apps.model.minimax-h3-image/default",
+  "repoId": "MiniMaxAI/MiniMax-H3-Image",
+  "revision": "5f90473023975e6271b0ed1dd84c4e88e4bbc6d3",
+  "format": "safetensors",
+  "quantization": "bf16",
+  "pieceSize": 8388608,
+  "includePatterns": [
+    "LICENSE",
+    "pdd_config.json",
+    "pdd_fused_heads.safetensors",
+    "transformer/*",
+    "vae/config.json",
+    "vae/diffusion_pytorch_model.safetensors"
+  ],
+  "license": {
+    "id": "LicenseRef-MiniMax-H3-Image",
+    "name": "MiniMax-H3-Image Community License Agreement",
+    "termsUrl": "https://huggingface.co/MiniMaxAI/MiniMax-H3-Image/blob/5f90473023975e6271b0ed1dd84c4e88e4bbc6d3/LICENSE",
+    "termsHash": "sha256:0ec3bb5e6d9e885fa2aaf15e84689e50fd51f42b53fa24d3a64ed9d8c76d423b",
+    "usagePolicy": "territory_restricted_license_terms",
+    "accessPolicy": "public",
+    "redistributionPolicy": "conditional",
+    "redistributionConditions": {
+      "termsAcceptance": "required",
+      "licenseDelivery": "required",
+      "downstreamTerms": "same_or_more_restrictive",
+      "commercialUse": "allowed",
+      "attribution": {
+        "required": true,
+        "noticeText": "MiniMax-H3-Image is licensed under the MiniMax-H3-Image Community License Agreement, Copyright \u00a9 2026 MiniMax. All Rights Reserved.",
+        "noticeFile": "NOTICE",
+        "productDisplay": "required"
+      },
+      "modifiedFilesNotice": "required"
+    },
+    "downloadConsent": {
+      "required": true,
+      "attestationText": "I confirm that I am in an Applicable Territory under the MiniMax-H3-Image Community License Agreement and accept its terms and use restrictions, or that I have obtained separate written authorization from MiniMax for my location and intended use.",
+      "acceptanceOptions": [
+        "accepted_license_terms",
+        "obtained_separate_license"
+      ]
+    }
+  },
+  "sourceRepositories": [
+    {
+      "type": "huggingface",
+      "repoId": "MiniMaxAI/MiniMax-H3-Image",
+      "revision": "5f90473023975e6271b0ed1dd84c4e88e4bbc6d3",
+      "access": "public_anonymous"
+    },
+    {
+      "type": "modelscope",
+      "repoId": "minimax/MiniMax-H3-Image",
+      "revision": "df334556f585a596a710cf4f7ce3a567c0738ee5",
+      "access": "public_anonymous"
+    }
+  ]
+}

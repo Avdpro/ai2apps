@@ -4,10 +4,18 @@ const target={packageId:'publisher/fixture',version:'1.0.0',manifestSha256:'a'.r
 function card(status='unverified'){return {cardKey:status,contentKind:'app',identity:'main',displayName:'Fixture',description:'<script>untrusted</script>',release:{...target},installationTarget:{...target},publisher:{displayName:'Fixture'},compatibility:{},permissions:[],agent_support:'unverified',match:{status,reasons:[],exclusions:status==='excluded'?[{code:'PLATFORM_MISMATCH'}]:[],unknown:[]},processing:'unknown',pricing:'unknown',license:'unknown',downloadBytes:42};}
 function setup(handler){const calls=[];const context={URLSearchParams,document:{documentElement:{lang:'en'}},requestAnimationFrame:f=>f(),window:{t:k=>k,setTimeout:f=>f(),AI2AppsCapabilities:{createTransferMeter:()=>()=>'',formatDownloadProgress:()=>''}},fetch:async(url,options)=>{calls.push([url,options]);return {ok:true,json:async()=>handler(new URL(url,'http://local'),options)};}};vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../web/static/js/discover.js'),'utf8'),context);return {app:context.window.discoverApp(),calls,context};}
 test('negotiated cards keep excluded separate and details cannot substitute the latest version',async()=>{
- const {app,calls}=setup(url=>url.pathname.endsWith('/capabilities')?{capabilityCatalog:feature}:{schemaVersion:feature.schemaVersion,catalogSnapshot:'snapshot',outcome:'unverified_candidates',counts:{match:0,unverified:1,excluded:1},items:[card(),card('excluded')],nextCursor:null});
+ const {app,calls}=setup(url=>url.pathname.endsWith('/capabilities')?{capabilityCatalog:{...feature,queryProjections:{value:'projections-v1'}}}:{schemaVersion:'ai2apps.capability-query.v1',projection:'detail',releasePolicy:'latest_compatible',catalogSnapshot:'snapshot',outcome:'unverified_candidates',counts:{match:0,unverified:1,excluded:1},items:[card(),card('excluded')],nextCursor:'opaque'});
  await app.loadCatalogPage(false,true);assert.equal(app.items.length,2);assert.equal(app.visibleItems.length,1);app.showExcluded=true;assert.equal(app.visibleItems.length,2);assert.ok(app.capabilityContent);assert.equal(app.canInstall(app.items[1]),false);assert.match(app.capabilityLabel(app.items[0]),/unverified/);
  const query=new URL(calls.at(-1)[0],'http://local');assert.ok(query.pathname.endsWith('/capabilities-content'));assert.equal(query.searchParams.has('sort'),false);
+ assert.equal(query.searchParams.get('release_policy'),'latest_compatible');
+ await app.loadCatalogPage(true,false);
+ const continued=new URL(calls.at(-1)[0],'http://local');assert.equal(continued.searchParams.get('cursor'),'opaque');assert.equal(continued.searchParams.get('release_policy'),'latest_compatible');
  const before=calls.length;await app.openDetails(app.items[0]);assert.equal(calls.length,before);assert.equal(app.selected.version,'1.0.0');assert.equal(app.cloudVersion(app.items[0]),'1.0.0');assert.equal(app.selected.installationTarget.manifestSha256,target.manifestSha256);
+});
+test('capability catalog without projections uses the ordinary component catalog for browsing',async()=>{
+ const {app,calls}=setup(url=>url.pathname.endsWith('/capabilities')?{capabilityCatalog:feature,contentCatalog:{schemaVersion:'ai2apps.content-catalog.v1',endpoint:'/v1/registry/content'}}:{schemaVersion:'ai2apps.content-catalog.v1',catalogSnapshot:'s',items:[],nextCursor:null});
+ app.type='mini-app';await app.loadCatalogPage(false,true);
+ assert.equal(app.capabilityContent,false);assert.ok(new URL(calls.at(-1)[0],'http://local').pathname.endsWith('/catalog/content'));
 });
 test('explicit install forwards exact reviewed digests and retains post-install rediscovery status',async()=>{
  const {app,calls}=setup(()=>({status:'completed',result:{capabilityDiscovery:{status:'adapter_required',callable:false}}}));
@@ -32,4 +40,21 @@ test('failed install verification keeps the original handoff and does not return
  app.packageHandoff={run_id:'run-a',interaction_id:'i',base:'/original'};
  await app.returnPackageTask(true);
  assert.equal(app.packageHandoff.run_id,'run-a');assert.equal(returned.length,0);assert.match(app.message,/not active/);
+});
+
+test('installed component-only Packages display Mini-Apps while hybrid Apps retain both entries',async()=>{
+ const {app}=setup(url=>url.pathname.endsWith('/installed')?{items:[
+  {packageId:'fixture/components',packageType:'app',appNavigation:{launcher:false},
+   miniApps:[{componentId:'fixture.editor',displayName:'Editor'}]},
+  {packageId:'fixture/hybrid',packageType:'app',appNavigation:{launcher:true},
+   miniApps:[{componentId:'fixture.helper',displayName:'Helper'}]},
+ ]}:{items:[]});
+ await app.loadCatalog();app.tab='installed';
+ assert.deepEqual(Array.from(app.visibleItems,item=>item.cardId),
+  ['fixture/components#fixture.editor','fixture/hybrid','fixture/hybrid#fixture.helper']);
+ assert.equal(app.installedPackageCount,2);
+ app.type='app';
+ assert.deepEqual(Array.from(app.visibleItems,item=>item.cardId),['fixture/hybrid']);
+ app.type='mini-app';
+ assert.equal(app.visibleItems.length,2);
 });

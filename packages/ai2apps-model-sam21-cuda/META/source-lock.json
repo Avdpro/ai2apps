@@ -1,0 +1,17 @@
+{
+  "schema": "ai2apps.source-lock/v1",
+  "sources": [
+    {
+      "name": "Meta SAM 2 (Runtime-owned)",
+      "url": "https://github.com/facebookresearch/sam2",
+      "revision": "2b90b9f5ceec907a1c18123530e92e794ad901a4",
+      "license": "Apache-2.0"
+    },
+    {
+      "name": "Official SAM2.1 Small checkpoint",
+      "url": "https://huggingface.co/facebook/sam2.1-hiera-small",
+      "revision": "ee5bba1d82bb8749febdf90f45e84b687142ba03",
+      "license": "Apache-2.0"
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+<section class="character-document-preview" x-data="characterDocumentViewer()" x-effect="loadCharacter(characterDocumentUrl)">
+    <p x-show="loading" role="status">正在加载形象设定 / Loading character settings…</p>
+    <p x-show="error" role="alert" x-text="error"></p>
+    <template x-if="document"><div>
+        <div class="character-document-images"><template x-for="image in images" :key="image.id"><figure><img :src="image.data_url" :alt="image.name || document.appearance.name" loading="lazy"><figcaption x-text="image.name"></figcaption></figure></template></div>
+        <dl><template x-for="entry in settings" :key="entry[0]"><div><dt x-text="entry[0]"></dt><dd x-text="entry[1]"></dd></div></template></dl>
+    </div></template>
+</section>

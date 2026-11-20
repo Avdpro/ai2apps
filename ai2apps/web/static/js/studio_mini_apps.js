@@ -272,7 +272,9 @@
         'media.video_subtitles', 'media.video_audio_translation',
         'audio.speaker_voice_replacement', 'media.video_speaker_voice_replacement']);
     const audioGenerationCapabilities = new Set(['audio.music_generation', 'audio.sound_effects_generation', 'audio.song_generation']);
-    const setupCapabilities = new Set([...mediaCapabilities, ...audioGenerationCapabilities, 'audio.voice_clone', 'image.frozen_time.da', 'image.frozen_time.vggt']);
+    const visualExportCapability = 'media.visual_sequence.export';
+    const setupCapabilities = new Set([...mediaCapabilities, ...audioGenerationCapabilities, 'audio.voice_clone',
+        'image.frozen_time.da', 'image.frozen_time.vggt', 'comic.translation']);
     const progressCapabilities = new Set([
         'video.avatar_generation',
         'media.video_subtitles',
@@ -300,12 +302,12 @@
         let audioRecorder = null;
         let audioGenerationJob = null, audioGenerationCancelRequested = false;
         let audioGenerationAbort = null, llmAbort = null;
-        let webPollTimer = null;
+        let webPollTimer = null, hookPollTimer = null;
         const abort = new AbortController();
         const active = () => !closed && frame.isConnected && frame.src === src && frame.contentWindow === source;
         const close = () => {
             closed = true; abort.abort(); audioGenerationAbort?.abort(); llmAbort?.abort();
-            clearTimeout(webPollTimer);
+            clearTimeout(webPollTimer);clearTimeout(hookPollTimer);
             mobileDialogs.forEach(dialog=>dialog.remove());mobileDialogs.clear();
             audioRecorder?.dispose();
             progressSources.forEach(source => source.close()); progressSources.clear();
@@ -404,9 +406,61 @@
                     credentials: 'same-origin', cache: 'no-store', signal: abort.signal,
                 }));
                 if (!active()) return;
-                if (request.operation === 'device.location') {
+                const ownerBridge = window.AI2AppsMiniAppBridges?.get(binding.miniAppId);
+                if (request.operation === 'owner.request' && ownerBridge) {
+                    reply({value:await ownerBridge(request,{base,signal:abort.signal,
+                        readAsset: reference => readAvatarInput({reference,kind:'image'},abort.signal)})});
+                }
+                else if (request.operation === 'device.location') {
                     if(!probe.items?.some(item=>item.capability==='device.location'&&item.ready)) throw new Error('device.location is not declared');
                     reply({value:await requestDeviceLocation({signal:abort.signal,active})});
+                }
+                else if (request.operation.startsWith('image-workflow.')) {
+                    if (!probe.items?.some(item => item.capability === 'image.workflow')) throw new Error('image.workflow is required');
+                    const root = `${base}/image-workflow`;
+                    const action = request.operation.slice('image-workflow.'.length);
+                    if (action === 'characters') {
+                        reply({value:await payload(await fetch(`${root}/characters`,{credentials:'same-origin',signal:abort.signal}))});
+                    } else if (action === 'models') {
+                        reply({value:await payload(await fetch(`${root}/models`,{credentials:'same-origin',signal:abort.signal}))});
+                    } else if(['schedule.get','schedule.set'].includes(action)) {
+                        if(!probe.items?.some(item=>item.capability==='image.workflow.schedule'))throw new Error('image.workflow.schedule is required');
+                        if(!/^[A-Za-z0-9_-]{1,100}$/.test(request.resource||''))throw new Error('Invalid resource key');
+                        reply({value:await payload(await fetch(`${root}/schedules/${request.resource}`,{credentials:'same-origin',
+                            method:action==='schedule.set'?'PUT':'GET',signal:abort.signal,
+                            ...(action==='schedule.set'?{headers:{'Content-Type':'application/json'},body:JSON.stringify(request.settings)}:{})}))});
+                    } else if(action==='archive.export') {
+                        const response=await fetch(`${root}/archives/export`,{method:'POST',credentials:'same-origin',signal:abort.signal,headers:{'Content-Type':'application/json'},body:JSON.stringify({document:request.document,assets:request.assets})});
+                        if(!response.ok)await payload(response);
+                        const blob=await response.blob(),url=URL.createObjectURL(blob),link=document.createElement('a');
+                        link.href=url;link.download=String(request.filename||'project.zip').replace(/[\\/\x00-\x1f]/g,'_').slice(0,180);document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
+                        reply({value:{exported:true,bytes:blob.size}});
+                    } else if(['archive.inspect','archive.import'].includes(action)) {
+                        if(!(request.file instanceof Blob)||!request.file.size||request.file.size>512*1024*1024)throw new Error('ZIP must be ≤512 MiB');
+                        const data=new FormData();data.append('file',request.file,'project.zip');
+                        reply({value:await payload(await fetch(`${root}/archives/${action.split('.')[1]}`,{method:'POST',credentials:'same-origin',signal:abort.signal,body:data}))});
+                    } else if(action==='import') {
+                        if(!(request.file instanceof Blob)||!request.file.size||request.file.size>20*1024*1024)throw new Error('Image must be ≤20 MiB');
+                        const data=new FormData();data.append('file',request.file,'image.png');
+                        reply({value:await payload(await fetch(`${root}/assets`,{method:'POST',credentials:'same-origin',body:data,signal:abort.signal}))});
+                    } else if(action==='read') {
+                        if(!/^[0-9a-f]{32}$/.test(request.assetId||''))throw new Error('Invalid image reference');
+                        const response=await fetch(`${root}/assets/${request.assetId}`,{credentials:'same-origin',signal:abort.signal});
+                        if(!response.ok)throw new Error('Image unavailable');reply({value:await response.blob()});
+                    } else if(action==='lookup') {
+                        if(!/^[a-zA-Z0-9_-]{8,100}$/.test(request.key||''))throw new Error('Invalid submission key');
+                        reply({value:await payload(await fetch(`${root}/submissions/${request.key}`,{credentials:'same-origin',signal:abort.signal}))});
+                    } else if(action==='reference') {
+                        reply({value:await readAvatarInput({...request,kind:'image'},abort.signal)});
+                    } else if(['submit','status','cancel','retry-publication'].includes(action)) {
+                        if(action!=='submit'&&!/^stjob_[0-9a-f]{32}$/.test(request.jobId||''))throw new Error('Invalid job');
+                        const result=await payload(await fetch(`${root}/jobs${action==='submit'?'':`/${request.jobId}${action==='retry-publication'?'/retry-publication':''}`}`,{
+                            method:['submit','retry-publication'].includes(action)?'POST':action==='cancel'?'DELETE':'GET',credentials:'same-origin',
+                            ...(action==='submit'?{headers:{'Content-Type':'application/json'},body:JSON.stringify(request.plan)}:{}),
+                            ...(action==='submit'?{}:{signal:abort.signal})}));
+                        if(result.run_id)window.dispatchEvent(new CustomEvent('ai2apps:studio-output',{detail:{studioId:binding.studioId,miniAppId:binding.miniAppId,runId:result.run_id,preserveSelection:action==='status'}}));
+                        reply({value:result});
+                    } else throw new Error('Unknown image workflow action');
                 }
                 else if (request.operation === 'llm.complete') {
                     if (!probe.items?.some(item => item.capability === 'llm.text')) throw new Error('llm.text is required');
@@ -415,13 +469,52 @@
                         headers:{'Content-Type':'application/json'}, body:JSON.stringify(request.payload || {})
                     }))});
                 }
+                else if (request.operation === 'events.subscribe') {
+                    const preview=await payload(await fetch(`${base}/events/preview`,{method:'POST',credentials:'same-origin',signal:abort.signal,headers:{'Content-Type':'application/json'},body:JSON.stringify(request.proposal||{})}));
+                    if(!active())throw new Error('Mini-App detached');
+                    if(preview.requires_user_consent){
+                        const decision=await window.AI2AppsHookConsent.review(preview.request_id);
+                        if(!active())return;
+                        reply({value:decision});
+                    }else{
+                        // Built-in development consumers retain the existing explicit preview.
+                        const rule=preview.rule;
+                        if(!window.confirm(`${binding.miniAppId}\n${rule.event_type}\n${rule.mode}`)){reply({value:{status:'cancelled'}});return;}
+                        reply({value:await payload(await fetch('/v1/platform/hooks',{method:'POST',credentials:'same-origin',signal:abort.signal,headers:{'Content-Type':'application/json'},body:JSON.stringify({preview_ref:preview.preview_ref,request_id:crypto.randomUUID()})}))});
+                    }
+                }
+                else if (request.operation === 'events.list') {
+                    reply({value:await payload(await fetch(`${base}/events`,{credentials:'same-origin',cache:'no-store',signal:abort.signal}))});
+                }
+                else if (request.operation === 'events.details') {
+                    if(!/^hd_[0-9a-f]{32}$/.test(request.deliveryId||''))throw new Error('Invalid event receipt');
+                    const path=`/v1/platform/package-hooks/mini-apps/${encodeURIComponent(binding.studioId)}/${encodeURIComponent(binding.mountId)}/deliveries/${encodeURIComponent(request.deliveryId)}/details`;
+                    reply({value:await payload(await fetch(path,{method:'POST',credentials:'same-origin',signal:abort.signal}))});
+                }
+                else if (request.operation === 'events.ack') {
+                    if(!/^hd_[0-9a-f]{32}$/.test(request.deliveryId||''))throw new Error('Invalid event receipt');
+                    reply({value:await payload(await fetch(`${base}/events/${encodeURIComponent(request.deliveryId)}/ack`,{method:'POST',credentials:'same-origin',signal:abort.signal}))});
+                }
+                else if (request.operation === 'events.watch') {
+                    clearTimeout(hookPollTimer);
+                    const watch=async()=>{
+                        if(!active())return;
+                        try{
+                            const value=await payload(await fetch(`${base}/events`,{credentials:'same-origin',cache:'no-store',signal:abort.signal}));
+                            if(active()&&value.items.length)channel.port1.postMessage({type:'ai2apps:event-deliveries',version:1,items:value.items});
+                        }catch(error){if(active())channel.port1.postMessage({type:'ai2apps:event-error',message:String(error.message||error)});}
+                        if(active())hookPollTimer=setTimeout(watch,2000);
+                    };
+                    hookPollTimer=setTimeout(watch,0);reply({value:{watching:true}});
+                }
                 else if (request.operation === 'notifications.send') {
                     const response=await fetch(`/v1/platform/studios/${encodeURIComponent(binding.studioId)}/mini-app-mounts/${encodeURIComponent(binding.mountId)}/notifications`,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(request.notification)});
                     reply({value:await payload(response)});
                 }
                 else if (request.operation === 'asset.pick') {
                     if (!['image/png,image/jpeg,image/webp','image/*','audio/*','video/*'].includes(request.accept)) throw new Error('Invalid asset types');
-                    reply({value: await window.AI2AppsMobileStudio.pickAsset(frame, {accept:request.accept,signal:abort.signal})});
+                    reply({value: await window.AI2AppsMobileStudio.pickAsset(frame,
+                        {accept:request.accept,multiple:request.multiple===true,signal:abort.signal})});
                 }
                 else if (request.operation === 'probe') reply({value: probe});
                 else if (request.operation === 'web-agent.startup') {
@@ -771,18 +864,20 @@
                 else if (request.operation === 'draft.get') {
                     const saved = await payload(await fetch(`${base}/draft`, {credentials:'same-origin', cache:'no-store', signal:abort.signal}));
                     let value = saved.value;
+                    let revision = saved.updatedAt ?? '';
                     // Migrate this exact App/Mini-App's old browser draft only if
                     // no durable draft exists. Keep the old copy as a backup.
                     const legacy = binding.studioId === 'ai2apps.ai-browser' ? null : localStorage.getItem(storageKey);
                     if (value == null && legacy) {
                         const draft = JSON.parse(legacy);
                         if (draft?.schema === 'ai2apps.mini-app-draft/v1' && draft.miniApp === binding.miniAppId) {
-                            await payload(await fetch(`${base}/draft`, {method:'PUT', credentials:'same-origin', signal:abort.signal,
+                            const migrated=await payload(await fetch(`${base}/draft`, {method:'PUT', credentials:'same-origin', signal:abort.signal,
                                 headers:{'Content-Type':'application/json'}, body:JSON.stringify({value:legacy})}));
                             value = legacy;
+                            revision = migrated.updatedAt ?? '';
                         }
                     }
-                    reply({value});
+                    reply({value:request.withRevision ? {value,updatedAt:revision} : value});
                 }
                 else if (request.operation === 'draft.remove') {
                     await payload(await fetch(`${base}/draft`, {method:'DELETE', credentials:'same-origin', signal:abort.signal}));
@@ -792,11 +887,12 @@
                     if (typeof request.value !== 'string' || new TextEncoder().encode(request.value).length > 4 * 1024 * 1024) throw new Error('Draft exceeds 4 MiB');
                     const draft = JSON.parse(request.value);
                     if (draft?.schema !== 'ai2apps.mini-app-draft/v1' || draft.miniApp !== binding.miniAppId) throw new Error('Invalid Mini-App draft');
-                    await payload(await fetch(`${base}/draft`, {method:'PUT', credentials:'same-origin', signal:abort.signal,
-                        headers:{'Content-Type':'application/json'}, body:JSON.stringify({value:request.value})}));
-                    reply({value: null});
+                    const result=await payload(await fetch(`${base}/draft`, {method:'PUT', credentials:'same-origin', signal:abort.signal,
+                        headers:{'Content-Type':'application/json'}, body:JSON.stringify({value:request.value,
+                            ...(typeof request.expectedUpdatedAt==='string'?{expected_updated_at:request.expectedUpdatedAt}:{})})}));
+                    reply({value:request.withRevision ? {updatedAt:result.updatedAt} : null});
                 } else if (request.operation === 'invoke') {
-                    if (!mediaCapabilities.has(request.capability) || !probe.items?.some(item => item.capability === request.capability)) throw new Error('Capability is not allowed');
+                    if ((!mediaCapabilities.has(request.capability) && request.capability !== visualExportCapability) || !probe.items?.some(item => item.capability === request.capability)) throw new Error('Capability is not allowed');
                     if (!Array.isArray(request.fields) || request.fields.length > 24) throw new Error('Invalid media fields');
                     const body = new FormData();
                     const names = new Set();
@@ -807,8 +903,9 @@
                         names.add(name);
                         if (name === 'file' || name === 'reference') {
                             if (!(value instanceof Blob)) throw new Error('Expected media file');
-                            const limit = name === 'file' ? 1024 * 1024 * 1024 : 100 * 1024 * 1024;
+                            const limit = request.capability === visualExportCapability ? 8 * 1024 * 1024 : (name === 'file' ? 1024 * 1024 * 1024 : 100 * 1024 * 1024);
                             if (value.size === 0) throw new Error('Media input is empty');
+                            if (value.size > limit && request.capability === visualExportCapability) throw new Error('Visual sequence exceeds 8 MiB');
                             if (value.size > limit) throw new Error(name === 'file'
                                 ? 'Media input exceeds the 1 GiB limit'
                                 : 'Reference audio exceeds the 100 MiB limit');
@@ -904,7 +1001,7 @@
                         const url = new URL(outputUrl, location.origin);
                         if (url.origin !== location.origin || !/^\/v1\/platform\/sessions\/[^/]+\/artifacts\/[^/]+\/download$/.test(url.pathname)) throw new Error('Invalid output URL');
                         downloads.add(outputUrl);
-                        window.dispatchEvent(new CustomEvent('ai2apps:studio-output', {detail: {studioId: binding.studioId, miniAppId: binding.miniAppId, result: {downloadUrl: outputUrl, runId: outputRunId}, preserveSelection: !!durableRunId}}));
+                        window.dispatchEvent(new CustomEvent('ai2apps:studio-output', {detail: {studioId: binding.studioId, miniAppId: binding.miniAppId, result: {downloadUrl: outputUrl, runId: outputRunId}, preserveSelection: !!durableRunId || request.capability === visualExportCapability}}));
                     }
                     reply({value: {status: response.status, body: responseBody,
                         headers: {'x-ai2apps-download-url': outputUrl || '', 'content-type': separationResult ? 'application/json' : response.headers.get('content-type') || '',
@@ -925,6 +1022,28 @@
             }
         };
         source.postMessage({type: 'ai2apps:studio-connected', version: 1, mobile:!!window.AI2APPS_MOBILE_SURFACE||!!frame.closest('.sm-mobile,.aib-mobile'), locale: document.documentElement.lang || 'en'}, '*', [channel.port2]);
+    });
+
+    window.AI2AppsStudioPackages = Object.freeze({
+        revision(item, mount) {
+            if (item.provider?.digest) return mount?.effective_digest || item.provider.digest;
+            return mount?.context?.providerVersion || item.provider?.version || item.version || '';
+        },
+        watchActivation(check) {
+            const token = new URLSearchParams((window.location.hash || '').slice(1)).get('ai2apps-mount');
+            const onMessage = event => {
+                if (!token || window.parent === window || event.source !== window.parent ||
+                    event.origin !== window.location.origin || event.data?.mountToken !== token ||
+                    event.data.type !== 'ai2apps.host.activate') return;
+                void check();
+            };
+            window.addEventListener('message', onMessage);
+            return () => window.removeEventListener('message', onMessage);
+        },
+        async install(studioId, refresh) {
+            const result = await window.AI2AppsCapabilities.openMiniAppPackages({placement: studioId});
+            if (result.installed) await refresh();
+        },
     });
 
     window.AI2AppsStudioMiniApps = Object.freeze({

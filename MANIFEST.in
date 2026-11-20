@@ -12,3 +12,13 @@ global-exclude *.sqlite3-shm
 global-exclude *.sqlite3-wal
 prune artifacts
 prune output
+
+# The ComfyUI Studio prototype is loaded only from the App Dev checkout.
+prune ai2apps/experiments/comfyui_studio
+exclude ai2apps/web/templates/system_apps/_comfyui*.html
+exclude ai2apps/web/static/js/studio_comfyui.js
+exclude ai2apps/web/static/css/studio_comfyui.css
+
+recursive-include omlx/engine/tts_backends LICENSE* PROVENANCE.json
+
+recursive-include omlx/engine/tts_backends/zonos3/steering *.npy *.json LICENSE*

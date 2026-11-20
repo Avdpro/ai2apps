@@ -144,7 +144,7 @@ class KnowledgeOCRManager:
         # Cache only immutable inspected artifacts, never model-name guesses.
         key=package.package_digest
         if key not in self._package_ocr_ids:
-            from ai2apps.packages.contract_v1 import inspect_package
+            from ai2apps.packages.contract_v1 import inspect_package, PackageContractError
             try:
                 inspected=inspect_package(package.archive_path)
                 if key!='sha256:'+inspected.sha256: return set()
@@ -153,7 +153,7 @@ class KnowledgeOCRManager:
                 models=(manifest.get('modelInstall') or {}).get('models',[])
                 ids={m['id'] for m in models} if tasks & OCR_TASKS else set()
                 self._package_ocr_ids[key]=ids
-            except (ValueError,OSError):return set()
+            except (ValueError,OSError,PackageContractError):return set()
         return self._package_ocr_ids[key]
 
     async def selection(self):
@@ -170,6 +170,7 @@ class KnowledgeOCRManager:
         installs=registry.installed() if registry else []
         package_tasks={x.get('runtimeKey'):set((x.get('discovery') or {}).get('tasks',[])) for x in installs}
         for m in catalog:
+            if not supports_images(m):continue
             key=m.get('id');service=m.get('package_service')
             package=repository.active(service) if repository and service else None
             if package:

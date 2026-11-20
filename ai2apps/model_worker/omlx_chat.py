@@ -93,6 +93,8 @@ def _responses_messages(value: Any, instructions: Any) -> list[dict[str, Any]]:
                 elif part_type in {"input_image", "image_url"}:
                     image = part.get("image_url") or part.get("url")
                     parts.append({"type": "image_url", "image_url": image})
+                elif part_type == "video_url":
+                    parts.append({"type": "video_url", "video_url": part.get("video_url")})
             content = parts
         result.append({"role": str(item.get("role", "user")), "content": content})
     return _messages(result)

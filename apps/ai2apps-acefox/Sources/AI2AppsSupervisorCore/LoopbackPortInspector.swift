@@ -23,11 +23,33 @@ public struct LoopbackPortInspector: Sendable {
         return isAvailable(port: port) ? nil : PortConflict(host: configuration.bindAddress, port: port)
     }
 
+    public func conflictAfterWaiting(
+        for configuration: LocalConfiguration,
+        attempts: Int = 10,
+        interval: Duration = .milliseconds(500)
+    ) async throws -> PortConflict? {
+        precondition(attempts > 0)
+        for attempt in 0..<attempts {
+            guard let conflict = try conflict(for: configuration) else { return nil }
+            if attempt == attempts - 1 { return conflict }
+            try await Task.sleep(for: interval)
+        }
+        return nil
+    }
+
     public func isAvailable(port: Int) -> Bool {
         guard (1024...65535).contains(port) else { return false }
         let descriptor = socket(AF_INET, SOCK_STREAM, 0)
         guard descriptor >= 0 else { return false }
         defer { close(descriptor) }
+
+        // Match Local's reuse behavior so a recently closed listener does not
+        // look like a persistent conflict during a fixed-port restart.
+        var reuseAddress: Int32 = 1
+        guard setsockopt(
+            descriptor, SOL_SOCKET, SO_REUSEADDR,
+            &reuseAddress, socklen_t(MemoryLayout<Int32>.size)
+        ) == 0 else { return false }
 
         var address = sockaddr_in()
         address.sin_family = sa_family_t(AF_INET)

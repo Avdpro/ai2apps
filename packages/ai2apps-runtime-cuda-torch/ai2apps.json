@@ -3,21 +3,32 @@
   "package": {
     "id": "ai2apps/runtime-cuda-torch",
     "type": "service",
-    "version": "0.2.0",
+    "version": "0.5.0",
     "displayName": "AI2Apps CUDA Torch Runtime",
     "description": "Isolated PyTorch and Transformers Runtime for AI2Apps CUDA Model Workers."
   },
   "compatibility": {
     "ai2apps": ">=0.1.0 <2.0.0",
-    "platforms": ["linux"],
-    "architectures": ["arm64"],
+    "platforms": [
+      "linux"
+    ],
+    "architectures": [
+      "arm64"
+    ],
     "minimumOsVersion": "24.4"
   },
   "entrypoints": [
-    {"name": "inference-runtime", "kind": "service", "path": "service.yaml"}
+    {
+      "name": "inference-runtime",
+      "kind": "service",
+      "path": "service.yaml"
+    }
   ],
   "permissions": [],
   "dependencies": [],
   "files": [],
-  "sbom": {"format": "spdx-json-2.3", "path": "META/sbom.spdx.json"}
+  "sbom": {
+    "format": "spdx-json-2.3",
+    "path": "META/sbom.spdx.json"
+  }
 }

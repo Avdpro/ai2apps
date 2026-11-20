@@ -114,7 +114,11 @@ async def test_generic_invocation_policy_skips_reconfirming_an_app_verified_rece
         thread,_=ChatRepository(runtime.database,runtime.events,principal=principal).create_thread(title='Generic receipt')
         run,_=runtime.agents.create_run(session_id=thread.session.id,agent_key='ai2apps.general-agent',input={'model':'test','prompt':'run','tools':['gallery.search']})
         runtime.agent_runtime.wake();await wait(runtime,run.id,'completed')
-        assert calls==[('confirmed',thread.session.id,run.id),'describe','execute'],[(s.tool_name,s.error,s.output) for s in runtime.agents.list_steps(run.id) if s.kind=='tool']
+        # Contract reads may be repeated for dispatch-time version validation;
+        # the confirmed receipt and business submission must remain single-use.
+        assert calls[0]==('confirmed',thread.session.id,run.id)
+        assert calls[-1]=='execute' and calls.count('execute')==1
+        assert calls[1:-1] and all(call=='describe' for call in calls[1:-1])
         assert not runtime.agents.list_interactions(run.id)
     finally:await runtime.stop_background_tasks()
 

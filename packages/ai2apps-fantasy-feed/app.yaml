@@ -1,0 +1,95 @@
+schema: ai2apps.app/v1
+id: ai2apps.fantasy-feed
+name: Fantasy Feed
+version: 0.1.0
+description: Create fictional chat screenshots and animated clips.
+publisher: {id: ai2apps}
+instances: {mode: singleton, scope: user}
+entry: {kind: sandbox, resource: web/index.html}
+navigation: {launcher: false}
+localizations:
+  zh-CN: {name: 幻想信息流, description: 制作虚构聊天截图和逐条出现的对话视频。}
+mini_apps:
+  - schema: ai2apps.mini-app/v1
+    id: ai2apps.imagine.fantasy-feed
+    name: Fantasy Feed
+    version: 0.1.0
+    kind: project
+    icon: messages-square
+    description: Turn a fictional conversation into a PNG or a silent MP4.
+    catalog: {categories: [image, video]}
+    entry: {kind: sandbox, resource: web/index.html, placements: [inline, sidebar]}
+    placements: [{studio: ai2apps.imagine-studio, category: create, order: 145}]
+    outputs: [{id: screenshot, kind: image, final: true}, {id: clip, kind: video, final: true}]
+    requirements: {capabilities: [media.visual_sequence.export]}
+    localizations:
+      zh-CN: {name: 幻想信息流, description: 把虚构对话做成 PNG 截图或无声 MP4 短片。}
+
+    aaat:
+      schema: ai2apps.mini-app-host-exports/v1
+      exports:
+        - name: media.fictional_conversation
+          interfaceVersion: 1.0.0
+          host: ai2apps.imagine-studio
+          sdk: studio.fictional-conversation/v1
+          displayName: {zh: 生成虚构聊天截图或视频, en: Render a fictional chat}
+          summary: {zh: 匹配已保存的参与者档案，使用编写好的对话生成 PNG 或无声 MP4。, en: Resolve saved participant profiles and render a scripted conversation to PNG or silent MP4.}
+          selectionRequired: false
+          options: {}
+          inputSchema:
+            type: object
+            additionalProperties: false
+            required: [title, participants, messages]
+            properties:
+              title: {type: string, minLength: 1, maxLength: 40}
+              participants:
+                type: array
+                minItems: 2
+                maxItems: 16
+                items:
+                  type: object
+                  additionalProperties: false
+                  required: [key, name]
+                  properties:
+                    key: {type: string, pattern: '^[a-zA-Z0-9_-]{1,24}$'}
+                    name: {type: string, minLength: 1, maxLength: 30}
+                    profile: {type: string, minLength: 1, maxLength: 30}
+                    self: {type: boolean}
+              messages:
+                type: array
+                minItems: 1
+                maxItems: 30
+                items:
+                  type: object
+                  additionalProperties: false
+                  required: [speaker, text]
+                  properties:
+                    speaker: {type: string, pattern: '^[a-zA-Z0-9_-]{1,24}$'}
+                    text: {type: string, minLength: 1, maxLength: 300}
+                    offset_seconds: {type: integer, minimum: 0, maximum: 2592000}
+              format: {enum: [png, mp4], default: png}
+              theme: {enum: [wechat, whatsapp, telegram, imessage], default: wechat}
+              ratio: {enum: ['9:16', '3:4', '16:9'], default: '9:16'}
+              interval: {enum: [0.5, 1, 1.5, 2, 2.5, 3], default: 1.5}
+              start: {type: string, pattern: '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}$'}
+              locale: {enum: [zh, en], default: zh}
+          fields:
+            - {key: title, type: text, label: {zh: 会话标题, en: Conversation title}}
+            - {key: participants, type: json, label: {zh: 参与者与档案称呼, en: Participants and profile references}}
+            - {key: messages, type: json, label: {zh: 对话剧本, en: Dialogue script}}
+            - {key: format, type: select, label: {zh: 输出格式, en: Output format}, options: [{value: 'png', label: 'png'}, {value: 'mp4', label: 'mp4'}]}
+            - {key: theme, type: select, label: {zh: 聊天样式, en: Chat style}, options: [{value: 'wechat', label: 'wechat'}, {value: 'whatsapp', label: 'whatsapp'}, {value: 'telegram', label: 'telegram'}, {value: 'imessage', label: 'imessage'}]}
+            - {key: ratio, type: select, label: {zh: 画幅, en: Aspect ratio}, options: [{value: '9:16', label: '9:16'}, {value: '3:4', label: '3:4'}, {value: '16:9', label: '16:9'}]}
+            - {key: interval, type: select, label: {zh: 播放间隔, en: Playback interval}, options: [{value: 0.5, label: '0.5'}, {value: 1, label: '1'}, {value: 1.5, label: '1.5'}, {value: 2, label: '2'}, {value: 2.5, label: '2.5'}, {value: 3, label: '3'}]}
+            - {key: start, type: text, label: {zh: 对话开始时间, en: Start time}}
+            - {key: locale, type: select, label: {zh: 画面语言, en: Output language}, options: [{value: 'zh', label: 'zh'}, {value: 'en', label: 'en'}]}
+          agentContext:
+            schema: ai2apps.aaat-declaration/v1
+            instructions:
+              - Write the requested fictional dialogue before calling. Use unique participant keys and exactly one self role on the right.
+              - For user-specified roles such as 我 and 妈妈, put the user's actual role wording in profile. The owner resolves saved names and aliases and uses the saved avatar. Omit profile only for explicitly fictional or generic roles that do not need a saved profile.
+              - Missing or ambiguous profiles require user clarification. Never invent a match, silently omit profile, or retry after an uncertain submission.
+              - Use png for a screenshot and mp4 for a silent video. Story offsets do not affect the playback interval.
+            result_semantics:
+              artifact: Actual Studio artifact URL and metadata, available only after publication.
+              profiles: Names of profiles matched for this render. No avatar data is returned to the model.

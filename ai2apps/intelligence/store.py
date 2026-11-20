@@ -24,6 +24,10 @@ def fingerprint(page):
     return hashlib.sha256(' '.join(page['text'].split()).encode()).hexdigest()
 
 
+class ChannelRefreshBusy(ValueError):
+    """Admission declined because this channel already has a refresh."""
+
+
 class IntelligenceStore:
     def __init__(self, root):
         self.root = Path(root)
@@ -44,10 +48,15 @@ class IntelligenceStore:
                 CREATE TABLE IF NOT EXISTS articles(id TEXT PRIMARY KEY, owner TEXT NOT NULL, channel TEXT NOT NULL, data TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS pages(owner TEXT NOT NULL, channel TEXT NOT NULL, url TEXT NOT NULL, hash TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(owner,channel,url));
                 CREATE TABLE IF NOT EXISTS runs(id TEXT PRIMARY KEY, owner TEXT NOT NULL, channel TEXT NOT NULL, status TEXT NOT NULL, updated REAL NOT NULL, data TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS business_event_outbox(
+                    run_id TEXT PRIMARY KEY, owner TEXT NOT NULL, channel TEXT NOT NULL,
+                    data TEXT NOT NULL, occurred_at TEXT NOT NULL, event_id TEXT, cause_json TEXT);
                 CREATE INDEX IF NOT EXISTS source_channel ON sources(owner,channel);
                 CREATE INDEX IF NOT EXISTS article_channel ON articles(owner,channel);
                 CREATE INDEX IF NOT EXISTS run_channel ON runs(owner,channel,status);
             ''')
+            if 'cause_json' not in {r[1] for r in db.execute('PRAGMA table_info(business_event_outbox)')}:
+                db.execute('ALTER TABLE business_event_outbox ADD COLUMN cause_json TEXT')
 
     @contextmanager
     def connect(self):
@@ -374,7 +383,7 @@ class IntelligenceStore:
                     return previous
             current = self.unpack(db.execute('SELECT * FROM channels WHERE owner=? AND id=?', (owner, channel)).fetchone())
             if db.execute("SELECT 1 FROM runs WHERE owner=? AND channel=? AND status='running'", (owner, channel)).fetchone():
-                raise ValueError('此频道已在更新中')
+                raise ChannelRefreshBusy('此频道已在更新中')
             if not db.execute('SELECT 1 FROM sources WHERE owner=? AND channel=? AND json_extract(data,\'$.enabled\')=1', (owner, channel)).fetchone():
                 raise ValueError('请先添加并启用信息源')
             sources = [self.unpack(row) for row in db.execute("SELECT * FROM sources WHERE owner=? AND channel=? AND json_extract(data,'$.enabled')=1", (owner,channel))]
@@ -411,6 +420,7 @@ class IntelligenceStore:
             if status != 'running':
                 current['finished_at'] = stamp()
             db.execute('UPDATE runs SET data=?,status=?,updated=? WHERE owner=? AND id=?', (json.dumps(current), status, datetime.now(timezone.utc).timestamp(), owner, id))
+            self._stage_business_event(db, owner, id, status, current)
 
     def pending_candidates(self, owner, channel, candidates, seen_urls=()):
         """Filter before navigation, using only successfully committed page history."""
@@ -500,6 +510,8 @@ class IntelligenceStore:
                     article['favorite'] = previous.get('favorite', False)
                     for field in ('manual_import','manual_backbone','import_identity','import_requested_url','original_content','ai_translation','translation_language','source_blocks','translation_paragraphs','source_paragraph_map'):
                         if field in previous and field not in article:article[field]=previous[field]
+                    for field in ('_transfer_origin', '_transfer_conflicts'):
+                        if field in previous: article[field] = previous[field]
                     article['feedback'] = previous.get('feedback', '')
                     for field in ('feedback_reasons', 'feedback_at'):
                         if field in previous:
@@ -533,6 +545,7 @@ class IntelligenceStore:
                 run['progress'] = {**run.get('progress', {}), 'phase':'finalizing', 'articles_saved':run['article_count'], 'active_pages':[]}
                 status = 'running'
             db.execute('UPDATE runs SET status=?,data=?,updated=? WHERE owner=? AND id=?', (status, json.dumps(run), datetime.now(timezone.utc).timestamp(), owner, run_id))
+            self._stage_business_event(db, owner, run_id, status, run)
 
     def complete_pending(self, owner, run_id):
         """Publish the final result only after the collection tree has settled."""
@@ -543,16 +556,47 @@ class IntelligenceStore:
             status = run.pop('pending_status')
             run.update(message=run.pop('result_message'), finished_at=stamp())
             db.execute('UPDATE runs SET status=?,data=?,updated=? WHERE owner=? AND id=?', (status,json.dumps(run),datetime.now(timezone.utc).timestamp(),owner,run_id))
+            self._stage_business_event(db, owner, run_id, status, run)
         return self.get('runs',owner,run_id)
 
-    def fail_finalization(self, owner, run_id, message):
+    def fail_finalization(self, owner, run_id, message, *, timeout_seconds=300, reason='no_progress_timeout'):
         """End a proven stalled finalizer without discarding saved articles."""
         with self.connect() as db:
             run = self.unpack(db.execute('SELECT * FROM runs WHERE owner=? AND id=?',(owner,run_id)).fetchone())
+            if run['status'] in ('failed','cancelled') or run.get('progress',{}).get('stall_reason')==reason:
+                return
             status = 'partial' if run.get('article_count') or run.get('progress',{}).get('articles_saved') else 'failed'
             run.pop('pending_status',None)
-            run.update(message=message,finished_at=stamp(),progress={**run.get('progress',{}),'stalled':True,'timeout_seconds':300,'active_pages':[]})
+            run.update(message=message,finished_at=stamp(),progress={**run.get('progress',{}),'stalled':True,
+                'timeout_seconds':timeout_seconds,'stall_reason':reason,'active_pages':[]})
             db.execute('UPDATE runs SET status=?,data=?,updated=? WHERE owner=? AND id=?',(status,json.dumps(run),datetime.now(timezone.utc).timestamp(),owner,run_id))
+            self._stage_business_event(db, owner, run_id, status, run)
+
+    @staticmethod
+    def _stage_business_event(db, owner, run_id, status, run):
+        if status not in ('completed','partial','failed','cancelled'):
+            return
+        row = db.execute('SELECT channel FROM runs WHERE id=? AND owner=?',(run_id,owner)).fetchone()
+        body = json.dumps({'run_id':run_id,'status':status,'added_count':len(set(run.get('new_article_ids',[])))},sort_keys=True)
+        from ai2apps.events.causality import current_cause
+        cause=current_cause.get()
+        if cause is None:
+            cause={'owner':owner,'root_id':key(),'depth':0,'ancestry':[]}
+        db.execute("INSERT INTO business_event_outbox(run_id,owner,channel,data,occurred_at,cause_json) VALUES(?,?,?,?,?,?) ON CONFLICT(run_id) DO NOTHING",
+                   (run_id,owner,row['channel'],body,run.get('finished_at') or stamp(),json.dumps(cause)))
+
+    def flush_business_events(self, publisher, limit=50):
+        with self.connect() as db:
+            rows=[dict(r) for r in db.execute('SELECT * FROM business_event_outbox WHERE event_id IS NULL ORDER BY rowid LIMIT ?',(limit,))]
+        for row in rows:
+            from ai2apps.events.causality import cause_scope
+            cause=json.loads(row['cause_json']) if row['cause_json'] else {'owner':row['owner'],'root_id':'legacy:'+row['run_id'],'depth':0,'ancestry':[],'unknown':True}
+            with cause_scope(cause), publisher.service.database.transaction(write=True) as db:
+                event_id=publisher.publish(db,owner=row['owner'],subject_id=row['channel'],
+                    occurrence_key=row['run_id']+':terminal',data=json.loads(row['data']),occurred_at=row['occurred_at'])
+            with self.connect() as db:
+                db.execute('UPDATE business_event_outbox SET event_id=? WHERE run_id=? AND event_id IS NULL',(event_id,row['run_id']))
+        return len(rows)
 
     def _queue_channel(self, db, owner, channel):
         from .knowledge_sync import document
@@ -665,6 +709,7 @@ class IntelligenceStore:
                 raise ValueError('图片来源不属于此文章')
             if not image_url:
                 raise ValueError('此网页未找到可用标题图')
+            if article.get('cover_image') != {'url': image_url, 'source_url': source_url}: article['content_updated_at'] = stamp()
             article['cover_image'] = {'url': image_url, 'source_url': source_url}
             db.execute('UPDATE articles SET data=? WHERE owner=? AND id=?', (json.dumps(article),owner,id))
         return article
@@ -714,6 +759,7 @@ class IntelligenceStore:
             for item in retained + [{**i,'source_url':source_url} for i in incoming] + article.get('images',[]):
                 if item['url'] not in seen:
                     seen.add(item['url']);result.append(item)
+            if article.get('images') != result[:48] or image_url and not article.get('cover_image'): article['content_updated_at'] = stamp()
             article['images'] = result[:48]
             if image_url and not article.get('cover_image'):
                 article['cover_image'] = {'url':image_url,'source_url':source_url}

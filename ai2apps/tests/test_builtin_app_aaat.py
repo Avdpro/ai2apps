@@ -102,7 +102,17 @@ async def test_shopping_form_uses_installed_schema_and_broker(runtime,monkeypatc
 
 @pytest.mark.asyncio
 async def test_quick_read_uses_host_job_and_exact_invocation_key(runtime,monkeypatch):
-    monkeypatch.setattr('ai2apps.model_providers.list_package_models',lambda *a:[SimpleNamespace(id='tts-model',model_type='audio_tts',display_name='Fixture TTS',checkpoint_ready=True)])
+    models = [
+        SimpleNamespace(id=identifier, model_type='audio_tts', display_name=identifier,
+                        checkpoint_ready=ready, metadata=metadata)
+        for identifier, ready, metadata in [
+            ('reference-only', True, {'reference_audio_required': True}),
+            ('design-only', True, {'instructions_required': True}),
+            ('unready', False, {}),
+            ('tts-model', True, {}),
+        ]
+    ]
+    monkeypatch.setattr('ai2apps.model_providers.list_package_models',lambda *a,**kw:models)
     ctx=replace(context(runtime),invocation_id='quick-read-test');seen=[]
     monkeypatch.setattr(runtime.extension_manager,'launch_app',lambda *a,**k:(SimpleNamespace(id='voice-instance'),None,False))
     def submit(**kw):
@@ -112,10 +122,41 @@ async def test_quick_read_uses_host_job_and_exact_invocation_key(runtime,monkeyp
         artifact=runtime.workspace.import_artifact(session,source,name='quick.wav',media_type='audio/wav')
         return {'id':'job-q','status':'succeeded','result':{'downloadUrl':f'/v1/platform/sessions/{session}/artifacts/{artifact.id}/download'}}
     monkeypatch.setattr(runtime.studio_jobs,'submit',submit)
-    result=await runtime.app_capability_router.invoke('voice.quick_read',{'text':'朗读测试','model_id':'tts-model'},ctx)
+    result=await runtime.app_capability_router.invoke('voice.quick_read',{'text':'朗读测试'},ctx)
     assert result['files'][0]['url'].startswith(f'/v1/platform/sessions/{ctx.session_id}/artifacts/') and result['mini_app_id']=='ai2apps.audio.quick-read'
     assert seen[0]['kind']=='quick-read' and seen[0]['key']=='aaat:quick-read-test'
     assert seen[0]['payload']['model_id']=='tts-model' and seen[0]['studio_id']=='ai2apps.readaloud'
+
+
+@pytest.mark.asyncio
+async def test_transcribe_uses_session_audio_and_voice_studio_defaults(runtime,monkeypatch,tmp_path):
+    from ai2apps.services.capability_routing import CapabilityInvocationError
+    import wave
+
+    models=[SimpleNamespace(id=identifier,model_type='audio_stt',display_name=identifier,checkpoint_ready=ready)
+        for identifier,ready in [('unready',False),('first-ready',True),('second-ready',True)]]
+    monkeypatch.setattr('ai2apps.model_providers.list_package_models',lambda *a,**kw:models)
+    monkeypatch.setattr('ai2apps.readaloud.parameter_form.list_package_models',lambda *a,**kw:models)
+    seen=[]
+
+    async def infer(model,operation,**kwargs):
+        seen.append((model,operation,kwargs['data']))
+        return SimpleNamespace(status_code=200,body=b'{"text":"fixture transcript"}')
+
+    monkeypatch.setattr(runtime.model_invocations,'invoke_foreground_multipart',infer)
+    ctx=replace(context(runtime),invocation_id='transcribe-test')
+    invoke=runtime.app_capability_router.invoke
+    with pytest.raises(CapabilityInvocationError,match='parameter_contract_mismatch'):
+        await invoke('voice.transcribe',{},ctx)
+    assert not seen
+    audio=tmp_path/'voice.wav'
+    with wave.open(str(audio),'wb') as out:
+        out.setparams((1,2,16000,0,'NONE','not compressed'))
+        out.writeframes(b'\0\0'*1600)
+    asset=runtime.workspace.import_artifact(ctx.session_id,audio,name=audio.name,media_type='audio/wav')
+    result=await invoke('voice.transcribe',{'audio':asset.id},ctx)
+    assert result['text']=='fixture transcript'
+    assert seen==[('first-ready','audio_transcription',{'response_format':'json','stream':'false'})]
 
 
 @pytest.mark.asyncio

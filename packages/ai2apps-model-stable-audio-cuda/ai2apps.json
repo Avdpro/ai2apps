@@ -1,0 +1,87 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/model-stable-audio-cuda",
+    "type": "service",
+    "version": "0.1.0",
+    "displayName": "Stable Audio 3 Small CUDA",
+    "description": "CUDA music and sound effects, 1\u2013120 seconds. Powered by Stability AI. Installation requires the user to confirm applicable Stability AI and Gemma terms."
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": [
+      "linux"
+    ],
+    "architectures": [
+      "arm64"
+    ]
+  },
+  "entrypoints": [
+    {
+      "name": "model-worker",
+      "kind": "service",
+      "path": "service.yaml"
+    }
+  ],
+  "permissions": [
+    {
+      "capability": "model-weights.huggingface-cache.read",
+      "reason": "Generate music and effects from a declared checkpoint using CUDA.",
+      "required": true
+    },
+    {
+      "capability": "accelerator.cuda",
+      "reason": "Generate music and sound effects on CUDA.",
+      "required": true
+    }
+  ],
+  "dependencies": [
+    {
+      "packageId": "ai2apps/runtime-cuda-torch",
+      "version": ">=0.6.0 <1.0.0",
+      "optional": false
+    }
+  ],
+  "files": [],
+  "sbom": {
+    "format": "spdx-json-2.3",
+    "path": "META/sbom.spdx.json"
+  },
+  "discovery": {
+    "kind": "model",
+    "categories": [
+      "speech"
+    ],
+    "tasks": [
+      "music-generation",
+      "sound-effects-generation"
+    ]
+  },
+  "modelProfile": {
+    "sizeBytes": 1704750192,
+    "minimumMemoryBytes": 8589934592,
+    "scores": {
+      "speed": 5,
+      "capability": 3
+    },
+    "benchmark": {
+      "label": "Estimated memory; CUDA native/Worker evidence retained, signed installation pending",
+      "device": "NVIDIA DGX Spark GB10"
+    }
+  },
+  "modelInstall": {
+    "serviceKey": "ai2apps.model.stable-audio-cuda",
+    "models": [
+      {
+        "id": "ai2apps.model.stable-audio-cuda/music",
+        "label": "Music / \u97f3\u4e50",
+        "recommended": true
+      },
+      {
+        "id": "ai2apps.model.stable-audio-cuda/sfx",
+        "label": "Sound Effects / \u97f3\u6548",
+        "recommended": false
+      }
+    ]
+  }
+}

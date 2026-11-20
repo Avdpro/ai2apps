@@ -1,0 +1,25 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "ai2apps-model-yue2-cuda-0.1.0",
+  "documentNamespace": "https://ai2apps.com/spdx/model-yue2-cuda/0.1.0",
+  "creationInfo": {
+    "creators": [
+      "Organization: AI2Apps"
+    ],
+    "created": "2026-10-08T00:00:00Z"
+  },
+  "packages": [
+    {
+      "name": "ai2apps-model-yue2-cuda-adapter",
+      "SPDXID": "SPDXRef-Adapter",
+      "versionInfo": "0.1.0",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "copyrightText": "AI2Apps contributors; see LICENSE."
+    }
+  ]
+}

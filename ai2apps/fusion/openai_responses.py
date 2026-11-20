@@ -14,7 +14,7 @@ import httpx
 from fastapi import HTTPException, Response
 from fastapi.responses import StreamingResponse
 
-from .provider_errors import redacted_provider_error
+from .provider_errors import provider_retry_headers, rate_limit_detail, redacted_provider_error
 
 
 def responses_body(chat: dict[str, Any]) -> dict[str, Any]:
@@ -94,7 +94,9 @@ async def proxy_responses(chat: dict[str, Any], *, provider: dict[str, Any], tra
             headers={"Authorization": f"Bearer {provider['api_key']}"}, json=body), stream=bool(body["stream"]))
         if upstream.status_code >= 400:
             await upstream.aread()
-            raise HTTPException(upstream.status_code, redacted_provider_error(upstream, provider["api_key"]))
+            message = redacted_provider_error(upstream, provider["api_key"])
+            raise HTTPException(upstream.status_code, rate_limit_detail(upstream, message),
+                                headers=provider_retry_headers(upstream))
         if not body["stream"]:
             result = upstream.json()
             if result.get("error") or result.get("status") in {"failed", "cancelled"}:

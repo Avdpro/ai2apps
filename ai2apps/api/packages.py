@@ -602,7 +602,13 @@ def create_package_router(
             'capability','input_type','output_type','platform','architecture','os_version','ai2apps_version',
             'runtime_id','runtime_version','memory_bytes','storage_bytes','package_id','version'}
         params=dict(request.query_params)
+        # Browse policy is independent of exact version lookups for reviewed installs.
+        browse_policy = params.pop('release_policy', None)
+        if browse_policy is not None and (browse_policy != 'latest_compatible' or 'version' in params):
+            raise HTTPException(422, 'Invalid browse release policy')
         if set(params)-allowed:raise HTTPException(422,'Unsupported capability catalog filter')
+        if browse_policy:
+            params.update(projection='detail', release_policy=browse_policy)
         for key in ('limit','memory_bytes','storage_bytes'):
             if key in params:
                 try:params[key]=int(params[key])

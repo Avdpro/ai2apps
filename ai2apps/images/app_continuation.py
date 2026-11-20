@@ -3,27 +3,34 @@ from datetime import datetime
 from fastapi import HTTPException
 from ai2apps.agents.form_continuation import ADAPTERS, ContinuationAdapter
 from ai2apps.studio.repository import StudioRepository, TERMINAL_RUN_STATUSES
-from .mini_parameters import WORKFLOWS, compose
+from .mini_parameters import WORKFLOWS, compose, reference_ids, schema
 
 KEY='ai2apps.imagine-studio/v1'
 
 def switch_values(runtime,run,source,target,values):
     result=dict(values)
-    refs=values.get('person_artifact_ids') or values.get('artifact_ids') or ([values['artifact_id']] if values.get('artifact_id') else [])
+    refs=([values[k] for k in ('person_artifact_id','item_artifact_id') if values.get(k)] or values.get('person_artifact_ids')) or values.get('artifact_ids') or ([values['artifact_id']] if values.get('artifact_id') else [])
     refs=list(dict.fromkeys(refs+([values['background_artifact_id']] if values.get('background_artifact_id') else [])))
-    for key in ('artifact_id','artifact_ids','person_artifact_ids','background_artifact_id'):result.pop(key,None)
+    for key in ('artifact_id','artifact_ids','person_artifact_ids','background_artifact_id','person_artifact_id','item_artifact_id'):result.pop(key,None)
     capability=target.capability or target.key
     if capability=='image.group_photo':result['person_artifact_ids']=refs
-    elif capability=='image.edit':
+    elif capability in ('image.edit','image.extract_items','image.product_photo'):
         if refs:result['artifact_id']=refs[0]
         if len(refs)>1:raise HTTPException(422,'Single-image editing cannot carry multiple reference images')
+    elif capability=='image.try_on':
+        if refs:result['person_artifact_id']=refs[0]
+        if len(refs)>1:result['item_artifact_id']=refs[1]
+        if len(refs)>2:raise HTTPException(422,'Try-on supports exactly one person and one item')
     else:result['artifact_ids']=refs
     if not result.get('prompt'):result['prompt']=run.input.get('prompt','')
-    return result
+    allowed=schema(target.mini_app_id)['properties'] if target.mini_app_id in WORKFLOWS else None
+    return {k:v for k,v in result.items() if allowed is None or k in allowed}
 
 def begin(runtime,principal,run,item,form,values):
     refs=[]
-    if form.capability=='image.group_photo':
+    if form.capability=='image.try_on':
+        refs=[(index,values[key]) for index,key in enumerate(('person_artifact_id','item_artifact_id')) if values.get(key)]
+    elif form.capability=='image.group_photo':
         if len(values.get('person_artifact_ids',[]))>3:raise HTTPException(422,'Group photo supports at most three subject references')
         refs=[(index,identifier) for index,identifier in enumerate(values.get('person_artifact_ids',[]))]
         if values.get('background_artifact_id'):refs.append((3,values['background_artifact_id']))

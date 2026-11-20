@@ -16,8 +16,11 @@ async def describe(runtime,principal,form,values,item):
     if descriptor.get('models'):
         fields=[{**f,'type':'model'} if f['key']==descriptor.get('model_field','model') else f for f in fields]
     return {'schema':schema,'fields':fields,'models':descriptor.get('models',[]),
+        'model_field':descriptor.get('model_field','model'),
         'auto_submit_allowed':descriptor.get('auto_submit_allowed') is not False,
+        'auto_continue_after_setup':descriptor.get('auto_continue_after_setup') is True,
         'configuration_required':bool(descriptor.get('configuration_required')),'constraints':descriptor.get('constraints',{}),'warnings':descriptor.get('warnings',[]),
+        'inline_setup': descriptor.get('inline_setup') is True,
         **({'install':descriptor['install']} if descriptor.get('install') else {})}
 
 async def complete(runtime,principal,form,values,run):

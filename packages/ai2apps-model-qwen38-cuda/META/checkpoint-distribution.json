@@ -1,0 +1,46 @@
+{
+  "schema": "ai2apps.checkpoint-build/v1",
+  "distributionId": "dist_ai2apps_qwen3_8_27b_nvfp4_16b6615a_v1",
+  "modelId": "ai2apps.model.qwen38/qwen3.8-27b-nvfp4",
+  "repoId": "unsloth/Qwen3.8-27B-NVFP4",
+  "revision": "16b6615af3548b88e2d8e382457bc705b00479cf",
+  "format": "safetensors",
+  "quantization": "nvfp4-mixed",
+  "pieceSize": 8388608,
+  "license": {
+    "id": "Apache-2.0",
+    "name": "Apache License 2.0",
+    "termsUrl": "https://www.apache.org/licenses/LICENSE-2.0",
+    "termsHash": "sha256:59df539296ae6da58dc5b1ffb9971147429c2a8f2fb6ab862ef8322b655df025",
+    "usagePolicy": "license_terms",
+    "accessPolicy": "public",
+    "redistributionPolicy": "allowed"
+  },
+  "includePatterns": [
+    "model.safetensors",
+    "model_mtp.safetensors",
+    "model.safetensors.index.json",
+    "config.json",
+    "generation_config.json",
+    "preprocessor_config.json",
+    "tokenizer.json",
+    "tokenizer_config.json",
+    "video_preprocessor_config.json",
+    "vocab.json",
+    "chat_template.jinja"
+  ],
+  "sourceRepositories": [
+    {
+      "type": "huggingface",
+      "repoId": "unsloth/Qwen3.8-27B-NVFP4",
+      "revision": "16b6615af3548b88e2d8e382457bc705b00479cf",
+      "access": "public_anonymous"
+    },
+    {
+      "type": "modelscope",
+      "repoId": "unsloth/Qwen3.8-27B-NVFP4",
+      "revision": "ecbcefbb75354a5809efefd1f01d3c4f7d634204",
+      "access": "public_anonymous"
+    }
+  ]
+}

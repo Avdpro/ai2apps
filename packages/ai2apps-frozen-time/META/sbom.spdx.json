@@ -1,1 +1,32 @@
-{"spdxVersion":"SPDX-2.3","dataLicense":"CC0-1.0","SPDXID":"SPDXRef-DOCUMENT","name":"AI2Apps Frozen Time 0.1.1","documentNamespace":"https://ai2apps.com/spdx/frozen-time/0.1.1","creationInfo":{"created":"2026-10-09T00:00:00Z","creators":["Organization: AI2Apps"]},"packages":[{"name":"ai2apps/frozen-time","SPDXID":"SPDXRef-FrozenTime","versionInfo":"0.1.1","downloadLocation":"NOASSERTION","filesAnalyzed":false,"licenseConcluded":"Apache-2.0","licenseDeclared":"Apache-2.0","copyrightText":"Copyright AI2Apps"}]}
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "ai2apps/frozen-time-0.1.3",
+  "documentNamespace": "https://ai2apps.com/spdx/frozen-time/0.1.3",
+  "creationInfo": {
+    "created": "2026-10-09T00:00:00Z",
+    "creators": [
+      "Organization: AI2Apps"
+    ]
+  },
+  "packages": [
+    {
+      "name": "ai2apps/frozen-time",
+      "SPDXID": "SPDXRef-FrozenTime",
+      "versionInfo": "0.1.3",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "copyrightText": "Copyright AI2Apps"
+    }
+  ],
+  "relationships": [
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-FrozenTime"
+    }
+  ]
+}

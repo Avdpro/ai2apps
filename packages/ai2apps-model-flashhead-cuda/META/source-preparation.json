@@ -1,0 +1,24 @@
+{
+  "status": "development_contract_prepared_not_published",
+  "source_hashes": {
+    "ai2apps.json": "d7acfdb9d0f0a1a06db84bdfe7205e85a58ba2f869f421b0802ff39fec280888",
+    "service.yaml": "08ed525a672cd5ee5db48ffa4e0a7c86550b793256c185b1300cc3c3919235ec",
+    "README.md": "cb8caade85a2923aa72e812ca7ee27d9ef90a23c91e0411239a0cb0e63e2878a",
+    "LICENSE.upstream": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+    "META/checkpoint-distribution-lite.json": "1c3eebf7ed6c78d234b387e625330137d9f2bc7a5b45e6807d10ba85536c196e",
+    "META/sbom.spdx.json": "24657209a89c2b761a16a287653d43b4782a9c85bbd7667d93b06c2e475ff4a1",
+    "META/LICENSE-Apache-2.0.txt": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+    "META/checkpoint-distribution-pro.json": "4abb687c6bb6a6b263f9eb769e9e0cc6e2f8c6396c6aac864c805535544b9877",
+    "META/NOTICE.md": "c94be00a0087d048948cd3159ea7590382689058c504144b1db621b072541408",
+    "src/worker_adapter.py": "990252519189109433f2b26563394bc8fcb910d6479a414dc3cc00d1af227749",
+    "src/flashhead_checkpoint.py": "90a6f6ea844e7a0e109884b8cd279a8c13816f70e13a89e61bed6cfa12ed15c3",
+    "src/flashhead_host_adapter.py": "b75f982839dc76ef655153323dbc671df4323df43090a18453b881095481227b"
+  },
+  "signed_distributions": "spark/evidence/media/flashhead-distributions-signed-20261008.json",
+  "missing": [
+    "Published CUDA Runtime dependency",
+    "Published Lite/Pro distribution IDs",
+    "Signed installation and authenticated Host workflow",
+    "Package installation audit"
+  ]
+}

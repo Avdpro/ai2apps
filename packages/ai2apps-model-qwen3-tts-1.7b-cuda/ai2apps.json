@@ -1,0 +1,93 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/model-qwen3-tts-1-7b-cuda",
+    "type": "service",
+    "version": "0.1.0",
+    "displayName": "Qwen3 TTS 1.7B CUDA",
+    "description": "Pinned official BF16 CUDA speech synthesis; signed installation pending."
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": [
+      "linux"
+    ],
+    "architectures": [
+      "arm64"
+    ]
+  },
+  "entrypoints": [
+    {
+      "name": "model-worker",
+      "kind": "service",
+      "path": "service.yaml"
+    }
+  ],
+  "permissions": [
+    {
+      "capability": "model-weights.huggingface-cache.read",
+      "reason": "Read pinned Qwen3-TTS checkpoints.",
+      "required": true
+    },
+    {
+      "capability": "accelerator.cuda",
+      "reason": "Run BF16 CUDA speech inference.",
+      "required": true
+    }
+  ],
+  "dependencies": [
+    {
+      "packageId": "ai2apps/runtime-cuda-torch",
+      "version": ">=0.6.0 <1.0.0",
+      "optional": false
+    }
+  ],
+  "files": [],
+  "sbom": {
+    "format": "spdx-json-2.3",
+    "path": "META/sbom.spdx.json"
+  },
+  "discovery": {
+    "kind": "model",
+    "categories": [
+      "speech"
+    ],
+    "tasks": [
+      "speech-synthesis",
+      "voice-cloning",
+      "voice-design"
+    ]
+  },
+  "modelProfile": {
+    "sizeBytes": 13584489049,
+    "minimumMemoryBytes": 8589934592,
+    "scores": {
+      "speed": 2,
+      "capability": 4
+    },
+    "benchmark": {
+      "label": "Estimated memory; isolated synthesis verified, signed installation pending",
+      "device": "NVIDIA DGX Spark GB10"
+    }
+  },
+  "modelInstall": {
+    "serviceKey": "ai2apps.model.qwen3-tts-1.7b-cuda",
+    "models": [
+      {
+        "id": "ai2apps.model.qwen3-tts-1.7b-cuda/base",
+        "label": "Qwen3 TTS 1.7B base BF16",
+        "recommended": false
+      },
+      {
+        "id": "ai2apps.model.qwen3-tts-1.7b-cuda/custom-voice",
+        "label": "Qwen3 TTS 1.7B custom-voice BF16",
+        "recommended": true
+      },
+      {
+        "id": "ai2apps.model.qwen3-tts-1.7b-cuda/voice-design",
+        "label": "Qwen3 TTS 1.7B voice-design BF16",
+        "recommended": false
+      }
+    ]
+  }
+}

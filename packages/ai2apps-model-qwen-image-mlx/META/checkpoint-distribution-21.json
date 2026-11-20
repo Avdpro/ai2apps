@@ -1,0 +1,63 @@
+{
+  "schema": "ai2apps.checkpoint-build/v1",
+  "distributionId": "dist_ai2apps_mlx_qwen_image_21_d26bb612_v1",
+  "modelId": "ai2apps.model.qwen-image-mlx/2.1",
+  "repoId": "Qwen/Qwen-Image-2.1",
+  "revision": "d26bb61231c349cf6b7896fa83353113880e1ba3",
+  "format": "safetensors",
+  "quantization": "bf16",
+  "pieceSize": 8388608,
+  "license": {
+    "id": "LicenseRef-Qwen-Research",
+    "name": "Qwen Research License Agreement",
+    "termsUrl": "https://huggingface.co/Qwen/Qwen-Image-2.1/blob/d26bb61231c349cf6b7896fa83353113880e1ba3/LICENSE",
+    "termsText": "Qwen RESEARCH LICENSE AGREEMENT\n\nQwen RESEARCH LICENSE AGREEMENT Release Date: September 20, 2026\n\nBy clicking to agree or by using or distributing any portion or element of the Qwen Materials, you will be deemed to have recognized and accepted the content of this Agreement, which is effective immediately.\n\n1. Definitions\n    a. This Qwen RESEARCH LICENSE AGREEMENT (this \"Agreement\") shall mean the terms and conditions for use, reproduction, distribution and modification of the Materials as defined by this Agreement.\n    b. \"We\" (or \"Us\") shall mean Hangzhou Tongyi Laboratory Technology Co., Ltd.\n    c. \"You\" (or \"Your\") shall mean a natural person or legal entity exercising the rights granted by this Agreement and/or using the Materials for any purpose and in any field of use.\n    d. \"Third Parties\" shall mean individuals or legal entities that are not under common control with us or you.\n    e. \"Qwen\" shall mean the large language models, diffusion models, and software and algorithms, consisting of trained model weights, parameters (including optimizer states), machine-learning model code, inference-enabling code, training-enabling code, fine-tuning enabling code and other elements of the foregoing distributed by us.\n    f. \"Materials\" shall mean, collectively, our proprietary Qwen and Documentation (and any portion thereof) made available under this Agreement.\n    g. \"Source\" form shall mean the preferred form for making modifications, including but not limited to model source code, documentation source, and configuration files.\n    h. \"Object\" form shall mean any form resulting from mechanical transformation or translation of a Source form, including but not limited to compiled object code, generated documentation, and conversions to other media types.\n    i. \"Non-Commercial\" shall mean for research or evaluation purposes only.\n\n2. Grant of Rights\n    a. You are granted a non-exclusive, worldwide, non-transferable and royalty-free limited license under our intellectual property or other rights owned by us embodied in the Materials to use, reproduce, distribute, copy, create derivative works of, and make modifications to the Materials FOR NON-COMMERCIAL PURPOSES ONLY. \n    b. You shall not use the Materials for any commercial purpose without obtaining a separate commercial license from us. If you wish to use the Materials commercially, you shall request a license from us at model-business@notice.qwencloud.com.\n\n3. Redistribution\nSubject to Section 2 (Grant of Rights), you may distribute copies or make the Materials, or derivative works thereof, available as part of a product or service that contains any of them, with or without modifications, and in Source or Object form, provided that you meet the following conditions:\n    a. You shall give any other recipients of the Materials or derivative works a copy of this Agreement;\n    b. You shall cause any modified files to carry prominent notices stating that you changed the files;\n    c. You shall retain in all copies of the Materials that you distribute the following attribution notices within a \"Notice\" text file distributed as a part of such copies: \"Qwen is licensed under the Qwen RESEARCH LICENSE AGREEMENT, Copyright (c) 2026 Hangzhou Tongyi Laboratory Technology Co., Ltd. All Rights Reserved.\"; and\n    d. You may add your own copyright statement to your modifications and may provide additional or different license terms and conditions for use, reproduction, or distribution of your modifications, or for any such derivative works as a whole, provided your use, reproduction, and distribution of the work otherwise complies with the terms and conditions of this Agreement.\n\n4. Rules of use\n    a. The Materials may be subject to export controls or restrictions in China, the United States or other countries or regions. You shall comply with applicable laws and regulations in your use of the Materials.\n    b. If you use the Materials or any outputs or results therefrom to create, train, fine-tune, or improve an AI model that is distributed or made available, you shall prominently display “Built with Qwen” or “Improved using Qwen” in the related product documentation.\n    c. You shall not use \"Qwen\" as the primary name or identifier of any derivative works or products; reasonable descriptive use (e.g., \"fine-tuned from Qwen Image\") is permitted.\n\n5. Intellectual Property\n    a. We retain ownership of all intellectual property rights in and to the Materials and derivatives made by or for us. Conditioned upon compliance with the terms and conditions of this Agreement, with respect to any derivative works and modifications of the Materials that are made by you, you are and will be the owner of such derivative works and modifications.\n    b. No trademark license is granted to use the trade names, trademarks, service marks, or product names of us, except as required to fulfill notice requirements under this Agreement or as required for reasonable and customary use in describing and redistributing the Materials.\n    c. If you commence a lawsuit or other proceedings (including a cross-claim or counterclaim in a lawsuit) against us or any entity alleging that the Materials or any output therefrom, or any part of the foregoing, infringe any intellectual property or other right owned or licensable by you, then all licenses granted to you under this Agreement shall terminate as of the date such lawsuit or other proceeding is commenced or brought.\n\n6. Disclaimer of Warranty and Limitation of Liability\n    a. We are not obligated to support, update, provide training for, or develop any further version of the Qwen Materials or to grant any license thereto.\n    b. THE MATERIALS ARE PROVIDED \"AS IS\" WITHOUT ANY EXPRESS OR IMPLIED WARRANTY OF ANY KIND INCLUDING WARRANTIES OF MERCHANTABILITY, NONINFRINGEMENT, OR FITNESS FOR A PARTICULAR PURPOSE. WE MAKE NO WARRANTY AND ASSUME NO RESPONSIBILITY FOR THE SAFETY OR STABILITY OF THE MATERIALS AND ANY OUTPUT THEREFROM.\n    c. IN NO EVENT SHALL WE BE LIABLE TO YOU FOR ANY DAMAGES, INCLUDING, BUT NOT LIMITED TO ANY DIRECT, OR INDIRECT, SPECIAL OR CONSEQUENTIAL DAMAGES ARISING FROM YOUR USE OR INABILITY TO USE THE MATERIALS OR ANY OUTPUT OF IT, NO MATTER HOW IT’S CAUSED.\n    d. You will defend, indemnify and hold harmless us from and against any claim by any third party arising out of or related to your use or distribution of the Materials.\n\n7. Survival and Termination.\n    a. The term of this Agreement shall commence upon your acceptance of this Agreement or access to the Materials and will continue in full force and effect until terminated in accordance with the terms and conditions herein.\n    b. We may terminate this Agreement if you breach any of the terms or conditions of this Agreement. Upon termination of this Agreement, you must delete and cease use of the Materials. Sections 6 and 8 shall survive the termination of this Agreement.\n\n8. Governing Law and Jurisdiction.\n    a. This Agreement and any dispute arising out of or relating to it will be governed by the laws of China, without regard to conflict of law principles, and the UN Convention on Contracts for the International Sale of Goods does not apply to this Agreement.\n    b. The People's Courts in Hangzhou City shall have exclusive jurisdiction over any dispute arising out of this Agreement.\n\n9. Other Terms and Conditions.\n    a. Any arrangements, understandings, or agreements regarding the Material not stated herein are separate from and independent of the terms and conditions of this Agreement. You shall request a separate license from us, if you use the Materials in ways not expressly agreed to in this Agreement. \n    b. We shall not be bound by any additional or different terms or conditions communicated by you unless expressly agreed.\n",
+    "termsHash": "sha256:8dc973f024ff95966bea25866efa443fd16776dcb1001e681e3d467ea572b28d",
+    "usagePolicy": "non_commercial",
+    "accessPolicy": "public",
+    "redistributionPolicy": "conditional",
+    "redistributionConditions": {
+      "termsAcceptance": "required",
+      "licenseDelivery": "required",
+      "downstreamTerms": "license_terms",
+      "commercialUse": "separate_license_required",
+      "attribution": {
+        "required": true,
+        "noticeText": "Qwen is licensed under the Qwen RESEARCH LICENSE AGREEMENT, Copyright (c) 2026 Hangzhou Tongyi Laboratory Technology Co., Ltd. All Rights Reserved.",
+        "noticeFile": "NOTICE",
+        "productDisplay": "not_required"
+      },
+      "modifiedFilesNotice": "required"
+    },
+    "downloadConsent": {
+      "required": true,
+      "attestationText": "I have read and accept the Qwen Research License Agreement, including the non-commercial research or evaluation restriction, or have obtained a separate commercial license from Qwen covering my intended use.",
+      "acceptanceOptions": [
+        "accepted_license_terms",
+        "obtained_separate_license"
+      ]
+    }
+  },
+  "includePatterns": [
+    "model_index.json",
+    "processor/*",
+    "scheduler/*",
+    "text_encoder/*",
+    "transformer/*",
+    "vae/*"
+  ],
+  "sourceRepositories": [
+    {
+      "type": "huggingface",
+      "repoId": "Qwen/Qwen-Image-2.1",
+      "revision": "d26bb61231c349cf6b7896fa83353113880e1ba3",
+      "access": "public_anonymous"
+    },
+    {
+      "type": "modelscope",
+      "repoId": "Qwen/Qwen-Image-2.1",
+      "revision": "45ee13449c69593e1b7a10d7d1cba830c7ada657",
+      "access": "public_anonymous"
+    }
+  ]
+}

@@ -1,0 +1,89 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/model-voxcpm2-cuda",
+    "type": "service",
+    "version": "0.1.0",
+    "displayName": "VoxCPM2 2B CUDA",
+    "description": "CUDA VoxCPM2 speech synthesis with controllable reference cloning and voice design."
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": [
+      "linux"
+    ],
+    "architectures": [
+      "arm64"
+    ]
+  },
+  "entrypoints": [
+    {
+      "name": "model-worker",
+      "kind": "service",
+      "path": "service.yaml"
+    }
+  ],
+  "permissions": [
+    {
+      "capability": "model-weights.huggingface-cache.read",
+      "reason": "Read pinned VoxCPM2 MLX checkpoints selected by the Host.",
+      "required": true
+    },
+    {
+      "capability": "accelerator.cuda",
+      "reason": "Run VoxCPM2 locally on CUDA.",
+      "required": true
+    }
+  ],
+  "dependencies": [
+    {
+      "packageId": "ai2apps/runtime-cuda-torch",
+      "version": ">=0.6.0 <1.0.0",
+      "optional": false
+    }
+  ],
+  "files": [],
+  "sbom": {
+    "format": "spdx-json-2.3",
+    "path": "META/sbom.spdx.json"
+  },
+  "discovery": {
+    "kind": "model",
+    "categories": [
+      "speech"
+    ],
+    "tasks": [
+      "speech-synthesis",
+      "voice-cloning",
+      "voice-design",
+      "emotion-control"
+    ]
+  },
+  "modelProfile": {
+    "sizeBytes": 3225461623,
+    "minimumMemoryBytes": 8589934592,
+    "scores": {
+      "speed": 2,
+      "capability": 4
+    },
+    "benchmark": {
+      "label": "Estimated memory; two quantized variants verified in CUDA development, signed installation pending",
+      "device": "NVIDIA DGX Spark GB10"
+    }
+  },
+  "modelInstall": {
+    "serviceKey": "ai2apps.model.voxcpm2-cuda",
+    "models": [
+      {
+        "id": "ai2apps.model.voxcpm2-cuda/4bit",
+        "label": "VoxCPM2 2B 4-bit CUDA",
+        "recommended": true
+      },
+      {
+        "id": "ai2apps.model.voxcpm2-cuda/8bit",
+        "label": "VoxCPM2 2B 8-bit CUDA",
+        "recommended": false
+      }
+    ]
+  }
+}

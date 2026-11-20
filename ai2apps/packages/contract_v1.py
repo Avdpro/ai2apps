@@ -718,6 +718,8 @@ def inspect_package(path: str | Path, *, max_bytes: int | None = None) -> Inspec
         with zipfile.ZipFile(source) as archive:
             app_definition=yaml.safe_load(archive.read('app.yaml').decode('utf-8'))
         try:
+            from .hook_contract import validate_app as validate_hook_contract
+            validate_hook_contract(app_definition)
             declarations(app_definition,manifest.get('capabilityCatalog'),manifest['dependencies'])
             from .mini_app_exports import declarations as mini_declarations
             for mini in app_definition.get('mini_apps',[]):

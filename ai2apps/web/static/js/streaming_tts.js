@@ -94,5 +94,32 @@
         }
     }
 
-    return { StreamingTextSegmenter, cleanSpeechText };
+    // One synthesis at a time; playback overlaps the next bounded synthesis.
+    async function playSegments({segments,synthesize,play,signal,maxPrepared=2}) {
+        const queue=[];let done=false,failure=null,stopped=false,waiters=[];
+        const wake=()=>{const current=waiters;waiters=[];current.forEach(resolve=>resolve());};
+        const wait=()=>new Promise(resolve=>waiters.push(resolve));
+        const aborted=()=>signal?.aborted||stopped;
+        const abortError=()=>Object.assign(new Error('Speech stopped'),{name:'AbortError'});
+        signal?.addEventListener('abort',wake);
+        const producer=(async()=>{
+            try{for(const segment of segments){
+                while(!aborted()&&queue.length>=maxPrepared)await wait();
+                if(aborted())return;
+                const blob=await synthesize(segment);
+                if(aborted())return;
+                queue.push(blob);wake();
+            }}catch(error){failure=error;}finally{done=true;wake();}
+        })();
+        try{while(true){
+            while(!aborted()&&!failure&&!queue.length&&!done)await wait();
+            if(aborted())throw abortError();
+            if(failure)throw failure;
+            if(!queue.length&&done)break;
+            const blob=queue.shift();wake();await play(blob);
+        }await producer;
+        }finally{stopped=true;wake();signal?.removeEventListener('abort',wake);}
+    }
+
+    return { StreamingTextSegmenter, cleanSpeechText, playSegments };
 });

@@ -370,6 +370,8 @@ def create_app(config_path: str | Path, *, token: str | None = None) -> FastAPI:
             state["adapter"] = None
 
     app = FastAPI(title="AI2Apps Model Worker", version="1", lifespan=lifespan)
+    from .duplex_transport import install_duplex_route
+    install_duplex_route(app, state, context, expected_token)
 
     @app.middleware("http")
     async def authenticate(request: Request, call_next):
@@ -475,6 +477,11 @@ def create_app(config_path: str | Path, *, token: str | None = None) -> FastAPI:
         if record is None:
             raise HTTPException(status_code=404, detail="Worker request not found")
         if record["status"] not in {"queued", "running"}:
+            return dict(record)
+        duplex_cancel = state['duplex_cancellations'].get(request_id)
+        if duplex_cancel is not None:
+            record['cancel_requested'] = True
+            duplex_cancel.set()
             return dict(record)
         cancel = getattr(state["adapter"], "cancel", None)
         if not callable(cancel):
@@ -800,9 +807,9 @@ def main() -> None:
         pass
     app = create_app(args.config)
     if args.uds:
-        uvicorn.run(app, uds=args.uds, access_log=False)
+        uvicorn.run(app, uds=args.uds, access_log=False, ws_max_size=4 * 1024 * 1024, ws_max_queue=2)
     else:
-        uvicorn.run(app, host=args.host, port=args.port, access_log=False)
+        uvicorn.run(app, host=args.host, port=args.port, access_log=False, ws_max_size=4 * 1024 * 1024, ws_max_queue=2)
 
 
 if __name__ == "__main__":

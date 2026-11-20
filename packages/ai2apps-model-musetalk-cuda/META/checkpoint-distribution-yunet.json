@@ -1,0 +1,36 @@
+{
+  "schema": "ai2apps.checkpoint-build/v1",
+  "distributionId": "dist_ai2apps_musetalk_yunet_3cc26e7f_v1",
+  "modelId": "ai2apps.model.musetalk-cuda/detector",
+  "repoId": "opencv/face_detection_yunet",
+  "revision": "3cc26e7f1014a5ee5d74a42acee58bafc9d0a310",
+  "format": "onnx",
+  "quantization": "fp32",
+  "pieceSize": 8388608,
+  "license": {
+    "id": "MIT",
+    "name": "MIT License",
+    "termsUrl": "https://huggingface.co/opencv/face_detection_yunet/resolve/3cc26e7f1014a5ee5d74a42acee58bafc9d0a310/LICENSE",
+    "termsHash": "sha256:c83b8120c50ccbd4c4f96edf53141bdd566ebb8f8e9227e415326aa1b1aba958",
+    "usagePolicy": "license_terms",
+    "accessPolicy": "public",
+    "redistributionPolicy": "allowed"
+  },
+  "includePatterns": [
+    "face_detection_yunet_2023mar.onnx"
+  ],
+  "sourceRepositories": [
+    {
+      "type": "huggingface",
+      "repoId": "opencv/face_detection_yunet",
+      "revision": "3cc26e7f1014a5ee5d74a42acee58bafc9d0a310",
+      "access": "public_anonymous"
+    },
+    {
+      "type": "modelscope",
+      "repoId": "FlynnDu/novaber-privacy-redaction-yunet",
+      "revision": "b300dcfedffa3e02facc8e7d7b99fc3d116e8b41",
+      "access": "public_anonymous"
+    }
+  ]
+}

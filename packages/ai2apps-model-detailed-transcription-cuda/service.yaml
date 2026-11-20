@@ -1,0 +1,246 @@
+schema: ai2apps.service/v1
+id: ai2apps.model.detailed-transcription-cuda
+name: Detailed Transcription CUDA
+description: Official Qwen3 ASR and forced alignment with NVIDIA Sortformer in isolated
+  CUDA stages; standalone subtitles and meetings.
+version: 0.1.0
+publisher:
+  id: ai2apps
+license:
+  name: Apache License 2.0
+  id: Apache-2.0
+  path: META/licenses/Apache-2.0.txt
+attribution:
+  notice: META/NOTICE.md
+  qwen_asr: https://huggingface.co/Qwen/Qwen3-ASR-1.7B
+  qwen_aligner: https://huggingface.co/Qwen/Qwen3-ForcedAligner-0.6B
+  sortformer: https://huggingface.co/nvidia/diar_streaming_sortformer_4spk-v2.1
+runtime:
+  mode: process
+  protocol: ai2apps-model-worker/v1
+  provider: ai2apps.runtime.cuda-torch
+  adapter: src/cuda_detailed_adapter.py:create_adapter
+models:
+- id: ai2apps.model.detailed-transcription-cuda/compact
+  display_name: Detailed Transcription Compact CUDA
+  model_type: audio_detailed_transcription
+  upstream_id: Qwen/Qwen3-ASR-0.6B
+  capabilities:
+  - speech_recognition
+  - word_timestamps
+  - diarization
+  - speech_rate
+  metadata:
+    family: cuda-detailed-transcription
+    profile: compact
+    chat_eligible: false
+    operation_class: audio_detailed_transcription
+    modelscope:
+      repo_id: Qwen/Qwen3-ASR-0.6B
+      revision: 4ce9cc728b473a5aedbe7b6e1ea45646316824dc
+      preferred: true
+      allow_patterns:
+      - chat_template.json
+      - config.json
+      - generation_config.json
+      - merges.txt
+      - model.safetensors
+      - preprocessor_config.json
+      - tokenizer_config.json
+      - vocab.json
+    required_model_ids:
+    - ai2apps.model.detailed-transcription-cuda/forced-aligner
+    - ai2apps.model.detailed-transcription-cuda/diarizer
+    precision: bfloat16
+  weights:
+    provider: huggingface
+    repo_id: Qwen/Qwen3-ASR-0.6B
+    revision: 5eb144179a02acc5e5ba31e748d22b0cf3e303b0
+    distribution_id: dist_ai2apps_detailed_transcription_asr_compact_5eb14417_v1
+    preparation:
+      recipe: native
+  audio_capabilities: &id001
+    schema: ai2apps.audio-capabilities/v1
+    operations:
+    - audio_detailed_transcription
+    languages:
+    - zh
+    - yue
+    - en
+    - de
+    - es
+    - fr
+    - it
+    - pt
+    - ru
+    - ko
+    - ja
+    formats:
+      input:
+      - wav
+      - pcm
+      - mp3
+      - m4a
+      - aac
+      - flac
+      - ogg
+      - opus
+      - webm
+      output: []
+    streaming:
+      mode: unsupported
+      formats: []
+    stt:
+      timestamps:
+        mode: pipeline
+        levels:
+        - segment
+        - word
+      punctuation:
+        mode: native
+      prompt_biasing:
+        mode: native
+      diarization:
+        mode: pipeline
+        maximum_speakers: 4
+        identity: anonymous_global_slots
+      speaker_recognition:
+        mode: unsupported
+      speech_rate:
+        mode: pipeline
+      emotion:
+        mode: fallback
+        values:
+        - neutral
+        policy_required: compatibility
+- id: ai2apps.model.detailed-transcription-cuda/quality
+  display_name: Detailed Transcription Quality CUDA
+  model_type: audio_detailed_transcription
+  upstream_id: Qwen/Qwen3-ASR-1.7B
+  capabilities:
+  - speech_recognition
+  - word_timestamps
+  - diarization
+  - speech_rate
+  metadata:
+    family: cuda-detailed-transcription
+    profile: quality
+    chat_eligible: false
+    operation_class: audio_detailed_transcription
+    modelscope:
+      repo_id: Qwen/Qwen3-ASR-1.7B
+      revision: a04930dbe5419bfee073f7cade734f572689a3a8
+      preferred: true
+      allow_patterns:
+      - chat_template.json
+      - config.json
+      - generation_config.json
+      - merges.txt
+      - model-00001-of-00002.safetensors
+      - model-00002-of-00002.safetensors
+      - model.safetensors.index.json
+      - preprocessor_config.json
+      - tokenizer_config.json
+      - vocab.json
+    required_model_ids:
+    - ai2apps.model.detailed-transcription-cuda/forced-aligner
+    - ai2apps.model.detailed-transcription-cuda/diarizer
+    precision: bfloat16
+  weights:
+    provider: huggingface
+    repo_id: Qwen/Qwen3-ASR-1.7B
+    revision: 7278e1e70fe206f11671096ffdd38061171dd6e5
+    distribution_id: dist_ai2apps_detailed_transcription_asr_quality_7278e1e7_v1
+    preparation:
+      recipe: native
+  audio_capabilities: *id001
+- id: ai2apps.model.detailed-transcription-cuda/forced-aligner
+  display_name: Qwen3 Forced Aligner 0.6B BF16
+  model_type: audio_processing
+  upstream_id: Qwen/Qwen3-ForcedAligner-0.6B
+  capabilities:
+  - forced_alignment
+  metadata:
+    family: qwen3-forced-aligner
+    internal: true
+    modelscope:
+      repo_id: Qwen/Qwen3-ForcedAligner-0.6B
+      revision: cf1c50164ea3ac48240d12bef5ead74aee0720cc
+      preferred: true
+      allow_patterns:
+      - chat_template.json
+      - config.json
+      - generation_config.json
+      - merges.txt
+      - model.safetensors
+      - preprocessor_config.json
+      - tokenizer_config.json
+      - vocab.json
+    precision: bfloat16
+  weights:
+    provider: huggingface
+    repo_id: Qwen/Qwen3-ForcedAligner-0.6B
+    revision: c7cbfc2048c462b0d63a45797104fc9db3ad62b7
+    distribution_id: dist_ai2apps_detailed_transcription_forced_aligner_c7cbfc20_v1
+    preparation:
+      recipe: native
+- id: ai2apps.model.detailed-transcription-cuda/diarizer
+  display_name: NVIDIA Sortformer 4 Speaker v2.1 FP32
+  model_type: audio_processing
+  upstream_id: nvidia/diar_streaming_sortformer_4spk-v2.1
+  capabilities:
+  - speaker_diarization
+  metadata:
+    family: sortformer
+    internal: true
+    maximum_speakers: 4
+    modelscope:
+      repo_id: ai2apps/diar_streaming_sortformer_4spk-v2.1
+      revision: 38b9adca95005161033e9de177096b21a850b0e5
+      preferred: true
+      allow_patterns:
+      - diar_streaming_sortformer_4spk-v2.1.nemo
+    precision: float32
+  weights:
+    provider: huggingface
+    repo_id: nvidia/diar_streaming_sortformer_4spk-v2.1
+    revision: cd03eee90fbec18297ac31b8c21546e596b7f71c
+    distribution_id: dist_ai2apps_detailed_transcription_sortformer_cd03eee9_v1
+    preparation:
+      recipe: native
+capabilities:
+- audio-detailed-transcription-v1
+requires:
+  services:
+  - id: ai2apps.runtime.cuda-torch
+    version: '>=0.5.0,<1.0.0'
+    optional: false
+    capabilities:
+    - cuda
+    - torch
+    - model-worker-v1
+    - framework-profiles-v1
+    - detailed-transcription
+  python: '>=3.12,<3.13'
+permissions:
+  network:
+    outbound: false
+  model_weights:
+    huggingface_cache: read
+    reason: Read only the four Host-selected pinned official checkpoints.
+  accelerator:
+    cuda: true
+    reason: Run official Qwen3 and NVIDIA Sortformer locally on the GPU.
+compatibility:
+  os:
+  - linux
+  architectures:
+  - arm64
+  - aarch64
+health:
+  path: /health
+  startup_timeout_seconds: 120
+restart:
+  max_attempts: 2
+  base_delay_seconds: 1
+tools: []

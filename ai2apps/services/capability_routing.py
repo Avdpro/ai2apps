@@ -5,14 +5,18 @@ validation and unknown execution failures propagate: another provider could bill
 or bypass a user's decision. Register adapters at startup, never from model JSON.
 """
 from dataclasses import dataclass
+from contextlib import ExitStack, AsyncExitStack
 from copy import deepcopy
 import time
 from typing import Callable
-from ai2apps.services import ToolProviderError
+from ai2apps.services import ToolProviderError, ToolAuthorizationError
 
 
 class CapabilityInvocationError(ToolProviderError):
     def __init__(self, code, message, details):
+        details = dict(details)
+        if details.get('phase') == 'prepare':
+            details.update(submitted=False, side_effects=False)
         self.code, self.details, self.retryable = code, details, False
         super().__init__(message)
 
@@ -45,6 +49,11 @@ class CapabilityProvider:
     invocation_policy: Callable | None = None
     discovery_context: Callable | None = None
     configuration_app_id: str | None = None
+    channels: tuple = ()
+    read_repair: tuple = ()
+    access_policy: str | None = None
+    component_identity: dict | None = None
+    access_required: bool = True
 
 
 class CapabilityRouter:
@@ -52,6 +61,7 @@ class CapabilityRouter:
         self.database, self.clock, self.cooldown = database, clock, cooldown
         self.providers = {}
         self.execution_scope = None
+        self.execution_guards = []
         self.result_policies = {}
         with database.transaction() as db:
             db.execute("""CREATE TABLE IF NOT EXISTS capability_provider_settings (
@@ -77,6 +87,12 @@ class CapabilityRouter:
             return {r['provider'] for r in db.execute('SELECT provider FROM capability_provider_settings WHERE actor=? AND installation=? AND enabled=0',(actor,installation))}
 
     def register(self, provider):
+        if provider.access_policy not in (None,'read','write','confirm'):raise ValueError('Invalid owner access policy')
+        if type(provider.access_required) is not bool:
+            raise ValueError('Access requirement must be a trusted boolean declaration')
+        if not provider.access_required and (provider.access_policy not in (None, 'read')
+                or provider.invocation_policy or provider.prepare or provider.continuation):
+            raise ValueError('Only self-contained, effect-free capabilities can waive App access')
         if provider.id in self.providers:
             raise ValueError('Duplicate capability provider')
         if not provider.app_id or not provider.capability or not callable(provider.handler):
@@ -106,6 +122,10 @@ class CapabilityRouter:
             raise ValueError('Invalid App result policy identity')
         if not callable(policy.instruction) or not callable(policy.finalize) or (policy.preview is not None and not callable(policy.preview)):
             raise ValueError('App result policy requires trusted callbacks')
+        if policy.completion_check is not None and not callable(policy.completion_check):
+            raise ValueError('App completion check requires a trusted callback')
+        if policy.visual_inputs is not None and not callable(policy.visual_inputs):
+            raise ValueError('Visual inputs require a trusted callback')
         if not policy.capabilities or not all(isinstance(n,str) and n and len(n)<=256 for n in policy.capabilities):
             raise ValueError('App result policy requires explicit capability scope')
         self.result_policies[policy.id]=policy
@@ -133,6 +153,21 @@ class CapabilityRouter:
     def project_result_preview(self, step):
         return {p.id:value for p in self.active_result_policies((step,)) if p.preview is not None
             and (value:=p.preview(step)) is not None}
+
+    def visual_inputs(self, steps):
+        identifiers = []
+        for step in steps:
+            if step.kind != 'tool' or step.status.value != 'completed': continue
+            for policy in self.active_result_policies((step,)):
+                if policy.visual_inputs is None: continue
+                values = policy.visual_inputs(step)
+                if not isinstance(values, (list, tuple)) or len(values) > 8:
+                    raise ValueError('Visual input policy must select at most eight artifacts')
+                for value in values:
+                    if not isinstance(value, str) or not 1 <= len(value) <= 256:
+                        raise ValueError('Invalid visual artifact reference')
+                    if value not in identifiers: identifiers.append(value)
+        return identifiers[-8:]
 
     def agent_contexts(self, tools, actor, installation, *, selected_capabilities=None, session_id=None):
         """Project trusted declarations only for available Tools and enabled Providers."""
@@ -232,6 +267,16 @@ class CapabilityRouter:
                     status='disabled' if not enabled else 'cooldown' if remaining else 'registered', parameter_contract=bool(p.describe)))
         return result
 
+    def agent_candidates(self, capability, scope):
+        """Use execution visibility and health for pre-dispatch selection."""
+        if capability in self.providers:
+            capability = self.providers[capability].capability
+        visible = self.execution_scope.provider_visible if self.execution_scope else None
+        states = self.inspect(scope.actor_user_id, scope.installation_id)
+        return tuple(self.providers[entry['id']] for entry in states
+                     if entry['capability'] == capability and entry['rank'] is not None
+                     and (not visible or visible(scope.session_id, self.providers[entry['id']])))
+
     def invocation_error(self, capability, attempts, code, message):
         records = []
         for attempt in attempts:
@@ -243,12 +288,23 @@ class CapabilityRouter:
         return CapabilityInvocationError(code, message, {
             'capability': capability, 'provider_attempts': records,
             **{key: latest[key] for key in ('provider', 'app_id', 'mini_app_id', 'phase') if key in latest},
+            'phase': 'execute' if any(record['phase'] == 'execute' for record in records) else 'prepare',
         })
 
     async def invoke(self, capability, arguments, context):
+        factory = getattr(self.execution_scope, 'model_scope', None)
+        async with AsyncExitStack() as scopes:
+            if factory:
+                await scopes.enter_async_context(factory(context))
+            return await self._invoke_scoped(capability, arguments, context)
+
+    async def _invoke_scoped(self, capability, arguments, context):
+        for guard in self.execution_guards:guard.authorize(context,capability,arguments)
         if not context.actor_user_id or not context.installation_id:
-            raise ToolProviderError('Capability invocation requires an actor and installation')
-        if self.execution_scope:self.execution_scope.authorize(context,capability,arguments)
+            raise ToolAuthorizationError('execution_identity_required','Capability invocation requires an actor and installation')
+        if self.execution_scope:
+            guard=getattr(self.execution_scope,'require_authorized',self.execution_scope.authorize)
+            guard(context,capability,arguments)
         scope = (context.actor_user_id, context.installation_id, capability)
         with self.database.transaction() as db:
             rows = db.execute('SELECT * FROM capability_provider_health WHERE actor=? AND installation=? AND capability=?', scope).fetchall()
@@ -257,6 +313,16 @@ class CapabilityRouter:
             and (not self.execution_scope or self.execution_scope.provider_visible(context.session_id, p))]
         candidates.sort(key=lambda p: (health.get((p.id,p.version),{}).get('success_at',0),p.priority), reverse=True)
         requested_provider = arguments.get('provider')
+        channel_pin = getattr(context, 'pinned_provider', None)
+        agent_binding = getattr(context, 'agent_provider_binding', None)
+        pinned = agent_binding[:3] if agent_binding else channel_pin
+        binding_error = 'provider_binding_changed' if agent_binding else 'version_conflict'
+        if pinned is not None:
+            if pinned[0] != capability or pinned[1] != requested_provider:
+                raise CapabilityInvocationError(binding_error, 'Selected Provider binding mismatch', {'phase':'prepare'})
+            candidates = [p for p in candidates if (p.capability, p.id, p.version) == pinned]
+            if not candidates:
+                raise CapabilityInvocationError(binding_error, 'Selected Provider changed', {'phase':'prepare'})
         if requested_provider:
             candidates = [p for p in candidates if p.id == requested_provider]
             if not candidates:
@@ -286,10 +352,19 @@ class CapabilityRouter:
             phase = 'prepare'
             try:
                 try:
+                    from ai2apps.agents.parameter_contracts import STATIC_PREFIX
+                    version = agent_binding[3] if agent_binding else None
+                    if version and bool(provider.describe) == version.startswith(STATIC_PREFIX):
+                        raise CapabilityInvocationError(binding_error, 'Selected parameter contract is unavailable', {'phase':'prepare'})
                     if provider.describe:
                         from ai2apps.agents.parameter_contracts import resolve_contract, rejection
                         from ai2apps.services.aaat import principal_for
                         contract=await resolve_contract(provider,principal_for(self,context),payload)
+                        fingerprint = agent_binding[3] if agent_binding else getattr(context, 'pinned_parameter_contract', None)
+                        if pinned is not None and fingerprint is not None and contract['contract_version'] != fingerprint:
+                            raise CapabilityInvocationError(binding_error, 'Selected parameter contract changed', {'phase':'prepare'})
+                        if channel_pin is not None and (contract.get('selection_required') or contract.get('configuration_required')):
+                            raise CapabilityInvocationError('confirmation_required', 'Use the owner interaction entry point', {'phase':'prepare'})
                         for field,rule in contract['schema'].get('properties',{}).items():
                             if field not in payload and 'default' in rule:payload[field]=deepcopy(rule['default'])
                         failure=rejection(contract,payload)
@@ -304,8 +379,14 @@ class CapabilityRouter:
                     attempts.append({'provider':provider.id,'status':'unavailable','reason':'Provider registration changed before submission'});continue
                 if provider.id in self.disabled(context.actor_user_id,context.installation_id):
                     attempts.append({'provider':provider.id,'status':'disabled'});continue
-                phase = 'execute'
-                result=await provider.handler(prepared,context)
+                if channel_pin is not None and provider.invocation_policy is not None:
+                    raise CapabilityInvocationError('confirmation_required', 'Owner policy requires the interaction entry point', {'phase':'prepare'})
+                with ExitStack() as scopes:
+                    for guard in self.execution_guards:
+                        guard.authorize(context,capability,arguments)
+                        scopes.enter_context(guard.scope(context))
+                    phase = 'execute'
+                    result=await provider.handler(prepared,context)
                 if isinstance(result,dict) and 'aaat_view' in result:
                     from .aaat import validate_view
                     from jsonschema import ValidationError
@@ -323,25 +404,29 @@ class CapabilityRouter:
                 attempts.append({'provider':provider.id,'status':'failed','phase':'execute'})
                 raise self.invocation_error(capability,attempts,'provider_error',str(error)) from error
             except ProviderUnavailable as error:
-                with self.database.transaction() as db:
-                    db.execute('''INSERT INTO capability_provider_health(actor,installation,capability,provider,version,unavailable_until,reason)
-                        VALUES (?,?,?,?,?,?,?) ON CONFLICT(actor,installation,capability,provider,version)
-                        DO UPDATE SET unavailable_until=excluded.unavailable_until,reason=excluded.reason''',
-                        (*scope,provider.id,provider.version,self.clock()+self.cooldown,str(error)[:500]))
+                if channel_pin is None:
+                    with self.database.transaction() as db:
+                        db.execute('''INSERT INTO capability_provider_health(actor,installation,capability,provider,version,unavailable_until,reason)
+                            VALUES (?,?,?,?,?,?,?) ON CONFLICT(actor,installation,capability,provider,version)
+                            DO UPDATE SET unavailable_until=excluded.unavailable_until,reason=excluded.reason''',
+                            (*scope,provider.id,provider.version,self.clock()+self.cooldown,str(error)[:500]))
                 attempts.append({'provider':provider.id,'status':'unavailable','reason':str(error)[:500]})
                 continue
             except Exception as error:
                 attempts.append({'provider': provider.id, 'status': 'failed', 'phase': phase, 'reason': str(error)[:500]})
                 from jsonschema import ValidationError
-                code=('invalid_tool_arguments' if phase=='prepare' and isinstance(error,ValidationError)
+                code=(error.code if phase=='prepare' and isinstance(error,ToolAuthorizationError)
+                      else 'invalid_tool_arguments' if phase=='prepare' and isinstance(error,ValidationError)
                       else 'tool_timeout' if isinstance(error,TimeoutError) else 'provider_error')
                 raise self.invocation_error(capability, attempts, code, str(error)) from error
-            with self.database.transaction() as db:
-                db.execute('''INSERT INTO capability_provider_health(actor,installation,capability,provider,version,success_at)
-                    VALUES (?,?,?,?,?,?) ON CONFLICT(actor,installation,capability,provider,version)
-                    DO UPDATE SET success_at=excluded.success_at,unavailable_until=0,reason='' ''',
-                    (*scope,provider.id,provider.version,self.clock()))
+            if channel_pin is None:
+                with self.database.transaction() as db:
+                    db.execute('''INSERT INTO capability_provider_health(actor,installation,capability,provider,version,success_at)
+                        VALUES (?,?,?,?,?,?) ON CONFLICT(actor,installation,capability,provider,version)
+                        DO UPDATE SET success_at=excluded.success_at,unavailable_until=0,reason='' ''',
+                        (*scope,provider.id,provider.version,self.clock()))
             return {**result,'capability':capability,'provider':provider.id,'provider_version':provider.version,
+                **({'parameter_contract_version': agent_binding[3]} if agent_binding and agent_binding[3] else {}),
                 'provider_attempts':attempts+[{'provider':provider.id,'status':'succeeded'}]}
         incompatible = any(attempt['status'] == 'incompatible' for attempt in attempts)
         message = ('Provider parameter validation failed for ' if incompatible else 'No available provider for ') + capability
