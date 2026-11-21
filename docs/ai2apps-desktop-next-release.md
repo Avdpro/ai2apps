@@ -1,4 +1,6 @@
-### NXR-DESKTOP-RELEASE-2269-20261121（preparing）
+### NXR-DESKTOP-RELEASE-2269-20261121（origins_verified / cloud_handoff_pending）
+
+- 2269 已构建、Developer ID 签名、公证 Accepted/stapled/Gatekeeper 验证并上传 GitHub/ModelScope。双源匿名全量摘要与 206 Range 通过；DMG 270054639 bytes。源码 a29bfd9232a6198e81aad725ea31bd85426edc3f；GitHub v0.1.8-build2269；MS a35543d9452f94d4e0375ce2736475a5424e7fb6。独立冷启动/schema123/资源字节核对及 2268→2269 升级资格通过。PyPI/Homebrew skipped。Cloud 原子发布和目标 Mac 真实升级待执行，生产基线仍 2268，不宣称全链路完成。回执 docs/desktop-build-2269-release-receipt-2026-11-21.json；交接 docs/desktop-build-2269-cloud-handoff-2026-11-21.md。
 
 - 2269 发布范围冻结为此前候选；用户再次明确先发布，后续新增改动留给下一版。沿用 0.1.8、Build 2269；独立 Package 不重复发布。打包排除 ai2apps/artifacts 验收产物，避免将本机生成的验收图片和回执装进 App；源码候选也不纳入这些未跟踪产物。发布工作流隔离测试 17/17 通过。
 

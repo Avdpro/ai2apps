@@ -1,0 +1,101 @@
+{
+  "productVersion": "0.1.8",
+  "build": 2269,
+  "date": "2026-11-21",
+  "status": "origins_verified_cloud_handoff_pending",
+  "sourceCommit": "a29bfd9232a6198e81aad725ea31bd85426edc3f",
+  "sourceCleanAtBuild": true,
+  "bundleIdentifier": "com.ai2apps.desktop",
+  "instanceId": "default",
+  "architectures": [
+    "arm64"
+  ],
+  "runtimeProfile": "cloud",
+  "teamId": "84XL5V265N",
+  "notarization": {
+    "submissionId": "45a36f0e-48d5-4b8a-b834-f7a31f6afc39",
+    "status": "Accepted",
+    "stapled": true,
+    "gatekeeper": "accepted"
+  },
+  "artifacts": [
+    {
+      "file": "AI2Apps-0.1.8-build2269-macos-arm64.dmg",
+      "size": 270054639,
+      "sha256": "b883e3dacc666e6a9efc8897a7c0cdd6a087a5e09817a69a11e902c41b42cfa8"
+    },
+    {
+      "file": "AI2Apps-0.1.8-build2269-macos-arm64.release.json",
+      "size": 1011,
+      "sha256": "04dca80d26e3e9394721ee46b6788288e57b9f9e7c2ceba5316883601cf2b3ef"
+    }
+  ],
+  "github": {
+    "tag": "v0.1.8-build2269",
+    "url": "https://github.com/Avdpro/ai2apps/releases/tag/v0.1.8-build2269",
+    "verification": [
+      {
+        "file": "AI2Apps-0.1.8-build2269-macos-arm64.release.json",
+        "size": 1011,
+        "sha256": "04dca80d26e3e9394721ee46b6788288e57b9f9e7c2ceba5316883601cf2b3ef",
+        "anonymous": true
+      },
+      {
+        "file": "AI2Apps-0.1.8-build2269-macos-arm64.dmg",
+        "size": 270054639,
+        "sha256": "b883e3dacc666e6a9efc8897a7c0cdd6a087a5e09817a69a11e902c41b42cfa8",
+        "anonymous": true,
+        "range206": true
+      }
+    ],
+    "pypi": "skipped",
+    "homebrew": "skipped"
+  },
+  "modelscope": {
+    "repo": "ai2apps/desktop-releases",
+    "revision": "a35543d9452f94d4e0375ce2736475a5424e7fb6",
+    "verification": [
+      {
+        "file": "AI2Apps-0.1.8-build2269-macos-arm64.release.json",
+        "size": 1011,
+        "sha256": "04dca80d26e3e9394721ee46b6788288e57b9f9e7c2ceba5316883601cf2b3ef",
+        "anonymous": true
+      },
+      {
+        "file": "AI2Apps-0.1.8-build2269-macos-arm64.dmg",
+        "size": 270054639,
+        "sha256": "b883e3dacc666e6a9efc8897a7c0cdd6a087a5e09817a69a11e902c41b42cfa8",
+        "anonymous": true,
+        "range206": true
+      }
+    ]
+  },
+  "coldStart": {
+    "build": 2269,
+    "status": "passed",
+    "schema": 123,
+    "readySeconds": 5.704,
+    "frozenSourceMatches": true,
+    "modelRuntimeBundled": false,
+    "modelCheckpointsBundled": false,
+    "temporaryDataOnly": true,
+    "servedAssets": {
+      "js/intelligence_i18n.js": "254b860f15827c6d601682d7a41cb77d423f02c3f8c46c017e4d6171bca1e587",
+      "js/space.js": "f00900f4f52d23224437f35b421a084a905bc07ec5bfaddac1119a2f3e83853b",
+      "js/imagine_characters.js": "d3947d0bc881c122e05a2a0c3f7f9cb886af18df0cfc6d8cf03e452b53a9aedf"
+    }
+  },
+  "upgradeEligibility": {
+    "from": 2268,
+    "to": 2269,
+    "status": "eligible"
+  },
+  "cloud": {
+    "status": "pending_handoff",
+    "productionBaseline": 2268,
+    "rolloutId": "build2269-test",
+    "requestedBasisPoints": 10000
+  },
+  "targetMacUpgrade": "not_yet_performed",
+  "acceptance": "User confirmed functionality and instructed no repeated full Bot regression. Interrupted suites and old UI fixture failures not counted as pass; no blanket Bot test relaxation."
+}
